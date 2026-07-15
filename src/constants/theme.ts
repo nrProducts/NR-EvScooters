@@ -1,8 +1,17 @@
 export const COLORS = {
-  primaryDark: '#2E6F40',    // Main accent, primary buttons, active states
-  primaryLight: '#CFFFDC',   // Background surfaces, high-contrast highlights
-  primaryMedium: '#68BA7F',  // Secondary actions, battery mid-status
-  forestDeep: '#253D2C',     // Dark backgrounds, text headers, dark mode variants
+  // --- New Fleet Management light theme (Phase 1) ---
+  primary: '#4CAF50',
+  primaryPressed: '#3F9142',
+  secondary: '#81C784',
+  background: '#F8FAFC',
+  card: '#FFFFFF',
+  textPrimary: '#1F2937',
+  textSecondary: '#6B7280',
+  success: '#22C55E',
+  warning: '#F59E0B',
+  danger: '#EF4444',
+  border: '#E5E7EB',
+
   white: '#FFFFFF',
   black: '#000000',
   gray: {
@@ -18,10 +27,19 @@ export const COLORS = {
     900: '#111827',
   },
   status: {
-    green: '#2E6F40',
-    amber: '#68BA7F',
+    green: '#22C55E',
+    amber: '#F59E0B',
     red: '#EF4444',
-  }
+  },
+
+  // --- Legacy dark-forest theme keys ---
+  // Kept so the not-yet-migrated screens (billing, station-map, maintenance,
+  // RadialProgress, Keypad) still compile. These will be removed once those
+  // screens are rebuilt in a later phase.
+  primaryDark: '#2E6F40',
+  primaryLight: '#CFFFDC',
+  primaryMedium: '#68BA7F',
+  forestDeep: '#253D2C',
 };
 
 export const THEME = {

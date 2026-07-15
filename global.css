@@ -4,8 +4,22 @@
 @import "nativewind/theme";
 
 @theme {
-  --color-primary-dark: #2E6F40;
-  --color-primary-light: #CFFFDC;
-  --color-primary-medium: #68BA7F;
-  --color-forest-deep: #253D2C;
+  /* New Fleet Management light theme */
+  --color-primary: #4caf50;
+  --color-primary-pressed: #3f9142;
+  --color-secondary: #81c784;
+  --color-surface: #f8fafc;
+  --color-card: #ffffff;
+  --color-ink: #1f2937;
+  --color-ink-muted: #6b7280;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-border: #e5e7eb;
+
+  /* Legacy dark-forest theme, kept for not-yet-migrated screens */
+  --color-primary-dark: #2e6f40;
+  --color-primary-light: #cfffdc;
+  --color-primary-medium: #68ba7f;
+  --color-forest-deep: #253d2c;
 }

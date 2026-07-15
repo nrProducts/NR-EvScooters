@@ -1,202 +1,128 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from 'react-native';
-import { useScooterStore } from '../store/useScooterStore';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useFleetStore } from '../store/useFleetStore';
 import { COLORS } from '../constants/theme';
-import { Keypad } from '../components/Keypad';
-import { Sparkles, Phone, Mail, ArrowRight, LogOut, CheckCircle, ShieldCheck } from 'lucide-react-native';
+import { Bike, Mail, ArrowRight, ShieldCheck, User } from 'lucide-react-native';
 
 export default function LoginScreen() {
-  const { login, logout, user } = useScooterStore();
-  
-  // Login states
-  const [emailOrPhone, setEmailOrPhone] = useState('');
-  const [isOtpMode, setIsOtpMode] = useState(false);
-  const [otp, setOtp] = useState('');
+  const login = useFleetStore(s => s.login);
+  const router = useRouter();
+
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleInitialSubmit = () => {
-    if (!emailOrPhone.trim()) {
-      Alert.alert('Input Error', 'Please enter your mobile phone number or administrative staff email.');
+  const attemptLogin = (value: string) => {
+    if (!value.trim()) {
+      setError('Please enter your registered email address.');
       return;
     }
-
+    setError('');
     setLoading(true);
 
     setTimeout(() => {
       setLoading(false);
-      const isEmail = emailOrPhone.includes('@');
-      
-      if (isEmail) {
-        // Staff Login directly handles role change to 'staff'
-        login(emailOrPhone);
-      } else {
-        // Commuter OTP validation flow
-        setIsOtpMode(true);
+      const success = login(value);
+      if (!success) {
+        setError('No active account found for this email. Try admin@fleet.com or rohan.mehta@fleet.com.');
+        return;
       }
-    }, 1200);
-  };
-
-  const handleOtpPress = (digit: string) => {
-    if (otp.length < 6) {
-      setOtp(prev => prev + digit);
-    }
-  };
-
-  const handleOtpDelete = () => {
-    setOtp(prev => prev.slice(0, -1));
-  };
-
-  const handleOtpClear = () => {
-    setOtp('');
-  };
-
-  const handleOtpVerify = () => {
-    if (otp.length < 6) {
-      Alert.alert('Error', 'Please enter a valid 6-digit verification code.');
-      return;
-    }
-
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      // Logs in as client using phone number
-      login(`${emailOrPhone}@lease.com`);
-    }, 1500);
-  };
-
-  const renderAuthGate = () => {
-    if (loading) {
-      return (
-        <View className="flex-1 justify-center items-center py-20">
-          <ActivityIndicator size="large" color={COLORS.primaryLight} />
-          <Text className="text-emerald-100 font-medium mt-4">Processing secure token...</Text>
-        </View>
-      );
-    }
-
-    if (!isOtpMode) {
-      return (
-        <View className="w-full">
-          <Text className="text-emerald-100/75 text-sm font-medium mb-2">Mobile Phone or Staff Email</Text>
-          <View className="flex-row items-center bg-white/10 border border-emerald-800/30 rounded-2xl px-4 py-3.5 mb-6">
-            {emailOrPhone.includes('@') ? (
-              <Mail size={20} color={COLORS.primaryLight} className="mr-3" />
-            ) : (
-              <Phone size={20} color={COLORS.primaryLight} className="mr-3" />
-            )}
-            <TextInput
-              value={emailOrPhone}
-              onChangeText={setEmailOrPhone}
-              placeholder="e.g. +1 512 555 0199 or admin@nrev.com"
-              placeholderTextColor="rgba(207, 255, 220, 0.4)"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              className="flex-1 text-white text-base font-semibold"
-            />
-          </View>
-
-          <TouchableOpacity
-            onPress={handleInitialSubmit}
-            style={{ backgroundColor: COLORS.primaryLight }}
-            className="w-full py-4 rounded-2xl flex-row justify-center items-center shadow-lg shadow-emerald-950/40"
-          >
-            <Text style={{ color: COLORS.forestDeep }} className="font-bold text-base mr-2">
-              Send Verification Pin
-            </Text>
-            <ArrowRight size={18} color={COLORS.forestDeep} />
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    return (
-      <View className="w-full">
-        <Text className="text-emerald-100/75 text-center text-sm font-medium mb-6">
-          We sent a 6-digit code to {emailOrPhone}. Enter it below.
-        </Text>
-
-        {/* OTP Input display boxes */}
-        <View className="flex-row justify-between mb-8 px-4">
-          {[0, 1, 2, 3, 4, 5].map((index) => {
-            const digit = otp[index] || '';
-            const isActive = otp.length === index;
-            return (
-              <View
-                key={index}
-                style={{
-                  borderColor: isActive ? COLORS.primaryLight : 'rgba(255, 255, 255, 0.1)',
-                  backgroundColor: 'rgba(255, 255, 255, 0.05)'
-                }}
-                className="w-11 h-14 border rounded-xl items-center justify-center"
-              >
-                <Text className="text-white text-xl font-bold">{digit}</Text>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* Custom keypad grid */}
-        <Keypad
-          onPress={handleOtpPress}
-          onDelete={handleOtpDelete}
-          onClear={handleOtpClear}
-        />
-
-        <View className="flex-row gap-3 mt-6">
-          <TouchableOpacity
-            onPress={() => {
-              setIsOtpMode(false);
-              setOtp('');
-            }}
-            className="flex-1 py-4 bg-white/5 border border-white/10 rounded-2xl justify-center items-center"
-          >
-            <Text className="text-white font-semibold">Change Input</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handleOtpVerify}
-            disabled={otp.length < 6}
-            style={{ 
-              backgroundColor: otp.length === 6 ? COLORS.primaryLight : 'rgba(207, 255, 220, 0.2)' 
-            }}
-            className="flex-1 py-4 rounded-2xl justify-center items-center"
-          >
-            <Text 
-              style={{ color: otp.length === 6 ? COLORS.forestDeep : 'rgba(37, 61, 44, 0.6)' }} 
-              className="font-bold text-base"
-            >
-              Verify Pin
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+      // Root layout will redirect based on role once currentUserId updates
+      router.replace('/');
+    }, 500);
   };
 
   return (
-    <ScrollView 
-      contentContainerStyle={{ flexGrow: 1 }} 
-      style={{ backgroundColor: COLORS.forestDeep }}
-      className="flex-1"
+    <ScrollView
+      contentContainerStyle={{ flexGrow: 1 }}
+      style={{ backgroundColor: COLORS.background }}
     >
-      <View className="flex-1 px-6 justify-center py-10 items-center">
-        
-        {/* Brand Logo & Tagline */}
+      <View className="flex-1 px-6 justify-center py-16 items-center">
+
+        {/* Brand */}
         <View className="items-center mb-10">
-          <View className="w-16 h-16 rounded-3xl bg-emerald-700/40 border border-emerald-500/20 items-center justify-center mb-4">
-            <Sparkles size={36} color={COLORS.primaryLight} />
+          <View className="w-16 h-16 rounded-3xl items-center justify-center mb-4" style={{ backgroundColor: COLORS.primary }}>
+            <Bike size={32} color="#FFF" />
           </View>
-          <Text className="text-white text-3xl font-black tracking-tight text-center">
-            NR <Text style={{ color: COLORS.primaryLight }}>LeaseHub</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-3xl font-black tracking-tight text-center">
+            NR <Text style={{ color: COLORS.primary }}>FleetHub</Text>
           </Text>
-          <Text className="text-emerald-100/60 text-sm font-medium mt-1.5 text-center px-4">
-            Long-term EV Scooter subscription and remote vehicle telematics.
+          <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium mt-1.5 text-center px-4">
+            EV Scooter fleet management, for admins and riders.
           </Text>
         </View>
 
-        {/* Form Body: Authenticating */}
-        {renderAuthGate()}
+        {/* Form */}
+        <View className="w-full max-w-[420px]">
+          {loading ? (
+            <View className="items-center py-10">
+              <ActivityIndicator size="large" color={COLORS.primary} />
+              <Text style={{ color: COLORS.textSecondary }} className="font-medium mt-4">Signing you in...</Text>
+            </View>
+          ) : (
+            <>
+              <Text style={{ color: COLORS.textSecondary }} className="text-sm font-bold mb-2">Email Address</Text>
+              <View
+                className="flex-row items-center rounded-2xl px-4 py-3.5 mb-2 border"
+                style={{ backgroundColor: COLORS.card, borderColor: error ? COLORS.danger : COLORS.border }}
+              >
+                <Mail size={18} color={COLORS.textSecondary} />
+                <TextInput
+                  value={email}
+                  onChangeText={(t) => { setEmail(t); if (error) setError(''); }}
+                  placeholder="you@fleet.com"
+                  placeholderTextColor={COLORS.textSecondary}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  className="flex-1 text-base font-semibold ml-3"
+                  style={{ color: COLORS.textPrimary }}
+                  onSubmitEditing={() => attemptLogin(email)}
+                />
+              </View>
 
+              {error ? (
+                <Text style={{ color: COLORS.danger }} className="text-xs font-semibold mb-4 px-1">{error}</Text>
+              ) : (
+                <View className="mb-4" />
+              )}
+
+              <TouchableOpacity
+                onPress={() => attemptLogin(email)}
+                style={{ backgroundColor: COLORS.primary }}
+                className="w-full py-4 rounded-2xl flex-row justify-center items-center shadow-sm"
+              >
+                <Text className="text-white font-bold text-base mr-2">Sign In</Text>
+                <ArrowRight size={18} color="#FFF" />
+              </TouchableOpacity>
+
+              {/* Demo quick access */}
+              <View className="mt-8 pt-6 border-t" style={{ borderColor: COLORS.border }}>
+                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold uppercase tracking-wider mb-3 text-center">
+                  Quick Demo Access
+                </Text>
+                <View className="flex-row gap-3">
+                  <TouchableOpacity
+                    onPress={() => attemptLogin('admin@fleet.com')}
+                    className="flex-1 py-3.5 rounded-2xl border items-center flex-row justify-center"
+                    style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
+                  >
+                    <ShieldCheck size={16} color={COLORS.primary} />
+                    <Text style={{ color: COLORS.textPrimary }} className="font-bold text-xs ml-2">Admin</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => attemptLogin('rohan.mehta@fleet.com')}
+                    className="flex-1 py-3.5 rounded-2xl border items-center flex-row justify-center"
+                    style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
+                  >
+                    <User size={16} color={COLORS.primary} />
+                    <Text style={{ color: COLORS.textPrimary }} className="font-bold text-xs ml-2">Rider</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </>
+          )}
+        </View>
       </View>
     </ScrollView>
   );
