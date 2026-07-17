@@ -9,8 +9,20 @@ interface FleetState {
   activity: ActivityLogEntry[];
 
   // Auth
+  /**
+   * @deprecated Mock-only sign-in. Real authentication is Supabase, via
+   * useAuthStore. Kept because nothing else populates currentUserId for the
+   * not-yet-migrated rider screens.
+   */
   login: (email: string) => boolean;
   logout: () => void;
+  /**
+   * SHIM. Points the mock store at a local rider row matching the real
+   * authenticated user, so home / my-scooter / my-plan keep rendering while
+   * they still read fleet mock data. Delete this once those screens are
+   * migrated to the API and useFleetStore no longer carries user rows.
+   */
+  bindAuthUser: (email: string | null) => void;
 
   // Derived
   getCurrentUser: () => FleetUser | null;
@@ -138,6 +150,20 @@ export const useFleetStore = create<FleetState>((set, get) => ({
   },
 
   logout: () => set({ currentUserId: null }),
+
+  bindAuthUser: (email) => {
+    if (!email) {
+      set({ currentUserId: null });
+      return;
+    }
+    const users = get().users;
+    const match = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
+    // No mock row for this real account (the usual case against a live
+    // Supabase project): fall back to the first rider so the demo screens
+    // still have something to show rather than rendering blank.
+    const fallback = users.find((u) => u.role === 'user') ?? null;
+    set({ currentUserId: (match ?? fallback)?.id ?? null });
+  },
 
   getCurrentUser: () => {
     const { currentUserId, users } = get();

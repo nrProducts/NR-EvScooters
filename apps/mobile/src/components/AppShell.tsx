@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, Animated, Dimensions, ScrollView } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { useFleetStore } from '../store/useFleetStore';
+import { useAuthStore } from '../store/useAuthStore';
+import { Badge } from './ui/Badge';
 import { COLORS } from '../constants/theme';
+import { KYC_STATUS_LABEL, KYC_STATUS_TONE } from '../constants/status';
 import {
   Menu, X, User, LogOut, LayoutDashboard, Users, Bike, CreditCard,
   ArrowLeftRight, BarChart3, Settings, Home, LifeBuoy, Mail, Phone,
-  ShieldCheck, ChevronRight
+  ShieldCheck, ChevronRight, FileCheck
 } from 'lucide-react-native';
 
 const DRAWER_WIDTH = Math.min(300, Dimensions.get('window').width * 0.8);
@@ -20,6 +22,7 @@ interface NavItem {
 const ADMIN_NAV: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, route: '/dashboard' },
   { label: 'Manage Users', icon: Users, route: '/users' },
+  { label: 'KYC Review', icon: FileCheck, route: '/kyc-review' },
   { label: 'Manage Vehicles', icon: Bike, route: '/vehicles' },
   { label: 'Plans', icon: CreditCard, route: '/plans' },
   { label: 'Assign Vehicles', icon: ArrowLeftRight, route: '/assign' },
@@ -31,6 +34,7 @@ const USER_NAV: NavItem[] = [
   { label: 'Home', icon: Home, route: '/home' },
   { label: 'My Scooter', icon: Bike, route: '/my-scooter' },
   { label: 'My Plan', icon: CreditCard, route: '/my-plan' },
+  { label: 'KYC Verification', icon: ShieldCheck, route: '/kyc' },
   { label: 'Support', icon: LifeBuoy, route: '/support' },
 ];
 
@@ -42,17 +46,21 @@ interface AppShellProps {
 export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   const router = useRouter();
   const pathname = usePathname();
-  const user = useFleetStore(s => s.getCurrentUser());
-  const vehicle = useFleetStore(s => s.getVehicleById(user?.assignedVehicleId));
-  const plan = useFleetStore(s => s.getPlanById(user?.planId));
-  const logout = useFleetStore(s => s.logout);
+  // Identity, roles and sign-out come from the authenticated session.
+  const profile = useAuthStore(s => s.profile);
+  const signOut = useAuthStore(s => s.signOut);
+
+  // Assigned vehicle, plan and KYC come from GET /users/me — real data.
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const drawerAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
 
-  const isAdmin = user?.role === 'admin';
-  const navItems = isAdmin ? ADMIN_NAV : USER_NAV;
+  // Staff = anything other than a plain rider. The server enforces this too;
+  // hiding the link is only so riders aren't shown doors they can't open.
+  const isAdmin = profile?.is_admin ?? false;
+  const isStaff = isAdmin || (profile?.roles ?? []).some(r => r !== 'rider');
+  const navItems = isStaff ? ADMIN_NAV : USER_NAV;
 
   useEffect(() => {
     Animated.timing(drawerAnim, {
@@ -72,11 +80,11 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   const handleLogout = () => {
     closeDrawer();
     setProfileOpen(false);
-    logout();
-    router.replace('/');
+    void signOut().then(() => router.replace('/'));
   };
 
-  if (!user) return null;
+  // The root layout holds the loading state while the profile is in flight.
+  if (!profile) return null;
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.background }}>
@@ -126,7 +134,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
               </View>
               <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">NR FleetHub</Text>
               <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5">
-                {isAdmin ? 'Admin Console' : 'Rider App'}
+                {isStaff ? 'Admin Console' : 'Rider App'}
               </Text>
             </View>
 
@@ -199,11 +207,11 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
               <View className="w-16 h-16 rounded-full items-center justify-center mb-2.5" style={{ backgroundColor: COLORS.primary + '1A' }}>
                 <User size={28} color={COLORS.primary} />
               </View>
-              <Text style={{ color: COLORS.textPrimary }} className="text-base font-extrabold">{user.name}</Text>
+              <Text style={{ color: COLORS.textPrimary }} className="text-base font-extrabold">{profile.full_name}</Text>
               <View className="flex-row items-center mt-1 px-2.5 py-1 rounded-full" style={{ backgroundColor: isAdmin ? COLORS.primary + '1A' : COLORS.secondary + '30' }}>
                 <ShieldCheck size={12} color={COLORS.primary} />
                 <Text style={{ color: COLORS.primaryPressed }} className="text-[10px] font-bold uppercase tracking-wider ml-1">
-                  {isAdmin ? 'Admin' : 'User'}
+                  {isAdmin ? 'Admin' : isStaff ? 'Staff' : 'Rider'}
                 </Text>
               </View>
             </View>
@@ -211,11 +219,11 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
             <View className="rounded-2xl p-4 mb-3" style={{ backgroundColor: COLORS.background }}>
               <View className="flex-row items-center mb-3">
                 <Mail size={15} color={COLORS.textSecondary} />
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold ml-2.5">{user.email}</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold ml-2.5">{profile.email ?? '—'}</Text>
               </View>
               <View className="flex-row items-center">
                 <Phone size={15} color={COLORS.textSecondary} />
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold ml-2.5">{user.phone}</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold ml-2.5">{profile.phone ?? '—'}</Text>
               </View>
             </View>
 
@@ -223,39 +231,37 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
               <View className="flex-1 rounded-2xl p-3.5" style={{ backgroundColor: COLORS.background }}>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mb-1">Assigned Scooter</Text>
                 <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
-                  {vehicle ? vehicle.vehicleNumber : 'None'}
+                  {profile.assigned_vehicle ? profile.assigned_vehicle.model : 'None'}
                 </Text>
               </View>
               <View className="flex-1 rounded-2xl p-3.5" style={{ backgroundColor: COLORS.background }}>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mb-1">Current Plan</Text>
                 <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
-                  {plan ? plan.name : 'None'}
+                  {profile.current_plan ? profile.current_plan.name : 'None'}
                 </Text>
               </View>
             </View>
 
-            <View className="rounded-2xl p-3.5 flex-row items-center justify-between mb-6" style={{ backgroundColor: COLORS.background }}>
-              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold uppercase tracking-wider">Membership Status</Text>
-              <View
-                className="px-2.5 py-1 rounded-full"
-                style={{
-                  backgroundColor:
-                    user.membershipStatus === 'active' ? COLORS.success + '20' :
-                    user.membershipStatus === 'trial' ? COLORS.warning + '20' : COLORS.danger + '20'
-                }}
-              >
-                <Text
-                  className="text-[10px] font-black uppercase"
-                  style={{
-                    color:
-                      user.membershipStatus === 'active' ? COLORS.success :
-                      user.membershipStatus === 'trial' ? COLORS.warning : COLORS.danger
-                  }}
-                >
-                  {user.membershipStatus}
-                </Text>
-              </View>
+            <View className="rounded-2xl p-3.5 flex-row items-center justify-between mb-3" style={{ backgroundColor: COLORS.background }}>
+              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold uppercase tracking-wider">KYC Status</Text>
+              <Badge label={KYC_STATUS_LABEL[profile.kyc_status]} tone={KYC_STATUS_TONE[profile.kyc_status]} />
             </View>
+
+            {!isStaff && !profile.can_rent ? (
+              <TouchableOpacity
+                onPress={() => { setProfileOpen(false); router.push('/kyc'); }}
+                accessibilityRole="button"
+                className="rounded-2xl p-3.5 flex-row items-center justify-between mb-6"
+                style={{ backgroundColor: COLORS.warning + '14' }}
+              >
+                <Text style={{ color: COLORS.warning }} className="text-[11px] font-bold flex-1 mr-2">
+                  Verify your identity to unlock a scooter
+                </Text>
+                <ChevronRight size={16} color={COLORS.warning} />
+              </TouchableOpacity>
+            ) : (
+              <View className="mb-6" />
+            )}
 
             <TouchableOpacity
               onPress={handleLogout}
