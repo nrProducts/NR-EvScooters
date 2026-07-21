@@ -199,6 +199,37 @@ describe('users: list', () => {
   });
 });
 
+describe('users: profile photo', () => {
+  it('uploads and can be read back via a signed url', async () => {
+    await asRider();
+    const result = await users.uploadMyPhoto(FILE);
+    expect(result.profile_photo_url).toBeTruthy();
+    const signed = await users.myPhotoUrl();
+    expect(signed.url).toBeTruthy();
+  });
+
+  it('errors when no photo has been uploaded yet', async () => {
+    await asAdmin();
+    await expectStatus(() => users.myPhotoUrl(), 404);
+  });
+});
+
+describe('users: skip KYC leaves profile state alone', () => {
+  it('updating profile fields never touches kyc_status or can_rent', async () => {
+    await asStaff();
+    const before = await users.get('u-rider-005'); // not_submitted, no documents
+    expect(before.kyc_status).toBe('not_submitted');
+
+    await auth.signIn('sneha.p@example.com', '');
+    await users.updateMe({
+      date_of_birth: '1998-01-01', gender: 'female', address_line_1: '1 Test Street',
+    });
+
+    const after = await users.get('u-rider-005');
+    expect(after.kyc_status).toBe('not_submitted');
+  });
+});
+
 describe('kyc: status derivation matches the backend', () => {
   it('verified when both mandatory docs are verified and unexpired', async () => {
     await asRider();
@@ -238,7 +269,7 @@ describe('kyc: rider rules', () => {
   it('blocks a duplicate active document', async () => {
     await asRider();
     await expectStatus(
-      () => kyc.uploadMine({ doc_type: 'national_id', doc_number: 'ZZZZ00000000', front: FILE }),
+      () => kyc.uploadMine({ doc_type: 'aadhaar', doc_number: 'ZZZZ00000000', front: FILE }),
       409,
     );
   });
@@ -342,7 +373,7 @@ describe('kyc: staff rules', () => {
   it('cannot self-verify', async () => {
     await asAdmin();
     // Give the admin a pending document, then try to verify it as themselves.
-    const doc = await kyc.uploadMine({ doc_type: 'national_id', doc_number: 'SELF12345678', front: FILE });
+    const doc = await kyc.uploadMine({ doc_type: 'aadhaar', doc_number: 'SELF12345678', front: FILE });
     await expectStatus(() => kyc.verifyDocument(doc.id), 403);
   });
 

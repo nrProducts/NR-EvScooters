@@ -15,11 +15,22 @@ interface AuthState {
     initialising: boolean;
     loadingProfile: boolean;
     error: string | null;
+    /**
+     * In-memory only, reset on sign-out. Set the moment the rider lands on
+     * the KYC intro screen so "Skip for Now" never loops them back into it
+     * for the rest of the session — a convenience gate, not persisted state.
+     * See the comment on _layout.tsx's routing effect.
+     */
+    hasSeenKycIntro: boolean;
 
     bootstrap: () => () => void;
     refreshProfile: () => Promise<void>;
+    requestOtp: (phone: string) => Promise<void>;
+    verifyOtp: (phone: string, code: string) => Promise<void>;
+    signInWithGoogle: () => Promise<void>;
     signIn: (email: string, password: string) => Promise<void>;
     signOut: () => Promise<void>;
+    markKycIntroSeen: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -28,6 +39,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     initialising: true,
     loadingProfile: false,
     error: null,
+    hasSeenKycIntro: false,
 
     /**
      * Called once from the root layout; returns an unsubscribe.
@@ -75,6 +87,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
     },
 
+    requestOtp: async (phone) => {
+        set({ error: null });
+        await authRepository.requestPhoneOtp(phone);
+    },
+
+    verifyOtp: async (phone, code) => {
+        set({ error: null });
+        const ref = await authRepository.verifyPhoneOtp(phone, code);
+        set({ session: ref });
+        await get().refreshProfile();
+    },
+
+    signInWithGoogle: async () => {
+        set({ error: null });
+        const ref = await authRepository.signInWithGoogle();
+        set({ session: ref });
+        await get().refreshProfile();
+    },
+
     signIn: async (email, password) => {
         set({ error: null });
         const ref = await authRepository.signIn(email, password);
@@ -85,8 +116,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     signOut: async () => {
         await authRepository.signOut();
         useFleetStore.getState().bindAuthUser(null);
-        set({ session: null, profile: null, error: null });
+        set({ session: null, profile: null, error: null, hasSeenKycIntro: false });
     },
+
+    markKycIntroSeen: () => set({ hasSeenKycIntro: true }),
 }));
 
 // --- selectors -----------------------------------------------------------
@@ -96,3 +129,10 @@ export const useIsAdmin = () => useAuthStore((s) => s.profile?.is_admin ?? false
 export const useIsStaff = () =>
     useAuthStore((s) => (s.profile?.roles ?? []).some((r) => STAFF_ROLES.includes(r)));
 export const useCanRent = () => useAuthStore((s) => s.profile?.can_rent ?? false);
+
+/** True once a profile has loaded but the initial onboarding form has not
+ *  been completed yet — not just "has no name", since Google sign-in
+ *  auto-fills full_name from the provider profile before the rider has
+ *  entered DOB/gender/address. */
+export const useNeedsProfile = () =>
+    useAuthStore((s) => !!s.profile && !s.profile.profile_completed);

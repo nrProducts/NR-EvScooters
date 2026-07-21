@@ -255,18 +255,22 @@ otp_expiry = 3600
 # content_path = "./templates/password_changed_notification.html"
 
 [auth.sms]
-# Allow/disallow new user signups via SMS to your project.
-enable_signup = false
-# If enabled, users need to confirm their phone number before signing in.
+# Phone OTP is the PRIMARY login method for riders. Sign-up on first OTP.
+enable_signup = true
+# We treat a successful OTP as proof of the number, so no separate confirm step.
 enable_confirmations = false
-# Template for sending OTP to users
-template = "Your code is {{ `{{ .Code }}` }}"
+# Supabase generates the {{ .Code }}; delivery is done by the send_sms hook
+# (MSG91), so this template is only the fallback message body.
+template = "{{ `{{ .Code }}` }} is your NR FleetHub verification code."
 # Controls the minimum amount of time that must pass before sending another sms otp.
-max_frequency = "5s"
+max_frequency = "30s"
 
-# Use pre-defined map of phone number to OTP for testing.
-# [auth.sms.test_otp]
-# 4152127777 = "123456"
+# LOCAL DEV ONLY: fixed phone -> OTP map so you can test the whole flow with
+# no MSG91 credentials and no real SMS. These numbers never hit the provider.
+# Remove/ignore in hosted environments.
+[auth.sms.test_otp]
+919999900001 = "123456"
+919999900002 = "123456"
 
 # Configure logged in session timeouts.
 # [auth.sessions]
@@ -280,10 +284,17 @@ max_frequency = "5s"
 # enabled = true
 # uri = "pg-functions://postgres/auth/before-user-created-hook"
 
-# This hook runs before a token is issued and allows you to add additional claims based on the authentication method used.
-# [auth.hook.custom_access_token]
-# enabled = true
-# uri = "pg-functions://<database>/<schema>/<hook_name>"
+# Adds role/account_status claims to every JWT (see 20260720100600_auth.sql).
+[auth.hook.custom_access_token]
+enabled = false
+# uri = "pg-functions://postgres/public/custom_access_token_hook"
+
+# Delivers phone OTPs via MSG91 through the send-sms Edge Function. The secret
+# is generated once (supabase secrets) and shared with the function.
+[auth.hook.send_sms]
+enabled = false
+# uri = "https://jeerugpvchfjlgssfoeb.functions.supabase.co/send-sms"
+# secrets = "env(SEND_SMS_HOOK_SECRET)"
 
 # Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
 [auth.sms.twilio]
@@ -319,6 +330,17 @@ max_frequency = "5s"
 # Use an external OAuth provider. The full list of providers are: `apple`, `azure`, `bitbucket`,
 # `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin_oidc`, `notion`, `twitch`,
 # `twitter`, `x`, `slack`, `spotify`, `workos`, `zoom`.
+# Google Sign-In — SECONDARY login / account-recovery method for riders
+# (e.g. when a phone number has changed). client_id is the Web OAuth client;
+# add the iOS/Android client ids to additional_client_ids when you ship
+# native Google Sign-In. skip_nonce_check is required for local Google login.
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+redirect_uri = ""
+skip_nonce_check = true
+
 [auth.external.apple]
 enabled = false
 client_id = ""

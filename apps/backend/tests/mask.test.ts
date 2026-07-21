@@ -21,7 +21,7 @@ describe("safeAuditPayload", () => {
             email: "a@b.com",
             password: "hunter2",
             access_token: "ey...",
-            storage_path: "uid/national_id/front.jpg",
+            storage_path: "uid/aadhaar/front.jpg",
             file_url: "https://x",
         });
         expect(out).toEqual({ email: "a@b.com" });

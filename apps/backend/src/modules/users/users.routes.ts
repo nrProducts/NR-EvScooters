@@ -3,6 +3,7 @@ import { requireAuth } from "../../middleware/auth.middleware";
 import { requireAdmin, requireStaff } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
+import { photoUpload } from "./users.photo.upload";
 import * as c from "./users.controller";
 import * as v from "./users.validation";
 
@@ -17,8 +18,10 @@ router.get("/me", asyncHandler(c.meHandler));
 router.patch(
     "/me",
     validate({ body: v.selfUpdateUserBody }),
-    asyncHandler(c.updateUserHandler),
+    asyncHandler(c.updateMyProfileHandler),
 );
+router.post("/me/photo", photoUpload, asyncHandler(c.uploadMyPhotoHandler));
+router.get("/me/photo/url", asyncHandler(c.myPhotoUrlHandler));
 
 // --- staff/admin --------------------------------------------------------
 router.get(

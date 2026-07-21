@@ -15,8 +15,8 @@ export const KYC_STATUSES: KycStatus[] = [
     'not_submitted', 'pending', 'partially_verified', 'verified', 'rejected',
 ];
 
-export type KycDocType = 'national_id' | 'driving_license' | 'passport' | 'voter_id' | 'address_proof';
-export const MANDATORY_KYC_DOC_TYPES: KycDocType[] = ['national_id', 'driving_license'];
+export type KycDocType = 'aadhaar' | 'driving_license' | 'passport' | 'voter_id' | 'address_proof';
+export const MANDATORY_KYC_DOC_TYPES: KycDocType[] = ['aadhaar', 'driving_license'];
 
 export type VerificationStatus = 'pending' | 'verified' | 'rejected';
 
@@ -53,6 +53,8 @@ export interface ApiUser {
     account_status: AccountStatus;
     kyc_status: KycStatus;
     profile_photo_url: string | null;
+    /** Has the rider completed the initial onboarding profile form (spec Step 1)? */
+    profile_completed: boolean;
     created_at: string;
     updated_at: string;
     deleted_at: string | null;

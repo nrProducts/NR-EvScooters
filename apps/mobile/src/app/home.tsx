@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
+import { KycBanner } from '../components/KycBanner';
 import { useFleetStore } from '../store/useFleetStore';
 import { COLORS } from '../constants/theme';
 import { Bike, CreditCard, LifeBuoy, BatteryFull, ChevronRight } from 'lucide-react-native';
@@ -20,6 +21,8 @@ export default function HomeScreen() {
       <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: 40 }}>
         <Text style={{ color: COLORS.textPrimary }} className="text-xl font-black mb-0.5">Hi, {user.name.split(' ')[0]} 👋</Text>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-5">Here's what's happening with your ride today</Text>
+
+        <KycBanner />
 
         {/* ASSIGNED SCOOTER CARD */}
         <View className="rounded-3xl p-5 mb-4" style={{ backgroundColor: COLORS.primary }}>

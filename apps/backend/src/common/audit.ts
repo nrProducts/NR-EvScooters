@@ -5,7 +5,7 @@ import { safeAuditPayload } from "./mask";
 export type AuditAction =
     | "user.created" | "user.updated" | "user.soft_deleted" | "user.restored"
     | "user.activated" | "user.deactivated" | "user.suspended"
-    | "user.roles_changed"
+    | "user.roles_changed" | "user.photo_uploaded"
     | "kyc.document_uploaded" | "kyc.document_updated" | "kyc.document_deleted"
     | "kyc.submitted"
     | "kyc.document_verified" | "kyc.document_rejected"

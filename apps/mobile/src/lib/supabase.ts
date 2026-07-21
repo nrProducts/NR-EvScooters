@@ -71,6 +71,9 @@ export function getSupabase(): SupabaseClient {
             autoRefreshToken: true,
             persistSession: true,
             detectSessionInUrl: false, // no URL to parse a session out of natively
+            // PKCE so the browser-based Google sign-in can exchange its code
+            // for a session (see lib/googleAuth.ts). Phone OTP is unaffected.
+            flowType: 'pkce',
         },
     });
     return client;

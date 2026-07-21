@@ -13,13 +13,13 @@ export const KYC_STATUSES: readonly KycStatus[] = [
     "not_submitted", "pending", "partially_verified", "verified", "rejected",
 ] as const;
 
-export type KycDocType = "national_id" | "driving_license" | "passport" | "voter_id" | "address_proof";
+export type KycDocType = "aadhaar" | "driving_license" | "passport" | "voter_id" | "address_proof";
 export const KYC_DOC_TYPES: readonly KycDocType[] = [
-    "national_id", "driving_license", "passport", "voter_id", "address_proof",
+    "aadhaar", "driving_license", "passport", "voter_id", "address_proof",
 ] as const;
 
 /** Types a rider must have verified before overall KYC can reach 'verified'. */
-export const MANDATORY_KYC_DOC_TYPES: readonly KycDocType[] = ["national_id", "driving_license"] as const;
+export const MANDATORY_KYC_DOC_TYPES: readonly KycDocType[] = ["aadhaar", "driving_license"] as const;
 
 export type VerificationStatus = "pending" | "verified" | "rejected";
 

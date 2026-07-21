@@ -10,12 +10,17 @@ import {
 } from "../../types";
 import { ListUsersFilters, UserDetail, UserListItem, UserProfile } from "./users.types";
 import { normaliseEmail, normalisePhone } from "./users.validation";
+import {
+    assertValidPhoto, buildPhotoPath, createSignedPhotoUrl, photoPathBelongsToUser,
+    removePhotoFile, uploadPhotoFile,
+} from "./users.photo.storage";
+import type { UploadedFile } from "../kyc/kyc.storage";
 
 const PROFILE_COLUMNS = `
     id, full_name, email, phone, date_of_birth, gender,
     address_line_1, address_line_2, city, state, postal_code, country,
     emergency_contact_name, emergency_contact_phone,
-    account_status, kyc_status, profile_photo_url,
+    account_status, kyc_status, profile_photo_url, profile_completed,
     created_at, updated_at, deleted_at
 `;
 
@@ -231,6 +236,9 @@ export async function createUser(
                     ? normalisePhone(input.emergency_contact_phone)
                     : null,
                 account_status: input.account_status,
+                // An admin-created account arrives with a full profile already —
+                // it should never be routed through the first-login onboarding form.
+                profile_completed: true,
             })
             .eq("id", authUserId)
             .select("id")
@@ -278,6 +286,9 @@ export async function updateUser(
     const before = await requireLiveUser(id);
 
     const next: Record<string, unknown> = { ...patch };
+    // Any successful profile write — self-service or staff-edited — means the
+    // rider is past the first-login onboarding form; this is a one-way flip.
+    next.profile_completed = true;
     if (typeof next.email === "string") next.email = normaliseEmail(next.email);
     if (typeof next.phone === "string") next.phone = normalisePhone(next.phone);
     if (typeof next.emergency_contact_phone === "string") {
@@ -316,6 +327,65 @@ export async function updateUser(
     });
 
     return getUserById(id, actor);
+}
+
+// ---------------------------------------------------------------------------
+// Profile photo
+// ---------------------------------------------------------------------------
+
+/**
+ * Uploads to the private profile-photos bucket and stores the storage path
+ * (not a URL — the bucket is private) on users.profile_photo_url. Bytes are
+ * only ever read back through a signed URL, same pattern as KYC documents.
+ */
+export async function uploadMyPhoto(
+    userId: string,
+    file: UploadedFile,
+    actor: AuthContext,
+    req?: Request,
+): Promise<{ profile_photo_url: string }> {
+    const before = await requireLiveUser(userId);
+    const mime = assertValidPhoto(file);
+    const path = buildPhotoPath(userId, mime);
+
+    await uploadPhotoFile(path, file, mime);
+
+    const { error } = await supabaseAdmin
+        .from("users")
+        .update({ profile_photo_url: path })
+        .eq("id", userId);
+
+    if (error) {
+        // Compensating action: the row lost, so the bytes must go too.
+        await removePhotoFile(path);
+        throw error;
+    }
+
+    await removePhotoFile(before.profile_photo_url);
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: userId,
+        action: "user.photo_uploaded",
+        entityType: "user",
+        entityId: userId,
+        before: { profile_photo_url: before.profile_photo_url },
+        after: { profile_photo_url: path },
+        req,
+    });
+
+    return { profile_photo_url: path };
+}
+
+/** Signed URL for the caller's own profile photo. Minted per request, never stored. */
+export async function getMyPhotoUrl(userId: string): Promise<{ url: string; expires_in: number }> {
+    const row = await requireLiveUser(userId);
+    if (!row.profile_photo_url) throw notFound("No profile photo has been uploaded yet.");
+    if (!photoPathBelongsToUser(row.profile_photo_url, userId)) {
+        throw forbidden("This photo could not be verified as authentic.");
+    }
+    const url = await createSignedPhotoUrl(row.profile_photo_url);
+    return { url, expires_in: 300 };
 }
 
 // ---------------------------------------------------------------------------

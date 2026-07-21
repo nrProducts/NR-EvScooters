@@ -70,6 +70,16 @@ export function toDocumentView(row: DocumentRow, reveal: boolean): DocumentView 
 const today = () => new Date().toISOString().slice(0, 10);
 const isExpired = (date: string | null): boolean => !!date && date < today();
 
+/** Aadhaar is always exactly 12 digits; spaces/hyphens are how it's usually printed. */
+export function assertValidAadhaar(docNumber: string): void {
+    const digits = docNumber.replace(/[\s-]/g, "");
+    if (!/^\d{12}$/.test(digits)) {
+        throw businessRule("Enter a valid 12-digit Aadhaar number.", {
+            doc_number: "Must be exactly 12 digits.",
+        });
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Status derivation — mirrors public.compute_kyc_status()
 // ---------------------------------------------------------------------------
@@ -143,6 +153,9 @@ export async function uploadDocument(
                 expiry_date: "This licence has expired.",
             });
         }
+    }
+    if (input.doc_type === "aadhaar") {
+        assertValidAadhaar(input.doc_number);
     }
 
     // uq_user_documents_active_type covers pending+verified. Check first so the
@@ -221,7 +234,10 @@ export async function updateOwnDocument(
     const next: Record<string, unknown> = {};
     const staleObjects: Array<string | null> = [];
 
-    if (patch.doc_number) next.doc_number = patch.doc_number.trim().toUpperCase();
+    if (patch.doc_number) {
+        if (row.doc_type === "aadhaar") assertValidAadhaar(patch.doc_number);
+        next.doc_number = patch.doc_number.trim().toUpperCase();
+    }
     if (patch.expiry_date) {
         if (row.doc_type === "driving_license" && isExpired(patch.expiry_date)) {
             throw businessRule("This driving licence has already expired.", {

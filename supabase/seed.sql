@@ -4,7 +4,7 @@
 -- run against a production project). Use this for throwaway sample data
 -- to develop against locally: a plan or two, a station, a vehicle/battery.
 -- Reference/master data that MUST exist in every environment (e.g. the
--- five rows in `roles`) belongs in a migration instead, not here —
+-- `rider`/`admin` rows in `roles`) belongs in a migration instead, not here —
 -- migrations are what runs in staging/production; this file is not.
 -- =========================================================================
 

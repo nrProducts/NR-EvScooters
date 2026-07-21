@@ -4,6 +4,10 @@ import type {
     LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload,
 } from '../types/api';
 
+export interface UploadPhotoResult {
+    profile_photo_url: string;
+}
+
 /**
  * The seam. Screens depend on these interfaces, never on fetch or on Supabase.
  * Two implementations exist — one talking to the real API, one in-memory — and
@@ -14,6 +18,8 @@ import type {
 export interface UserRepository {
     me(): Promise<ApiMe>;
     updateMe(patch: UpdateUserPayload): Promise<ApiUserDetail>;
+    uploadMyPhoto(photo: LocalFile): Promise<UploadPhotoResult>;
+    myPhotoUrl(): Promise<ApiSignedUrl>;
     list(params: ListUsersParams): Promise<Paginated<ApiUser>>;
     get(id: string): Promise<ApiUserDetail>;
     create(payload: CreateUserPayload): Promise<ApiUserDetail>;
@@ -76,11 +82,25 @@ export interface SessionRef {
 export interface AuthRepository {
     /** Reads any persisted session. Null when signed out. */
     restore(): Promise<SessionRef | null>;
+
+    // --- phone OTP (primary) --------------------------------------------
+    /** Ask the provider to send a one-time code to this E.164 number. */
+    requestPhoneOtp(phone: string): Promise<void>;
+    /** Verify the code; resolves to the established session on success. */
+    verifyPhoneOtp(phone: string, code: string): Promise<SessionRef>;
+
+    // --- Google (secondary / recovery) ----------------------------------
+    signInWithGoogle(): Promise<SessionRef>;
+
+    // --- email/password (admin surface + demo) --------------------------
     signIn(email: string, password: string): Promise<SessionRef>;
-    signOut(): Promise<void>;
     sendPasswordReset(email: string): Promise<void>;
+
+    signOut(): Promise<void>;
     /** Fires on external session changes (token refresh, expiry). */
     subscribe(onChange: (ref: SessionRef | null) => void): () => void;
     /** Mock mode has no password field to show. */
     readonly requiresPassword: boolean;
+    /** Mock mode fakes OTP/Google; real mode talks to Supabase. */
+    readonly isMock: boolean;
 }

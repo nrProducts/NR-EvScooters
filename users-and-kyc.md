@@ -486,7 +486,7 @@ instead of the app.
 EXPO_PUBLIC_USE_MOCK=false
 EXPO_PUBLIC_SUPABASE_URL=...
 EXPO_PUBLIC_SUPABASE_ANON_KEY=...
-EXPO_PUBLIC_API_URL=http://192.168.1.12:4000/api/v1
+EXPO_PUBLIC_API_URL=http://localhost:4000/api/v1
 ```
 
 Then `npx expo start -c`. No code changes.

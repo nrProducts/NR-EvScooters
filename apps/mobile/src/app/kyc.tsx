@@ -1,11 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator,
-  Modal, Image, RefreshControl, Platform,
+  View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
+  Modal, Image, RefreshControl,
 } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { confirmAction, notify } from '../lib/confirm';
 import {
   ShieldCheck, Upload, FileText, Check, X, ChevronRight, ChevronLeft,
-  Trash2, Eye, AlertTriangle, Clock, RefreshCw,
+  Trash2, Eye, AlertTriangle, Clock, Camera, Phone,
 } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
@@ -13,14 +15,15 @@ import { ErrorState } from '../components/ui/ErrorState';
 import { FormField } from '../components/ui/FormField';
 import { useAuthStore } from '../store/useAuthStore';
 import { useMyKyc } from '../hooks/useKyc';
+import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
-import { pickDocument } from '../lib/filePicker';
+import { pickDocument, pickPhoto } from '../lib/filePicker';
 import { COLORS } from '../constants/theme';
 import { DOC_TYPE_LABEL, KYC_STATUS_LABEL, KYC_STATUS_TONE, VERIFICATION_TONE, formatDate } from '../constants/status';
 import type { ApiDocument, ApiKycSummary, KycDocType, LocalFile } from '../types/api';
 
-type Step = 0 | 1 | 2 | 3;
-const STEP_TITLES = ['Personal', 'National ID', 'Licence', 'Review'];
+type Step = 0 | 1 | 2 | 3 | 4;
+const STEP_TITLES = ['Photo', 'Emergency Contact', 'Aadhaar', 'Licence', 'Review'];
 
 interface DraftDoc {
   doc_number: string;
@@ -32,14 +35,33 @@ interface DraftDoc {
 const EMPTY_DRAFT: DraftDoc = { doc_number: '', expiry_date: '', front: null, back: null };
 
 export default function KycScreen() {
+  const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
+
+  // Reached with ?onboarding=1 only from kyc-intro's "Continue" — the one
+  // path that happens before the rider has ever seen Home. The nav chrome
+  // (menu/profile) shouldn't appear until onboarding (profile + KYC
+  // skip-or-submit) is actually done.
+  const { onboarding } = useLocalSearchParams<{ onboarding?: string }>();
+  const hideChrome = onboarding === '1';
+  const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) =>
+    hideChrome ? (
+      <View style={{ flex: 1, backgroundColor: COLORS.background }}>{children}</View>
+    ) : (
+      <AppShell title="KYC Verification">{children}</AppShell>
+    );
 
   // The hook owns loading, refreshing, upload and submit state.
   const { kyc, loading, refreshing, error, uploading, submitting, refresh, retry, actions } = useMyKyc();
 
   const [step, setStep] = useState<Step>(0);
-  const [idDraft, setIdDraft] = useState<DraftDoc>(EMPTY_DRAFT);
+  const [maxStepReached, setMaxStepReached] = useState<Step>(0);
+  const goToStep = (s: Step) => {
+    setStep(s);
+    setMaxStepReached((m) => (s > m ? s : m));
+  };
+  const [aadhaarDraft, setAadhaarDraft] = useState<DraftDoc>(EMPTY_DRAFT);
   const [dlDraft, setDlDraft] = useState<DraftDoc>(EMPTY_DRAFT);
   const [declared, setDeclared] = useState(false);
   const [consented, setConsented] = useState(false);
@@ -50,7 +72,7 @@ export default function KycScreen() {
   const docOf = (type: KycDocType): ApiDocument | undefined =>
     kyc?.documents.find((d) => d.doc_type === type);
 
-  const idDoc = docOf('national_id');
+  const aadhaarDoc = docOf('aadhaar');
   const dlDoc = docOf('driving_license');
 
   const locked = kyc?.kyc_status === 'verified';
@@ -64,19 +86,23 @@ export default function KycScreen() {
 
   const upload = async (type: KycDocType, draft: DraftDoc, existing?: ApiDocument) => {
     if (!draft.doc_number.trim()) {
-      Alert.alert('Document number required', 'Enter the number printed on the document.');
+      notify('Document number required', 'Enter the number printed on the document.');
       return;
     }
     if (!draft.front && !existing) {
-      Alert.alert('Front image required', 'Add a photo or PDF of the front of the document.');
+      notify('Front image required', 'Add a photo or PDF of the front of the document.');
       return;
     }
     if (type === 'driving_license' && !draft.expiry_date.trim()) {
-      Alert.alert('Expiry date required', 'A driving licence must include its expiry date.');
+      notify('Expiry date required', 'A driving licence must include its expiry date.');
       return;
     }
     if (draft.expiry_date && !/^\d{4}-\d{2}-\d{2}$/.test(draft.expiry_date.trim())) {
-      Alert.alert('Invalid date', 'Use the format YYYY-MM-DD.');
+      notify('Invalid date', 'Use the format YYYY-MM-DD.');
+      return;
+    }
+    if (type === 'aadhaar' && !/^\d{4}\s?\d{4}\s?\d{4}$/.test(draft.doc_number.trim())) {
+      notify('Invalid Aadhaar number', 'Enter your 12-digit Aadhaar number.');
       return;
     }
 
@@ -93,27 +119,25 @@ export default function KycScreen() {
     );
 
     if (result instanceof ApiError) {
-      Alert.alert('Upload failed', result.message);
+      notify('Upload failed', result.message);
       return;
     }
 
-    if (type === 'national_id') setIdDraft(EMPTY_DRAFT);
+    if (type === 'aadhaar') setAadhaarDraft(EMPTY_DRAFT);
     else setDlDraft(EMPTY_DRAFT);
-    setStep((s) => (s < 3 ? ((s + 1) as Step) : s));
+    goToStep(step < 4 ? ((step + 1) as Step) : step);
   };
 
-  const removeDoc = (doc: ApiDocument) => {
-    Alert.alert('Remove document', `Remove your ${DOC_TYPE_LABEL[doc.doc_type]}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          const result = await actions.remove(doc.id);
-          if (result instanceof ApiError) Alert.alert('Could not remove', result.message);
-        },
-      },
-    ]);
+  const removeDoc = async (doc: ApiDocument) => {
+    const confirmed = await confirmAction({
+      title: 'Remove document',
+      message: `Remove your ${DOC_TYPE_LABEL[doc.doc_type]}?`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    const result = await actions.remove(doc.id);
+    if (result instanceof ApiError) notify('Could not remove', result.message);
   };
 
   /**
@@ -126,7 +150,7 @@ export default function KycScreen() {
     setPreviewLoading(false);
 
     if (result instanceof ApiError) {
-      Alert.alert('Preview unavailable', result.message);
+      notify('Preview unavailable', result.message);
       return;
     }
     setPreview({ url: result.url, isPdf: result.url.toLowerCase().includes('.pdf') });
@@ -134,46 +158,58 @@ export default function KycScreen() {
 
   const submit = async () => {
     if (!declared || !consented) {
-      Alert.alert('Confirmation needed', 'Tick both boxes to submit your KYC.');
+      notify('Confirmation needed', 'Tick both boxes to submit your KYC.');
       return;
     }
     const result = await actions.submit();
     if (result instanceof ApiError) {
-      Alert.alert('Could not submit', result.message);
+      notify('Could not submit', result.message);
       return;
     }
     // KYC status gates scooter unlock, so the cached profile must catch up.
     await refreshProfile();
-    Alert.alert('Submitted', 'Your documents are with our team. We will notify you once reviewed.');
+    notify('Submitted', 'Your documents are with our team. We will notify you once reviewed.');
+    router.replace('/home');
+  };
+
+  const skipForNow = async () => {
+    const confirmed = await confirmAction({
+      title: 'Skip KYC for now?',
+      message: 'Your progress is saved. You can finish anytime from Home, but you will not be able to rent a scooter until KYC is complete.',
+      confirmLabel: 'Skip for Now',
+      cancelLabel: 'Keep going',
+      destructive: true,
+    });
+    if (confirmed) router.replace('/home');
   };
 
   if (loading) {
     return (
-      <AppShell title="KYC Verification">
+      <Shell>
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={{ color: COLORS.textSecondary }} className="font-medium mt-4 text-xs">
             Loading your verification...
           </Text>
         </View>
-      </AppShell>
+      </Shell>
     );
   }
 
   if (error || !kyc) {
     return (
-      <AppShell title="KYC Verification">
+      <Shell>
         <ErrorState
           message={error?.message ?? 'Could not load your KYC.'}
           offline={error?.isOffline}
           onRetry={() => void retry()}
         />
-      </AppShell>
+      </Shell>
     );
   }
 
   return (
-    <AppShell title="KYC Verification">
+    <Shell>
       <ScrollView
         className="flex-1 px-5 pt-5"
         contentContainerStyle={{ paddingBottom: 40 }}
@@ -213,37 +249,51 @@ export default function KycScreen() {
           </View>
         ) : (
           <>
-            <StepBar step={step} onSelect={setStep} />
+            <View className="flex-row items-center justify-between mb-2">
+              <StepBar step={step} maxStep={maxStepReached} onSelect={goToStep} />
+            </View>
+            <TouchableOpacity onPress={() => void skipForNow()} accessibilityRole="button" className="self-end mb-3">
+              <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-bold underline">
+                Skip for Now
+              </Text>
+            </TouchableOpacity>
 
             {step === 0 ? (
-              <PersonalStep
-                fullName={profile?.full_name ?? ''}
-                dob={profile?.date_of_birth ?? null}
-                phone={profile?.phone ?? null}
-                address={[profile?.address_line_1, profile?.city, profile?.state, profile?.postal_code]
-                  .filter(Boolean)
-                  .join(', ')}
-                onNext={() => setStep(1)}
+              <ProfilePhotoStep
+                currentPhotoUrl={profile?.profile_photo_url ?? null}
+                onNext={() => goToStep(1)}
               />
             ) : null}
 
             {step === 1 ? (
-              <DocumentStep
-                type="national_id"
-                doc={idDoc}
-                draft={idDraft}
-                setDraft={setIdDraft}
-                uploading={uploading === 'national_id'}
-                onUpload={() => void upload('national_id', idDraft, idDoc)}
-                onRemove={() => idDoc && removeDoc(idDoc)}
-                onPreview={(side) => idDoc && void openPreview(idDoc, side)}
-                onBack={() => setStep(0)}
-                onSkip={isOnFile(idDoc) ? () => setStep(2) : undefined}
-                requiresExpiry={false}
+              <EmergencyContactStep
+                initialName={profile?.emergency_contact_name ?? ''}
+                initialPhone={profile?.emergency_contact_phone ?? ''}
+                onBack={() => goToStep(0)}
+                onNext={async () => {
+                  await refreshProfile();
+                  goToStep(2);
+                }}
               />
             ) : null}
 
             {step === 2 ? (
+              <DocumentStep
+                type="aadhaar"
+                doc={aadhaarDoc}
+                draft={aadhaarDraft}
+                setDraft={setAadhaarDraft}
+                uploading={uploading === 'aadhaar'}
+                onUpload={() => void upload('aadhaar', aadhaarDraft, aadhaarDoc)}
+                onRemove={() => aadhaarDoc && void removeDoc(aadhaarDoc)}
+                onPreview={(side) => aadhaarDoc && void openPreview(aadhaarDoc, side)}
+                onBack={() => goToStep(1)}
+                onSkip={isOnFile(aadhaarDoc) ? () => goToStep(3) : undefined}
+                requiresExpiry={false}
+              />
+            ) : null}
+
+            {step === 3 ? (
               <DocumentStep
                 type="driving_license"
                 doc={dlDoc}
@@ -251,15 +301,15 @@ export default function KycScreen() {
                 setDraft={setDlDraft}
                 uploading={uploading === 'driving_license'}
                 onUpload={() => void upload('driving_license', dlDraft, dlDoc)}
-                onRemove={() => dlDoc && removeDoc(dlDoc)}
+                onRemove={() => dlDoc && void removeDoc(dlDoc)}
                 onPreview={(side) => dlDoc && void openPreview(dlDoc, side)}
-                onBack={() => setStep(1)}
-                onSkip={isOnFile(dlDoc) ? () => setStep(3) : undefined}
+                onBack={() => goToStep(2)}
+                onSkip={isOnFile(dlDoc) ? () => goToStep(4) : undefined}
                 requiresExpiry
               />
             ) : null}
 
-            {step === 3 ? (
+            {step === 4 ? (
               <ReviewStep
                 kyc={kyc}
                 profile={profile}
@@ -269,7 +319,7 @@ export default function KycScreen() {
                 setConsented={setConsented}
                 submitting={submitting}
                 onSubmit={() => void submit()}
-                onBack={() => setStep(2)}
+                onBack={() => goToStep(3)}
                 onPreview={(d) => void openPreview(d)}
               />
             ) : null}
@@ -287,7 +337,7 @@ export default function KycScreen() {
       ) : null}
 
       <PreviewModal preview={preview} onClose={() => setPreview(null)} />
-    </AppShell>
+    </Shell>
   );
 }
 
@@ -352,17 +402,24 @@ const StatusHeader: React.FC<{ kyc: ApiKycSummary }> = ({ kyc }) => (
   </View>
 );
 
-const StepBar: React.FC<{ step: Step; onSelect: (s: Step) => void }> = ({ step, onSelect }) => (
-  <View className="flex-row mb-5" style={{ gap: 6 }}>
+const StepBar: React.FC<{ step: Step; maxStep: Step; onSelect: (s: Step) => void }> = ({
+  step, maxStep, onSelect,
+}) => (
+  <View className="flex-row flex-1 mb-1" style={{ gap: 6 }}>
     {STEP_TITLES.map((title, i) => {
       const active = step === i;
       const done = step > i;
+      // Only steps already reached are clickable — this is a linear wizard,
+      // not free navigation; skipping ahead must go through each step's own
+      // Continue/Skip action so its data is actually captured first.
+      const locked = i > maxStep;
       return (
         <TouchableOpacity
           key={title}
-          onPress={() => onSelect(i as Step)}
+          onPress={() => { if (!locked) onSelect(i as Step); }}
+          disabled={locked}
           accessibilityRole="button"
-          accessibilityState={{ selected: active }}
+          accessibilityState={{ selected: active, disabled: locked }}
           className="flex-1 items-center"
         >
           <View
@@ -370,8 +427,8 @@ const StepBar: React.FC<{ step: Step; onSelect: (s: Step) => void }> = ({ step, 
             style={{ backgroundColor: active || done ? COLORS.primary : COLORS.border }}
           />
           <Text
-            style={{ color: active ? COLORS.primary : COLORS.textSecondary }}
-            className="text-[10px] font-bold"
+            style={{ color: locked ? COLORS.gray[300] : active ? COLORS.primary : COLORS.textSecondary }}
+            className="text-[9px] font-bold"
           >
             {title}
           </Text>
@@ -381,44 +438,214 @@ const StepBar: React.FC<{ step: Step; onSelect: (s: Step) => void }> = ({ step, 
   </View>
 );
 
-const PersonalStep: React.FC<{
-  fullName: string; dob: string | null; phone: string | null; address: string; onNext: () => void;
-}> = ({ fullName, dob, phone, address, onNext }) => (
-  <View className="rounded-2xl p-4 border" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-    <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-1">
-      Check your details
-    </Text>
-    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mb-4 leading-relaxed">
-      These must match your documents exactly. Edit them from Settings if anything is wrong.
-    </Text>
+const PHOTO_GUIDANCE = [
+  'Face the camera directly',
+  'Use good, even lighting',
+  'Remove sunglasses or hats',
+  'Stand against a plain background',
+  'Make sure your entire face is visible',
+];
 
-    <ReadOnlyRow label="Full Name" value={fullName || '—'} />
-    <ReadOnlyRow label="Date of Birth" value={dob ?? '—'} />
-    <ReadOnlyRow label="Phone" value={phone ?? '—'} />
-    <ReadOnlyRow label="Address" value={address || '—'} />
+const ProfilePhotoStep: React.FC<{
+  currentPhotoUrl: string | null;
+  onNext: () => void;
+}> = ({ currentPhotoUrl, onNext }) => {
+  const [picked, setPicked] = useState<LocalFile | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploaded, setUploaded] = useState(!!currentPhotoUrl);
 
-    <TouchableOpacity
-      onPress={onNext}
-      accessibilityRole="button"
-      className="w-full py-3.5 rounded-2xl flex-row justify-center items-center mt-3"
-      style={{ backgroundColor: COLORS.primary }}
-    >
-      <Text className="text-white font-bold text-sm mr-1.5">Continue</Text>
-      <ChevronRight size={16} color="#FFF" />
-    </TouchableOpacity>
-  </View>
-);
+  const choose = async () => {
+    const file = await pickPhoto();
+    if (file) setPicked(file);
+  };
 
-const ReadOnlyRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <View className="flex-row justify-between items-start py-2.5 border-b" style={{ borderColor: COLORS.border }}>
-    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-bold uppercase tracking-wider">
-      {label}
-    </Text>
-    <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold flex-1 text-right ml-4">
-      {value}
-    </Text>
-  </View>
-);
+  const upload = async () => {
+    if (!picked) return;
+    setUploading(true);
+    try {
+      await userRepository.uploadMyPhoto(picked);
+      setUploaded(true);
+    } catch (err) {
+      notify('Upload failed', err instanceof ApiError ? err.message : 'Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <View className="rounded-2xl p-4 border" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-1">
+        Profile Photo
+      </Text>
+      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mb-4 leading-relaxed">
+        Before you take your photo:
+      </Text>
+
+      <View className="mb-4" style={{ gap: 6 }}>
+        {PHOTO_GUIDANCE.map((tip) => (
+          <View key={tip} className="flex-row items-center">
+            <View className="w-1.5 h-1.5 rounded-full mr-2.5" style={{ backgroundColor: COLORS.primary }} />
+            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
+              {tip}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      {picked ? (
+        <View className="items-center mb-4">
+          <Image source={{ uri: picked.uri }} className="w-28 h-28 rounded-2xl" resizeMode="cover" />
+        </View>
+      ) : uploaded ? (
+        <View
+          className="flex-row items-center rounded-xl border p-3 mb-4"
+          style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
+        >
+          <ShieldCheck size={16} color={COLORS.success} />
+          <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-bold ml-2">
+            Photo already on file
+          </Text>
+        </View>
+      ) : null}
+
+      <TouchableOpacity
+        onPress={() => void choose()}
+        accessibilityRole="button"
+        className="rounded-xl border border-dashed py-5 items-center justify-center mb-4"
+        style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
+      >
+        <Camera size={20} color={COLORS.textSecondary} />
+        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-bold mt-1.5">
+          {uploaded || picked ? 'Retake or choose another' : 'Take or choose a photo'}
+        </Text>
+      </TouchableOpacity>
+
+      {picked ? (
+        <TouchableOpacity
+          onPress={() => void upload()}
+          disabled={uploading}
+          accessibilityRole="button"
+          className="w-full py-3.5 rounded-2xl flex-row justify-center items-center mb-3"
+          style={{ backgroundColor: uploading ? COLORS.gray[300] : COLORS.primary }}
+        >
+          {uploading ? (
+            <ActivityIndicator size="small" color="#FFF" />
+          ) : (
+            <>
+              <Upload size={15} color="#FFF" />
+              <Text className="text-white font-bold text-sm ml-2">Save Photo</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      ) : null}
+
+      <TouchableOpacity
+        onPress={onNext}
+        accessibilityRole="button"
+        className="w-full py-3.5 rounded-2xl flex-row justify-center items-center"
+        style={{ backgroundColor: COLORS.primary + '14' }}
+      >
+        <Text style={{ color: COLORS.primary }} className="font-bold text-sm mr-1.5">
+          Continue
+        </Text>
+        <ChevronRight size={16} color={COLORS.primary} />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const EmergencyContactStep: React.FC<{
+  initialName: string;
+  initialPhone: string;
+  onBack: () => void;
+  onNext: () => Promise<void> | void;
+}> = ({ initialName, initialPhone, onBack, onNext }) => {
+  const [name, setName] = useState(initialName);
+  const [phone, setPhone] = useState(initialPhone);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!/^\+?[1-9]\d{7,14}$/.test(phone.trim())) {
+      setError('Enter a valid phone number, e.g. +919876543210.');
+      return;
+    }
+    setError('');
+    setSaving(true);
+    try {
+      await userRepository.updateMe({
+        emergency_contact_name: name.trim() || undefined,
+        emergency_contact_phone: phone.trim(),
+      });
+      await onNext();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <View className="rounded-2xl p-4 border" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-1">
+        Emergency Contact
+      </Text>
+      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mb-4 leading-relaxed">
+        We'll only use this number if we're unable to reach you during a ride.
+      </Text>
+
+      <FormField
+        label="Contact Name"
+        value={name}
+        onChangeText={setName}
+        placeholder="Full name"
+        autoCapitalize="words"
+      />
+      <FormField
+        label="Alternate Phone Number"
+        required
+        value={phone}
+        onChangeText={(t) => {
+          setPhone(t);
+          if (error) setError('');
+        }}
+        placeholder="+919876543210"
+        keyboardType="phone-pad"
+        error={error}
+      />
+
+      <View className="flex-row mt-2" style={{ gap: 10 }}>
+        <TouchableOpacity
+          onPress={onBack}
+          accessibilityRole="button"
+          className="flex-1 py-3 rounded-2xl flex-row justify-center items-center border"
+          style={{ borderColor: COLORS.border }}
+        >
+          <ChevronLeft size={15} color={COLORS.textSecondary} />
+          <Text style={{ color: COLORS.textSecondary }} className="font-bold text-xs ml-1">
+            Back
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => void save()}
+          disabled={saving}
+          accessibilityRole="button"
+          className="flex-1 py-3 rounded-2xl flex-row justify-center items-center"
+          style={{ backgroundColor: saving ? COLORS.gray[300] : COLORS.primary }}
+        >
+          {saving ? (
+            <ActivityIndicator size="small" color="#FFF" />
+          ) : (
+            <>
+              <Phone size={13} color="#FFF" />
+              <Text className="text-white font-bold text-xs ml-1.5">Save & Continue</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
 
 interface DocumentStepProps {
   type: KycDocType;
@@ -487,12 +714,14 @@ const DocumentStep: React.FC<DocumentStepProps> = ({
       ) : (
         <View className="mt-3">
           <FormField
-            label="Document Number"
+            label={type === 'aadhaar' ? 'Aadhaar Number' : 'Document Number'}
             required
             value={draft.doc_number}
             onChangeText={(t) => setDraft((d) => ({ ...d, doc_number: t.toUpperCase() }))}
-            placeholder={type === 'driving_license' ? 'e.g. KL0120110012345' : 'e.g. ABCD1234'}
+            placeholder={type === 'driving_license' ? 'e.g. KL0120110012345' : 'e.g. 2345 6789 0123'}
+            keyboardType={type === 'aadhaar' ? 'number-pad' : 'default'}
             autoCapitalize="characters"
+            hint={type === 'aadhaar' ? 'Manual entry today — OCR auto-fill is planned for a future release.' : undefined}
           />
 
           {requiresExpiry ? (
@@ -667,7 +896,11 @@ const DocSummaryRow: React.FC<{ doc: ApiDocument; onPreview: () => void }> = ({ 
 
 const ReviewStep: React.FC<{
   kyc: ApiKycSummary;
-  profile: { full_name: string; date_of_birth: string | null; phone: string | null } | null;
+  profile: {
+    full_name: string; date_of_birth: string | null; phone: string | null;
+    profile_photo_url: string | null; emergency_contact_name: string | null;
+    emergency_contact_phone: string | null;
+  } | null;
   declared: boolean; consented: boolean;
   setDeclared: (v: boolean) => void; setConsented: (v: boolean) => void;
   submitting: boolean; onSubmit: () => void; onBack: () => void;
@@ -681,6 +914,11 @@ const ReviewStep: React.FC<{
     <ReadOnlyRow label="Full Name" value={profile?.full_name ?? '—'} />
     <ReadOnlyRow label="Date of Birth" value={profile?.date_of_birth ?? '—'} />
     <ReadOnlyRow label="Phone" value={profile?.phone ?? '—'} />
+    <ReadOnlyRow label="Profile Photo" value={profile?.profile_photo_url ? 'Uploaded' : 'Not uploaded'} />
+    <ReadOnlyRow
+      label="Emergency Contact"
+      value={profile?.emergency_contact_phone ? `${profile.emergency_contact_name || ''} ${profile.emergency_contact_phone}`.trim() : '—'}
+    />
 
     <View className="mt-4" style={{ gap: 10 }}>
       {kyc.documents.map((d) => (
@@ -737,6 +975,17 @@ const ReviewStep: React.FC<{
         )}
       </TouchableOpacity>
     </View>
+  </View>
+);
+
+const ReadOnlyRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <View className="flex-row justify-between items-start py-2.5 border-b" style={{ borderColor: COLORS.border }}>
+    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-bold uppercase tracking-wider">
+      {label}
+    </Text>
+    <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold flex-1 text-right ml-4">
+      {value}
+    </Text>
   </View>
 );
 

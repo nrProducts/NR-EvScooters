@@ -61,23 +61,23 @@ describe("assertValidFile", () => {
 
 describe("buildStoragePath", () => {
     it("uses the {userId}/{docType}/{generated} layout", () => {
-        const path = buildStoragePath("11111111-1111-1111-1111-111111111111", "national_id", "image/png", "front");
-        expect(path).toMatch(/^11111111-1111-1111-1111-111111111111\/national_id\/front-[0-9a-f-]{36}\.png$/);
+        const path = buildStoragePath("11111111-1111-1111-1111-111111111111", "aadhaar", "image/png", "front");
+        expect(path).toMatch(/^11111111-1111-1111-1111-111111111111\/aadhaar\/front-[0-9a-f-]{36}\.png$/);
     });
 
     it("never reuses a name", () => {
-        const a = buildStoragePath("u", "national_id", "image/png", "front");
-        const b = buildStoragePath("u", "national_id", "image/png", "front");
+        const a = buildStoragePath("u", "aadhaar", "image/png", "front");
+        const b = buildStoragePath("u", "aadhaar", "image/png", "front");
         expect(a).not.toBe(b);
     });
 });
 
 describe("pathBelongsToUser", () => {
     it("accepts a path under the owner's prefix", () => {
-        expect(pathBelongsToUser("user-a/national_id/front.png", "user-a")).toBe(true);
+        expect(pathBelongsToUser("user-a/aadhaar/front.png", "user-a")).toBe(true);
     });
 
     it("rejects another user's prefix", () => {
-        expect(pathBelongsToUser("user-b/national_id/front.png", "user-a")).toBe(false);
+        expect(pathBelongsToUser("user-b/aadhaar/front.png", "user-a")).toBe(false);
     });
 });

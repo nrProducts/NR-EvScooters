@@ -2,12 +2,12 @@ import { ApiError } from '../../lib/ApiError';
 import { MANDATORY_KYC_DOC_TYPES } from '../../types/api';
 import type {
     ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe, ApiSignedUrl,
-    ApiUser, ApiUserDetail, CreateUserPayload, KycStatus, ListUsersParams, Paginated,
-    RoleName, StatusAction, UpdateUserPayload, VerificationStatus,
+    ApiUser, ApiUserDetail, CreateUserPayload, KycStatus, ListUsersParams, LocalFile,
+    Paginated, RoleName, StatusAction, UpdateUserPayload, VerificationStatus,
 } from '../../types/api';
 import type {
     AuthRepository, KycQueueParams, KycRepository, SessionRef, UpdateDocumentInput,
-    UploadDocumentInput, UserRepository,
+    UploadDocumentInput, UploadPhotoResult, UserRepository,
 } from '../types';
 import {
     DEMO_ACCOUNTS, MockAuditRow, MockDocumentRow, MockUserRow, PLACEHOLDER_IMAGE,
@@ -214,6 +214,10 @@ function assertNotLastAdmin(userId: string) {
 
 export class MockAuthRepository implements AuthRepository {
     readonly requiresPassword = false;
+    readonly isMock = true;
+
+    /** Remembers the number a code was "sent" to, so verify can sanity-check. */
+    private pendingPhone: string | null = null;
 
     async restore(): Promise<SessionRef | null> {
         await delay(120);
@@ -222,7 +226,69 @@ export class MockAuthRepository implements AuthRepository {
         return null;
     }
 
-    async signIn(email: string): Promise<SessionRef> {
+    // In mock mode any code works; the fixed demo code is 123456. No SMS is sent.
+    async requestPhoneOtp(phone: string): Promise<void> {
+        await delay();
+        this.pendingPhone = normPhone(phone);
+    }
+
+    async verifyPhoneOtp(phone: string, code: string): Promise<SessionRef> {
+        await delay();
+        if (!/^\d{6}$/.test(code.trim())) {
+            throw new ApiError(400, 'VALIDATION_ERROR', 'Enter the 6-digit code. (Demo code: 123456)');
+        }
+        if (code.trim() !== '123456') {
+            throw new ApiError(401, 'UNAUTHENTICATED', 'That code is not correct. In demo mode the code is 123456.');
+        }
+        const digits = normPhone(phone).replace(/[^\d]/g, '');
+        let user = db.users.find((u) => (u.phone ?? '').replace(/[^\d]/g, '') === digits);
+        if (!user) {
+            // No seeded rider at this number: mirror production's
+            // shouldCreateUser=true — a brand-new blank profile, which is what
+            // drives the profile-setup/onboarding routing in _layout.tsx.
+            user = {
+                id: uid('u'),
+                full_name: '',
+                email: null,
+                phone: digits ? `+${digits}` : normPhone(phone),
+                date_of_birth: null,
+                gender: null,
+                address_line_1: null,
+                address_line_2: null,
+                city: null,
+                state: null,
+                postal_code: null,
+                country: 'IN',
+                emergency_contact_name: null,
+                emergency_contact_phone: null,
+                account_status: 'active',
+                profile_photo_url: null,
+                profile_completed: false,
+                created_at: nowIso(),
+                updated_at: nowIso(),
+                deleted_at: null,
+                roles: ['rider'],
+                assigned_vehicle: null,
+                current_plan: null,
+            };
+            db.users.push(user);
+        }
+        this.pendingPhone = null;
+        db.currentUserId = user.id;
+        return { id: user.id, email: user.email };
+    }
+
+    async signInWithGoogle(): Promise<SessionRef> {
+        await delay();
+        // Demo: Google maps to the standard demo rider.
+        const user =
+            db.users.find((u) => u.email === 'rider@fleet.com') ?? db.users[0];
+        if (!user) throw new ApiError(404, 'NOT_FOUND', 'No demo rider to sign in as.');
+        db.currentUserId = user.id;
+        return { id: user.id, email: user.email };
+    }
+
+    async signIn(email: string, _password?: string): Promise<SessionRef> {
         await delay();
         const user = db.users.find((u) => u.email?.toLowerCase() === normEmail(email));
 
@@ -274,6 +340,22 @@ export class MockUserRepository implements UserRepository {
         await delay();
         const row = requireSession();
         return this.update(row.id, patch);
+    }
+
+    async uploadMyPhoto(photo: LocalFile): Promise<UploadPhotoResult> {
+        await delay(500);
+        const row = requireSession();
+        row.profile_photo_url = photo.uri;
+        row.updated_at = nowIso();
+        audit('user.photo_uploaded', row.id);
+        return { profile_photo_url: photo.uri };
+    }
+
+    async myPhotoUrl(): Promise<ApiSignedUrl> {
+        await delay(150);
+        const row = requireSession();
+        if (!row.profile_photo_url) throw new ApiError(404, 'NOT_FOUND', 'No profile photo has been uploaded yet.');
+        return { url: row.profile_photo_url, expires_in: 300 };
     }
 
     async list(params: ListUsersParams): Promise<Paginated<ApiUser>> {
@@ -357,6 +439,8 @@ export class MockUserRepository implements UserRepository {
                 : null,
             account_status: payload.account_status ?? 'active',
             profile_photo_url: null,
+            // Admin-created accounts arrive with a full profile already.
+            profile_completed: true,
             created_at: nowIso(),
             updated_at: nowIso(),
             deleted_at: null,
@@ -388,6 +472,8 @@ export class MockUserRepository implements UserRepository {
             emergency_contact_phone: patch.emergency_contact_phone
                 ? normPhone(patch.emergency_contact_phone)
                 : row.emergency_contact_phone,
+            // Mirrors the backend: any successful profile write completes onboarding.
+            profile_completed: true,
             updated_at: nowIso(),
         });
 

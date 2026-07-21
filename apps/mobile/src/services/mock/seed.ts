@@ -23,6 +23,8 @@ export interface MockUserRow {
     emergency_contact_phone: string | null;
     account_status: AccountStatus;
     profile_photo_url: string | null;
+    /** Has the rider completed the initial onboarding profile form (spec Step 1)? */
+    profile_completed: boolean;
     created_at: string;
     updated_at: string;
     deleted_at: string | null;
@@ -81,6 +83,8 @@ const base = {
     profile_photo_url: null,
     emergency_contact_name: null,
     emergency_contact_phone: null,
+    // All seeded riders are pre-existing accounts that already onboarded.
+    profile_completed: true,
 };
 
 /**
@@ -295,7 +299,7 @@ export const SEED_USERS: MockUserRow[] = [
 export const SEED_DOCUMENTS: MockDocumentRow[] = [
     // Asha — fully verified, can rent.
     {
-        id: 'd-001', user_id: 'u-rider-001', doc_type: 'national_id',
+        id: 'd-001', user_id: 'u-rider-001', doc_type: 'aadhaar',
         doc_number: 'ABCD12345678', front_uri: PLACEHOLDER_IMAGE, back_uri: PLACEHOLDER_IMAGE,
         verification_status: 'verified', rejection_reason: null,
         verified_by: 'u-staff-001', verified_at: monthsAgo(8),
@@ -312,7 +316,7 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
     },
     // Rahul — both pending: the queue's happy path.
     {
-        id: 'd-003', user_id: 'u-rider-002', doc_type: 'national_id',
+        id: 'd-003', user_id: 'u-rider-002', doc_type: 'aadhaar',
         doc_number: 'EFGH87654321', front_uri: PLACEHOLDER_IMAGE, back_uri: PLACEHOLDER_IMAGE,
         verification_status: 'pending', rejection_reason: null,
         verified_by: null, verified_at: null,
@@ -329,7 +333,7 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
     },
     // Fatima — one verified, one pending: partially_verified.
     {
-        id: 'd-005', user_id: 'u-rider-003', doc_type: 'national_id',
+        id: 'd-005', user_id: 'u-rider-003', doc_type: 'aadhaar',
         doc_number: 'IJKL11223344', front_uri: PLACEHOLDER_IMAGE, back_uri: null,
         verification_status: 'verified', rejection_reason: null,
         verified_by: 'u-staff-001', verified_at: monthsAgo(2),
@@ -346,7 +350,7 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
     },
     // Deepak — rejected, so the resubmit path has something to fix.
     {
-        id: 'd-007', user_id: 'u-rider-004', doc_type: 'national_id',
+        id: 'd-007', user_id: 'u-rider-004', doc_type: 'aadhaar',
         doc_number: 'MNOP55667788', front_uri: PLACEHOLDER_IMAGE, back_uri: null,
         verification_status: 'rejected',
         rejection_reason: 'The photo is too blurred to read the ID number. Please retake it in good light.',
@@ -356,7 +360,7 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
     },
     // Arjun — verified ID but an EXPIRED licence: drops him out of 'verified'.
     {
-        id: 'd-008', user_id: 'u-rider-006', doc_type: 'national_id',
+        id: 'd-008', user_id: 'u-rider-006', doc_type: 'aadhaar',
         doc_number: 'QRST99887766', front_uri: PLACEHOLDER_IMAGE, back_uri: null,
         verification_status: 'verified', rejection_reason: null,
         verified_by: 'u-admin-001', verified_at: monthsAgo(5),
@@ -387,7 +391,7 @@ export const SEED_AUDIT: MockAuditRow[] = [
     {
         id: 'a-003', action: 'kyc.document_verified', actor_id: 'u-staff-001',
         target_user_id: 'u-rider-003', created_at: monthsAgo(2),
-        after_data: { doc_type: 'national_id' },
+        after_data: { doc_type: 'aadhaar' },
     },
 ];
 

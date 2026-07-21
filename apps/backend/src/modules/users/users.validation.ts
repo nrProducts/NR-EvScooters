@@ -94,13 +94,16 @@ export const updateUserBody = z
 export const selfUpdateUserBody = z
     .object({
         full_name: z.string().trim().min(2).max(120).optional(),
+        // Needed for the initial-profile onboarding form (phone sign-ups have
+        // no email on the Auth account yet). updateUser() syncs this to
+        // Supabase Auth the same way it does for a staff-initiated edit.
+        email: emailSchema.optional(),
         phone: phoneSchema.optional(),
         date_of_birth: dobSchema.optional(),
         gender: z.enum(["male", "female", "other", "prefer_not_to_say"]).optional(),
         ...addressFields,
         emergency_contact_name: z.string().trim().max(120).optional(),
         emergency_contact_phone: phoneSchema.optional(),
-        profile_photo_url: z.string().url().optional(),
     })
     .strict()
     .refine((v) => Object.keys(v).length > 0, "Provide at least one field to update.");

@@ -104,3 +104,18 @@ export function pickDocument(): Promise<LocalFile | null> {
     ]);
   });
 }
+
+/**
+ * Camera or gallery only — a profile photo is never a PDF. The caller is
+ * expected to show capture guidance (lighting, no sunglasses, plain
+ * background) before invoking this, not inside it.
+ */
+export function pickPhoto(): Promise<LocalFile | null> {
+  return new Promise((resolve) => {
+    Alert.alert('Add photo', 'How would you like to provide your photo?', [
+      { text: 'Take Photo', onPress: () => void fromCamera().then(resolve) },
+      { text: 'Choose from Gallery', onPress: () => void fromLibrary().then(resolve) },
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+    ]);
+  });
+}

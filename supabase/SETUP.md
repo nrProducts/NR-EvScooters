@@ -110,14 +110,12 @@ production project — `seed.sql` is destructive-by-design for local dev.
 
 | File | Contents |
 |---|---|
-| `20260716090000_extensions_types_common.sql` | Extensions, enums, shared `updated_at` trigger fn |
-| `20260716090100_identity.sql` | `users`, `roles`, `user_roles`, `user_documents` |
-| `20260716090200_fleet.sql` | `stations`, `vehicles`, `batteries`, `vehicle_telemetry` (partitioned), `battery_swap_events`, `vehicle_maintenance`, `vehicle_documents` |
-| `20260716090300_commercial.sql` | `plans`, `subscriptions`, `rentals`, `invoices`, `payments`, `promo_codes`, `promo_redemptions` |
-| `20260716090400_support_quality_ops.sql` | `support_requests`, `rental_feedback`, `incident_reports`, `audit_logs`, `zones`, `notifications_log` |
-| `20260716090500_rls_helpers.sql` | `has_role()`, `is_staff()`, `is_admin()` |
-| `20260716090600_rls_policies.sql` | RLS on all 24 tables |
-| `20260716090700_integrity_fixes.sql` | Auth→profile provisioning trigger, battery status sync, promo redemption limit enforcement, vehicle status sync, `search_path` hardening |
+| `20260720100000_extensions_and_enums.sql` | Extensions, enums, shared `updated_at` trigger fn |
+| `20260720100100_identity.sql` | `users`, `roles`, `user_roles`, `user_documents` + auth signup trigger |
+| `20260720100200_fleet.sql` | `stations`, `vehicles`, `vehicle_maintenance`, `vehicle_documents` |
+| `20260720100300_commercial.sql` | `plans`, `subscriptions`, `rentals`, `invoices` (payments merged in) |
+| `20260720100400_support_ops.sql` | `support_requests`, `rental_feedback`, `incident_reports`, `notifications_log` |
+| `20260720100500_rls.sql` | `is_admin()` helper + RLS policies on all 16 tables |
 
 ## 7. Known operational behaviors (not bugs — read before you're surprised by them)
 

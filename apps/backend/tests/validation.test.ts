@@ -4,6 +4,7 @@ import {
     selfUpdateUserBody, updateRolesBody, updateStatusBody,
 } from "../src/modules/users/users.validation";
 import { rejectBody, uploadDocumentBody } from "../src/modules/kyc/kyc.validation";
+import { assertValidAadhaar } from "../src/modules/kyc/kyc.service";
 
 const validUser = {
     full_name: "Asha Menon",
@@ -113,17 +114,40 @@ describe("listUsersQuery", () => {
 });
 
 describe("uploadDocumentBody", () => {
-    it("accepts a national id", () => {
-        expect(uploadDocumentBody.parse({ doc_type: "national_id", doc_number: "ABCD1234" }).doc_type)
-            .toBe("national_id");
+    it("accepts an aadhaar document", () => {
+        expect(uploadDocumentBody.parse({ doc_type: "aadhaar", doc_number: "ABCD1234" }).doc_type)
+            .toBe("aadhaar");
     });
 
     it("rejects a too-short document number", () => {
-        expect(() => uploadDocumentBody.parse({ doc_type: "national_id", doc_number: "AB" })).toThrow();
+        expect(() => uploadDocumentBody.parse({ doc_type: "aadhaar", doc_number: "AB" })).toThrow();
     });
 
     it("rejects a document number with punctuation", () => {
-        expect(() => uploadDocumentBody.parse({ doc_type: "national_id", doc_number: "AB#$1234" })).toThrow();
+        expect(() => uploadDocumentBody.parse({ doc_type: "aadhaar", doc_number: "AB#$1234" })).toThrow();
+    });
+});
+
+describe("assertValidAadhaar (via kyc.service.uploadDocument doc_type branch)", () => {
+    it("accepts a well-formed 12-digit aadhaar number", () => {
+        expect(() => assertValidAadhaar("234567890123")).not.toThrow();
+    });
+
+    it("accepts a 12-digit aadhaar number with spaces or hyphens", () => {
+        expect(() => assertValidAadhaar("2345 6789 0123")).not.toThrow();
+        expect(() => assertValidAadhaar("2345-6789-0123")).not.toThrow();
+    });
+
+    it("rejects fewer than 12 digits", () => {
+        expect(() => assertValidAadhaar("123456789")).toThrow(/12-digit/);
+    });
+
+    it("rejects more than 12 digits", () => {
+        expect(() => assertValidAadhaar("1234567890123")).toThrow(/12-digit/);
+    });
+
+    it("rejects non-numeric characters", () => {
+        expect(() => assertValidAadhaar("2345ABCD0123")).toThrow(/12-digit/);
     });
 });
 

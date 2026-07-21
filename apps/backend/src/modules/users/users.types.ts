@@ -18,6 +18,8 @@ export interface UserProfile {
     account_status: AccountStatus;
     kyc_status: KycStatus;
     profile_photo_url: string | null;
+    /** Has the rider completed the initial onboarding profile form (spec Step 1)? */
+    profile_completed: boolean;
     created_at: string;
     updated_at: string;
     deleted_at: string | null;

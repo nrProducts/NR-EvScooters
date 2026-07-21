@@ -1,11 +1,12 @@
-import React from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useFleetStore } from '../store/useFleetStore';
+import { useRentGate } from '../hooks/useRentGate';
 import { COLORS } from '../constants/theme';
-import { Bike, BatteryFull, Hash, Calendar, Wrench, ShieldCheck } from 'lucide-react-native';
+import { Bike, BatteryFull, Hash, Calendar, Wrench, ShieldCheck, Zap } from 'lucide-react-native';
 import { VehicleStatus } from '../types/fleet';
 
 const STATUS_TONE: Record<VehicleStatus, 'success' | 'warning' | 'danger' | 'neutral'> = {
@@ -18,6 +19,12 @@ const STATUS_TONE: Record<VehicleStatus, 'success' | 'warning' | 'danger' | 'neu
 export default function MyScooterScreen() {
   const user = useFleetStore(s => s.getCurrentUser());
   const vehicle = useFleetStore(s => s.getVehicleById(user?.assignedVehicleId));
+  const { attemptRent } = useRentGate();
+  const [rented, setRented] = useState(false);
+
+  const onRentPress = () => {
+    if (attemptRent()) setRented(true);
+  };
 
   return (
     <AppShell title="My Scooter">
@@ -52,6 +59,31 @@ export default function MyScooterScreen() {
               <DetailRow icon={Calendar} label="Last Service Date" value={vehicle.lastServiceDate} />
               <DetailRow icon={Wrench} label="Next Service Due" value={vehicle.nextServiceDue} />
             </View>
+
+            {rented ? (
+              <View
+                className="rounded-2xl p-4 mt-4 items-center"
+                style={{ backgroundColor: COLORS.success + '14', borderWidth: 1, borderColor: COLORS.success + '33' }}
+              >
+                <ShieldCheck size={22} color={COLORS.success} />
+                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold mt-2">
+                  Scooter unlocked
+                </Text>
+                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-1">
+                  Booking isn't live yet — this confirms your KYC gate is working.
+                </Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={onRentPress}
+                accessibilityRole="button"
+                className="rounded-2xl py-4 mt-4 flex-row items-center justify-center"
+                style={{ backgroundColor: COLORS.primary }}
+              >
+                <Zap size={17} color="#FFF" />
+                <Text className="text-white font-bold text-sm ml-2">Rent this Scooter</Text>
+              </TouchableOpacity>
+            )}
           </>
         )}
       </ScrollView>

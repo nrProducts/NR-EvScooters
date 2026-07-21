@@ -32,7 +32,7 @@ export const VERIFICATION_TONE: Record<VerificationStatus, Tone> = {
 };
 
 export const DOC_TYPE_LABEL: Record<KycDocType, string> = {
-  national_id: 'National ID',
+  aadhaar: 'Aadhaar',
   driving_license: 'Driving Licence',
   passport: 'Passport',
   voter_id: 'Voter ID',

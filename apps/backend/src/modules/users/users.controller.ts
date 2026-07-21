@@ -2,7 +2,7 @@ import { Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import { isStaff, isAdmin, resolveTargetUserId } from "../../middleware/authorize.middleware";
-import { forbidden } from "../../common/AppError";
+import { badRequest, forbidden } from "../../common/AppError";
 import { AccountStatus, RoleName } from "../../types";
 import { ListUsersFilters } from "./users.types";
 import * as service from "./users.service";
@@ -29,6 +29,15 @@ export async function updateUserHandler(req: AuthedRequest, res: Response) {
     // someone else may not use that route at all.
     if (id !== req.user!.id && !isStaff(req)) throw forbidden("You may only edit your own profile.");
     res.json(await service.updateUser(id, req.body, req.user!, req));
+}
+
+/**
+ * PATCH /users/me has no ":id" route param — "/me" is a literal path — so
+ * resolveTargetUserId() (which only special-cases "me" arriving as a param
+ * value) can't be used here. Always the caller's own id, same as meHandler.
+ */
+export async function updateMyProfileHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.updateUser(req.user!.id, req.body, req.user!, req));
 }
 
 export async function deleteUserHandler(req: AuthedRequest, res: Response) {
@@ -67,4 +76,21 @@ export async function meHandler(req: AuthedRequest, res: Response) {
         can_rent: detail.kyc_status === "verified" && (detail.account_status as AccountStatus) === "active",
         is_admin: isAdmin(req),
     });
+}
+
+export async function uploadMyPhotoHandler(req: AuthedRequest, res: Response) {
+    const file = req.file;
+    if (!file) throw badRequest("A photo is required.", { photo: "Attach a photo." });
+
+    const result = await service.uploadMyPhoto(
+        req.user!.id,
+        { buffer: file.buffer, mimetype: file.mimetype, size: file.size, originalname: file.originalname },
+        req.user!,
+        req,
+    );
+    res.status(201).json(result);
+}
+
+export async function myPhotoUrlHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.getMyPhotoUrl(req.user!.id));
 }

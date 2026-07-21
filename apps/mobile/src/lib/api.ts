@@ -1,6 +1,7 @@
 import { ENV } from '../constants/env';
 import { getAccessToken, getSupabase } from './supabase';
 import { ApiError } from './ApiError';
+import { signInWithGoogleBrowser } from './googleAuth';
 
 // Re-exported so existing `import { ApiError } from '../lib/api'` keeps working.
 export { ApiError };
@@ -16,6 +17,12 @@ let onUnauthorized: OnUnauthorized = () => {};
 /** The auth store registers here so a 401 anywhere ends the session once. */
 export function setUnauthorizedHandler(handler: OnUnauthorized): void {
     onUnauthorized = handler;
+}
+
+/** Map a Supabase auth error to our status; 429 (too many requests) is common
+ *  for OTP re-sends and deserves its own message, everything else is a 400. */
+function mapOtpStatus(error: { status?: number }): number {
+    return error?.status === 429 ? 429 : 400;
 }
 
 const TIMEOUT_MS = 20000;
@@ -135,6 +142,40 @@ export const api = {
         if (error) throw new ApiError(400, 'VALIDATION_ERROR', error.message);
     },
 
+    // --- phone OTP (primary rider login) ---------------------------------
+    async requestPhoneOtp(phone: string): Promise<void> {
+        // Supabase generates the code, rate-limits it, and invokes the send-sms
+        // hook (MSG91) to deliver it. shouldCreateUser=true so a first-time
+        // number becomes an account on successful verification.
+        const { error } = await getSupabase().auth.signInWithOtp({
+            phone,
+            options: { shouldCreateUser: true },
+        });
+        if (error) throw new ApiError(mapOtpStatus(error), 'OTP_REQUEST_FAILED', error.message);
+    },
+
+    async verifyPhoneOtp(phone: string, token: string): Promise<void> {
+        const { error } = await getSupabase().auth.verifyOtp({ phone, token, type: 'sms' });
+        if (error) throw new ApiError(401, 'UNAUTHENTICATED', error.message);
+    },
+
+    // --- Google (secondary / recovery login) -----------------------------
+    async signInWithGoogle(): Promise<void> {
+        await signInWithGoogleBrowser();
+    },
+
+    // --- session ---------------------------------------------------------
+    async signOutEverywhere(): Promise<void> {
+        // Best-effort server-side revocation of all refresh tokens, then the
+        // local sign-out. A failure here still clears the local session.
+        try {
+            await request<void>('/auth/logout', { method: 'POST' });
+        } catch {
+            // ignore — local signOut below is what the user sees
+        }
+        await getSupabase().auth.signOut();
+    },
+
     // --- users -----------------------------------------------------------
     me: () => request<ApiMe>('/users/me'),
 
@@ -158,6 +199,14 @@ export const api = {
 
     changeStatus: (id: string, action: StatusAction, reason?: string) =>
         request<ApiUserDetail>(`/users/${id}/status`, { method: 'PATCH', body: { action, reason } }),
+
+    uploadMyPhoto: (photo: LocalFile) => {
+        const form = new FormData();
+        appendFile(form, 'photo', photo);
+        return request<{ profile_photo_url: string }>('/users/me/photo', { method: 'POST', form });
+    },
+
+    myPhotoUrl: () => request<ApiSignedUrl>('/users/me/photo/url'),
 
     getRoles: (id: string) => request<{ roles: RoleName[] }>(`/users/${id}/roles`),
 

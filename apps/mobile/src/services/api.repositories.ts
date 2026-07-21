@@ -8,8 +8,9 @@ import type {
 } from '../types/api';
 import type {
     AuthRepository, KycQueueParams, KycRepository, SessionRef, UpdateDocumentInput,
-    UploadDocumentInput, UserRepository,
+    UploadDocumentInput, UploadPhotoResult, UserRepository,
 } from './types';
+import type { LocalFile } from '../types/api';
 
 /**
  * Thin adapters over the HTTP client. They exist so screens depend on the
@@ -19,11 +20,30 @@ import type {
 
 export class SupabaseAuthRepository implements AuthRepository {
     readonly requiresPassword = true;
+    readonly isMock = false;
 
     async restore(): Promise<SessionRef | null> {
         const { data } = await getSupabase().auth.getSession();
         if (!data.session) return null;
         return { id: data.session.user.id, email: data.session.user.email ?? null };
+    }
+
+    async requestPhoneOtp(phone: string): Promise<void> {
+        await api.requestPhoneOtp(phone);
+    }
+
+    async verifyPhoneOtp(phone: string, code: string): Promise<SessionRef> {
+        await api.verifyPhoneOtp(phone, code);
+        const ref = await this.restore();
+        if (!ref) throw new ApiError(401, 'UNAUTHENTICATED', 'Verification succeeded but no session was returned.');
+        return ref;
+    }
+
+    async signInWithGoogle(): Promise<SessionRef> {
+        await api.signInWithGoogle();
+        const ref = await this.restore();
+        if (!ref) throw new ApiError(401, 'UNAUTHENTICATED', 'Google sign-in succeeded but no session was returned.');
+        return ref;
     }
 
     async signIn(email: string, password: string): Promise<SessionRef> {
@@ -34,7 +54,7 @@ export class SupabaseAuthRepository implements AuthRepository {
     }
 
     signOut(): Promise<void> {
-        return api.signOut();
+        return api.signOutEverywhere();
     }
 
     sendPasswordReset(email: string): Promise<void> {
@@ -55,6 +75,12 @@ export class ApiUserRepository implements UserRepository {
     }
     updateMe(patch: UpdateUserPayload): Promise<ApiUserDetail> {
         return api.updateMe(patch);
+    }
+    uploadMyPhoto(photo: LocalFile): Promise<UploadPhotoResult> {
+        return api.uploadMyPhoto(photo);
+    }
+    myPhotoUrl(): Promise<ApiSignedUrl> {
+        return api.myPhotoUrl();
     }
     list(params: ListUsersParams): Promise<Paginated<ApiUser>> {
         return api.listUsers(params);

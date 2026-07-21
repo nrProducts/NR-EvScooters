@@ -29,6 +29,20 @@ export const env = {
     /** Lifetime of a minted signed URL, in seconds. Short by design. */
     kycSignedUrlTtlSeconds: intFromEnv("KYC_SIGNED_URL_TTL_SECONDS", 300),
 
+    /** Private bucket holding rider profile photos. Must not be public. */
+    profilePhotoBucket: process.env.PROFILE_PHOTO_BUCKET ?? "profile-photos",
+    /** Keep in sync with storage.buckets.file_size_limit in the migration. */
+    profilePhotoMaxFileBytes: intFromEnv("PROFILE_PHOTO_MAX_FILE_BYTES", 10 * 1024 * 1024),
+
     /** Where an invited user lands to set their password. */
     inviteRedirectUrl: process.env.INVITE_REDIRECT_URL ?? "",
+
+    // --- MSG91 (delivery for the /auth/otp/test diagnostic; mirrors the
+    //     send-sms Edge Function that actually delivers login OTPs) ---------
+    msg91AuthKey: process.env.MSG91_AUTH_KEY ?? "",
+    msg91OtpTemplateId: process.env.MSG91_OTP_TEMPLATE_ID ?? "",
+    msg91SenderId: process.env.MSG91_SENDER_ID ?? "",
+    /** Name of the OTP variable in the MSG91 Flow/DLT template. */
+    msg91OtpVar: process.env.MSG91_OTP_VAR ?? "otp",
+    msg91BaseUrl: process.env.MSG91_BASE_URL ?? "https://control.msg91.com",
 };
