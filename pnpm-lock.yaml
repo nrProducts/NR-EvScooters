@@ -7,6 +7,11 @@ settings:
 overrides:
   lightningcss: 1.30.1
 
+patchedDependencies:
+  react-native-css@3.0.7:
+    hash: ng7yripysfho2k5wgvc6uoejli
+    path: patches/react-native-css@3.0.7.patch
+
 importers:
 
   .:
@@ -149,7 +154,7 @@ importers:
         version: 1.24.0(react-native-svg@15.12.1(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       nativewind:
         specifier: ^5.0.0-preview.4
-        version: 5.0.0-preview.4(react-native-css@3.0.7(@expo/metro-config@54.0.17(expo@54.0.36))(lightningcss@1.30.1)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(tailwindcss@4.3.2)
+        version: 5.0.0-preview.4(react-native-css@3.0.7(patch_hash=ng7yripysfho2k5wgvc6uoejli)(@expo/metro-config@54.0.17(expo@54.0.36))(lightningcss@1.30.1)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(tailwindcss@4.3.2)
       postcss:
         specifier: ^8.5.19
         version: 8.5.19
@@ -164,7 +169,7 @@ importers:
         version: 0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0)
       react-native-css:
         specifier: ^3.0.7
-        version: 3.0.7(@expo/metro-config@54.0.17(expo@54.0.36))(lightningcss@1.30.1)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+        version: 3.0.7(patch_hash=ng7yripysfho2k5wgvc6uoejli)(@expo/metro-config@54.0.17(expo@54.0.36))(lightningcss@1.30.1)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react-native-gesture-handler:
         specifier: ~2.28.0
         version: 2.28.0(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -10414,9 +10419,9 @@ snapshots:
 
   napi-postinstall@0.3.4: {}
 
-  nativewind@5.0.0-preview.4(react-native-css@3.0.7(@expo/metro-config@54.0.17(expo@54.0.36))(lightningcss@1.30.1)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(tailwindcss@4.3.2):
+  nativewind@5.0.0-preview.4(react-native-css@3.0.7(patch_hash=ng7yripysfho2k5wgvc6uoejli)(@expo/metro-config@54.0.17(expo@54.0.36))(lightningcss@1.30.1)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(tailwindcss@4.3.2):
     dependencies:
-      react-native-css: 3.0.7(@expo/metro-config@54.0.17(expo@54.0.36))(lightningcss@1.30.1)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      react-native-css: 3.0.7(patch_hash=ng7yripysfho2k5wgvc6uoejli)(@expo/metro-config@54.0.17(expo@54.0.36))(lightningcss@1.30.1)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       tailwindcss: 4.3.2
       tailwindcss-safe-area: 1.3.0(tailwindcss@4.3.2)
 
@@ -10744,7 +10749,7 @@ snapshots:
 
   react-is@19.2.7: {}
 
-  react-native-css@3.0.7(@expo/metro-config@54.0.17(expo@54.0.36))(lightningcss@1.30.1)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+  react-native-css@3.0.7(patch_hash=ng7yripysfho2k5wgvc6uoejli)(@expo/metro-config@54.0.17(expo@54.0.36))(lightningcss@1.30.1)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:
       '@expo/metro-config': 54.0.17(expo@54.0.36)
       '@types/debug': 4.1.13

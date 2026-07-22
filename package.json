@@ -17,6 +17,9 @@
         "overrides": {
             "lightningcss": "1.30.1"
         },
-        "//lightningcss": "Pinned: react-native-css@3.0.7 declares lightningcss '>=1.27.0' (unbounded), so pnpm resolves 1.32.0, whose native serde struct no longer matches what react-native-css passes in. Symptom: 'failed to deserialize; expected an object-like struct named Specifier, found ()' at Metro bundle time. Do not remove or bump without rebuilding the mobile app end to end."
+        "//lightningcss": "Pinned: react-native-css@3.0.7 declares lightningcss '>=1.27.0' (unbounded), so pnpm resolves 1.32.0, whose native serde struct no longer matches what react-native-css passes in. Symptom: 'failed to deserialize; expected an object-like struct named Specifier, found ()' at Metro bundle time. Do not remove or bump without rebuilding the mobile app end to end.",
+        "patchedDependencies": {
+            "react-native-css@3.0.7": "patches/react-native-css@3.0.7.patch"
+        }
     }
 }
