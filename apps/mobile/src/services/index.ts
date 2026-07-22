@@ -1,7 +1,15 @@
 import { ENV } from '../constants/env';
-import { ApiKycRepository, ApiUserRepository, SupabaseAuthRepository } from './api.repositories';
-import { MockAuthRepository, MockKycRepository, MockUserRepository } from './mock/mock.repositories';
-import type { AuthRepository, KycRepository, UserRepository } from './types';
+import {
+    ApiBookingRepository, ApiKycRepository, ApiUserRepository, ApiVehicleCatalogRepository,
+    SupabaseAuthRepository,
+} from './api.repositories';
+import {
+    MockAuthRepository, MockBookingRepository, MockKycRepository, MockUserRepository,
+    MockVehicleCatalogRepository,
+} from './mock/mock.repositories';
+import type {
+    AuthRepository, BookingRepository, KycRepository, UserRepository, VehicleCatalogRepository,
+} from './types';
 
 /**
  * The only place the app decides where data comes from. Everything downstream
@@ -22,6 +30,14 @@ export const kycRepository: KycRepository = ENV.useMock
     ? new MockKycRepository()
     : new ApiKycRepository();
 
+export const vehicleCatalogRepository: VehicleCatalogRepository = ENV.useMock
+    ? new MockVehicleCatalogRepository()
+    : new ApiVehicleCatalogRepository();
+
+export const bookingRepository: BookingRepository = ENV.useMock
+    ? new MockBookingRepository()
+    : new ApiBookingRepository();
+
 if (ENV.useMock && __DEV__) {
     console.info(
         '[services] MOCK MODE — in-memory data, no backend. ' +
@@ -31,4 +47,7 @@ if (ENV.useMock && __DEV__) {
 
 export { DEMO_ACCOUNTS } from './mock/seed';
 export { resetMockDb } from './mock/mock.repositories';
-export type { AuthRepository, KycRepository, UserRepository, SessionRef } from './types';
+export type {
+    AuthRepository, BookingRepository, KycRepository, UserRepository, VehicleCatalogRepository,
+    SessionRef,
+} from './types';

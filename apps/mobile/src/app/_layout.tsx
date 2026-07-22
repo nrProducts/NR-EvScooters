@@ -13,7 +13,13 @@ import "../../global.css";
  * who forced their way to /users would see an empty list and 403s.
  */
 const STAFF_ROUTES = ["dashboard", "users", "vehicles", "plans", "assign", "reports", "settings", "kyc-review"];
-const RIDER_ROUTES = ["home", "my-scooter", "my-plan", "support", "kyc", "kyc-intro"];
+// "vehicle" covers vehicle/[id]; "booking" covers booking/[modelId],
+// booking/plan, booking/billing — Expo Router reports a dynamic route's
+// top-level segment name, not the file's bracketed param.
+const RIDER_ROUTES = [
+  "home", "my-scooter", "my-plan", "support", "kyc", "kyc-intro",
+  "browse-vehicles", "vehicle", "post-booking-dashboard", "booking",
+];
 // Screens reachable while signed OUT (the login surface).
 const AUTH_ROUTES = ["index", "otp-verify", "admin-login", "auth-callback"];
 
@@ -81,6 +87,15 @@ export default function RootLayout() {
     }
 
     if (atAuthScreen || current === "profile-setup" || !RIDER_ROUTES.includes(current)) {
+      router.replace("/home");
+      return;
+    }
+
+    // The post-booking dashboard is only for riders with a live rental —
+    // everyone else is bounced back to the pre-booking Home screen. /home
+    // itself stays reachable regardless of rental state; this is the one
+    // enforcement point for the gated screen.
+    if (current === "post-booking-dashboard" && !profile.has_active_rental) {
       router.replace("/home");
     }
   }, [initialising, session, profile, hasSeenKycIntro, segments, router]);

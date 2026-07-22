@@ -60,7 +60,13 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   // hiding the link is only so riders aren't shown doors they can't open.
   const isAdmin = profile?.is_admin ?? false;
   const isStaff = isAdmin || (profile?.roles ?? []).some(r => r !== 'rider');
-  const navItems = isStaff ? ADMIN_NAV : USER_NAV;
+  // "My Scooter"/"My Plan" only make sense once a booking exists —
+  // pending_payment counts as active, same as confirmed (useHasActiveBooking).
+  const hasActiveBooking = profile?.has_active_booking ?? false;
+  const riderNav = USER_NAV.filter(
+    item => (item.route === '/my-scooter' || item.route === '/my-plan') ? hasActiveBooking : true,
+  );
+  const navItems = isStaff ? ADMIN_NAV : riderNav;
 
   useEffect(() => {
     Animated.timing(drawerAnim, {

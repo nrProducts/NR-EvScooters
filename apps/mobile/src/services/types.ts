@@ -1,7 +1,8 @@
 import type {
-    ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe, ApiSignedUrl,
-    ApiUser, ApiUserDetail, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
-    LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload,
+    ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe, ApiSignedUrl,
+    ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail,
+    CreateBookingPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
+    ListVehicleModelsParams, LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload,
 } from '../types/api';
 
 export interface UploadPhotoResult {
@@ -71,6 +72,19 @@ export interface KycRepository {
     rejectDocument(documentId: string, reason: string): Promise<ApiDocument>;
     approve(userId: string): Promise<ApiKycSummary>;
     reject(userId: string, reason: string): Promise<ApiKycSummary>;
+}
+
+export interface VehicleCatalogRepository {
+    list(params: ListVehicleModelsParams): Promise<Paginated<ApiVehicleModel>>;
+    featured(): Promise<ApiVehicleModel | null>;
+    get(id: string): Promise<ApiVehicleModelDetail>;
+}
+
+export interface BookingRepository {
+    create(payload: CreateBookingPayload): Promise<ApiBooking>;
+    /** The rider's current in-progress booking, or null if none exists. */
+    mine(): Promise<ApiBooking | null>;
+    nearestStation(lat: number, lng: number): Promise<ApiStation>;
 }
 
 /** Identity of the signed-in account, before roles are resolved. */

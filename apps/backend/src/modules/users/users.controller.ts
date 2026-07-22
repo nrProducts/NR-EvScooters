@@ -6,6 +6,7 @@ import { badRequest, forbidden } from "../../common/AppError";
 import { AccountStatus, RoleName } from "../../types";
 import { ListUsersFilters } from "./users.types";
 import * as service from "./users.service";
+import { hasActiveBookingForUser } from "../bookings/bookings.service";
 
 export async function listUsersHandler(req: AuthedRequest, res: Response) {
     const filters = validatedQuery<ListUsersFilters>(req);
@@ -71,10 +72,16 @@ export async function updateRolesHandler(req: AuthedRequest, res: Response) {
 /** Exposed for the mobile "am I allowed to unlock?" check. */
 export async function meHandler(req: AuthedRequest, res: Response) {
     const detail = await service.getUserById(req.user!.id, req.user!);
+    const [hasActiveRental, hasActiveBooking] = await Promise.all([
+        service.hasActiveRentalForUser(req.user!.id),
+        hasActiveBookingForUser(req.user!.id),
+    ]);
     res.json({
         ...detail,
         can_rent: detail.kyc_status === "verified" && (detail.account_status as AccountStatus) === "active",
         is_admin: isAdmin(req),
+        has_active_rental: hasActiveRental,
+        has_active_booking: hasActiveBooking,
     });
 }
 

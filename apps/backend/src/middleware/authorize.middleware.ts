@@ -34,6 +34,19 @@ export const requireAdmin = requireRole("admin");
 export const requireStaff = requireAnyRole(...STAFF_ROLES);
 
 /**
+ * Not attached to any route yet — scaffolded now so the future booking
+ * endpoint (POST /vehicle-models/:id/bookings) is a one-line addition:
+ * requireAuth, requireKycVerified, then the handler.
+ */
+export const requireKycVerified = (req: AuthedRequest, _res: Response, next: NextFunction) => {
+    if (!req.user) return next(unauthenticated());
+    if (req.user.kycStatus !== "verified") {
+        return next(forbidden("Complete KYC verification before booking a scooter."));
+    }
+    next();
+};
+
+/**
  * Allows the resource owner through, or any staff member. `paramName` is the
  * route param holding the target user id; the literal "me" resolves to self.
  */
