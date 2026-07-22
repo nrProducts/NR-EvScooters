@@ -770,6 +770,22 @@ async function activePlanByUser(
     return map;
 }
 
+/**
+ * Whether this rider currently has a live rental. Always false today since
+ * no booking/rental-creation flow exists yet — computed server-side (never
+ * trust a client-supplied flag) so the mobile post-booking dashboard gate
+ * needs no rework once bookings ship.
+ */
+export async function hasActiveRentalForUser(userId: string): Promise<boolean> {
+    const { count, error } = await supabaseAdmin
+        .from("rentals")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("status", "active");
+    if (error) throw error;
+    return (count ?? 0) > 0;
+}
+
 async function documentsForUser(userId: string) {
     const { data, error } = await supabaseAdmin
         .from("user_documents")

@@ -1,17 +1,21 @@
 import { ApiError } from '../../lib/ApiError';
+import { isValidStartDay } from '../../lib/bookingDays';
 import { MANDATORY_KYC_DOC_TYPES } from '../../types/api';
 import type {
-    ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe, ApiSignedUrl,
-    ApiUser, ApiUserDetail, CreateUserPayload, KycStatus, ListUsersParams, LocalFile,
-    Paginated, RoleName, StatusAction, UpdateUserPayload, VerificationStatus,
+    ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe, ApiSignedUrl,
+    ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, BookingStatus,
+    CreateBookingPayload, CreateUserPayload, KycStatus, ListUsersParams, ListVehicleModelsParams,
+    LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload, VerificationStatus,
 } from '../../types/api';
 import type {
-    AuthRepository, KycQueueParams, KycRepository, SessionRef, UpdateDocumentInput,
-    UploadDocumentInput, UploadPhotoResult, UserRepository,
+    AuthRepository, BookingRepository, KycQueueParams, KycRepository, SessionRef,
+    UpdateDocumentInput, UploadDocumentInput, UploadPhotoResult, UserRepository,
+    VehicleCatalogRepository,
 } from '../types';
 import {
     DEMO_ACCOUNTS, MockAuditRow, MockDocumentRow, MockUserRow, PLACEHOLDER_IMAGE,
-    SEED_AUDIT, SEED_DOCUMENTS, SEED_USERS,
+    SEED_AUDIT, SEED_DOCUMENTS, SEED_STATIONS, SEED_USERS, SEED_VEHICLE_MODELS,
+    SEED_VEHICLE_MODELS_DETAIL,
 } from './seed';
 
 // ---------------------------------------------------------------------------
@@ -23,10 +27,24 @@ import {
  * on reload. That is deliberate — a mock that persists is a mock you start
  * debugging instead of the app.
  */
+interface MockBookingRow {
+    id: string;
+    user_id: string;
+    vehicle_model_id: string;
+    station_id: string;
+    plan_id: string;
+    start_day: string;
+    status: BookingStatus;
+    created_at: string;
+}
+
+const ACTIVE_BOOKING_STATUSES: BookingStatus[] = ['pending_payment', 'confirmed'];
+
 const db = {
     users: SEED_USERS.map((u) => ({ ...u })),
     documents: SEED_DOCUMENTS.map((d) => ({ ...d })),
     audit: SEED_AUDIT.map((a) => ({ ...a })),
+    bookings: [] as MockBookingRow[],
     currentUserId: null as string | null,
 };
 
@@ -333,6 +351,13 @@ export class MockUserRepository implements UserRepository {
             ...detail,
             can_rent: detail.kyc_status === 'verified' && row.account_status === 'active',
             is_admin: isAdminRow(row),
+            // No rental system in the mock db yet (booking flow is a later
+            // phase) — an assigned scooter is the closest existing stand-in
+            // for "has a live rental" so the post-booking dashboard demoes.
+            has_active_rental: !!row.assigned_vehicle,
+            has_active_booking: db.bookings.some(
+                (b) => b.user_id === row.id && ACTIVE_BOOKING_STATUSES.includes(b.status),
+            ),
         };
     }
 
@@ -946,11 +971,125 @@ export class MockKycRepository implements KycRepository {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Vehicle catalog
+// ---------------------------------------------------------------------------
+
+export class MockVehicleCatalogRepository implements VehicleCatalogRepository {
+    async list(params: ListVehicleModelsParams): Promise<Paginated<ApiVehicleModel>> {
+        await delay(250);
+
+        let rows = SEED_VEHICLE_MODELS.slice();
+        if (params.category) rows = rows.filter((m) => m.category === params.category);
+        if (params.vendorId) rows = rows.filter((m) => m.vendor?.id === params.vendorId);
+        if (params.search) {
+            const q = params.search.trim().toLowerCase();
+            rows = rows.filter((m) => m.name.toLowerCase().includes(q));
+        }
+
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 20;
+        const total = rows.length;
+        const start = (page - 1) * pageSize;
+
+        return {
+            data: rows.slice(start, start + pageSize),
+            pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
+        };
+    }
+
+    async featured(): Promise<ApiVehicleModel | null> {
+        await delay(200);
+        return SEED_VEHICLE_MODELS.find((m) => m.is_featured) ?? null;
+    }
+
+    async get(id: string): Promise<ApiVehicleModelDetail> {
+        await delay(250);
+        const model = SEED_VEHICLE_MODELS_DETAIL.find((m) => m.id === id);
+        if (!model) throw new ApiError(404, 'NOT_FOUND', 'This scooter model could not be found.');
+        return model;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bookings (Phase 1 — no live payment)
+// ---------------------------------------------------------------------------
+
+function toApiBooking(row: MockBookingRow): ApiBooking {
+    const model = SEED_VEHICLE_MODELS_DETAIL.find((m) => m.id === row.vehicle_model_id);
+    const station = SEED_STATIONS.find((s) => s.id === row.station_id);
+    const plan = model?.plans.find((p) => p.id === row.plan_id);
+
+    return {
+        id: row.id,
+        status: row.status,
+        start_day: row.start_day,
+        created_at: row.created_at,
+        vehicle_model: model ? { id: model.id, name: model.name } : null,
+        station: station ? { id: station.id, name: station.name, code: station.code } : null,
+        plan: plan ? { id: plan.id, name: plan.name, billing_cycle: plan.billing_cycle, price: plan.price } : null,
+    };
+}
+
+export class MockBookingRepository implements BookingRepository {
+    async create(payload: CreateBookingPayload): Promise<ApiBooking> {
+        await delay(500);
+        const actor = requireSession();
+
+        if (computeKycStatus(actor.id) !== 'verified') {
+            throw new ApiError(403, 'FORBIDDEN', 'Complete KYC verification before booking a scooter.');
+        }
+        if (!isValidStartDay(payload.start_day)) {
+            throw new ApiError(
+                422,
+                'BUSINESS_RULE_VIOLATION',
+                'Pick a day between Monday and Saturday, today or later.',
+                { start_day: 'Pick a day between Monday and Saturday, today or later.' },
+            );
+        }
+
+        const row: MockBookingRow = {
+            id: uid('bk'),
+            user_id: actor.id,
+            vehicle_model_id: payload.vehicle_model_id,
+            station_id: payload.station_id,
+            plan_id: payload.plan_id,
+            start_day: payload.start_day,
+            status: 'pending_payment',
+            created_at: nowIso(),
+        };
+
+        db.bookings.push(row);
+        audit('booking.created', actor.id, { vehicle_model_id: row.vehicle_model_id, start_day: row.start_day });
+        return toApiBooking(row);
+    }
+
+    async mine(): Promise<ApiBooking | null> {
+        await delay(200);
+        const actor = requireSession();
+        const rows = db.bookings
+            .filter((b) => b.user_id === actor.id && ACTIVE_BOOKING_STATUSES.includes(b.status))
+            .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+        return rows.length > 0 ? toApiBooking(rows[0]) : null;
+    }
+
+    async nearestStation(_lat: number, _lng: number): Promise<ApiStation> {
+        await delay(150);
+        const station = SEED_STATIONS[0];
+        if (!station) throw new ApiError(404, 'NOT_FOUND', 'No pickup station is available yet.');
+        // Mock mode has a single seeded station — distance is a stand-in,
+        // not a real haversine calculation (the real API computes this via
+        // PostGIS; see stations.service.ts's nearest_station RPC).
+        return { ...station, distance_km: 2.4 };
+    }
+}
+
 /** Test hook: restores the seed so a demo can be re-run from a clean slate. */
 export function resetMockDb(): void {
     db.users = SEED_USERS.map((u) => ({ ...u }));
     db.documents = SEED_DOCUMENTS.map((d) => ({ ...d }));
     db.audit = SEED_AUDIT.map((a) => ({ ...a }));
+    db.bookings = [];
     db.currentUserId = null;
 }
 

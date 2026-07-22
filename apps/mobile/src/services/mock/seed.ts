@@ -1,5 +1,6 @@
 import type {
-    AccountStatus, ApiDocument, ApiUser, KycDocType, KycStatus, RoleName, VerificationStatus,
+    AccountStatus, ApiDocument, ApiStation, ApiUser, ApiVehicleModel, ApiVehicleModelDetail,
+    KycDocType, KycStatus, RoleName, VerificationStatus,
 } from '../../types/api';
 
 /**
@@ -407,3 +408,83 @@ export const KYC_STATUS_ORDER: KycStatus[] = [
 ];
 
 export type { ApiDocument };
+
+// ---------------------------------------------------------------------------
+// Vehicle catalog — kept in sync conceptually with
+// supabase/migrations/20260721090200_vehicle_catalog_seed.sql. Original copy,
+// no third-party branding.
+// ---------------------------------------------------------------------------
+
+const NR_VOLT_VENDOR = {
+    id: 'vendor-nr-mobility',
+    name: 'NR Mobility Partners',
+    description: 'Our exclusive EV scooter fleet partner, supplying vehicles for the NR rider network.',
+    logo_url: null,
+};
+
+const NR_VOLT_X1_DETAIL: ApiVehicleModelDetail = {
+    id: 'model-nr-volt-x1',
+    name: 'NR Volt X1',
+    category: 'scooter',
+    tagline: 'Ride further, charge faster',
+    description:
+        'The NR Volt X1 is our flagship electric scooter, built for daily commuting and weekend rides ' +
+        'alike. A removable battery pack means you can charge indoors, swap at a station, or top up at ' +
+        'home — whatever fits your day.',
+    battery_range_km: 151,
+    top_speed_kmph: 90,
+    charging_time_hours: 3.5,
+    motor_power_watts: 3900,
+    battery_capacity: '3.24 kWh removable battery',
+    features: [
+        'Removable battery pack', 'Reverse assist mode', 'Anti-theft alarm',
+        'Companion mobile app', 'Keyless ignition',
+    ],
+    safety_features: [
+        'Regenerative braking', 'Combi braking system (CBS)', 'IP67 water resistance',
+        'LED daytime running lights',
+    ],
+    is_featured: true,
+    vendor: NR_VOLT_VENDOR,
+    hero_image_url: 'https://placehold.co/1200x800/0f172a/ffffff?text=NR+Volt+X1',
+    starting_price: 149,
+    images: [
+        { id: 'img-1', url: 'https://placehold.co/1200x800/0f172a/ffffff?text=NR+Volt+X1+Hero', alt_text: 'NR Volt X1 hero shot, three-quarter front view', is_hero: true, sort_order: 0 },
+        { id: 'img-2', url: 'https://placehold.co/1200x800/1e293b/ffffff?text=NR+Volt+X1+Side', alt_text: 'NR Volt X1 side profile', is_hero: false, sort_order: 1 },
+        { id: 'img-3', url: 'https://placehold.co/1200x800/1e293b/ffffff?text=NR+Volt+X1+Console', alt_text: 'NR Volt X1 handlebar console close-up', is_hero: false, sort_order: 2 },
+        { id: 'img-4', url: 'https://placehold.co/1200x800/1e293b/ffffff?text=NR+Volt+X1+Battery', alt_text: 'NR Volt X1 removable battery pack', is_hero: false, sort_order: 3 },
+    ],
+    plans: [
+        { id: 'plan-daily', name: 'NR Volt X1 — Daily', billing_cycle: 'daily', price: 149, included_minutes: 120 },
+        { id: 'plan-weekly', name: 'NR Volt X1 — Weekly', billing_cycle: 'weekly', price: 799, included_minutes: 900 },
+        { id: 'plan-monthly', name: 'NR Volt X1 — Monthly', billing_cycle: 'monthly', price: 2499, included_minutes: 4000 },
+        { id: 'plan-yearly', name: 'NR Volt X1 — Yearly', billing_cycle: 'yearly', price: 24999, included_minutes: null },
+    ],
+    availability: { available_count: 4, status: 'available' },
+};
+
+export const SEED_VEHICLE_MODELS_DETAIL: ApiVehicleModelDetail[] = [NR_VOLT_X1_DETAIL];
+
+export const SEED_VEHICLE_MODELS: ApiVehicleModel[] = SEED_VEHICLE_MODELS_DETAIL.map((m) => ({
+    id: m.id,
+    name: m.name,
+    category: m.category,
+    tagline: m.tagline,
+    battery_range_km: m.battery_range_km,
+    top_speed_kmph: m.top_speed_kmph,
+    charging_time_hours: m.charging_time_hours,
+    is_featured: m.is_featured,
+    vendor: m.vendor,
+    hero_image_url: m.hero_image_url,
+    starting_price: m.starting_price,
+}));
+
+// ---------------------------------------------------------------------------
+// Bookings — pickup station, kept in sync conceptually with
+// supabase/migrations/20260721100200_bookings_seed.sql (same "MG Road Hub"
+// station in Kochi). Mock mode has no PostGIS, so lat/lng are plain numbers.
+// ---------------------------------------------------------------------------
+
+export const SEED_STATIONS: ApiStation[] = [
+    { id: 'station-mg-road-hub', name: 'MG Road Hub', code: 'STN-MGR', lat: 9.9312, lng: 76.2673 },
+];

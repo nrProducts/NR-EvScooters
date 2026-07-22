@@ -6,9 +6,10 @@ import { signInWithGoogleBrowser } from './googleAuth';
 // Re-exported so existing `import { ApiError } from '../lib/api'` keeps working.
 export { ApiError };
 import type {
-    ApiDocument, ApiErrorBody, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe,
-    ApiSignedUrl, ApiUser, ApiUserDetail, CreateUserPayload, KycDocType, KycStatus,
-    ListUsersParams, LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload,
+    ApiBooking, ApiDocument, ApiErrorBody, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe,
+    ApiSignedUrl, ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail,
+    CreateBookingPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
+    ListVehicleModelsParams, LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload,
 } from '../types/api';
 
 type OnUnauthorized = () => void;
@@ -275,4 +276,23 @@ export const api = {
 
     rejectKyc: (userId: string, reason: string) =>
         request<ApiKycSummary>(`/kyc/${userId}/reject`, { method: 'POST', body: { reason } }),
+
+    // --- vehicle catalog (rider browse/detail) ----------------------------
+    listVehicleModels: (params: ListVehicleModelsParams = {}) =>
+        request<Paginated<ApiVehicleModel>>('/vehicle-models', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
+
+    featuredVehicleModel: () => request<ApiVehicleModel>('/vehicle-models/featured'),
+
+    getVehicleModel: (id: string) => request<ApiVehicleModelDetail>(`/vehicle-models/${id}`),
+
+    // --- bookings (Phase 1 — no live payment) -----------------------------
+    createBooking: (payload: CreateBookingPayload) =>
+        request<ApiBooking>('/bookings', { method: 'POST', body: payload }),
+
+    myCurrentBooking: () => request<ApiBooking>('/bookings/me/current'),
+
+    nearestStation: (lat: number, lng: number) =>
+        request<ApiStation>('/stations/nearest', { query: { lat, lng } }),
 };

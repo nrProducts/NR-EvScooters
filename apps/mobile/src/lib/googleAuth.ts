@@ -17,6 +17,7 @@ export async function signInWithGoogleBrowser(): Promise<void> {
     const supabase = getSupabase();
     // Deep link back into the app; must be registered in Supabase redirect URLs.
     const redirectTo = Linking.createURL('auth-callback');
+    console.log('[googleAuth] redirectTo =', redirectTo);
 
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -25,6 +26,7 @@ export async function signInWithGoogleBrowser(): Promise<void> {
     if (error || !data?.url) {
         throw new ApiError(401, 'UNAUTHENTICATED', error?.message ?? 'Could not start Google sign-in.');
     }
+    console.log('[googleAuth] authorize url =', data.url);
 
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
     if (result.type === 'cancel' || result.type === 'dismiss') {

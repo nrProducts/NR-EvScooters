@@ -1,8 +1,11 @@
 import { Router } from "express";
 import vehiclesRoutes from "../modules/vehicles/vehicles.routes";
+import vehicleCatalogRoutes from "../modules/vehicle-catalog/vehicle-catalog.routes";
 import usersRoutes from "../modules/users/users.routes";
 import authRoutes from "../modules/auth/auth.routes";
 import { riderKycRouter, adminKycRouter } from "../modules/kyc/kyc.routes";
+import bookingsRoutes from "../modules/bookings/bookings.routes";
+import stationsRoutes from "../modules/stations/stations.routes";
 
 const router = Router();
 
@@ -16,5 +19,10 @@ router.use("/users/me/kyc", riderKycRouter);
 router.use("/users", usersRoutes);
 router.use("/kyc", adminKycRouter);
 router.use("/vehicles", vehiclesRoutes);
+// Rider-facing browse/detail catalog — distinct from /vehicles (fleet
+// inventory). See vehicle-catalog.service.ts for the rationale.
+router.use("/vehicle-models", vehicleCatalogRoutes);
+router.use("/bookings", bookingsRoutes);
+router.use("/stations", stationsRoutes);
 
 export default router;

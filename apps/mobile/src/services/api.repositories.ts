@@ -2,13 +2,15 @@ import { api } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
 import { getSupabase } from '../lib/supabase';
 import type {
-    ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe, ApiSignedUrl,
-    ApiUser, ApiUserDetail, CreateUserPayload, ListUsersParams, Paginated, RoleName,
-    StatusAction, UpdateUserPayload,
+    ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe, ApiSignedUrl,
+    ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail,
+    CreateBookingPayload, CreateUserPayload, ListUsersParams, ListVehicleModelsParams,
+    Paginated, RoleName, StatusAction, UpdateUserPayload,
 } from '../types/api';
 import type {
-    AuthRepository, KycQueueParams, KycRepository, SessionRef, UpdateDocumentInput,
-    UploadDocumentInput, UploadPhotoResult, UserRepository,
+    AuthRepository, BookingRepository, KycQueueParams, KycRepository, SessionRef,
+    UpdateDocumentInput, UploadDocumentInput, UploadPhotoResult, UserRepository,
+    VehicleCatalogRepository,
 } from './types';
 import type { LocalFile } from '../types/api';
 
@@ -150,5 +152,39 @@ export class ApiKycRepository implements KycRepository {
     }
     reject(userId: string, reason: string): Promise<ApiKycSummary> {
         return api.rejectKyc(userId, reason);
+    }
+}
+
+export class ApiVehicleCatalogRepository implements VehicleCatalogRepository {
+    list(params: ListVehicleModelsParams): Promise<Paginated<ApiVehicleModel>> {
+        return api.listVehicleModels(params);
+    }
+    async featured(): Promise<ApiVehicleModel | null> {
+        try {
+            return await api.featuredVehicleModel();
+        } catch (err) {
+            if (err instanceof ApiError && err.status === 404) return null;
+            throw err;
+        }
+    }
+    get(id: string): Promise<ApiVehicleModelDetail> {
+        return api.getVehicleModel(id);
+    }
+}
+
+export class ApiBookingRepository implements BookingRepository {
+    create(payload: CreateBookingPayload): Promise<ApiBooking> {
+        return api.createBooking(payload);
+    }
+    async mine(): Promise<ApiBooking | null> {
+        try {
+            return await api.myCurrentBooking();
+        } catch (err) {
+            if (err instanceof ApiError && err.status === 404) return null;
+            throw err;
+        }
+    }
+    nearestStation(lat: number, lng: number): Promise<ApiStation> {
+        return api.nearestStation(lat, lng);
     }
 }
