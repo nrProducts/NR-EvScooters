@@ -91,10 +91,12 @@ beforeEach(async () => {
 });
 
 describe('MockBookingRepository.create', () => {
-  it('creates a pending_payment booking for a KYC-verified rider', async () => {
+  it('creates a confirmed booking for a KYC-verified rider', async () => {
+    // No payment step exists yet, so a booking is immediately ready for
+    // pickup rather than sitting at pending_payment.
     await asVerifiedRider();
     const booking = await bookings.create(VALID_PAYLOAD());
-    expect(booking.status).toBe('pending_payment');
+    expect(booking.status).toBe('confirmed');
     expect(booking.vehicle_model?.id).toBe('model-nr-volt-x1');
     expect(booking.station?.id).toBe('station-mg-road-hub');
     expect(booking.plan?.id).toBe('plan-daily');
@@ -143,7 +145,7 @@ describe('has_active_booking (feeds useHasActiveBooking)', () => {
     expect(me.has_active_booking).toBe(false);
   });
 
-  it('is true once a pending_payment booking exists', async () => {
+  it('is true once a confirmed booking exists', async () => {
     await asVerifiedRider();
     await bookings.create(VALID_PAYLOAD());
     const me = await users.me();

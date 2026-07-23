@@ -1,8 +1,9 @@
 import type {
-    ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe, ApiSignedUrl,
-    ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail,
-    CreateBookingPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
-    ListVehicleModelsParams, LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload,
+    ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
+    ApiMe, ApiNotification, ApiPickupBooking, ApiRental, ApiSignedUrl, ApiStation, ApiUser,
+    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateUserPayload,
+    KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
+    RoleName, StatusAction, UpdateUserPayload,
 } from '../types/api';
 
 export interface UploadPhotoResult {
@@ -30,6 +31,14 @@ export interface UserRepository {
     changeStatus(id: string, action: StatusAction, reason?: string): Promise<ApiUserDetail>;
     getRoles(id: string): Promise<RoleName[]>;
     setRoles(id: string, roles: RoleName[]): Promise<RoleName[]>;
+    registerPushToken(token: string): Promise<void>;
+}
+
+export interface NotificationRepository {
+    list(params: { page?: number; pageSize?: number }): Promise<Paginated<ApiNotification>>;
+    unreadCount(): Promise<number>;
+    markRead(id: string): Promise<ApiNotification>;
+    markAllRead(): Promise<void>;
 }
 
 export interface KycQueueParams {
@@ -80,11 +89,27 @@ export interface VehicleCatalogRepository {
     get(id: string): Promise<ApiVehicleModelDetail>;
 }
 
+export interface PickupQueueParams {
+    page?: number;
+    pageSize?: number;
+    stationId?: string;
+}
+
 export interface BookingRepository {
     create(payload: CreateBookingPayload): Promise<ApiBooking>;
     /** The rider's current in-progress booking, or null if none exists. */
     mine(): Promise<ApiBooking | null>;
     nearestStation(lat: number, lng: number): Promise<ApiStation>;
+
+    // staff pickup/check-in
+    pickupQueue(params: PickupQueueParams): Promise<Paginated<ApiPickupBooking>>;
+    availableVehicles(bookingId: string): Promise<ApiAvailableVehicle[]>;
+    confirmPickup(bookingId: string, vehicleId: string): Promise<ApiPickupBooking>;
+}
+
+export interface RentalRepository {
+    /** The rider's current active rental, or null if none exists. */
+    mine(): Promise<ApiRental | null>;
 }
 
 /** Identity of the signed-in account, before roles are resolved. */

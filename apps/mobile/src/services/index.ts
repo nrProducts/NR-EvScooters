@@ -1,14 +1,15 @@
 import { ENV } from '../constants/env';
 import {
-    ApiBookingRepository, ApiKycRepository, ApiUserRepository, ApiVehicleCatalogRepository,
-    SupabaseAuthRepository,
+    ApiBookingRepository, ApiKycRepository, ApiNotificationRepository, ApiRentalRepository,
+    ApiUserRepository, ApiVehicleCatalogRepository, SupabaseAuthRepository,
 } from './api.repositories';
 import {
-    MockAuthRepository, MockBookingRepository, MockKycRepository, MockUserRepository,
-    MockVehicleCatalogRepository,
+    MockAuthRepository, MockBookingRepository, MockKycRepository, MockNotificationRepository,
+    MockRentalRepository, MockUserRepository, MockVehicleCatalogRepository,
 } from './mock/mock.repositories';
 import type {
-    AuthRepository, BookingRepository, KycRepository, UserRepository, VehicleCatalogRepository,
+    AuthRepository, BookingRepository, KycRepository, NotificationRepository, RentalRepository,
+    UserRepository, VehicleCatalogRepository,
 } from './types';
 
 /**
@@ -38,6 +39,14 @@ export const bookingRepository: BookingRepository = ENV.useMock
     ? new MockBookingRepository()
     : new ApiBookingRepository();
 
+export const notificationRepository: NotificationRepository = ENV.useMock
+    ? new MockNotificationRepository()
+    : new ApiNotificationRepository();
+
+export const rentalRepository: RentalRepository = ENV.useMock
+    ? new MockRentalRepository()
+    : new ApiRentalRepository();
+
 if (ENV.useMock && __DEV__) {
     console.info(
         '[services] MOCK MODE — in-memory data, no backend. ' +
@@ -48,6 +57,6 @@ if (ENV.useMock && __DEV__) {
 export { DEMO_ACCOUNTS } from './mock/seed';
 export { resetMockDb } from './mock/mock.repositories';
 export type {
-    AuthRepository, BookingRepository, KycRepository, UserRepository, VehicleCatalogRepository,
-    SessionRef,
+    AuthRepository, BookingRepository, KycRepository, NotificationRepository, RentalRepository,
+    UserRepository, VehicleCatalogRepository, SessionRef,
 } from './types';

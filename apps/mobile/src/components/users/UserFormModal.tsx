@@ -3,8 +3,10 @@ import {
   View, Text, ScrollView, TouchableOpacity, Modal, KeyboardAvoidingView,
   Platform, ActivityIndicator, Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X, Check } from 'lucide-react-native';
 import { FormField } from '../ui/FormField';
+import { DatePickerField } from '../ui/DatePickerField';
 import { ChipSelect } from '../ui/ChipSelect';
 import { COLORS } from '../../constants/theme';
 import { ApiError } from '../../lib/ApiError';
@@ -85,6 +87,7 @@ interface Props {
 export const UserFormModal: React.FC<Props> = ({
   visible, editing, selfService, isAdmin, onClose, onSaved, onCreate, onUpdate,
 }) => {
+  const insets = useSafeAreaInsets();
   const [form, setForm] = useState<FormState>(EMPTY);
   const [initial, setInitial] = useState<FormState>(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -284,10 +287,10 @@ export const UserFormModal: React.FC<Props> = ({
               onChangeText={(t) => set('phone', t)}
               placeholder="+919876543210" keyboardType="phone-pad" error={errors.phone}
             />
-            <FormField
+            <DatePickerField
               label="Date of Birth" value={form.date_of_birth}
               onChangeText={(t) => set('date_of_birth', t)}
-              placeholder="YYYY-MM-DD" error={errors.date_of_birth}
+              error={errors.date_of_birth}
               hint="Riders must be 18 or older."
             />
             <ChipSelect
@@ -391,7 +394,7 @@ export const UserFormModal: React.FC<Props> = ({
             ) : null}
           </ScrollView>
 
-          <View className="px-6 pt-2" style={{ paddingBottom: Platform.OS === 'ios' ? 34 : 20 }}>
+          <View className="px-6 pt-2" style={{ paddingBottom: 16 + insets.bottom }}>
             <TouchableOpacity
               onPress={handleSubmit}
               disabled={submitting}

@@ -1,9 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { View, ActivityIndicator } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import * as Notifications from "expo-notifications";
 import { useAuthStore } from "../store/useAuthStore";
+import { userRepository } from "../services";
+import { registerForPushNotificationsAsync } from "../lib/pushNotifications";
 import { COLORS } from "../constants/theme";
 import "../../global.css";
 
@@ -12,13 +15,16 @@ import "../../global.css";
  * screens is also enforced server-side by requireRole/requireAdmin. A rider
  * who forced their way to /users would see an empty list and 403s.
  */
-const STAFF_ROUTES = ["dashboard", "users", "vehicles", "plans", "assign", "reports", "settings", "kyc-review"];
+const STAFF_ROUTES = [
+  "dashboard", "users", "vehicles", "plans", "assign", "reports", "settings", "kyc-review",
+  "notifications", "bookings-pickup",
+];
 // "vehicle" covers vehicle/[id]; "booking" covers booking/[modelId],
 // booking/plan, booking/billing — Expo Router reports a dynamic route's
 // top-level segment name, not the file's bracketed param.
 const RIDER_ROUTES = [
   "home", "my-scooter", "my-plan", "support", "kyc", "kyc-intro",
-  "browse-vehicles", "vehicle", "post-booking-dashboard", "booking",
+  "browse-vehicles", "vehicle", "post-booking-dashboard", "booking", "notifications",
 ];
 // Screens reachable while signed OUT (the login surface).
 const AUTH_ROUTES = ["index", "otp-verify", "admin-login", "auth-callback"];
@@ -39,6 +45,35 @@ export default function RootLayout() {
     const unsubscribe = bootstrap();
     return unsubscribe;
   }, [bootstrap]);
+
+  // Registers a push token once per signed-in account, not on every profile
+  // refetch — keyed on the id (not a plain boolean) so switching accounts
+  // within one app session re-registers for the new account instead of
+  // silently leaving the device's token on the previous one. Best-effort: a
+  // permission denial or network hiccup must never block sign-in/routing.
+  const pushTokenRegisteredFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!profile || pushTokenRegisteredFor.current === profile.id) return;
+    pushTokenRegisteredFor.current = profile.id;
+    void (async () => {
+      try {
+        const token = await registerForPushNotificationsAsync();
+        if (token) await userRepository.registerPushToken(token);
+      } catch {
+        // Notifications are a nice-to-have, not a sign-in requirement.
+      }
+    })();
+  }, [profile]);
+
+  // Tapping a push notification navigates straight to the screen named in
+  // its payload (falls back to the notification history screen).
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const screen = response.notification.request.content.data?.screen;
+      router.push(`/${typeof screen === "string" ? screen : "notifications"}` as never);
+    });
+    return () => sub.remove();
+  }, [router]);
 
   useEffect(() => {
     if (initialising) return;

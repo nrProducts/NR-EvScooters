@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator,
   Modal, Image, RefreshControl, FlatList, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Search, ShieldCheck, FileText, X, Check, Ban, Eye, AlertTriangle,
@@ -253,6 +254,7 @@ const KycQueueView: React.FC<{ onOpen: (userId: string) => void }> = ({ onOpen }
 // ---------------------------------------------------------------------------
 
 const KycDetailView: React.FC<{ userId: string; onBack: () => void }> = ({ userId, onBack }) => {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { detail, loading, error, busyDocId, approving, rejecting, retry, actions } =
     useKycDetail(userId);
@@ -677,7 +679,7 @@ const KycDetailView: React.FC<{ userId: string; onBack: () => void }> = ({ userI
               </Text>
             </View>
 
-            <View className="px-6 pt-3" style={{ paddingBottom: Platform.OS === 'ios' ? 34 : 20 }}>
+            <View className="px-6 pt-3" style={{ paddingBottom: 16 + insets.bottom }}>
               <TouchableOpacity
                 onPress={() => void submitRejection()}
                 disabled={rejecting}

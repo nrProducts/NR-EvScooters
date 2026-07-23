@@ -1,14 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, Animated, Dimensions, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
+import { useUnreadNotificationCount } from '../hooks/useNotifications';
 import { Badge } from './ui/Badge';
 import { COLORS } from '../constants/theme';
 import { KYC_STATUS_LABEL, KYC_STATUS_TONE } from '../constants/status';
 import {
   Menu, X, User, LogOut, LayoutDashboard, Users, Bike, CreditCard,
   ArrowLeftRight, BarChart3, Settings, Home, LifeBuoy, Mail, Phone,
-  ShieldCheck, ChevronRight, FileCheck
+  ShieldCheck, ChevronRight, FileCheck, Bell, PackageCheck
 } from 'lucide-react-native';
 
 const DRAWER_WIDTH = Math.min(300, Dimensions.get('window').width * 0.8);
@@ -24,6 +26,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: 'Manage Users', icon: Users, route: '/users' },
   { label: 'KYC Review', icon: FileCheck, route: '/kyc-review' },
   { label: 'Manage Vehicles', icon: Bike, route: '/vehicles' },
+  { label: 'Pickup Queue', icon: PackageCheck, route: '/bookings-pickup' },
   { label: 'Plans', icon: CreditCard, route: '/plans' },
   { label: 'Assign Vehicles', icon: ArrowLeftRight, route: '/assign' },
   { label: 'Reports', icon: BarChart3, route: '/reports' },
@@ -55,6 +58,8 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const drawerAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const { count: unreadNotifications } = useUnreadNotificationCount();
+  const insets = useSafeAreaInsets();
 
   // Staff = anything other than a plain rider. The server enforces this too;
   // hiding the link is only so riders aren't shown doors they can't open.
@@ -108,6 +113,26 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
             {title}
           </Text>
         </View>
+
+        <TouchableOpacity
+          onPress={() => router.push('/notifications' as any)}
+          className="w-9 h-9 rounded-full items-center justify-center mr-2"
+          style={{ backgroundColor: COLORS.background }}
+          accessibilityRole="button"
+          accessibilityLabel={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : 'Notifications'}
+        >
+          <Bell size={18} color={COLORS.textPrimary} />
+          {unreadNotifications > 0 ? (
+            <View
+              className="absolute top-1 right-1.5 min-w-[16px] h-4 rounded-full items-center justify-center px-1"
+              style={{ backgroundColor: COLORS.danger }}
+            >
+              <Text className="text-white text-[9px] font-black">
+                {unreadNotifications > 9 ? '9+' : unreadNotifications}
+              </Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => setProfileOpen(true)}
@@ -197,7 +222,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
       {/* PROFILE PANEL */}
       <Modal visible={profileOpen} transparent animationType="slide" onRequestClose={() => setProfileOpen(false)}>
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' }}>
-          <View style={{ backgroundColor: COLORS.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 36 }}>
+          <View style={{ backgroundColor: COLORS.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 16 + insets.bottom }}>
             <View className="flex-row justify-between items-center mb-5">
               <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">Profile</Text>
               <TouchableOpacity

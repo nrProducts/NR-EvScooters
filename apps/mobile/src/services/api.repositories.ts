@@ -2,15 +2,15 @@ import { api } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
 import { getSupabase } from '../lib/supabase';
 import type {
-    ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe, ApiSignedUrl,
-    ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail,
-    CreateBookingPayload, CreateUserPayload, ListUsersParams, ListVehicleModelsParams,
-    Paginated, RoleName, StatusAction, UpdateUserPayload,
+    ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
+    ApiMe, ApiNotification, ApiPickupBooking, ApiRental, ApiSignedUrl, ApiStation, ApiUser,
+    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateUserPayload,
+    ListUsersParams, ListVehicleModelsParams, Paginated, RoleName, StatusAction, UpdateUserPayload,
 } from '../types/api';
 import type {
-    AuthRepository, BookingRepository, KycQueueParams, KycRepository, SessionRef,
-    UpdateDocumentInput, UploadDocumentInput, UploadPhotoResult, UserRepository,
-    VehicleCatalogRepository,
+    AuthRepository, BookingRepository, KycQueueParams, KycRepository, NotificationRepository,
+    PickupQueueParams, RentalRepository, SessionRef, UpdateDocumentInput, UploadDocumentInput,
+    UploadPhotoResult, UserRepository, VehicleCatalogRepository,
 } from './types';
 import type { LocalFile } from '../types/api';
 
@@ -111,6 +111,24 @@ export class ApiUserRepository implements UserRepository {
     async setRoles(id: string, roles: RoleName[]): Promise<RoleName[]> {
         return (await api.setRoles(id, roles)).roles;
     }
+    registerPushToken(token: string): Promise<void> {
+        return api.registerPushToken(token);
+    }
+}
+
+export class ApiNotificationRepository implements NotificationRepository {
+    list(params: { page?: number; pageSize?: number }): Promise<Paginated<ApiNotification>> {
+        return api.myNotifications(params);
+    }
+    async unreadCount(): Promise<number> {
+        return (await api.unreadNotificationCount()).count;
+    }
+    markRead(id: string): Promise<ApiNotification> {
+        return api.markNotificationRead(id);
+    }
+    markAllRead(): Promise<void> {
+        return api.markAllNotificationsRead();
+    }
 }
 
 export class ApiKycRepository implements KycRepository {
@@ -186,5 +204,25 @@ export class ApiBookingRepository implements BookingRepository {
     }
     nearestStation(lat: number, lng: number): Promise<ApiStation> {
         return api.nearestStation(lat, lng);
+    }
+    pickupQueue(params: PickupQueueParams): Promise<Paginated<ApiPickupBooking>> {
+        return api.pickupQueue(params);
+    }
+    availableVehicles(bookingId: string): Promise<ApiAvailableVehicle[]> {
+        return api.availableVehiclesForBooking(bookingId);
+    }
+    confirmPickup(bookingId: string, vehicleId: string): Promise<ApiPickupBooking> {
+        return api.confirmPickup(bookingId, vehicleId);
+    }
+}
+
+export class ApiRentalRepository implements RentalRepository {
+    async mine(): Promise<ApiRental | null> {
+        try {
+            return await api.myCurrentRental();
+        } catch (err) {
+            if (err instanceof ApiError && err.status === 404) return null;
+            throw err;
+        }
     }
 }

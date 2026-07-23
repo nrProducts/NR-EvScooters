@@ -4,6 +4,10 @@ import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
 
 export const uuidParam = z.object({ id: z.string().uuid("A valid user id is required.") });
 
+export const registerPushTokenBody = z.object({
+    token: z.string().trim().min(10, "A valid push token is required."),
+});
+
 /** Route params that accept the "me" alias alongside a real uuid. */
 export const uuidOrMeParam = z.object({
     id: z.union([z.literal("me"), z.string().uuid("A valid user id is required.")]),

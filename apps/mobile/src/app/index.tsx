@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
@@ -79,6 +80,10 @@ export default function LoginScreen() {
   };
 
   return (
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: COLORS.background }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
     <ScrollView
       contentContainerStyle={{ flexGrow: 1 }}
       style={{ backgroundColor: COLORS.background }}
@@ -254,5 +259,6 @@ export default function LoginScreen() {
         </View>
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

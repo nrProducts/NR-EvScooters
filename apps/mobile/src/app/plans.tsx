@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, Alert, Modal,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -43,6 +44,7 @@ const EMPTY_FORM: PlanForm = {
 };
 
 export default function PlansScreen() {
+  const insets = useSafeAreaInsets();
   const plans = useFleetStore((s) => s.plans);
   const addPlan = useFleetStore((s) => s.addPlan);
   const updatePlan = useFleetStore((s) => s.updatePlan);
@@ -410,7 +412,7 @@ export default function PlansScreen() {
               />
             </ScrollView>
 
-            <View className="px-6 pt-2" style={{ paddingBottom: Platform.OS === 'ios' ? 34 : 20 }}>
+            <View className="px-6 pt-2" style={{ paddingBottom: 16 + insets.bottom }}>
               <TouchableOpacity
                 onPress={handleSubmit}
                 accessibilityRole="button"

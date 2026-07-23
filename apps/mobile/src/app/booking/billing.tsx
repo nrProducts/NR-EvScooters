@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ChevronLeft, CheckCircle2, Bike, MapPin, Calendar, CreditCard } from 'lucide-react-native';
 import { useBookingStore } from '../../store/useBookingStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import { COLORS } from '../../constants/theme';
 
 const CYCLE_LABEL: Record<string, string> = {
@@ -17,6 +18,7 @@ function formatDay(dateStr: string): string {
 export default function BillingScreen() {
   const router = useRouter();
   const { draft, creating, createError, created, createBooking, reset } = useBookingStore();
+  const refreshProfile = useAuthStore((s) => s.refreshProfile);
 
   useEffect(() => {
     if (!created && (!draft.vehicleModel || !draft.station || !draft.startDay || !draft.plan)) {
@@ -35,6 +37,10 @@ export default function BillingScreen() {
 
   const handleDone = () => {
     reset();
+    // has_active_booking only just became true server-side; without this the
+    // store's stale profile would leave Home showing nothing about it until
+    // some unrelated refresh happened to occur.
+    void refreshProfile();
     router.replace('/home');
   };
 
@@ -47,8 +53,9 @@ export default function BillingScreen() {
           </View>
           <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">Booking Confirmed</Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium text-center mt-2 leading-relaxed">
-            Your {created.vehicle_model?.name ?? 'scooter'} is reserved for {formatDay(created.start_day)}. Payment will be
-            collected when it opens up in a later update — for now this booking is held as pending.
+            Your {created.vehicle_model?.name ?? 'scooter'} is reserved for {formatDay(created.start_day)}. Head to your
+            pickup station on that day — staff will assign your scooter there. Payment collection at checkout is coming
+            in a later update.
           </Text>
           <TouchableOpacity
             onPress={handleDone}
@@ -146,7 +153,7 @@ export default function BillingScreen() {
           <Text className="text-white text-sm font-bold ml-2">{creating ? 'Processing…' : 'Continue to Pay'}</Text>
         </TouchableOpacity>
         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-3">
-          Payment isn't collected yet — this reserves the scooter as pending until checkout opens up.
+          Payment isn&apos;t collected yet — this confirms your reservation now; checkout is coming in a later update.
         </Text>
       </ScrollView>
     </View>

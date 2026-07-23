@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isValidStartDay } from "./bookings.service";
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
 
 const startDaySchema = z
     .string()
@@ -15,3 +16,18 @@ export const createBookingBody = z.object({
 });
 
 export type CreateBookingBody = z.infer<typeof createBookingBody>;
+
+export const bookingIdParam = z.object({ id: z.string().uuid("A valid booking id is required.") });
+
+export const pickupQueueQuery = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
+    stationId: z.string().uuid().optional(),
+});
+
+export const confirmPickupBody = z.object({
+    vehicle_id: z.string().uuid("A valid vehicle id is required."),
+});
+
+export type PickupQueueQuery = z.infer<typeof pickupQueueQuery>;
+export type ConfirmPickupBody = z.infer<typeof confirmPickupBody>;

@@ -22,6 +22,11 @@ router.patch(
 );
 router.post("/me/photo", photoUpload, asyncHandler(c.uploadMyPhotoHandler));
 router.get("/me/photo/url", asyncHandler(c.myPhotoUrlHandler));
+router.post(
+    "/me/push-token",
+    validate({ body: v.registerPushTokenBody }),
+    asyncHandler(c.registerPushTokenHandler),
+);
 
 // --- staff/admin --------------------------------------------------------
 router.get(

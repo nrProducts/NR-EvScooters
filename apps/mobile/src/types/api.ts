@@ -137,6 +137,21 @@ export interface ApiDocument {
     created_at: string;
 }
 
+export interface ApiNotificationPayload {
+    title: string;
+    body: string;
+    screen?: string;
+}
+
+export interface ApiNotification {
+    id: string;
+    template: string;
+    payload: ApiNotificationPayload | null;
+    status: 'sent' | 'failed' | 'pending';
+    read_at: string | null;
+    created_at: string;
+}
+
 export interface ApiKycSummary {
     user_id: string;
     kyc_status: KycStatus;
@@ -281,7 +296,7 @@ export interface ListVehicleModelsParams {
 // apps/backend/src/modules/bookings/bookings.types.ts.
 // ---------------------------------------------------------------------------
 
-export type BookingStatus = 'pending_payment' | 'confirmed' | 'cancelled' | 'expired';
+export type BookingStatus = 'pending_payment' | 'confirmed' | 'cancelled' | 'expired' | 'fulfilled';
 export const BOOKING_STATUSES: BookingStatus[] = ['pending_payment', 'confirmed', 'cancelled', 'expired'];
 
 export interface ApiStation {
@@ -306,6 +321,29 @@ export interface ApiBooking {
     start_day: string;
     created_at: string;
     vehicle_model: { id: string; name: string } | null;
+    station: { id: string; name: string; code: string } | null;
+    plan: { id: string; name: string; billing_cycle: BillingCycle; price: number } | null;
+}
+
+export interface ApiPickupBooking extends ApiBooking {
+    rider: { id: string; full_name: string; phone: string | null };
+}
+
+export interface ApiAvailableVehicle {
+    id: string;
+    name: string;
+    registration_number: string;
+    battery_percentage: number;
+}
+
+export type RentalStatus = 'active' | 'completed' | 'force_ended' | 'cancelled';
+
+export interface ApiRental {
+    id: string;
+    status: RentalStatus;
+    started_at: string;
+    ended_at: string | null;
+    vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
     station: { id: string; name: string; code: string } | null;
     plan: { id: string; name: string; billing_cycle: BillingCycle; price: number } | null;
 }

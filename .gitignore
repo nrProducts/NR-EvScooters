@@ -1,5 +1,7 @@
 node_modules
 package-lock.json
+apps/mobile/android
+apps/mobile/ios
 supabase/.temp/
 supabase/.branches/
 .env

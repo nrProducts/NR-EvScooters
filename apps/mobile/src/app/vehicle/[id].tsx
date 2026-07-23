@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Image, Modal } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   BatteryFull, Gauge, Zap, Cpu, ChevronLeft, ShieldCheck, X,
@@ -22,6 +23,7 @@ export default function VehicleDetailsScreen() {
   const { id, action } = useLocalSearchParams<{ id: string; action?: string }>();
   const router = useRouter();
   const canRent = useCanRent();
+  const insets = useSafeAreaInsets();
 
   const [model, setModel] = useState<ApiVehicleModelDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -188,8 +190,8 @@ export default function VehicleDetailsScreen() {
       {/* STICKY BOOK NOW */}
       {!loading && model ? (
         <View
-          className="absolute bottom-0 left-0 right-0 px-5 pt-4 pb-8 border-t"
-          style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
+          className="absolute bottom-0 left-0 right-0 px-5 pt-4 border-t"
+          style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, paddingBottom: 16 + insets.bottom }}
         >
           <TouchableOpacity
             onPress={handleBookNow}
@@ -204,7 +206,7 @@ export default function VehicleDetailsScreen() {
       {/* KYC RESTRICTION MODAL */}
       <Modal visible={showKycModal} transparent animationType="slide" onRequestClose={() => setShowKycModal(false)}>
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' }}>
-          <View style={{ backgroundColor: COLORS.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 36 }}>
+          <View style={{ backgroundColor: COLORS.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 16 + insets.bottom }}>
             <View className="flex-row justify-between items-center mb-4">
               <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">Complete Your KYC First</Text>
               <TouchableOpacity

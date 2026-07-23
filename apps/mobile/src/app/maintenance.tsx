@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, FlatList } from 'react-native';
+import {
+  View, Text, ScrollView, TextInput, TouchableOpacity, Alert, FlatList,
+  KeyboardAvoidingView, Platform,
+} from 'react-native';
 import { useScooterStore } from '../store/useScooterStore';
 import { COLORS } from '../constants/theme';
 import { Wrench, Calendar, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react-native';
@@ -49,10 +52,15 @@ export default function MaintenanceScreen() {
   };
 
   return (
-    <ScrollView 
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: '#F9FAFB' }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+    <ScrollView
       style={{ backgroundColor: '#F9FAFB' }}
       contentContainerStyle={{ paddingBottom: 40 }}
       className="flex-1 px-6 py-6"
+      keyboardShouldPersistTaps="handled"
     >
       {/* TICKET REPORTING BOX */}
       <View className="bg-white dark:bg-zinc-900 rounded-3xl p-5 border border-emerald-100/30 shadow-sm mb-6">
@@ -145,5 +153,6 @@ export default function MaintenanceScreen() {
       </View>
 
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

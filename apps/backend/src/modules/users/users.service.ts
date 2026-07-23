@@ -377,6 +377,20 @@ export async function uploadMyPhoto(
     return { profile_photo_url: path };
 }
 
+/**
+ * Overwrites any previous token — a rider is assumed to have at most one
+ * "current" device for push purposes; a stale token just fails silently on
+ * next send.
+ */
+export async function registerPushToken(userId: string, token: string): Promise<void> {
+    const { error } = await supabaseAdmin
+        .from("users")
+        .update({ push_token: token })
+        .eq("id", userId);
+
+    if (error) throw error;
+}
+
 /** Signed URL for the caller's own profile photo. Minted per request, never stored. */
 export async function getMyPhotoUrl(userId: string): Promise<{ url: string; expires_in: number }> {
     const row = await requireLiveUser(userId);

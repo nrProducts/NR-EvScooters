@@ -101,3 +101,9 @@ export async function uploadMyPhotoHandler(req: AuthedRequest, res: Response) {
 export async function myPhotoUrlHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getMyPhotoUrl(req.user!.id));
 }
+
+export async function registerPushTokenHandler(req: AuthedRequest, res: Response) {
+    const { token } = req.body as { token: string };
+    await service.registerPushToken(req.user!.id, token);
+    res.status(204).send();
+}

@@ -8,6 +8,7 @@ import {
     AuthContext, KycDocType, KycStatus, MANDATORY_KYC_DOC_TYPES, Paginated, VerificationStatus,
 } from "../../types";
 import { kycCompletionPercent } from "../users/users.service";
+import { notifyUser } from "../notifications/notifications.service";
 import {
     assertValidFile, buildStoragePath, createSignedUrl, pathBelongsToUser,
     removeKycFiles, UploadedFile, uploadKycFile,
@@ -612,6 +613,13 @@ export async function approveKyc(userId: string, actor: AuthContext, req?: Reque
         req,
     });
 
+    await notifyUser(userId, {
+        template: "kyc_approved",
+        title: "KYC Approved",
+        body: "You're verified — go ahead and book a scooter.",
+        screen: "home",
+    });
+
     // No direct write to users.kyc_status: the trigger derives it. This
     // endpoint is the human checkpoint plus the audit record.
     return getKycForUser(userId, true);
@@ -644,6 +652,13 @@ export async function rejectKyc(userId: string, reason: string, actor: AuthConte
         entityId: userId,
         after: { kyc_status: "rejected", reason: reason.trim() },
         req,
+    });
+
+    await notifyUser(userId, {
+        template: "kyc_rejected",
+        title: "KYC Needs Attention",
+        body: reason.trim(),
+        screen: "kyc",
     });
 
     return getKycForUser(userId, true);

@@ -10,7 +10,7 @@ export type AuditAction =
     | "kyc.submitted"
     | "kyc.document_verified" | "kyc.document_rejected"
     | "kyc.approved" | "kyc.rejected"
-    | "booking.created";
+    | "booking.created" | "booking.fulfilled";
 
 export interface AuditEntry {
     actorId: string | null;

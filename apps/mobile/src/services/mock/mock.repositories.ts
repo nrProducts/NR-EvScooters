@@ -2,16 +2,18 @@ import { ApiError } from '../../lib/ApiError';
 import { isValidStartDay } from '../../lib/bookingDays';
 import { MANDATORY_KYC_DOC_TYPES } from '../../types/api';
 import type {
-    ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe, ApiSignedUrl,
-    ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, BookingStatus,
-    CreateBookingPayload, CreateUserPayload, KycStatus, ListUsersParams, ListVehicleModelsParams,
-    LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload, VerificationStatus,
+    ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
+    ApiMe, ApiPickupBooking, ApiRental, ApiSignedUrl, ApiStation, ApiUser, ApiUserDetail,
+    ApiVehicleModel, ApiVehicleModelDetail, BookingStatus, CreateBookingPayload, CreateUserPayload,
+    KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated, RentalStatus,
+    RoleName, StatusAction, UpdateUserPayload, VerificationStatus,
 } from '../../types/api';
 import type {
-    AuthRepository, BookingRepository, KycQueueParams, KycRepository, SessionRef,
-    UpdateDocumentInput, UploadDocumentInput, UploadPhotoResult, UserRepository,
-    VehicleCatalogRepository,
+    AuthRepository, BookingRepository, KycQueueParams, KycRepository, NotificationRepository,
+    PickupQueueParams, RentalRepository, SessionRef, UpdateDocumentInput, UploadDocumentInput,
+    UploadPhotoResult, UserRepository, VehicleCatalogRepository,
 } from '../types';
+import type { ApiNotification } from '../../types/api';
 import {
     DEMO_ACCOUNTS, MockAuditRow, MockDocumentRow, MockUserRow, PLACEHOLDER_IMAGE,
     SEED_AUDIT, SEED_DOCUMENTS, SEED_STATIONS, SEED_USERS, SEED_VEHICLE_MODELS,
@@ -38,6 +40,26 @@ interface MockBookingRow {
     created_at: string;
 }
 
+interface MockRentalRow {
+    id: string;
+    user_id: string;
+    vehicle_id: string;
+    booking_id: string;
+    status: RentalStatus;
+    started_at: string;
+    ended_at: string | null;
+}
+
+interface MockNotificationRow {
+    id: string;
+    user_id: string;
+    template: string;
+    payload: { title: string; body: string; screen?: string } | null;
+    status: 'sent' | 'failed' | 'pending';
+    read_at: string | null;
+    created_at: string;
+}
+
 const ACTIVE_BOOKING_STATUSES: BookingStatus[] = ['pending_payment', 'confirmed'];
 
 const db = {
@@ -45,6 +67,8 @@ const db = {
     documents: SEED_DOCUMENTS.map((d) => ({ ...d })),
     audit: SEED_AUDIT.map((a) => ({ ...a })),
     bookings: [] as MockBookingRow[],
+    notifications: [] as MockNotificationRow[],
+    rentals: [] as MockRentalRow[],
     currentUserId: null as string | null,
 };
 
@@ -73,6 +97,20 @@ function audit(action: string, targetUserId: string, after?: Record<string, unkn
         target_user_id: targetUserId,
         created_at: nowIso(),
         after_data: after ?? null,
+    });
+}
+
+/** Mirrors notifyUser on the backend, minus real push delivery — mock mode
+ *  has no device token to send to, so every entry just lands as "sent". */
+function notify(userId: string, input: { template: string; title: string; body: string; screen?: string }) {
+    db.notifications.unshift({
+        id: uid('n'),
+        user_id: userId,
+        template: input.template,
+        payload: { title: input.title, body: input.body, screen: input.screen },
+        status: 'sent',
+        read_at: null,
+        created_at: nowIso(),
     });
 }
 
@@ -590,6 +628,71 @@ export class MockUserRepository implements UserRepository {
         audit('user.roles_changed', id, { roles });
         return [...roles];
     }
+
+    async registerPushToken(_token: string): Promise<void> {
+        await delay(100);
+        const row = requireSession();
+        audit('user.push_token_registered', row.id);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+export class MockNotificationRepository implements NotificationRepository {
+    async list(params: { page?: number; pageSize?: number }): Promise<Paginated<ApiNotification>> {
+        await delay(150);
+        const row = requireSession();
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 20;
+
+        const all = db.notifications.filter((n) => n.user_id === row.id);
+        const start = (page - 1) * pageSize;
+        const data = all.slice(start, start + pageSize).map(toApiNotification);
+
+        return {
+            data,
+            pagination: {
+                page, pageSize, total: all.length,
+                totalPages: pageSize > 0 ? Math.ceil(all.length / pageSize) : 0,
+            },
+        };
+    }
+
+    async unreadCount(): Promise<number> {
+        await delay(80);
+        const row = requireSession();
+        return db.notifications.filter((n) => n.user_id === row.id && !n.read_at).length;
+    }
+
+    async markRead(id: string): Promise<ApiNotification> {
+        await delay(100);
+        const row = requireSession();
+        const notification = db.notifications.find((n) => n.id === id && n.user_id === row.id);
+        if (!notification) throw new ApiError(404, 'NOT_FOUND', 'Notification not found.');
+        notification.read_at = nowIso();
+        return toApiNotification(notification);
+    }
+
+    async markAllRead(): Promise<void> {
+        await delay(150);
+        const row = requireSession();
+        for (const n of db.notifications) {
+            if (n.user_id === row.id && !n.read_at) n.read_at = nowIso();
+        }
+    }
+}
+
+function toApiNotification(row: MockNotificationRow): ApiNotification {
+    return {
+        id: row.id,
+        template: row.template,
+        payload: row.payload,
+        status: row.status,
+        read_at: row.read_at,
+        created_at: row.created_at,
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -929,6 +1032,12 @@ export class MockKycRepository implements KycRepository {
         }
 
         audit('kyc.approved', userId, { kyc_status: 'verified' });
+        notify(userId, {
+            template: 'kyc_approved',
+            title: 'KYC Approved',
+            body: "You're verified — go ahead and book a scooter.",
+            screen: 'home',
+        });
         return kycSummaryFor(userId, true);
     }
 
@@ -956,6 +1065,12 @@ export class MockKycRepository implements KycRepository {
         }
 
         audit('kyc.rejected', userId, { reason: reason.trim() });
+        notify(userId, {
+            template: 'kyc_rejected',
+            title: 'KYC Needs Attention',
+            body: reason.trim(),
+            screen: 'kyc',
+        });
         return kycSummaryFor(userId, true);
     }
 
@@ -1031,6 +1146,38 @@ function toApiBooking(row: MockBookingRow): ApiBooking {
     };
 }
 
+function toApiPickupBooking(row: MockBookingRow): ApiPickupBooking {
+    const rider = db.users.find((u) => u.id === row.user_id);
+    return {
+        ...toApiBooking(row),
+        rider: rider
+            ? { id: rider.id, full_name: rider.full_name, phone: rider.phone }
+            : { id: row.user_id, full_name: 'Unknown rider', phone: null },
+    };
+}
+
+function toApiRental(row: MockRentalRow): ApiRental {
+    const booking = db.bookings.find((b) => b.id === row.booking_id);
+    const model = booking ? SEED_VEHICLE_MODELS_DETAIL.find((m) => m.id === booking.vehicle_model_id) : undefined;
+    const station = booking ? SEED_STATIONS.find((s) => s.id === booking.station_id) : undefined;
+    const plan = booking ? model?.plans.find((p) => p.id === booking.plan_id) : undefined;
+
+    return {
+        id: row.id,
+        status: row.status,
+        started_at: row.started_at,
+        ended_at: row.ended_at,
+        // Mock mode has no per-unit fleet inventory wired to bookings (that
+        // lives in the separate useFleetStore used by the admin mock
+        // screens) — stand in with the booked model's name.
+        vehicle: model
+            ? { id: row.vehicle_id, name: model.name, registration_number: 'MOCK-0001', battery_percentage: 87 }
+            : null,
+        station: station ? { id: station.id, name: station.name, code: station.code } : null,
+        plan: plan ? { id: plan.id, name: plan.name, billing_cycle: plan.billing_cycle, price: plan.price } : null,
+    };
+}
+
 export class MockBookingRepository implements BookingRepository {
     async create(payload: CreateBookingPayload): Promise<ApiBooking> {
         await delay(500);
@@ -1055,7 +1202,9 @@ export class MockBookingRepository implements BookingRepository {
             station_id: payload.station_id,
             plan_id: payload.plan_id,
             start_day: payload.start_day,
-            status: 'pending_payment',
+            // No payment step exists yet, so a booking is immediately ready
+            // for pickup — mirrors createBooking in the real backend.
+            status: 'confirmed',
             created_at: nowIso(),
         };
 
@@ -1082,6 +1231,78 @@ export class MockBookingRepository implements BookingRepository {
         // PostGIS; see stations.service.ts's nearest_station RPC).
         return { ...station, distance_km: 2.4 };
     }
+
+    async pickupQueue(params: PickupQueueParams): Promise<Paginated<ApiPickupBooking>> {
+        await delay(200);
+        requireStaff();
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 20;
+
+        let rows = db.bookings.filter((b) => b.status === 'confirmed');
+        if (params.stationId) rows = rows.filter((b) => b.station_id === params.stationId);
+        rows = rows.sort((a, b) => (a.start_day < b.start_day ? -1 : 1));
+
+        const start = (page - 1) * pageSize;
+        const data = rows.slice(start, start + pageSize).map(toApiPickupBooking);
+        return {
+            data,
+            pagination: { page, pageSize, total: rows.length, totalPages: pageSize > 0 ? Math.ceil(rows.length / pageSize) : 0 },
+        };
+    }
+
+    async availableVehicles(bookingId: string): Promise<ApiAvailableVehicle[]> {
+        await delay(150);
+        requireStaff();
+        const booking = db.bookings.find((b) => b.id === bookingId);
+        if (!booking) throw new ApiError(404, 'NOT_FOUND', 'Booking not found.');
+        // Mock mode has no per-unit fleet inventory tied to bookings (see
+        // toApiRental's comment) — fabricate a couple of plausible options
+        // so the staff picker UI has something to demo against.
+        return [
+            { id: 'mock-vehicle-1', name: 'Unit A', registration_number: 'MOCK-0001', battery_percentage: 92 },
+            { id: 'mock-vehicle-2', name: 'Unit B', registration_number: 'MOCK-0002', battery_percentage: 78 },
+        ];
+    }
+
+    async confirmPickup(bookingId: string, vehicleId: string): Promise<ApiPickupBooking> {
+        await delay(400);
+        requireStaff();
+        const booking = db.bookings.find((b) => b.id === bookingId);
+        if (!booking) throw new ApiError(404, 'NOT_FOUND', 'Booking not found.');
+        if (booking.status !== 'confirmed') {
+            throw new ApiError(409, 'CONFLICT', 'This booking is not awaiting pickup.');
+        }
+
+        booking.status = 'fulfilled';
+        db.rentals.push({
+            id: uid('rt'),
+            user_id: booking.user_id,
+            vehicle_id: vehicleId,
+            booking_id: booking.id,
+            status: 'active',
+            started_at: nowIso(),
+            ended_at: null,
+        });
+
+        audit('booking.fulfilled', booking.user_id, { vehicle_id: vehicleId, status: 'fulfilled' });
+        notify(booking.user_id, {
+            template: 'pickup_confirmed',
+            title: 'Scooter Picked Up',
+            body: 'Enjoy your ride! Your rental is now active.',
+            screen: 'post-booking-dashboard',
+        });
+
+        return toApiPickupBooking(booking);
+    }
+}
+
+export class MockRentalRepository implements RentalRepository {
+    async mine(): Promise<ApiRental | null> {
+        await delay(200);
+        const actor = requireSession();
+        const row = db.rentals.find((r) => r.user_id === actor.id && r.status === 'active');
+        return row ? toApiRental(row) : null;
+    }
 }
 
 /** Test hook: restores the seed so a demo can be re-run from a clean slate. */
@@ -1090,6 +1311,7 @@ export function resetMockDb(): void {
     db.documents = SEED_DOCUMENTS.map((d) => ({ ...d }));
     db.audit = SEED_AUDIT.map((a) => ({ ...a }));
     db.bookings = [];
+    db.rentals = [];
     db.currentUserId = null;
 }
 

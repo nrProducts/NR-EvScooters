@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import { userRepository } from '../services';
@@ -58,6 +59,14 @@ export default function ProfileSetupScreen() {
   const [error, setError] = useState('');
   const [dobError, setDobError] = useState('');
 
+  // Two independent "Next"-key chains, split around the DOB/Gender pickers
+  // (which aren't text fields and can't be focused via the keyboard).
+  const emailOrPhoneRef = useRef<TextInput>(null);
+  const addressRef = useRef<TextInput>(null);
+  const cityRef = useRef<TextInput>(null);
+  const stateRef = useRef<TextInput>(null);
+  const postalCodeRef = useRef<TextInput>(null);
+
   const save = async () => {
     if (saving) return;
 
@@ -111,12 +120,16 @@ export default function ProfileSetupScreen() {
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={{ flexGrow: 1 }}
-      style={{ backgroundColor: COLORS.background }}
-      keyboardShouldPersistTaps="handled"
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: COLORS.background }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View className="flex-1 px-6 pt-16 pb-16">
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        style={{ backgroundColor: COLORS.background }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View className="flex-1 px-6 pt-16 pb-16">
         <Text style={{ color: COLORS.textPrimary }} className="text-3xl font-black mb-2">
           Complete your profile and get ready to ride.
         </Text>
@@ -144,6 +157,9 @@ export default function ProfileSetupScreen() {
             accessibilityLabel="Full name"
             className="flex-1 text-base font-semibold ml-3"
             style={{ color: COLORS.textPrimary }}
+            returnKeyType="next"
+            onSubmitEditing={() => emailOrPhoneRef.current?.focus()}
+            blurOnSubmit={false}
           />
         </View>
 
@@ -158,6 +174,7 @@ export default function ProfileSetupScreen() {
             >
               <Mail size={18} color={COLORS.textSecondary} />
               <TextInput
+                ref={emailOrPhoneRef}
                 value={email}
                 onChangeText={(t) => {
                   setEmail(t);
@@ -171,6 +188,7 @@ export default function ProfileSetupScreen() {
                 accessibilityLabel="Email address"
                 className="flex-1 text-base font-semibold ml-3"
                 style={{ color: COLORS.textPrimary }}
+                returnKeyType="done"
               />
             </View>
           </>
@@ -185,6 +203,7 @@ export default function ProfileSetupScreen() {
             >
               <Phone size={18} color={COLORS.textSecondary} />
               <TextInput
+                ref={emailOrPhoneRef}
                 value={phone}
                 onChangeText={(t) => {
                   setPhone(t);
@@ -197,6 +216,7 @@ export default function ProfileSetupScreen() {
                 accessibilityLabel="Phone number"
                 className="flex-1 text-base font-semibold ml-3"
                 style={{ color: COLORS.textPrimary }}
+                returnKeyType="done"
               />
             </View>
             <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mb-4 px-1">
@@ -226,27 +246,51 @@ export default function ProfileSetupScreen() {
         />
 
         <FormField
+          ref={addressRef}
           label="Address"
           required
           value={addressLine1}
           onChangeText={setAddressLine1}
           placeholder="House / street / area"
+          returnKeyType="next"
+          onSubmitEditing={() => cityRef.current?.focus()}
         />
         <View className="flex-row" style={{ gap: 10 }}>
           <View className="flex-1">
-            <FormField label="City" required value={city} onChangeText={setCity} placeholder="City" />
+            <FormField
+              ref={cityRef}
+              label="City"
+              required
+              value={city}
+              onChangeText={setCity}
+              placeholder="City"
+              returnKeyType="next"
+              onSubmitEditing={() => stateRef.current?.focus()}
+            />
           </View>
           <View className="flex-1">
-            <FormField label="State" required value={state} onChangeText={setState} placeholder="State" />
+            <FormField
+              ref={stateRef}
+              label="State"
+              required
+              value={state}
+              onChangeText={setState}
+              placeholder="State"
+              returnKeyType="next"
+              onSubmitEditing={() => postalCodeRef.current?.focus()}
+            />
           </View>
         </View>
         <FormField
+          ref={postalCodeRef}
           label="Postal Code"
           required
           value={postalCode}
           onChangeText={setPostalCode}
           placeholder="PIN code"
           keyboardType="number-pad"
+          returnKeyType="done"
+          onSubmitEditing={() => void save()}
         />
 
         {error ? (
@@ -271,7 +315,8 @@ export default function ProfileSetupScreen() {
             </>
           )}
         </TouchableOpacity>
-      </View>
-    </ScrollView>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

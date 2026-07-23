@@ -6,6 +6,8 @@ import authRoutes from "../modules/auth/auth.routes";
 import { riderKycRouter, adminKycRouter } from "../modules/kyc/kyc.routes";
 import bookingsRoutes from "../modules/bookings/bookings.routes";
 import stationsRoutes from "../modules/stations/stations.routes";
+import notificationsRoutes from "../modules/notifications/notifications.routes";
+import rentalsRoutes from "../modules/rentals/rentals.routes";
 
 const router = Router();
 
@@ -13,9 +15,10 @@ router.get("/health", (_req, res) => res.json({ status: "ok" }));
 
 router.use("/auth", authRoutes);
 
-// Mounted before /users so "me/kyc" is matched by the rider router rather
-// than falling through to /users/:id.
+// Mounted before /users so "me/kyc" and "me/notifications" are matched by
+// their own routers rather than falling through to /users/:id.
 router.use("/users/me/kyc", riderKycRouter);
+router.use("/users/me/notifications", notificationsRoutes);
 router.use("/users", usersRoutes);
 router.use("/kyc", adminKycRouter);
 router.use("/vehicles", vehiclesRoutes);
@@ -24,5 +27,6 @@ router.use("/vehicles", vehiclesRoutes);
 router.use("/vehicle-models", vehicleCatalogRoutes);
 router.use("/bookings", bookingsRoutes);
 router.use("/stations", stationsRoutes);
+router.use("/rentals", rentalsRoutes);
 
 export default router;

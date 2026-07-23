@@ -1,5 +1,7 @@
-import React from 'react';
-import { View, Text, TextInput, KeyboardTypeOptions } from 'react-native';
+import React, { forwardRef } from 'react';
+import {
+  View, Text, TextInput, KeyboardTypeOptions, ReturnKeyTypeOptions,
+} from 'react-native';
 import { COLORS } from '../../constants/theme';
 
 interface FormFieldProps {
@@ -15,16 +17,20 @@ interface FormFieldProps {
   editable?: boolean;
   multiline?: boolean;
   hint?: string;
+  returnKeyType?: ReturnKeyTypeOptions;
+  onSubmitEditing?: () => void;
 }
 
 /**
  * Same visual language as the inline field in vehicles.tsx, extended with the
  * required marker, error text and disabled state the user forms need.
+ * Forwards its ref to the underlying TextInput so callers can chain
+ * "Next"-key focus between fields (see profile-setup.tsx).
  */
-export const FormField: React.FC<FormFieldProps> = ({
+export const FormField = forwardRef<TextInput, FormFieldProps>(({
   label, value, onChangeText, placeholder, keyboardType, autoCapitalize,
-  required, error, editable = true, multiline, hint,
-}) => (
+  required, error, editable = true, multiline, hint, returnKeyType, onSubmitEditing,
+}, ref) => (
   <View className="mb-3.5">
     <View className="flex-row items-center mb-1.5">
       <Text
@@ -39,6 +45,7 @@ export const FormField: React.FC<FormFieldProps> = ({
     </View>
 
     <TextInput
+      ref={ref}
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
@@ -47,6 +54,9 @@ export const FormField: React.FC<FormFieldProps> = ({
       autoCapitalize={autoCapitalize ?? 'sentences'}
       editable={editable}
       multiline={multiline}
+      returnKeyType={returnKeyType}
+      onSubmitEditing={onSubmitEditing}
+      blurOnSubmit={!multiline && !!onSubmitEditing}
       accessibilityLabel={label}
       accessibilityHint={hint}
       className="rounded-xl px-3.5 py-3 text-sm font-semibold border"
@@ -69,4 +79,6 @@ export const FormField: React.FC<FormFieldProps> = ({
       </Text>
     ) : null}
   </View>
-);
+));
+
+FormField.displayName = 'FormField';

@@ -6,10 +6,11 @@ import { signInWithGoogleBrowser } from './googleAuth';
 // Re-exported so existing `import { ApiError } from '../lib/api'` keeps working.
 export { ApiError };
 import type {
-    ApiBooking, ApiDocument, ApiErrorBody, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMe,
-    ApiSignedUrl, ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail,
-    CreateBookingPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
-    ListVehicleModelsParams, LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload,
+    ApiAvailableVehicle, ApiBooking, ApiDocument, ApiErrorBody, ApiKycDetail, ApiKycQueueItem,
+    ApiKycSummary, ApiMe, ApiNotification, ApiPickupBooking, ApiRental, ApiSignedUrl, ApiStation,
+    ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload,
+    CreateUserPayload, KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile,
+    Paginated, RoleName, StatusAction, UpdateUserPayload,
 } from '../types/api';
 
 type OnUnauthorized = () => void;
@@ -214,6 +215,24 @@ export const api = {
     setRoles: (id: string, roles: RoleName[]) =>
         request<{ roles: RoleName[] }>(`/users/${id}/roles`, { method: 'PUT', body: { roles } }),
 
+    registerPushToken: (token: string) =>
+        request<void>('/users/me/push-token', { method: 'POST', body: { token } }),
+
+    // --- notifications -----------------------------------------------------
+    myNotifications: (params: { page?: number; pageSize?: number } = {}) =>
+        request<Paginated<ApiNotification>>('/users/me/notifications', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
+
+    unreadNotificationCount: () =>
+        request<{ count: number }>('/users/me/notifications/unread-count'),
+
+    markNotificationRead: (id: string) =>
+        request<ApiNotification>(`/users/me/notifications/${id}/read`, { method: 'PATCH' }),
+
+    markAllNotificationsRead: () =>
+        request<void>('/users/me/notifications/read-all', { method: 'POST' }),
+
     // --- rider KYC -------------------------------------------------------
     myKyc: () => request<ApiKycSummary>('/users/me/kyc'),
 
@@ -295,4 +314,22 @@ export const api = {
 
     nearestStation: (lat: number, lng: number) =>
         request<ApiStation>('/stations/nearest', { query: { lat, lng } }),
+
+    // --- staff pickup/check-in ---------------------------------------------
+    pickupQueue: (params: { page?: number; pageSize?: number; stationId?: string } = {}) =>
+        request<Paginated<ApiPickupBooking>>('/bookings', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
+
+    availableVehiclesForBooking: (bookingId: string) =>
+        request<ApiAvailableVehicle[]>(`/bookings/${bookingId}/available-vehicles`),
+
+    confirmPickup: (bookingId: string, vehicleId: string) =>
+        request<ApiPickupBooking>(`/bookings/${bookingId}/pickup`, {
+            method: 'POST',
+            body: { vehicle_id: vehicleId },
+        }),
+
+    // --- rentals -------------------------------------------------------
+    myCurrentRental: () => request<ApiRental>('/rentals/me/current'),
 };

@@ -3,9 +3,11 @@ import {
   View, Text, ScrollView, TextInput, TouchableOpacity, Alert,
   Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
+import { DatePickerField } from '../components/ui/DatePickerField';
 import { useFleetStore } from '../store/useFleetStore';
 import { COLORS } from '../constants/theme';
 import {
@@ -96,6 +98,7 @@ function FormField({ label, value, onChangeText, placeholder, keyboardType }: {
 }
 
 export default function VehiclesScreen() {
+  const insets = useSafeAreaInsets();
   const vehicles = useFleetStore(s => s.vehicles);
   const users = useFleetStore(s => s.users);
   const addVehicle = useFleetStore(s => s.addVehicle);
@@ -453,15 +456,27 @@ export default function VehiclesScreen() {
 
               <View className="flex-row" style={{ gap: 12 }}>
                 <View className="flex-1">
-                  <FormField label="Last Service" value={form.lastServiceDate} onChangeText={t => setForm(f => ({ ...f, lastServiceDate: t }))} placeholder="YYYY-MM-DD" />
+                  <DatePickerField
+                    label="Last Service"
+                    value={form.lastServiceDate}
+                    onChangeText={t => setForm(f => ({ ...f, lastServiceDate: t }))}
+                    minYear={new Date().getFullYear() - 5}
+                    maxYear={new Date().getFullYear()}
+                  />
                 </View>
                 <View className="flex-1">
-                  <FormField label="Next Service Due" value={form.nextServiceDue} onChangeText={t => setForm(f => ({ ...f, nextServiceDue: t }))} placeholder="YYYY-MM-DD" />
+                  <DatePickerField
+                    label="Next Service Due"
+                    value={form.nextServiceDue}
+                    onChangeText={t => setForm(f => ({ ...f, nextServiceDue: t }))}
+                    minYear={new Date().getFullYear()}
+                    maxYear={new Date().getFullYear() + 2}
+                  />
                 </View>
               </View>
             </ScrollView>
 
-            <View className="px-6 pt-2" style={{ paddingBottom: Platform.OS === 'ios' ? 34 : 20 }}>
+            <View className="px-6 pt-2" style={{ paddingBottom: 16 + insets.bottom }}>
               <TouchableOpacity
                 onPress={handleSubmit}
                 className="w-full py-4 rounded-2xl flex-row justify-center items-center"
@@ -497,7 +512,7 @@ export default function VehiclesScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView className="px-6" contentContainerStyle={{ paddingBottom: 24 }}>
+            <ScrollView className="px-6" contentContainerStyle={{ paddingBottom: 16 + insets.bottom }}>
               {unassignedUsers.length === 0 ? (
                 <EmptyState icon={UserIcon} title="No unassigned riders" subtitle="Every active rider already has a scooter." />
               ) : (

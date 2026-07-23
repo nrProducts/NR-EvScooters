@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator } from 'react-native';
+import {
+  View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator,
+  KeyboardAvoidingView, Platform,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useScooterStore } from '../store/useScooterStore';
 import { COLORS } from '../constants/theme';
 import { CreditCard, Calendar, ShieldCheck, Wallet, ChevronRight, Check } from 'lucide-react-native';
 
 export default function BillingScreen() {
+  const insets = useSafeAreaInsets();
   const { user, payRentBill, addWalletFunds, modifySubscription } = useScooterStore();
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [payAmount, setPayAmount] = useState('');
@@ -193,8 +198,12 @@ export default function BillingScreen() {
         animationType="slide"
         onRequestClose={() => setCheckoutVisible(false)}
       >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
         <View className="flex-1 justify-end bg-black/60">
-          <View className="bg-white dark:bg-zinc-900 rounded-t-3xl p-6 pb-10 border-t border-emerald-100">
+          <View className="bg-white dark:bg-zinc-900 rounded-t-3xl p-6 border-t border-emerald-100" style={{ paddingBottom: 16 + insets.bottom }}>
             
             <View className="flex-row justify-between items-center mb-6">
               <Text style={{ color: COLORS.forestDeep }} className="text-lg font-black dark:text-emerald-50">
@@ -234,6 +243,7 @@ export default function BillingScreen() {
             </Text>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </ScrollView>

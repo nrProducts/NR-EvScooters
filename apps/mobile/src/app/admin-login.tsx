@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
@@ -28,6 +29,7 @@ export default function AdminLoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const passwordRef = useRef<TextInput>(null);
 
   const submit = async () => {
     if (loading) return;
@@ -52,6 +54,10 @@ export default function AdminLoginScreen() {
   };
 
   return (
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: COLORS.background }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
     <ScrollView
       contentContainerStyle={{ flexGrow: 1 }}
       style={{ backgroundColor: COLORS.background }}
@@ -103,6 +109,9 @@ export default function AdminLoginScreen() {
             accessibilityLabel="Admin email"
             className="flex-1 text-base font-semibold ml-3"
             style={{ color: COLORS.textPrimary }}
+            returnKeyType={isMock ? 'done' : 'next'}
+            onSubmitEditing={() => (isMock ? void submit() : passwordRef.current?.focus())}
+            blurOnSubmit={isMock}
           />
         </View>
 
@@ -117,6 +126,7 @@ export default function AdminLoginScreen() {
             >
               <Lock size={18} color={COLORS.textSecondary} />
               <TextInput
+                ref={passwordRef}
                 value={password}
                 onChangeText={(t) => {
                   setPassword(t);
@@ -174,5 +184,6 @@ export default function AdminLoginScreen() {
         </TouchableOpacity>
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

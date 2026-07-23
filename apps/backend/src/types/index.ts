@@ -23,6 +23,12 @@ export const MANDATORY_KYC_DOC_TYPES: readonly KycDocType[] = ["aadhaar", "drivi
 
 export type VerificationStatus = "pending" | "verified" | "rejected";
 
+export type NotificationChannel = "sms" | "push" | "email";
+export const NOTIFICATION_CHANNELS: readonly NotificationChannel[] = ["sms", "push", "email"] as const;
+
+export type NotificationStatus = "sent" | "failed" | "pending";
+export const NOTIFICATION_STATUSES: readonly NotificationStatus[] = ["sent", "failed", "pending"] as const;
+
 export interface Paginated<T> {
     data: T[];
     pagination: { page: number; pageSize: number; total: number; totalPages: number };

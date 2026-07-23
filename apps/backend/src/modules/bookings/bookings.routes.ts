@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireKycVerified } from "../../middleware/authorize.middleware";
+import { requireKycVerified, requireStaff } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./bookings.controller";
@@ -20,6 +20,28 @@ router.post(
     requireKycVerified,
     validate({ body: v.createBookingBody }),
     asyncHandler(c.createBookingHandler),
+);
+
+// --- staff pickup/check-in ------------------------------------------------
+router.get(
+    "/",
+    requireStaff,
+    validate({ query: v.pickupQueueQuery }),
+    asyncHandler(c.pickupQueueHandler),
+);
+
+router.get(
+    "/:id/available-vehicles",
+    requireStaff,
+    validate({ params: v.bookingIdParam }),
+    asyncHandler(c.availableVehiclesHandler),
+);
+
+router.post(
+    "/:id/pickup",
+    requireStaff,
+    validate({ params: v.bookingIdParam, body: v.confirmPickupBody }),
+    asyncHandler(c.confirmPickupHandler),
 );
 
 export default router;

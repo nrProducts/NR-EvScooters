@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Modal, FlatList } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Calendar, ChevronLeft, X } from 'lucide-react-native';
 import { COLORS } from '../../constants/theme';
 
@@ -46,6 +47,7 @@ export const DatePickerField: React.FC<DatePickerFieldProps> = ({
   minYear = new Date().getFullYear() - 120,
   maxYear = new Date().getFullYear() - 18,
 }) => {
+  const insets = useSafeAreaInsets();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [step, setStep] = useState<PickerStep>('year');
   const [pendingYear, setPendingYear] = useState<number | null>(null);
@@ -141,7 +143,7 @@ export const DatePickerField: React.FC<DatePickerFieldProps> = ({
 
       <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: COLORS.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '70%' }}>
+          <View style={{ backgroundColor: COLORS.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 16 + insets.bottom, maxHeight: '70%' }}>
             <View className="flex-row items-center justify-between mb-4">
               <TouchableOpacity
                 onPress={() => {

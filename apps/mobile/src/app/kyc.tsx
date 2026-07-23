@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   Modal, Image, RefreshControl,
@@ -13,11 +13,13 @@ import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { ErrorState } from '../components/ui/ErrorState';
 import { FormField } from '../components/ui/FormField';
+import { DatePickerField } from '../components/ui/DatePickerField';
 import { useAuthStore } from '../store/useAuthStore';
 import { useMyKyc } from '../hooks/useKyc';
 import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { pickDocument, pickPhoto } from '../lib/filePicker';
+import { computeInitialKycStep } from '../lib/kycProgress';
 import { COLORS } from '../constants/theme';
 import { DOC_TYPE_LABEL, KYC_STATUS_LABEL, KYC_STATUS_TONE, VERIFICATION_TONE, formatDate } from '../constants/status';
 import type { ApiDocument, ApiKycSummary, KycDocType, LocalFile } from '../types/api';
@@ -61,6 +63,19 @@ export default function KycScreen() {
     setStep(s);
     setMaxStepReached((m) => (s > m ? s : m));
   };
+
+  // Resume where the rider left off: seed step/maxStepReached from already-
+  // completed steps once, the first time profile + kyc are both available.
+  // Guarded so a later refetch (e.g. after an upload) never yanks the rider
+  // back to a step they've already navigated past.
+  const seededResumeStep = useRef(false);
+  useEffect(() => {
+    if (seededResumeStep.current || loading || !kyc) return;
+    seededResumeStep.current = true;
+    const resumeStep = computeInitialKycStep(profile, kyc);
+    setStep(resumeStep);
+    setMaxStepReached(resumeStep);
+  }, [loading, kyc, profile]);
   const [aadhaarDraft, setAadhaarDraft] = useState<DraftDoc>(EMPTY_DRAFT);
   const [dlDraft, setDlDraft] = useState<DraftDoc>(EMPTY_DRAFT);
   const [declared, setDeclared] = useState(false);
@@ -465,6 +480,8 @@ const ProfilePhotoStep: React.FC<{
     try {
       await userRepository.uploadMyPhoto(picked);
       setUploaded(true);
+      setPicked(null);
+      onNext();
     } catch (err) {
       notify('Upload failed', err instanceof ApiError ? err.message : 'Please try again.');
     } finally {
@@ -725,13 +742,14 @@ const DocumentStep: React.FC<DocumentStepProps> = ({
           />
 
           {requiresExpiry ? (
-            <FormField
+            <DatePickerField
               label="Expiry Date"
               required
               value={draft.expiry_date}
               onChangeText={(t) => setDraft((d) => ({ ...d, expiry_date: t }))}
-              placeholder="YYYY-MM-DD"
               hint="An expired licence cannot be verified."
+              minYear={new Date().getFullYear()}
+              maxYear={new Date().getFullYear() + 20}
             />
           ) : null}
 
