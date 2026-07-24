@@ -7,10 +7,10 @@ import { signInWithGoogleBrowser } from './googleAuth';
 export { ApiError };
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiErrorBody, ApiKycDetail, ApiKycQueueItem,
-    ApiKycSummary, ApiMe, ApiNotification, ApiPickupBooking, ApiRental, ApiSignedUrl, ApiStation,
-    ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload,
-    CreateUserPayload, KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile,
-    Paginated, RoleName, StatusAction, UpdateUserPayload,
+    ApiKycSummary, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiRental,
+    ApiSignedUrl, ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail,
+    CreateBookingPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
+    ListVehicleModelsParams, LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload,
 } from '../types/api';
 
 type OnUnauthorized = () => void;
@@ -312,6 +312,11 @@ export const api = {
 
     myCurrentBooking: () => request<ApiBooking>('/bookings/me/current'),
 
+    bookingHistory: (params: { page?: number; pageSize?: number } = {}) =>
+        request<Paginated<ApiBooking>>('/bookings/me/history', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
+
     nearestStation: (lat: number, lng: number) =>
         request<ApiStation>('/stations/nearest', { query: { lat, lng } }),
 
@@ -332,4 +337,12 @@ export const api = {
 
     // --- rentals -------------------------------------------------------
     myCurrentRental: () => request<ApiRental>('/rentals/me/current'),
+
+    rentalHistory: (params: { page?: number; pageSize?: number } = {}) =>
+        request<Paginated<ApiRental>>('/rentals/me/history', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
+
+    // --- maintenance ---------------------------------------------------
+    maintenanceHistory: () => request<Paginated<ApiMaintenanceRecord>>('/maintenance/me/history'),
 };

@@ -131,6 +131,7 @@ export const useIsStaff = () =>
 export const useCanRent = () => useAuthStore((s) => s.profile?.can_rent ?? false);
 /** pending_payment counts as active, same as confirmed. */
 export const useHasActiveBooking = () => useAuthStore((s) => s.profile?.has_active_booking ?? false);
+export const useHasActiveRental = () => useAuthStore((s) => s.profile?.has_active_rental ?? false);
 
 /** True once a profile has loaded but the initial onboarding form has not
  *  been completed yet — not just "has no name", since Google sign-in

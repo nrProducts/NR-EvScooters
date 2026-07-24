@@ -785,10 +785,9 @@ async function activePlanByUser(
 }
 
 /**
- * Whether this rider currently has a live rental. Always false today since
- * no booking/rental-creation flow exists yet — computed server-side (never
- * trust a client-supplied flag) so the mobile post-booking dashboard gate
- * needs no rework once bookings ship.
+ * Whether this rider currently has a live rental — computed server-side
+ * (never trust a client-supplied flag). Backs both the mobile post-booking
+ * dashboard gate and bookings.service.ts's re-booking guard.
  */
 export async function hasActiveRentalForUser(userId: string): Promise<boolean> {
     const { count, error } = await supabaseAdmin

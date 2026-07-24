@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "../../config/supabase";
 import { notFound } from "../../common/AppError";
+import { paginate, toRange } from "../../common/pagination";
+import { Paginated } from "../../types";
 import { RentalView } from "./rentals.types";
 
 const RENTAL_COLUMNS = `
@@ -53,4 +55,22 @@ export async function getMyCurrentRental(userId: string): Promise<RentalView> {
     if (!data) throw notFound("No active rental found.");
 
     return toRentalView(data as unknown as RawRentalRow);
+}
+
+/** All of the rider's own rentals, most recent first — what the Booking History screen renders. */
+export async function getMyRentalHistory(
+    userId: string,
+    filters: { page: number; pageSize: number },
+): Promise<Paginated<RentalView>> {
+    const [from, to] = toRange(filters);
+    const { data, error, count } = await supabaseAdmin
+        .from("rentals")
+        .select(RENTAL_COLUMNS, { count: "exact" })
+        .eq("user_id", userId)
+        .order("started_at", { ascending: false })
+        .range(from, to);
+
+    if (error) throw error;
+    const items = ((data ?? []) as unknown as RawRentalRow[]).map(toRentalView);
+    return paginate(items, count ?? 0, filters);
 }

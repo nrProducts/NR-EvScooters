@@ -1,15 +1,16 @@
 import { ENV } from '../constants/env';
 import {
-    ApiBookingRepository, ApiKycRepository, ApiNotificationRepository, ApiRentalRepository,
-    ApiUserRepository, ApiVehicleCatalogRepository, SupabaseAuthRepository,
+    ApiBookingRepository, ApiKycRepository, ApiMaintenanceRepository, ApiNotificationRepository,
+    ApiRentalRepository, ApiUserRepository, ApiVehicleCatalogRepository, SupabaseAuthRepository,
 } from './api.repositories';
 import {
-    MockAuthRepository, MockBookingRepository, MockKycRepository, MockNotificationRepository,
-    MockRentalRepository, MockUserRepository, MockVehicleCatalogRepository,
+    MockAuthRepository, MockBookingRepository, MockKycRepository, MockMaintenanceRepository,
+    MockNotificationRepository, MockRentalRepository, MockUserRepository,
+    MockVehicleCatalogRepository,
 } from './mock/mock.repositories';
 import type {
-    AuthRepository, BookingRepository, KycRepository, NotificationRepository, RentalRepository,
-    UserRepository, VehicleCatalogRepository,
+    AuthRepository, BookingRepository, KycRepository, MaintenanceRepository,
+    NotificationRepository, RentalRepository, UserRepository, VehicleCatalogRepository,
 } from './types';
 
 /**
@@ -47,6 +48,10 @@ export const rentalRepository: RentalRepository = ENV.useMock
     ? new MockRentalRepository()
     : new ApiRentalRepository();
 
+export const maintenanceRepository: MaintenanceRepository = ENV.useMock
+    ? new MockMaintenanceRepository()
+    : new ApiMaintenanceRepository();
+
 if (ENV.useMock && __DEV__) {
     console.info(
         '[services] MOCK MODE — in-memory data, no backend. ' +
@@ -57,6 +62,6 @@ if (ENV.useMock && __DEV__) {
 export { DEMO_ACCOUNTS } from './mock/seed';
 export { resetMockDb } from './mock/mock.repositories';
 export type {
-    AuthRepository, BookingRepository, KycRepository, NotificationRepository, RentalRepository,
-    UserRepository, VehicleCatalogRepository, SessionRef,
+    AuthRepository, BookingRepository, KycRepository, MaintenanceRepository,
+    NotificationRepository, RentalRepository, UserRepository, VehicleCatalogRepository, SessionRef,
 } from './types';

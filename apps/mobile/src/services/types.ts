@@ -1,9 +1,9 @@
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
-    ApiMe, ApiNotification, ApiPickupBooking, ApiRental, ApiSignedUrl, ApiStation, ApiUser,
-    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateUserPayload,
-    KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
-    RoleName, StatusAction, UpdateUserPayload,
+    ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiRental, ApiSignedUrl,
+    ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail,
+    CreateBookingPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
+    ListVehicleModelsParams, LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload,
 } from '../types/api';
 
 export interface UploadPhotoResult {
@@ -95,10 +95,17 @@ export interface PickupQueueParams {
     stationId?: string;
 }
 
+export interface HistoryParams {
+    page?: number;
+    pageSize?: number;
+}
+
 export interface BookingRepository {
     create(payload: CreateBookingPayload): Promise<ApiBooking>;
     /** The rider's current in-progress booking, or null if none exists. */
     mine(): Promise<ApiBooking | null>;
+    /** All of the rider's own bookings, any status, most recent first. */
+    history(params: HistoryParams): Promise<Paginated<ApiBooking>>;
     nearestStation(lat: number, lng: number): Promise<ApiStation>;
 
     // staff pickup/check-in
@@ -110,6 +117,13 @@ export interface BookingRepository {
 export interface RentalRepository {
     /** The rider's current active rental, or null if none exists. */
     mine(): Promise<ApiRental | null>;
+    /** All of the rider's own rentals, most recent first. */
+    history(params: HistoryParams): Promise<Paginated<ApiRental>>;
+}
+
+export interface MaintenanceRepository {
+    /** Maintenance events for vehicles the rider has personally rented. */
+    history(): Promise<Paginated<ApiMaintenanceRecord>>;
 }
 
 /** Identity of the signed-in account, before roles are resolved. */

@@ -3,15 +3,15 @@ import { isValidStartDay } from '../../lib/bookingDays';
 import { MANDATORY_KYC_DOC_TYPES } from '../../types/api';
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
-    ApiMe, ApiPickupBooking, ApiRental, ApiSignedUrl, ApiStation, ApiUser, ApiUserDetail,
-    ApiVehicleModel, ApiVehicleModelDetail, BookingStatus, CreateBookingPayload, CreateUserPayload,
-    KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated, RentalStatus,
-    RoleName, StatusAction, UpdateUserPayload, VerificationStatus,
+    ApiMaintenanceRecord, ApiMe, ApiPickupBooking, ApiRental, ApiSignedUrl, ApiStation, ApiUser,
+    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, BookingStatus, CreateBookingPayload,
+    CreateUserPayload, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
+    RentalStatus, RoleName, StatusAction, UpdateUserPayload, VerificationStatus,
 } from '../../types/api';
 import type {
-    AuthRepository, BookingRepository, KycQueueParams, KycRepository, NotificationRepository,
-    PickupQueueParams, RentalRepository, SessionRef, UpdateDocumentInput, UploadDocumentInput,
-    UploadPhotoResult, UserRepository, VehicleCatalogRepository,
+    AuthRepository, BookingRepository, KycQueueParams, KycRepository, MaintenanceRepository,
+    NotificationRepository, PickupQueueParams, RentalRepository, SessionRef, UpdateDocumentInput,
+    UploadDocumentInput, UploadPhotoResult, UserRepository, VehicleCatalogRepository,
 } from '../types';
 import type { ApiNotification } from '../../types/api';
 import {
@@ -1141,7 +1141,7 @@ function toApiBooking(row: MockBookingRow): ApiBooking {
         start_day: row.start_day,
         created_at: row.created_at,
         vehicle_model: model ? { id: model.id, name: model.name } : null,
-        station: station ? { id: station.id, name: station.name, code: station.code } : null,
+        station: station ? { id: station.id, name: station.name, code: station.code, lat: station.lat, lng: station.lng } : null,
         plan: plan ? { id: plan.id, name: plan.name, billing_cycle: plan.billing_cycle, price: plan.price } : null,
     };
 }
@@ -1186,6 +1186,17 @@ export class MockBookingRepository implements BookingRepository {
         if (computeKycStatus(actor.id) !== 'verified') {
             throw new ApiError(403, 'FORBIDDEN', 'Complete KYC verification before booking a scooter.');
         }
+        const alreadyBooked = db.bookings.some(
+            (b) => b.user_id === actor.id && ACTIVE_BOOKING_STATUSES.includes(b.status),
+        );
+        const alreadyRenting = db.rentals.some((r) => r.user_id === actor.id && r.status === 'active');
+        if (alreadyBooked || alreadyRenting) {
+            throw new ApiError(
+                409,
+                'CONFLICT',
+                'You already have an active booking or rental. Return your scooter or wait for pickup before booking another.',
+            );
+        }
         if (!isValidStartDay(payload.start_day)) {
             throw new ApiError(
                 422,
@@ -1220,6 +1231,24 @@ export class MockBookingRepository implements BookingRepository {
             .filter((b) => b.user_id === actor.id && ACTIVE_BOOKING_STATUSES.includes(b.status))
             .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
         return rows.length > 0 ? toApiBooking(rows[0]) : null;
+    }
+
+    async history(params: { page?: number; pageSize?: number }): Promise<Paginated<ApiBooking>> {
+        await delay(200);
+        const actor = requireSession();
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 20;
+
+        const rows = db.bookings
+            .filter((b) => b.user_id === actor.id)
+            .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+
+        const start = (page - 1) * pageSize;
+        const data = rows.slice(start, start + pageSize).map(toApiBooking);
+        return {
+            data,
+            pagination: { page, pageSize, total: rows.length, totalPages: pageSize > 0 ? Math.ceil(rows.length / pageSize) : 0 },
+        };
     }
 
     async nearestStation(_lat: number, _lng: number): Promise<ApiStation> {
@@ -1302,6 +1331,33 @@ export class MockRentalRepository implements RentalRepository {
         const actor = requireSession();
         const row = db.rentals.find((r) => r.user_id === actor.id && r.status === 'active');
         return row ? toApiRental(row) : null;
+    }
+
+    async history(params: { page?: number; pageSize?: number }): Promise<Paginated<ApiRental>> {
+        await delay(200);
+        const actor = requireSession();
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 20;
+
+        const rows = db.rentals
+            .filter((r) => r.user_id === actor.id)
+            .sort((a, b) => (a.started_at < b.started_at ? 1 : -1));
+
+        const start = (page - 1) * pageSize;
+        const data = rows.slice(start, start + pageSize).map(toApiRental);
+        return {
+            data,
+            pagination: { page, pageSize, total: rows.length, totalPages: pageSize > 0 ? Math.ceil(rows.length / pageSize) : 0 },
+        };
+    }
+}
+
+export class MockMaintenanceRepository implements MaintenanceRepository {
+    /** Mock DB has no vehicle_maintenance concept — matches production's early-days reality anyway. */
+    async history(): Promise<Paginated<ApiMaintenanceRecord>> {
+        await delay(150);
+        requireSession();
+        return { data: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 } };
     }
 }
 

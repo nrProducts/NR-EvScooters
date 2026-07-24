@@ -8,12 +8,20 @@ import { useAuthStore } from '../store/useAuthStore';
 import { rentalRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { COLORS } from '../constants/theme';
-import { Bike, CreditCard, LifeBuoy, BatteryFull, ChevronRight, MapPin } from 'lucide-react-native';
+import { Bike, CreditCard, LifeBuoy, BatteryFull, ChevronRight, MapPin, Clock } from 'lucide-react-native';
 import type { ApiRental } from '../types/api';
 
 const CYCLE_LABEL: Record<string, string> = {
   daily: 'Day', weekly: 'Week', monthly: 'Month', yearly: 'Year',
 };
+
+function elapsedSince(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const totalMinutes = Math.max(0, Math.floor(ms / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
 
 /**
  * The rider's dashboard once they have an active rental — reachable only
@@ -26,6 +34,8 @@ export default function PostBookingDashboardScreen() {
   const [rental, setRental] = useState<ApiRental | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Ticks once a minute purely to re-render the elapsed-time label below.
+  const [, setClockTick] = useState(0);
 
   const load = () => {
     setLoading(true);
@@ -38,6 +48,11 @@ export default function PostBookingDashboardScreen() {
   };
 
   useEffect(load, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => setClockTick((n) => n + 1), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   if (!profile) return null;
 
@@ -73,14 +88,24 @@ export default function PostBookingDashboardScreen() {
             </View>
 
             {rental?.vehicle ? (
-              <View className="flex-row items-center justify-between bg-white/10 rounded-2xl px-4 py-3">
-                <View className="flex-row items-center">
-                  <BatteryFull size={16} color="#FFF" />
-                  <Text className="text-white font-bold text-sm ml-2">{rental.vehicle.battery_percentage}%</Text>
+              <>
+                <View className="flex-row items-center justify-between bg-white/10 rounded-2xl px-4 py-3">
+                  <View className="flex-row items-center">
+                    <BatteryFull size={16} color="#FFF" />
+                    <Text className="text-white font-bold text-sm ml-2">{rental.vehicle.battery_percentage}%</Text>
+                  </View>
+                  <Text className="text-white/80 text-xs font-semibold">{rental.vehicle.registration_number}</Text>
+                  <Badge label={rental.status} tone="neutral" />
                 </View>
-                <Text className="text-white/80 text-xs font-semibold">{rental.vehicle.registration_number}</Text>
-                <Badge label={rental.status} tone="neutral" />
-              </View>
+                {rental.status === 'active' ? (
+                  <View className="flex-row items-center mt-3">
+                    <Clock size={13} color="rgba(255,255,255,0.7)" />
+                    <Text className="text-white/80 text-[11px] font-semibold ml-2">
+                      Riding for {elapsedSince(rental.started_at)}
+                    </Text>
+                  </View>
+                ) : null}
+              </>
             ) : (
               <Text className="text-white/80 text-xs font-medium">
                 You don&apos;t have a scooter assigned yet. Contact support if this doesn&apos;t look right.

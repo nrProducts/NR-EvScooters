@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking, Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ChevronRight, Bike, Clock, MapPin, Calendar } from 'lucide-react-native';
+import { ChevronRight, Bike, Clock, MapPin, Calendar, Navigation } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { KycBanner } from '../components/KycBanner';
 import { FeaturedScooterCard } from '../components/FeaturedScooterCard';
@@ -11,6 +11,7 @@ import { ErrorState } from '../components/ui/ErrorState';
 import { useAuthStore } from '../store/useAuthStore';
 import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
 import { bookingRepository } from '../services';
+import { buildMapsUrl, buildWebMapsUrl } from '../lib/maps';
 import { COLORS } from '../constants/theme';
 import type { ApiBooking } from '../types/api';
 
@@ -51,6 +52,17 @@ export default function HomeScreen() {
       cancelled = true;
     };
   }, [profile?.has_active_booking, profile?.has_active_rental]);
+
+  const handleGetDirections = async (station: NonNullable<ApiBooking['station']>) => {
+    const platform = Platform.OS === 'android' ? 'android' : 'ios';
+    const url = buildMapsUrl(station.lat, station.lng, platform);
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      await Linking.openURL(canOpen ? url : buildWebMapsUrl(station.lat, station.lng));
+    } catch {
+      Alert.alert("Can't open maps", 'No maps app could be found on this device.');
+    }
+  };
 
   if (!profile) return null;
 
@@ -98,6 +110,18 @@ export default function HomeScreen() {
             <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-2.5">
               We&apos;ll notify you the day before — staff will assign your scooter at pickup.
             </Text>
+            {pendingBooking.station ? (
+              <TouchableOpacity
+                onPress={() => handleGetDirections(pendingBooking.station!)}
+                className="flex-row items-center justify-center rounded-xl py-2.5 mt-3"
+                style={{ backgroundColor: COLORS.primary + '14' }}
+              >
+                <Navigation size={14} color={COLORS.primaryPressed} />
+                <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-bold ml-2">
+                  Get Directions to Pickup
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
 

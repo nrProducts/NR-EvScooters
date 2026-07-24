@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Modal } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, Modal, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -9,7 +9,7 @@ import { Badge } from '../../components/ui/Badge';
 import { SpecRow } from '../../components/SpecRow';
 import { SkeletonList } from '../../components/ui/Skeleton';
 import { ErrorState } from '../../components/ui/ErrorState';
-import { useCanRent } from '../../store/useAuthStore';
+import { useCanRent, useHasActiveBooking, useHasActiveRental } from '../../store/useAuthStore';
 import { vehicleCatalogRepository } from '../../services';
 import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
@@ -23,6 +23,9 @@ export default function VehicleDetailsScreen() {
   const { id, action } = useLocalSearchParams<{ id: string; action?: string }>();
   const router = useRouter();
   const canRent = useCanRent();
+  const hasActiveBooking = useHasActiveBooking();
+  const hasActiveRental = useHasActiveRental();
+  const alreadyBookedOrRenting = hasActiveBooking || hasActiveRental;
   const insets = useSafeAreaInsets();
 
   const [model, setModel] = useState<ApiVehicleModelDetail | null>(null);
@@ -53,6 +56,22 @@ export default function VehicleDetailsScreen() {
   }, [action, model]);
 
   const handleBookNow = () => {
+    if (alreadyBookedOrRenting) {
+      Alert.alert(
+        hasActiveRental ? "You're already on a ride" : 'You already have a booking',
+        hasActiveRental
+          ? "You have an active rental. Return your scooter before booking another one."
+          : 'You already have a scooter booked and awaiting pickup.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          {
+            text: hasActiveRental ? 'View My Ride' : 'View Booking',
+            onPress: () => router.push(hasActiveRental ? '/post-booking-dashboard' : '/home'),
+          },
+        ],
+      );
+      return;
+    }
     if (!canRent) {
       setShowKycModal(true);
       return;
@@ -195,10 +214,13 @@ export default function VehicleDetailsScreen() {
         >
           <TouchableOpacity
             onPress={handleBookNow}
+            disabled={alreadyBookedOrRenting}
             className="py-4 rounded-2xl items-center"
-            style={{ backgroundColor: COLORS.primary }}
+            style={{ backgroundColor: COLORS.primary, opacity: alreadyBookedOrRenting ? 0.5 : 1 }}
           >
-            <Text className="text-white text-sm font-bold">Book Now</Text>
+            <Text className="text-white text-sm font-bold">
+              {hasActiveRental ? 'Active Rental' : hasActiveBooking ? 'Booking Pending' : 'Book Now'}
+            </Text>
           </TouchableOpacity>
         </View>
       ) : null}

@@ -321,7 +321,7 @@ export interface ApiBooking {
     start_day: string;
     created_at: string;
     vehicle_model: { id: string; name: string } | null;
-    station: { id: string; name: string; code: string } | null;
+    station: { id: string; name: string; code: string; lat: number; lng: number } | null;
     plan: { id: string; name: string; billing_cycle: BillingCycle; price: number } | null;
 }
 
@@ -346,4 +346,15 @@ export interface ApiRental {
     vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
     station: { id: string; name: string; code: string } | null;
     plan: { id: string; name: string; billing_cycle: BillingCycle; price: number } | null;
+}
+
+export type MaintenanceStatus = 'reported' | 'in_progress' | 'resolved' | 'cancelled';
+
+export interface ApiMaintenanceRecord {
+    id: string;
+    status: MaintenanceStatus;
+    description: string;
+    resolved_at: string | null;
+    created_at: string;
+    vehicle: { id: string; name: string; registration_number: string } | null;
 }

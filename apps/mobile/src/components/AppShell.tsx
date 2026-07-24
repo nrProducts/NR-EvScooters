@@ -10,7 +10,7 @@ import { KYC_STATUS_LABEL, KYC_STATUS_TONE } from '../constants/status';
 import {
   Menu, X, User, LogOut, LayoutDashboard, Users, Bike, CreditCard,
   ArrowLeftRight, BarChart3, Settings, Home, LifeBuoy, Mail, Phone,
-  ShieldCheck, ChevronRight, FileCheck, Bell, PackageCheck
+  ShieldCheck, ChevronRight, FileCheck, Bell, PackageCheck, History
 } from 'lucide-react-native';
 
 const DRAWER_WIDTH = Math.min(300, Dimensions.get('window').width * 0.8);
@@ -37,6 +37,7 @@ const USER_NAV: NavItem[] = [
   { label: 'Home', icon: Home, route: '/home' },
   { label: 'My Scooter', icon: Bike, route: '/my-scooter' },
   { label: 'My Plan', icon: CreditCard, route: '/my-plan' },
+  { label: 'Booking History', icon: History, route: '/booking-history' },
   { label: 'KYC Verification', icon: ShieldCheck, route: '/kyc' },
   { label: 'Support', icon: LifeBuoy, route: '/support' },
 ];
@@ -65,11 +66,15 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   // hiding the link is only so riders aren't shown doors they can't open.
   const isAdmin = profile?.is_admin ?? false;
   const isStaff = isAdmin || (profile?.roles ?? []).some(r => r !== 'rider');
-  // "My Scooter"/"My Plan" only make sense once a booking exists —
-  // pending_payment counts as active, same as confirmed (useHasActiveBooking).
+  // "My Scooter"/"My Plan" only make sense once a booking or rental exists.
+  // has_active_booking excludes 'fulfilled' by design (see bookings.types.ts)
+  // — the moment a booking is picked up, has_active_rental takes over as the
+  // "in progress" signal, so both must be checked or the nav vanishes right
+  // when the rider needs it most.
   const hasActiveBooking = profile?.has_active_booking ?? false;
+  const hasActiveRental = profile?.has_active_rental ?? false;
   const riderNav = USER_NAV.filter(
-    item => (item.route === '/my-scooter' || item.route === '/my-plan') ? hasActiveBooking : true,
+    item => (item.route === '/my-scooter' || item.route === '/my-plan') ? (hasActiveBooking || hasActiveRental) : true,
   );
   const navItems = isStaff ? ADMIN_NAV : riderNav;
 

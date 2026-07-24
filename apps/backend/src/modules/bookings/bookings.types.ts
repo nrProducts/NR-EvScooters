@@ -23,7 +23,7 @@ export interface BookingView {
     start_day: string;
     created_at: string;
     vehicle_model: { id: string; name: string } | null;
-    station: { id: string; name: string; code: string } | null;
+    station: { id: string; name: string; code: string; lat: number; lng: number } | null;
     plan: { id: string; name: string; billing_cycle: string; price: number } | null;
 }
 
@@ -31,6 +31,11 @@ export interface PickupQueueFilters {
     page: number;
     pageSize: number;
     stationId?: string;
+}
+
+export interface BookingHistoryFilters {
+    page: number;
+    pageSize: number;
 }
 
 export interface PickupBookingView extends BookingView {

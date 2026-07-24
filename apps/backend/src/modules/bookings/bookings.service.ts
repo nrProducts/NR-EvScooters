@@ -3,16 +3,17 @@ import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
+import { hasActiveRentalForUser } from "../users/users.service";
 import { AuthContext, Paginated } from "../../types";
 import {
-    ACTIVE_BOOKING_STATUSES, AvailableVehicleView, BookingStatus, BookingView, ConfirmPickupInput,
-    CreateBookingInput, PickupBookingView, PickupQueueFilters,
+    ACTIVE_BOOKING_STATUSES, AvailableVehicleView, BookingHistoryFilters, BookingStatus,
+    BookingView, ConfirmPickupInput, CreateBookingInput, PickupBookingView, PickupQueueFilters,
 } from "./bookings.types";
 
 const BOOKING_COLUMNS = `
     id, status, start_day, created_at,
     vehicle_models(id, name),
-    stations(id, name, code),
+    stations(id, name, code, lat, lng),
     plans(id, name, billing_cycle, price)
 `;
 
@@ -64,6 +65,14 @@ export async function createBooking(
     input: CreateBookingInput,
     actor: AuthContext,
 ): Promise<BookingView> {
+    const [alreadyBooked, alreadyRenting] = await Promise.all([
+        hasActiveBookingForUser(actor.id),
+        hasActiveRentalForUser(actor.id),
+    ]);
+    if (alreadyBooked || alreadyRenting) {
+        throw conflict("You already have an active booking or rental. Return your scooter or wait for pickup before booking another.");
+    }
+
     const { data, error } = await supabaseAdmin
         .from("bookings")
         .insert({
@@ -116,6 +125,24 @@ export async function getMyCurrentBooking(userId: string): Promise<BookingView> 
     if (!data) throw notFound("No active booking found.");
 
     return toBookingView(data as unknown as RawBookingRow);
+}
+
+/** All of the rider's own bookings, any status, most recent first — what the Booking History screen renders. */
+export async function getMyBookingHistory(
+    userId: string,
+    filters: BookingHistoryFilters,
+): Promise<Paginated<BookingView>> {
+    const [from, to] = toRange(filters);
+    const { data, error, count } = await supabaseAdmin
+        .from("bookings")
+        .select(BOOKING_COLUMNS, { count: "exact" })
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+    if (error) throw error;
+    const items = ((data ?? []) as unknown as RawBookingRow[]).map(toBookingView);
+    return paginate(items, count ?? 0, filters);
 }
 
 /** Mirrors hasActiveRentalForUser in users.service.ts. pending_payment counts as active. */

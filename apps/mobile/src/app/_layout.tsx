@@ -25,6 +25,7 @@ const STAFF_ROUTES = [
 const RIDER_ROUTES = [
   "home", "my-scooter", "my-plan", "support", "kyc", "kyc-intro",
   "browse-vehicles", "vehicle", "post-booking-dashboard", "booking", "notifications",
+  "booking-history",
 ];
 // Screens reachable while signed OUT (the login surface).
 const AUTH_ROUTES = ["index", "otp-verify", "admin-login", "auth-callback"];

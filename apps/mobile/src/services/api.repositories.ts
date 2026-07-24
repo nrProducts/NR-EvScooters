@@ -3,14 +3,16 @@ import { ApiError } from '../lib/ApiError';
 import { getSupabase } from '../lib/supabase';
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
-    ApiMe, ApiNotification, ApiPickupBooking, ApiRental, ApiSignedUrl, ApiStation, ApiUser,
-    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateUserPayload,
-    ListUsersParams, ListVehicleModelsParams, Paginated, RoleName, StatusAction, UpdateUserPayload,
+    ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiRental, ApiSignedUrl,
+    ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail,
+    CreateBookingPayload, CreateUserPayload, ListUsersParams, ListVehicleModelsParams, Paginated,
+    RoleName, StatusAction, UpdateUserPayload,
 } from '../types/api';
 import type {
-    AuthRepository, BookingRepository, KycQueueParams, KycRepository, NotificationRepository,
-    PickupQueueParams, RentalRepository, SessionRef, UpdateDocumentInput, UploadDocumentInput,
-    UploadPhotoResult, UserRepository, VehicleCatalogRepository,
+    AuthRepository, BookingRepository, HistoryParams, KycQueueParams, KycRepository,
+    MaintenanceRepository, NotificationRepository, PickupQueueParams, RentalRepository,
+    SessionRef, UpdateDocumentInput, UploadDocumentInput, UploadPhotoResult, UserRepository,
+    VehicleCatalogRepository,
 } from './types';
 import type { LocalFile } from '../types/api';
 
@@ -202,6 +204,9 @@ export class ApiBookingRepository implements BookingRepository {
             throw err;
         }
     }
+    history(params: HistoryParams): Promise<Paginated<ApiBooking>> {
+        return api.bookingHistory(params);
+    }
     nearestStation(lat: number, lng: number): Promise<ApiStation> {
         return api.nearestStation(lat, lng);
     }
@@ -224,5 +229,14 @@ export class ApiRentalRepository implements RentalRepository {
             if (err instanceof ApiError && err.status === 404) return null;
             throw err;
         }
+    }
+    history(params: HistoryParams): Promise<Paginated<ApiRental>> {
+        return api.rentalHistory(params);
+    }
+}
+
+export class ApiMaintenanceRepository implements MaintenanceRepository {
+    history(): Promise<Paginated<ApiMaintenanceRecord>> {
+        return api.maintenanceHistory();
     }
 }

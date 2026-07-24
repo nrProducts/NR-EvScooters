@@ -14,6 +14,11 @@ router.use(requireAuth);
 // swallowed as a param — same care already taken for GET /users/me and
 // GET /vehicle-models/featured.
 router.get("/me/current", asyncHandler(c.myCurrentBookingHandler));
+router.get(
+    "/me/history",
+    validate({ query: v.bookingHistoryQuery }),
+    asyncHandler(c.myBookingHistoryHandler),
+);
 
 router.post(
     "/",

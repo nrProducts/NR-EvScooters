@@ -1,92 +1,75 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
-import { useFleetStore } from '../store/useFleetStore';
-import { useRentGate } from '../hooks/useRentGate';
+import { ErrorState } from '../components/ui/ErrorState';
+import { rentalRepository } from '../services';
+import { ApiError } from '../lib/ApiError';
 import { COLORS } from '../constants/theme';
-import { Bike, BatteryFull, Hash, Calendar, Wrench, ShieldCheck, Zap } from 'lucide-react-native';
-import { VehicleStatus } from '../types/fleet';
-
-const STATUS_TONE: Record<VehicleStatus, 'success' | 'warning' | 'danger' | 'neutral'> = {
-  available: 'success',
-  assigned: 'neutral',
-  charging: 'warning',
-  maintenance: 'danger',
-};
+import { RENTAL_STATUS_LABEL, RENTAL_STATUS_TONE } from '../constants/status';
+import { Bike, BatteryFull, Hash, MapPin } from 'lucide-react-native';
+import type { ApiRental } from '../types/api';
 
 export default function MyScooterScreen() {
-  const user = useFleetStore(s => s.getCurrentUser());
-  const vehicle = useFleetStore(s => s.getVehicleById(user?.assignedVehicleId));
-  const { attemptRent } = useRentGate();
-  const [rented, setRented] = useState(false);
+  const [rental, setRental] = useState<ApiRental | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const onRentPress = () => {
-    if (attemptRent()) setRented(true);
+  const load = () => {
+    setLoading(true);
+    setError(null);
+    void rentalRepository
+      .mine()
+      .then(setRental)
+      .catch((err) => setError(err instanceof ApiError ? err.message : 'Could not load your scooter.'))
+      .finally(() => setLoading(false));
   };
+
+  useEffect(load, []);
 
   return (
     <AppShell title="My Scooter">
-      <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: 40 }}>
-        {!vehicle ? (
-          <EmptyState
-            icon={Bike}
-            title="No scooter assigned"
-            subtitle="Reach out to support and we'll get a vehicle assigned to your account."
-          />
-        ) : (
-          <>
-            <View className="rounded-3xl p-5 mb-4 items-center" style={{ backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }}>
-              <View className="w-16 h-16 rounded-3xl items-center justify-center mb-3" style={{ backgroundColor: COLORS.primary + '14' }}>
-                <Bike size={30} color={COLORS.primary} />
-              </View>
-              <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">{vehicle.name}</Text>
-              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5 mb-3">{vehicle.manufacturer} • {vehicle.model}</Text>
-              <Badge label={vehicle.status} tone={STATUS_TONE[vehicle.status]} />
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      ) : error ? (
+        <ErrorState message={error} onRetry={load} />
+      ) : (
+        <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: 40 }}>
+          {!rental?.vehicle ? (
+            <EmptyState
+              icon={Bike}
+              title="No active rental"
+              subtitle="Book a scooter to see it here — once picked up, its details will show up on this screen."
+            />
+          ) : (
+            <>
+              <View className="rounded-3xl p-5 mb-4 items-center" style={{ backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }}>
+                <View className="w-16 h-16 rounded-3xl items-center justify-center mb-3" style={{ backgroundColor: COLORS.primary + '14' }}>
+                  <Bike size={30} color={COLORS.primary} />
+                </View>
+                <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">{rental.vehicle.name}</Text>
+                <View className="mt-2">
+                  <Badge label={RENTAL_STATUS_LABEL[rental.status]} tone={RENTAL_STATUS_TONE[rental.status]} />
+                </View>
 
-              <View className="flex-row items-center mt-5 px-5 py-3 rounded-2xl w-full justify-center" style={{ backgroundColor: COLORS.background }}>
-                <BatteryFull size={18} color={COLORS.primary} />
-                <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black ml-2">{vehicle.batteryPercent}%</Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium ml-1.5">battery</Text>
+                <View className="flex-row items-center mt-5 px-5 py-3 rounded-2xl w-full justify-center" style={{ backgroundColor: COLORS.background }}>
+                  <BatteryFull size={18} color={COLORS.primary} />
+                  <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black ml-2">{rental.vehicle.battery_percentage}%</Text>
+                  <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium ml-1.5">battery</Text>
+                </View>
               </View>
-            </View>
 
-            <View className="rounded-2xl border overflow-hidden" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-              <DetailRow icon={Hash} label="Vehicle Number" value={vehicle.vehicleNumber} first />
-              <DetailRow icon={ShieldCheck} label="Registration Number" value={vehicle.registrationNumber} />
-              {vehicle.vin && <DetailRow icon={Hash} label="VIN" value={vehicle.vin} />}
-              <DetailRow icon={Calendar} label="Last Service Date" value={vehicle.lastServiceDate} />
-              <DetailRow icon={Wrench} label="Next Service Due" value={vehicle.nextServiceDue} />
-            </View>
-
-            {rented ? (
-              <View
-                className="rounded-2xl p-4 mt-4 items-center"
-                style={{ backgroundColor: COLORS.success + '14', borderWidth: 1, borderColor: COLORS.success + '33' }}
-              >
-                <ShieldCheck size={22} color={COLORS.success} />
-                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold mt-2">
-                  Scooter unlocked
-                </Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-1">
-                  Booking isn't live yet — this confirms your KYC gate is working.
-                </Text>
+              <View className="rounded-2xl border overflow-hidden" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+                <DetailRow icon={Hash} label="Registration Number" value={rental.vehicle.registration_number} first />
+                {rental.station ? <DetailRow icon={MapPin} label="Picked Up At" value={rental.station.name} /> : null}
               </View>
-            ) : (
-              <TouchableOpacity
-                onPress={onRentPress}
-                accessibilityRole="button"
-                className="rounded-2xl py-4 mt-4 flex-row items-center justify-center"
-                style={{ backgroundColor: COLORS.primary }}
-              >
-                <Zap size={17} color="#FFF" />
-                <Text className="text-white font-bold text-sm ml-2">Rent this Scooter</Text>
-              </TouchableOpacity>
-            )}
-          </>
-        )}
-      </ScrollView>
+            </>
+          )}
+        </ScrollView>
+      )}
     </AppShell>
   );
 }

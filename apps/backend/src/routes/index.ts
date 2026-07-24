@@ -8,6 +8,7 @@ import bookingsRoutes from "../modules/bookings/bookings.routes";
 import stationsRoutes from "../modules/stations/stations.routes";
 import notificationsRoutes from "../modules/notifications/notifications.routes";
 import rentalsRoutes from "../modules/rentals/rentals.routes";
+import maintenanceRoutes from "../modules/maintenance/maintenance.routes";
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use("/vehicle-models", vehicleCatalogRoutes);
 router.use("/bookings", bookingsRoutes);
 router.use("/stations", stationsRoutes);
 router.use("/rentals", rentalsRoutes);
+router.use("/maintenance", maintenanceRoutes);
 
 export default router;

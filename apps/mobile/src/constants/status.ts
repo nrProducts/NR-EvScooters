@@ -1,4 +1,7 @@
-import type { AccountStatus, KycStatus, KycDocType, VerificationStatus } from '../types/api';
+import type {
+  AccountStatus, BookingStatus, KycStatus, KycDocType, MaintenanceStatus, RentalStatus,
+  VerificationStatus,
+} from '../types/api';
 
 type Tone = 'success' | 'warning' | 'danger' | 'neutral' | 'primary';
 
@@ -37,6 +40,50 @@ export const DOC_TYPE_LABEL: Record<KycDocType, string> = {
   passport: 'Passport',
   voter_id: 'Voter ID',
   address_proof: 'Address Proof',
+};
+
+export const BOOKING_STATUS_TONE: Record<BookingStatus, Tone> = {
+  pending_payment: 'warning',
+  confirmed: 'primary',
+  fulfilled: 'success',
+  cancelled: 'danger',
+  expired: 'neutral',
+};
+
+export const BOOKING_STATUS_LABEL: Record<BookingStatus, string> = {
+  pending_payment: 'Pending Payment',
+  confirmed: 'Confirmed',
+  fulfilled: 'Picked Up',
+  cancelled: 'Cancelled',
+  expired: 'Expired',
+};
+
+export const RENTAL_STATUS_TONE: Record<RentalStatus, Tone> = {
+  active: 'primary',
+  completed: 'success',
+  force_ended: 'warning',
+  cancelled: 'danger',
+};
+
+export const RENTAL_STATUS_LABEL: Record<RentalStatus, string> = {
+  active: 'Active',
+  completed: 'Completed',
+  force_ended: 'Force Ended',
+  cancelled: 'Cancelled',
+};
+
+export const MAINTENANCE_STATUS_TONE: Record<MaintenanceStatus, Tone> = {
+  reported: 'warning',
+  in_progress: 'primary',
+  resolved: 'success',
+  cancelled: 'neutral',
+};
+
+export const MAINTENANCE_STATUS_LABEL: Record<MaintenanceStatus, string> = {
+  reported: 'Reported',
+  in_progress: 'In Progress',
+  resolved: 'Resolved',
+  cancelled: 'Cancelled',
 };
 
 export const initialsOf = (name: string): string =>
