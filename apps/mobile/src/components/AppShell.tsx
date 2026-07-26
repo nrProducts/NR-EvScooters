@@ -27,6 +27,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: 'KYC Review', icon: FileCheck, route: '/kyc-review' },
   { label: 'Manage Vehicles', icon: Bike, route: '/vehicles' },
   { label: 'Pickup Queue', icon: PackageCheck, route: '/bookings-pickup' },
+  { label: 'Support Requests', icon: LifeBuoy, route: '/support-review' },
   { label: 'Plans', icon: CreditCard, route: '/plans' },
   { label: 'Assign Vehicles', icon: ArrowLeftRight, route: '/assign' },
   { label: 'Reports', icon: BarChart3, route: '/reports' },

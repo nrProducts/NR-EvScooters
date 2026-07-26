@@ -17,7 +17,7 @@ import "../../global.css";
  */
 const STAFF_ROUTES = [
   "dashboard", "users", "vehicles", "plans", "assign", "reports", "settings", "kyc-review",
-  "notifications", "bookings-pickup",
+  "notifications", "bookings-pickup", "support-review",
 ];
 // "vehicle" covers vehicle/[id]; "booking" covers booking/[modelId],
 // booking/plan, booking/billing — Expo Router reports a dynamic route's

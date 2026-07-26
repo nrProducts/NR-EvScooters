@@ -1,6 +1,6 @@
 import type {
   AccountStatus, BookingStatus, KycStatus, KycDocType, MaintenanceStatus, RentalStatus,
-  VerificationStatus,
+  SupportPriority, SupportStatus, VerificationStatus,
 } from '../types/api';
 
 type Tone = 'success' | 'warning' | 'danger' | 'neutral' | 'primary';
@@ -84,6 +84,34 @@ export const MAINTENANCE_STATUS_LABEL: Record<MaintenanceStatus, string> = {
   in_progress: 'In Progress',
   resolved: 'Resolved',
   cancelled: 'Cancelled',
+};
+
+export const SUPPORT_STATUS_TONE: Record<SupportStatus, Tone> = {
+  open: 'warning',
+  in_progress: 'primary',
+  resolved: 'success',
+  closed: 'neutral',
+};
+
+export const SUPPORT_STATUS_LABEL: Record<SupportStatus, string> = {
+  open: 'Open',
+  in_progress: 'In Progress',
+  resolved: 'Resolved',
+  closed: 'Closed',
+};
+
+export const SUPPORT_PRIORITY_TONE: Record<SupportPriority, Tone> = {
+  low: 'neutral',
+  medium: 'primary',
+  high: 'warning',
+  urgent: 'danger',
+};
+
+export const SUPPORT_PRIORITY_LABEL: Record<SupportPriority, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  urgent: 'Urgent',
 };
 
 export const initialsOf = (name: string): string =>

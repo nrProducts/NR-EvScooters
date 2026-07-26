@@ -358,3 +358,35 @@ export interface ApiMaintenanceRecord {
     created_at: string;
     vehicle: { id: string; name: string; registration_number: string } | null;
 }
+
+export type SupportStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+export type SupportPriority = 'low' | 'medium' | 'high' | 'urgent';
+
+export interface CreateSupportRequestPayload {
+    subject: string;
+    description: string;
+}
+
+export interface ApiSupportRequest {
+    id: string;
+    subject: string;
+    description: string;
+    status: SupportStatus;
+    priority: SupportPriority;
+    resolved_at: string | null;
+    created_at: string;
+}
+
+export interface ApiSupportQueueItem extends ApiSupportRequest {
+    assigned_to: string | null;
+    /** Auto-attached at creation from the rider's active rental, if any. */
+    rental_id: string | null;
+    vehicle_id: string | null;
+    rider: { id: string; full_name: string; phone: string | null };
+}
+
+export interface UpdateSupportRequestPayload {
+    status?: SupportStatus;
+    priority?: SupportPriority;
+    assigned_to?: string;
+}

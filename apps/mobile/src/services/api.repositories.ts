@@ -4,15 +4,16 @@ import { getSupabase } from '../lib/supabase';
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
     ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiRental, ApiSignedUrl,
-    ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail,
-    CreateBookingPayload, CreateUserPayload, ListUsersParams, ListVehicleModelsParams, Paginated,
-    RoleName, StatusAction, UpdateUserPayload,
+    ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
+    ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, CreateUserPayload,
+    ListUsersParams, ListVehicleModelsParams, Paginated, RoleName, StatusAction,
+    UpdateSupportRequestPayload, UpdateUserPayload,
 } from '../types/api';
 import type {
     AuthRepository, BookingRepository, HistoryParams, KycQueueParams, KycRepository,
     MaintenanceRepository, NotificationRepository, PickupQueueParams, RentalRepository,
-    SessionRef, UpdateDocumentInput, UploadDocumentInput, UploadPhotoResult, UserRepository,
-    VehicleCatalogRepository,
+    SessionRef, SupportQueueParams, SupportRepository, UpdateDocumentInput, UploadDocumentInput,
+    UploadPhotoResult, UserRepository, VehicleCatalogRepository,
 } from './types';
 import type { LocalFile } from '../types/api';
 
@@ -238,5 +239,23 @@ export class ApiRentalRepository implements RentalRepository {
 export class ApiMaintenanceRepository implements MaintenanceRepository {
     history(): Promise<Paginated<ApiMaintenanceRecord>> {
         return api.maintenanceHistory();
+    }
+}
+
+export class ApiSupportRepository implements SupportRepository {
+    create(payload: CreateSupportRequestPayload): Promise<ApiSupportRequest> {
+        return api.createSupportRequest(payload);
+    }
+    mine(params: HistoryParams): Promise<Paginated<ApiSupportRequest>> {
+        return api.mySupportRequests(params);
+    }
+    queue(params: SupportQueueParams): Promise<Paginated<ApiSupportQueueItem>> {
+        return api.supportQueue(params);
+    }
+    detail(id: string): Promise<ApiSupportQueueItem> {
+        return api.supportDetail(id);
+    }
+    update(id: string, patch: UpdateSupportRequestPayload): Promise<ApiSupportQueueItem> {
+        return api.updateSupportRequest(id, patch);
     }
 }

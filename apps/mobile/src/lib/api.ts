@@ -8,9 +8,11 @@ export { ApiError };
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiErrorBody, ApiKycDetail, ApiKycQueueItem,
     ApiKycSummary, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiRental,
-    ApiSignedUrl, ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail,
-    CreateBookingPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
-    ListVehicleModelsParams, LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload,
+    ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
+    ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
+    CreateUserPayload, KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile,
+    Paginated, RoleName, StatusAction, SupportStatus, UpdateSupportRequestPayload,
+    UpdateUserPayload,
 } from '../types/api';
 
 type OnUnauthorized = () => void;
@@ -345,4 +347,23 @@ export const api = {
 
     // --- maintenance ---------------------------------------------------
     maintenanceHistory: () => request<Paginated<ApiMaintenanceRecord>>('/maintenance/me/history'),
+
+    // --- support ---------------------------------------------------------
+    createSupportRequest: (payload: CreateSupportRequestPayload) =>
+        request<ApiSupportRequest>('/users/me/support', { method: 'POST', body: payload }),
+
+    mySupportRequests: (params: { page?: number; pageSize?: number } = {}) =>
+        request<Paginated<ApiSupportRequest>>('/users/me/support', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
+
+    supportQueue: (params: { page?: number; pageSize?: number; status?: SupportStatus } = {}) =>
+        request<Paginated<ApiSupportQueueItem>>('/support', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
+
+    supportDetail: (id: string) => request<ApiSupportQueueItem>(`/support/${id}`),
+
+    updateSupportRequest: (id: string, patch: UpdateSupportRequestPayload) =>
+        request<ApiSupportQueueItem>(`/support/${id}`, { method: 'PATCH', body: patch }),
 };

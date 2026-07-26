@@ -1,9 +1,10 @@
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
     ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiRental, ApiSignedUrl,
-    ApiStation, ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail,
-    CreateBookingPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
-    ListVehicleModelsParams, LocalFile, Paginated, RoleName, StatusAction, UpdateUserPayload,
+    ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
+    ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, CreateUserPayload,
+    KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
+    RoleName, StatusAction, SupportStatus, UpdateSupportRequestPayload, UpdateUserPayload,
 } from '../types/api';
 
 export interface UploadPhotoResult {
@@ -124,6 +125,23 @@ export interface RentalRepository {
 export interface MaintenanceRepository {
     /** Maintenance events for vehicles the rider has personally rented. */
     history(): Promise<Paginated<ApiMaintenanceRecord>>;
+}
+
+export interface SupportQueueParams {
+    page?: number;
+    pageSize?: number;
+    status?: SupportStatus;
+}
+
+export interface SupportRepository {
+    create(payload: CreateSupportRequestPayload): Promise<ApiSupportRequest>;
+    /** The rider's own submitted requests, most recent first. */
+    mine(params: HistoryParams): Promise<Paginated<ApiSupportRequest>>;
+
+    // staff
+    queue(params: SupportQueueParams): Promise<Paginated<ApiSupportQueueItem>>;
+    detail(id: string): Promise<ApiSupportQueueItem>;
+    update(id: string, patch: UpdateSupportRequestPayload): Promise<ApiSupportQueueItem>;
 }
 
 /** Identity of the signed-in account, before roles are resolved. */

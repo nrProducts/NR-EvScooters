@@ -1,16 +1,18 @@
 import { ENV } from '../constants/env';
 import {
     ApiBookingRepository, ApiKycRepository, ApiMaintenanceRepository, ApiNotificationRepository,
-    ApiRentalRepository, ApiUserRepository, ApiVehicleCatalogRepository, SupabaseAuthRepository,
+    ApiRentalRepository, ApiSupportRepository, ApiUserRepository, ApiVehicleCatalogRepository,
+    SupabaseAuthRepository,
 } from './api.repositories';
 import {
     MockAuthRepository, MockBookingRepository, MockKycRepository, MockMaintenanceRepository,
-    MockNotificationRepository, MockRentalRepository, MockUserRepository,
+    MockNotificationRepository, MockRentalRepository, MockSupportRepository, MockUserRepository,
     MockVehicleCatalogRepository,
 } from './mock/mock.repositories';
 import type {
     AuthRepository, BookingRepository, KycRepository, MaintenanceRepository,
-    NotificationRepository, RentalRepository, UserRepository, VehicleCatalogRepository,
+    NotificationRepository, RentalRepository, SupportRepository, UserRepository,
+    VehicleCatalogRepository,
 } from './types';
 
 /**
@@ -52,6 +54,10 @@ export const maintenanceRepository: MaintenanceRepository = ENV.useMock
     ? new MockMaintenanceRepository()
     : new ApiMaintenanceRepository();
 
+export const supportRepository: SupportRepository = ENV.useMock
+    ? new MockSupportRepository()
+    : new ApiSupportRepository();
+
 if (ENV.useMock && __DEV__) {
     console.info(
         '[services] MOCK MODE — in-memory data, no backend. ' +
@@ -63,5 +69,6 @@ export { DEMO_ACCOUNTS } from './mock/seed';
 export { resetMockDb } from './mock/mock.repositories';
 export type {
     AuthRepository, BookingRepository, KycRepository, MaintenanceRepository,
-    NotificationRepository, RentalRepository, UserRepository, VehicleCatalogRepository, SessionRef,
+    NotificationRepository, RentalRepository, SupportRepository, UserRepository,
+    VehicleCatalogRepository, SessionRef,
 } from './types';

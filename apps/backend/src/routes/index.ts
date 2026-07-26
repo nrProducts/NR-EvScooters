@@ -9,6 +9,7 @@ import stationsRoutes from "../modules/stations/stations.routes";
 import notificationsRoutes from "../modules/notifications/notifications.routes";
 import rentalsRoutes from "../modules/rentals/rentals.routes";
 import maintenanceRoutes from "../modules/maintenance/maintenance.routes";
+import { riderSupportRouter, adminSupportRouter } from "../modules/support/support.routes";
 
 const router = Router();
 
@@ -20,8 +21,10 @@ router.use("/auth", authRoutes);
 // their own routers rather than falling through to /users/:id.
 router.use("/users/me/kyc", riderKycRouter);
 router.use("/users/me/notifications", notificationsRoutes);
+router.use("/users/me/support", riderSupportRouter);
 router.use("/users", usersRoutes);
 router.use("/kyc", adminKycRouter);
+router.use("/support", adminSupportRouter);
 router.use("/vehicles", vehiclesRoutes);
 // Rider-facing browse/detail catalog — distinct from /vehicles (fleet
 // inventory). See vehicle-catalog.service.ts for the rationale.

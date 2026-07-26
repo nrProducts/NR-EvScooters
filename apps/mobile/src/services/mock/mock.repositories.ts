@@ -3,15 +3,18 @@ import { isValidStartDay } from '../../lib/bookingDays';
 import { MANDATORY_KYC_DOC_TYPES } from '../../types/api';
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
-    ApiMaintenanceRecord, ApiMe, ApiPickupBooking, ApiRental, ApiSignedUrl, ApiStation, ApiUser,
-    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, BookingStatus, CreateBookingPayload,
+    ApiMaintenanceRecord, ApiMe, ApiPickupBooking, ApiRental, ApiSignedUrl, ApiStation,
+    ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
+    ApiVehicleModelDetail, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
     CreateUserPayload, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
-    RentalStatus, RoleName, StatusAction, UpdateUserPayload, VerificationStatus,
+    RentalStatus, RoleName, StatusAction, SupportPriority, SupportStatus,
+    UpdateSupportRequestPayload, UpdateUserPayload, VerificationStatus,
 } from '../../types/api';
 import type {
     AuthRepository, BookingRepository, KycQueueParams, KycRepository, MaintenanceRepository,
-    NotificationRepository, PickupQueueParams, RentalRepository, SessionRef, UpdateDocumentInput,
-    UploadDocumentInput, UploadPhotoResult, UserRepository, VehicleCatalogRepository,
+    NotificationRepository, PickupQueueParams, RentalRepository, SessionRef, SupportQueueParams,
+    SupportRepository, UpdateDocumentInput, UploadDocumentInput, UploadPhotoResult, UserRepository,
+    VehicleCatalogRepository,
 } from '../types';
 import type { ApiNotification } from '../../types/api';
 import {
@@ -60,6 +63,20 @@ interface MockNotificationRow {
     created_at: string;
 }
 
+interface MockSupportRow {
+    id: string;
+    user_id: string;
+    rental_id: string | null;
+    vehicle_id: string | null;
+    assigned_to: string | null;
+    subject: string;
+    description: string;
+    status: SupportStatus;
+    priority: SupportPriority;
+    resolved_at: string | null;
+    created_at: string;
+}
+
 const ACTIVE_BOOKING_STATUSES: BookingStatus[] = ['pending_payment', 'confirmed'];
 
 const db = {
@@ -69,6 +86,7 @@ const db = {
     bookings: [] as MockBookingRow[],
     notifications: [] as MockNotificationRow[],
     rentals: [] as MockRentalRow[],
+    supportRequests: [] as MockSupportRow[],
     currentUserId: null as string | null,
 };
 
@@ -1352,6 +1370,132 @@ export class MockRentalRepository implements RentalRepository {
     }
 }
 
+function toApiSupportRequest(row: MockSupportRow): ApiSupportRequest {
+    return {
+        id: row.id,
+        subject: row.subject,
+        description: row.description,
+        status: row.status,
+        priority: row.priority,
+        resolved_at: row.resolved_at,
+        created_at: row.created_at,
+    };
+}
+
+function toApiSupportQueueItem(row: MockSupportRow): ApiSupportQueueItem {
+    const rider = db.users.find((u) => u.id === row.user_id);
+    return {
+        ...toApiSupportRequest(row),
+        assigned_to: row.assigned_to,
+        rental_id: row.rental_id,
+        vehicle_id: row.vehicle_id,
+        rider: rider
+            ? { id: rider.id, full_name: rider.full_name, phone: rider.phone }
+            : { id: row.user_id, full_name: 'Unknown rider', phone: null },
+    };
+}
+
+export class MockSupportRepository implements SupportRepository {
+    async create(payload: CreateSupportRequestPayload): Promise<ApiSupportRequest> {
+        await delay(400);
+        const actor = requireSession();
+
+        const activeRental = db.rentals.find((r) => r.user_id === actor.id && r.status === 'active');
+
+        const row: MockSupportRow = {
+            id: uid('sr'),
+            user_id: actor.id,
+            rental_id: activeRental?.id ?? null,
+            vehicle_id: activeRental?.vehicle_id ?? null,
+            assigned_to: null,
+            subject: payload.subject,
+            description: payload.description,
+            status: 'open',
+            priority: 'medium',
+            resolved_at: null,
+            created_at: nowIso(),
+        };
+
+        db.supportRequests.push(row);
+        audit('support.created', actor.id, { subject: row.subject });
+        return toApiSupportRequest(row);
+    }
+
+    async mine(params: { page?: number; pageSize?: number }): Promise<Paginated<ApiSupportRequest>> {
+        await delay(200);
+        const actor = requireSession();
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 20;
+
+        const rows = db.supportRequests
+            .filter((r) => r.user_id === actor.id)
+            .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+
+        const start = (page - 1) * pageSize;
+        const data = rows.slice(start, start + pageSize).map(toApiSupportRequest);
+        return {
+            data,
+            pagination: { page, pageSize, total: rows.length, totalPages: pageSize > 0 ? Math.ceil(rows.length / pageSize) : 0 },
+        };
+    }
+
+    async queue(params: SupportQueueParams): Promise<Paginated<ApiSupportQueueItem>> {
+        await delay(200);
+        requireStaff();
+        const page = params.page ?? 1;
+        const pageSize = params.pageSize ?? 20;
+
+        let rows = db.supportRequests.slice();
+        if (params.status) rows = rows.filter((r) => r.status === params.status);
+        rows = rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+
+        const start = (page - 1) * pageSize;
+        const data = rows.slice(start, start + pageSize).map(toApiSupportQueueItem);
+        return {
+            data,
+            pagination: { page, pageSize, total: rows.length, totalPages: pageSize > 0 ? Math.ceil(rows.length / pageSize) : 0 },
+        };
+    }
+
+    async detail(id: string): Promise<ApiSupportQueueItem> {
+        await delay(150);
+        requireStaff();
+        const row = db.supportRequests.find((r) => r.id === id);
+        if (!row) throw new ApiError(404, 'NOT_FOUND', 'Support request not found.');
+        return toApiSupportQueueItem(row);
+    }
+
+    async update(id: string, patch: UpdateSupportRequestPayload): Promise<ApiSupportQueueItem> {
+        await delay(300);
+        const actor = requireStaff();
+        const row = db.supportRequests.find((r) => r.id === id);
+        if (!row) throw new ApiError(404, 'NOT_FOUND', 'Support request not found.');
+
+        const previousStatus = row.status;
+
+        if (patch.status) row.status = patch.status;
+        if (patch.priority) row.priority = patch.priority;
+        if (patch.assigned_to) row.assigned_to = patch.assigned_to;
+        if (patch.status && patch.status !== 'open' && !patch.assigned_to && !row.assigned_to) {
+            row.assigned_to = actor.id;
+        }
+        if (patch.status && (patch.status === 'resolved' || patch.status === 'closed')) {
+            row.resolved_at = nowIso();
+        }
+
+        if (patch.status && patch.status !== previousStatus) {
+            notify(row.user_id, {
+                template: 'support_status_updated',
+                title: 'Support Request Updated',
+                body: `Your request "${row.subject}" is now ${patch.status.replace('_', ' ')}.`,
+                screen: 'support',
+            });
+        }
+
+        return toApiSupportQueueItem(row);
+    }
+}
+
 export class MockMaintenanceRepository implements MaintenanceRepository {
     /** Mock DB has no vehicle_maintenance concept — matches production's early-days reality anyway. */
     async history(): Promise<Paginated<ApiMaintenanceRecord>> {
@@ -1368,6 +1512,7 @@ export function resetMockDb(): void {
     db.audit = SEED_AUDIT.map((a) => ({ ...a }));
     db.bookings = [];
     db.rentals = [];
+    db.supportRequests = [];
     db.currentUserId = null;
 }
 
