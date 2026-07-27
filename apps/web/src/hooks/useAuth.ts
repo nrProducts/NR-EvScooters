@@ -4,7 +4,7 @@ import { useAuthStore } from "@/store/authStore";
 import * as authApi from "@/services/api/staff";
 
 export function useAuth() {
-  const { user, setUser, logout } = useAuthStore();
+  const { user, setUser, logout: clearUser } = useAuthStore();
   const navigate = useNavigate();
 
   const loginMutation = useMutation({
@@ -16,10 +16,17 @@ export function useAuth() {
     },
   });
 
+  const googleLoginMutation = useMutation({
+    mutationFn: () => authApi.loginWithGoogle(),
+    // No onSuccess navigation here — this call only redirects to Google;
+    // the actual session/role resolution happens on /auth/callback.
+  });
+
   const signOut = () => {
-    logout();
+    clearUser();
     navigate("/login", { replace: true });
+    void authApi.logout();
   };
 
-  return { user, isAuthenticated: !!user, login: loginMutation, signOut };
+  return { user, isAuthenticated: !!user, login: loginMutation, loginWithGoogle: googleLoginMutation, signOut };
 }

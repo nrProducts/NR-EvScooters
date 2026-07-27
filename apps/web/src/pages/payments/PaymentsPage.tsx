@@ -1,116 +1,260 @@
 import { useState } from "react";
-import { Download, RotateCcw } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Eye, MoreHorizontal, Undo2 } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { StatCard } from "@/components/common/StatCard";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { useTransactions, useIssueRefund } from "@/hooks/usePayments";
-import { useDashboardSummary } from "@/hooks/useDashboard";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { useInvoices, useInvoice, useRefundInvoice } from "@/hooks/usePayments";
+import { ApiError } from "@/services/api/httpClient";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import type { PaymentStatus, Transaction } from "@/types";
+import type { Invoice, InvoiceStatus, PaymentStatus } from "@/types";
 
-const TABS: { value: PaymentStatus | "all"; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "success", label: "Success" },
-  { value: "pending", label: "Pending" },
-  { value: "failed", label: "Failed" },
-  { value: "refunded", label: "Refunded" },
-];
+const STATUS_OPTIONS: (InvoiceStatus | "all")[] = ["all", "draft", "issued", "paid", "overdue", "void"];
+const PAYMENT_STATUS_OPTIONS: (PaymentStatus | "all")[] = ["all", "pending", "succeeded", "failed", "refunded"];
 
 export default function PaymentsPage() {
-  const [status, setStatus] = useState<PaymentStatus | "all">("all");
+  const [status, setStatus] = useState<InvoiceStatus | "all">("all");
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | "all">("all");
   const [page, setPage] = useState(1);
-  const [refundTarget, setRefundTarget] = useState<Transaction | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [refundTarget, setRefundTarget] = useState<Invoice | null>(null);
 
-  const { data, isLoading, isError, refetch } = useTransactions({ status, page, pageSize: 10 });
-  const { data: summary } = useDashboardSummary();
-  const issueRefund = useIssueRefund();
+  const { data, isLoading, isError, refetch } = useInvoices({ status, paymentStatus, page, pageSize: 8 });
 
-  const columns: DataTableColumn<Transaction>[] = [
-    { header: "Invoice", key: "invoice", render: (t) => t.invoiceId ?? "—" },
-    { header: "Rider", key: "rider", render: (t) => t.riderName },
-    { header: "Type", key: "type", render: (t) => <span className="capitalize">{t.type.replace(/_/g, " ")}</span>, hideOnMobile: true },
-    { header: "Date", key: "date", render: (t) => formatDate(t.date), hideOnMobile: true },
+  const columns: DataTableColumn<Invoice>[] = [
     {
-      header: "Amount",
-      key: "amount",
-      render: (t) => (
-        <span className={t.amount < 0 ? "text-destructive" : ""}>{formatCurrency(t.amount)}</span>
+      header: "Rider",
+      key: "rider",
+      render: (inv) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium">{inv.rider?.full_name ?? "—"}</p>
+          <p className="truncate text-xs text-muted-foreground">{inv.rider?.email ?? ""}</p>
+        </div>
       ),
     },
-    { header: "Status", key: "status", render: (t) => <StatusBadge status={t.status} /> },
+    { header: "Amount", key: "amount", render: (inv) => formatCurrency(inv.amount_due) },
+    { header: "Status", key: "status", render: (inv) => <StatusBadge status={inv.status} /> },
+    { header: "Payment", key: "payment_status", render: (inv) => <StatusBadge status={inv.payment_status} /> },
+    { header: "Due", key: "due_date", render: (inv) => formatDate(inv.due_date), hideOnMobile: true },
     {
       header: "Actions",
       key: "actions",
-      render: (t) =>
-        t.status === "success" ? (
-          <Button size="sm" variant="outline" onClick={() => setRefundTarget(t)}>
-            <RotateCcw className="h-3.5 w-3.5" /> Refund
-          </Button>
-        ) : (
-          "—"
-        ),
+      render: (inv) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            <Button variant="ghost" size="icon">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setDetailId(inv.id)}>
+              <Eye className="mr-2 h-4 w-4" /> View details
+            </DropdownMenuItem>
+            {inv.payment_status === "succeeded" && (
+              <DropdownMenuItem onClick={() => setRefundTarget(inv)}>
+                <Undo2 className="mr-2 h-4 w-4" /> Refund
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
     },
   ];
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Payments</h1>
-          <p className="text-sm text-muted-foreground">Revenue, transactions and refunds</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline"><Download className="h-4 w-4" /> Export CSV</Button>
-        </div>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Payments</h1>
+        <p className="text-sm text-muted-foreground">{data?.total ?? 0} invoices · revenue, transactions and refunds</p>
       </div>
 
-      {summary && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="Revenue Today" value={formatCurrency(summary.revenue.today)} />
-          <StatCard label="Revenue This Week" value={formatCurrency(summary.revenue.thisWeek)} />
-          <StatCard label="Revenue This Month" value={formatCurrency(summary.revenue.thisMonth)} />
-          <StatCard label="Outstanding" value={formatCurrency(summary.revenue.outstanding)} tone="destructive" />
-        </div>
-      )}
-
-      <Tabs value={status} onValueChange={(v) => { setStatus(v as PaymentStatus | "all"); setPage(1); }}>
-        <TabsList className="flex-wrap">
-          {TABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
       <Card>
-        <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={data?.data ?? []}
-            isLoading={isLoading}
-            isError={isError}
-            onRetry={() => refetch()}
-            emptyTitle="No transactions found"
-          />
-        </CardContent>
-        {data && <Pagination page={page} pageSize={10} total={data.total} onPageChange={setPage} />}
+        <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
+          <Select
+            value={status}
+            onValueChange={(v) => {
+              setStatus(v as InvoiceStatus | "all");
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="sm:w-48">
+              <SelectValue placeholder="Invoice status" />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s} className="capitalize">
+                  {s === "all" ? "All invoice statuses" : s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={paymentStatus}
+            onValueChange={(v) => {
+              setPaymentStatus(v as PaymentStatus | "all");
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="sm:w-48">
+              <SelectValue placeholder="Payment status" />
+            </SelectTrigger>
+            <SelectContent>
+              {PAYMENT_STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s} className="capitalize">
+                  {s === "all" ? "All payment statuses" : s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <DataTable
+          columns={columns}
+          data={data?.data ?? []}
+          isLoading={isLoading}
+          isError={isError}
+          onRetry={() => refetch()}
+          onRowClick={(inv) => setDetailId(inv.id)}
+          emptyTitle="No invoices match your filters"
+        />
+
+        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
       </Card>
 
-      <ConfirmDialog
-        open={!!refundTarget}
-        onOpenChange={(o) => !o && setRefundTarget(null)}
-        title={`Refund ${refundTarget ? formatCurrency(refundTarget.amount) : ""}?`}
-        description={`This will refund ${refundTarget?.riderName} for invoice ${refundTarget?.invoiceId}.`}
-        confirmLabel="Issue refund"
-        loading={issueRefund.isPending}
-        onConfirm={() => {
-          if (refundTarget) issueRefund.mutate(refundTarget.id, { onSuccess: () => setRefundTarget(null) });
+      <InvoiceDetailDialog
+        id={detailId}
+        onOpenChange={(o) => !o && setDetailId(null)}
+        onRefund={(inv) => {
+          setDetailId(null);
+          setRefundTarget(inv);
         }}
       />
+
+      <RefundDialog invoice={refundTarget} onOpenChange={(o) => !o && setRefundTarget(null)} />
+    </div>
+  );
+}
+
+function InvoiceDetailDialog({
+  id,
+  onOpenChange,
+  onRefund,
+}: {
+  id: string | null;
+  onOpenChange: (open: boolean) => void;
+  onRefund: (invoice: Invoice) => void;
+}) {
+  const { data: invoice, isLoading } = useInvoice(id ?? undefined);
+
+  return (
+    <Dialog open={!!id} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Invoice</DialogTitle>
+        </DialogHeader>
+
+        {isLoading || !invoice ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : (
+          <div className="space-y-3 text-sm">
+            <Row label="Rider" value={invoice.rider?.full_name ?? "—"} />
+            <Row label="Amount due" value={formatCurrency(invoice.amount_due)} />
+            <Row label="Invoice status" value={<StatusBadge status={invoice.status} />} />
+            <Row label="Payment status" value={<StatusBadge status={invoice.payment_status} />} />
+            <Row label="Payment method" value={invoice.payment_method ?? "—"} />
+            <Row label="Gateway reference" value={invoice.gateway_ref ?? "—"} />
+            <Row label="Due date" value={formatDate(invoice.due_date)} />
+            <Row label="Paid at" value={invoice.paid_at ? formatDate(invoice.paid_at) : "—"} />
+            <Row label="Plan" value={invoice.plan?.name ?? "—"} />
+            <Row label="Vehicle" value={invoice.vehicle ? `${invoice.vehicle.name} (${invoice.vehicle.registration_number})` : "—"} />
+          </div>
+        )}
+
+        <DialogFooter>
+          {invoice?.payment_status === "succeeded" && (
+            <Button variant="outline" onClick={() => onRefund(invoice)}>
+              <Undo2 className="h-4 w-4" /> Refund
+            </Button>
+          )}
+          <Button onClick={() => onOpenChange(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RefundDialog({ invoice, onOpenChange }: { invoice: Invoice | null; onOpenChange: (open: boolean) => void }) {
+  const [reason, setReason] = useState("");
+  const refund = useRefundInvoice();
+
+  return (
+    <Dialog
+      open={!!invoice}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) setReason("");
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Refund {invoice ? formatCurrency(invoice.amount_due) : ""}?</DialogTitle>
+        </DialogHeader>
+
+        <p className="text-sm text-muted-foreground">
+          This marks the invoice as refunded in our records. It does not call out to a payment gateway — no gateway
+          integration is wired up in this codebase yet.
+        </p>
+
+        <div className="space-y-1.5">
+          <Label>Reason (optional)</Label>
+          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
+        </div>
+
+        {refund.isError && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {refund.error instanceof ApiError ? refund.error.message : "Something went wrong."}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={refund.isPending}
+            onClick={() => {
+              if (invoice) {
+                refund.mutate(
+                  { id: invoice.id, reason: reason.trim() || undefined },
+                  { onSuccess: () => onOpenChange(false) },
+                );
+              }
+            }}
+          >
+            {refund.isPending ? "Please wait..." : "Refund"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
     </div>
   );
 }

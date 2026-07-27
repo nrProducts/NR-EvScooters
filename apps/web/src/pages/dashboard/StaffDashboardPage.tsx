@@ -1,103 +1,61 @@
-import { CalendarCheck, PackageCheck, PackageX, Wrench, ClipboardList, Bike } from "lucide-react";
-import { StatCard } from "@/components/common/StatCard";
+import { CalendarCheck, LifeBuoy, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ActivityFeed } from "@/components/common/ActivityFeed";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useActivityFeed } from "@/hooks/useDashboard";
-import { useBookings } from "@/hooks/useBookings";
-import { useMaintenanceTickets } from "@/hooks/useMaintenance";
+import { StatCard } from "@/components/common/StatCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { EmptyState } from "@/components/common/EmptyState";
+import { Skeleton } from "@/components/ui/skeleton";
+import { usePickupQueue } from "@/hooks/useBookings";
+import { useSupportQueue } from "@/hooks/useSupport";
+import { useKycQueue } from "@/hooks/useKyc";
 import { formatDate } from "@/lib/utils";
-import { STAFF_MEMBERS } from "@/services/api/staff";
 
 export default function StaffDashboardPage() {
-  const { data: activity, isLoading: activityLoading } = useActivityFeed();
-  const { data: currentBookings } = useBookings({ status: "current", pageSize: 5 });
-  const { data: upcomingBookings } = useBookings({ status: "upcoming", pageSize: 5 });
-  const { data: openTickets } = useMaintenanceTickets({ status: "open", pageSize: 5 });
+  const { data: pickups, isLoading: pickupsLoading } = usePickupQueue({ pageSize: 5 });
+  const { data: openTickets, isLoading: ticketsLoading } = useSupportQueue({ status: "open", pageSize: 1 });
+  const { data: kycQueue, isLoading: kycLoading } = useKycQueue({ status: "pending", pageSize: 1 });
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Today's operations</h1>
-        <p className="text-sm text-muted-foreground">Your assigned tasks and queues for today</p>
+        <p className="text-sm text-muted-foreground">Real queues pulled from the backend</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCard label="Today's Bookings" value={currentBookings?.total ?? 0} icon={CalendarCheck} />
-        <StatCard label="Pending Delivery" value={upcomingBookings?.total ?? 0} icon={PackageCheck} tone="warning" />
-        <StatCard label="Pending Pickup" value={3} icon={PackageX} tone="warning" />
-        <StatCard label="Maintenance Queue" value={openTickets?.total ?? 0} icon={Wrench} tone="destructive" />
-        <StatCard label="Assigned Vehicles" value={12} icon={Bike} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <StatCard label="Awaiting pickup" value={pickups?.total ?? 0} icon={CalendarCheck} />
+        <StatCard label="Open support tickets" value={openTickets?.total ?? 0} icon={LifeBuoy} tone="warning" />
+        <StatCard label="Pending KYC" value={kycQueue?.total ?? 0} icon={ShieldCheck} tone="warning" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>My tasks today</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {(openTickets?.data ?? []).map((t) => (
-              <div key={t.id} className="flex items-center justify-between rounded-lg border border-border p-3">
+      <Card>
+        <CardHeader>
+          <CardTitle>Next up for vehicle handover</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {pickupsLoading || ticketsLoading || kycLoading ? (
+            <Skeleton className="h-32 w-full" />
+          ) : !pickups || pickups.data.length === 0 ? (
+            <EmptyState title="Nothing awaiting pickup" />
+          ) : (
+            pickups.data.map((b) => (
+              <div key={b.id} className="flex items-center justify-between rounded-lg border border-border p-3">
                 <div>
-                  <p className="text-sm font-medium">{t.issue}</p>
-                  <p className="text-xs text-muted-foreground">{t.vehicleReg} · reported {formatDate(t.reportedOn)}</p>
+                  <p className="text-sm font-medium">{b.rider.full_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {b.vehicle_model?.name} · {b.station?.name} · {formatDate(b.start_day)}
+                  </p>
                 </div>
-                <StatusBadge status={t.priority} />
+                <StatusBadge status={b.status} />
               </div>
-            ))}
-            {(openTickets?.data.length ?? 0) === 0 && (
-              <p className="py-6 text-center text-sm text-muted-foreground">No open tasks right now.</p>
-            )}
-          </CardContent>
-        </Card>
+            ))
+          )}
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Daily attendance</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {STAFF_MEMBERS.map((s) => (
-              <div key={s.id} className="flex items-center justify-between text-sm">
-                <span>{s.name}</span>
-                <StatusBadge status={s.status} />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>
-              <span className="flex items-center gap-2">
-                <ClipboardList className="h-4 w-4" /> Pending vehicle delivery / pickup
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="divide-y divide-border">
-            {(upcomingBookings?.data ?? []).map((b) => (
-              <div key={b.id} className="flex items-center justify-between py-2.5 text-sm">
-                <div>
-                  <p className="font-medium">{b.vehicleReg}</p>
-                  <p className="text-xs text-muted-foreground">{b.riderName}</p>
-                </div>
-                <span className="text-xs text-muted-foreground">{formatDate(b.startDate)}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Latest activity</CardTitle>
-          </CardHeader>
-          <CardContent className="max-h-72 overflow-y-auto scrollbar-thin">
-            {activityLoading ? <Skeleton className="h-40 w-full" /> : <ActivityFeed events={activity ?? []} />}
-          </CardContent>
-        </Card>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Maintenance queue and assigned-vehicle counts aren't shown — the backend has no admin-facing maintenance
+        or fleet-assignment endpoint yet.
+      </p>
     </div>
   );
 }

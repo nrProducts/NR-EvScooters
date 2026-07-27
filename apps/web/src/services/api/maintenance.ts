@@ -1,41 +1,40 @@
-import { MOCK_MAINTENANCE } from "@/services/mockData";
-import type { MaintenanceStatus, MaintenanceTicket } from "@/types";
-import { delay, paginate } from "./client";
-
-let tickets = [...MOCK_MAINTENANCE];
+import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
+import type { MaintenanceStatus, MaintenanceTicket, PaginatedResult } from "@/types";
 
 export interface MaintenanceFilters {
   status?: MaintenanceStatus | "all";
+  vehicleId?: string;
   page?: number;
   pageSize?: number;
 }
 
-export async function fetchMaintenanceTickets(filters: MaintenanceFilters = {}) {
-  const { status = "all", page = 1, pageSize = 10 } = filters;
-  const result = status === "all" ? tickets : tickets.filter((t) => t.status === status);
-  return delay(paginate(result, page, pageSize));
+/** GET /maintenance — requireStaff. See apps/backend/src/modules/maintenance/maintenance.routes.ts */
+export async function fetchMaintenanceTickets(filters: MaintenanceFilters = {}): Promise<PaginatedResult<MaintenanceTicket>> {
+  const { status, vehicleId, page = 1, pageSize = 8 } = filters;
+  const res = await apiClient.get<BackendPaginated<MaintenanceTicket>>("/maintenance", {
+    page,
+    pageSize,
+    status: status && status !== "all" ? status : undefined,
+    vehicleId,
+  });
+  return toPaginatedResult(res);
 }
 
-export async function updateTicketStatus(id: string, status: MaintenanceStatus) {
-  tickets = tickets.map((t) => (t.id === id ? { ...t, status } : t));
-  return delay(tickets.find((t) => t.id === id)!);
+export interface CreateMaintenanceInput {
+  vehicle_id: string;
+  description: string;
+  status?: MaintenanceStatus;
 }
 
-export async function assignTechnician(id: string, technician: string) {
-  tickets = tickets.map((t) => (t.id === id ? { ...t, technician, status: "in_progress" as const } : t));
-  return delay(tickets.find((t) => t.id === id)!);
+/** POST /maintenance — requireStaff. */
+export async function createMaintenanceTicket(input: CreateMaintenanceInput): Promise<MaintenanceTicket> {
+  return apiClient.post<MaintenanceTicket>("/maintenance", input);
 }
 
-export async function createTicket(input: Partial<MaintenanceTicket>) {
-  const ticket: MaintenanceTicket = {
-    id: `mt_${tickets.length + 1}_${Date.now()}`,
-    vehicleId: input.vehicleId ?? "veh_1",
-    vehicleReg: input.vehicleReg ?? "TN09AB1000",
-    issue: input.issue ?? "Reported issue",
-    priority: input.priority ?? "medium",
-    status: "open",
-    reportedOn: new Date().toISOString(),
-  };
-  tickets = [ticket, ...tickets];
-  return delay(ticket);
+/** PATCH /maintenance/:id — requireStaff. resolved_at is derived server-side from the status change. */
+export async function updateMaintenanceTicket(
+  id: string,
+  patch: { status?: MaintenanceStatus; description?: string },
+): Promise<MaintenanceTicket> {
+  return apiClient.patch<MaintenanceTicket>(`/maintenance/${id}`, patch);
 }

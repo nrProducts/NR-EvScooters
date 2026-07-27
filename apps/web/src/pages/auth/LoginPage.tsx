@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
+import { ApiError } from "@/services/api/httpClient";
 
 interface LoginForm {
   email: string;
@@ -14,17 +15,27 @@ interface LoginForm {
 }
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
+  const [googleError, setGoogleError] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(true);
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<LoginForm>({ defaultValues: { email: "admin@swapngo.in", password: "" } });
+  } = useForm<LoginForm>({ defaultValues: { email: "", password: "" } });
 
   const onSubmit = (values: LoginForm) => {
     login.mutate(values);
+  };
+
+  const onGoogleClick = () => {
+    setGoogleError(null);
+    loginWithGoogle.mutate(undefined, {
+      onError: (err) => {
+        setGoogleError(err instanceof ApiError ? err.message : "Could not start Google sign-in.");
+      },
+    });
   };
 
   return (
@@ -88,8 +99,35 @@ export default function LoginPage() {
           </Button>
         </form>
 
+        <div className="my-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">or</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        {googleError && (
+          <p className="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{googleError}</p>
+        )}
+
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={onGoogleClick}
+          disabled={loginWithGoogle.isPending}
+        >
+          {loginWithGoogle.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <span className="flex h-4 w-4 items-center justify-center rounded-full border bg-white text-[10px] font-black text-[#4285F4]">
+              G
+            </span>
+          )}
+          Continue with Google
+        </Button>
+
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Demo accounts — Admin: admin@swapngo.in / admin123 · Staff: staff@swapngo.in / staff123
+          Sign in with an admin or staff account provisioned in Supabase Auth. Riders should use the mobile app.
         </p>
       </CardContent>
     </Card>

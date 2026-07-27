@@ -1,15 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/notifications";
-import type { NotificationItem } from "@/types";
 
-export function useNotifications() {
-  return useQuery({ queryKey: ["notifications"], queryFn: api.fetchNotifications });
+export function useNotificationLog(filters: api.NotificationFilters) {
+  return useQuery({ queryKey: ["notifications", filters], queryFn: () => api.fetchNotifications(filters) });
 }
 
-export function useCreateNotification() {
+export function useBroadcastNotification() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: Partial<NotificationItem>) => api.createNotification(input),
+    mutationFn: (input: api.BroadcastInput) => api.broadcastNotification(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   });
 }

@@ -1,8 +1,5 @@
-import { MOCK_VEHICLES } from "@/services/mockData";
-import type { Vehicle, VehicleStatus } from "@/types";
-import { delay, paginate } from "./client";
-
-let vehicles = [...MOCK_VEHICLES];
+import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
+import type { PaginatedResult, Vehicle, VehicleDetail, VehicleStatus } from "@/types";
 
 export interface VehicleFilters {
   search?: string;
@@ -11,53 +8,42 @@ export interface VehicleFilters {
   pageSize?: number;
 }
 
-export async function fetchVehicles(filters: VehicleFilters = {}) {
-  const { search = "", status = "all", page = 1, pageSize = 10 } = filters;
-  let result = vehicles;
-  if (status !== "all") result = result.filter((v) => v.status === status);
-  if (search) {
-    const q = search.toLowerCase();
-    result = result.filter(
-      (v) => v.registrationNumber.toLowerCase().includes(q) || v.vin.toLowerCase().includes(q),
-    );
-  }
-  return delay(paginate(result, page, pageSize));
+/** GET /vehicles — requireStaff. See apps/backend/src/modules/vehicles/vehicles.routes.ts */
+export async function fetchVehicles(filters: VehicleFilters = {}): Promise<PaginatedResult<Vehicle>> {
+  const { search, status, page = 1, pageSize = 8 } = filters;
+  const res = await apiClient.get<BackendPaginated<Vehicle>>("/vehicles", {
+    page,
+    pageSize,
+    search,
+    status: status && status !== "all" ? status : undefined,
+  });
+  return toPaginatedResult(res);
 }
 
-export async function fetchVehicleById(id: string) {
-  const vehicle = vehicles.find((v) => v.id === id);
-  if (!vehicle) throw new Error("Vehicle not found");
-  return delay(vehicle);
+/** GET /vehicles/:id — includes documents, maintenance/rental history, and the current rider (if any). */
+export async function fetchVehicleById(id: string): Promise<VehicleDetail> {
+  return apiClient.get<VehicleDetail>(`/vehicles/${id}`);
 }
 
-export async function updateVehicleStatus(id: string, status: VehicleStatus) {
-  vehicles = vehicles.map((v) => (v.id === id ? { ...v, status } : v));
-  return delay(vehicles.find((v) => v.id === id)!);
+export interface VehicleFormInput {
+  name: string;
+  registration_number: string;
+  battery_number: string;
+  manufacturer: string;
+  model: string;
+  vin: string;
+  battery_percentage?: number;
+  status?: VehicleStatus;
+  last_service_date?: string;
+  next_service_due_date?: string;
 }
 
-export async function deleteVehicle(id: string) {
-  vehicles = vehicles.filter((v) => v.id !== id);
-  return delay({ success: true });
+/** POST /vehicles — requireStaff. */
+export async function createVehicle(input: VehicleFormInput): Promise<Vehicle> {
+  return apiClient.post<Vehicle>("/vehicles", input);
 }
 
-export async function createVehicle(input: Partial<Vehicle>) {
-  const newVehicle: Vehicle = {
-    id: `veh_${vehicles.length + 1}_${Date.now()}`,
-    registrationNumber: input.registrationNumber ?? "TN00ZZ0000",
-    vin: input.vin ?? "VIN-NEW",
-    imei: input.imei ?? "IMEI-NEW",
-    model: input.model ?? "Motovolt MVS7",
-    status: "available",
-    batteryPercent: 100,
-    odometerKm: 0,
-    lat: 12.9,
-    lng: 80.22,
-    insuranceExpiry: new Date(Date.now() + 1000 * 60 * 60 * 24 * 300).toISOString(),
-    registrationExpiry: new Date(Date.now() + 1000 * 60 * 60 * 24 * 600).toISOString(),
-    gpsOnline: true,
-    addedOn: new Date().toISOString(),
-    station: input.station ?? "Sholinganallur",
-  };
-  vehicles = [newVehicle, ...vehicles];
-  return delay(newVehicle);
+/** PATCH /vehicles/:id — requireStaff. Accepts any subset of the create fields. */
+export async function updateVehicle(id: string, patch: Partial<VehicleFormInput>): Promise<Vehicle> {
+  return apiClient.patch<Vehicle>(`/vehicles/${id}`, patch);
 }

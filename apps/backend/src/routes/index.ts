@@ -6,9 +6,11 @@ import authRoutes from "../modules/auth/auth.routes";
 import { riderKycRouter, adminKycRouter } from "../modules/kyc/kyc.routes";
 import bookingsRoutes from "../modules/bookings/bookings.routes";
 import stationsRoutes from "../modules/stations/stations.routes";
-import notificationsRoutes from "../modules/notifications/notifications.routes";
+import { riderNotificationsRouter, adminNotificationsRouter } from "../modules/notifications/notifications.routes";
 import rentalsRoutes from "../modules/rentals/rentals.routes";
 import maintenanceRoutes from "../modules/maintenance/maintenance.routes";
+import invoicesRoutes from "../modules/invoices/invoices.routes";
+import reportsRoutes from "../modules/reports/reports.routes";
 import { riderSupportRouter, adminSupportRouter } from "../modules/support/support.routes";
 
 const router = Router();
@@ -20,11 +22,12 @@ router.use("/auth", authRoutes);
 // Mounted before /users so "me/kyc" and "me/notifications" are matched by
 // their own routers rather than falling through to /users/:id.
 router.use("/users/me/kyc", riderKycRouter);
-router.use("/users/me/notifications", notificationsRoutes);
+router.use("/users/me/notifications", riderNotificationsRouter);
 router.use("/users/me/support", riderSupportRouter);
 router.use("/users", usersRoutes);
 router.use("/kyc", adminKycRouter);
 router.use("/support", adminSupportRouter);
+router.use("/notifications", adminNotificationsRouter);
 router.use("/vehicles", vehiclesRoutes);
 // Rider-facing browse/detail catalog — distinct from /vehicles (fleet
 // inventory). See vehicle-catalog.service.ts for the rationale.
@@ -33,5 +36,7 @@ router.use("/bookings", bookingsRoutes);
 router.use("/stations", stationsRoutes);
 router.use("/rentals", rentalsRoutes);
 router.use("/maintenance", maintenanceRoutes);
+router.use("/invoices", invoicesRoutes);
+router.use("/reports", reportsRoutes);
 
 export default router;

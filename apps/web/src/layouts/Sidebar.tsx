@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Zap, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Bike, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navForRole } from "@/routes/roleConfig";
 import type { Role } from "@/types";
@@ -20,8 +20,8 @@ export function Sidebar({
   return (
     <div className="flex h-full flex-col bg-card">
       <div className={cn("flex h-16 items-center gap-2 border-b border-border px-4", collapsed && "justify-center px-2")}>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <Zap className="h-[18px] w-[18px]" />
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary">
+          <Bike className="h-[18px] w-[18px] text-primary-foreground" />
         </div>
         {!collapsed && (
           <div className="min-w-0">

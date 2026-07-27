@@ -1,106 +1,123 @@
 import { useState } from "react";
-import { Plus, UserCog } from "lucide-react";
+import { Plus, CheckCircle2, PlayCircle, XCircle, MoreHorizontal, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { useMaintenanceTickets, useAssignTechnician, useUpdateTicketStatus, useCreateTicket } from "@/hooks/useMaintenance";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { useMaintenanceTickets, useCreateMaintenanceTicket, useUpdateMaintenanceTicket } from "@/hooks/useMaintenance";
+import { useVehicles } from "@/hooks/useVehicles";
+import { ApiError } from "@/services/api/httpClient";
+import { formatDate } from "@/lib/utils";
 import type { MaintenanceStatus, MaintenanceTicket } from "@/types";
 
-const TABS: { value: MaintenanceStatus | "all"; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "open", label: "Open" },
-  { value: "in_progress", label: "In progress" },
-  { value: "completed", label: "Completed" },
-];
-
-const TECHNICIANS = ["Ganesh R", "Priya S", "Mohan V", "Arun K"];
+const STATUS_OPTIONS: (MaintenanceStatus | "all")[] = ["all", "reported", "in_progress", "resolved", "cancelled"];
 
 export default function MaintenancePage() {
   const [status, setStatus] = useState<MaintenanceStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
-  const [assignTarget, setAssignTarget] = useState<MaintenanceTicket | null>(null);
-  const [technician, setTechnician] = useState(TECHNICIANS[0]);
 
   const { data, isLoading, isError, refetch } = useMaintenanceTickets({ status, page, pageSize: 8 });
-  const assignTechnician = useAssignTechnician();
-  const updateStatus = useUpdateTicketStatus();
-  const createTicket = useCreateTicket();
-
-  const [form, setForm] = useState({ vehicleReg: "", issue: "", priority: "medium" as MaintenanceTicket["priority"] });
+  const updateTicket = useUpdateMaintenanceTicket();
 
   const columns: DataTableColumn<MaintenanceTicket>[] = [
     {
       header: "Vehicle",
       key: "vehicle",
-      render: (t) => <span className="font-medium">{t.vehicleReg}</span>,
+      render: (t) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium">{t.vehicle?.name ?? "—"}</p>
+          <p className="truncate text-xs text-muted-foreground">{t.vehicle?.registration_number ?? ""}</p>
+        </div>
+      ),
     },
-    { header: "Issue", key: "issue", render: (t) => t.issue },
-    { header: "Priority", key: "priority", render: (t) => <StatusBadge status={t.priority} />, hideOnMobile: true },
-    { header: "Status", key: "status", render: (t) => <StatusBadge status={t.status} /> },
-    { header: "Technician", key: "tech", render: (t) => t.technician ?? "Unassigned", hideOnMobile: true },
     {
-      header: "Cost",
-      key: "cost",
-      render: (t) => (t.repairCost ? formatCurrency(t.repairCost) : "—"),
-      hideOnMobile: true,
+      header: "Issue",
+      key: "description",
+      render: (t) => <p className="max-w-xs truncate">{t.description}</p>,
     },
+    { header: "Status", key: "status", render: (t) => <StatusBadge status={t.status} /> },
+    { header: "Reported by", key: "reported_by", render: (t) => t.reported_by?.full_name ?? "—", hideOnMobile: true },
+    { header: "Reported", key: "created_at", render: (t) => formatDate(t.created_at), hideOnMobile: true },
     {
       header: "Actions",
       key: "actions",
       render: (t) => (
-        <div className="flex gap-2">
-          {t.status === "open" && (
-            <Button size="sm" variant="outline" onClick={() => setAssignTarget(t)}>
-              <UserCog className="h-3.5 w-3.5" /> Assign
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon">
+              <MoreHorizontal className="h-4 w-4" />
             </Button>
-          )}
-          {t.status === "in_progress" && (
-            <Button size="sm" onClick={() => updateStatus.mutate({ id: t.id, status: "completed" })}>
-              Mark complete
-            </Button>
-          )}
-        </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {t.status !== "in_progress" && t.status !== "resolved" && t.status !== "cancelled" && (
+              <DropdownMenuItem onClick={() => updateTicket.mutate({ id: t.id, status: "in_progress" })}>
+                <PlayCircle className="mr-2 h-4 w-4" /> Start work
+              </DropdownMenuItem>
+            )}
+            {t.status !== "resolved" && (
+              <DropdownMenuItem onClick={() => updateTicket.mutate({ id: t.id, status: "resolved" })}>
+                <CheckCircle2 className="mr-2 h-4 w-4" /> Mark resolved
+              </DropdownMenuItem>
+            )}
+            {t.status !== "cancelled" && t.status !== "resolved" && (
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => updateTicket.mutate({ id: t.id, status: "cancelled" })}
+              >
+                <XCircle className="mr-2 h-4 w-4" /> Cancel
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       ),
     },
   ];
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Maintenance</h1>
-          <p className="text-sm text-muted-foreground">Service requests, inspections and repairs</p>
+          <p className="text-sm text-muted-foreground">{data?.total ?? 0} tickets · service requests, inspections and repairs</p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4" /> New ticket
+          <Plus className="h-4 w-4" /> Report issue
         </Button>
       </div>
 
-      <Tabs value={status} onValueChange={(v) => { setStatus(v as MaintenanceStatus | "all"); setPage(1); }}>
-        <TabsList>
-          {TABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value}>
-              {t.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
       <Card>
+        <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
+          <Select
+            value={status}
+            onValueChange={(v) => {
+              setStatus(v as MaintenanceStatus | "all");
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="sm:w-52">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s} className="capitalize">
+                  {s === "all" ? "All statuses" : s.replace(/_/g, " ")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <DataTable
           columns={columns}
           data={data?.data ?? []}
@@ -108,108 +125,83 @@ export default function MaintenancePage() {
           isError={isError}
           onRetry={() => refetch()}
           emptyTitle="No maintenance tickets"
+          emptyDescription="Nothing has been reported for the fleet yet."
         />
+
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
       </Card>
 
-      {/* Assign technician dialog */}
-      <Dialog open={!!assignTarget} onOpenChange={(o) => !o && setAssignTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Assign technician</DialogTitle>
-            <DialogDescription>{assignTarget?.vehicleReg} — {assignTarget?.issue}</DialogDescription>
-          </DialogHeader>
+      <CreateTicketDialog open={createOpen} onOpenChange={setCreateOpen} />
+    </div>
+  );
+}
+
+function CreateTicketDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const [vehicleId, setVehicleId] = useState("");
+  const [description, setDescription] = useState("");
+  const { data: vehicles } = useVehicles({ pageSize: 100 });
+  const createTicket = useCreateMaintenanceTicket();
+
+  const canSubmit = vehicleId && description.trim().length >= 3;
+
+  const reset = () => {
+    setVehicleId("");
+    setDescription("");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Report a maintenance issue</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Technician</Label>
-            <Select value={technician} onValueChange={setTechnician}>
+            <Label>Vehicle</Label>
+            <Select value={vehicleId} onValueChange={setVehicleId}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="Select a vehicle" />
               </SelectTrigger>
               <SelectContent>
-                {TECHNICIANS.map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                {(vehicles?.data ?? []).map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.name} · {v.registration_number}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignTarget(null)}>Cancel</Button>
-            <Button
-              disabled={assignTechnician.isPending}
-              onClick={() => {
-                if (assignTarget) {
-                  assignTechnician.mutate(
-                    { id: assignTarget.id, technician },
-                    { onSuccess: () => setAssignTarget(null) },
-                  );
-                }
-              }}
-            >
-              Assign
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Create ticket dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Report an issue</DialogTitle>
-            <DialogDescription>Log a new maintenance ticket for a vehicle.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Vehicle registration</Label>
-              <Input
-                placeholder="TN09AB1234"
-                value={form.vehicleReg}
-                onChange={(e) => setForm((f) => ({ ...f, vehicleReg: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Issue description</Label>
-              <Textarea
-                rows={3}
-                value={form.issue}
-                onChange={(e) => setForm((f) => ({ ...f, issue: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Priority</Label>
-              <Select
-                value={form.priority}
-                onValueChange={(v) => setForm((f) => ({ ...f, priority: v as MaintenanceTicket["priority"] }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-1.5">
+            <Label>Describe the issue</Label>
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button
-              disabled={!form.vehicleReg || !form.issue || createTicket.isPending}
-              onClick={() => {
-                createTicket.mutate(form, {
-                  onSuccess: () => {
-                    setCreateOpen(false);
-                    setForm({ vehicleReg: "", issue: "", priority: "medium" });
-                  },
-                });
-              }}
-            >
-              Create ticket
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+
+          {createTicket.isError && (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {createTicket.error instanceof ApiError ? createTicket.error.message : "Something went wrong."}
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!canSubmit || createTicket.isPending}
+            onClick={() =>
+              createTicket.mutate(
+                { vehicle_id: vehicleId, description: description.trim() },
+                { onSuccess: () => { reset(); onOpenChange(false); } },
+              )
+            }
+          >
+            {createTicket.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Report issue
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

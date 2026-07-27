@@ -3,3 +3,6 @@ dist
 dist-ssr
 *.local
 .env
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts

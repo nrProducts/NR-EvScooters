@@ -10,13 +10,19 @@ export type AuditAction =
     | "kyc.submitted"
     | "kyc.document_verified" | "kyc.document_rejected"
     | "kyc.approved" | "kyc.rejected"
-    | "booking.created" | "booking.fulfilled";
+    | "booking.created" | "booking.fulfilled"
+    | "vehicle.created" | "vehicle.updated"
+    | "maintenance.created" | "maintenance.updated"
+    | "notification.broadcast"
+    | "invoice.refunded";
 
 export interface AuditEntry {
     actorId: string | null;
     targetUserId: string | null;
     action: AuditAction;
-    entityType: "user" | "user_document" | "user_role" | "booking";
+    entityType:
+        | "user" | "user_document" | "user_role" | "booking" | "vehicle" | "vehicle_maintenance"
+        | "notification_broadcast" | "invoice";
     entityId: string;
     before?: Record<string, unknown> | null;
     after?: Record<string, unknown> | null;

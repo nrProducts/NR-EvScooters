@@ -14,16 +14,13 @@ import {
 import { useUiStore } from "@/store/uiStore";
 import { useAuth } from "@/hooks/useAuth";
 import { initials } from "@/lib/utils";
-import { useNotifications } from "@/hooks/useNotifications";
 import { useNavigate } from "react-router-dom";
 
 export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const { theme, toggleTheme } = useUiStore();
   const { user, signOut } = useAuth();
-  const { data: notifications } = useNotifications();
   const [search, setSearch] = useState("");
   const navigate = useNavigate();
-  const unread = notifications?.filter((n) => n.status === "sent").length ?? 0;
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/95 px-4 backdrop-blur sm:px-6">
@@ -46,11 +43,8 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
           {theme === "light" ? <Moon className="h-[18px] w-[18px]" /> : <Sun className="h-[18px] w-[18px]" />}
         </Button>
 
-        <Button variant="ghost" size="icon" className="relative" onClick={() => navigate("/notifications")}>
+        <Button variant="ghost" size="icon" onClick={() => navigate("/notifications")}>
           <Bell className="h-[18px] w-[18px]" />
-          {unread > 0 && (
-            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive ring-2 ring-card" />
-          )}
         </Button>
 
         <DropdownMenu>

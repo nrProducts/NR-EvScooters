@@ -1,43 +1,47 @@
-import { MOCK_RIDERS } from "@/services/mockData";
-import type { KycStatus, Rider } from "@/types";
-import { delay, paginate } from "./client";
-
-let riders = [...MOCK_RIDERS];
+import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
+import type { AccountStatus, KycStatus, PaginatedResult, Rider, RiderDetail } from "@/types";
 
 export interface RiderFilters {
   search?: string;
   kycStatus?: KycStatus | "all";
+  accountStatus?: AccountStatus | "all";
   page?: number;
   pageSize?: number;
 }
 
-export async function fetchRiders(filters: RiderFilters = {}) {
-  const { search = "", kycStatus = "all", page = 1, pageSize = 10 } = filters;
-  let result = riders;
-  if (kycStatus !== "all") result = result.filter((r) => r.kycStatus === kycStatus);
-  if (search) {
-    const q = search.toLowerCase();
-    result = result.filter((r) => r.name.toLowerCase().includes(q) || r.phone.includes(q));
-  }
-  return delay(paginate(result, page, pageSize));
+/** GET /users — requireStaff. See apps/backend/src/modules/users/users.routes.ts */
+export async function fetchRiders(filters: RiderFilters = {}): Promise<PaginatedResult<Rider>> {
+  const { search, kycStatus, accountStatus, page = 1, pageSize = 8 } = filters;
+  const res = await apiClient.get<BackendPaginated<Rider>>("/users", {
+    page,
+    pageSize,
+    search,
+    kycStatus: kycStatus && kycStatus !== "all" ? kycStatus : undefined,
+    accountStatus: accountStatus && accountStatus !== "all" ? accountStatus : undefined,
+  });
+  return toPaginatedResult(res);
 }
 
-export async function fetchRiderById(id: string) {
-  const rider = riders.find((r) => r.id === id);
-  if (!rider) throw new Error("Rider not found");
-  return delay(rider);
+/** GET /users/:id */
+export async function fetchRiderById(id: string): Promise<RiderDetail> {
+  return apiClient.get<RiderDetail>(`/users/${id}`);
 }
 
-export async function setRiderKycStatus(id: string, status: KycStatus) {
-  riders = riders.map((r) => (r.id === id ? { ...r, kycStatus: status } : r));
-  return delay(riders.find((r) => r.id === id)!);
+/** PATCH /users/:id/status — requireStaff. Suspending requires a reason (≥5 chars). */
+export async function changeRiderStatus(
+  id: string,
+  action: "activate" | "deactivate" | "suspend",
+  reason?: string,
+) {
+  return apiClient.patch(`/users/${id}/status`, { action, reason });
 }
 
-export async function suspendRider(id: string) {
-  return delay({ success: true, riderId: id });
-}
-
+/** DELETE /users/:id — requireAdmin. Soft delete. */
 export async function deleteRider(id: string) {
-  riders = riders.filter((r) => r.id !== id);
-  return delay({ success: true });
+  return apiClient.delete(`/users/${id}`);
+}
+
+/** POST /users/:id/restore — requireAdmin. */
+export async function restoreRider(id: string) {
+  return apiClient.post(`/users/${id}/restore`);
 }

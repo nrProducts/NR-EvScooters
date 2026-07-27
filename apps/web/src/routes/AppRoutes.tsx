@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/layouts/DashboardLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
 
 import LoginPage from "@/pages/auth/LoginPage";
+import AuthCallbackPage from "@/pages/auth/AuthCallbackPage";
 import DashboardRouter from "@/pages/dashboard/DashboardRouter";
 import LiveMonitoringPage from "@/pages/monitoring/LiveMonitoringPage";
 import LiveMapPage from "@/pages/map/LiveMapPage";
@@ -27,6 +28,7 @@ export function AppRoutes() {
     <Routes>
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
       </Route>
 
       <Route

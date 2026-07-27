@@ -1,10 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AppRoutes } from "@/routes/AppRoutes";
 import { useUiStore } from "@/store/uiStore";
+import { useAuthStore } from "@/store/authStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { fetchCurrentSession } from "@/services/api/staff";
 
 export default function App() {
   const theme = useUiStore((s) => s.theme);
+  const { user, setUser, logout } = useAuthStore();
+  const [checkedSession, setCheckedSession] = useState(false);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -14,6 +18,27 @@ export default function App() {
       root.classList.remove("dark");
     }
   }, [theme]);
+
+  // Zustand persists `user` in localStorage for a fast reload, but the
+  // underlying Supabase session may have since expired or been revoked.
+  // Reconcile once on boot so a stale local user never gets a false sense
+  // of being signed in.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const current = await fetchCurrentSession();
+      if (cancelled) return;
+      if (current) setUser(current);
+      else if (user) logout();
+      setCheckedSession(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!checkedSession) return null;
 
   return (
     <TooltipProvider delayDuration={200}>

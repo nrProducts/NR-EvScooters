@@ -1,7 +1,6 @@
 import { Outlet } from "react-router-dom";
-import { Zap } from "lucide-react";
 import { useUiStore } from "@/store/uiStore";
-import { Moon, Sun } from "lucide-react";
+import { Bike, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function AuthLayout() {
@@ -21,8 +20,8 @@ export function AuthLayout() {
 
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center gap-2">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-soft">
-            <Zap className="h-6 w-6" />
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary shadow-soft">
+            <Bike className="h-7 w-7 text-primary-foreground" />
           </div>
           <p className="text-lg font-semibold">Swapngo Fleet Hub</p>
           <p className="text-xs text-muted-foreground">Admin &amp; Staff Console</p>

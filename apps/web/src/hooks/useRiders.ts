@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/riders";
-import type { KycStatus } from "@/types";
 
 export function useRiders(filters: api.RiderFilters) {
   return useQuery({ queryKey: ["riders", filters], queryFn: () => api.fetchRiders(filters) });
@@ -14,22 +13,22 @@ export function useRider(id: string | undefined) {
   });
 }
 
-export function useSetRiderKyc() {
+export function useChangeRiderStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: KycStatus }) => api.setRiderKycStatus(id, status),
+    mutationFn: ({
+      id,
+      action,
+      reason,
+    }: {
+      id: string;
+      action: "activate" | "deactivate" | "suspend";
+      reason?: string;
+    }) => api.changeRiderStatus(id, action, reason),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["riders"] });
-      qc.invalidateQueries({ queryKey: ["kyc-queue"] });
+      qc.invalidateQueries({ queryKey: ["rider"] });
     },
-  });
-}
-
-export function useSuspendRider() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.suspendRider(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["riders"] }),
   });
 }
 
@@ -37,6 +36,14 @@ export function useDeleteRider() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.deleteRider(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["riders"] }),
+  });
+}
+
+export function useRestoreRider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.restoreRider(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["riders"] }),
   });
 }

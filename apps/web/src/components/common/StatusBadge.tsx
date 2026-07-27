@@ -28,6 +28,19 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   draft: "muted",
   on_leave: "muted",
   open: "warning",
+  // real backend status values
+  verified: "success",
+  resolved: "success",
+  fulfilled: "success",
+  not_submitted: "muted",
+  partially_verified: "warning",
+  confirmed: "outline",
+  pending_payment: "warning",
+  expired: "destructive",
+  urgent: "destructive",
+  suspended: "destructive",
+  inactive: "muted",
+  closed: "muted",
 };
 
 export function StatusBadge({ status }: { status: string }) {

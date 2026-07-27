@@ -1,36 +1,36 @@
-import { MOCK_BOOKINGS } from "@/services/mockData";
-import type { Booking, BookingStatus } from "@/types";
-import { delay, paginate } from "./client";
+import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
+import type { AvailableVehicle, PaginatedResult, PickupBooking } from "@/types";
 
-let bookings = [...MOCK_BOOKINGS];
-
-export interface BookingFilters {
-  status?: BookingStatus | "all";
-  search?: string;
+export interface PickupQueueFilters {
+  stationId?: string;
   page?: number;
   pageSize?: number;
 }
 
-export async function fetchBookings(filters: BookingFilters = {}) {
-  const { status = "all", search = "", page = 1, pageSize = 10 } = filters;
-  let result = bookings;
-  if (status !== "all") result = result.filter((b) => b.status === status);
-  if (search) {
-    const q = search.toLowerCase();
-    result = result.filter(
-      (b) => b.vehicleReg.toLowerCase().includes(q) || b.riderName.toLowerCase().includes(q),
-    );
-  }
-  return delay(paginate(result, page, pageSize));
+/**
+ * GET /bookings — requireStaff. NOTE: despite the generic name this is
+ * specifically the *pickup queue* (bookings awaiting a vehicle handover) —
+ * see apps/backend/src/modules/bookings/bookings.routes.ts. There is no
+ * general "all bookings by any status" admin endpoint yet, so this console
+ * can't show upcoming/completed/cancelled bookings — only what's next up
+ * for pickup.
+ */
+export async function fetchPickupQueue(filters: PickupQueueFilters = {}): Promise<PaginatedResult<PickupBooking>> {
+  const { stationId, page = 1, pageSize = 8 } = filters;
+  const res = await apiClient.get<BackendPaginated<PickupBooking>>("/bookings", {
+    page,
+    pageSize,
+    stationId,
+  });
+  return toPaginatedResult(res);
 }
 
-export async function cancelBooking(id: string) {
-  bookings = bookings.map((b) => (b.id === id ? { ...b, status: "cancelled" as const } : b));
-  return delay(bookings.find((b) => b.id === id)!);
+/** GET /bookings/:id/available-vehicles — vehicles free to hand over at this booking's station. */
+export async function fetchAvailableVehicles(bookingId: string): Promise<AvailableVehicle[]> {
+  return apiClient.get<AvailableVehicle[]>(`/bookings/${bookingId}/available-vehicles`);
 }
 
-export async function fetchBookingById(id: string) {
-  const booking = bookings.find((b) => b.id === id);
-  if (!booking) throw new Error("Booking not found");
-  return delay(booking);
+/** POST /bookings/:id/pickup — confirms handover of a specific vehicle. */
+export async function confirmPickup(bookingId: string, vehicleId: string) {
+  return apiClient.post(`/bookings/${bookingId}/pickup`, { vehicle_id: vehicleId });
 }

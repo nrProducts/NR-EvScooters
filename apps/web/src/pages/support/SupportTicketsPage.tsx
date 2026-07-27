@@ -1,51 +1,41 @@
 import { useState } from "react";
-import { LifeBuoy, MessageCircle } from "lucide-react";
+import { LifeBuoy } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
+import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { SideDrawer } from "@/components/common/SideDrawer";
-import { Textarea } from "@/components/ui/textarea";
+import { useSupportQueue, useUpdateSupportTicket } from "@/hooks/useSupport";
 import { formatDateTime } from "@/lib/utils";
+import type { SupportPriority, SupportStatus, SupportTicket } from "@/types";
 
-interface SupportTicket {
-  id: string;
-  riderName: string;
-  subject: string;
-  status: "open" | "in_progress" | "completed";
-  priority: "low" | "medium" | "high";
-  createdOn: string;
-}
-
-// Local mock data — this module isn't in the shared mock service yet since
-// the backend has no /support endpoints wired up for staff/admin use.
-const TICKETS: SupportTicket[] = [
-  { id: "t1", riderName: "Arun Kumar", subject: "Battery swap station was closed", status: "open", priority: "medium", createdOn: new Date().toISOString() },
-  { id: "t2", riderName: "Divya Raj", subject: "Wallet refund not received", status: "in_progress", priority: "high", createdOn: new Date().toISOString() },
-  { id: "t3", riderName: "Suresh Iyer", subject: "Vehicle handover delay", status: "completed", priority: "low", createdOn: new Date().toISOString() },
-];
-
-const TABS = [
+const TABS: { value: SupportStatus | "all"; label: string }[] = [
   { value: "all", label: "All" },
   { value: "open", label: "Open" },
   { value: "in_progress", label: "In progress" },
-  { value: "completed", label: "Resolved" },
-] as const;
+  { value: "resolved", label: "Resolved" },
+  { value: "closed", label: "Closed" },
+];
+
+const PRIORITIES: SupportPriority[] = ["low", "medium", "high", "urgent"];
+const STATUSES: SupportStatus[] = ["open", "in_progress", "resolved", "closed"];
 
 export default function SupportTicketsPage() {
-  const [tab, setTab] = useState<(typeof TABS)[number]["value"]>("all");
+  const [tab, setTab] = useState<SupportStatus | "all">("all");
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<SupportTicket | null>(null);
-  const [reply, setReply] = useState("");
 
-  const filtered = tab === "all" ? TICKETS : TICKETS.filter((t) => t.status === tab);
+  const { data, isLoading, isError, refetch } = useSupportQueue({ status: tab, page, pageSize: 8 });
+  const updateTicket = useUpdateSupportTicket();
 
   const columns: DataTableColumn<SupportTicket>[] = [
-    { header: "Rider", key: "rider", render: (t) => t.riderName },
+    { header: "Rider", key: "rider", render: (t) => t.rider.full_name },
     { header: "Subject", key: "subject", render: (t) => t.subject },
     { header: "Priority", key: "priority", render: (t) => <StatusBadge status={t.priority} />, hideOnMobile: true },
     { header: "Status", key: "status", render: (t) => <StatusBadge status={t.status} /> },
-    { header: "Created", key: "created", render: (t) => formatDateTime(t.createdOn), hideOnMobile: true },
+    { header: "Created", key: "created", render: (t) => formatDateTime(t.created_at), hideOnMobile: true },
   ];
 
   return (
@@ -58,8 +48,8 @@ export default function SupportTicketsPage() {
         </div>
       </div>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-        <TabsList>
+      <Tabs value={tab} onValueChange={(v) => { setTab(v as SupportStatus | "all"); setPage(1); }}>
+        <TabsList className="flex-wrap">
           {TABS.map((t) => (
             <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
           ))}
@@ -70,29 +60,72 @@ export default function SupportTicketsPage() {
         <CardContent className="p-0">
           <DataTable
             columns={columns}
-            data={filtered}
+            data={data?.data ?? []}
+            isLoading={isLoading}
+            isError={isError}
+            onRetry={() => refetch()}
             emptyTitle="No tickets in this queue"
             onRowClick={(t) => setSelected(t)}
           />
         </CardContent>
+        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
       </Card>
 
       <SideDrawer open={!!selected} onOpenChange={(o) => !o && setSelected(null)} title="Ticket detail">
         {selected && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <p className="font-medium">{selected.riderName}</p>
+              <p className="font-medium">{selected.rider.full_name}</p>
               <StatusBadge status={selected.status} />
             </div>
             <p className="text-sm">{selected.subject}</p>
-            <p className="text-xs text-muted-foreground">Created {formatDateTime(selected.createdOn)}</p>
+            <p className="text-xs text-muted-foreground whitespace-pre-wrap">{selected.description}</p>
+            <p className="text-xs text-muted-foreground">Created {formatDateTime(selected.created_at)}</p>
+
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">Reply</p>
-              <Textarea rows={4} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Type a response..." />
+              <p className="text-xs font-medium text-muted-foreground">Status</p>
+              <Select
+                value={selected.status}
+                onValueChange={(v) =>
+                  updateTicket.mutate(
+                    { id: selected.id, input: { status: v as SupportStatus } },
+                    { onSuccess: (updated) => setSelected(updated) },
+                  )
+                }
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Button className="w-full" disabled={!reply}>
-              <MessageCircle className="h-4 w-4" /> Send reply
-            </Button>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">Priority</p>
+              <Select
+                value={selected.priority}
+                onValueChange={(v) =>
+                  updateTicket.mutate(
+                    { id: selected.id, input: { priority: v as SupportPriority } },
+                    { onSuccess: (updated) => setSelected(updated) },
+                  )
+                }
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PRIORITIES.map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              There's no messaging endpoint yet, so replies to the rider aren't sent from here — only status,
+              priority and assignment updates.
+            </p>
           </div>
         )}
       </SideDrawer>

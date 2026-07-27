@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
-import { ListNotificationsFilters } from "./notifications.types";
+import { BroadcastInput, ListAdminNotificationsFilters, ListNotificationsFilters } from "./notifications.types";
 import * as service from "./notifications.service";
 
 export async function listMyNotificationsHandler(req: AuthedRequest, res: Response) {
@@ -20,4 +20,14 @@ export async function markReadHandler(req: AuthedRequest, res: Response) {
 export async function markAllReadHandler(req: AuthedRequest, res: Response) {
     await service.markAllRead(req.user!.id);
     res.status(204).send();
+}
+
+export async function listAllNotificationsHandler(req: AuthedRequest, res: Response) {
+    const filters = validatedQuery<ListAdminNotificationsFilters>(req);
+    res.json(await service.listAllNotifications(filters));
+}
+
+export async function broadcastHandler(req: AuthedRequest, res: Response) {
+    const result = await service.broadcastNotification(req.body as BroadcastInput, req.user!);
+    res.status(201).json(result);
 }

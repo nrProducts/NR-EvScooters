@@ -2,6 +2,13 @@
 // Auth / roles
 // ---------------------------------------------------------------------------
 
+/** Full role vocabulary the backend's types.ts defines (apps/backend/src/types/index.ts).
+ * Only "rider" and "admin" exist in the DB enum today (per the schema dump) —
+ * "staff" / "technician" / "station_manager" are coded for but not yet
+ * migrated, so accounts holding them won't exist until that migration ships. */
+export type BackendRoleName = "rider" | "staff" | "technician" | "station_manager" | "admin";
+
+/** What the web console's nav/route-guarding cares about. */
 export type Role = "admin" | "staff";
 
 export interface StaffUser {
@@ -9,195 +16,300 @@ export interface StaffUser {
   name: string;
   email: string;
   role: Role;
+  /** Every backend role the account actually holds (for future fine-grained UI). */
+  roles: BackendRoleName[];
   avatarUrl?: string;
   phone?: string;
 }
 
 // ---------------------------------------------------------------------------
-// Vehicles / fleet
+// Riders — mirrors apps/backend/src/modules/users/users.types.ts
 // ---------------------------------------------------------------------------
 
-export type VehicleStatus =
-  | "available"
-  | "booked"
-  | "assigned"
-  | "charging"
-  | "maintenance"
-  | "scrap"
-  | "offline";
-
-export interface Vehicle {
-  id: string;
-  registrationNumber: string; // e.g. TN09AB1234
-  vin: string;
-  imei: string;
-  model: string;
-  status: VehicleStatus;
-  batteryPercent: number;
-  odometerKm: number;
-  lat: number;
-  lng: number;
-  insuranceExpiry: string;
-  registrationExpiry: string;
-  planId?: string;
-  currentRiderId?: string;
-  station?: string;
-  gpsOnline: boolean;
-  addedOn: string;
-}
-
-// ---------------------------------------------------------------------------
-// Riders
-// ---------------------------------------------------------------------------
-
-export type KycStatus = "pending" | "approved" | "rejected";
+export type AccountStatus = "active" | "inactive" | "suspended";
+export type KycStatus = "not_submitted" | "pending" | "partially_verified" | "verified" | "rejected";
 
 export interface Rider {
   id: string;
-  name: string;
-  phone: string;
-  email?: string;
-  avatarUrl?: string;
-  kycStatus: KycStatus;
-  joinedOn: string;
-  activeBookingId?: string;
-  walletBalance: number;
-  totalRides: number;
-  violations: number;
-  address?: string;
-  emergencyContact?: string;
-  licenseNumber?: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  date_of_birth: string | null;
+  gender: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  account_status: AccountStatus;
+  kyc_status: KycStatus;
+  profile_photo_url: string | null;
+  profile_completed: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  roles: BackendRoleName[];
+  assigned_vehicle: { id: string; vin: string; model: string } | null;
+  current_plan: { id: string; name: string; status: string } | null;
 }
 
-export interface KycDocument {
+export interface RiderDocument {
   id: string;
-  riderId: string;
-  riderName: string;
-  submittedOn: string;
-  status: KycStatus;
-  front: string;
-  back: string;
-  selfie: string;
-  rejectionReason?: string;
+  doc_type: string;
+  doc_number_masked: string | null;
+  verification_status: string;
+  rejection_reason: string | null;
+  expiry_date: string | null;
+  submitted_at: string | null;
+  verified_at: string | null;
+}
+
+export interface RiderDetail extends Rider {
+  kyc_completion_percent: number;
+  documents: RiderDocument[];
 }
 
 // ---------------------------------------------------------------------------
-// Bookings
+// KYC queue — mirrors apps/backend/src/modules/kyc/kyc.service.ts
 // ---------------------------------------------------------------------------
 
-export type BookingStatus = "upcoming" | "current" | "completed" | "cancelled";
-export type RentalPlan = "daily" | "weekly" | "monthly";
+export interface KycQueueItem {
+  user_id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  kyc_status: KycStatus;
+  completion_percent: number;
+  document_count: number;
+  earliest_submitted_at: string | null;
+  has_expired_document: boolean;
+}
 
-export interface Booking {
+export interface KycDocumentDetail {
   id: string;
-  vehicleId: string;
-  vehicleReg: string;
-  riderId: string;
-  riderName: string;
-  plan: RentalPlan;
-  startDate: string;
-  endDate: string;
-  amount: number;
+  doc_type: string;
+  doc_number_masked?: string | null;
+  verification_status: string;
+  rejection_reason: string | null;
+  expiry_date: string | null;
+  submitted_at: string | null;
+  verified_at: string | null;
+}
+
+export interface KycDetail {
+  rider: {
+    id: string;
+    full_name: string;
+    email: string | null;
+    phone: string | null;
+    date_of_birth: string | null;
+    address_line_1: string | null;
+    city: string | null;
+    state: string | null;
+    postal_code: string | null;
+    country: string | null;
+    kyc_status: KycStatus;
+    account_status: AccountStatus;
+  };
+  kyc_status: KycStatus;
+  completion_percent: number;
+  documents: KycDocumentDetail[];
+  history: unknown[];
+}
+
+// ---------------------------------------------------------------------------
+// Support tickets — mirrors apps/backend/src/modules/support/support.types.ts
+// ---------------------------------------------------------------------------
+
+export type SupportStatus = "open" | "in_progress" | "resolved" | "closed";
+export type SupportPriority = "low" | "medium" | "high" | "urgent";
+
+export interface SupportTicket {
+  id: string;
+  subject: string;
+  description: string;
+  status: SupportStatus;
+  priority: SupportPriority;
+  resolved_at: string | null;
+  created_at: string;
+  rider: { id: string; full_name: string; phone: string | null };
+  assigned_to: string | null;
+  rental_id: string | null;
+  vehicle_id: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Bookings (staff pickup queue) — mirrors
+// apps/backend/src/modules/bookings/bookings.types.ts
+// ---------------------------------------------------------------------------
+
+export type BookingStatus = "pending_payment" | "confirmed" | "cancelled" | "expired" | "fulfilled";
+
+export interface PickupBooking {
+  id: string;
   status: BookingStatus;
+  start_day: string;
+  created_at: string;
+  vehicle_model: { id: string; name: string } | null;
+  station: { id: string; name: string; code: string; lat: number; lng: number } | null;
+  plan: { id: string; name: string; billing_cycle: string; price: number } | null;
+  rider: { id: string; full_name: string; phone: string | null };
+}
+
+export interface AvailableVehicle {
+  id: string;
+  name: string;
+  registration_number: string;
+  battery_percentage: number;
 }
 
 // ---------------------------------------------------------------------------
-// Maintenance
+// Vehicles (fleet inventory) — mirrors apps/backend/src/modules/vehicles/vehicles.types.ts
 // ---------------------------------------------------------------------------
 
-export type MaintenanceStatus = "open" | "in_progress" | "completed";
-export type MaintenancePriority = "low" | "medium" | "high";
+export type VehicleStatus = "available" | "in_use" | "maintenance" | "retired";
+
+export interface Vehicle {
+  id: string;
+  name: string;
+  registration_number: string;
+  battery_number: string;
+  manufacturer: string;
+  model: string;
+  vin: string;
+  /** Manually recorded today; will become live telemetry once a 3rd-party GPS/IoT integration ships. */
+  battery_percentage: number;
+  status: VehicleStatus;
+  last_service_date: string | null;
+  next_service_due_date: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface VehicleDocument {
+  id: string;
+  doc_type: "registration" | "insurance";
+  doc_number: string;
+  issued_date: string;
+  expiry_date: string;
+}
+
+export interface VehicleMaintenanceRecord {
+  id: string;
+  status: "reported" | "in_progress" | "resolved" | "cancelled";
+  description: string;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+export interface VehicleRentalRecord {
+  id: string;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+  rider: { id: string; full_name: string } | null;
+}
+
+export interface VehicleDetail extends Vehicle {
+  documents: VehicleDocument[];
+  maintenance_history: VehicleMaintenanceRecord[];
+  rental_history: VehicleRentalRecord[];
+  current_rider: { id: string; full_name: string } | null;
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance (admin) — mirrors apps/backend/src/modules/maintenance/maintenance.types.ts
+// ---------------------------------------------------------------------------
+
+export type MaintenanceStatus = "reported" | "in_progress" | "resolved" | "cancelled";
 
 export interface MaintenanceTicket {
   id: string;
-  vehicleId: string;
-  vehicleReg: string;
-  issue: string;
-  priority: MaintenancePriority;
   status: MaintenanceStatus;
-  technician?: string;
-  partsUsed?: string;
-  repairCost?: number;
-  reportedOn: string;
-  resolvedOn?: string;
+  description: string;
+  resolved_at: string | null;
+  created_at: string;
+  vehicle: { id: string; name: string; registration_number: string } | null;
+  reported_by: { id: string; full_name: string } | null;
 }
 
 // ---------------------------------------------------------------------------
-// Payments
+// Notifications (admin) — mirrors apps/backend/src/modules/notifications/notifications.types.ts
 // ---------------------------------------------------------------------------
 
-export type PaymentStatus = "success" | "pending" | "failed" | "refunded";
+export type NotificationChannel = "sms" | "push" | "email";
+export type NotificationDeliveryStatus = "sent" | "failed" | "pending";
 
-export interface Transaction {
+export interface NotificationLogEntry {
   id: string;
-  riderId: string;
-  riderName: string;
-  amount: number;
-  type: "rental" | "deposit" | "wallet_recharge" | "refund" | "penalty";
-  status: PaymentStatus;
-  date: string;
-  invoiceId?: string;
+  user_id: string;
+  channel: NotificationChannel;
+  template: string;
+  payload: { title: string; body: string; screen?: string } | null;
+  status: NotificationDeliveryStatus;
+  sent_at: string | null;
+  read_at: string | null;
+  created_at: string;
+  rider: { id: string; full_name: string } | null;
+}
+
+export interface BroadcastResult {
+  template: string;
+  targeted: number;
+  sent: number;
+  failed: number;
 }
 
 // ---------------------------------------------------------------------------
-// Notifications
+// Invoices / payments (admin) — mirrors apps/backend/src/modules/invoices/invoices.types.ts
 // ---------------------------------------------------------------------------
 
-export interface NotificationItem {
+export type InvoiceStatus = "draft" | "issued" | "paid" | "overdue" | "void";
+export type PaymentStatus = "pending" | "succeeded" | "failed" | "refunded";
+export type PaymentMethod = "card" | "wallet" | "upi" | "cash";
+
+export interface Invoice {
   id: string;
-  title: string;
-  message: string;
-  channel: "push" | "sms" | "email";
-  audience: string;
-  scheduledFor?: string;
-  sentOn?: string;
-  status: "draft" | "scheduled" | "sent";
+  user_id: string;
+  subscription_id: string | null;
+  rental_id: string | null;
+  status: InvoiceStatus;
+  amount_due: number;
+  due_date: string;
+  payment_status: PaymentStatus;
+  payment_method: PaymentMethod | null;
+  gateway_ref: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+  rider: { id: string; full_name: string; email: string | null } | null;
+}
+
+export interface InvoiceDetail extends Invoice {
+  plan: { id: string; name: string } | null;
+  vehicle: { id: string; name: string; registration_number: string } | null;
 }
 
 // ---------------------------------------------------------------------------
-// Activity feed
+// Reports (admin) — mirrors apps/backend/src/modules/reports/reports.types.ts
 // ---------------------------------------------------------------------------
 
-export interface ActivityEvent {
-  id: string;
-  message: string;
-  type: "ride" | "battery" | "charging" | "kyc" | "booking" | "alert";
-  timestamp: string;
+export interface ReportsSummary {
+  vehicles: { total: number; by_status: Record<VehicleStatus, number> };
+  riders: { total: number; by_kyc_status: Record<KycStatus, number> };
+  revenue: { paid_total: number; pending_total: number; refunded_total: number; invoice_count: number };
+  maintenance: { by_status: Record<MaintenanceStatus, number> };
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard aggregate
+// Shared pagination shape used across the web app's tables/hooks.
+// (Adapted from the backend's { data, pagination } envelope — see
+// services/api/httpClient.ts#toPaginatedResult.)
 // ---------------------------------------------------------------------------
-
-export interface DashboardSummary {
-  vehicles: {
-    total: number;
-    available: number;
-    booked: number;
-    assigned: number;
-    charging: number;
-    maintenance: number;
-    scrap: number;
-  };
-  riders: {
-    total: number;
-    pendingKyc: number;
-    approvedKyc: number;
-  };
-  revenue: {
-    today: number;
-    thisWeek: number;
-    thisMonth: number;
-    outstanding: number;
-  };
-  fleetUtilization: { date: string; utilization: number }[];
-  vehicleStatusDistribution: { status: VehicleStatus; count: number }[];
-  revenueTrend: { date: string; revenue: number }[];
-  dailyBookings: { date: string; count: number }[];
-  weeklyRentals: { week: string; count: number }[];
-  monthlyRentals: { month: string; count: number }[];
-  batteryHealthDistribution: { range: string; count: number }[];
-}
 
 export interface PaginatedResult<T> {
   data: T[];

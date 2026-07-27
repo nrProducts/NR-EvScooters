@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, ShieldCheck, Ban, Trash2, MoreHorizontal } from "lucide-react";
+import { Eye, ShieldCheck, Ban, CheckCircle2, Trash2, MoreHorizontal } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -10,18 +10,23 @@ import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { useRiders, useDeleteRider, useSuspendRider } from "@/hooks/useRiders";
+import { useRiders, useDeleteRider, useChangeRiderStatus } from "@/hooks/useRiders";
 import { useAuthStore } from "@/store/authStore";
 import { initials } from "@/lib/utils";
 import type { KycStatus, Rider } from "@/types";
 
-const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "pending", "approved", "rejected"];
+const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "pending", "partially_verified", "verified", "rejected"];
 
 export default function RiderListPage() {
   const navigate = useNavigate();
@@ -30,10 +35,12 @@ export default function RiderListPage() {
   const [kycStatus, setKycStatus] = useState<KycStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<Rider | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<Rider | null>(null);
+  const [reason, setReason] = useState("");
 
   const { data, isLoading, isError, refetch } = useRiders({ search, kycStatus, page, pageSize: 8 });
   const deleteRider = useDeleteRider();
-  const suspendRider = useSuspendRider();
+  const changeStatus = useChangeRiderStatus();
 
   const columns: DataTableColumn<Rider>[] = [
     {
@@ -42,23 +49,28 @@ export default function RiderListPage() {
       render: (r) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
-            <AvatarImage src={r.avatarUrl} alt={r.name} />
-            <AvatarFallback>{initials(r.name)}</AvatarFallback>
+            <AvatarImage src={r.profile_photo_url ?? undefined} alt={r.full_name} />
+            <AvatarFallback>{initials(r.full_name || "?")}</AvatarFallback>
           </Avatar>
           <div className="min-w-0">
-            <p className="truncate font-medium">{r.name}</p>
-            <p className="truncate text-xs text-muted-foreground">{r.phone}</p>
+            <p className="truncate font-medium">{r.full_name || "—"}</p>
+            <p className="truncate text-xs text-muted-foreground">{r.phone ?? "No phone on file"}</p>
           </div>
         </div>
       ),
     },
-    { header: "KYC", key: "kyc", render: (r) => <StatusBadge status={r.kycStatus} /> },
-    { header: "Total rides", key: "rides", render: (r) => r.totalRides, hideOnMobile: true },
-    { header: "Wallet", key: "wallet", render: (r) => `₹${r.walletBalance}`, hideOnMobile: true },
+    { header: "Account", key: "account", render: (r) => <StatusBadge status={r.account_status} /> },
+    { header: "KYC", key: "kyc", render: (r) => <StatusBadge status={r.kyc_status} /> },
     {
-      header: "Violations",
-      key: "violations",
-      render: (r) => (r.violations > 0 ? <StatusBadge status="high" /> : "—"),
+      header: "Assigned vehicle",
+      key: "vehicle",
+      render: (r) => r.assigned_vehicle?.model ?? "—",
+      hideOnMobile: true,
+    },
+    {
+      header: "Plan",
+      key: "plan",
+      render: (r) => r.current_plan?.name ?? "—",
       hideOnMobile: true,
     },
     {
@@ -75,14 +87,25 @@ export default function RiderListPage() {
             <DropdownMenuItem onClick={() => navigate(`/riders/${r.id}`)}>
               <Eye className="mr-2 h-4 w-4" /> View profile
             </DropdownMenuItem>
-            {r.kycStatus === "pending" && (
+            {r.kyc_status === "pending" && (
               <DropdownMenuItem onClick={() => navigate("/kyc")}>
                 <ShieldCheck className="mr-2 h-4 w-4" /> Review KYC
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => suspendRider.mutate(r.id)}>
-              <Ban className="mr-2 h-4 w-4" /> Suspend
-            </DropdownMenuItem>
+            {r.account_status === "suspended" ? (
+              <DropdownMenuItem onClick={() => changeStatus.mutate({ id: r.id, action: "activate" })}>
+                <CheckCircle2 className="mr-2 h-4 w-4" /> Reactivate
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                onClick={() => {
+                  setSuspendTarget(r);
+                  setReason("");
+                }}
+              >
+                <Ban className="mr-2 h-4 w-4" /> Suspend
+              </DropdownMenuItem>
+            )}
             {role === "admin" && (
               <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTarget(r)}>
                 <Trash2 className="mr-2 h-4 w-4" /> Delete
@@ -109,7 +132,7 @@ export default function RiderListPage() {
               setSearch(v);
               setPage(1);
             }}
-            placeholder="Search by name or phone..."
+            placeholder="Search by name, email or phone..."
             className="sm:max-w-xs"
           />
           <Select
@@ -119,13 +142,13 @@ export default function RiderListPage() {
               setPage(1);
             }}
           >
-            <SelectTrigger className="sm:w-48">
+            <SelectTrigger className="sm:w-52">
               <SelectValue placeholder="KYC status" />
             </SelectTrigger>
             <SelectContent>
               {KYC_OPTIONS.map((s) => (
                 <SelectItem key={s} value={s}>
-                  {s === "all" ? "All KYC statuses" : s.charAt(0).toUpperCase() + s.slice(1)}
+                  {s === "all" ? "All KYC statuses" : s.replace(/_/g, " ")}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -148,8 +171,8 @@ export default function RiderListPage() {
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
-        title={`Delete ${deleteTarget?.name}?`}
-        description="This permanently removes the rider profile and their history."
+        title={`Delete ${deleteTarget?.full_name}?`}
+        description="This soft-deletes the rider profile (recoverable via restore)."
         confirmLabel="Delete rider"
         destructive
         loading={deleteRider.isPending}
@@ -157,6 +180,37 @@ export default function RiderListPage() {
           if (deleteTarget) deleteRider.mutate(deleteTarget.id, { onSuccess: () => setDeleteTarget(null) });
         }}
       />
+
+      <Dialog open={!!suspendTarget} onOpenChange={(o) => !o && setSuspendTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Suspend {suspendTarget?.full_name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label>Reason (at least 5 characters)</Label>
+            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSuspendTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={reason.trim().length < 5 || changeStatus.isPending}
+              onClick={() => {
+                if (suspendTarget) {
+                  changeStatus.mutate(
+                    { id: suspendTarget.id, action: "suspend", reason },
+                    { onSuccess: () => setSuspendTarget(null) },
+                  );
+                }
+              }}
+            >
+              Suspend
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

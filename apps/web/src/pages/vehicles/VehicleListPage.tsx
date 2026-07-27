@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Eye, Pencil, Ban, Trash2 } from "lucide-react";
+import { BatteryMedium, Eye, Plus, Wrench, CheckCircle2, MoreHorizontal } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,52 +8,57 @@ import { SearchBar } from "@/components/common/SearchBar";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { BatteryIndicator } from "@/components/common/BatteryIndicator";
-import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { useVehicles, useDeleteVehicle, useUpdateVehicleStatus } from "@/hooks/useVehicles";
-import { useAuthStore } from "@/store/authStore";
+import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
+import { useVehicles, useCreateVehicle, useUpdateVehicle } from "@/hooks/useVehicles";
 import type { Vehicle, VehicleStatus } from "@/types";
-import { MoreHorizontal } from "lucide-react";
-import { CreateVehicleDialog } from "./CreateVehicleDialog";
 
-const STATUS_OPTIONS: (VehicleStatus | "all")[] = [
-  "all", "available", "booked", "assigned", "charging", "maintenance", "scrap", "offline",
-];
+const STATUS_OPTIONS: (VehicleStatus | "all")[] = ["all", "available", "in_use", "maintenance", "retired"];
 
 export default function VehicleListPage() {
   const navigate = useNavigate();
-  const role = useAuthStore((s) => s.user?.role);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<VehicleStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Vehicle | null>(null);
 
   const { data, isLoading, isError, refetch } = useVehicles({ search, status, page, pageSize: 8 });
-  const deleteVehicle = useDeleteVehicle();
-  const updateStatus = useUpdateVehicleStatus();
+  const createVehicle = useCreateVehicle();
+  const updateVehicle = useUpdateVehicle();
 
   const columns: DataTableColumn<Vehicle>[] = [
     {
       header: "Vehicle",
-      key: "reg",
+      key: "name",
       render: (v) => (
-        <div>
-          <p className="font-medium">{v.registrationNumber}</p>
-          <p className="text-xs text-muted-foreground">{v.model}</p>
+        <div className="min-w-0">
+          <p className="truncate font-medium">{v.name}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {v.manufacturer} {v.model} · {v.registration_number}
+          </p>
+        </div>
+      ),
+    },
+    {
+      header: "Battery",
+      key: "battery",
+      render: (v) => (
+        <div className="flex items-center gap-1.5">
+          <BatteryMedium className="h-4 w-4 text-muted-foreground" />
+          {v.battery_percentage}%
         </div>
       ),
     },
     { header: "Status", key: "status", render: (v) => <StatusBadge status={v.status} /> },
-    { header: "Battery", key: "battery", render: (v) => <BatteryIndicator percent={v.batteryPercent} />, hideOnMobile: true },
-    { header: "Station", key: "station", render: (v) => v.station ?? "—", hideOnMobile: true },
-    { header: "Odometer", key: "odo", render: (v) => `${v.odometerKm.toLocaleString()} km`, hideOnMobile: true },
+    { header: "VIN", key: "vin", render: (v) => v.vin, hideOnMobile: true },
+    {
+      header: "Next service",
+      key: "service",
+      render: (v) => v.next_service_due_date ?? "—",
+      hideOnMobile: true,
+    },
     {
       header: "Actions",
       key: "actions",
@@ -66,19 +71,16 @@ export default function VehicleListPage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => navigate(`/vehicles/${v.id}`)}>
-              <Eye className="mr-2 h-4 w-4" /> View
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate(`/vehicles/${v.id}?edit=1`)}>
-              <Pencil className="mr-2 h-4 w-4" /> Edit
+              <Eye className="mr-2 h-4 w-4" /> View details
             </DropdownMenuItem>
             {v.status !== "maintenance" && (
-              <DropdownMenuItem onClick={() => updateStatus.mutate({ id: v.id, status: "maintenance" })}>
-                <Ban className="mr-2 h-4 w-4" /> Disable (maintenance)
+              <DropdownMenuItem onClick={() => updateVehicle.mutate({ id: v.id, patch: { status: "maintenance" } })}>
+                <Wrench className="mr-2 h-4 w-4" /> Mark in maintenance
               </DropdownMenuItem>
             )}
-            {role === "admin" && (
-              <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTarget(v)}>
-                <Trash2 className="mr-2 h-4 w-4" /> Delete
+            {v.status !== "available" && (
+              <DropdownMenuItem onClick={() => updateVehicle.mutate({ id: v.id, patch: { status: "available" } })}>
+                <CheckCircle2 className="mr-2 h-4 w-4" /> Mark available
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -89,7 +91,7 @@ export default function VehicleListPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Vehicles</h1>
           <p className="text-sm text-muted-foreground">{data?.total ?? 0} vehicles in the fleet</p>
@@ -107,7 +109,7 @@ export default function VehicleListPage() {
               setSearch(v);
               setPage(1);
             }}
-            placeholder="Search by registration number or VIN..."
+            placeholder="Search by name, registration or VIN..."
             className="sm:max-w-xs"
           />
           <Select
@@ -117,13 +119,13 @@ export default function VehicleListPage() {
               setPage(1);
             }}
           >
-            <SelectTrigger className="sm:w-48">
+            <SelectTrigger className="sm:w-52">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
               {STATUS_OPTIONS.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s === "all" ? "All statuses" : s.charAt(0).toUpperCase() + s.slice(1)}
+                <SelectItem key={s} value={s} className="capitalize">
+                  {s === "all" ? "All statuses" : s.replace(/_/g, " ")}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -143,19 +145,14 @@ export default function VehicleListPage() {
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
       </Card>
 
-      <CreateVehicleDialog open={createOpen} onOpenChange={setCreateOpen} />
-
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(o) => !o && setDeleteTarget(null)}
-        title={`Delete ${deleteTarget?.registrationNumber}?`}
-        description="This will permanently remove the vehicle from the fleet. This cannot be undone."
-        confirmLabel="Delete vehicle"
-        destructive
-        loading={deleteVehicle.isPending}
-        onConfirm={() => {
-          if (deleteTarget) deleteVehicle.mutate(deleteTarget.id, { onSuccess: () => setDeleteTarget(null) });
-        }}
+      <VehicleFormDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        isPending={createVehicle.isPending}
+        error={createVehicle.error}
+        onSubmit={(input) =>
+          createVehicle.mutate(input, { onSuccess: () => setCreateOpen(false) })
+        }
       />
     </div>
   );

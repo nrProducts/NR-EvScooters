@@ -1,22 +1,36 @@
-import { MOCK_TRANSACTIONS } from "@/services/mockData";
-import type { PaymentStatus } from "@/types";
-import { delay, paginate } from "./client";
+import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
+import type { Invoice, InvoiceDetail, InvoiceStatus, PaginatedResult, PaymentStatus } from "@/types";
 
-const transactions = [...MOCK_TRANSACTIONS];
-
-export interface PaymentFilters {
-  status?: PaymentStatus | "all";
+export interface InvoiceFilters {
+  status?: InvoiceStatus | "all";
+  paymentStatus?: PaymentStatus | "all";
   page?: number;
   pageSize?: number;
 }
 
-export async function fetchTransactions(filters: PaymentFilters = {}) {
-  const { status = "all", page = 1, pageSize = 10 } = filters;
-  const result = status === "all" ? transactions : transactions.filter((t) => t.status === status);
-  return delay(paginate(result, page, pageSize));
+/** GET /invoices — requireStaff. See apps/backend/src/modules/invoices/invoices.routes.ts */
+export async function fetchInvoices(filters: InvoiceFilters = {}): Promise<PaginatedResult<Invoice>> {
+  const { status, paymentStatus, page = 1, pageSize = 8 } = filters;
+  const res = await apiClient.get<BackendPaginated<Invoice>>("/invoices", {
+    page,
+    pageSize,
+    status: status && status !== "all" ? status : undefined,
+    paymentStatus: paymentStatus && paymentStatus !== "all" ? paymentStatus : undefined,
+  });
+  return toPaginatedResult(res);
 }
 
-export async function issueRefund(id: string) {
-  const txn = transactions.find((t) => t.id === id);
-  return delay({ success: true, txn });
+/** GET /invoices/:id */
+export async function fetchInvoiceById(id: string): Promise<InvoiceDetail> {
+  return apiClient.get<InvoiceDetail>(`/invoices/${id}`);
+}
+
+/**
+ * POST /invoices/:id/refund — requireStaff. Bookkeeping only: flips the
+ * invoice's payment_status to "refunded". There's no payment gateway wired
+ * into this codebase, so no money actually moves — see the backend service
+ * for the full caveat.
+ */
+export async function refundInvoice(id: string, reason?: string): Promise<Invoice> {
+  return apiClient.post<Invoice>(`/invoices/${id}/refund`, { reason });
 }
