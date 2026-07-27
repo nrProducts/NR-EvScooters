@@ -1,18 +1,23 @@
 import type { Request } from "express";
 import { supabaseAdmin } from "../../config/supabase";
-import { AppError, conflict, notFound } from "../../common/AppError";
+import { AppError, businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { Paginated, AuthContext } from "../../types";
 import {
-    CreateVehicleInput, ListVehiclesFilters, UpdateVehicleInput, VehicleDetail,
-    VehicleDocumentRow, VehicleMaintenanceRow, VehicleRentalRow, VehicleRow,
+    buildVehiclePhotoPath, createSignedVehiclePhotoUrl, removeVehiclePhotoFile, uploadVehiclePhotoFile,
+} from "./vehicles.photo.storage";
+import type { UploadedFile } from "../kyc/kyc.storage";
+import {
+    CreateVehicleInput, ListVehiclesFilters, ScrapRecordRow, ScrapVehicleInput, UpdateVehicleInput,
+    VehicleDetail, VehicleDocumentRow, VehicleMaintenanceRow, VehiclePhotoRow, VehicleRentalRow, VehicleRow,
 } from "./vehicles.types";
 
 const VEHICLE_COLUMNS = `
     id, name, registration_number, battery_number, manufacturer, model, vin,
     battery_percentage, status, last_service_date, next_service_due_date,
-    active, created_at, updated_at
+    active, color, qr_code, imei, purchase_date, insurance_number, insurance_expiry,
+    created_at, updated_at
 `;
 
 /** Postgres `numeric` columns round-trip through PostgREST as strings, not numbers. */
@@ -63,10 +68,12 @@ export async function getVehicleById(id: string): Promise<VehicleDetail> {
     if (error) throw error;
     if (!data) throw notFound("Vehicle not found.");
 
-    const [documents, maintenanceHistory, rentalHistory] = await Promise.all([
+    const [documents, photos, maintenanceHistory, rentalHistory, scrapRecord] = await Promise.all([
         documentsForVehicle(id),
+        photosForVehicle(id),
         maintenanceForVehicle(id),
         rentalsForVehicle(id),
+        scrapRecordForVehicle(id),
     ]);
 
     const currentRental = rentalHistory.find((r) => r.status === "active") ?? null;
@@ -74,9 +81,32 @@ export async function getVehicleById(id: string): Promise<VehicleDetail> {
     return {
         ...toVehicleRow(data as unknown as VehicleRow),
         documents,
+        photos,
         maintenance_history: maintenanceHistory,
         rental_history: rentalHistory,
         current_rider: currentRental?.rider ?? null,
+        scrap_record: scrapRecord,
+    };
+}
+
+async function scrapRecordForVehicle(vehicleId: string): Promise<ScrapRecordRow | null> {
+    const { data, error } = await supabaseAdmin
+        .from("scrap_records")
+        .select("id, reason, scrapped_on, estimated_value, created_at, users(id, full_name)")
+        .eq("vehicle_id", vehicleId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+
+    return {
+        id: data.id,
+        reason: data.reason,
+        scrapped_on: data.scrapped_on,
+        estimated_value: data.estimated_value === null ? null : Number(data.estimated_value),
+        approved_by: unwrap(data.users),
+        created_at: data.created_at,
     };
 }
 
@@ -125,6 +155,81 @@ function unwrap<T>(raw: unknown): T | null {
     return (v as T) ?? null;
 }
 
+async function photosForVehicle(vehicleId: string): Promise<VehiclePhotoRow[]> {
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_photos")
+        .select("id, url, is_primary, sort_order, created_at")
+        .eq("vehicle_id", vehicleId)
+        .order("sort_order", { ascending: true });
+    if (error) throw error;
+
+    const rows = (data ?? []) as Array<{ id: string; url: string; is_primary: boolean; sort_order: number; created_at: string }>;
+    return Promise.all(
+        rows.map(async (row) => ({
+            id: row.id,
+            url: await createSignedVehiclePhotoUrl(row.url),
+            is_primary: row.is_primary,
+            sort_order: row.sort_order,
+            created_at: row.created_at,
+        })),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Photos
+// ---------------------------------------------------------------------------
+
+export async function uploadVehiclePhoto(
+    vehicleId: string,
+    file: UploadedFile,
+    mime: "image/jpeg" | "image/png",
+    isPrimary: boolean,
+): Promise<VehiclePhotoRow> {
+    await requireVehicle(vehicleId);
+
+    const path = buildVehiclePhotoPath(vehicleId, mime);
+    await uploadVehiclePhotoFile(path, file, mime);
+
+    if (isPrimary) {
+        await supabaseAdmin.from("vehicle_photos").update({ is_primary: false }).eq("vehicle_id", vehicleId);
+    }
+
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_photos")
+        .insert({ vehicle_id: vehicleId, url: path, is_primary: isPrimary })
+        .select("id, url, is_primary, sort_order, created_at")
+        .single();
+
+    if (error) {
+        await removeVehiclePhotoFile(path);
+        throw error;
+    }
+
+    return {
+        id: data.id,
+        url: await createSignedVehiclePhotoUrl(data.url),
+        is_primary: data.is_primary,
+        sort_order: data.sort_order,
+        created_at: data.created_at,
+    };
+}
+
+export async function deleteVehiclePhoto(vehicleId: string, photoId: string): Promise<void> {
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_photos")
+        .select("id, url")
+        .eq("id", photoId)
+        .eq("vehicle_id", vehicleId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw notFound("Photo not found.");
+
+    const { error: deleteError } = await supabaseAdmin.from("vehicle_photos").delete().eq("id", photoId);
+    if (deleteError) throw deleteError;
+
+    await removeVehiclePhotoFile(data.url);
+}
+
 // ---------------------------------------------------------------------------
 // Create
 // ---------------------------------------------------------------------------
@@ -147,6 +252,12 @@ export async function createVehicle(
             status: input.status ?? "available",
             last_service_date: input.last_service_date ?? null,
             next_service_due_date: input.next_service_due_date ?? null,
+            color: input.color ?? null,
+            qr_code: input.qr_code ?? null,
+            imei: input.imei ?? null,
+            purchase_date: input.purchase_date ?? null,
+            insurance_number: input.insurance_number ?? null,
+            insurance_expiry: input.insurance_expiry ?? null,
         })
         .select(VEHICLE_COLUMNS)
         .single();
@@ -243,20 +354,76 @@ function mapPostgresError(error: { code?: string; message?: string }): Error {
         if (error.message?.includes("vin")) {
             return conflict("This VIN is already in use.", { vin: "This VIN is already in use." });
         }
+        if (error.message?.includes("qr_code")) {
+            return conflict("This QR code is already in use.", { qr_code: "This QR code is already in use." });
+        }
+        if (error.message?.includes("imei")) {
+            return conflict("This IMEI is already in use.", { imei: "This IMEI is already in use." });
+        }
         return conflict("That value is already in use.");
     }
     return error as Error;
 }
 
 // ---------------------------------------------------------------------------
-// Assign (pre-existing) — kept as-is; not part of this pass's fleet CRUD.
-// Note this is an explam api structure
+// Scrap — terminal state. Only a 'maintenance' vehicle may be scrapped;
+// `active: false` keeps it out of allocate_vehicle_for_booking()'s pool
+// (which filters on v.active) even though 'scrap' also isn't 'available'.
+// ---------------------------------------------------------------------------
+
+export async function scrapVehicle(
+    id: string,
+    input: ScrapVehicleInput,
+    actor: AuthContext,
+): Promise<VehicleRow> {
+    const vehicle = await requireVehicle(id);
+    if (vehicle.status !== "maintenance") {
+        throw businessRule("Only a vehicle currently in maintenance can be scrapped.");
+    }
+
+    const { error: recordError } = await supabaseAdmin.from("scrap_records").insert({
+        vehicle_id: id,
+        reason: input.reason,
+        scrapped_on: input.scrapped_on ?? new Date().toISOString().slice(0, 10),
+        approved_by: actor.id,
+        estimated_value: input.estimated_value ?? null,
+    });
+    if (recordError) throw recordError;
+
+    const { data, error } = await supabaseAdmin
+        .from("vehicles")
+        .update({ status: "scrap", active: false })
+        .eq("id", id)
+        .select(VEHICLE_COLUMNS)
+        .single();
+    if (error) throw error;
+
+    const updated = toVehicleRow(data as unknown as VehicleRow);
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: null,
+        action: "vehicle.scrapped",
+        entityType: "vehicle",
+        entityId: id,
+        before: { status: "maintenance" },
+        after: { status: "scrap", reason: input.reason, estimated_value: input.estimated_value ?? null },
+    });
+
+    return updated;
+}
+
+// ---------------------------------------------------------------------------
+// Assign (pre-existing) — largely superseded by the booking flow's
+// allocate_vehicle_for_booking() + POST /bookings/:id/pickup (which go
+// through 'booked' first, then 'assigned'). Kept working for any direct
+// caller, but new code should go through bookings, not this.
 // ---------------------------------------------------------------------------
 
 export async function assignVehicle(vehicleId: string, userId: string) {
     const { data, error } = await supabaseAdmin
         .from("vehicles")
-        .update({ status: "in_use" })
+        .update({ status: "assigned" })
         .eq("id", vehicleId)
         .eq("status", "available")
         .select()

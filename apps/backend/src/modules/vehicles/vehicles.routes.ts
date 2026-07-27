@@ -3,6 +3,7 @@ import { requireAuth } from "../../middleware/auth.middleware";
 import { requireStaff } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
+import { vehiclePhotoUpload } from "./vehicles.photo.upload";
 import * as c from "./vehicles.controller";
 import * as v from "./vehicles.validation";
 
@@ -39,5 +40,27 @@ router.patch(
 );
 
 router.post("/:id/assign", asyncHandler(c.assignVehicleHandler));
+
+router.post(
+    "/:id/photos",
+    requireStaff,
+    validate({ params: v.uuidParam }),
+    vehiclePhotoUpload,
+    asyncHandler(c.uploadVehiclePhotoHandler),
+);
+
+router.delete(
+    "/:id/photos/:photoId",
+    requireStaff,
+    validate({ params: v.photoIdParam }),
+    asyncHandler(c.deleteVehiclePhotoHandler),
+);
+
+router.post(
+    "/:id/scrap",
+    requireStaff,
+    validate({ params: v.uuidParam, body: v.scrapVehicleBody }),
+    asyncHandler(c.scrapVehicleHandler),
+);
 
 export default router;

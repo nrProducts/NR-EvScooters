@@ -34,6 +34,11 @@ export const env = {
     /** Keep in sync with storage.buckets.file_size_limit in the migration. */
     profilePhotoMaxFileBytes: intFromEnv("PROFILE_PHOTO_MAX_FILE_BYTES", 10 * 1024 * 1024),
 
+    /** Private bucket holding physical-vehicle condition/inspection photos. Must not be public. */
+    vehiclePhotoBucket: process.env.VEHICLE_PHOTO_BUCKET ?? "vehicle-photos",
+    /** Keep in sync with storage.buckets.file_size_limit in the migration. */
+    vehiclePhotoMaxFileBytes: intFromEnv("VEHICLE_PHOTO_MAX_FILE_BYTES", 10 * 1024 * 1024),
+
     /** Where an invited user lands to set their password. */
     inviteRedirectUrl: process.env.INVITE_REDIRECT_URL ?? "",
 

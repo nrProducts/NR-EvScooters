@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/bookings";
 
 export function usePickupQueue(filters: api.PickupQueueFilters) {
-  return useQuery({ queryKey: ["pickup-queue", filters], queryFn: () => api.fetchPickupQueue(filters) });
+  return useQuery({ queryKey: ["pickup-queue", filters], queryFn: () => api.fetchBookings(filters) });
 }
 
 export function useAvailableVehicles(bookingId: string | undefined) {
@@ -16,8 +16,25 @@ export function useAvailableVehicles(bookingId: string | undefined) {
 export function useConfirmPickup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ bookingId, vehicleId }: { bookingId: string; vehicleId: string }) =>
+    mutationFn: ({ bookingId, vehicleId }: { bookingId: string; vehicleId?: string }) =>
       api.confirmPickup(bookingId, vehicleId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pickup-queue"] }),
+  });
+}
+
+export function useApproveBooking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (bookingId: string) => api.approveBooking(bookingId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pickup-queue"] }),
+  });
+}
+
+export function useRejectBooking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bookingId, reason }: { bookingId: string; reason: string }) =>
+      api.rejectBooking(bookingId, reason),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pickup-queue"] }),
   });
 }

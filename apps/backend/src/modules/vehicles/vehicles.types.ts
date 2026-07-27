@@ -1,6 +1,12 @@
-export type VehicleStatus = "available" | "in_use" | "maintenance" | "retired";
+/**
+ * Matches the live public.vehicle_status enum after
+ * 20260727095623_vehicle_status_lifecycle_enum.sql renamed 'in_use' ->
+ * 'assigned', 'retired' -> 'scrap', and added 'booked' (a vehicle reserved
+ * by a booking via allocate_vehicle_for_booking(), not yet handed over).
+ */
+export type VehicleStatus = "available" | "booked" | "assigned" | "maintenance" | "scrap";
 export const VEHICLE_STATUSES: readonly VehicleStatus[] = [
-    "available", "in_use", "maintenance", "retired",
+    "available", "booked", "assigned", "maintenance", "scrap",
 ] as const;
 
 export interface VehicleRow {
@@ -16,8 +22,23 @@ export interface VehicleRow {
     last_service_date: string | null;
     next_service_due_date: string | null;
     active: boolean;
+    color: string | null;
+    qr_code: string | null;
+    imei: string | null;
+    purchase_date: string | null;
+    insurance_number: string | null;
+    insurance_expiry: string | null;
     created_at: string;
     updated_at: string | null;
+}
+
+export interface VehiclePhotoRow {
+    id: string;
+    /** Signed URL, minted per request — never the raw storage path. */
+    url: string;
+    is_primary: boolean;
+    sort_order: number;
+    created_at: string;
 }
 
 export interface VehicleDocumentRow {
@@ -44,12 +65,30 @@ export interface VehicleRentalRow {
     rider: { id: string; full_name: string } | null;
 }
 
+export interface ScrapRecordRow {
+    id: string;
+    reason: string;
+    scrapped_on: string;
+    estimated_value: number | null;
+    approved_by: { id: string; full_name: string } | null;
+    created_at: string;
+}
+
 export interface VehicleDetail extends VehicleRow {
     documents: VehicleDocumentRow[];
+    photos: VehiclePhotoRow[];
     maintenance_history: VehicleMaintenanceRow[];
     rental_history: VehicleRentalRow[];
     /** The rider currently holding this vehicle, derived from the active rental (if any). */
     current_rider: { id: string; full_name: string } | null;
+    /** Set only once this vehicle has been scrapped. */
+    scrap_record: ScrapRecordRow | null;
+}
+
+export interface ScrapVehicleInput {
+    reason: string;
+    estimated_value?: number;
+    scrapped_on?: string;
 }
 
 export interface ListVehiclesFilters {
@@ -72,6 +111,12 @@ export interface CreateVehicleInput {
     status?: VehicleStatus;
     last_service_date?: string;
     next_service_due_date?: string;
+    color?: string;
+    qr_code?: string;
+    imei?: string;
+    purchase_date?: string;
+    insurance_number?: string;
+    insurance_expiry?: string;
 }
 
 export type UpdateVehicleInput = Partial<CreateVehicleInput>;

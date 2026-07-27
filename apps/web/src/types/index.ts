@@ -157,6 +157,8 @@ export interface PickupBooking {
   station: { id: string; name: string; code: string; lat: number; lng: number } | null;
   plan: { id: string; name: string; billing_cycle: string; price: number } | null;
   rider: { id: string; full_name: string; phone: string | null };
+  /** The physical unit already reserved by allocate_vehicle_for_booking(), if any. */
+  vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
 }
 
 export interface AvailableVehicle {
@@ -170,7 +172,8 @@ export interface AvailableVehicle {
 // Vehicles (fleet inventory) — mirrors apps/backend/src/modules/vehicles/vehicles.types.ts
 // ---------------------------------------------------------------------------
 
-export type VehicleStatus = "available" | "in_use" | "maintenance" | "retired";
+/** Matches the live public.vehicle_status enum (available/booked/assigned/maintenance/scrap). */
+export type VehicleStatus = "available" | "booked" | "assigned" | "maintenance" | "scrap";
 
 export interface Vehicle {
   id: string;
@@ -186,6 +189,12 @@ export interface Vehicle {
   last_service_date: string | null;
   next_service_due_date: string | null;
   active: boolean;
+  color: string | null;
+  qr_code: string | null;
+  imei: string | null;
+  purchase_date: string | null;
+  insurance_number: string | null;
+  insurance_expiry: string | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -196,6 +205,15 @@ export interface VehicleDocument {
   doc_number: string;
   issued_date: string;
   expiry_date: string;
+}
+
+export interface VehiclePhoto {
+  id: string;
+  /** Signed URL, minted per request. */
+  url: string;
+  is_primary: boolean;
+  sort_order: number;
+  created_at: string;
 }
 
 export interface VehicleMaintenanceRecord {
@@ -214,11 +232,22 @@ export interface VehicleRentalRecord {
   rider: { id: string; full_name: string } | null;
 }
 
+export interface ScrapRecord {
+  id: string;
+  reason: string;
+  scrapped_on: string;
+  estimated_value: number | null;
+  approved_by: { id: string; full_name: string } | null;
+  created_at: string;
+}
+
 export interface VehicleDetail extends Vehicle {
   documents: VehicleDocument[];
+  photos: VehiclePhoto[];
   maintenance_history: VehicleMaintenanceRecord[];
   rental_history: VehicleRentalRecord[];
   current_rider: { id: string; full_name: string } | null;
+  scrap_record: ScrapRecord | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -301,8 +330,50 @@ export interface InvoiceDetail extends Invoice {
 export interface ReportsSummary {
   vehicles: { total: number; by_status: Record<VehicleStatus, number> };
   riders: { total: number; by_kyc_status: Record<KycStatus, number> };
-  revenue: { paid_total: number; pending_total: number; refunded_total: number; invoice_count: number };
+  revenue: { paid_total: number; pending_total: number; pending_count: number; refunded_total: number; invoice_count: number };
   maintenance: { by_status: Record<MaintenanceStatus, number> };
+  plans: { active_subscriptions: number };
+  bookings: { pending_count: number };
+  rides: { active_count: number };
+  trends: {
+    revenue: { month: string; amount: number }[];
+    bookings: { month: string; count: number }[];
+    maintenance: { month: string; count: number }[];
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Audit logs (admin)
+// ---------------------------------------------------------------------------
+
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  before_data: Record<string, unknown> | null;
+  after_data: Record<string, unknown> | null;
+  created_at: string;
+  actor: { id: string; full_name: string } | null;
+  target_user: { id: string; full_name: string } | null;
+}
+
+// ---------------------------------------------------------------------------
+// Ride management (admin) — mirrors apps/backend/src/modules/rentals/rentals.types.ts
+// ---------------------------------------------------------------------------
+
+export type RentalStatus = "active" | "completed" | "force_ended" | "cancelled";
+
+export interface AdminRental {
+  id: string;
+  status: RentalStatus;
+  started_at: string;
+  ended_at: string | null;
+  start_battery_pct: number | null;
+  end_battery_pct: number | null;
+  fare: number | null;
+  rider: { id: string; full_name: string; phone: string | null } | null;
+  vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ import rentalsRoutes from "../modules/rentals/rentals.routes";
 import maintenanceRoutes from "../modules/maintenance/maintenance.routes";
 import invoicesRoutes from "../modules/invoices/invoices.routes";
 import reportsRoutes from "../modules/reports/reports.routes";
+import auditRoutes from "../modules/audit/audit.routes";
 import { riderSupportRouter, adminSupportRouter } from "../modules/support/support.routes";
 
 const router = Router();
@@ -38,5 +39,6 @@ router.use("/rentals", rentalsRoutes);
 router.use("/maintenance", maintenanceRoutes);
 router.use("/invoices", invoicesRoutes);
 router.use("/reports", reportsRoutes);
+router.use("/audit-logs", auditRoutes);
 
 export default router;

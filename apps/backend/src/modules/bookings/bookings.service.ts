@@ -11,10 +11,11 @@ import {
 } from "./bookings.types";
 
 const BOOKING_COLUMNS = `
-    id, status, start_day, created_at,
+    id, status, start_day, created_at, vehicle_id,
     vehicle_models(id, name),
     stations(id, name, code, lat, lng),
-    plans(id, name, billing_cycle, price)
+    plans(id, name, billing_cycle, price),
+    vehicles(id, name, registration_number, battery_percentage)
 `;
 
 type RawBookingRow = {
@@ -22,14 +23,29 @@ type RawBookingRow = {
     status: BookingStatus;
     start_day: string;
     created_at: string;
+    vehicle_id: string | null;
     vehicle_models: unknown;
     stations: unknown;
     plans: unknown;
+    vehicles: unknown;
 };
 
 function unwrap<T>(raw: unknown): T | null {
     const v = Array.isArray(raw) ? raw[0] : raw;
     return (v as T) ?? null;
+}
+
+/**
+ * Best-effort call to allocate_vehicle_for_booking() (20260727095801) — finds
+ * a free unit matching the booking's model/station and reserves it
+ * ('booked'). Never throws: a booking with no vehicle available yet is still
+ * a valid booking, just unassigned until one frees up.
+ */
+async function tryAllocateVehicle(bookingId: string): Promise<void> {
+    const { error } = await supabaseAdmin.rpc("allocate_vehicle_for_booking", { p_booking_id: bookingId });
+    if (error) {
+        console.error("[bookings] allocate_vehicle_for_booking failed", { bookingId, error: error.message });
+    }
 }
 
 /**
@@ -58,6 +74,7 @@ export function toBookingView(row: RawBookingRow): BookingView {
         vehicle_model: unwrap(row.vehicle_models),
         station: unwrap(row.stations),
         plan: unwrap(row.plans),
+        vehicle: unwrap(row.vehicles),
     };
 }
 
@@ -81,11 +98,10 @@ export async function createBooking(
             station_id: input.station_id,
             plan_id: input.plan_id,
             start_day: input.start_day,
-            // No payment step exists yet, so a booking is immediately ready
-            // for pickup rather than sitting at the pending_payment default.
-            // When real payment ships, this becomes the payment-success
-            // handler's job instead.
-            status: "confirmed",
+            // Left at its 'pending_payment' default rather than force-confirmed:
+            // the admin console's Approve/Reject step is the gate now (see
+            // approveBooking/rejectBooking below). No real payment step exists
+            // yet either way — approval just replaces "instantly confirmed."
         })
         .select(BOOKING_COLUMNS)
         .single();
@@ -108,7 +124,23 @@ export async function createBooking(
         after: { vehicle_model_id: input.vehicle_model_id, station_id: input.station_id, plan_id: input.plan_id, start_day: input.start_day },
     });
 
-    return view;
+    // Best-effort early reservation — allocate_vehicle_for_booking() also
+    // accepts 'pending_payment' bookings, so a unit can be held before an
+    // admin even approves it, same as the migration's own backfill loop does.
+    await tryAllocateVehicle(view.id);
+
+    return getBookingById(view.id);
+}
+
+export async function getBookingById(id: string): Promise<BookingView> {
+    const { data, error } = await supabaseAdmin
+        .from("bookings")
+        .select(BOOKING_COLUMNS)
+        .eq("id", id)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw notFound("Booking not found.");
+    return toBookingView(data as unknown as RawBookingRow);
 }
 
 export async function getMyCurrentBooking(userId: string): Promise<BookingView> {
@@ -163,10 +195,11 @@ export async function hasActiveBookingForUser(userId: string): Promise<boolean> 
 // ---------------------------------------------------------------------------
 
 const PICKUP_BOOKING_COLUMNS = `
-    id, status, start_day, created_at,
+    id, status, start_day, created_at, vehicle_id,
     vehicle_models(id, name),
     stations(id, name, code),
     plans(id, name, billing_cycle, price),
+    vehicles(id, name, registration_number, battery_percentage),
     users(id, full_name, phone)
 `;
 
@@ -179,13 +212,17 @@ function toPickupBookingView(row: RawPickupBookingRow): PickupBookingView {
     };
 }
 
-/** Confirmed bookings awaiting pickup, soonest start_day first. */
+/**
+ * Bookings for the admin "Bookings" screen. Defaults to 'confirmed' (the
+ * original pickup-queue behavior) when no status filter is given; pass one
+ * to see any other stage (pending_payment/cancelled/expired/fulfilled).
+ */
 export async function listPickupQueue(filters: PickupQueueFilters): Promise<Paginated<PickupBookingView>> {
     const [from, to] = toRange(filters);
     let query = supabaseAdmin
         .from("bookings")
         .select(PICKUP_BOOKING_COLUMNS, { count: "exact" })
-        .eq("status", "confirmed");
+        .eq("status", filters.status ?? "confirmed");
 
     if (filters.stationId) query = query.eq("station_id", filters.stationId);
 
@@ -221,11 +258,15 @@ export async function listAvailableVehiclesForBooking(bookingId: string): Promis
 }
 
 /**
- * Staff assigns a specific physical vehicle to a confirmed booking: creates
- * the rentals row (the actual ride), frees the booking into its terminal
- * 'fulfilled' state, and flips the vehicle to in_use. Sequential writes with
- * error propagation, same convention kyc.service.ts's approveKyc/rejectKyc
- * already use for multi-step writes — no transaction infra exists here.
+ * Staff hands over a physical vehicle for a confirmed (approved) booking:
+ * creates the rentals row (the actual ride), frees the booking into its
+ * terminal 'fulfilled' state, and flips the vehicle 'booked' -> 'assigned'.
+ * Normally the vehicle was already reserved by allocate_vehicle_for_booking()
+ * at booking/approval time (booking.vehicle_id); input.vehicle_id is only
+ * needed as a manual override (e.g. that reservation never found a unit).
+ * Sequential writes with error propagation, same convention
+ * kyc.service.ts's approveKyc/rejectKyc already use for multi-step writes —
+ * no transaction infra exists here.
  */
 export async function confirmPickup(
     bookingId: string,
@@ -251,16 +292,24 @@ export async function confirmPickup(
 
     const modelId = unwrap<{ id: string }>(bookingRow.vehicle_models)?.id;
     const stationId = unwrap<{ id: string }>(bookingRow.stations)?.id;
+    const vehicleId = input.vehicle_id ?? bookingRow.vehicle_id;
+    if (!vehicleId) {
+        throw businessRule("No vehicle has been allocated to this booking yet — pick one manually.");
+    }
 
     const { data: vehicle, error: vehicleError } = await supabaseAdmin
         .from("vehicles")
         .select("id, status, station_id, model_id")
-        .eq("id", input.vehicle_id)
+        .eq("id", vehicleId)
         .maybeSingle();
 
     if (vehicleError) throw vehicleError;
     if (!vehicle) throw notFound("Vehicle not found.");
-    if (vehicle.status !== "available") throw businessRule("This vehicle is not available for pickup.");
+    // 'booked' is the normal path (already reserved by allocate_vehicle_for_booking);
+    // 'available' covers a manual override onto a unit that was never auto-allocated.
+    if (vehicle.status !== "booked" && vehicle.status !== "available") {
+        throw businessRule("This vehicle is not available for pickup.");
+    }
     if (vehicle.station_id !== stationId) throw businessRule("This vehicle is not at the booking's pickup station.");
     if (vehicle.model_id !== modelId) throw businessRule("This vehicle does not match the booked model.");
 
@@ -268,7 +317,7 @@ export async function confirmPickup(
 
     const { error: rentalError } = await supabaseAdmin.from("rentals").insert({
         user_id: rider!.id,
-        vehicle_id: input.vehicle_id,
+        vehicle_id: vehicleId,
         booking_id: bookingId,
         status: "active",
         started_at: new Date().toISOString(),
@@ -277,13 +326,13 @@ export async function confirmPickup(
 
     const { error: vehicleUpdateError } = await supabaseAdmin
         .from("vehicles")
-        .update({ status: "in_use" })
-        .eq("id", input.vehicle_id);
+        .update({ status: "assigned" })
+        .eq("id", vehicleId);
     if (vehicleUpdateError) throw vehicleUpdateError;
 
     const { data: updated, error: bookingUpdateError } = await supabaseAdmin
         .from("bookings")
-        .update({ status: "fulfilled" })
+        .update({ status: "fulfilled", vehicle_id: vehicleId })
         .eq("id", bookingId)
         .select(PICKUP_BOOKING_COLUMNS)
         .single();
@@ -295,7 +344,7 @@ export async function confirmPickup(
         action: "booking.fulfilled",
         entityType: "booking",
         entityId: bookingId,
-        after: { vehicle_id: input.vehicle_id, status: "fulfilled" },
+        after: { vehicle_id: vehicleId, status: "fulfilled" },
     });
 
     await notifyUser(rider!.id, {
@@ -306,4 +355,96 @@ export async function confirmPickup(
     });
 
     return toPickupBookingView(updated as unknown as RawPickupBookingRow);
+}
+
+// ---------------------------------------------------------------------------
+// Admin approve/reject — the gate between 'pending_payment' ("Pending") and
+// 'confirmed' ("Approved") the spec's Booking Management screen expects,
+// replacing the old "auto-confirm on create" behavior.
+// ---------------------------------------------------------------------------
+
+export async function approveBooking(bookingId: string, actor: AuthContext): Promise<BookingView> {
+    const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("bookings")
+        .select("id, status, user_id")
+        .eq("id", bookingId)
+        .maybeSingle();
+    if (fetchError) throw fetchError;
+    if (!existing) throw notFound("Booking not found.");
+    if (existing.status !== "pending_payment") {
+        throw conflict("Only a pending booking can be approved.");
+    }
+
+    const { error } = await supabaseAdmin
+        .from("bookings")
+        .update({ status: "confirmed" })
+        .eq("id", bookingId);
+    if (error) throw error;
+
+    // In case the early best-effort allocation at creation time didn't find
+    // a unit (none was free yet), try again now.
+    await tryAllocateVehicle(bookingId);
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: existing.user_id,
+        action: "booking.approved",
+        entityType: "booking",
+        entityId: bookingId,
+        before: { status: "pending_payment" },
+        after: { status: "confirmed" },
+    });
+
+    await notifyUser(existing.user_id, {
+        template: "booking_approved",
+        title: "Booking Approved",
+        body: "Your booking has been approved. We'll notify you once a scooter is ready for pickup.",
+        screen: "post-booking-dashboard",
+    });
+
+    return getBookingById(bookingId);
+}
+
+export async function rejectBooking(
+    bookingId: string,
+    reason: string,
+    actor: AuthContext,
+): Promise<BookingView> {
+    const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("bookings")
+        .select("id, status, user_id")
+        .eq("id", bookingId)
+        .maybeSingle();
+    if (fetchError) throw fetchError;
+    if (!existing) throw notFound("Booking not found.");
+    if (existing.status !== "pending_payment") {
+        throw conflict("Only a pending booking can be rejected.");
+    }
+
+    // trg_release_vehicle_on_booking_close_fn (20260727095801) frees any
+    // 'booked' vehicle this booking was holding as soon as status flips here.
+    const { error } = await supabaseAdmin
+        .from("bookings")
+        .update({ status: "cancelled" })
+        .eq("id", bookingId);
+    if (error) throw error;
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: existing.user_id,
+        action: "booking.rejected",
+        entityType: "booking",
+        entityId: bookingId,
+        before: { status: "pending_payment" },
+        after: { status: "cancelled", reason },
+    });
+
+    await notifyUser(existing.user_id, {
+        template: "booking_rejected",
+        title: "Booking Rejected",
+        body: reason,
+        screen: "post-booking-dashboard",
+    });
+
+    return getBookingById(bookingId);
 }

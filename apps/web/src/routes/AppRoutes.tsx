@@ -14,6 +14,7 @@ import RiderListPage from "@/pages/riders/RiderListPage";
 import RiderDetailPage from "@/pages/riders/RiderDetailPage";
 import KycQueuePage from "@/pages/kyc/KycQueuePage";
 import BookingListPage from "@/pages/bookings/BookingListPage";
+import RideListPage from "@/pages/rides/RideListPage";
 import MaintenancePage from "@/pages/maintenance/MaintenancePage";
 import SupportTicketsPage from "@/pages/support/SupportTicketsPage";
 import PaymentsPage from "@/pages/payments/PaymentsPage";
@@ -50,6 +51,7 @@ export function AppRoutes() {
 
         <Route path="/kyc" element={<KycQueuePage />} />
         <Route path="/bookings" element={<BookingListPage />} />
+        <Route path="/rides" element={<RideListPage />} />
         <Route path="/maintenance" element={<MaintenancePage />} />
         <Route path="/support" element={<SupportTicketsPage />} />
 

@@ -84,10 +84,36 @@ async function request<T>(
   return payload as T;
 }
 
+/** Multipart upload — no Content-Type set manually so fetch adds the boundary itself. */
+async function postFormData<T>(path: string, formData: FormData): Promise<T> {
+  const headers = await authHeader();
+  const res = await fetch(`${BASE_URL}${path}`, { method: "POST", headers, body: formData });
+
+  let payload: unknown = null;
+  try {
+    payload = await res.json();
+  } catch {
+    // empty/non-JSON body
+  }
+
+  if (!res.ok) {
+    const body = payload as ApiErrorBody | null;
+    throw new ApiError(
+      body?.error?.message ?? "Something went wrong. Please try again.",
+      res.status,
+      body?.error?.code,
+      body?.error?.fields,
+    );
+  }
+
+  return payload as T;
+}
+
 export const apiClient = {
   get: <T>(path: string, query?: Record<string, string | number | boolean | undefined>) =>
     request<T>("GET", path, { query }),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, { body }),
+  postForm: <T>(path: string, formData: FormData) => postFormData<T>(path, formData),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, { body }),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, { body }),
   delete: <T>(path: string) => request<T>("DELETE", path),

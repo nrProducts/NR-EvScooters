@@ -11,7 +11,10 @@ import type { Vehicle, VehicleStatus } from "@/types";
 import type { VehicleFormInput } from "@/services/api/vehicles";
 import { ApiError } from "@/services/api/httpClient";
 
-const VEHICLE_STATUSES: VehicleStatus[] = ["available", "in_use", "maintenance", "retired"];
+// 'booked'/'assigned' are system-managed by the booking/rental flow
+// (allocate_vehicle_for_booking, pickup, ride completion) — an admin
+// manually sets only these three from this form.
+const VEHICLE_STATUSES: VehicleStatus[] = ["available", "maintenance", "scrap"];
 
 const emptyForm: VehicleFormInput = {
   name: "",
@@ -24,6 +27,12 @@ const emptyForm: VehicleFormInput = {
   status: "available",
   last_service_date: "",
   next_service_due_date: "",
+  color: "",
+  qr_code: "",
+  imei: "",
+  purchase_date: "",
+  insurance_number: "",
+  insurance_expiry: "",
 };
 
 function toForm(vehicle: Vehicle): VehicleFormInput {
@@ -38,6 +47,12 @@ function toForm(vehicle: Vehicle): VehicleFormInput {
     status: vehicle.status,
     last_service_date: vehicle.last_service_date ?? "",
     next_service_due_date: vehicle.next_service_due_date ?? "",
+    color: vehicle.color ?? "",
+    qr_code: vehicle.qr_code ?? "",
+    imei: vehicle.imei ?? "",
+    purchase_date: vehicle.purchase_date ?? "",
+    insurance_number: vehicle.insurance_number ?? "",
+    insurance_expiry: vehicle.insurance_expiry ?? "",
   };
 }
 
@@ -79,6 +94,12 @@ export function VehicleFormDialog({
       ...form,
       last_service_date: form.last_service_date || undefined,
       next_service_due_date: form.next_service_due_date || undefined,
+      color: form.color || undefined,
+      qr_code: form.qr_code || undefined,
+      imei: form.imei || undefined,
+      purchase_date: form.purchase_date || undefined,
+      insurance_number: form.insurance_number || undefined,
+      insurance_expiry: form.insurance_expiry || undefined,
     });
   };
 
@@ -147,6 +168,32 @@ export function VehicleFormDialog({
               type="date"
               value={form.next_service_due_date ?? ""}
               onChange={(e) => set("next_service_due_date", e.target.value)}
+            />
+          </Field>
+          <Field label="Color">
+            <Input value={form.color ?? ""} onChange={(e) => set("color", e.target.value)} placeholder="Matte Black" />
+          </Field>
+          <Field label="QR code">
+            <Input value={form.qr_code ?? ""} onChange={(e) => set("qr_code", e.target.value)} placeholder="QR-000042" />
+          </Field>
+          <Field label="IMEI / IoT device">
+            <Input value={form.imei ?? ""} onChange={(e) => set("imei", e.target.value)} placeholder="356938035643809" />
+          </Field>
+          <Field label="Purchase date">
+            <Input type="date" value={form.purchase_date ?? ""} onChange={(e) => set("purchase_date", e.target.value)} />
+          </Field>
+          <Field label="Insurance number">
+            <Input
+              value={form.insurance_number ?? ""}
+              onChange={(e) => set("insurance_number", e.target.value)}
+              placeholder="POL-2026-0042"
+            />
+          </Field>
+          <Field label="Insurance expiry">
+            <Input
+              type="date"
+              value={form.insurance_expiry ?? ""}
+              onChange={(e) => set("insurance_expiry", e.target.value)}
             />
           </Field>
         </div>

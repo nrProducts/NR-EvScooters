@@ -25,12 +25,25 @@ export interface BookingView {
     vehicle_model: { id: string; name: string } | null;
     station: { id: string; name: string; code: string; lat: number; lng: number } | null;
     plan: { id: string; name: string; billing_cycle: string; price: number } | null;
+    /**
+     * The specific physical unit reserved for this booking, if any —
+     * populated by allocate_vehicle_for_booking() (20260727095801), which
+     * runs as soon as a matching available vehicle exists. Null means no
+     * unit is free yet at this model/station.
+     */
+    vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
+}
+
+export interface RejectBookingInput {
+    reason: string;
 }
 
 export interface PickupQueueFilters {
     page: number;
     pageSize: number;
     stationId?: string;
+    /** Omit for the original "awaiting pickup" behavior (confirmed only). */
+    status?: BookingStatus;
 }
 
 export interface BookingHistoryFilters {
@@ -43,7 +56,8 @@ export interface PickupBookingView extends BookingView {
 }
 
 export interface ConfirmPickupInput {
-    vehicle_id: string;
+    /** Manual override — omit to use the booking's already-allocated vehicle_id. */
+    vehicle_id?: string;
 }
 
 export interface AvailableVehicleView {

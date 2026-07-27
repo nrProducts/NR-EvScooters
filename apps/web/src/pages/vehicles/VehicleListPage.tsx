@@ -15,7 +15,7 @@ import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { useVehicles, useCreateVehicle, useUpdateVehicle } from "@/hooks/useVehicles";
 import type { Vehicle, VehicleStatus } from "@/types";
 
-const STATUS_OPTIONS: (VehicleStatus | "all")[] = ["all", "available", "in_use", "maintenance", "retired"];
+const STATUS_OPTIONS: (VehicleStatus | "all")[] = ["all", "available", "booked", "assigned", "maintenance", "scrap"];
 
 export default function VehicleListPage() {
   const navigate = useNavigate();

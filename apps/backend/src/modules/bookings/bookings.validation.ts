@@ -23,6 +23,10 @@ export const pickupQueueQuery = z.object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     stationId: z.string().uuid().optional(),
+    /** Omit for the original "awaiting pickup" behavior (confirmed only). */
+    status: z
+        .enum(["pending_payment", "confirmed", "cancelled", "expired", "fulfilled"])
+        .optional(),
 });
 
 export const bookingHistoryQuery = z.object({
@@ -31,9 +35,14 @@ export const bookingHistoryQuery = z.object({
 });
 
 export const confirmPickupBody = z.object({
-    vehicle_id: z.string().uuid("A valid vehicle id is required."),
+    vehicle_id: z.string().uuid("A valid vehicle id is required.").optional(),
+});
+
+export const rejectBookingBody = z.object({
+    reason: z.string().trim().min(3, "Give a reason of at least 3 characters.").max(500),
 });
 
 export type PickupQueueQuery = z.infer<typeof pickupQueueQuery>;
 export type BookingHistoryQuery = z.infer<typeof bookingHistoryQuery>;
 export type ConfirmPickupBody = z.infer<typeof confirmPickupBody>;
+export type RejectBookingBody = z.infer<typeof rejectBookingBody>;

@@ -42,6 +42,27 @@ router.get(
     asyncHandler(c.availableVehiclesHandler),
 );
 
+router.get(
+    "/:id",
+    requireStaff,
+    validate({ params: v.bookingIdParam }),
+    asyncHandler(c.getBookingHandler),
+);
+
+router.post(
+    "/:id/approve",
+    requireStaff,
+    validate({ params: v.bookingIdParam }),
+    asyncHandler(c.approveBookingHandler),
+);
+
+router.post(
+    "/:id/reject",
+    requireStaff,
+    validate({ params: v.bookingIdParam, body: v.rejectBookingBody }),
+    asyncHandler(c.rejectBookingHandler),
+);
+
 router.post(
     "/:id/pickup",
     requireStaff,

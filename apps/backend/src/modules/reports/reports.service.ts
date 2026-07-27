@@ -54,34 +54,132 @@ async function revenueSummary(): Promise<ReportsSummary["revenue"]> {
     const rows = (data ?? []) as Array<{ amount_due: number | string; payment_status: string }>;
     let paid_total = 0;
     let pending_total = 0;
+    let pending_count = 0;
     let refunded_total = 0;
     for (const row of rows) {
         const amount = Number(row.amount_due);
         if (row.payment_status === "succeeded") paid_total += amount;
-        else if (row.payment_status === "pending") pending_total += amount;
-        else if (row.payment_status === "refunded") refunded_total += amount;
+        else if (row.payment_status === "pending") {
+            pending_total += amount;
+            pending_count += 1;
+        } else if (row.payment_status === "refunded") refunded_total += amount;
     }
 
-    return { paid_total, pending_total, refunded_total, invoice_count: rows.length };
+    return { paid_total, pending_total, pending_count, refunded_total, invoice_count: rows.length };
+}
+
+async function activeSubscriptionCount(): Promise<number> {
+    const { count, error } = await supabaseAdmin
+        .from("subscriptions")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "active");
+    if (error) throw error;
+    return count ?? 0;
+}
+
+async function pendingBookingCount(): Promise<number> {
+    const { count, error } = await supabaseAdmin
+        .from("bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending_payment");
+    if (error) throw error;
+    return count ?? 0;
+}
+
+async function activeRideCount(): Promise<number> {
+    const { count, error } = await supabaseAdmin
+        .from("rentals")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "active");
+    if (error) throw error;
+    return count ?? 0;
+}
+
+/** YYYY-MM for the current month and the (n-1) before it, oldest first. */
+function lastNMonths(n: number): string[] {
+    const out: string[] = [];
+    const d = new Date();
+    d.setDate(1);
+    for (let i = 0; i < n; i++) {
+        out.unshift(d.toISOString().slice(0, 7));
+        d.setMonth(d.getMonth() - 1);
+    }
+    return out;
+}
+
+async function revenueTrend(months: string[]): Promise<ReportsSummary["trends"]["revenue"]> {
+    const { data, error } = await supabaseAdmin
+        .from("invoices")
+        .select("amount_due, paid_at")
+        .eq("payment_status", "succeeded")
+        .gte("paid_at", `${months[0]}-01`);
+    if (error) throw error;
+
+    const buckets = new Map(months.map((m) => [m, 0]));
+    for (const row of (data ?? []) as Array<{ amount_due: number | string; paid_at: string | null }>) {
+        if (!row.paid_at) continue;
+        const key = row.paid_at.slice(0, 7);
+        if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + Number(row.amount_due));
+    }
+    return months.map((month) => ({ month, amount: buckets.get(month) ?? 0 }));
+}
+
+async function bookingsTrend(months: string[]): Promise<ReportsSummary["trends"]["bookings"]> {
+    const { data, error } = await supabaseAdmin
+        .from("bookings")
+        .select("created_at")
+        .gte("created_at", `${months[0]}-01`);
+    if (error) throw error;
+
+    const buckets = new Map(months.map((m) => [m, 0]));
+    for (const row of (data ?? []) as Array<{ created_at: string }>) {
+        const key = row.created_at.slice(0, 7);
+        if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
+    }
+    return months.map((month) => ({ month, count: buckets.get(month) ?? 0 }));
+}
+
+async function maintenanceTrend(months: string[]): Promise<ReportsSummary["trends"]["maintenance"]> {
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_maintenance")
+        .select("created_at")
+        .gte("created_at", `${months[0]}-01`);
+    if (error) throw error;
+
+    const buckets = new Map(months.map((m) => [m, 0]));
+    for (const row of (data ?? []) as Array<{ created_at: string }>) {
+        const key = row.created_at.slice(0, 7);
+        if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
+    }
+    return months.map((month) => ({ month, count: buckets.get(month) ?? 0 }));
 }
 
 /**
- * Single aggregate endpoint backing the Reports page. Fetches unpaginated
- * status/amount columns and counts them in memory — fine at this app's
- * current scale (same approach already used by assertNotLastAdmin and
- * userIdsWithRole); worth revisiting with real SQL aggregates once the
- * fleet/rider counts grow large.
+ * Single aggregate endpoint backing the Reports page and Admin Dashboard.
+ * Fetches unpaginated status/amount columns and counts them in memory — fine
+ * at this app's current scale (same approach already used by
+ * assertNotLastAdmin and userIdsWithRole); worth revisiting with real SQL
+ * aggregates once the fleet/rider counts grow large.
  *
  * Deliberately absent: per-repair maintenance cost (vehicle_maintenance has
- * no cost column in the schema) and time-bucketed revenue trends (would need
- * a dedicated grouped query) — both left for a future pass.
+ * no cost column in the schema).
  */
 export async function getReportsSummary(): Promise<ReportsSummary> {
-    const [vehicleStatus, riders, revenue, maintenanceStatus] = await Promise.all([
+    const months = lastNMonths(6);
+    const [
+        vehicleStatus, riders, revenue, maintenanceStatus, activeSubscriptions, pendingBookings, activeRides,
+        revenueTrendData, bookingsTrendData, maintenanceTrendData,
+    ] = await Promise.all([
         vehicleStatusCounts(),
         riderStats(),
         revenueSummary(),
         maintenanceStatusCounts(),
+        activeSubscriptionCount(),
+        pendingBookingCount(),
+        activeRideCount(),
+        revenueTrend(months),
+        bookingsTrend(months),
+        maintenanceTrend(months),
     ]);
 
     return {
@@ -92,5 +190,9 @@ export async function getReportsSummary(): Promise<ReportsSummary> {
         riders,
         revenue,
         maintenance: { by_status: maintenanceStatus },
+        plans: { active_subscriptions: activeSubscriptions },
+        bookings: { pending_count: pendingBookings },
+        rides: { active_count: activeRides },
+        trends: { revenue: revenueTrendData, bookings: bookingsTrendData, maintenance: maintenanceTrendData },
     };
 }

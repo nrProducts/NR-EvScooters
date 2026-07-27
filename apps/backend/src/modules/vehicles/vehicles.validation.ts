@@ -31,6 +31,12 @@ export const createVehicleBody = z.object({
     status: statusEnum.optional(),
     last_service_date: dateSchema.optional(),
     next_service_due_date: dateSchema.optional(),
+    color: z.string().trim().max(60).optional(),
+    qr_code: z.string().trim().max(120).optional(),
+    imei: z.string().trim().max(40).optional(),
+    purchase_date: dateSchema.optional(),
+    insurance_number: z.string().trim().max(80).optional(),
+    insurance_expiry: dateSchema.optional(),
 });
 
 export const updateVehicleBody = z
@@ -45,6 +51,27 @@ export const updateVehicleBody = z
         status: statusEnum.optional(),
         last_service_date: dateSchema.nullable().optional(),
         next_service_due_date: dateSchema.nullable().optional(),
+        color: z.string().trim().max(60).nullable().optional(),
+        qr_code: z.string().trim().max(120).nullable().optional(),
+        imei: z.string().trim().max(40).nullable().optional(),
+        purchase_date: dateSchema.nullable().optional(),
+        insurance_number: z.string().trim().max(80).nullable().optional(),
+        insurance_expiry: dateSchema.nullable().optional(),
     })
     .strict()
     .refine((v) => Object.keys(v).length > 0, "Provide at least one field to update.");
+
+export const uploadVehiclePhotoBody = z.object({
+    is_primary: z.coerce.boolean().optional(),
+});
+
+export const photoIdParam = z.object({
+    id: z.string().uuid("A valid vehicle id is required."),
+    photoId: z.string().uuid("A valid photo id is required."),
+});
+
+export const scrapVehicleBody = z.object({
+    reason: z.string().trim().min(3, "Give a reason of at least 3 characters.").max(500),
+    estimated_value: z.coerce.number().min(0).optional(),
+    scrapped_on: dateSchema.optional(),
+});
