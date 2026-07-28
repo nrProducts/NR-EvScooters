@@ -21,20 +21,3 @@ export function useConfirmPickup() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pickup-queue"] }),
   });
 }
-
-export function useApproveBooking() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (bookingId: string) => api.approveBooking(bookingId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pickup-queue"] }),
-  });
-}
-
-export function useRejectBooking() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ bookingId, reason }: { bookingId: string; reason: string }) =>
-      api.rejectBooking(bookingId, reason),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pickup-queue"] }),
-  });
-}

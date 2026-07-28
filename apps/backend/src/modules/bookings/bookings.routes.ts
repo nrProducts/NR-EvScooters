@@ -50,20 +50,6 @@ router.get(
 );
 
 router.post(
-    "/:id/approve",
-    requireStaff,
-    validate({ params: v.bookingIdParam }),
-    asyncHandler(c.approveBookingHandler),
-);
-
-router.post(
-    "/:id/reject",
-    requireStaff,
-    validate({ params: v.bookingIdParam, body: v.rejectBookingBody }),
-    asyncHandler(c.rejectBookingHandler),
-);
-
-router.post(
     "/:id/pickup",
     requireStaff,
     validate({ params: v.bookingIdParam, body: v.confirmPickupBody }),

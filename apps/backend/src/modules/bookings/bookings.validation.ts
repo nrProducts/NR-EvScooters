@@ -38,11 +38,6 @@ export const confirmPickupBody = z.object({
     vehicle_id: z.string().uuid("A valid vehicle id is required.").optional(),
 });
 
-export const rejectBookingBody = z.object({
-    reason: z.string().trim().min(3, "Give a reason of at least 3 characters.").max(500),
-});
-
 export type PickupQueueQuery = z.infer<typeof pickupQueueQuery>;
 export type BookingHistoryQuery = z.infer<typeof bookingHistoryQuery>;
 export type ConfirmPickupBody = z.infer<typeof confirmPickupBody>;
-export type RejectBookingBody = z.infer<typeof rejectBookingBody>;

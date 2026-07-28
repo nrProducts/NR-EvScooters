@@ -360,24 +360,6 @@ export interface AuditLogEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Ride management (admin) — mirrors apps/backend/src/modules/rentals/rentals.types.ts
-// ---------------------------------------------------------------------------
-
-export type RentalStatus = "active" | "completed" | "force_ended" | "cancelled";
-
-export interface AdminRental {
-  id: string;
-  status: RentalStatus;
-  started_at: string;
-  ended_at: string | null;
-  start_battery_pct: number | null;
-  end_battery_pct: number | null;
-  fare: number | null;
-  rider: { id: string; full_name: string; phone: string | null } | null;
-  vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
-}
-
-// ---------------------------------------------------------------------------
 // Shared pagination shape used across the web app's tables/hooks.
 // (Adapted from the backend's { data, pagination } envelope — see
 // services/api/httpClient.ts#toPaginatedResult.)

@@ -1,50 +1,38 @@
 import { useState } from "react";
-import { PackageCheck, CheckCircle2, XCircle, MoreHorizontal } from "lucide-react";
+import { PackageCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
-import {
-  usePickupQueue, useAvailableVehicles, useConfirmPickup, useApproveBooking, useRejectBooking,
-} from "@/hooks/useBookings";
+import { usePickupQueue, useAvailableVehicles, useConfirmPickup } from "@/hooks/useBookings";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { ApiError } from "@/services/api/httpClient";
 import type { BookingStatus, PickupBooking } from "@/types";
 
 const STATUS_TABS: { value: BookingStatus; label: string }[] = [
-  { value: "pending_payment", label: "Pending" },
-  { value: "confirmed", label: "Approved" },
+  { value: "confirmed", label: "Awaiting Pickup" },
   { value: "fulfilled", label: "Assigned" },
-  { value: "cancelled", label: "Rejected/Cancelled" },
+  { value: "cancelled", label: "Cancelled" },
   { value: "expired", label: "Expired" },
 ];
 
 export default function BookingListPage() {
-  const [status, setStatus] = useState<BookingStatus>("pending_payment");
+  const [status, setStatus] = useState<BookingStatus>("confirmed");
   const [page, setPage] = useState(1);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<PickupBooking | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
 
   const { data, isLoading, isError, refetch } = usePickupQueue({ status, page, pageSize: 8 });
   const { data: availableVehicles, isLoading: vehiclesLoading } = useAvailableVehicles(
     pickupTarget && !pickupTarget.vehicle ? pickupTarget.id : undefined,
   );
   const confirmPickup = useConfirmPickup();
-  const approveBooking = useApproveBooking();
-  const rejectBooking = useRejectBooking();
 
   const columns: DataTableColumn<PickupBooking>[] = [
     { header: "Rider", key: "rider", render: (b) => b.rider.full_name },
@@ -69,31 +57,6 @@ export default function BookingListPage() {
       header: "Actions",
       key: "actions",
       render: (b) => {
-        if (b.status === "pending_payment") {
-          return (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                <Button variant="ghost" size="icon">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => approveBooking.mutate(b.id)}>
-                  <CheckCircle2 className="mr-2 h-4 w-4" /> Approve
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={() => {
-                    setRejectTarget(b);
-                    setRejectReason("");
-                  }}
-                >
-                  <XCircle className="mr-2 h-4 w-4" /> Reject
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          );
-        }
         if (b.status === "confirmed") {
           return (
             <Button
@@ -138,47 +101,6 @@ export default function BookingListPage() {
         />
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
       </Card>
-
-      <p className="text-xs text-muted-foreground">
-        "Ride Active" and "Completed" aren't distinguished here — once a booking is Assigned, its ride's live
-        status is tracked on the Rentals/Ride Management screen instead.
-      </p>
-
-      {/* Reject dialog */}
-      <Dialog open={!!rejectTarget} onOpenChange={(o) => !o && setRejectTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reject booking</DialogTitle>
-            <DialogDescription>{rejectTarget?.rider.full_name} — {rejectTarget?.vehicle_model?.name}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            <Label>Reason</Label>
-            <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3} />
-          </div>
-          {rejectBooking.isError && (
-            <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              {rejectBooking.error instanceof ApiError ? rejectBooking.error.message : "Something went wrong."}
-            </p>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectTarget(null)}>Cancel</Button>
-            <Button
-              variant="destructive"
-              disabled={rejectReason.trim().length < 3 || rejectBooking.isPending}
-              onClick={() => {
-                if (rejectTarget) {
-                  rejectBooking.mutate(
-                    { bookingId: rejectTarget.id, reason: rejectReason.trim() },
-                    { onSuccess: () => setRejectTarget(null) },
-                  );
-                }
-              }}
-            >
-              Reject booking
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Confirm pickup dialog */}
       <Dialog open={!!pickupTarget} onOpenChange={(o) => !o && setPickupTarget(null)}>

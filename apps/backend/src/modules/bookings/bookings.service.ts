@@ -101,10 +101,10 @@ export async function createBooking(
             station_id: input.station_id,
             plan_id: input.plan_id,
             start_day: input.start_day,
-            // Left at its 'pending_payment' default rather than force-confirmed:
-            // the admin console's Approve/Reject step is the gate now (see
-            // approveBooking/rejectBooking below). No real payment step exists
-            // yet either way — approval just replaces "instantly confirmed."
+            // Confirmed immediately — no payment gateway or admin approval
+            // gates a booking anymore. Staff still hand over the physical
+            // vehicle via confirmPickup() below, which is the real checkpoint.
+            status: "confirmed",
         })
         .select(BOOKING_COLUMNS)
         .single();
@@ -127,9 +127,9 @@ export async function createBooking(
         after: { vehicle_model_id: input.vehicle_model_id, station_id: input.station_id, plan_id: input.plan_id, start_day: input.start_day },
     });
 
-    // Best-effort early reservation — allocate_vehicle_for_booking() also
-    // accepts 'pending_payment' bookings, so a unit can be held before an
-    // admin even approves it, same as the migration's own backfill loop does.
+    // Best-effort early reservation — flips a matching free vehicle to
+    // 'booked' right away. If none is free yet, the booking is still valid;
+    // staff can allocate one manually at pickup time (confirmPickup below).
     await tryAllocateVehicle(view.id);
 
     // First-booking referral discount, if this rider was referred and this
@@ -368,96 +368,4 @@ export async function confirmPickup(
     });
 
     return toPickupBookingView(updated as unknown as RawPickupBookingRow);
-}
-
-// ---------------------------------------------------------------------------
-// Admin approve/reject — the gate between 'pending_payment' ("Pending") and
-// 'confirmed' ("Approved") the spec's Booking Management screen expects,
-// replacing the old "auto-confirm on create" behavior.
-// ---------------------------------------------------------------------------
-
-export async function approveBooking(bookingId: string, actor: AuthContext): Promise<BookingView> {
-    const { data: existing, error: fetchError } = await supabaseAdmin
-        .from("bookings")
-        .select("id, status, user_id")
-        .eq("id", bookingId)
-        .maybeSingle();
-    if (fetchError) throw fetchError;
-    if (!existing) throw notFound("Booking not found.");
-    if (existing.status !== "pending_payment") {
-        throw conflict("Only a pending booking can be approved.");
-    }
-
-    const { error } = await supabaseAdmin
-        .from("bookings")
-        .update({ status: "confirmed" })
-        .eq("id", bookingId);
-    if (error) throw error;
-
-    // In case the early best-effort allocation at creation time didn't find
-    // a unit (none was free yet), try again now.
-    await tryAllocateVehicle(bookingId);
-
-    await writeAudit({
-        actorId: actor.id,
-        targetUserId: existing.user_id,
-        action: "booking.approved",
-        entityType: "booking",
-        entityId: bookingId,
-        before: { status: "pending_payment" },
-        after: { status: "confirmed" },
-    });
-
-    await notifyUser(existing.user_id, {
-        template: "booking_approved",
-        title: "Booking Approved",
-        body: "Your booking has been approved. We'll notify you once a scooter is ready for pickup.",
-        screen: "post-booking-dashboard",
-    });
-
-    return getBookingById(bookingId);
-}
-
-export async function rejectBooking(
-    bookingId: string,
-    reason: string,
-    actor: AuthContext,
-): Promise<BookingView> {
-    const { data: existing, error: fetchError } = await supabaseAdmin
-        .from("bookings")
-        .select("id, status, user_id")
-        .eq("id", bookingId)
-        .maybeSingle();
-    if (fetchError) throw fetchError;
-    if (!existing) throw notFound("Booking not found.");
-    if (existing.status !== "pending_payment") {
-        throw conflict("Only a pending booking can be rejected.");
-    }
-
-    // trg_release_vehicle_on_booking_close_fn (20260727095801) frees any
-    // 'booked' vehicle this booking was holding as soon as status flips here.
-    const { error } = await supabaseAdmin
-        .from("bookings")
-        .update({ status: "cancelled" })
-        .eq("id", bookingId);
-    if (error) throw error;
-
-    await writeAudit({
-        actorId: actor.id,
-        targetUserId: existing.user_id,
-        action: "booking.rejected",
-        entityType: "booking",
-        entityId: bookingId,
-        before: { status: "pending_payment" },
-        after: { status: "cancelled", reason },
-    });
-
-    await notifyUser(existing.user_id, {
-        template: "booking_rejected",
-        title: "Booking Rejected",
-        body: reason,
-        screen: "post-booking-dashboard",
-    });
-
-    return getBookingById(bookingId);
 }

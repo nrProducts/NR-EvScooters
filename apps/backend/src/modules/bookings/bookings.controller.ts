@@ -3,7 +3,7 @@ import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import * as service from "./bookings.service";
 import {
-    BookingHistoryQuery, ConfirmPickupBody, CreateBookingBody, PickupQueueQuery, RejectBookingBody,
+    BookingHistoryQuery, ConfirmPickupBody, CreateBookingBody, PickupQueueQuery,
 } from "./bookings.validation";
 
 export async function createBookingHandler(req: AuthedRequest, res: Response) {
@@ -37,13 +37,4 @@ export async function availableVehiclesHandler(req: AuthedRequest, res: Response
 
 export async function getBookingHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getBookingById(req.params.id as string));
-}
-
-export async function approveBookingHandler(req: AuthedRequest, res: Response) {
-    res.json(await service.approveBooking(req.params.id as string, req.user!));
-}
-
-export async function rejectBookingHandler(req: AuthedRequest, res: Response) {
-    const { reason } = req.body as RejectBookingBody;
-    res.json(await service.rejectBooking(req.params.id as string, reason, req.user!));
 }

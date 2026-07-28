@@ -39,10 +39,6 @@ export interface BookingView {
     referral_discount_amount: number | null;
 }
 
-export interface RejectBookingInput {
-    reason: string;
-}
-
 export interface PickupQueueFilters {
     page: number;
     pageSize: number;

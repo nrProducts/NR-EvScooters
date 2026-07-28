@@ -13,7 +13,6 @@ import {
   Bell,
   ShieldCheck,
   LifeBuoy,
-  Route,
   ScrollText,
 } from "lucide-react";
 import type { Role } from "@/types";
@@ -37,7 +36,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Riders", path: "/riders", icon: Users, roles: ["admin", "staff"] },
   { label: "KYC Queue", path: "/kyc", icon: ShieldCheck, roles: ["admin", "staff"] },
   { label: "Bookings", path: "/bookings", icon: CalendarCheck, roles: ["admin", "staff"] },
-  { label: "Rides", path: "/rides", icon: Route, roles: ["admin", "staff"] },
   { label: "Maintenance", path: "/maintenance", icon: Wrench, roles: ["admin", "staff"] },
   { label: "Support Tickets", path: "/support", icon: LifeBuoy, roles: ["admin", "staff"] },
   { label: "Payments", path: "/payments", icon: CreditCard, roles: ["admin"] },

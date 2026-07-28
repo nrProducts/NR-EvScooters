@@ -30,13 +30,3 @@ export async function fetchAvailableVehicles(bookingId: string): Promise<Availab
 export async function confirmPickup(bookingId: string, vehicleId?: string) {
   return apiClient.post(`/bookings/${bookingId}/pickup`, { vehicle_id: vehicleId });
 }
-
-/** POST /bookings/:id/approve — requireStaff. pending_payment -> confirmed. */
-export async function approveBooking(bookingId: string) {
-  return apiClient.post(`/bookings/${bookingId}/approve`);
-}
-
-/** POST /bookings/:id/reject — requireStaff. pending_payment -> cancelled. */
-export async function rejectBooking(bookingId: string, reason: string) {
-  return apiClient.post(`/bookings/${bookingId}/reject`, { reason });
-}
