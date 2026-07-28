@@ -3,17 +3,17 @@ import { ApiError } from '../lib/ApiError';
 import { getSupabase } from '../lib/supabase';
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
-    ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiRental, ApiSignedUrl,
-    ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
-    ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, CreateUserPayload,
-    ListUsersParams, ListVehicleModelsParams, Paginated, RoleName, StatusAction,
+    ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiReferralSummary, ApiRental,
+    ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
+    ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
+    CreateUserPayload, ListUsersParams, ListVehicleModelsParams, Paginated, RoleName, StatusAction,
     UpdateSupportRequestPayload, UpdateUserPayload,
 } from '../types/api';
 import type {
     AuthRepository, BookingRepository, HistoryParams, KycQueueParams, KycRepository,
-    MaintenanceRepository, NotificationRepository, PickupQueueParams, RentalRepository,
-    SessionRef, SupportQueueParams, SupportRepository, UpdateDocumentInput, UploadDocumentInput,
-    UploadPhotoResult, UserRepository, VehicleCatalogRepository,
+    MaintenanceRepository, NotificationRepository, PickupQueueParams, ReferralRepository,
+    RentalRepository, SessionRef, SupportQueueParams, SupportRepository, UpdateDocumentInput,
+    UploadDocumentInput, UploadPhotoResult, UserRepository, VehicleCatalogRepository,
 } from './types';
 import type { LocalFile } from '../types/api';
 
@@ -191,6 +191,9 @@ export class ApiVehicleCatalogRepository implements VehicleCatalogRepository {
     get(id: string): Promise<ApiVehicleModelDetail> {
         return api.getVehicleModel(id);
     }
+    availabilitySummary(): Promise<{ available_count: number }> {
+        return api.fleetAvailabilitySummary();
+    }
 }
 
 export class ApiBookingRepository implements BookingRepository {
@@ -257,5 +260,14 @@ export class ApiSupportRepository implements SupportRepository {
     }
     update(id: string, patch: UpdateSupportRequestPayload): Promise<ApiSupportQueueItem> {
         return api.updateSupportRequest(id, patch);
+    }
+}
+
+export class ApiReferralRepository implements ReferralRepository {
+    mine(): Promise<ApiReferralSummary> {
+        return api.myReferralSummary();
+    }
+    async redeem(code: string): Promise<void> {
+        await api.redeemReferralCode(code);
     }
 }

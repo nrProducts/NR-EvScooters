@@ -21,6 +21,9 @@ router.get(
 // same care already taken for GET /users/me vs GET /users/:id.
 router.get("/featured", asyncHandler(c.featuredVehicleModelHandler));
 
+// Same ordering caution as "/featured" above.
+router.get("/availability-summary", asyncHandler(c.fleetAvailabilityHandler));
+
 router.get(
     "/:id",
     validate({ params: v.uuidParam }),

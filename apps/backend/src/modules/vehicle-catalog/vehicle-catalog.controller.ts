@@ -14,6 +14,10 @@ export async function featuredVehicleModelHandler(_req: AuthedRequest, res: Resp
     res.json(await service.getFeaturedVehicleModel());
 }
 
+export async function fleetAvailabilityHandler(_req: AuthedRequest, res: Response) {
+    res.json(await service.getFleetAvailabilitySummary());
+}
+
 export async function getVehicleModelHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getVehicleModelById(req.params.id as string));
 }

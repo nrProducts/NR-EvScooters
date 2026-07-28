@@ -315,6 +315,8 @@ export interface CreateBookingPayload {
     start_day: string; // YYYY-MM-DD
 }
 
+export type VehicleStatus = 'available' | 'booked' | 'assigned' | 'maintenance' | 'scrap';
+
 export interface ApiBooking {
     id: string;
     status: BookingStatus;
@@ -323,6 +325,31 @@ export interface ApiBooking {
     vehicle_model: { id: string; name: string } | null;
     station: { id: string; name: string; code: string; lat: number; lng: number } | null;
     plan: { id: string; name: string; billing_cycle: BillingCycle; price: number } | null;
+    /**
+     * The specific physical unit reserved for this booking, if any —
+     * populated by the backend's allocate_vehicle_for_booking() once a
+     * matching available vehicle exists. Null until one frees up.
+     */
+    vehicle: {
+        id: string; name: string; registration_number: string; battery_percentage: number;
+        status: VehicleStatus;
+    } | null;
+    referral_discount_amount: number | null;
+}
+
+export interface ApiReferralReward {
+    id: string;
+    amount: number;
+    reason: string;
+    created_at: string;
+}
+
+export interface ApiReferralSummary {
+    referral_code: string | null;
+    referred_count: number;
+    qualified_count: number;
+    offer_amount: number;
+    rewards: ApiReferralReward[];
 }
 
 export interface ApiPickupBooking extends ApiBooking {

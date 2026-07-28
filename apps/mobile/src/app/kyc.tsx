@@ -481,7 +481,6 @@ const ProfilePhotoStep: React.FC<{
       await userRepository.uploadMyPhoto(picked);
       setUploaded(true);
       setPicked(null);
-      onNext();
     } catch (err) {
       notify('Upload failed', err instanceof ApiError ? err.message : 'Please try again.');
     } finally {
@@ -558,14 +557,15 @@ const ProfilePhotoStep: React.FC<{
 
       <TouchableOpacity
         onPress={onNext}
+        disabled={!uploaded}
         accessibilityRole="button"
         className="w-full py-3.5 rounded-2xl flex-row justify-center items-center"
-        style={{ backgroundColor: COLORS.primary + '14' }}
+        style={{ backgroundColor: uploaded ? COLORS.primary + '14' : COLORS.gray[100] }}
       >
-        <Text style={{ color: COLORS.primary }} className="font-bold text-sm mr-1.5">
+        <Text style={{ color: uploaded ? COLORS.primary : COLORS.gray[300] }} className="font-bold text-sm mr-1.5">
           Continue
         </Text>
-        <ChevronRight size={16} color={COLORS.primary} />
+        <ChevronRight size={16} color={uploaded ? COLORS.primary : COLORS.gray[300]} />
       </TouchableOpacity>
     </View>
   );
@@ -583,6 +583,10 @@ const EmergencyContactStep: React.FC<{
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
+    if (name.trim() && !/^[A-Za-z\s'-]+$/.test(name.trim())) {
+      setError('Contact name can only contain letters, spaces, apostrophes and hyphens.');
+      return;
+    }
     if (!/^\+?[1-9]\d{7,14}$/.test(phone.trim())) {
       setError('Enter a valid phone number, e.g. +919876543210.');
       return;
@@ -735,7 +739,7 @@ const DocumentStep: React.FC<DocumentStepProps> = ({
             required
             value={draft.doc_number}
             onChangeText={(t) => setDraft((d) => ({ ...d, doc_number: t.toUpperCase() }))}
-            placeholder={type === 'driving_license' ? 'e.g. KL0120110012345' : 'e.g. 2345 6789 0123'}
+            placeholder={type === 'driving_license' ? 'e.g. TN0120110012345' : 'e.g. 2345 6789 0123'}
             keyboardType={type === 'aadhaar' ? 'number-pad' : 'default'}
             autoCapitalize="characters"
             hint={type === 'aadhaar' ? 'Manual entry today — OCR auto-fill is planned for a future release.' : undefined}

@@ -8,6 +8,12 @@ import type { ApiMe, RoleName } from '../types/api';
 
 const STAFF_ROLES: RoleName[] = ['staff', 'technician', 'station_manager', 'admin'];
 
+/**
+ * Collapses overlapping sign-out triggers (e.g. two 401s arriving close
+ * together) into a single in-flight sign-out instead of stacking calls.
+ */
+let signOutInFlight: Promise<void> | null = null;
+
 interface AuthState {
     session: SessionRef | null;
     profile: ApiMe | null;
@@ -48,6 +54,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
      */
     bootstrap: () => {
         setUnauthorizedHandler(() => {
+            console.warn('[auth] signing out: 401 from an authenticated call');
             void get().signOut();
         });
 
@@ -79,6 +86,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             // 403 = valid token, unusable account (suspended or deleted). End
             // the session rather than sit half signed-in.
             if (err instanceof ApiError && err.status === 403) {
+                console.warn('[auth] signing out: account forbidden (suspended/deleted)');
                 await get().signOut();
                 set({ error: message, loadingProfile: false });
                 return;
@@ -114,9 +122,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     },
 
     signOut: async () => {
-        await authRepository.signOut();
-        useFleetStore.getState().bindAuthUser(null);
-        set({ session: null, profile: null, error: null, hasSeenKycIntro: false });
+        if (signOutInFlight) return signOutInFlight;
+        signOutInFlight = (async () => {
+            await authRepository.signOut();
+            useFleetStore.getState().bindAuthUser(null);
+            set({ session: null, profile: null, error: null, hasSeenKycIntro: false });
+        })();
+        try {
+            await signOutInFlight;
+        } finally {
+            signOutInFlight = null;
+        }
     },
 
     markKycIntroSeen: () => set({ hasSeenKycIntro: true }),

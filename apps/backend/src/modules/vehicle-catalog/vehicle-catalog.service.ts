@@ -186,6 +186,17 @@ export async function getAvailabilityForModel(
     return toAvailability(count ?? 0);
 }
 
+export async function getFleetAvailabilitySummary(): Promise<{ available_count: number }> {
+    const { count, error } = await supabaseAdmin
+        .from("vehicles")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "available")
+        .eq("active", true);
+
+    if (error) throw error;
+    return { available_count: count ?? 0 };
+}
+
 export function toAvailability(
     availableCount: number,
 ): { available_count: number; status: "available" | "unavailable" } {

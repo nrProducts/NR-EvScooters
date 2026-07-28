@@ -1,5 +1,5 @@
 -- =========================================================================
--- 20260727190000_vehicle_photos_bucket.sql
+-- 20260727182147_vehicle_photos_bucket.sql
 --
 -- Private storage bucket backing public.vehicle_photos
 -- (20260727181629_fleet_expansion_and_scrap.sql). Same pattern as

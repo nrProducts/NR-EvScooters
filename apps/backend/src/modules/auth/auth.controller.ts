@@ -10,6 +10,7 @@ export async function sessionHandler(req: AuthedRequest, res: Response) {
 
 /** POST /auth/logout — revokes all refresh tokens for the caller. */
 export async function logoutHandler(req: AuthedRequest, res: Response) {
+    console.info("[auth] logout requested", { userId: req.user!.id });
     await service.revokeAllSessions(req.user!.id);
     res.status(204).send();
 }

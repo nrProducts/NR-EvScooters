@@ -5,7 +5,9 @@ import { ChevronRight, Bike, Clock, MapPin, Calendar, Navigation } from 'lucide-
 import { AppShell } from '../components/AppShell';
 import { KycBanner } from '../components/KycBanner';
 import { FeaturedScooterCard } from '../components/FeaturedScooterCard';
+import { ReferAndEarnBanner } from '../components/ReferAndEarnBanner';
 import { VehicleListItem } from '../components/VehicleListItem';
+import { Badge } from '../components/ui/Badge';
 import { SkeletonList } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
 import { useAuthStore } from '../store/useAuthStore';
@@ -13,7 +15,9 @@ import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
 import { bookingRepository } from '../services';
 import { buildMapsUrl, buildWebMapsUrl } from '../lib/maps';
 import { COLORS } from '../constants/theme';
+import { VEHICLE_STATUS_LABEL, VEHICLE_STATUS_TONE } from '../constants/status';
 import type { ApiBooking } from '../types/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function formatDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -29,13 +33,18 @@ function formatDay(dateStr: string): string {
 export default function HomeScreen() {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
-  const { featured, loadingFeatured, featuredError, loadFeatured, list, loadingList, loadList } = useVehicleCatalogStore();
+  const {
+    featured, loadingFeatured, featuredError, loadFeatured,
+    list, loadingList, loadList, availableCount, loadAvailableCount,
+  } = useVehicleCatalogStore();
   const [pendingBooking, setPendingBooking] = useState<ApiBooking | null>(null);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     void loadFeatured();
     void loadList();
-  }, [loadFeatured, loadList]);
+    void loadAvailableCount();
+  }, [loadFeatured, loadList, loadAvailableCount]);
 
   // has_active_rental takes priority once pickup happens — this card is
   // only relevant for the window between booking and pickup.
@@ -72,7 +81,7 @@ export default function HomeScreen() {
 
   return (
     <AppShell title="Home">
-      <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
         <Text style={{ color: COLORS.textPrimary }} className="text-xl font-black mb-5">
           {greeting}, {firstName}
         </Text>
@@ -84,14 +93,22 @@ export default function HomeScreen() {
             className="rounded-2xl p-4 mb-4"
             style={{ backgroundColor: COLORS.primary + '0A', borderWidth: 1, borderColor: COLORS.primary + '33' }}
           >
-            <View className="flex-row items-center mb-2">
-              <Clock size={16} color={COLORS.primary} />
-              <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-extrabold ml-2">
-                Pickup Scheduled
-              </Text>
+            <View className="flex-row items-center justify-between mb-2">
+              <View className="flex-row items-center">
+                <Clock size={16} color={COLORS.primary} />
+                <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-extrabold ml-2">
+                  Pickup Scheduled
+                </Text>
+              </View>
+              {pendingBooking.vehicle ? (
+                <Badge
+                  label={VEHICLE_STATUS_LABEL[pendingBooking.vehicle.status]}
+                  tone={VEHICLE_STATUS_TONE[pendingBooking.vehicle.status]}
+                />
+              ) : null}
             </View>
             <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold mb-1">
-              {pendingBooking.vehicle_model?.name ?? 'Your scooter'}
+              {pendingBooking.vehicle?.registration_number ?? pendingBooking.vehicle_model?.name ?? 'Your scooter'}
             </Text>
             <View className="flex-row items-center mb-1">
               <Calendar size={13} color={COLORS.textSecondary} />
@@ -108,7 +125,9 @@ export default function HomeScreen() {
               </View>
             ) : null}
             <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-2.5">
-              We&apos;ll notify you the day before — staff will assign your scooter at pickup.
+              {pendingBooking.vehicle
+                ? 'Your scooter is reserved — staff will hand it over at pickup.'
+                : "We'll notify you the day before — staff will assign your scooter at pickup."}
             </Text>
             {pendingBooking.station ? (
               <TouchableOpacity
@@ -124,6 +143,8 @@ export default function HomeScreen() {
             ) : null}
           </View>
         ) : null}
+
+        <ReferAndEarnBanner />
 
         {profile.has_active_rental ? (
           <TouchableOpacity
@@ -148,7 +169,14 @@ export default function HomeScreen() {
         ) : null}
 
         <View className="flex-row items-center justify-between mb-3">
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Available Vehicles</Text>
+          <View>
+            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Available Vehicles</Text>
+            {availableCount != null ? (
+              <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold mt-0.5">
+                {availableCount} available fleet-wide
+              </Text>
+            ) : null}
+          </View>
           <TouchableOpacity onPress={() => router.push('/browse-vehicles')} className="flex-row items-center">
             <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">See All</Text>
             <ChevronRight size={14} color={COLORS.primary} />

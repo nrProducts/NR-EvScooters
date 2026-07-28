@@ -4,7 +4,7 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useAuthStore } from '../store/useAuthStore';
-import { userRepository } from '../services';
+import { userRepository, referralRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { isValidPhone, toE164 } from '../lib/authValidation';
 import { COLORS } from '../constants/theme';
@@ -54,6 +54,8 @@ export default function ProfileSetupScreen() {
   const [city, setCity] = useState(profile?.city ?? '');
   const [state, setState] = useState(profile?.state ?? '');
   const [postalCode, setPostalCode] = useState(profile?.postal_code ?? '');
+  const [referralCode, setReferralCode] = useState('');
+  const [referralNote, setReferralNote] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -72,6 +74,10 @@ export default function ProfileSetupScreen() {
 
     if (fullName.trim().length < 2) {
       setError('Please enter your full name.');
+      return;
+    }
+    if (!/^[A-Za-z\s'-]+$/.test(fullName.trim())) {
+      setError('Full name can only contain letters, spaces, apostrophes and hyphens.');
       return;
     }
     if (showEmailField && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
@@ -110,6 +116,14 @@ export default function ProfileSetupScreen() {
         state: state.trim(),
         postal_code: postalCode.trim(),
       });
+      if (referralCode.trim()) {
+        try {
+          await referralRepository.redeem(referralCode.trim().toUpperCase());
+        } catch {
+          // Optional bonus, not a requirement — never block onboarding on this.
+          setReferralNote('Referral code invalid or expired — you can continue without it.');
+        }
+      }
       await refreshProfile();
       // Root layout routes onward once needs-profile clears.
     } catch (err) {
@@ -292,6 +306,23 @@ export default function ProfileSetupScreen() {
           returnKeyType="done"
           onSubmitEditing={() => void save()}
         />
+
+        <FormField
+          label="Referral Code (optional)"
+          value={referralCode}
+          onChangeText={(t) => {
+            setReferralCode(t);
+            if (referralNote) setReferralNote('');
+          }}
+          placeholder="Got a code from a friend?"
+          autoCapitalize="characters"
+          hint="Enter it now to unlock your first-booking offer."
+        />
+        {referralNote ? (
+          <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold mb-4 px-1">
+            {referralNote}
+          </Text>
+        ) : null}
 
         {error ? (
           <Text style={{ color: COLORS.danger }} className="text-xs font-semibold mb-4 px-1">

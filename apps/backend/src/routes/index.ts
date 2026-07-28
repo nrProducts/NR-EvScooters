@@ -13,6 +13,7 @@ import invoicesRoutes from "../modules/invoices/invoices.routes";
 import reportsRoutes from "../modules/reports/reports.routes";
 import auditRoutes from "../modules/audit/audit.routes";
 import { riderSupportRouter, adminSupportRouter } from "../modules/support/support.routes";
+import referralsRoutes from "../modules/referrals/referrals.routes";
 
 const router = Router();
 
@@ -40,5 +41,6 @@ router.use("/maintenance", maintenanceRoutes);
 router.use("/invoices", invoicesRoutes);
 router.use("/reports", reportsRoutes);
 router.use("/audit-logs", auditRoutes);
+router.use("/referrals", referralsRoutes);
 
 export default router;

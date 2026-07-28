@@ -4,6 +4,7 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
 import { hasActiveRentalForUser } from "../users/users.service";
+import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     ACTIVE_BOOKING_STATUSES, AvailableVehicleView, BookingHistoryFilters, BookingStatus,
@@ -11,11 +12,11 @@ import {
 } from "./bookings.types";
 
 const BOOKING_COLUMNS = `
-    id, status, start_day, created_at, vehicle_id,
+    id, status, start_day, created_at, vehicle_id, referral_discount_amount,
     vehicle_models(id, name),
     stations(id, name, code, lat, lng),
     plans(id, name, billing_cycle, price),
-    vehicles(id, name, registration_number, battery_percentage)
+    vehicles(id, name, registration_number, battery_percentage, status)
 `;
 
 type RawBookingRow = {
@@ -24,6 +25,7 @@ type RawBookingRow = {
     start_day: string;
     created_at: string;
     vehicle_id: string | null;
+    referral_discount_amount: number | null;
     vehicle_models: unknown;
     stations: unknown;
     plans: unknown;
@@ -75,6 +77,7 @@ export function toBookingView(row: RawBookingRow): BookingView {
         station: unwrap(row.stations),
         plan: unwrap(row.plans),
         vehicle: unwrap(row.vehicles),
+        referral_discount_amount: row.referral_discount_amount ?? null,
     };
 }
 
@@ -128,6 +131,16 @@ export async function createBooking(
     // accepts 'pending_payment' bookings, so a unit can be held before an
     // admin even approves it, same as the migration's own backfill loop does.
     await tryAllocateVehicle(view.id);
+
+    // First-booking referral discount, if this rider was referred and this
+    // is genuinely their first booking (see qualifyReferralIfApplicable).
+    const { discount_amount } = await qualifyReferralIfApplicable(actor.id, actor);
+    if (discount_amount > 0) {
+        await supabaseAdmin
+            .from("bookings")
+            .update({ referral_discount_amount: discount_amount })
+            .eq("id", view.id);
+    }
 
     return getBookingById(view.id);
 }
@@ -195,11 +208,11 @@ export async function hasActiveBookingForUser(userId: string): Promise<boolean> 
 // ---------------------------------------------------------------------------
 
 const PICKUP_BOOKING_COLUMNS = `
-    id, status, start_day, created_at, vehicle_id,
+    id, status, start_day, created_at, vehicle_id, referral_discount_amount,
     vehicle_models(id, name),
     stations(id, name, code),
     plans(id, name, billing_cycle, price),
-    vehicles(id, name, registration_number, battery_percentage),
+    vehicles(id, name, registration_number, battery_percentage, status),
     users(id, full_name, phone)
 `;
 

@@ -1,10 +1,10 @@
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
-    ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiRental, ApiSignedUrl,
-    ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
-    ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, CreateUserPayload,
-    KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
-    RoleName, StatusAction, SupportStatus, UpdateSupportRequestPayload, UpdateUserPayload,
+    ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiReferralSummary, ApiRental,
+    ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
+    ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
+    CreateUserPayload, KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile,
+    Paginated, RoleName, StatusAction, SupportStatus, UpdateSupportRequestPayload, UpdateUserPayload,
 } from '../types/api';
 
 export interface UploadPhotoResult {
@@ -88,6 +88,12 @@ export interface VehicleCatalogRepository {
     list(params: ListVehicleModelsParams): Promise<Paginated<ApiVehicleModel>>;
     featured(): Promise<ApiVehicleModel | null>;
     get(id: string): Promise<ApiVehicleModelDetail>;
+    availabilitySummary(): Promise<{ available_count: number }>;
+}
+
+export interface ReferralRepository {
+    mine(): Promise<ApiReferralSummary>;
+    redeem(code: string): Promise<void>;
 }
 
 export interface PickupQueueParams {

@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import { BatteryFull, Gauge, Zap } from 'lucide-react-native';
+import { BatteryFull, Gauge } from 'lucide-react-native';
 import { Badge } from './ui/Badge';
 import { SpecRow } from './SpecRow';
+import { useHasActiveBooking, useHasActiveRental } from '../store/useAuthStore';
 import { COLORS } from '../constants/theme';
 import type { ApiVehicleModel } from '../types/api';
 
@@ -14,6 +15,9 @@ interface FeaturedScooterCardProps {
 /** Premium hero card for the Home screen's single featured scooter. */
 export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model }) => {
   const router = useRouter();
+  const hasActiveBooking = useHasActiveBooking();
+  const hasActiveRental = useHasActiveRental();
+  const alreadyBookedOrRenting = hasActiveBooking || hasActiveRental;
 
   const viewDetails = () => router.push(`/vehicle/${model.id}` as any);
   // Booking itself isn't built yet — Book Now opens the details screen,
@@ -54,9 +58,6 @@ export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model 
           {model.top_speed_kmph != null && (
             <SpecRow icon={Gauge} label="Top Speed" value={`${model.top_speed_kmph} km/h`} />
           )}
-          {model.charging_time_hours != null && (
-            <SpecRow icon={Zap} label="Charging" value={`${model.charging_time_hours} hrs`} />
-          )}
         </View>
 
         {model.starting_price != null ? (
@@ -75,10 +76,13 @@ export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model 
           </TouchableOpacity>
           <TouchableOpacity
             onPress={bookNow}
+            disabled={alreadyBookedOrRenting}
             className="flex-1 py-3 rounded-2xl items-center"
-            style={{ backgroundColor: COLORS.primary }}
+            style={{ backgroundColor: COLORS.primary, opacity: alreadyBookedOrRenting ? 0.5 : 1 }}
           >
-            <Text className="text-white text-sm font-bold">Book Now</Text>
+            <Text className="text-white text-sm font-bold">
+              {hasActiveRental ? 'Active Rental' : hasActiveBooking ? 'Booking Pending' : 'Book Now'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>

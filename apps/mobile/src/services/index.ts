@@ -1,18 +1,18 @@
 import { ENV } from '../constants/env';
 import {
     ApiBookingRepository, ApiKycRepository, ApiMaintenanceRepository, ApiNotificationRepository,
-    ApiRentalRepository, ApiSupportRepository, ApiUserRepository, ApiVehicleCatalogRepository,
-    SupabaseAuthRepository,
+    ApiReferralRepository, ApiRentalRepository, ApiSupportRepository, ApiUserRepository,
+    ApiVehicleCatalogRepository, SupabaseAuthRepository,
 } from './api.repositories';
 import {
     MockAuthRepository, MockBookingRepository, MockKycRepository, MockMaintenanceRepository,
-    MockNotificationRepository, MockRentalRepository, MockSupportRepository, MockUserRepository,
-    MockVehicleCatalogRepository,
+    MockNotificationRepository, MockReferralRepository, MockRentalRepository, MockSupportRepository,
+    MockUserRepository, MockVehicleCatalogRepository,
 } from './mock/mock.repositories';
 import type {
     AuthRepository, BookingRepository, KycRepository, MaintenanceRepository,
-    NotificationRepository, RentalRepository, SupportRepository, UserRepository,
-    VehicleCatalogRepository,
+    NotificationRepository, ReferralRepository, RentalRepository, SupportRepository,
+    UserRepository, VehicleCatalogRepository,
 } from './types';
 
 /**
@@ -58,6 +58,10 @@ export const supportRepository: SupportRepository = ENV.useMock
     ? new MockSupportRepository()
     : new ApiSupportRepository();
 
+export const referralRepository: ReferralRepository = ENV.useMock
+    ? new MockReferralRepository()
+    : new ApiReferralRepository();
+
 if (ENV.useMock && __DEV__) {
     console.info(
         '[services] MOCK MODE — in-memory data, no backend. ' +
@@ -69,6 +73,6 @@ export { DEMO_ACCOUNTS } from './mock/seed';
 export { resetMockDb } from './mock/mock.repositories';
 export type {
     AuthRepository, BookingRepository, KycRepository, MaintenanceRepository,
-    NotificationRepository, RentalRepository, SupportRepository, UserRepository,
+    NotificationRepository, ReferralRepository, RentalRepository, SupportRepository, UserRepository,
     VehicleCatalogRepository, SessionRef,
 } from './types';

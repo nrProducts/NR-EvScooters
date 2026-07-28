@@ -73,6 +73,8 @@ describe("toBookingView", () => {
             vehicle_model: { id: "m-1", name: "NR Volt X1" },
             station: { id: "s-1", name: "MG Road Hub", code: "STN-MGR" },
             plan: { id: "p-1", name: "NR Volt X1 — Daily", billing_cycle: "daily", price: 149 },
+            vehicle: null,
+            referral_discount_amount: null,
         });
     });
 
@@ -106,5 +108,51 @@ describe("toBookingView", () => {
         expect(view.vehicle_model).toBeNull();
         expect(view.station).toBeNull();
         expect(view.plan).toBeNull();
+    });
+
+    it("maps the allocated vehicle including its status", () => {
+        const view = toBookingView({
+            id: "b-4",
+            status: "confirmed",
+            start_day: "2026-08-03",
+            created_at: "2026-07-22T00:00:00.000Z",
+            vehicle_models: { id: "m-1", name: "NR Volt X1" },
+            stations: null,
+            plans: null,
+            vehicles: { id: "v-1", name: "Unit 12", registration_number: "KL-07-AB-1234", battery_percentage: 88, status: "booked" },
+        });
+
+        expect(view.vehicle).toEqual({
+            id: "v-1", name: "Unit 12", registration_number: "KL-07-AB-1234", battery_percentage: 88, status: "booked",
+        });
+    });
+
+    it("defaults referral_discount_amount to null when not stamped", () => {
+        const view = toBookingView({
+            id: "b-5",
+            status: "pending_payment",
+            start_day: "2026-08-03",
+            created_at: "2026-07-22T00:00:00.000Z",
+            vehicle_models: null,
+            stations: null,
+            plans: null,
+        });
+
+        expect(view.referral_discount_amount).toBeNull();
+    });
+
+    it("passes through a stamped referral_discount_amount", () => {
+        const view = toBookingView({
+            id: "b-6",
+            status: "pending_payment",
+            start_day: "2026-08-03",
+            created_at: "2026-07-22T00:00:00.000Z",
+            vehicle_models: null,
+            stations: null,
+            plans: null,
+            referral_discount_amount: 100,
+        });
+
+        expect(view.referral_discount_amount).toBe(100);
     });
 });

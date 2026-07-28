@@ -5,76 +5,37 @@ import { Badge } from '../components/ui/Badge';
 import { SkeletonList } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
 import { EmptyState } from '../components/ui/EmptyState';
-import { bookingRepository, rentalRepository, maintenanceRepository } from '../services';
+import { bookingRepository, maintenanceRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import {
   BOOKING_STATUS_LABEL, BOOKING_STATUS_TONE, MAINTENANCE_STATUS_LABEL, MAINTENANCE_STATUS_TONE,
-  RENTAL_STATUS_LABEL, RENTAL_STATUS_TONE, formatDate,
+  formatDate,
 } from '../constants/status';
 import { COLORS } from '../constants/theme';
 import { Calendar, Bike, MapPin, Wrench, History } from 'lucide-react-native';
-import type { ApiBooking, ApiMaintenanceRecord, ApiRental } from '../types/api';
+import type { ApiBooking, ApiMaintenanceRecord } from '../types/api';
 
-type Tab = 'rides' | 'maintenance';
-
-interface RideEntry {
-  id: string;
-  date: string;
-  statusLabel: string;
-  statusTone: 'success' | 'warning' | 'danger' | 'neutral' | 'primary';
-  vehicleName: string;
-  stationName: string | null;
-}
-
-function fromBooking(b: ApiBooking): RideEntry {
-  return {
-    id: `booking-${b.id}`,
-    date: b.created_at,
-    statusLabel: BOOKING_STATUS_LABEL[b.status],
-    statusTone: BOOKING_STATUS_TONE[b.status],
-    vehicleName: b.vehicle_model?.name ?? 'Scooter',
-    stationName: b.station?.name ?? null,
-  };
-}
-
-function fromRental(r: ApiRental): RideEntry {
-  return {
-    id: `rental-${r.id}`,
-    date: r.started_at,
-    statusLabel: RENTAL_STATUS_LABEL[r.status],
-    statusTone: RENTAL_STATUS_TONE[r.status],
-    vehicleName: r.vehicle?.name ?? 'Scooter',
-    stationName: r.station?.name ?? null,
-  };
-}
+type Tab = 'bookings' | 'maintenance';
 
 export default function BookingHistoryScreen() {
-  const [tab, setTab] = useState<Tab>('rides');
+  const [tab, setTab] = useState<Tab>('bookings');
 
-  const [rides, setRides] = useState<RideEntry[]>([]);
-  const [ridesLoading, setRidesLoading] = useState(true);
-  const [ridesError, setRidesError] = useState<string | null>(null);
+  const [bookings, setBookings] = useState<ApiBooking[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
 
   const [maintenance, setMaintenance] = useState<ApiMaintenanceRecord[]>([]);
   const [maintenanceLoading, setMaintenanceLoading] = useState(true);
   const [maintenanceError, setMaintenanceError] = useState<string | null>(null);
 
-  const loadRides = () => {
-    setRidesLoading(true);
-    setRidesError(null);
-    Promise.all([
-      bookingRepository.history({ page: 1, pageSize: 50 }),
-      rentalRepository.history({ page: 1, pageSize: 50 }),
-    ])
-      .then(([bookings, rentals]) => {
-        const merged = [
-          ...bookings.data.map(fromBooking),
-          ...rentals.data.map(fromRental),
-        ].sort((a, b) => (a.date < b.date ? 1 : -1));
-        setRides(merged);
-      })
-      .catch((err) => setRidesError(err instanceof ApiError ? err.message : 'Could not load your ride history.'))
-      .finally(() => setRidesLoading(false));
+  const loadBookings = () => {
+    setBookingsLoading(true);
+    setBookingsError(null);
+    bookingRepository
+      .history({ page: 1, pageSize: 50 })
+      .then((res) => setBookings(res.data))
+      .catch((err) => setBookingsError(err instanceof ApiError ? err.message : 'Could not load your booking history.'))
+      .finally(() => setBookingsLoading(false));
   };
 
   const loadMaintenance = () => {
@@ -88,7 +49,7 @@ export default function BookingHistoryScreen() {
   };
 
   useEffect(() => {
-    loadRides();
+    loadBookings();
     loadMaintenance();
   }, []);
 
@@ -96,11 +57,11 @@ export default function BookingHistoryScreen() {
     <AppShell title="Booking History">
       <View className="flex-row px-5 pt-4 gap-2">
         <TouchableOpacity
-          onPress={() => setTab('rides')}
+          onPress={() => setTab('bookings')}
           className="flex-1 py-2.5 rounded-xl items-center"
-          style={{ backgroundColor: tab === 'rides' ? COLORS.primary : COLORS.card, borderWidth: 1, borderColor: tab === 'rides' ? COLORS.primary : COLORS.border }}
+          style={{ backgroundColor: tab === 'bookings' ? COLORS.primary : COLORS.card, borderWidth: 1, borderColor: tab === 'bookings' ? COLORS.primary : COLORS.border }}
         >
-          <Text className="text-xs font-extrabold" style={{ color: tab === 'rides' ? '#FFF' : COLORS.textPrimary }}>Rides</Text>
+          <Text className="text-xs font-extrabold" style={{ color: tab === 'bookings' ? '#FFF' : COLORS.textPrimary }}>Booking</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setTab('maintenance')}
@@ -111,33 +72,33 @@ export default function BookingHistoryScreen() {
         </TouchableOpacity>
       </View>
 
-      {tab === 'rides' ? (
-        ridesLoading ? (
+      {tab === 'bookings' ? (
+        bookingsLoading ? (
           <View className="px-5 pt-5"><SkeletonList count={3} /></View>
-        ) : ridesError ? (
-          <ErrorState message={ridesError} onRetry={loadRides} />
-        ) : rides.length === 0 ? (
-          <EmptyState icon={History} title="No rides yet" subtitle="Your booking and ride history will show up here." />
+        ) : bookingsError ? (
+          <ErrorState message={bookingsError} onRetry={loadBookings} />
+        ) : bookings.length === 0 ? (
+          <EmptyState icon={History} title="No bookings yet" subtitle="Your booking history will show up here." />
         ) : (
           <ScrollView className="flex-1 px-5 pt-4" contentContainerStyle={{ paddingBottom: 40 }}>
             <View className="gap-3">
-              {rides.map((r) => (
-                <View key={r.id} className="rounded-2xl p-4 border" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+              {bookings.map((b) => (
+                <View key={b.id} className="rounded-2xl p-4 border" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
                   <View className="flex-row items-center justify-between mb-2">
                     <View className="flex-row items-center">
                       <Bike size={15} color={COLORS.primary} />
-                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold ml-2">{r.vehicleName}</Text>
+                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold ml-2">{b.vehicle_model?.name ?? 'Scooter'}</Text>
                     </View>
-                    <Badge label={r.statusLabel} tone={r.statusTone} />
+                    <Badge label={BOOKING_STATUS_LABEL[b.status]} tone={BOOKING_STATUS_TONE[b.status]} />
                   </View>
                   <View className="flex-row items-center mb-1">
                     <Calendar size={12} color={COLORS.textSecondary} />
-                    <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-2">{formatDate(r.date)}</Text>
+                    <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-2">{formatDate(b.created_at)}</Text>
                   </View>
-                  {r.stationName ? (
+                  {b.station ? (
                     <View className="flex-row items-center">
                       <MapPin size={12} color={COLORS.textSecondary} />
-                      <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-2">{r.stationName}</Text>
+                      <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-2">{b.station.name}</Text>
                     </View>
                   ) : null}
                 </View>

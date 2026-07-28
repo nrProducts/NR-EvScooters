@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  MockAuthRepository, MockKycRepository, MockUserRepository, resetMockDb,
+  MockAuthRepository, MockKycRepository, MockReferralRepository, MockUserRepository, resetMockDb,
 } from '../src/services/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
 import type { LocalFile } from '../src/types/api';
@@ -8,6 +8,7 @@ import type { LocalFile } from '../src/types/api';
 const auth = new MockAuthRepository();
 const users = new MockUserRepository();
 const kyc = new MockKycRepository();
+const referrals = new MockReferralRepository();
 
 const FILE: LocalFile = { uri: 'file:///tmp/a.jpg', name: 'a.jpg', mimeType: 'image/jpeg' };
 
@@ -336,6 +337,46 @@ describe('kyc: rider rules', () => {
   it('refuses to submit when already verified', async () => {
     await asRider();
     await expectStatus(() => kyc.submitMine(), 422);
+  });
+});
+
+describe('referrals', () => {
+  it('exposes a stable referral code for the signed-in user', async () => {
+    const me = await asRider();
+    const summary = await referrals.mine();
+    expect(summary.referral_code).toBeTruthy();
+    expect(summary.referral_code).toBe((await referrals.mine()).referral_code);
+    void me;
+  });
+
+  it('redeems a valid code from another user', async () => {
+    await asAdmin();
+    const adminCode = (await referrals.mine()).referral_code!;
+
+    await asRider();
+    await referrals.redeem(adminCode);
+    const summaryAfter = await referrals.mine();
+    expect(summaryAfter.referral_code).toBeTruthy();
+  });
+
+  it('rejects redeeming the same code twice', async () => {
+    await asAdmin();
+    const adminCode = (await referrals.mine()).referral_code!;
+
+    await asRider();
+    await referrals.redeem(adminCode);
+    await expectStatus(() => referrals.redeem(adminCode), 409);
+  });
+
+  it('rejects an unknown code', async () => {
+    await asRider();
+    await expectStatus(() => referrals.redeem('NOTREAL1'), 404);
+  });
+
+  it('rejects self-referral', async () => {
+    await asRider();
+    const ownCode = (await referrals.mine()).referral_code!;
+    await expectStatus(() => referrals.redeem(ownCode), 422);
   });
 });
 

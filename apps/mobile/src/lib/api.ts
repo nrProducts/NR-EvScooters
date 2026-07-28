@@ -7,12 +7,12 @@ import { signInWithGoogleBrowser } from './googleAuth';
 export { ApiError };
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiErrorBody, ApiKycDetail, ApiKycQueueItem,
-    ApiKycSummary, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiRental,
-    ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
-    ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
-    CreateUserPayload, KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile,
-    Paginated, RoleName, StatusAction, SupportStatus, UpdateSupportRequestPayload,
-    UpdateUserPayload,
+    ApiKycSummary, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking,
+    ApiReferralSummary, ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest,
+    ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload,
+    CreateSupportRequestPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
+    ListVehicleModelsParams, LocalFile, Paginated, RoleName, StatusAction, SupportStatus,
+    UpdateSupportRequestPayload, UpdateUserPayload,
 } from '../types/api';
 
 type OnUnauthorized = () => void;
@@ -73,6 +73,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     } catch (err) {
         clearTimeout(timeout);
         const aborted = (err as Error)?.name === 'AbortError';
+        console.warn('[api] network error', { method, path, aborted, message: (err as Error)?.message });
         throw new ApiError(
             0,
             aborted ? 'TIMEOUT' : 'NETWORK_ERROR',
@@ -84,7 +85,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     clearTimeout(timeout);
 
     if (response.status === 401) {
-        onUnauthorized();
+        console.warn('[api] 401', { method, path, hadToken: !!token });
+        // /auth/logout's own 401 must not re-trigger onUnauthorized — that
+        // path IS the sign-out flow, so re-firing it here is exactly what
+        // turns a single bad token into an infinite sign-out loop.
+        if (path !== '/auth/logout') onUnauthorized();
         throw new ApiError(401, 'UNAUTHENTICATED', 'Your session has expired. Please sign in again.');
     }
 
@@ -306,6 +311,9 @@ export const api = {
 
     featuredVehicleModel: () => request<ApiVehicleModel>('/vehicle-models/featured'),
 
+    fleetAvailabilitySummary: () =>
+        request<{ available_count: number }>('/vehicle-models/availability-summary'),
+
     getVehicleModel: (id: string) => request<ApiVehicleModelDetail>(`/vehicle-models/${id}`),
 
     // --- bookings (Phase 1 — no live payment) -----------------------------
@@ -321,6 +329,12 @@ export const api = {
 
     nearestStation: (lat: number, lng: number) =>
         request<ApiStation>('/stations/nearest', { query: { lat, lng } }),
+
+    // --- referrals ---------------------------------------------------------
+    myReferralSummary: () => request<ApiReferralSummary>('/referrals/me'),
+
+    redeemReferralCode: (code: string) =>
+        request<void>('/referrals/redeem', { method: 'POST', body: { code } }),
 
     // --- staff pickup/check-in ---------------------------------------------
     pickupQueue: (params: { page?: number; pageSize?: number; stationId?: string } = {}) =>

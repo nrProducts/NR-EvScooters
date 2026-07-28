@@ -24,25 +24,31 @@ export async function signInWithGoogleBrowser(): Promise<void> {
         options: { redirectTo, skipBrowserRedirect: true },
     });
     if (error || !data?.url) {
+        console.error('[googleAuth] signInWithOAuth failed', error);
         throw new ApiError(401, 'UNAUTHENTICATED', error?.message ?? 'Could not start Google sign-in.');
     }
     console.log('[googleAuth] authorize url =', data.url);
 
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
     if (result.type === 'cancel' || result.type === 'dismiss') {
+        console.warn('[googleAuth] browser session cancelled/dismissed', { type: result.type });
         throw new ApiError(0, 'CANCELLED', 'Google sign-in was cancelled.');
     }
     if (result.type !== 'success' || !result.url) {
+        console.error('[googleAuth] browser session did not succeed', result);
         throw new ApiError(401, 'UNAUTHENTICATED', 'Google sign-in did not complete.');
     }
 
     const code = new URL(result.url).searchParams.get('code');
     if (!code) {
+        console.error('[googleAuth] no authorization code in redirect url', result.url);
         throw new ApiError(401, 'UNAUTHENTICATED', 'Google sign-in returned no authorization code.');
     }
 
     const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
     if (exchangeError) {
+        console.error('[googleAuth] exchangeCodeForSession failed', exchangeError);
         throw new ApiError(401, 'UNAUTHENTICATED', exchangeError.message);
     }
+    console.log('[googleAuth] session exchange succeeded');
 }

@@ -31,7 +31,12 @@ export interface BookingView {
      * runs as soon as a matching available vehicle exists. Null means no
      * unit is free yet at this model/station.
      */
-    vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
+    vehicle: {
+        id: string; name: string; registration_number: string; battery_percentage: number;
+        status: "available" | "booked" | "assigned" | "maintenance" | "scrap";
+    } | null;
+    /** Flat discount stamped by a qualifying first-booking referral, if any. */
+    referral_discount_amount: number | null;
 }
 
 export interface RejectBookingInput {

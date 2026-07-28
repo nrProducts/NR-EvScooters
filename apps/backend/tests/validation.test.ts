@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     createUserBody, listUsersQuery, normaliseEmail, normalisePhone,
-    selfUpdateUserBody, updateRolesBody, updateStatusBody,
+    selfUpdateUserBody, updateRolesBody, updateStatusBody, updateUserBody,
 } from "../src/modules/users/users.validation";
 import { rejectBody, uploadDocumentBody } from "../src/modules/kyc/kyc.validation";
 import { assertValidAadhaar } from "../src/modules/kyc/kyc.service";
@@ -39,6 +39,42 @@ describe("createUserBody", () => {
 
     it("rejects a future date of birth", () => {
         expect(() => createUserBody.parse({ ...validUser, date_of_birth: "2099-01-01" })).toThrow();
+    });
+});
+
+describe("personNameSchema (full_name / emergency_contact_name)", () => {
+    it("accepts names with apostrophes and hyphens", () => {
+        expect(createUserBody.parse({ ...validUser, full_name: "O'Brien" }).full_name).toBe("O'Brien");
+        expect(createUserBody.parse({ ...validUser, full_name: "Anne-Marie" }).full_name).toBe("Anne-Marie");
+    });
+
+    it("rejects a full_name with digits", () => {
+        expect(() => createUserBody.parse({ ...validUser, full_name: "John123" })).toThrow();
+    });
+
+    it("rejects a full_name with symbols", () => {
+        expect(() => createUserBody.parse({ ...validUser, full_name: "John@Doe" })).toThrow();
+    });
+
+    it("rejects an emergency_contact_name with digits on createUserBody", () => {
+        expect(() =>
+            createUserBody.parse({ ...validUser, emergency_contact_name: "Jane123" }),
+        ).toThrow();
+    });
+
+    it("accepts a valid emergency_contact_name on updateUserBody", () => {
+        expect(updateUserBody.parse({ emergency_contact_name: "Jane Doe" }).emergency_contact_name)
+            .toBe("Jane Doe");
+    });
+
+    it("rejects an emergency_contact_name with digits on selfUpdateUserBody", () => {
+        expect(() =>
+            selfUpdateUserBody.parse({ emergency_contact_name: "Jane123" }),
+        ).toThrow();
+    });
+
+    it("rejects a full_name with digits on updateUserBody", () => {
+        expect(() => updateUserBody.parse({ full_name: "John123" })).toThrow();
     });
 });
 

@@ -137,6 +137,9 @@ export const UserFormModal: React.FC<Props> = ({
     const next: Record<string, string> = {};
 
     if (form.full_name.trim().length < 2) next.full_name = "Enter the rider's full name.";
+    else if (!/^[A-Za-z\s'-]+$/.test(form.full_name.trim())) {
+      next.full_name = 'Use letters only (spaces, apostrophes and hyphens allowed).';
+    }
     if (!editing && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) {
       next.email = 'Enter a valid email address.';
     }
@@ -145,6 +148,12 @@ export const UserFormModal: React.FC<Props> = ({
     }
     if (form.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(form.date_of_birth)) {
       next.date_of_birth = 'Use the format YYYY-MM-DD.';
+    }
+    if (
+      form.emergency_contact_name.trim() &&
+      !/^[A-Za-z\s'-]+$/.test(form.emergency_contact_name.trim())
+    ) {
+      next.emergency_contact_name = 'Use letters only (spaces, apostrophes and hyphens allowed).';
     }
     if (
       form.emergency_contact_phone &&

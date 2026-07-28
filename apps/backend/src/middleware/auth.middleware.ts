@@ -19,10 +19,19 @@ export interface AuthedRequest extends Request {
 export async function requireAuth(req: AuthedRequest, _res: Response, next: NextFunction) {
     const header = req.headers.authorization ?? "";
     const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-    if (!token) return next(unauthenticated("Missing access token."));
+    if (!token) {
+        console.warn("[auth] rejected: missing token", { path: req.originalUrl });
+        return next(unauthenticated("Missing access token."));
+    }
 
     const { data, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !data.user) return next(unauthenticated("Invalid or expired access token."));
+    if (error || !data.user) {
+        console.warn("[auth] rejected: token invalid", {
+            path: req.originalUrl,
+            reason: error?.message ?? "no user for token",
+        });
+        return next(unauthenticated("Invalid or expired access token."));
+    }
 
     const { data: profile, error: profileError } = await supabaseAdmin
         .from("users")
@@ -31,11 +40,18 @@ export async function requireAuth(req: AuthedRequest, _res: Response, next: Next
         .maybeSingle();
 
     if (profileError) return next(profileError);
-    if (!profile) return next(unauthenticated("No profile exists for this account."));
+    if (!profile) {
+        console.warn("[auth] rejected: no profile row", { path: req.originalUrl, userId: data.user.id });
+        return next(unauthenticated("No profile exists for this account."));
+    }
 
     // A soft-deleted account must not authenticate as an active rider (§15).
-    if (profile.deleted_at) return next(forbidden("This account has been deactivated."));
+    if (profile.deleted_at) {
+        console.warn("[auth] rejected: account deleted", { path: req.originalUrl, userId: profile.id });
+        return next(forbidden("This account has been deactivated."));
+    }
     if (profile.account_status === "suspended") {
+        console.warn("[auth] rejected: account suspended", { path: req.originalUrl, userId: profile.id });
         return next(forbidden("This account is suspended."));
     }
 

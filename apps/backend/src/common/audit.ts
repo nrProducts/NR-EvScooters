@@ -15,7 +15,8 @@ export type AuditAction =
     | "maintenance.created" | "maintenance.updated"
     | "notification.broadcast"
     | "invoice.refunded"
-    | "rental.completed" | "rental.moved_to_maintenance";
+    | "rental.completed" | "rental.moved_to_maintenance"
+    | "referral.redeemed" | "referral.qualified";
 
 export interface AuditEntry {
     actorId: string | null;
@@ -23,7 +24,7 @@ export interface AuditEntry {
     action: AuditAction;
     entityType:
         | "user" | "user_document" | "user_role" | "booking" | "vehicle" | "vehicle_maintenance"
-        | "notification_broadcast" | "invoice" | "rental";
+        | "notification_broadcast" | "invoice" | "rental" | "referral";
     entityId: string;
     before?: Record<string, unknown> | null;
     after?: Record<string, unknown> | null;

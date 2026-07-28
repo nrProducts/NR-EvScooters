@@ -3,8 +3,8 @@ import { isValidStartDay } from '../../lib/bookingDays';
 import { MANDATORY_KYC_DOC_TYPES } from '../../types/api';
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
-    ApiMaintenanceRecord, ApiMe, ApiPickupBooking, ApiRental, ApiSignedUrl, ApiStation,
-    ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
+    ApiMaintenanceRecord, ApiMe, ApiPickupBooking, ApiReferralSummary, ApiRental, ApiSignedUrl,
+    ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
     CreateUserPayload, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
     RentalStatus, RoleName, StatusAction, SupportPriority, SupportStatus,
@@ -12,9 +12,9 @@ import type {
 } from '../../types/api';
 import type {
     AuthRepository, BookingRepository, KycQueueParams, KycRepository, MaintenanceRepository,
-    NotificationRepository, PickupQueueParams, RentalRepository, SessionRef, SupportQueueParams,
-    SupportRepository, UpdateDocumentInput, UploadDocumentInput, UploadPhotoResult, UserRepository,
-    VehicleCatalogRepository,
+    NotificationRepository, PickupQueueParams, ReferralRepository, RentalRepository, SessionRef,
+    SupportQueueParams, SupportRepository, UpdateDocumentInput, UploadDocumentInput,
+    UploadPhotoResult, UserRepository, VehicleCatalogRepository,
 } from '../types';
 import type { ApiNotification } from '../../types/api';
 import {
@@ -88,7 +88,14 @@ const db = {
     rentals: [] as MockRentalRow[],
     supportRequests: [] as MockSupportRow[],
     currentUserId: null as string | null,
+    referrals: [] as { referee_id: string; referrer_id: string; code_used: string }[],
 };
+
+const REFERRAL_OFFER_AMOUNT = 100;
+
+function mockReferralCodeFor(userId: string): string {
+    return userId.replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase() || 'REFERME1';
+}
 
 /** Mimics a real round trip so loading states and spinners actually appear. */
 const delay = (ms = 320) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -1142,6 +1149,10 @@ export class MockVehicleCatalogRepository implements VehicleCatalogRepository {
         if (!model) throw new ApiError(404, 'NOT_FOUND', 'This scooter model could not be found.');
         return model;
     }
+    async availabilitySummary(): Promise<{ available_count: number }> {
+        await delay(150);
+        return { available_count: SEED_VEHICLE_MODELS.length * 3 };
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1161,6 +1172,10 @@ function toApiBooking(row: MockBookingRow): ApiBooking {
         vehicle_model: model ? { id: model.id, name: model.name } : null,
         station: station ? { id: station.id, name: station.name, code: station.code, lat: station.lat, lng: station.lng } : null,
         plan: plan ? { id: plan.id, name: plan.name, billing_cycle: plan.billing_cycle, price: plan.price } : null,
+        // Mock DB has no per-unit vehicle allocation concept — matches
+        // production's pre-pickup reality when no unit has been reserved yet.
+        vehicle: null,
+        referral_discount_amount: null,
     };
 }
 
@@ -1496,6 +1511,36 @@ export class MockSupportRepository implements SupportRepository {
     }
 }
 
+export class MockReferralRepository implements ReferralRepository {
+    async mine(): Promise<ApiReferralSummary> {
+        await delay(150);
+        const user = requireSession();
+        const referred = db.referrals.filter((r) => r.referrer_id === user.id);
+        return {
+            referral_code: mockReferralCodeFor(user.id),
+            referred_count: referred.length,
+            qualified_count: referred.length,
+            offer_amount: REFERRAL_OFFER_AMOUNT,
+            rewards: [],
+        };
+    }
+
+    async redeem(code: string): Promise<void> {
+        await delay(150);
+        const user = requireSession();
+
+        if (db.referrals.some((r) => r.referee_id === user.id)) {
+            throw new ApiError(409, 'CONFLICT', "You've already used a referral code.");
+        }
+
+        const referrer = db.users.find((u) => mockReferralCodeFor(u.id) === code.toUpperCase());
+        if (!referrer) throw new ApiError(404, 'NOT_FOUND', 'Invalid referral code.');
+        if (referrer.id === user.id) throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', "You can't refer yourself.");
+
+        db.referrals.push({ referee_id: user.id, referrer_id: referrer.id, code_used: code.toUpperCase() });
+    }
+}
+
 export class MockMaintenanceRepository implements MaintenanceRepository {
     /** Mock DB has no vehicle_maintenance concept — matches production's early-days reality anyway. */
     async history(): Promise<Paginated<ApiMaintenanceRecord>> {
@@ -1513,6 +1558,7 @@ export function resetMockDb(): void {
     db.bookings = [];
     db.rentals = [];
     db.supportRequests = [];
+    db.referrals = [];
     db.currentUserId = null;
 }
 

@@ -21,6 +21,12 @@ const phoneSchema = z
 
 const emailSchema = z.string().trim().toLowerCase().email("Enter a valid email address.");
 
+/** Personal names: letters, spaces, apostrophes and hyphens only (e.g. "O'Brien", "Anne-Marie"). */
+const personNameSchema = z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z\s'-]+$/, "Use letters only (spaces, apostrophes and hyphens allowed).");
+
 const dobSchema = z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Use the format YYYY-MM-DD.")
@@ -63,13 +69,13 @@ export const listUsersQuery = z.object({
 });
 
 export const createUserBody = z.object({
-    full_name: z.string().trim().min(2, "Enter the rider's full name.").max(120),
+    full_name: personNameSchema.min(2, "Enter the rider's full name.").max(120),
     email: emailSchema,
     phone: phoneSchema,
     date_of_birth: dobSchema.optional(),
     gender: z.enum(["male", "female", "other", "prefer_not_to_say"]).optional(),
     ...addressFields,
-    emergency_contact_name: z.string().trim().max(120).optional(),
+    emergency_contact_name: personNameSchema.max(120).optional(),
     emergency_contact_phone: phoneSchema.optional(),
     role: z.enum(ROLE_NAMES as [string, ...string[]]).default("rider"),
     account_status: z.enum(ACCOUNT_STATUSES as [string, ...string[]]).default("active"),
@@ -78,13 +84,13 @@ export const createUserBody = z.object({
 /** Fields an admin/staff member may change on someone else. */
 export const updateUserBody = z
     .object({
-        full_name: z.string().trim().min(2).max(120).optional(),
+        full_name: personNameSchema.min(2).max(120).optional(),
         email: emailSchema.optional(),
         phone: phoneSchema.optional(),
         date_of_birth: dobSchema.optional(),
         gender: z.enum(["male", "female", "other", "prefer_not_to_say"]).optional(),
         ...addressFields,
-        emergency_contact_name: z.string().trim().max(120).optional(),
+        emergency_contact_name: personNameSchema.max(120).optional(),
         emergency_contact_phone: phoneSchema.optional(),
     })
     .strict()
@@ -97,7 +103,7 @@ export const updateUserBody = z
  */
 export const selfUpdateUserBody = z
     .object({
-        full_name: z.string().trim().min(2).max(120).optional(),
+        full_name: personNameSchema.min(2).max(120).optional(),
         // Needed for the initial-profile onboarding form (phone sign-ups have
         // no email on the Auth account yet). updateUser() syncs this to
         // Supabase Auth the same way it does for a staff-initiated edit.
@@ -106,7 +112,7 @@ export const selfUpdateUserBody = z
         date_of_birth: dobSchema.optional(),
         gender: z.enum(["male", "female", "other", "prefer_not_to_say"]).optional(),
         ...addressFields,
-        emergency_contact_name: z.string().trim().max(120).optional(),
+        emergency_contact_name: personNameSchema.max(120).optional(),
         emergency_contact_phone: phoneSchema.optional(),
     })
     .strict()

@@ -14,9 +14,13 @@ interface VehicleCatalogState {
     loadingList: boolean;
     listError: string | null;
 
+    availableCount: number | null;
+    loadingAvailableCount: boolean;
+
     loadFeatured: () => Promise<void>;
     loadList: (params?: ListVehicleModelsParams) => Promise<void>;
     loadMore: () => Promise<void>;
+    loadAvailableCount: () => Promise<void>;
 }
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -31,6 +35,9 @@ export const useVehicleCatalogStore = create<VehicleCatalogState>((set, get) => 
     filters: { page: 1, pageSize: DEFAULT_PAGE_SIZE },
     loadingList: false,
     listError: null,
+
+    availableCount: null,
+    loadingAvailableCount: false,
 
     loadFeatured: async () => {
         set({ loadingFeatured: true, featuredError: null });
@@ -67,6 +74,16 @@ export const useVehicleCatalogStore = create<VehicleCatalogState>((set, get) => 
         } catch (err) {
             const message = err instanceof ApiError ? err.message : 'Could not load more vehicles.';
             set({ listError: message, loadingList: false });
+        }
+    },
+
+    loadAvailableCount: async () => {
+        set({ loadingAvailableCount: true });
+        try {
+            const { available_count } = await vehicleCatalogRepository.availabilitySummary();
+            set({ availableCount: available_count, loadingAvailableCount: false });
+        } catch {
+            set({ loadingAvailableCount: false });
         }
     },
 }));
