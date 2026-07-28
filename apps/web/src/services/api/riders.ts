@@ -27,6 +27,11 @@ export async function fetchRiderById(id: string): Promise<RiderDetail> {
   return apiClient.get<RiderDetail>(`/users/${id}`);
 }
 
+/** GET /users/:id/photo/url — signed URL for the rider's profile photo, if one was uploaded. */
+export async function fetchRiderPhotoUrl(id: string): Promise<{ url: string; expires_in: number }> {
+  return apiClient.get<{ url: string; expires_in: number }>(`/users/${id}/photo/url`);
+}
+
 /** PATCH /users/:id/status — requireStaff. Suspending requires a reason (≥5 chars). */
 export async function changeRiderStatus(
   id: string,

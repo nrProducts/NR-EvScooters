@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, XCircle, FileText, ExternalLink, AlertTriangle } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, ExternalLink, AlertTriangle, RotateCcw, RotateCw, UserRound } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -16,6 +16,7 @@ import { Pagination } from "@/components/common/Pagination";
 import {
   useKycQueue, useApproveKyc, useRejectKyc, useKycDetail, useVerifyDocument, useRejectDocument, useOpenDocument,
 } from "@/hooks/useKyc";
+import { useOpenRiderPhoto } from "@/hooks/useRiders";
 import { formatDate } from "@/lib/utils";
 import type { KycQueueItem, KycStatus } from "@/types";
 
@@ -169,20 +170,37 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
   const verifyDocument = useVerifyDocument();
   const rejectDocument = useRejectDocument();
   const openDocument = useOpenDocument();
+  const openRiderPhoto = useOpenRiderPhoto();
   const [rejectDocId, setRejectDocId] = useState<string | null>(null);
   const [docReason, setDocReason] = useState("");
   const [preview, setPreview] = useState<{ url: string; title: string } | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [rotation, setRotation] = useState(0);
 
   const viewDocument = (documentId: string, side: "front" | "back", label: string) => {
     setOpenError(null);
     openDocument.mutate(
       { documentId, side },
       {
-        onSuccess: (data) => setPreview({ url: data.url, title: `${label} — ${side}` }),
+        onSuccess: (data) => {
+          setRotation(0);
+          setPreview({ url: data.url, title: `${label} — ${side}` });
+        },
         onError: (err) => setOpenError((err as Error)?.message ?? "Couldn't open that document."),
       },
     );
+  };
+
+  const viewRiderPhoto = () => {
+    if (!target) return;
+    setOpenError(null);
+    openRiderPhoto.mutate(target.user_id, {
+      onSuccess: (data) => {
+        setRotation(0);
+        setPreview({ url: data.url, title: "Rider photo" });
+      },
+      onError: (err) => setOpenError((err as Error)?.message ?? "No profile photo has been uploaded yet."),
+    });
   };
 
   return (
@@ -192,16 +210,24 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
           <DialogHeader>
             <DialogTitle>{target?.full_name ?? "Rider"}'s documents</DialogTitle>
           </DialogHeader>
-          {isLoading ? (
-            <LoadingSkeletonRows rows={3} cols={1} />
-          ) : !detail || detail.documents.length === 0 ? (
-            <EmptyState title="No documents uploaded" />
-          ) : (
-            <div className="space-y-3">
-              {openError && (
-                <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{openError}</p>
-              )}
-              {detail.documents.map((doc) => (
+          <div className="space-y-3">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={openRiderPhoto.isPending}
+              onClick={viewRiderPhoto}
+            >
+              <UserRound className="h-3.5 w-3.5" /> Rider photo
+            </Button>
+            {openError && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{openError}</p>
+            )}
+            {isLoading ? (
+              <LoadingSkeletonRows rows={3} cols={1} />
+            ) : !detail || detail.documents.length === 0 ? (
+              <EmptyState title="No documents uploaded" />
+            ) : (
+              detail.documents.map((doc) => (
                 <div key={doc.id} className="space-y-2 rounded-lg border border-border p-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium capitalize">{doc.doc_type.replace(/_/g, " ")}</p>
@@ -251,9 +277,9 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -286,7 +312,10 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
+      <Dialog
+        open={!!preview}
+        onOpenChange={(o) => { if (!o) { setPreview(null); setRotation(0); } }}
+      >
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="capitalize">{preview?.title}</DialogTitle>
@@ -300,13 +329,27 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
                   className="h-[75vh] w-full rounded-md border border-border bg-muted"
                 />
               ) : (
-                <div className="flex h-[75vh] items-center justify-center overflow-auto rounded-md border border-border bg-muted">
-                  <img
-                    src={preview.url}
-                    alt={preview.title}
-                    className="max-h-full max-w-full object-contain"
-                  />
-                </div>
+                <>
+                  <div className="flex justify-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setRotation((r) => r - 90)}>
+                      <RotateCcw className="h-3.5 w-3.5" /> Rotate left
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setRotation((r) => r + 90)}>
+                      <RotateCw className="h-3.5 w-3.5" /> Rotate right
+                    </Button>
+                  </div>
+                  <div className="flex h-[75vh] items-center justify-center overflow-auto rounded-md border border-border bg-muted">
+                    <img
+                      src={preview.url}
+                      alt={preview.title}
+                      className="max-h-full max-w-full object-contain transition-transform duration-200"
+                      style={{
+                        transform: `rotate(${rotation}deg)`,
+                        ...(rotation % 180 !== 0 ? { maxHeight: "75%", maxWidth: "75%" } : {}),
+                      }}
+                    />
+                  </div>
+                </>
               )}
               <div className="flex justify-end">
                 <a

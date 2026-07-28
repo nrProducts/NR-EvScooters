@@ -83,6 +83,12 @@ router.get(
     asyncHandler(c.getRolesHandler),
 );
 
+router.get(
+    "/:id/photo/url",
+    validate({ params: v.uuidOrMeParam }),
+    asyncHandler(c.getUserPhotoUrlHandler),
+);
+
 router.put(
     "/:id/roles",
     requireAdmin,

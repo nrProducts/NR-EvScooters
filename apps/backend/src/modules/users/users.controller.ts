@@ -102,6 +102,12 @@ export async function myPhotoUrlHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getMyPhotoUrl(req.user!.id));
 }
 
+export async function getUserPhotoUrlHandler(req: AuthedRequest, res: Response) {
+    const id = resolveTargetUserId(req);
+    if (id !== req.user!.id && !isStaff(req)) throw forbidden("You may only view your own photo.");
+    res.json(await service.getMyPhotoUrl(id));
+}
+
 export async function registerPushTokenHandler(req: AuthedRequest, res: Response) {
     const { token } = req.body as { token: string };
     await service.registerPushToken(req.user!.id, token);

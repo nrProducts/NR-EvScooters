@@ -13,6 +13,12 @@ export function useRider(id: string | undefined) {
   });
 }
 
+export function useOpenRiderPhoto() {
+  return useMutation({
+    mutationFn: (id: string) => api.fetchRiderPhotoUrl(id),
+  });
+}
+
 export function useChangeRiderStatus() {
   const qc = useQueryClient();
   return useMutation({
