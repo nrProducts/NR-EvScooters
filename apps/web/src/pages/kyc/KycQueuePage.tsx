@@ -13,7 +13,6 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { LoadingSkeletonRows } from "@/components/common/LoadingSkeletonRows";
 import { SearchBar } from "@/components/common/SearchBar";
 import { Pagination } from "@/components/common/Pagination";
-import { SideDrawer } from "@/components/common/SideDrawer";
 import {
   useKycQueue, useApproveKyc, useRejectKyc, useKycDetail, useVerifyDocument, useRejectDocument, useOpenDocument,
 } from "@/hooks/useKyc";
@@ -155,68 +154,108 @@ export default function KycQueuePage() {
         </DialogContent>
       </Dialog>
 
-      <KycDetailDrawer target={detailTarget} onClose={() => setDetailTarget(null)} />
+      <KycDetailDialog target={detailTarget} onClose={() => setDetailTarget(null)} />
     </div>
   );
 }
 
-function KycDetailDrawer({ target, onClose }: { target: KycQueueItem | null; onClose: () => void }) {
+/** Signed URLs keep the original file extension before the query string, so it's a reliable type hint. */
+function isPdfUrl(url: string): boolean {
+  return url.split("?")[0].toLowerCase().endsWith(".pdf");
+}
+
+function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onClose: () => void }) {
   const { data: detail, isLoading } = useKycDetail(target?.user_id);
   const verifyDocument = useVerifyDocument();
   const rejectDocument = useRejectDocument();
   const openDocument = useOpenDocument();
   const [rejectDocId, setRejectDocId] = useState<string | null>(null);
   const [docReason, setDocReason] = useState("");
+  const [preview, setPreview] = useState<{ url: string; title: string } | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+
+  const viewDocument = (documentId: string, side: "front" | "back", label: string) => {
+    setOpenError(null);
+    openDocument.mutate(
+      { documentId, side },
+      {
+        onSuccess: (data) => setPreview({ url: data.url, title: `${label} — ${side}` }),
+        onError: (err) => setOpenError((err as Error)?.message ?? "Couldn't open that document."),
+      },
+    );
+  };
 
   return (
     <>
-      <SideDrawer open={!!target} onOpenChange={(o) => !o && onClose()} title={`${target?.full_name ?? "Rider"}'s documents`}>
-        {isLoading ? (
-          <LoadingSkeletonRows rows={3} cols={1} />
-        ) : !detail || detail.documents.length === 0 ? (
-          <EmptyState title="No documents uploaded" />
-        ) : (
-          <div className="space-y-3">
-            {detail.documents.map((doc) => (
-              <div key={doc.id} className="space-y-2 rounded-lg border border-border p-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium capitalize">{doc.doc_type.replace(/_/g, " ")}</p>
-                  <StatusBadge status={doc.verification_status} />
-                </div>
-                {doc.expiry_date && (
-                  <p className="text-xs text-muted-foreground">Expires {formatDate(doc.expiry_date)}</p>
-                )}
-                {doc.rejection_reason && (
-                  <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">{doc.rejection_reason}</p>
-                )}
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <Button size="sm" variant="outline" onClick={() => openDocument.mutate({ documentId: doc.id, side: "front" })}>
-                    <ExternalLink className="h-3.5 w-3.5" /> Front
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => openDocument.mutate({ documentId: doc.id, side: "back" })}>
-                    <ExternalLink className="h-3.5 w-3.5" /> Back
-                  </Button>
-                  {doc.verification_status === "pending" && (
-                    <>
-                      <Button size="sm" onClick={() => verifyDocument.mutate(doc.id)} disabled={verifyDocument.isPending}>
-                        Verify
-                      </Button>
+      <Dialog open={!!target} onOpenChange={(o) => !o && onClose()}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{target?.full_name ?? "Rider"}'s documents</DialogTitle>
+          </DialogHeader>
+          {isLoading ? (
+            <LoadingSkeletonRows rows={3} cols={1} />
+          ) : !detail || detail.documents.length === 0 ? (
+            <EmptyState title="No documents uploaded" />
+          ) : (
+            <div className="space-y-3">
+              {openError && (
+                <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{openError}</p>
+              )}
+              {detail.documents.map((doc) => (
+                <div key={doc.id} className="space-y-2 rounded-lg border border-border p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium capitalize">{doc.doc_type.replace(/_/g, " ")}</p>
+                    <StatusBadge status={doc.verification_status} />
+                  </div>
+                  {doc.expiry_date && (
+                    <p className="text-xs text-muted-foreground">Expires {formatDate(doc.expiry_date)}</p>
+                  )}
+                  {doc.rejection_reason && (
+                    <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">{doc.rejection_reason}</p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={openDocument.isPending}
+                      onClick={() => viewDocument(doc.id, "front", doc.doc_type.replace(/_/g, " "))}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Front
+                    </Button>
+                    {doc.has_back_side ? (
                       <Button
                         size="sm"
                         variant="outline"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => { setRejectDocId(doc.id); setDocReason(""); }}
+                        disabled={openDocument.isPending}
+                        onClick={() => viewDocument(doc.id, "back", doc.doc_type.replace(/_/g, " "))}
                       >
-                        Reject
+                        <ExternalLink className="h-3.5 w-3.5" /> Back
                       </Button>
-                    </>
-                  )}
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No back side uploaded</span>
+                    )}
+                    {doc.verification_status === "pending" && (
+                      <>
+                        <Button size="sm" onClick={() => verifyDocument.mutate(doc.id)} disabled={verifyDocument.isPending}>
+                          Verify
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => { setRejectDocId(doc.id); setDocReason(""); }}
+                        >
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </SideDrawer>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!rejectDocId} onOpenChange={(o) => !o && setRejectDocId(null)}>
         <DialogContent>
@@ -244,6 +283,43 @@ function KycDetailDrawer({ target, onClose }: { target: KycQueueItem | null; onC
               Reject document
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="capitalize">{preview?.title}</DialogTitle>
+          </DialogHeader>
+          {preview && (
+            <div className="space-y-2">
+              {isPdfUrl(preview.url) ? (
+                <iframe
+                  src={preview.url}
+                  title={preview.title}
+                  className="h-[75vh] w-full rounded-md border border-border bg-muted"
+                />
+              ) : (
+                <div className="flex h-[75vh] items-center justify-center overflow-auto rounded-md border border-border bg-muted">
+                  <img
+                    src={preview.url}
+                    alt={preview.title}
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+              )}
+              <div className="flex justify-end">
+                <a
+                  href={preview.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                >
+                  Open in new tab
+                </a>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </>

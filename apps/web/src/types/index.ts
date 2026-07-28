@@ -97,6 +97,7 @@ export interface KycDocumentDetail {
   expiry_date: string | null;
   submitted_at: string | null;
   verified_at: string | null;
+  has_back_side: boolean;
 }
 
 export interface KycDetail {

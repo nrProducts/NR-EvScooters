@@ -25,7 +25,7 @@ export async function fetchKycDetail(userId: string): Promise<KycDetail> {
   return apiClient.get<KycDetail>(`/kyc/${userId}`);
 }
 
-/** GET /kyc/documents/:documentId/url?side=front|back — signed URL, opens in a new tab. */
+/** GET /kyc/documents/:documentId/url?side=front|back — signed URL, previewed in-page. */
 export async function fetchDocumentUrl(documentId: string, side: "front" | "back" = "front") {
   return apiClient.get<{ url: string }>(`/kyc/documents/${documentId}/url`, { side });
 }

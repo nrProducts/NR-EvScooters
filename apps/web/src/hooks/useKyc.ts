@@ -57,8 +57,5 @@ export function useOpenDocument() {
   return useMutation({
     mutationFn: ({ documentId, side }: { documentId: string; side: "front" | "back" }) =>
       api.fetchDocumentUrl(documentId, side),
-    onSuccess: (data) => {
-      window.open(data.url, "_blank", "noopener,noreferrer");
-    },
   });
 }
