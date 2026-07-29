@@ -24,9 +24,6 @@ import type { LocalFile } from '../types/api';
  */
 
 export class SupabaseAuthRepository implements AuthRepository {
-    readonly requiresPassword = true;
-    readonly isMock = false;
-
     async restore(): Promise<SessionRef | null> {
         const { data } = await getSupabase().auth.getSession();
         if (!data.session) return null;

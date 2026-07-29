@@ -165,7 +165,7 @@ export default function BookingScreen() {
               className="flex-1 py-4 rounded-2xl items-center"
               style={{ backgroundColor: COLORS.primary, opacity: loading ? 0.6 : 1 }}
             >
-              <Text className="text-white text-sm font-bold">Book bike</Text>
+              <Text className="text-white text-sm font-bold">Continue</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>

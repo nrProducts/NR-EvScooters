@@ -3,7 +3,6 @@ import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'reac
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
-import { authRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { COLORS } from '../constants/theme';
 import { ArrowLeft, Mail, Lock, Shield, Eye, EyeOff } from 'lucide-react-native';
@@ -20,7 +19,6 @@ import { ArrowLeft, Mail, Lock, Shield, Eye, EyeOff } from 'lucide-react-native'
 export default function AdminLoginScreen() {
   const router = useRouter();
   const signIn = useAuthStore((s) => s.signIn);
-  const isMock = authRepository.isMock;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,7 +33,7 @@ export default function AdminLoginScreen() {
       setError('Enter your admin email.');
       return;
     }
-    if (!isMock && !password) {
+    if (!password) {
       setError('Enter your password.');
       return;
     }
@@ -104,57 +102,48 @@ export default function AdminLoginScreen() {
             accessibilityLabel="Admin email"
             className="flex-1 text-base font-semibold ml-3"
             style={{ color: COLORS.textPrimary }}
-            returnKeyType={isMock ? 'done' : 'next'}
-            onSubmitEditing={() => (isMock ? void submit() : passwordRef.current?.focus())}
-            blurOnSubmit={isMock}
+            returnKeyType="next"
+            onSubmitEditing={() => passwordRef.current?.focus()}
           />
         </View>
 
-        {!isMock ? (
-          <>
-            <Text style={{ color: COLORS.textSecondary }} className="text-sm font-bold mb-2">
-              Password
-            </Text>
-            <View
-              className="flex-row items-center rounded-2xl px-4 py-3.5 mb-2 border"
-              style={{ backgroundColor: COLORS.card, borderColor: error ? COLORS.danger : COLORS.border }}
-            >
-              <Lock size={18} color={COLORS.textSecondary} />
-              <TextInput
-                ref={passwordRef}
-                value={password}
-                onChangeText={(t) => {
-                  setPassword(t);
-                  if (error) setError('');
-                }}
-                placeholder="Your password"
-                placeholderTextColor={COLORS.textSecondary}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoComplete="password"
-                accessibilityLabel="Password"
-                className="flex-1 text-base font-semibold ml-3"
-                style={{ color: COLORS.textPrimary }}
-                onSubmitEditing={() => void submit()}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword((v) => !v)}
-                accessibilityRole="button"
-                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? (
-                  <EyeOff size={16} color={COLORS.textSecondary} />
-                ) : (
-                  <Eye size={16} color={COLORS.textSecondary} />
-                )}
-              </TouchableOpacity>
-            </View>
-          </>
-        ) : (
-          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mb-2 px-1">
-            Demo mode: enter admin@fleet.com (no password needed).
-          </Text>
-        )}
+        <Text style={{ color: COLORS.textSecondary }} className="text-sm font-bold mb-2">
+          Password
+        </Text>
+        <View
+          className="flex-row items-center rounded-2xl px-4 py-3.5 mb-2 border"
+          style={{ backgroundColor: COLORS.card, borderColor: error ? COLORS.danger : COLORS.border }}
+        >
+          <Lock size={18} color={COLORS.textSecondary} />
+          <TextInput
+            ref={passwordRef}
+            value={password}
+            onChangeText={(t) => {
+              setPassword(t);
+              if (error) setError('');
+            }}
+            placeholder="Your password"
+            placeholderTextColor={COLORS.textSecondary}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoComplete="password"
+            accessibilityLabel="Password"
+            className="flex-1 text-base font-semibold ml-3"
+            style={{ color: COLORS.textPrimary }}
+            onSubmitEditing={() => void submit()}
+          />
+          <TouchableOpacity
+            onPress={() => setShowPassword((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+          >
+            {showPassword ? (
+              <EyeOff size={16} color={COLORS.textSecondary} />
+            ) : (
+              <Eye size={16} color={COLORS.textSecondary} />
+            )}
+          </TouchableOpacity>
+        </View>
 
         {error ? (
           <Text style={{ color: COLORS.danger }} className="text-xs font-semibold my-3 px-1">

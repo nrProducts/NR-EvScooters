@@ -16,25 +16,27 @@ function required(name: string): string {
     const value = read(name);
     if (!value) {
         throw new Error(
-            `Missing ${name}. Add it to apps/mobile/.env (see .env.example) and restart Metro with -c. ` +
-            `To run without a backend instead, set EXPO_PUBLIC_USE_MOCK=true.`,
+            `Missing ${name}. Add it to apps/mobile/.env (see .env.example) and restart Metro with -c.`,
         );
     }
     return value;
 }
 
-/**
- * Mock mode swaps the repository implementations for in-memory ones, so every
- * screen runs with no backend, no Supabase project and no network. Default is
- * true until the API is deployed — flip to false in .env to go live.
- */
-export const USE_MOCK = (read('EXPO_PUBLIC_USE_MOCK') ?? 'true').toLowerCase() === 'true';
+/** Names every screen needs before it can talk to the backend. */
+export const REQUIRED_ENV_VARS = [
+    'EXPO_PUBLIC_API_URL',
+    'EXPO_PUBLIC_SUPABASE_URL',
+    'EXPO_PUBLIC_SUPABASE_ANON_KEY',
+] as const;
+
+/** The subset of REQUIRED_ENV_VARS that is missing — empty when configured. */
+export function missingEnvVars(): string[] {
+    return REQUIRED_ENV_VARS.filter((name) => !read(name));
+}
 
 export const ENV = {
-    useMock: USE_MOCK,
-
-    // Only read when USE_MOCK is false — getters keep the throw lazy so mock
-    // mode never demands credentials it won't use.
+    // Getters keep the throw lazy, so a missing value surfaces at the call site
+    // rather than at module-load time.
     get supabaseUrl(): string {
         return required('EXPO_PUBLIC_SUPABASE_URL');
     },

@@ -1,10 +1,17 @@
 import { create } from 'zustand';
 import { vehicleCatalogRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
-import type { ApiVehicleModel, ListVehicleModelsParams, Pagination } from '../types/api';
+import type {
+    ApiVehicleModel, ApiVehicleModelDetail, ListVehicleModelsParams, Pagination,
+} from '../types/api';
 
 interface VehicleCatalogState {
-    featured: ApiVehicleModel | null;
+    /**
+     * Full detail, not the list shape: the Home card shows the complete
+     * specification block, and /vehicle-models/featured only returns the
+     * summary fields (no motor power, battery capacity or plans).
+     */
+    featured: ApiVehicleModelDetail | null;
     loadingFeatured: boolean;
     featuredError: string | null;
 
@@ -42,7 +49,9 @@ export const useVehicleCatalogStore = create<VehicleCatalogState>((set, get) => 
     loadFeatured: async () => {
         set({ loadingFeatured: true, featuredError: null });
         try {
-            const featured = await vehicleCatalogRepository.featured();
+            const summary = await vehicleCatalogRepository.featured();
+            // featured() 404s to null when no model is flagged.
+            const featured = summary ? await vehicleCatalogRepository.get(summary.id) : null;
             set({ featured, loadingFeatured: false });
         } catch (err) {
             const message = err instanceof ApiError ? err.message : 'Could not load the featured scooter.';

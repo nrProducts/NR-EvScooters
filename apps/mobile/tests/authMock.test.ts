@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { MockAuthRepository, resetMockDb } from '../src/services/mock/mock.repositories';
+﻿import { beforeEach, describe, expect, it } from 'vitest';
+import { MockAuthRepository, resetMockDb } from './fixtures/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
 
-describe('MockAuthRepository — phone OTP', () => {
+describe('MockAuthRepository â€” phone OTP', () => {
   let auth: MockAuthRepository;
   beforeEach(() => {
     resetMockDb();
@@ -40,7 +40,7 @@ describe('MockAuthRepository — phone OTP', () => {
   });
 });
 
-describe('MockAuthRepository — Google & demo', () => {
+describe('MockAuthRepository â€” Google & demo', () => {
   let auth: MockAuthRepository;
   beforeEach(() => {
     resetMockDb();
@@ -59,10 +59,5 @@ describe('MockAuthRepository — Google & demo', () => {
 
   it('still rejects an unknown demo email', async () => {
     await expect(auth.signIn('nobody@nowhere.com', '')).rejects.toBeInstanceOf(ApiError);
-  });
-
-  it('exposes isMock = true', () => {
-    expect(auth.isMock).toBe(true);
-    expect(auth.requiresPassword).toBe(false);
   });
 });

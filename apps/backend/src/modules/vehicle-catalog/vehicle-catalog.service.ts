@@ -3,21 +3,20 @@ import { notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { Paginated } from "../../types";
 import {
-    ListVehicleModelsFilters, PlanSummary, VehicleImage, VehicleModelDetail,
+    ListVehicleModelsFilters, PlanSummary, VehicleModelDetail,
     VehicleModelListItem, VendorSummary,
 } from "./vehicle-catalog.types";
 
 const LIST_COLUMNS = `
     id, name, category, tagline, battery_range_km, top_speed_kmph, charging_time_hours,
-    is_featured, vendors(id, name, description, logo_url), vehicle_images(url, is_hero, sort_order),
+    is_featured, image, vendors(id, name, description, logo_url),
     plans(price)
 `;
 
 const DETAIL_COLUMNS = `
     id, name, category, tagline, description, battery_range_km, top_speed_kmph, charging_time_hours,
-    motor_power_watts, battery_capacity, features, safety_features, is_featured,
+    motor_power_watts, battery_capacity, features, safety_features, is_featured, image,
     vendors(id, name, description, logo_url),
-    vehicle_images(id, url, alt_text, is_hero, sort_order),
     plans(id, name, billing_cycle, price, included_minutes)
 `;
 
@@ -35,8 +34,8 @@ export type RawModelRow = {
     features?: string[] | null;
     safety_features?: string[] | null;
     is_featured: boolean;
+    image: string | null;
     vendors: unknown;
-    vehicle_images: unknown;
     plans: unknown;
 };
 
@@ -45,21 +44,6 @@ function toVendorSummary(raw: unknown): VendorSummary | null {
     if (!v) return null;
     const row = v as { id: string; name: string; description: string | null; logo_url: string | null };
     return { id: row.id, name: row.name, description: row.description, logo_url: row.logo_url };
-}
-
-export function toImages(raw: unknown): VehicleImage[] {
-    const rows = (Array.isArray(raw) ? raw : []) as Array<{
-        id?: string; url: string; alt_text?: string | null; is_hero: boolean; sort_order: number;
-    }>;
-    return [...rows]
-        .sort((a, b) => (a.is_hero === b.is_hero ? a.sort_order - b.sort_order : a.is_hero ? -1 : 1))
-        .map((r) => ({
-            id: r.id ?? "",
-            url: r.url,
-            alt_text: r.alt_text ?? null,
-            is_hero: r.is_hero,
-            sort_order: r.sort_order,
-        }));
 }
 
 export function toPlans(raw: unknown): PlanSummary[] {
@@ -80,8 +64,6 @@ export function toPlans(raw: unknown): PlanSummary[] {
 }
 
 export function toListItem(row: RawModelRow): VehicleModelListItem {
-    const images = toImages(row.vehicle_images);
-    const hero = images.find((i) => i.is_hero) ?? images[0];
     const plans = toPlans(row.plans);
     const startingPrice = plans.length > 0 ? Math.min(...plans.map((p) => p.price)) : null;
 
@@ -95,7 +77,7 @@ export function toListItem(row: RawModelRow): VehicleModelListItem {
         charging_time_hours: row.charging_time_hours,
         is_featured: row.is_featured,
         vendor: toVendorSummary(row.vendors),
-        hero_image_url: hero?.url ?? null,
+        image_url: row.image ?? null,
         starting_price: startingPrice,
     };
 }
@@ -161,7 +143,6 @@ export async function getVehicleModelById(id: string): Promise<VehicleModelDetai
         battery_capacity: row.battery_capacity ?? null,
         features: (row.features as string[] | null) ?? [],
         safety_features: (row.safety_features as string[] | null) ?? [],
-        images: toImages(row.vehicle_images),
         plans: toPlans(row.plans),
         availability,
     };

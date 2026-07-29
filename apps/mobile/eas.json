@@ -9,10 +9,22 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "//": "TODO: replace with the real staging values before building.",
+        "EXPO_PUBLIC_API_URL": "https://staging.example.com/api/v1",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://your-project.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-anon-key"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "//": "TODO: replace with the real production values before building.",
+        "EXPO_PUBLIC_API_URL": "https://api.example.com/api/v1",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://your-project.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-anon-key"
+      }
     }
   },
   "submit": {

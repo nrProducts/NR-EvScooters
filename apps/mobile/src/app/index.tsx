@@ -3,28 +3,23 @@ import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'reac
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
-import { authRepository, DEMO_ACCOUNTS } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { COLORS } from '../constants/theme';
 import { isValidPhone, toE164 } from '../lib/authValidation';
-import { Bike, Phone, ArrowRight, Zap } from 'lucide-react-native';
+import { Bike, Phone, ArrowRight } from 'lucide-react-native';
 
 /**
  * Primary rider login = phone + OTP. Google is offered as a secondary /
  * recovery method. Admins get NO visible entry point here (there is a hidden
  * long-press on the logo -> /admin-login) so riders never see an admin option.
- * In mock mode the demo accounts remain available.
  */
 export default function LoginScreen() {
   const router = useRouter();
   const requestOtp = useAuthStore((s) => s.requestOtp);
   const signInWithGoogle = useAuthStore((s) => s.signInWithGoogle);
-  const signIn = useAuthStore((s) => s.signIn);
-
-  const isMock = authRepository.isMock;
 
   const [phone, setPhone] = useState('');
-  const [busy, setBusy] = useState<'otp' | 'google' | 'demo' | null>(null);
+  const [busy, setBusy] = useState<'otp' | 'google' | null>(null);
   const [error, setError] = useState('');
 
   const sendCode = async () => {
@@ -59,19 +54,6 @@ export default function LoginScreen() {
         return;
       }
       setError(err instanceof ApiError ? err.message : 'Google sign-in failed. Please try again.');
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const demoLogin = async (email: string) => {
-    if (busy) return;
-    setError('');
-    setBusy('demo');
-    try {
-      await signIn(email, '');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not sign in.');
     } finally {
       setBusy(null);
     }
@@ -200,55 +182,11 @@ export default function LoginScreen() {
                 Changed your number? Use Google to get back into your account.
               </Text>
 
-              {isMock ? (
-                <View className="mt-8 pt-6 border-t" style={{ borderColor: COLORS.border }}>
-                  <View className="flex-row items-center justify-center mb-3">
-                    <Zap size={12} color={COLORS.warning} />
-                    <Text style={{ color: COLORS.warning }} className="text-[11px] font-black uppercase tracking-wider ml-1.5">
-                      Demo Mode - No Backend
-                    </Text>
-                  </View>
-                  <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mb-4 leading-relaxed">
-                    OTP is faked (code 123456). Or tap a demo account to sign in instantly.
-                  </Text>
-                  <View style={{ gap: 8 }}>
-                    {DEMO_ACCOUNTS.map((acct) => (
-                      <TouchableOpacity
-                        key={acct.email}
-                        onPress={() => void demoLogin(acct.email)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Sign in as ${acct.label}`}
-                        className="flex-row items-center px-4 py-3 rounded-2xl border"
-                        style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
-                      >
-                        <View
-                          className="w-9 h-9 rounded-xl items-center justify-center mr-3"
-                          style={{ backgroundColor: COLORS.primary + '14' }}
-                        >
-                          <Text style={{ color: COLORS.primary }} className="text-[11px] font-black">
-                            {acct.label[0]}
-                          </Text>
-                        </View>
-                        <View className="flex-1">
-                          <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold">
-                            {acct.label}
-                          </Text>
-                          <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-medium mt-0.5">
-                            {acct.hint}
-                          </Text>
-                        </View>
-                        <ArrowRight size={14} color={COLORS.textSecondary} />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              ) : (
-                <View className="mt-8 pt-6 border-t" style={{ borderColor: COLORS.border }}>
-                  <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center leading-relaxed">
-                    By continuing you agree to our Terms and acknowledge our Privacy Policy.
-                  </Text>
-                </View>
-              )}
+              <View className="mt-8 pt-6 border-t" style={{ borderColor: COLORS.border }}>
+                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center leading-relaxed">
+                  By continuing you agree to our Terms and acknowledge our Privacy Policy.
+                </Text>
+              </View>
             </>
           )}
         </View>

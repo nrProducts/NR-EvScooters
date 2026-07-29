@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+﻿import { beforeEach, describe, expect, it } from 'vitest';
 import {
   MockAuthRepository, MockBookingRepository, MockSupportRepository, resetMockDb,
-} from '../src/services/mock/mock.repositories';
+} from './fixtures/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
 
 const fmt = (d: Date): string => {

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { View, ActivityIndicator } from "react-native";
+import { View, Text, ActivityIndicator } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import * as Notifications from "expo-notifications";
 import { useAuthStore } from "../store/useAuthStore";
 import { userRepository } from "../services";
 import { registerForPushNotificationsAsync } from "../lib/pushNotifications";
+import { missingEnvVars } from "../constants/env";
 import { COLORS } from "../constants/theme";
 import "../../global.css";
 
@@ -20,18 +21,49 @@ const STAFF_ROUTES = [
   "dashboard", "users", "vehicles", "plans", "assign", "reports", "settings", "kyc-review",
   "notifications", "bookings-pickup", "support-review",
 ];
-// "vehicle" covers vehicle/[id]; "booking" covers booking/[modelId],
-// booking/plan, booking/billing — Expo Router reports a dynamic route's
-// top-level segment name, not the file's bracketed param.
+// "booking" covers booking/[modelId], booking/plan, booking/billing — Expo
+// Router reports a dynamic route's top-level segment name, not the file's
+// bracketed param.
 const RIDER_ROUTES = [
   "home", "my-scooter", "my-plan", "support", "kyc", "kyc-intro",
-  "browse-vehicles", "vehicle", "post-booking-dashboard", "booking", "notifications",
+  "browse-vehicles", "post-booking-dashboard", "booking", "notifications",
   "booking-history",
 ];
 // Screens reachable while signed OUT (the login surface).
 const AUTH_ROUTES = ["index", "otp-verify", "admin-login", "auth-callback"];
 
+/**
+ * With no mock mode, a build missing its EXPO_PUBLIC_* values can do nothing at
+ * all — ENV's getters throw a plain Error on first use, which surfaces as a
+ * redbox in dev and a blank crash in release. Naming the missing variables is
+ * far more useful than either.
+ */
+function MisconfiguredScreen({ missing }: { missing: string[] }) {
+  return (
+    <SafeAreaProvider>
+      <StatusBar style="dark" backgroundColor={COLORS.background} />
+      <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
+        <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
+          App not configured
+        </Text>
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-3 leading-relaxed">
+          These values are missing from apps/mobile/.env (see .env.example).
+          Add them and restart Metro with -c.
+        </Text>
+        <View className="mt-4" style={{ gap: 6 }}>
+          {missing.map((name) => (
+            <Text key={name} style={{ color: COLORS.danger }} className="text-xs font-bold text-center">
+              {name}
+            </Text>
+          ))}
+        </View>
+      </View>
+    </SafeAreaProvider>
+  );
+}
+
 export default function RootLayout() {
+  const missing = missingEnvVars();
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const initialising = useAuthStore((s) => s.initialising);
   const session = useAuthStore((s) => s.session);
@@ -42,11 +74,13 @@ export default function RootLayout() {
   const segments = useSegments();
 
   useEffect(() => {
+    // Every path below reaches Supabase, which needs the env vars.
+    if (missing.length > 0) return;
     // Reads the persisted session out of the keychain and subscribes to
     // Supabase auth changes. Returns the unsubscribe.
     const unsubscribe = bootstrap();
     return unsubscribe;
-  }, [bootstrap]);
+  }, [bootstrap, missing.length]);
 
   // Registers a push token once per signed-in account, not on every profile
   // refetch — keyed on the id (not a plain boolean) so switching accounts
@@ -136,6 +170,8 @@ export default function RootLayout() {
       router.replace("/home");
     }
   }, [initialising, session, profile, hasSeenKycIntro, segments, router]);
+
+  if (missing.length > 0) return <MisconfiguredScreen missing={missing} />;
 
   if (initialising) {
     return (

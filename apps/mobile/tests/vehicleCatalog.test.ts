@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+﻿import { beforeEach, describe, expect, it } from 'vitest';
 import {
   MockAuthRepository, MockUserRepository, MockVehicleCatalogRepository, resetMockDb,
-} from '../src/services/mock/mock.repositories';
+} from './fixtures/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
 
 const auth = new MockAuthRepository();
@@ -51,7 +51,7 @@ describe('MockVehicleCatalogRepository: get', () => {
   it('returns full detail for a known id', async () => {
     const featured = await catalog.featured();
     const detail = await catalog.get(featured!.id);
-    expect(detail.images.length).toBeGreaterThan(0);
+    expect(detail.image_url).toBeTruthy();
     expect(detail.plans.length).toBeGreaterThan(0);
     expect(detail.availability.status).toBe('available');
   });

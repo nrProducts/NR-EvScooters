@@ -1,37 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-    RawModelRow, toAvailability, toImages, toListItem, toPlans,
+    RawModelRow, toAvailability, toListItem, toPlans,
 } from "../src/modules/vehicle-catalog/vehicle-catalog.service";
-
-describe("toImages", () => {
-    it("puts the hero image first regardless of its sort_order", () => {
-        const images = toImages([
-            { id: "a", url: "a.png", is_hero: false, sort_order: 0 },
-            { id: "b", url: "b.png", is_hero: true, sort_order: 2 },
-        ]);
-        expect(images.map((i) => i.id)).toEqual(["b", "a"]);
-    });
-
-    it("orders non-hero images by sort_order", () => {
-        const images = toImages([
-            { id: "c", url: "c.png", is_hero: false, sort_order: 2 },
-            { id: "a", url: "a.png", is_hero: false, sort_order: 0 },
-            { id: "b", url: "b.png", is_hero: false, sort_order: 1 },
-        ]);
-        expect(images.map((i) => i.id)).toEqual(["a", "b", "c"]);
-    });
-
-    it("returns an empty array for null/non-array input", () => {
-        expect(toImages(null)).toEqual([]);
-        expect(toImages(undefined)).toEqual([]);
-    });
-
-    it("defaults alt_text to null and coerces a missing id to an empty string", () => {
-        const [image] = toImages([{ url: "a.png", is_hero: false, sort_order: 0 }]);
-        expect(image.alt_text).toBeNull();
-        expect(image.id).toBe("");
-    });
-});
 
 describe("toPlans", () => {
     it("sorts by billing cycle in daily/weekly/monthly/yearly order regardless of input order", () => {
@@ -76,30 +46,19 @@ describe("toListItem", () => {
         charging_time_hours: 3.5,
         is_featured: true,
         vendors: { id: "vendor-1", name: "NR Mobility Partners", description: null, logo_url: null },
-        vehicle_images: [
-            { id: "img-1", url: "hero.png", is_hero: true, sort_order: 0 },
-            { id: "img-2", url: "side.png", is_hero: false, sort_order: 1 },
-        ],
+        image: "https://cdn.example.com/models/hero.png",
         plans: [
             { billing_cycle: "monthly", price: 2499 },
             { billing_cycle: "daily", price: 149 },
         ],
     };
 
-    it("uses the hero image as hero_image_url", () => {
-        expect(toListItem(baseRow).hero_image_url).toBe("hero.png");
+    it("exposes vehicle_models.image as image_url", () => {
+        expect(toListItem(baseRow).image_url).toBe("https://cdn.example.com/models/hero.png");
     });
 
-    it("falls back to the first image when none is marked hero", () => {
-        const row: RawModelRow = {
-            ...baseRow,
-            vehicle_images: [{ id: "img-1", url: "only.png", is_hero: false, sort_order: 0 }],
-        };
-        expect(toListItem(row).hero_image_url).toBe("only.png");
-    });
-
-    it("reports null hero_image_url when there are no images", () => {
-        expect(toListItem({ ...baseRow, vehicle_images: [] }).hero_image_url).toBeNull();
+    it("reports null image_url when the model has no artwork", () => {
+        expect(toListItem({ ...baseRow, image: null }).image_url).toBeNull();
     });
 
     it("computes starting_price as the minimum plan price", () => {

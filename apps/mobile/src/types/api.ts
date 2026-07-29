@@ -235,14 +235,6 @@ export interface ApiVendor {
     logo_url: string | null;
 }
 
-export interface ApiVehicleImage {
-    id: string;
-    url: string;
-    alt_text: string | null;
-    is_hero: boolean;
-    sort_order: number;
-}
-
 export type BillingCycle = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export interface ApiPlan {
@@ -263,7 +255,8 @@ export interface ApiVehicleModel {
     charging_time_hours: number | null;
     is_featured: boolean;
     vendor: ApiVendor | null;
-    hero_image_url: string | null;
+    /** Public URL of the model's catalog artwork. */
+    image_url: string | null;
     starting_price: number | null;
 }
 
@@ -273,7 +266,6 @@ export interface ApiVehicleModelDetail extends ApiVehicleModel {
     battery_capacity: string | null;
     features: string[];
     safety_features: string[];
-    images: ApiVehicleImage[];
     plans: ApiPlan[];
     availability: {
         available_count: number;

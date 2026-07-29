@@ -22,9 +22,9 @@
 --   users, user_roles     accounts stay signed-in-able; explicit requirement
 --   plans                 catalog pricing (20260721090200_..._seed.sql)
 --   vendors               catalog (20260721090200_..._seed.sql)
---   vehicle_models        catalog (20260721090200_..._seed.sql)
---   vehicle_images        catalog gallery per model
---   stations              pickup locations (20260721100200_bookings_seed.sql)
+--   vehicle_models        catalog (20260721090200_..._seed.sql), incl. the
+--                         `image` column (20260731100000_vehicle_model_image.sql)
+--   stations             pickup locations (20260721100200_bookings_seed.sql)
 --   vehicles              physical fleet inventory — rows kept, live state
 --                         reset (see p_reset_vehicle_state)
 --   vehicle_photos        per-unit photos, part of the fleet record

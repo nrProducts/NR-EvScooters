@@ -187,7 +187,7 @@ export default function HomeScreen() {
 
         <ReferAndEarnBanner />
 
-        {profile.has_active_rental ? (
+        {/* {profile.has_active_rental ? (
           <TouchableOpacity
             onPress={() => router.push('/post-booking-dashboard')}
             className="rounded-2xl p-4 mb-4 flex-row items-center justify-between"
@@ -199,7 +199,7 @@ export default function HomeScreen() {
             </View>
             <ChevronRight size={16} color={COLORS.primaryPressed} />
           </TouchableOpacity>
-        ) : null}
+        ) : null} */}
 
         {activeRental ? (
           activeRental.return_requested_at ? (

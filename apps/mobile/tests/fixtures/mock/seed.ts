@@ -1,10 +1,10 @@
-import type {
+﻿import type {
     AccountStatus, ApiDocument, ApiStation, ApiUser, ApiVehicleModel, ApiVehicleModelDetail,
     KycDocType, KycStatus, RoleName, VerificationStatus,
-} from '../../types/api';
+} from '../../../src/types/api';
 
 /**
- * Rows shaped like the database, not like the API responses — the mock
+ * Rows shaped like the database, not like the API responses â€” the mock
  * repositories project these into API shapes exactly as the backend does.
  */
 export interface MockUserRow {
@@ -298,7 +298,7 @@ export const SEED_USERS: MockUserRow[] = [
 ];
 
 export const SEED_DOCUMENTS: MockDocumentRow[] = [
-    // Asha — fully verified, can rent.
+    // Asha â€” fully verified, can rent.
     {
         id: 'd-001', user_id: 'u-rider-001', doc_type: 'aadhaar',
         doc_number: 'ABCD12345678', front_uri: PLACEHOLDER_IMAGE, back_uri: PLACEHOLDER_IMAGE,
@@ -315,7 +315,7 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
         expiry_date: daysFromNow(900), submitted_at: monthsAgo(9),
         created_at: monthsAgo(9), updated_at: monthsAgo(8),
     },
-    // Rahul — both pending: the queue's happy path.
+    // Rahul â€” both pending: the queue's happy path.
     {
         id: 'd-003', user_id: 'u-rider-002', doc_type: 'aadhaar',
         doc_number: 'EFGH87654321', front_uri: PLACEHOLDER_IMAGE, back_uri: PLACEHOLDER_IMAGE,
@@ -332,7 +332,7 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
         expiry_date: daysFromNow(400), submitted_at: monthsAgo(1),
         created_at: monthsAgo(1), updated_at: monthsAgo(1),
     },
-    // Fatima — one verified, one pending: partially_verified.
+    // Fatima â€” one verified, one pending: partially_verified.
     {
         id: 'd-005', user_id: 'u-rider-003', doc_type: 'aadhaar',
         doc_number: 'IJKL11223344', front_uri: PLACEHOLDER_IMAGE, back_uri: null,
@@ -349,7 +349,7 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
         expiry_date: daysFromNow(600), submitted_at: monthsAgo(1),
         created_at: monthsAgo(1), updated_at: monthsAgo(1),
     },
-    // Deepak — rejected, so the resubmit path has something to fix.
+    // Deepak â€” rejected, so the resubmit path has something to fix.
     {
         id: 'd-007', user_id: 'u-rider-004', doc_type: 'aadhaar',
         doc_number: 'MNOP55667788', front_uri: PLACEHOLDER_IMAGE, back_uri: null,
@@ -359,7 +359,7 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
         expiry_date: null, submitted_at: monthsAgo(3),
         created_at: monthsAgo(3), updated_at: monthsAgo(2),
     },
-    // Arjun — verified ID but an EXPIRED licence: drops him out of 'verified'.
+    // Arjun â€” verified ID but an EXPIRED licence: drops him out of 'verified'.
     {
         id: 'd-008', user_id: 'u-rider-006', doc_type: 'aadhaar',
         doc_number: 'QRST99887766', front_uri: PLACEHOLDER_IMAGE, back_uri: null,
@@ -398,7 +398,7 @@ export const SEED_AUDIT: MockAuditRow[] = [
 
 /** Demo accounts surfaced as one-tap buttons on the login screen. */
 export const DEMO_ACCOUNTS: { email: string; label: string; hint: string }[] = [
-    { email: 'admin@fleet.com', label: 'Admin', hint: 'Full access — users, KYC review, fleet' },
+    { email: 'admin@fleet.com', label: 'Admin', hint: 'Full access â€” users, KYC review, fleet' },
     { email: 'staff@fleet.com', label: 'Staff', hint: 'Review KYC, manage riders' },
     { email: 'rider@fleet.com', label: 'Rider', hint: 'Verified rider with a scooter' },
 ];
@@ -410,7 +410,7 @@ export const KYC_STATUS_ORDER: KycStatus[] = [
 export type { ApiDocument };
 
 // ---------------------------------------------------------------------------
-// Vehicle catalog — kept in sync conceptually with
+// Vehicle catalog â€” kept in sync conceptually with
 // supabase/migrations/20260721090200_vehicle_catalog_seed.sql. Original copy,
 // no third-party branding.
 // ---------------------------------------------------------------------------
@@ -430,7 +430,7 @@ const NR_VOLT_X1_DETAIL: ApiVehicleModelDetail = {
     description:
         'The NR Volt X1 is our flagship electric scooter, built for daily commuting and weekend rides ' +
         'alike. A removable battery pack means you can charge indoors, swap at a station, or top up at ' +
-        'home — whatever fits your day.',
+        'home â€” whatever fits your day.',
     battery_range_km: 151,
     top_speed_kmph: 90,
     charging_time_hours: 3.5,
@@ -446,19 +446,13 @@ const NR_VOLT_X1_DETAIL: ApiVehicleModelDetail = {
     ],
     is_featured: true,
     vendor: NR_VOLT_VENDOR,
-    hero_image_url: 'https://placehold.co/1200x800/0f172a/ffffff?text=NR+Volt+X1',
+    image_url: 'https://placehold.co/1200x800/0f172a/ffffff?text=NR+Volt+X1',
     starting_price: 149,
-    images: [
-        { id: 'img-1', url: 'https://placehold.co/1200x800/0f172a/ffffff?text=NR+Volt+X1+Hero', alt_text: 'NR Volt X1 hero shot, three-quarter front view', is_hero: true, sort_order: 0 },
-        { id: 'img-2', url: 'https://placehold.co/1200x800/1e293b/ffffff?text=NR+Volt+X1+Side', alt_text: 'NR Volt X1 side profile', is_hero: false, sort_order: 1 },
-        { id: 'img-3', url: 'https://placehold.co/1200x800/1e293b/ffffff?text=NR+Volt+X1+Console', alt_text: 'NR Volt X1 handlebar console close-up', is_hero: false, sort_order: 2 },
-        { id: 'img-4', url: 'https://placehold.co/1200x800/1e293b/ffffff?text=NR+Volt+X1+Battery', alt_text: 'NR Volt X1 removable battery pack', is_hero: false, sort_order: 3 },
-    ],
     plans: [
-        { id: 'plan-daily', name: 'NR Volt X1 — Daily', billing_cycle: 'daily', price: 149, included_minutes: 120 },
-        { id: 'plan-weekly', name: 'NR Volt X1 — Weekly', billing_cycle: 'weekly', price: 799, included_minutes: 900 },
-        { id: 'plan-monthly', name: 'NR Volt X1 — Monthly', billing_cycle: 'monthly', price: 2499, included_minutes: 4000 },
-        { id: 'plan-yearly', name: 'NR Volt X1 — Yearly', billing_cycle: 'yearly', price: 24999, included_minutes: null },
+        { id: 'plan-daily', name: 'NR Volt X1 â€” Daily', billing_cycle: 'daily', price: 149, included_minutes: 120 },
+        { id: 'plan-weekly', name: 'NR Volt X1 â€” Weekly', billing_cycle: 'weekly', price: 799, included_minutes: 900 },
+        { id: 'plan-monthly', name: 'NR Volt X1 â€” Monthly', billing_cycle: 'monthly', price: 2499, included_minutes: 4000 },
+        { id: 'plan-yearly', name: 'NR Volt X1 â€” Yearly', billing_cycle: 'yearly', price: 24999, included_minutes: null },
     ],
     availability: { available_count: 4, status: 'available' },
 };
@@ -475,12 +469,12 @@ export const SEED_VEHICLE_MODELS: ApiVehicleModel[] = SEED_VEHICLE_MODELS_DETAIL
     charging_time_hours: m.charging_time_hours,
     is_featured: m.is_featured,
     vendor: m.vendor,
-    hero_image_url: m.hero_image_url,
+    image_url: m.image_url,
     starting_price: m.starting_price,
 }));
 
 // ---------------------------------------------------------------------------
-// Bookings — pickup station, kept in sync conceptually with
+// Bookings â€” pickup station, kept in sync conceptually with
 // supabase/migrations/20260721100200_bookings_seed.sql (same "MG Road Hub"
 // station in Kochi). Mock mode has no PostGIS, so lat/lng are plain numbers.
 // ---------------------------------------------------------------------------

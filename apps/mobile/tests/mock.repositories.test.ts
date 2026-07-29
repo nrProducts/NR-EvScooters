@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+﻿import { beforeEach, describe, expect, it } from 'vitest';
 import {
   MockAuthRepository, MockKycRepository, MockReferralRepository, MockUserRepository, resetMockDb,
-} from '../src/services/mock/mock.repositories';
+} from './fixtures/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
 import type { LocalFile } from '../src/types/api';
 

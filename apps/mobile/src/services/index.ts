@@ -1,14 +1,8 @@
-import { ENV } from '../constants/env';
 import {
     ApiBookingRepository, ApiKycRepository, ApiMaintenanceRepository, ApiNotificationRepository,
     ApiReferralRepository, ApiRentalRepository, ApiSupportRepository, ApiUserRepository,
     ApiVehicleCatalogRepository, SupabaseAuthRepository,
 } from './api.repositories';
-import {
-    MockAuthRepository, MockBookingRepository, MockKycRepository, MockMaintenanceRepository,
-    MockNotificationRepository, MockReferralRepository, MockRentalRepository, MockSupportRepository,
-    MockUserRepository, MockVehicleCatalogRepository,
-} from './mock/mock.repositories';
 import type {
     AuthRepository, BookingRepository, KycRepository, MaintenanceRepository,
     NotificationRepository, ReferralRepository, RentalRepository, SupportRepository,
@@ -17,60 +11,33 @@ import type {
 
 /**
  * The only place the app decides where data comes from. Everything downstream
- * — hooks, screens, the auth store — talks to these interfaces and cannot tell
- * the difference.
+ * — hooks, screens, the auth store — talks to these interfaces.
  *
- * Flip EXPO_PUBLIC_USE_MOCK in apps/mobile/.env, restart Metro with -c.
+ * There is deliberately no in-app mock mode: the app always talks to the real
+ * backend, so a build with a missing .env fails loudly instead of silently
+ * shipping fake data. The in-memory implementations still exist as test
+ * fixtures under tests/fixtures/mock/, unreachable from app code.
  */
-export const authRepository: AuthRepository = ENV.useMock
-    ? new MockAuthRepository()
-    : new SupabaseAuthRepository();
+export const authRepository: AuthRepository = new SupabaseAuthRepository();
 
-export const userRepository: UserRepository = ENV.useMock
-    ? new MockUserRepository()
-    : new ApiUserRepository();
+export const userRepository: UserRepository = new ApiUserRepository();
 
-export const kycRepository: KycRepository = ENV.useMock
-    ? new MockKycRepository()
-    : new ApiKycRepository();
+export const kycRepository: KycRepository = new ApiKycRepository();
 
-export const vehicleCatalogRepository: VehicleCatalogRepository = ENV.useMock
-    ? new MockVehicleCatalogRepository()
-    : new ApiVehicleCatalogRepository();
+export const vehicleCatalogRepository: VehicleCatalogRepository = new ApiVehicleCatalogRepository();
 
-export const bookingRepository: BookingRepository = ENV.useMock
-    ? new MockBookingRepository()
-    : new ApiBookingRepository();
+export const bookingRepository: BookingRepository = new ApiBookingRepository();
 
-export const notificationRepository: NotificationRepository = ENV.useMock
-    ? new MockNotificationRepository()
-    : new ApiNotificationRepository();
+export const notificationRepository: NotificationRepository = new ApiNotificationRepository();
 
-export const rentalRepository: RentalRepository = ENV.useMock
-    ? new MockRentalRepository()
-    : new ApiRentalRepository();
+export const rentalRepository: RentalRepository = new ApiRentalRepository();
 
-export const maintenanceRepository: MaintenanceRepository = ENV.useMock
-    ? new MockMaintenanceRepository()
-    : new ApiMaintenanceRepository();
+export const maintenanceRepository: MaintenanceRepository = new ApiMaintenanceRepository();
 
-export const supportRepository: SupportRepository = ENV.useMock
-    ? new MockSupportRepository()
-    : new ApiSupportRepository();
+export const supportRepository: SupportRepository = new ApiSupportRepository();
 
-export const referralRepository: ReferralRepository = ENV.useMock
-    ? new MockReferralRepository()
-    : new ApiReferralRepository();
+export const referralRepository: ReferralRepository = new ApiReferralRepository();
 
-if (ENV.useMock && __DEV__) {
-    console.info(
-        '[services] MOCK MODE — in-memory data, no backend. ' +
-        'Set EXPO_PUBLIC_USE_MOCK=false in apps/mobile/.env to use the real API.',
-    );
-}
-
-export { DEMO_ACCOUNTS } from './mock/seed';
-export { resetMockDb } from './mock/mock.repositories';
 export type {
     AuthRepository, BookingRepository, KycRepository, MaintenanceRepository,
     NotificationRepository, ReferralRepository, RentalRepository, SupportRepository, UserRepository,

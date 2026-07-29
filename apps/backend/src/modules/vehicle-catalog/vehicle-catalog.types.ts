@@ -10,14 +10,6 @@ export interface VendorSummary {
     logo_url: string | null;
 }
 
-export interface VehicleImage {
-    id: string;
-    url: string;
-    alt_text: string | null;
-    is_hero: boolean;
-    sort_order: number;
-}
-
 export interface PlanSummary {
     id: string;
     name: string;
@@ -36,7 +28,8 @@ export interface VehicleModelListItem {
     charging_time_hours: number | null;
     is_featured: boolean;
     vendor: VendorSummary | null;
-    hero_image_url: string | null;
+    /** vehicle_models.image — a directly-fetchable public URL, or null. */
+    image_url: string | null;
     starting_price: number | null;
 }
 
@@ -46,7 +39,6 @@ export interface VehicleModelDetail extends VehicleModelListItem {
     battery_capacity: string | null;
     features: string[];
     safety_features: string[];
-    images: VehicleImage[];
     plans: PlanSummary[];
     availability: {
         available_count: number;

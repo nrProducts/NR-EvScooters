@@ -1,8 +1,8 @@
-import { ApiError } from '../../lib/ApiError';
-import { isValidStartDay } from '../../lib/bookingDays';
-import { computeCancellationCharge } from '../../lib/cancellationPolicy';
-import { returnDeadlineFor } from '../../lib/returnPolicy';
-import { MANDATORY_KYC_DOC_TYPES } from '../../types/api';
+﻿import { ApiError } from '../../../src/lib/ApiError';
+import { isValidStartDay } from '../../../src/lib/bookingDays';
+import { computeCancellationCharge } from '../../../src/lib/cancellationPolicy';
+import { returnDeadlineFor } from '../../../src/lib/returnPolicy';
+import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
     ApiMaintenanceRecord, ApiMe, ApiPickupBooking, ApiReferralSummary, ApiRental, ApiSignedUrl,
@@ -11,14 +11,14 @@ import type {
     CreateUserPayload, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
     RentalStatus, ReturnRequestPayload, RoleName, StatusAction, SupportPriority, SupportStatus,
     UpdateSupportRequestPayload, UpdateUserPayload, VerificationStatus,
-} from '../../types/api';
+} from '../../../src/types/api';
 import type {
     AuthRepository, BookingRepository, KycQueueParams, KycRepository, MaintenanceRepository,
     NotificationRepository, PickupQueueParams, ReferralRepository, RentalRepository, SessionRef,
     SupportQueueParams, SupportRepository, UpdateDocumentInput, UploadDocumentInput,
     UploadPhotoResult, UserRepository, VehicleCatalogRepository,
-} from '../types';
-import type { ApiNotification } from '../../types/api';
+} from '../../../src/services/types';
+import type { ApiNotification } from '../../../src/types/api';
 import {
     DEMO_ACCOUNTS, MockAuditRow, MockDocumentRow, MockUserRow, PLACEHOLDER_IMAGE,
     SEED_AUDIT, SEED_DOCUMENTS, SEED_STATIONS, SEED_USERS, SEED_VEHICLE_MODELS,
@@ -31,7 +31,7 @@ import {
 
 /**
  * Lives for the lifetime of the JS bundle: edits survive navigation but reset
- * on reload. That is deliberate — a mock that persists is a mock you start
+ * on reload. That is deliberate â€” a mock that persists is a mock you start
  * debugging instead of the app.
  */
 interface MockBookingRow {
@@ -150,7 +150,7 @@ function audit(action: string, targetUserId: string, after?: Record<string, unkn
     });
 }
 
-/** Mirrors notifyUser on the backend, minus real push delivery — mock mode
+/** Mirrors notifyUser on the backend, minus real push delivery â€” mock mode
  *  has no device token to send to, so every entry just lands as "sent". */
 function notify(userId: string, input: { template: string; title: string; body: string; screen?: string }) {
     db.notifications.unshift({
@@ -319,9 +319,6 @@ function assertNotLastAdmin(userId: string) {
 // ---------------------------------------------------------------------------
 
 export class MockAuthRepository implements AuthRepository {
-    readonly requiresPassword = false;
-    readonly isMock = true;
-
     /** Remembers the number a code was "sent" to, so verify can sanity-check. */
     private pendingPhone: string | null = null;
 
@@ -350,7 +347,7 @@ export class MockAuthRepository implements AuthRepository {
         let user = db.users.find((u) => (u.phone ?? '').replace(/[^\d]/g, '') === digits);
         if (!user) {
             // No seeded rider at this number: mirror production's
-            // shouldCreateUser=true — a brand-new blank profile, which is what
+            // shouldCreateUser=true â€” a brand-new blank profile, which is what
             // drives the profile-setup/onboarding routing in _layout.tsx.
             user = {
                 id: uid('u'),
@@ -440,7 +437,7 @@ export class MockUserRepository implements UserRepository {
             can_rent: detail.kyc_status === 'verified' && row.account_status === 'active',
             is_admin: isAdminRow(row),
             // No rental system in the mock db yet (booking flow is a later
-            // phase) — an assigned scooter is the closest existing stand-in
+            // phase) â€” an assigned scooter is the closest existing stand-in
             // for "has a live rental" so the post-booking dashboard demoes.
             has_active_rental: !!row.assigned_vehicle,
             has_active_booking: db.bookings.some(
@@ -1085,7 +1082,7 @@ export class MockKycRepository implements KycRepository {
         notify(userId, {
             template: 'kyc_approved',
             title: 'KYC Approved',
-            body: "You're verified — go ahead and book a scooter.",
+            body: "You're verified â€” go ahead and book a scooter.",
             screen: 'home',
         });
         return kycSummaryFor(userId, true);
@@ -1181,7 +1178,7 @@ export class MockVehicleCatalogRepository implements VehicleCatalogRepository {
 }
 
 // ---------------------------------------------------------------------------
-// Bookings (Phase 1 — no live payment)
+// Bookings (Phase 1 â€” no live payment)
 // ---------------------------------------------------------------------------
 
 function toApiBooking(row: MockBookingRow): ApiBooking {
@@ -1197,7 +1194,7 @@ function toApiBooking(row: MockBookingRow): ApiBooking {
         vehicle_model: model ? { id: model.id, name: model.name } : null,
         station: station ? { id: station.id, name: station.name, code: station.code, lat: station.lat, lng: station.lng } : null,
         plan: plan ? { id: plan.id, name: plan.name, billing_cycle: plan.billing_cycle, price: plan.price } : null,
-        // Mock DB has no per-unit vehicle allocation concept — matches
+        // Mock DB has no per-unit vehicle allocation concept â€” matches
         // production's pre-pickup reality when no unit has been reserved yet.
         vehicle: null,
         referral_discount_amount: null,
@@ -1233,7 +1230,7 @@ function toApiRental(row: MockRentalRow): ApiRental {
         ended_at: row.ended_at,
         // Mock mode has no per-unit fleet inventory wired to bookings (that
         // lives in the separate useFleetStore used by the admin mock
-        // screens) — stand in with the booked model's name.
+        // screens) â€” stand in with the booked model's name.
         vehicle: model
             ? { id: row.vehicle_id, name: model.name, registration_number: 'MOCK-0001', battery_percentage: 87 }
             : null,
@@ -1285,7 +1282,7 @@ export class MockBookingRepository implements BookingRepository {
             plan_id: payload.plan_id,
             start_day: payload.start_day,
             // No payment step exists yet, so a booking is immediately ready
-            // for pickup — mirrors createBooking in the real backend.
+            // for pickup â€” mirrors createBooking in the real backend.
             status: 'confirmed',
             created_at: nowIso(),
         };
@@ -1306,7 +1303,7 @@ export class MockBookingRepository implements BookingRepository {
 
     /**
      * Mirrors cancelMyBooking on the backend, including the 404-not-403 choice
-     * for another rider's booking. No vehicle bookkeeping — mock mode has no
+     * for another rider's booking. No vehicle bookkeeping â€” mock mode has no
      * per-unit allocation (see toApiBooking).
      */
     async cancel(bookingId: string, reason?: string): Promise<ApiBooking> {
@@ -1377,7 +1374,7 @@ export class MockBookingRepository implements BookingRepository {
         await delay(150);
         const station = SEED_STATIONS[0];
         if (!station) throw new ApiError(404, 'NOT_FOUND', 'No pickup station is available yet.');
-        // Mock mode has a single seeded station — distance is a stand-in,
+        // Mock mode has a single seeded station â€” distance is a stand-in,
         // not a real haversine calculation (the real API computes this via
         // PostGIS; see stations.service.ts's nearest_station RPC).
         return { ...station, distance_km: 2.4 };
@@ -1407,7 +1404,7 @@ export class MockBookingRepository implements BookingRepository {
         const booking = db.bookings.find((b) => b.id === bookingId);
         if (!booking) throw new ApiError(404, 'NOT_FOUND', 'Booking not found.');
         // Mock mode has no per-unit fleet inventory tied to bookings (see
-        // toApiRental's comment) — fabricate a couple of plausible options
+        // toApiRental's comment) â€” fabricate a couple of plausible options
         // so the staff picker UI has something to demo against.
         return [
             { id: 'mock-vehicle-1', name: 'Unit A', registration_number: 'MOCK-0001', battery_percentage: 92 },
@@ -1477,9 +1474,9 @@ export class MockRentalRepository implements RentalRepository {
      * Mirrors requestReturn on the backend, including the 404-not-403 choice
      * for another rider's rental.
      *
-     * ⚠️ Deliberately does NOT clear the user's assigned_vehicle. me() derives
+     * âš ï¸ Deliberately does NOT clear the user's assigned_vehicle. me() derives
      * has_active_rental from `!!row.assigned_vehicle`, and the rider still
-     * physically holds the scooter until staff confirm the handover — so the
+     * physically holds the scooter until staff confirm the handover â€” so the
      * flag must stay true. Clearing it here is the natural instinct when
      * writing a "return" method and would be wrong.
      */
@@ -1503,7 +1500,7 @@ export class MockRentalRepository implements RentalRepository {
         row.return_reason = payload.reason;
         row.return_feedback = payload.feedback ?? null;
         row.return_due_at = returnDeadlineFor(now).toISOString();
-        // status stays 'active' — see the doc comment above.
+        // status stays 'active' â€” see the doc comment above.
 
         const existingFeedback = db.rentalFeedback.find((f) => f.rental_id === rentalId);
         if (existingFeedback) {
@@ -1689,7 +1686,7 @@ export class MockReferralRepository implements ReferralRepository {
 }
 
 export class MockMaintenanceRepository implements MaintenanceRepository {
-    /** Mock DB has no vehicle_maintenance concept — matches production's early-days reality anyway. */
+    /** Mock DB has no vehicle_maintenance concept â€” matches production's early-days reality anyway. */
     async history(): Promise<Paginated<ApiMaintenanceRecord>> {
         await delay(150);
         requireSession();

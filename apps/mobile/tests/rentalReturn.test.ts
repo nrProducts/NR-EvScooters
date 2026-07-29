@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+﻿import { beforeEach, describe, expect, it } from 'vitest';
 import {
   LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS,
   computeLateReturnPenalty, returnDeadlineFor,
@@ -6,7 +6,7 @@ import {
 import {
   MockAuthRepository, MockBookingRepository, MockRentalRepository, MockUserRepository,
   resetMockDb,
-} from '../src/services/mock/mock.repositories';
+} from './fixtures/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
 
 /**
@@ -40,7 +40,7 @@ describe('returnDeadlineFor', () => {
   });
 });
 
-describe('computeLateReturnPenalty — on time', () => {
+describe('computeLateReturnPenalty â€” on time', () => {
   it('is free when handed over in the morning of the due day', () => {
     const c = computeLateReturnPenalty({ returnDueAt: dueAt(0), now: at(0, 9) });
     expect(c.daysLate).toBe(0);
@@ -61,7 +61,7 @@ describe('computeLateReturnPenalty — on time', () => {
   });
 });
 
-describe('computeLateReturnPenalty — late', () => {
+describe('computeLateReturnPenalty â€” late', () => {
   it('charges one day the moment the clock rolls past midnight', () => {
     const c = computeLateReturnPenalty({ returnDueAt: dueAt(0), now: at(1, 0, 0, 30) });
     expect(c.daysLate).toBe(1);
@@ -80,7 +80,7 @@ describe('computeLateReturnPenalty — late', () => {
   });
 });
 
-describe('computeLateReturnPenalty — no request to be late against', () => {
+describe('computeLateReturnPenalty â€” no request to be late against', () => {
   it('charges nothing when there was never a return request', () => {
     const c = computeLateReturnPenalty({ returnDueAt: null, now: at(30) });
     expect(c.hadRequest).toBe(false);

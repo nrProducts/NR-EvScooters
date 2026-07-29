@@ -184,8 +184,4 @@ export interface AuthRepository {
     signOut(): Promise<void>;
     /** Fires on external session changes (token refresh, expiry). */
     subscribe(onChange: (ref: SessionRef | null) => void): () => void;
-    /** Mock mode has no password field to show. */
-    readonly requiresPassword: boolean;
-    /** Mock mode fakes OTP/Google; real mode talks to Supabase. */
-    readonly isMock: boolean;
 }

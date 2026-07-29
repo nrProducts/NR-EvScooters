@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+﻿import { beforeEach, describe, expect, it } from 'vitest';
 import { buildMapsUrl, buildWebMapsUrl } from '../src/lib/maps';
 import { getNextDays, isValidStartDay } from '../src/lib/bookingDays';
 import {
   MockAuthRepository, MockBookingRepository, MockUserRepository,
   backdateBookingCreatedAt as backdateBooking, resetMockDb,
-} from '../src/services/mock/mock.repositories';
+} from './fixtures/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
 import {
   FREE_CANCELLATION_GRACE_MINUTES, computeCancellationCharge,
@@ -207,7 +207,7 @@ describe('MockBookingRepository.cancel', () => {
     const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(1) });
     const price = created.plan?.price ?? 0;
 
-    // Age the booking past the grace window — otherwise a freshly created mock
+    // Age the booking past the grace window â€” otherwise a freshly created mock
     // booking is always free and the late path is unreachable.
     const createdAt = new Date(Date.now() - (FREE_CANCELLATION_GRACE_MINUTES + 5) * 60_000).toISOString();
     backdateBooking(created.id, createdAt);
