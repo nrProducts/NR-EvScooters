@@ -82,10 +82,20 @@ export default {
           from: { transform: "translateX(-8px)", opacity: "0" },
           to: { transform: "translateX(0)", opacity: "1" },
         },
+        "accordion-down": {
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
       },
       animation: {
         "fade-in": "fade-in 0.2s ease-out",
         "slide-in": "slide-in 0.2s ease-out",
+        "accordion-down": "accordion-down 0.25s ease-out",
+        "accordion-up": "accordion-up 0.25s ease-out",
       },
     },
   },

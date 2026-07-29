@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { BatteryFull, Gauge } from 'lucide-react-native';
 import { Badge } from './ui/Badge';
 import { SpecRow } from './SpecRow';
-import { useHasActiveBooking, useHasActiveRental } from '../store/useAuthStore';
+import { useCanRent, useHasActiveBooking, useHasActiveRental } from '../store/useAuthStore';
 import { COLORS } from '../constants/theme';
 import type { ApiVehicleModel } from '../types/api';
 
@@ -15,6 +15,7 @@ interface FeaturedScooterCardProps {
 /** Premium hero card for the Home screen's single featured scooter. */
 export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model }) => {
   const router = useRouter();
+  const canRent = useCanRent();
   const hasActiveBooking = useHasActiveBooking();
   const hasActiveRental = useHasActiveRental();
   const alreadyBookedOrRenting = hasActiveBooking || hasActiveRental;
@@ -76,12 +77,18 @@ export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model 
           </TouchableOpacity>
           <TouchableOpacity
             onPress={bookNow}
-            disabled={alreadyBookedOrRenting}
+            disabled={alreadyBookedOrRenting || !canRent}
             className="flex-1 py-3 rounded-2xl items-center"
-            style={{ backgroundColor: COLORS.primary, opacity: alreadyBookedOrRenting ? 0.5 : 1 }}
+            style={{ backgroundColor: COLORS.primary, opacity: alreadyBookedOrRenting || !canRent ? 0.5 : 1 }}
           >
             <Text className="text-white text-sm font-bold">
-              {hasActiveRental ? 'Active Rental' : hasActiveBooking ? 'Booking Pending' : 'Book Now'}
+              {hasActiveRental
+                ? 'Active Rental'
+                : hasActiveBooking
+                  ? 'Booking Pending'
+                  : !canRent
+                    ? 'Complete KYC to Book'
+                    : 'Book Now'}
             </Text>
           </TouchableOpacity>
         </View>

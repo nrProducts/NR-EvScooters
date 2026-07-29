@@ -162,9 +162,12 @@ async function requireActiveRental(id: string): Promise<RawAdminRentalRow> {
 }
 
 /**
- * Normal ride end. trg_sync_vehicle_status_fn (20260727095801) auto-returns
- * the vehicle 'assigned' -> 'available' the moment status leaves 'active' —
- * nothing here has to touch the vehicle row.
+ * Normal ride end. trg_sync_vehicle_status_fn (20260727095801) also returns
+ * the vehicle 'assigned' -> 'available', but only when the vehicle is still
+ * exactly 'assigned' at that instant — if it drifted to some other status in
+ * the meantime (e.g. a direct staff status override), that trigger silently
+ * no-ops and strands the vehicle. Set it explicitly here too, the same way
+ * moveRideToMaintenance already does, so completing a ride is never a no-op.
  */
 export async function completeRide(
     id: string,
@@ -184,6 +187,12 @@ export async function completeRide(
         .select(ADMIN_RENTAL_COLUMNS)
         .single();
     if (error) throw error;
+
+    const { error: vehicleError } = await supabaseAdmin
+        .from("vehicles")
+        .update({ status: "available" })
+        .eq("id", before.vehicle_id);
+    if (vehicleError) throw vehicleError;
 
     const rental = toAdminRentalRow(data as unknown as RawAdminRentalRow);
 

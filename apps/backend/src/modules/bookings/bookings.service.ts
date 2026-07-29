@@ -213,7 +213,7 @@ const PICKUP_BOOKING_COLUMNS = `
     stations(id, name, code),
     plans(id, name, billing_cycle, price),
     vehicles(id, name, registration_number, battery_percentage, status),
-    users(id, full_name, phone)
+    users!bookings_user_id_fkey(id, full_name, phone)
 `;
 
 type RawPickupBookingRow = RawBookingRow & { users: unknown };

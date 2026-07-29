@@ -1,6 +1,7 @@
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import { notify } from './confirm';
 import type { LocalFile } from '../types/api';
 
 /** Must match the backend's allow-list and the bucket's allowed_mime_types. */
@@ -19,11 +20,11 @@ function extensionOf(mime: string): string {
  */
 function validate(file: LocalFile, size?: number): boolean {
   if (!ALLOWED.includes(file.mimeType)) {
-    Alert.alert('Unsupported file', 'Upload a JPEG, PNG or PDF.');
+    notify('Unsupported file', 'Upload a JPEG, PNG or PDF.');
     return false;
   }
   if (size !== undefined && size > MAX_BYTES) {
-    Alert.alert('File too large', 'Each document must be 10 MB or smaller.');
+    notify('File too large', 'Each document must be 10 MB or smaller.');
     return false;
   }
   return true;
@@ -32,7 +33,7 @@ function validate(file: LocalFile, size?: number): boolean {
 async function fromCamera(): Promise<LocalFile | null> {
   const perm = await ImagePicker.requestCameraPermissionsAsync();
   if (!perm.granted) {
-    Alert.alert('Camera unavailable', 'Allow camera access to photograph your document.');
+    notify('Camera unavailable', 'Allow camera access to photograph your document.');
     return null;
   }
 
@@ -56,7 +57,7 @@ async function fromCamera(): Promise<LocalFile | null> {
 async function fromLibrary(): Promise<LocalFile | null> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) {
-    Alert.alert('Photos unavailable', 'Allow photo access to pick your document.');
+    notify('Photos unavailable', 'Allow photo access to pick your document.');
     return null;
   }
 
@@ -93,8 +94,23 @@ async function fromFiles(): Promise<LocalFile | null> {
 /**
  * Offers camera / photos / files and resolves with the chosen file, or null
  * if the rider backed out.
+ *
+ * react-native-web's Alert.alert() is a total no-op, so the native action
+ * sheet below never appears in a browser — same limitation confirm.ts
+ * documents for confirm/notify dialogs. On web these fall back to
+ * window.confirm, called synchronously (no `await` in between) so the
+ * eventual ImagePicker/DocumentPicker call still runs inside the click's
+ * user-activation window, which browsers require to open a file/camera
+ * picker at all.
  */
 export function pickDocument(): Promise<LocalFile | null> {
+  if (Platform.OS === 'web') {
+    const wantsPdf = window.confirm('Upload a PDF file? Press Cancel to upload a photo instead.');
+    if (wantsPdf) return fromFiles();
+    const wantsCamera = window.confirm('Take a new photo? Press Cancel to choose an existing photo instead.');
+    return wantsCamera ? fromCamera() : fromLibrary();
+  }
+
   return new Promise((resolve) => {
     Alert.alert('Add document', 'How would you like to provide this document?', [
       { text: 'Take Photo', onPress: () => void fromCamera().then(resolve) },
@@ -111,6 +127,11 @@ export function pickDocument(): Promise<LocalFile | null> {
  * background) before invoking this, not inside it.
  */
 export function pickPhoto(): Promise<LocalFile | null> {
+  if (Platform.OS === 'web') {
+    const wantsCamera = window.confirm('Take a new photo? Press Cancel to choose from your files instead.');
+    return wantsCamera ? fromCamera() : fromLibrary();
+  }
+
   return new Promise((resolve) => {
     Alert.alert('Add photo', 'How would you like to provide your photo?', [
       { text: 'Take Photo', onPress: () => void fromCamera().then(resolve) },

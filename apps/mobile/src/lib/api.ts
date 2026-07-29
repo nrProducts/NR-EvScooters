@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { ENV } from '../constants/env';
 import { getAccessToken, getSupabase } from './supabase';
 import { ApiError } from './ApiError';
@@ -122,9 +123,17 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 /**
  * React Native's FormData takes {uri, name, type} for a file part; it streams
- * from disk rather than loading base64 into JS memory.
+ * from disk rather than loading base64 into JS memory. The browser's real
+ * FormData has no idea what to do with that shape — it needs an actual
+ * Blob/File — so on web, fetch the blob:/data: URL expo-image-picker's web
+ * shim hands back and re-append it as a proper Blob instead.
  */
-function appendFile(form: FormData, field: string, file: LocalFile): void {
+async function appendFile(form: FormData, field: string, file: LocalFile): Promise<void> {
+    if (Platform.OS === 'web') {
+        const blob = await (await fetch(file.uri)).blob();
+        form.append(field, blob, file.name);
+        return;
+    }
     form.append(field, {
         uri: file.uri,
         name: file.name,
@@ -209,9 +218,9 @@ export const api = {
     changeStatus: (id: string, action: StatusAction, reason?: string) =>
         request<ApiUserDetail>(`/users/${id}/status`, { method: 'PATCH', body: { action, reason } }),
 
-    uploadMyPhoto: (photo: LocalFile) => {
+    uploadMyPhoto: async (photo: LocalFile) => {
         const form = new FormData();
-        appendFile(form, 'photo', photo);
+        await appendFile(form, 'photo', photo);
         return request<{ profile_photo_url: string }>('/users/me/photo', { method: 'POST', form });
     },
 
@@ -243,7 +252,7 @@ export const api = {
     // --- rider KYC -------------------------------------------------------
     myKyc: () => request<ApiKycSummary>('/users/me/kyc'),
 
-    uploadMyDocument: (input: {
+    uploadMyDocument: async (input: {
         doc_type: KycDocType;
         doc_number: string;
         expiry_date?: string;
@@ -254,20 +263,20 @@ export const api = {
         form.append('doc_type', input.doc_type);
         form.append('doc_number', input.doc_number);
         if (input.expiry_date) form.append('expiry_date', input.expiry_date);
-        appendFile(form, 'front', input.front);
-        if (input.back) appendFile(form, 'back', input.back);
+        await appendFile(form, 'front', input.front);
+        if (input.back) await appendFile(form, 'back', input.back);
         return request<ApiDocument>('/users/me/kyc/documents', { method: 'POST', form });
     },
 
-    updateMyDocument: (
+    updateMyDocument: async (
         documentId: string,
         input: { doc_number?: string; expiry_date?: string; front?: LocalFile; back?: LocalFile },
     ) => {
         const form = new FormData();
         if (input.doc_number) form.append('doc_number', input.doc_number);
         if (input.expiry_date) form.append('expiry_date', input.expiry_date);
-        if (input.front) appendFile(form, 'front', input.front);
-        if (input.back) appendFile(form, 'back', input.back);
+        if (input.front) await appendFile(form, 'front', input.front);
+        if (input.back) await appendFile(form, 'back', input.back);
         return request<ApiDocument>(`/users/me/kyc/documents/${documentId}`, { method: 'PATCH', form });
     },
 

@@ -214,12 +214,18 @@ export default function VehicleDetailsScreen() {
         >
           <TouchableOpacity
             onPress={handleBookNow}
-            disabled={alreadyBookedOrRenting}
+            disabled={alreadyBookedOrRenting || !canRent}
             className="py-4 rounded-2xl items-center"
-            style={{ backgroundColor: COLORS.primary, opacity: alreadyBookedOrRenting ? 0.5 : 1 }}
+            style={{ backgroundColor: COLORS.primary, opacity: alreadyBookedOrRenting || !canRent ? 0.5 : 1 }}
           >
             <Text className="text-white text-sm font-bold">
-              {hasActiveRental ? 'Active Rental' : hasActiveBooking ? 'Booking Pending' : 'Book Now'}
+              {hasActiveRental
+                ? 'Active Rental'
+                : hasActiveBooking
+                  ? 'Booking Pending'
+                  : !canRent
+                    ? 'Complete KYC to Book'
+                    : 'Book Now'}
             </Text>
           </TouchableOpacity>
         </View>
