@@ -1,8 +1,9 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { PageFade } from "@/components/motion/PageFade";
 import { useUiStore } from "@/store/uiStore";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,7 @@ export function DashboardLayout() {
   const user = useAuthStore((s) => s.user);
   const { sidebarCollapsed, setSidebarCollapsed } = useUiStore();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const location = useLocation();
 
   if (!user) return null;
 
@@ -41,7 +43,9 @@ export function DashboardLayout() {
         <Header onOpenMobileNav={() => setMobileNavOpen(true)} />
         <main className="flex-1 overflow-y-auto scrollbar-thin pb-16 sm:pb-6">
           <div className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6">
-            <Outlet />
+            <PageFade key={location.pathname}>
+              <Outlet />
+            </PageFade>
           </div>
         </main>
       </div>

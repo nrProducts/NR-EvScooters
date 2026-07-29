@@ -7,13 +7,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
-import { useRider } from "@/hooks/useRiders";
+import { useUser } from "@/hooks/useUsers";
 import { initials, formatDate } from "@/lib/utils";
 
-export default function RiderDetailPage() {
+export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: rider, isLoading, isError, refetch } = useRider(id);
+  const { data: user, isLoading, isError, refetch } = useUser(id);
 
   if (isLoading) {
     return (
@@ -23,28 +23,29 @@ export default function RiderDetailPage() {
       </div>
     );
   }
-  if (isError || !rider) return <ErrorState message="Rider not found." onRetry={() => refetch()} />;
+  if (isError || !user) return <ErrorState message="User not found." onRetry={() => refetch()} />;
 
-  const address = [rider.address_line_1, rider.address_line_2, rider.city, rider.state, rider.postal_code]
+  const address = [user.address_line_1, user.address_line_2, user.city, user.state, user.postal_code]
     .filter(Boolean)
     .join(", ");
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/riders")}>
+        <Button variant="ghost" size="icon" onClick={() => navigate("/users")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <Avatar className="h-10 w-10">
-          <AvatarImage src={rider.profile_photo_url ?? undefined} alt={rider.full_name} />
-          <AvatarFallback>{initials(rider.full_name || "?")}</AvatarFallback>
+          <AvatarImage src={user.profile_photo_url ?? undefined} alt={user.full_name} />
+          <AvatarFallback>{initials(user.full_name || "?")}</AvatarFallback>
         </Avatar>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{rider.full_name || "Unnamed rider"}</h1>
-          <p className="text-sm text-muted-foreground">Joined {formatDate(rider.created_at)}</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{user.full_name || "Unnamed user"}</h1>
+          <p className="text-sm text-muted-foreground">Joined {formatDate(user.created_at)}</p>
         </div>
-        <StatusBadge status={rider.account_status} />
-        <StatusBadge status={rider.kyc_status} />
+        {user.roles.map((r) => <StatusBadge key={r} status={r} />)}
+        <StatusBadge status={user.account_status} />
+        <StatusBadge status={user.kyc_status} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -53,15 +54,15 @@ export default function RiderDetailPage() {
             <CardTitle>Profile</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Detail icon={Phone} label="Phone" value={rider.phone ?? "Not provided"} />
-            <Detail icon={Mail} label="Email" value={rider.email ?? "Not provided"} />
+            <Detail icon={Phone} label="Phone" value={user.phone ?? "Not provided"} />
+            <Detail icon={Mail} label="Email" value={user.email ?? "Not provided"} />
             <Detail icon={MapPin} label="Address" value={address || "Not provided"} />
             <Detail
               icon={Phone}
               label="Emergency contact"
               value={
-                rider.emergency_contact_name || rider.emergency_contact_phone
-                  ? `${rider.emergency_contact_name ?? ""} ${rider.emergency_contact_phone ?? ""}`.trim()
+                user.emergency_contact_name || user.emergency_contact_phone
+                  ? `${user.emergency_contact_name ?? ""} ${user.emergency_contact_phone ?? ""}`.trim()
                   : "Not provided"
               }
             />
@@ -73,10 +74,10 @@ export default function RiderDetailPage() {
             <CardTitle>Fleet &amp; plan</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <Row label="Assigned vehicle" value={rider.assigned_vehicle ? `${rider.assigned_vehicle.model} (${rider.assigned_vehicle.vin})` : "None"} />
-            <Row label="Current plan" value={rider.current_plan ? `${rider.current_plan.name} (${rider.current_plan.status})` : "None"} />
-            <Row label="KYC completion" value={`${rider.kyc_completion_percent}%`} />
-            <Row label="Roles" value={rider.roles.join(", ") || "—"} />
+            <Row label="Assigned vehicle" value={user.assigned_vehicle ? `${user.assigned_vehicle.model} (${user.assigned_vehicle.vin})` : "None"} />
+            <Row label="Current plan" value={user.current_plan ? `${user.current_plan.name} (${user.current_plan.status})` : "None"} />
+            <Row label="KYC completion" value={`${user.kyc_completion_percent}%`} />
+            <Row label="Roles" value={user.roles.join(", ") || "—"} />
           </CardContent>
         </Card>
       </div>
@@ -88,11 +89,11 @@ export default function RiderDetailPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {rider.documents.length === 0 ? (
-            <EmptyState title="No documents uploaded" description="This rider hasn't submitted any KYC documents yet." />
+          {user.documents.length === 0 ? (
+            <EmptyState title="No documents uploaded" description="This user hasn't submitted any KYC documents yet." />
           ) : (
             <div className="divide-y divide-border">
-              {rider.documents.map((doc) => (
+              {user.documents.map((doc) => (
                 <div key={doc.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
                   <div>
                     <p className="font-medium capitalize">{doc.doc_type.replace(/_/g, " ")}</p>

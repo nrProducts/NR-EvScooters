@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { MotionCard } from "@/components/motion/MotionCard";
 
 export function ChartCard({
   title,
@@ -15,8 +16,8 @@ export function ChartCard({
   className?: string;
 }) {
   return (
-    <Card className={className}>
-      <CardHeader className="flex-row items-start justify-between space-y-0">
+    <MotionCard className={className}>
+      <CardHeader className="flex-row items-start justify-between space-y-0 pb-3">
         <div>
           <CardTitle>{title}</CardTitle>
           {description && <CardDescription className="mt-1">{description}</CardDescription>}
@@ -24,6 +25,6 @@ export function ChartCard({
         {action}
       </CardHeader>
       <CardContent className="pt-2">{children}</CardContent>
-    </Card>
+    </MotionCard>
   );
 }

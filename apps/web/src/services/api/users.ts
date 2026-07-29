@@ -1,39 +1,42 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
-import type { AccountStatus, KycStatus, PaginatedResult, Rider, RiderDetail } from "@/types";
+import type { AccountStatus, AppUser, AppUserDetail, BackendRoleName, KycStatus, PaginatedResult } from "@/types";
 
-export interface RiderFilters {
+export interface UserFilters {
   search?: string;
   kycStatus?: KycStatus | "all";
   accountStatus?: AccountStatus | "all";
+  /** Only "admin" and "rider" have any real accounts today — see types/index.ts. */
+  role?: BackendRoleName | "all";
   page?: number;
   pageSize?: number;
 }
 
 /** GET /users — requireStaff. See apps/backend/src/modules/users/users.routes.ts */
-export async function fetchRiders(filters: RiderFilters = {}): Promise<PaginatedResult<Rider>> {
-  const { search, kycStatus, accountStatus, page = 1, pageSize = 8 } = filters;
-  const res = await apiClient.get<BackendPaginated<Rider>>("/users", {
+export async function fetchUsers(filters: UserFilters = {}): Promise<PaginatedResult<AppUser>> {
+  const { search, kycStatus, accountStatus, role, page = 1, pageSize = 8 } = filters;
+  const res = await apiClient.get<BackendPaginated<AppUser>>("/users", {
     page,
     pageSize,
     search,
     kycStatus: kycStatus && kycStatus !== "all" ? kycStatus : undefined,
     accountStatus: accountStatus && accountStatus !== "all" ? accountStatus : undefined,
+    role: role && role !== "all" ? role : undefined,
   });
   return toPaginatedResult(res);
 }
 
 /** GET /users/:id */
-export async function fetchRiderById(id: string): Promise<RiderDetail> {
-  return apiClient.get<RiderDetail>(`/users/${id}`);
+export async function fetchUserById(id: string): Promise<AppUserDetail> {
+  return apiClient.get<AppUserDetail>(`/users/${id}`);
 }
 
-/** GET /users/:id/photo/url — signed URL for the rider's profile photo, if one was uploaded. */
-export async function fetchRiderPhotoUrl(id: string): Promise<{ url: string; expires_in: number }> {
+/** GET /users/:id/photo/url — signed URL for the user's profile photo, if one was uploaded. */
+export async function fetchUserPhotoUrl(id: string): Promise<{ url: string; expires_in: number }> {
   return apiClient.get<{ url: string; expires_in: number }>(`/users/${id}/photo/url`);
 }
 
 /** PATCH /users/:id/status — requireStaff. Suspending requires a reason (≥5 chars). */
-export async function changeRiderStatus(
+export async function changeUserStatus(
   id: string,
   action: "activate" | "deactivate" | "suspend",
   reason?: string,
@@ -42,11 +45,11 @@ export async function changeRiderStatus(
 }
 
 /** DELETE /users/:id — requireAdmin. Soft delete. */
-export async function deleteRider(id: string) {
+export async function deleteUser(id: string) {
   return apiClient.delete(`/users/${id}`);
 }
 
 /** POST /users/:id/restore — requireAdmin. */
-export async function restoreRider(id: string) {
+export async function restoreUser(id: string) {
   return apiClient.post(`/users/${id}/restore`);
 }

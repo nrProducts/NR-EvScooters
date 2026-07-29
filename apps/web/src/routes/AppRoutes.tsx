@@ -10,8 +10,8 @@ import LiveMonitoringPage from "@/pages/monitoring/LiveMonitoringPage";
 import LiveMapPage from "@/pages/map/LiveMapPage";
 import VehicleListPage from "@/pages/vehicles/VehicleListPage";
 import VehicleDetailPage from "@/pages/vehicles/VehicleDetailPage";
-import RiderListPage from "@/pages/riders/RiderListPage";
-import RiderDetailPage from "@/pages/riders/RiderDetailPage";
+import UserListPage from "@/pages/users/UserListPage";
+import UserDetailPage from "@/pages/users/UserDetailPage";
 import KycQueuePage from "@/pages/kyc/KycQueuePage";
 import BookingListPage from "@/pages/bookings/BookingListPage";
 import MaintenancePage from "@/pages/maintenance/MaintenancePage";
@@ -45,8 +45,8 @@ export function AppRoutes() {
         <Route path="/vehicles" element={<VehicleListPage />} />
         <Route path="/vehicles/:id" element={<VehicleDetailPage />} />
 
-        <Route path="/riders" element={<RiderListPage />} />
-        <Route path="/riders/:id" element={<RiderDetailPage />} />
+        <Route path="/users" element={<UserListPage />} />
+        <Route path="/users/:id" element={<UserDetailPage />} />
 
         <Route path="/kyc" element={<KycQueuePage />} />
         <Route path="/bookings" element={<BookingListPage />} />

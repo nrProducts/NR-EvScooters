@@ -1,26 +1,33 @@
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import {
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line,
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, AreaChart, Area,
 } from "recharts";
 import {
-  Users, ShieldCheck, PackageCheck, LifeBuoy, Bike, IndianRupee, Wrench, Recycle, Route, CalendarClock,
-  CreditCard, Wallet,
+  Users, ShieldCheck, PackageCheck, Bike, IndianRupee, Wrench, Recycle, Navigation, CalendarClock,
+  CreditCard, Wallet, Plus, Bell, Gauge,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/common/StatCard";
 import { ChartCard } from "@/components/common/ChartCard";
+import { MotionCard } from "@/components/motion/MotionCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState } from "@/components/common/EmptyState";
+import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
+import { Timeline, type TimelineItem } from "@/components/common/Timeline";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRiders } from "@/hooks/useRiders";
+import { useAuth } from "@/hooks/useAuth";
+import { useUsers } from "@/hooks/useUsers";
 import { usePickupQueue } from "@/hooks/useBookings";
-import { useSupportQueue } from "@/hooks/useSupport";
 import { useReportsSummary } from "@/hooks/useReports";
 import { useInvoices } from "@/hooks/usePayments";
 import { useMaintenanceTickets } from "@/hooks/useMaintenance";
 import { useAuditLogs } from "@/hooks/useAudit";
+import { useNotificationLog } from "@/hooks/useNotifications";
 import { useUiStore } from "@/store/uiStore";
-import { formatCurrency, formatDate, timeAgo } from "@/lib/utils";
-import type { VehicleStatus } from "@/types";
+import { cn, formatCurrency, formatDate, timeAgo } from "@/lib/utils";
+import type { PickupBooking, VehicleStatus } from "@/types";
 
 const VEHICLE_STATUS_LABEL: Record<VehicleStatus, string> = {
   available: "Available",
@@ -31,42 +38,175 @@ const VEHICLE_STATUS_LABEL: Record<VehicleStatus, string> = {
 };
 
 const VEHICLE_STATUS_COLORS: Record<"light" | "dark", Record<VehicleStatus, string>> = {
-  light: { available: "#2a78d6", booked: "#eb6834", assigned: "#1baf7a", maintenance: "#eda100", scrap: "#898781" },
-  dark: { available: "#3987e5", booked: "#d95926", assigned: "#199e70", maintenance: "#c98500", scrap: "#6b7280" },
+  light: { available: "#16A34A", booked: "#3B82F6", assigned: "#22C55E", maintenance: "#F59E0B", scrap: "#94A3B8" },
+  dark: { available: "#22C55E", booked: "#3B82F6", assigned: "#10B981", maintenance: "#F59E0B", scrap: "#64748B" },
 };
 
+const FLEET_BAR_COLOR: Record<VehicleStatus, string> = {
+  available: "bg-success",
+  booked: "bg-info",
+  assigned: "bg-primary",
+  maintenance: "bg-warning",
+  scrap: "bg-muted-foreground/50",
+};
+
+function greetingForHour(hour: number) {
+  if (hour < 12) return "Good Morning";
+  if (hour < 17) return "Good Afternoon";
+  return "Good Evening";
+}
+
+function activityTone(action: string): TimelineItem["tone"] {
+  if (/approved|verified|resolved|fulfilled|completed/.test(action)) return "success";
+  if (/rejected|cancelled|failed|scrap/.test(action)) return "destructive";
+  if (/pending|reported/.test(action)) return "warning";
+  return "default";
+}
+
+/** Animated horizontal progress bar for the Fleet Status card. */
+function FleetStatusRow({ status, count, total }: { status: VehicleStatus; count: number; total: number }) {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-medium">{VEHICLE_STATUS_LABEL[status]}</span>
+        <span className="text-muted-foreground">{count} · {pct}%</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <motion.div
+          className={cn("h-full rounded-full", FLEET_BAR_COLOR[status])}
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboardPage() {
+  const navigate = useNavigate();
   const { theme } = useUiStore();
+  const { user } = useAuth();
   const { data: summary, isLoading: summaryLoading } = useReportsSummary();
-  const { data: pendingKyc, isLoading: pendingLoading } = useRiders({ page: 1, pageSize: 1, kycStatus: "pending" });
-  const { data: openTickets, isLoading: ticketsLoading } = useSupportQueue({ status: "open", pageSize: 1 });
+  const { data: pendingKyc, isLoading: pendingLoading } = useUsers({ page: 1, pageSize: 1, kycStatus: "pending" });
   const { data: recentBookings, isLoading: bookingsLoading } = usePickupQueue({ pageSize: 5 });
   const { data: recentInvoices, isLoading: invoicesLoading } = useInvoices({ pageSize: 5 });
   const { data: recentMaintenance, isLoading: maintenanceLoading } = useMaintenanceTickets({ pageSize: 5 });
   const { data: recentActivity, isLoading: activityLoading } = useAuditLogs({ pageSize: 6 });
+  const { data: recentAlerts, isLoading: alertsLoading } = useNotificationLog({ pageSize: 5 });
 
-  const isLoading = summaryLoading || pendingLoading || ticketsLoading;
+  const isLoading = summaryLoading || pendingLoading;
   const statusColors = VEHICLE_STATUS_COLORS[theme === "dark" ? "dark" : "light"];
+  const pendingMaintenance = summary
+    ? summary.maintenance.by_status.reported + summary.maintenance.by_status.in_progress
+    : 0;
+
+  const bookingColumns: DataTableColumn<PickupBooking>[] = [
+    {
+      header: "Booking",
+      key: "id",
+      render: (b) => <span className="font-mono text-xs text-muted-foreground">#{b.id.slice(0, 8).toUpperCase()}</span>,
+    },
+    { header: "Rider", key: "rider", render: (b) => b.rider.full_name },
+    { header: "Vehicle", key: "vehicle", render: (b) => b.vehicle_model?.name ?? "—", hideOnMobile: true },
+    { header: "Station", key: "station", render: (b) => b.station?.name ?? "—", hideOnMobile: true },
+    { header: "Start Day", key: "start", render: (b) => formatDate(b.start_day) },
+    {
+      header: "Amount",
+      key: "amount",
+      render: (b) => (b.plan ? formatCurrency(b.plan.price) : "—"),
+      hideOnMobile: true,
+    },
+    { header: "Status", key: "status", render: (b) => <StatusBadge status={b.status} /> },
+    {
+      header: "",
+      key: "actions",
+      render: () => (
+        <Button size="sm" variant="ghost" onClick={() => navigate("/bookings")}>
+          View
+        </Button>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-fade-in">
+      {/* Hero */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Fleet overview</h1>
-        <p className="text-sm text-muted-foreground">Real counts from the backend — no fabricated numbers</p>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {greetingForHour(new Date().getHours())} {user?.name?.split(" ")[0] ?? "there"} 👋
+        </h1>
+        <p className="text-sm text-muted-foreground">Fleet Performance Overview — real counts from the backend, no fabricated numbers</p>
       </div>
 
+      {/* At-a-glance */}
+      {isLoading || !summary ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <StatCard label="Available Vehicles" value={summary.vehicles.by_status.available} icon={Bike} tone="success" />
+          <StatCard label="Pending KYC" value={pendingKyc?.total ?? 0} icon={ShieldCheck} tone="warning" />
+          <StatCard label="Pending Maintenance" value={pendingMaintenance} icon={Wrench} tone="destructive" />
+        </div>
+      )}
+
+      {/* Fleet Status + Quick Actions */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <MotionCard>
+          <CardHeader className="flex-row items-center gap-2 space-y-0 p-4 pb-2">
+            <Gauge className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm">Fleet Status</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4 pt-2">
+            {summaryLoading || !summary ? (
+              <Skeleton className="h-32 w-full" />
+            ) : (
+              (Object.keys(summary.vehicles.by_status) as VehicleStatus[]).map((status) => (
+                <FleetStatusRow
+                  key={status}
+                  status={status}
+                  count={summary.vehicles.by_status[status]}
+                  total={summary.vehicles.total}
+                />
+              ))
+            )}
+          </CardContent>
+        </MotionCard>
+
+        <MotionCard>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-sm">Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-2 p-4 pt-2 sm:grid-cols-3">
+            <Button size="sm" className="justify-start gap-2" onClick={() => navigate("/vehicles?new=1")}>
+              <Plus className="h-4 w-4" /> Add Vehicle
+            </Button>
+            <Button size="sm" variant="outline" className="justify-start gap-2" onClick={() => navigate("/bookings")}>
+              <PackageCheck className="h-4 w-4" /> Assign Vehicle
+            </Button>
+            <Button size="sm" variant="outline" className="justify-start gap-2" onClick={() => navigate("/kyc")}>
+              <ShieldCheck className="h-4 w-4" /> Approve KYC
+            </Button>
+          </CardContent>
+        </MotionCard>
+      </div>
+
+      {/* Statistics grid, 2 rows */}
       {isLoading || !summary ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
+          {Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <StatCard label="Total Vehicles" value={summary.vehicles.total} icon={Bike} />
           <StatCard label="Available Vehicles" value={summary.vehicles.by_status.available} icon={Bike} tone="success" />
-          <StatCard label="Booked Vehicles" value={summary.vehicles.by_status.booked} icon={CalendarClock} tone="warning" />
-          <StatCard label="Assigned Vehicles" value={summary.vehicles.by_status.assigned} icon={Route} />
-          <StatCard label="Ride Active" value={summary.rides.active_count} icon={Route} tone="success" />
-          <StatCard label="Maintenance" value={summary.vehicles.by_status.maintenance} icon={Wrench} tone="destructive" />
+          <StatCard label="Booked Vehicles" value={summary.vehicles.by_status.booked} icon={CalendarClock} tone="info" />
+          <StatCard label="Assigned Vehicles" value={summary.vehicles.by_status.assigned} icon={Navigation} />
+          <StatCard label="Active Rentals" value={summary.rides.active_count} icon={Navigation} tone="success" />
+          <StatCard label="Maintenance" value={summary.vehicles.by_status.maintenance} icon={Wrench} tone="warning" />
           <StatCard label="Scrapped" value={summary.vehicles.by_status.scrap} icon={Recycle} />
           <StatCard label="Total Riders" value={summary.riders.total} icon={Users} />
           <StatCard label="Active Plans" value={summary.plans.active_subscriptions} icon={CreditCard} />
@@ -76,17 +216,28 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Pending KYC" value={pendingKyc?.total ?? 0} icon={ShieldCheck} tone="warning" />
-        <StatCard label="Open support tickets" value={openTickets?.total ?? 0} icon={LifeBuoy} tone="warning" />
-      </div>
+      {/* Recent Bookings table */}
+      <MotionCard>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-sm">Recent Bookings</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <DataTable
+            columns={bookingColumns}
+            data={recentBookings?.data ?? []}
+            isLoading={bookingsLoading}
+            emptyTitle="No bookings awaiting pickup"
+          />
+        </CardContent>
+      </MotionCard>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* Analytics */}
+      <div className="grid gap-3 lg:grid-cols-2">
         <ChartCard title="Vehicle Status" description="Current fleet by status">
           {summaryLoading || !summary ? (
-            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-52 w-full" />
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={200}>
               <BarChart
                 data={(Object.keys(summary.vehicles.by_status) as VehicleStatus[]).map((s) => ({
                   status: VEHICLE_STATUS_LABEL[s],
@@ -98,9 +249,9 @@ export default function AdminDashboardPage() {
                 <XAxis dataKey="status" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip
-                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12 }}
                 />
-                <Bar dataKey="count" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" radius={[6, 6, 0, 0]} isAnimationActive />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -108,36 +259,50 @@ export default function AdminDashboardPage() {
 
         <ChartCard title="Monthly Revenue" description="Last 6 months, invoices paid">
           {summaryLoading || !summary ? (
-            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-52 w-full" />
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={summary.trends.revenue}>
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={summary.trends.revenue}>
+                <defs>
+                  <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                 <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip
                   formatter={(v: number) => formatCurrency(v)}
-                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12 }}
                 />
-                <Line type="monotone" dataKey="amount" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart>
+                <Area
+                  type="monotone"
+                  dataKey="amount"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={2.5}
+                  dot={{ r: 3 }}
+                  isAnimationActive
+                  fill="url(#revenueFill)"
+                />
+              </AreaChart>
             </ResponsiveContainer>
           )}
         </ChartCard>
 
         <ChartCard title="Bookings" description="Last 6 months, created">
           {summaryLoading || !summary ? (
-            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-52 w-full" />
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={200}>
               <BarChart data={summary.trends.bookings}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                 <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip
-                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12 }}
                 />
-                <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} isAnimationActive />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -145,54 +310,32 @@ export default function AdminDashboardPage() {
 
         <ChartCard title="Maintenance Trend" description="Last 6 months, tickets reported">
           {summaryLoading || !summary ? (
-            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-52 w-full" />
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={200}>
               <LineChart data={summary.trends.maintenance}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                 <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip
-                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                  contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12 }}
                 />
-                <Line type="monotone" dataKey="count" stroke="hsl(var(--destructive))" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="count" stroke="hsl(var(--warning))" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive />
               </LineChart>
             </ResponsiveContainer>
           )}
         </ChartCard>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Bookings</CardTitle>
+      {/* Widgets */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MotionCard>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-sm">Recent Payments</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {bookingsLoading ? (
-              <Skeleton className="h-32 w-full" />
-            ) : !recentBookings || recentBookings.data.length === 0 ? (
-              <EmptyState title="No bookings awaiting pickup" />
-            ) : (
-              recentBookings.data.map((b) => (
-                <div key={b.id} className="flex items-center justify-between gap-2 border-b border-border pb-2 text-sm last:border-0 last:pb-0">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{b.rider.full_name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{b.vehicle_model?.name ?? "—"} · {b.station?.name ?? "—"}</p>
-                  </div>
-                  <StatusBadge status={b.status} />
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Payments</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2 p-4 pt-2">
             {invoicesLoading ? (
-              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-28 w-full" />
             ) : !recentInvoices || recentInvoices.data.length === 0 ? (
               <EmptyState title="No invoices yet" />
             ) : (
@@ -207,15 +350,15 @@ export default function AdminDashboardPage() {
               ))
             )}
           </CardContent>
-        </Card>
+        </MotionCard>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Maintenance</CardTitle>
+        <MotionCard>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-sm">Recent Maintenance</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2 p-4 pt-2">
             {maintenanceLoading ? (
-              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-28 w-full" />
             ) : !recentMaintenance || recentMaintenance.data.length === 0 ? (
               <EmptyState title="No maintenance tickets yet" />
             ) : (
@@ -230,32 +373,54 @@ export default function AdminDashboardPage() {
               ))
             )}
           </CardContent>
-        </Card>
+        </MotionCard>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
+        <MotionCard>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-sm">Recent Activity</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="p-4 pt-2">
             {activityLoading ? (
-              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-28 w-full" />
             ) : !recentActivity || recentActivity.data.length === 0 ? (
               <EmptyState title="No actions logged yet" />
             ) : (
-              recentActivity.data.map((a) => (
-                <div key={a.id} className="flex items-center justify-between gap-2 border-b border-border pb-2 text-sm last:border-0 last:pb-0">
+              <Timeline
+                items={recentActivity.data.map((a) => ({
+                  id: a.id,
+                  title: a.action.replace(/\./g, " · ").replace(/_/g, " "),
+                  timestamp: timeAgo(a.created_at),
+                  description: a.actor?.full_name ?? "System",
+                  tone: activityTone(a.action),
+                }))}
+              />
+            )}
+          </CardContent>
+        </MotionCard>
+
+        <MotionCard>
+          <CardHeader className="flex-row items-center gap-2 space-y-0 p-4 pb-2">
+            <Bell className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm">Latest Alerts</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 p-4 pt-2">
+            {alertsLoading ? (
+              <Skeleton className="h-28 w-full" />
+            ) : !recentAlerts || recentAlerts.data.length === 0 ? (
+              <EmptyState title="No notifications sent yet" />
+            ) : (
+              recentAlerts.data.map((n) => (
+                <div key={n.id} className="flex items-center justify-between gap-2 border-b border-border pb-2 text-sm last:border-0 last:pb-0">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{a.action.replace(/\./g, " · ").replace(/_/g, " ")}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {a.actor?.full_name ?? "System"} · {formatDate(a.created_at)}
-                    </p>
+                    <p className="truncate font-medium">{n.payload?.title ?? n.template.replace(/_/g, " ")}</p>
+                    <p className="truncate text-xs text-muted-foreground">{n.rider?.full_name ?? "—"} · {timeAgo(n.created_at)}</p>
                   </div>
-                  <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(a.created_at)}</span>
+                  <StatusBadge status={n.status} />
                 </div>
               ))
             )}
           </CardContent>
-        </Card>
+        </MotionCard>
       </div>
     </div>
   );

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { NotConnected } from "@/components/common/NotConnected";
 import { useUiStore } from "@/store/uiStore";
-import { useRiders } from "@/hooks/useRiders";
+import { useUsers } from "@/hooks/useUsers";
 import { initials } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
@@ -25,11 +25,10 @@ const SECTIONS = [
 export default function SettingsPage() {
   const [tab, setTab] = useState<(typeof SECTIONS)[number]["value"]>("roles");
   const { theme, toggleTheme } = useUiStore();
-  // Real query: GET /users?role=admin — since "staff"/"technician"/"station_manager"
-  // aren't migrated in the DB enum yet (see types/index.ts), only admin accounts
-  // will actually show up here today.
-  const { data: admins, isLoading } = useRiders({ page: 1, pageSize: 50 });
-  const adminAccounts = (admins?.data ?? []).filter((r) => r.roles.includes("admin"));
+  // "staff"/"technician"/"station_manager" aren't migrated in the DB enum yet
+  // (see types/index.ts), so role: "admin" is the only real filter to use here.
+  const { data: admins, isLoading } = useUsers({ page: 1, pageSize: 50, role: "admin" });
+  const adminAccounts = admins?.data ?? [];
 
   return (
     <div className="space-y-4 animate-fade-in">

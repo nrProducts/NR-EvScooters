@@ -57,7 +57,7 @@ export function DataTable<T extends { id: string }>({
             {data.map((row) => (
               <tr
                 key={row.id}
-                className={cn("transition-colors hover:bg-secondary/60", onRowClick && "cursor-pointer")}
+                className={cn("transition-smooth hover:bg-card-hover", onRowClick && "cursor-pointer")}
                 onClick={() => onRowClick?.(row)}
               >
                 {columns.map((col) => (
@@ -76,7 +76,7 @@ export function DataTable<T extends { id: string }>({
         {data.map((row) => (
           <div
             key={row.id}
-            className={cn("space-y-2 px-4 py-4", onRowClick && "cursor-pointer active:bg-secondary/60")}
+            className={cn("space-y-2 px-4 py-4 transition-smooth", onRowClick && "cursor-pointer active:bg-card-hover")}
             onClick={() => onRowClick?.(row)}
           >
             {columns

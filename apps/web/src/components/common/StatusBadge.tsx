@@ -1,17 +1,17 @@
 import { Badge } from "@/components/ui/badge";
 
-const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "secondary" | "muted" | "outline"> = {
+const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "secondary" | "muted" | "outline" | "info"> = {
   available: "success",
   active: "success",
   approved: "success",
   completed: "success",
   sent: "success",
   success: "success",
-  current: "outline",
-  booked: "outline",
-  in_progress: "outline",
-  scheduled: "outline",
-  assigned: "outline",
+  current: "info",
+  booked: "info",
+  in_progress: "info",
+  scheduled: "info",
+  assigned: "info",
   pending: "warning",
   upcoming: "warning",
   charging: "warning",
@@ -34,13 +34,17 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   fulfilled: "success",
   not_submitted: "muted",
   partially_verified: "warning",
-  confirmed: "outline",
+  confirmed: "info",
   pending_payment: "warning",
   expired: "destructive",
   urgent: "destructive",
   suspended: "destructive",
   inactive: "muted",
   closed: "muted",
+  // roles (Users screen)
+  admin: "info",
+  rider: "secondary",
+  staff: "outline",
 };
 
 export function StatusBadge({ status }: { status: string }) {

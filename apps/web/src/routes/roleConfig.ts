@@ -33,7 +33,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Live Monitoring", path: "/monitoring", icon: Radio, roles: ["admin", "staff"] },
   { label: "Live Map", path: "/map", icon: Map, roles: ["admin", "staff"] },
   { label: "Vehicles", path: "/vehicles", icon: Bike, roles: ["admin", "staff"] },
-  { label: "Riders", path: "/riders", icon: Users, roles: ["admin", "staff"] },
+  { label: "Users", path: "/users", icon: Users, roles: ["admin", "staff"] },
   { label: "KYC Queue", path: "/kyc", icon: ShieldCheck, roles: ["admin", "staff"] },
   { label: "Bookings", path: "/bookings", icon: CalendarCheck, roles: ["admin", "staff"] },
   { label: "Maintenance", path: "/maintenance", icon: Wrench, roles: ["admin", "staff"] },

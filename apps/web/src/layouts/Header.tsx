@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useUiStore } from "@/store/uiStore";
 import { useAuth } from "@/hooks/useAuth";
-import { initials } from "@/lib/utils";
+import { initials, formatDate } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 
 export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
@@ -23,34 +23,36 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const navigate = useNavigate();
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/95 px-4 backdrop-blur sm:px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur-md sm:px-6">
       <Button variant="ghost" size="icon" className="md:hidden" onClick={onOpenMobileNav}>
         <Menu className="h-5 w-5" />
       </Button>
 
-      <div className="relative hidden max-w-sm flex-1 sm:block">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="relative hidden max-w-md flex-1 sm:block">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search riders, vehicles, bookings..."
-          className="pl-9"
+          className="h-10 rounded-full border-border/60 bg-card-hover/60 pl-10 focus-visible:bg-background"
         />
       </div>
 
-      <div className="flex flex-1 items-center justify-end gap-1.5 sm:gap-2">
+      <div className="flex flex-1 items-center justify-end gap-1.5 sm:gap-3">
+        <span className="hidden text-xs text-muted-foreground lg:inline">{formatDate(new Date())}</span>
+
         <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
           {theme === "light" ? <Moon className="h-[18px] w-[18px]" /> : <Sun className="h-[18px] w-[18px]" />}
         </Button>
 
-        <Button variant="ghost" size="icon" onClick={() => navigate("/notifications")}>
+        <Button variant="ghost" size="icon" onClick={() => navigate("/notifications")} aria-label="Notifications">
           <Bell className="h-[18px] w-[18px]" />
         </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 rounded-full pl-1 pr-1 outline-none">
-              <Avatar className="h-8 w-8">
+              <Avatar className="h-8 w-8 ring-1 ring-border">
                 <AvatarImage src={user?.avatarUrl} alt={user?.name} />
                 <AvatarFallback>{user ? initials(user.name) : "?"}</AvatarFallback>
               </Avatar>

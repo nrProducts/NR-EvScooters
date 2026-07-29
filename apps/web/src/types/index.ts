@@ -23,13 +23,13 @@ export interface StaffUser {
 }
 
 // ---------------------------------------------------------------------------
-// Riders — mirrors apps/backend/src/modules/users/users.types.ts
+// Users — mirrors apps/backend/src/modules/users/users.types.ts
 // ---------------------------------------------------------------------------
 
 export type AccountStatus = "active" | "inactive" | "suspended";
 export type KycStatus = "not_submitted" | "pending" | "partially_verified" | "verified" | "rejected";
 
-export interface Rider {
+export interface AppUser {
   id: string;
   full_name: string;
   email: string | null;
@@ -56,7 +56,7 @@ export interface Rider {
   current_plan: { id: string; name: string; status: string } | null;
 }
 
-export interface RiderDocument {
+export interface AppUserDocument {
   id: string;
   doc_type: string;
   doc_number_masked: string | null;
@@ -67,9 +67,9 @@ export interface RiderDocument {
   verified_at: string | null;
 }
 
-export interface RiderDetail extends Rider {
+export interface AppUserDetail extends AppUser {
   kyc_completion_percent: number;
-  documents: RiderDocument[];
+  documents: AppUserDocument[];
 }
 
 // ---------------------------------------------------------------------------

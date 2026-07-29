@@ -16,8 +16,8 @@ export function useKycDetail(userId: string | undefined) {
 function invalidateKyc(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["kyc-queue"] });
   qc.invalidateQueries({ queryKey: ["kyc-detail"] });
-  qc.invalidateQueries({ queryKey: ["riders"] });
-  qc.invalidateQueries({ queryKey: ["rider"] });
+  qc.invalidateQueries({ queryKey: ["users"] });
+  qc.invalidateQueries({ queryKey: ["user"] });
 }
 
 export function useApproveKyc() {

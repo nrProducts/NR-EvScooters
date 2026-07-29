@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Bike, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { navForRole } from "@/routes/roleConfig";
 import type { Role } from "@/types";
@@ -18,20 +19,20 @@ export function Sidebar({
   const items = navForRole(role);
 
   return (
-    <div className="flex h-full flex-col bg-card">
+    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <div className={cn("flex h-16 items-center gap-2 border-b border-border px-4", collapsed && "justify-center px-2")}>
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary">
-          <Bike className="h-[18px] w-[18px] text-primary-foreground" />
+          <Bike className="h-[18px] w-[18px] text-primary-foreground" strokeWidth={1.75} />
         </div>
         {!collapsed && (
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold leading-tight">Swapngo</p>
-            <p className="truncate text-[11px] leading-tight text-muted-foreground">Fleet Hub Admin</p>
+            <p className="truncate text-[11px] leading-tight text-sidebar-foreground/60">EV Fleet Admin</p>
           </div>
         )}
       </div>
 
-      <nav className="flex-1 space-y-0.5 overflow-y-auto scrollbar-thin px-2 py-3">
+      <nav className="flex-1 space-y-1 overflow-y-auto scrollbar-thin px-2 py-4">
         {items.map((item) => (
           <NavLink
             key={item.path}
@@ -39,17 +40,30 @@ export function Sidebar({
             onClick={onNavigate}
             className={({ isActive }) =>
               cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "relative flex items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-smooth",
                 isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                  ? "text-primary"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground",
                 collapsed && "justify-center px-0",
               )
             }
             title={collapsed ? item.label : undefined}
           >
-            <item.icon className="h-[18px] w-[18px] shrink-0" />
-            {!collapsed && <span className="truncate">{item.label}</span>}
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <motion.span
+                    layoutId="active-nav-pill"
+                    className="absolute inset-0 rounded-full bg-primary/12"
+                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                  >
+                    <span className="absolute left-0 top-1/2 h-4/5 w-[3px] -translate-y-1/2 rounded-full bg-primary" />
+                  </motion.span>
+                )}
+                <item.icon className="relative h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+                {!collapsed && <span className="relative truncate">{item.label}</span>}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -57,7 +71,7 @@ export function Sidebar({
       {onToggleCollapsed && (
         <button
           onClick={onToggleCollapsed}
-          className="hidden items-center justify-center gap-2 border-t border-border py-3 text-xs text-muted-foreground hover:bg-secondary md:flex"
+          className="hidden items-center justify-center gap-2 border-t border-border py-3 text-xs text-sidebar-foreground/60 transition-smooth hover:bg-sidebar-foreground/5 md:flex"
         >
           {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
           {!collapsed && "Collapse"}

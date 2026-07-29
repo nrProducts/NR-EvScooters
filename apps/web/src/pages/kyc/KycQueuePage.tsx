@@ -16,7 +16,7 @@ import { Pagination } from "@/components/common/Pagination";
 import {
   useKycQueue, useApproveKyc, useRejectKyc, useKycDetail, useVerifyDocument, useRejectDocument, useOpenDocument,
 } from "@/hooks/useKyc";
-import { useOpenRiderPhoto } from "@/hooks/useRiders";
+import { useOpenUserPhoto } from "@/hooks/useUsers";
 import { formatDate } from "@/lib/utils";
 import type { KycQueueItem, KycStatus } from "@/types";
 
@@ -170,7 +170,7 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
   const verifyDocument = useVerifyDocument();
   const rejectDocument = useRejectDocument();
   const openDocument = useOpenDocument();
-  const openRiderPhoto = useOpenRiderPhoto();
+  const openUserPhoto = useOpenUserPhoto();
   const [rejectDocId, setRejectDocId] = useState<string | null>(null);
   const [docReason, setDocReason] = useState("");
   const [preview, setPreview] = useState<{ url: string; title: string } | null>(null);
@@ -194,7 +194,7 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
   const viewRiderPhoto = () => {
     if (!target) return;
     setOpenError(null);
-    openRiderPhoto.mutate(target.user_id, {
+    openUserPhoto.mutate(target.user_id, {
       onSuccess: (data) => {
         setRotation(0);
         setPreview({ url: data.url, title: "Rider photo" });
@@ -214,7 +214,7 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
             <Button
               size="sm"
               variant="outline"
-              disabled={openRiderPhoto.isPending}
+              disabled={openUserPhoto.isPending}
               onClick={viewRiderPhoto}
             >
               <UserRound className="h-3.5 w-3.5" /> Rider photo

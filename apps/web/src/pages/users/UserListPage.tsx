@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SearchBar } from "@/components/common/SearchBar";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
@@ -21,62 +22,79 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { useRiders, useDeleteRider, useChangeRiderStatus } from "@/hooks/useRiders";
+import { useUsers, useDeleteUser, useChangeUserStatus } from "@/hooks/useUsers";
 import { useAuthStore } from "@/store/authStore";
 import { initials } from "@/lib/utils";
-import type { KycStatus, Rider } from "@/types";
+import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "pending", "partially_verified", "verified", "rejected"];
 
-export default function RiderListPage() {
+/** Only "admin" and "rider" have any real accounts today — see types/index.ts. */
+const ROLE_TABS: { value: BackendRoleName | "all"; label: string }[] = [
+  { value: "all", label: "All Users" },
+  { value: "admin", label: "Admin" },
+  { value: "rider", label: "Rider" },
+];
+
+export default function UserListPage() {
   const navigate = useNavigate();
   const role = useAuthStore((s) => s.user?.role);
   const [search, setSearch] = useState("");
   const [kycStatus, setKycStatus] = useState<KycStatus | "all">("all");
+  const [roleFilter, setRoleFilter] = useState<BackendRoleName | "all">("all");
   const [page, setPage] = useState(1);
-  const [deleteTarget, setDeleteTarget] = useState<Rider | null>(null);
-  const [suspendTarget, setSuspendTarget] = useState<Rider | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<AppUser | null>(null);
   const [reason, setReason] = useState("");
 
-  const { data, isLoading, isError, refetch } = useRiders({ search, kycStatus, page, pageSize: 8 });
-  const deleteRider = useDeleteRider();
-  const changeStatus = useChangeRiderStatus();
+  const { data, isLoading, isError, refetch } = useUsers({ search, kycStatus, role: roleFilter, page, pageSize: 8 });
+  const deleteUser = useDeleteUser();
+  const changeStatus = useChangeUserStatus();
 
-  const columns: DataTableColumn<Rider>[] = [
+  const columns: DataTableColumn<AppUser>[] = [
     {
-      header: "Rider",
+      header: "User",
       key: "name",
-      render: (r) => (
+      render: (u) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
-            <AvatarImage src={r.profile_photo_url ?? undefined} alt={r.full_name} />
-            <AvatarFallback>{initials(r.full_name || "?")}</AvatarFallback>
+            <AvatarImage src={u.profile_photo_url ?? undefined} alt={u.full_name} />
+            <AvatarFallback>{initials(u.full_name || "?")}</AvatarFallback>
           </Avatar>
           <div className="min-w-0">
-            <p className="truncate font-medium">{r.full_name || "—"}</p>
-            <p className="truncate text-xs text-muted-foreground">{r.phone ?? "No phone on file"}</p>
+            <p className="truncate font-medium">{u.full_name || "—"}</p>
+            <p className="truncate text-xs text-muted-foreground">{u.phone ?? "No phone on file"}</p>
           </div>
         </div>
       ),
     },
-    { header: "Account", key: "account", render: (r) => <StatusBadge status={r.account_status} /> },
-    { header: "KYC", key: "kyc", render: (r) => <StatusBadge status={r.kyc_status} /> },
+    {
+      header: "Role",
+      key: "role",
+      render: (u) => (
+        <div className="flex flex-wrap gap-1">
+          {u.roles.length === 0 ? "—" : u.roles.map((r) => <StatusBadge key={r} status={r} />)}
+        </div>
+      ),
+    },
+    { header: "Account", key: "account", render: (u) => <StatusBadge status={u.account_status} /> },
+    { header: "KYC", key: "kyc", render: (u) => <StatusBadge status={u.kyc_status} /> },
     {
       header: "Assigned vehicle",
       key: "vehicle",
-      render: (r) => r.assigned_vehicle?.model ?? "—",
+      render: (u) => u.assigned_vehicle?.model ?? "—",
       hideOnMobile: true,
     },
     {
       header: "Plan",
       key: "plan",
-      render: (r) => r.current_plan?.name ?? "—",
+      render: (u) => u.current_plan?.name ?? "—",
       hideOnMobile: true,
     },
     {
       header: "Actions",
       key: "actions",
-      render: (r) => (
+      render: (u) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
             <Button variant="ghost" size="icon">
@@ -84,22 +102,22 @@ export default function RiderListPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => navigate(`/riders/${r.id}`)}>
+            <DropdownMenuItem onClick={() => navigate(`/users/${u.id}`)}>
               <Eye className="mr-2 h-4 w-4" /> View profile
             </DropdownMenuItem>
-            {r.kyc_status === "pending" && (
+            {u.kyc_status === "pending" && (
               <DropdownMenuItem onClick={() => navigate("/kyc")}>
                 <ShieldCheck className="mr-2 h-4 w-4" /> Review KYC
               </DropdownMenuItem>
             )}
-            {r.account_status === "suspended" ? (
-              <DropdownMenuItem onClick={() => changeStatus.mutate({ id: r.id, action: "activate" })}>
+            {u.account_status === "suspended" ? (
+              <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Reactivate
               </DropdownMenuItem>
             ) : (
               <DropdownMenuItem
                 onClick={() => {
-                  setSuspendTarget(r);
+                  setSuspendTarget(u);
                   setReason("");
                 }}
               >
@@ -107,7 +125,7 @@ export default function RiderListPage() {
               </DropdownMenuItem>
             )}
             {role === "admin" && (
-              <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTarget(r)}>
+              <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTarget(u)}>
                 <Trash2 className="mr-2 h-4 w-4" /> Delete
               </DropdownMenuItem>
             )}
@@ -120,21 +138,37 @@ export default function RiderListPage() {
   return (
     <div className="space-y-4 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Riders</h1>
-        <p className="text-sm text-muted-foreground">{data?.total ?? 0} registered riders</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
+        <p className="text-sm text-muted-foreground">{data?.total ?? 0} registered users</p>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Tabs
+          value={roleFilter}
+          onValueChange={(v) => {
+            setRoleFilter(v as BackendRoleName | "all");
+            setPage(1);
+          }}
+        >
+          <TabsList className="flex-wrap">
+            {ROLE_TABS.map((t) => (
+              <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <SearchBar
+          value={search}
+          onChange={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
+          placeholder="Search by name, email or phone..."
+          className="sm:max-w-xs"
+        />
       </div>
 
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
-          <SearchBar
-            value={search}
-            onChange={(v) => {
-              setSearch(v);
-              setPage(1);
-            }}
-            placeholder="Search by name, email or phone..."
-            className="sm:max-w-xs"
-          />
           <Select
             value={kycStatus}
             onValueChange={(v) => {
@@ -161,8 +195,8 @@ export default function RiderListPage() {
           isLoading={isLoading}
           isError={isError}
           onRetry={() => refetch()}
-          onRowClick={(r) => navigate(`/riders/${r.id}`)}
-          emptyTitle="No riders match your filters"
+          onRowClick={(u) => navigate(`/users/${u.id}`)}
+          emptyTitle="No users match your filters"
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
@@ -172,12 +206,12 @@ export default function RiderListPage() {
         open={!!deleteTarget}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
         title={`Delete ${deleteTarget?.full_name}?`}
-        description="This soft-deletes the rider profile (recoverable via restore)."
-        confirmLabel="Delete rider"
+        description="This soft-deletes the user profile (recoverable via restore)."
+        confirmLabel="Delete user"
         destructive
-        loading={deleteRider.isPending}
+        loading={deleteUser.isPending}
         onConfirm={() => {
-          if (deleteTarget) deleteRider.mutate(deleteTarget.id, { onSuccess: () => setDeleteTarget(null) });
+          if (deleteTarget) deleteUser.mutate(deleteTarget.id, { onSuccess: () => setDeleteTarget(null) });
         }}
       />
 

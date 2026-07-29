@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { BatteryMedium, Eye, Plus, Wrench, CheckCircle2, MoreHorizontal } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,18 @@ export default function VehicleListPage() {
   const [status, setStatus] = useState<VehicleStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get("new")) {
+      setCreateOpen(true);
+      setSearchParams((prev) => {
+        prev.delete("new");
+        return prev;
+      }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data, isLoading, isError, refetch } = useVehicles({ search, status, page, pageSize: 8 });
   const createVehicle = useCreateVehicle();

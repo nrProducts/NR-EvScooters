@@ -1,13 +1,21 @@
+@import "@fontsource-variable/inter";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
- * Color tokens mirror apps/mobile/src/constants/theme.ts (COLORS) so the
- * web console and rider app read as one product:
- *   primary #4CAF50 / pressed #3F9142 / secondary #81C784
- *   background #F8FAFC / card #FFFFFF / ink #1F2937 / ink-muted #6B7280
- *   success #22C55E / warning #F59E0B / danger #EF4444 / border #E5E7EB
+ * Premium dark-first SaaS palette, brand green #22C55E family. Light mode is
+ * a complementary palette built from the same primary/radius/shadow
+ * language, not an afterthought — the theme toggle in Header.tsx stays live.
+ *
+ * NOTE: apps/mobile/src/constants/theme.ts previously mirrored this file's
+ * hex values by hand (no shared package, just matching literals — see the
+ * mobile theme file's own header comment). This redesign intentionally
+ * diverges the web admin console's brand green (#22C55E, 142Β°) from the
+ * mobile rider app's green (#4CAF50, 122Β°); the two are no longer meant to
+ * match hue-for-hue. If the rider app should follow, that's a separate,
+ * explicit change to apps/mobile.
  */
 @layer base {
   :root {
@@ -16,74 +24,104 @@
 
     --card: 0 0% 100%;
     --card-foreground: 215 28% 17%;
+    /* Subtle depth step used for row/card hover — one notch darker than card. */
+    --card-hover: 210 30% 96%;
 
     --popover: 0 0% 100%;
     --popover-foreground: 215 28% 17%;
 
-    --primary: 122 39% 49%;
-    --primary-pressed: 122 39% 41%;
+    /* Brand green #22C55E */
+    --primary: 142 71% 45%;
+    --primary-hover: 142 76% 36%;
+    --primary-pressed: 142 76% 36%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 123 38% 64%;
-    --secondary-foreground: 122 39% 18%;
+    --secondary: 142 40% 90%;
+    --secondary-foreground: 142 39% 22%;
 
     --muted: 220 14% 95%;
     --muted-foreground: 220 9% 46%;
 
-    --accent: 122 45% 95%;
-    --accent-foreground: 122 39% 26%;
+    --accent: 142 45% 95%;
+    --accent-foreground: 142 39% 26%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
 
-    --success: 142 71% 45%;
+    /* Accent green #10B981 — success chips, positive trend arrows. */
+    --success: 160 84% 39%;
     --success-foreground: 0 0% 100%;
 
     --warning: 38 92% 50%;
     --warning-foreground: 26 40% 15%;
 
+    /* Blue Info #3B82F6 — the 4th status-chip color (in-progress/scheduled). */
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 122 39% 49%;
+    --ring: 142 71% 45%;
 
-    --radius: 0.75rem;
+    /* Sidebar reads as its own plane, distinct from card, same as dark mode. */
+    --sidebar: 220 20% 97%;
+    --sidebar-foreground: 215 28% 17%;
+
+    --radius: 1.125rem;
+    --shadow-card: 0 8px 30px rgb(15 23 42 / 0.10);
   }
 
   .dark {
-    --background: 222 24% 9%;
-    --foreground: 210 20% 96%;
+    --background: 222 47% 11%; /* #0F172A */
+    --foreground: 0 0% 100%;
 
-    --card: 222 20% 12%;
-    --card-foreground: 210 20% 96%;
+    --card: 217 33% 17%; /* #1E293B */
+    --card-foreground: 0 0% 100%;
+    --card-hover: 215 30% 21%; /* #273549 */
 
-    --popover: 222 20% 12%;
-    --popover-foreground: 210 20% 96%;
+    --popover: 217 33% 17%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 122 45% 55%;
-    --primary-pressed: 122 45% 47%;
-    --primary-foreground: 222 24% 9%;
+    /* Brand green #22C55E */
+    --primary: 142 71% 45%;
+    --primary-hover: 142 76% 36%; /* #16A34A */
+    --primary-pressed: 142 76% 36%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 123 30% 30%;
-    --secondary-foreground: 210 20% 96%;
+    --secondary: 142 25% 22%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 222 16% 18%;
-    --muted-foreground: 220 9% 65%;
+    --muted: 217 25% 22%;
+    --muted-foreground: 215 20% 65%; /* #94A3B8 */
 
-    --accent: 122 30% 20%;
-    --accent-foreground: 123 45% 85%;
+    --accent: 142 25% 20%;
+    --accent-foreground: 142 45% 85%;
 
-    --destructive: 0 70% 58%;
-    --destructive-foreground: 210 20% 96%;
+    --destructive: 0 84% 60%; /* #EF4444 */
+    --destructive-foreground: 0 0% 100%;
 
-    --success: 142 55% 48%;
+    /* Accent green #10B981 */
+    --success: 160 84% 39%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 85% 55%;
+    --warning: 38 92% 50%; /* #F59E0B */
     --warning-foreground: 26 40% 10%;
 
-    --border: 222 15% 22%;
-    --input: 222 15% 22%;
-    --ring: 122 45% 55%;
+    /* Blue Info #3B82F6 */
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+
+    /* Flattened equivalent of rgba(255,255,255,.08) over #0F172A — the
+       hsl(var(--border)) token architecture has no alpha channel, so this is
+       the visual match rather than a wider alpha-aware token rewrite. */
+    --border: 224 24% 18%;
+    --input: 224 24% 18%;
+    --ring: 142 71% 45%;
+
+    --sidebar: 221 39% 11%; /* #111827 */
+    --sidebar-foreground: 0 0% 100%;
+
+    --shadow-card: 0 8px 30px rgb(0 0 0 / 0.25);
   }
 
   * {
@@ -91,7 +129,7 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground antialiased font-sans;
     font-feature-settings:
       "cv02",
       "cv03",
@@ -107,5 +145,9 @@
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
     @apply bg-border rounded-full;
+  }
+
+  .transition-smooth {
+    transition: all 250ms ease;
   }
 }
