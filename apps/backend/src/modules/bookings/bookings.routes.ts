@@ -27,6 +27,16 @@ router.post(
     asyncHandler(c.createBookingHandler),
 );
 
+// Rider-initiated pre-pickup cancellation, scoped to the caller's own booking
+// inside the service. Distinct from POST /:id/reject, which is staff-only and
+// refuses anything past 'pending_payment'. Deliberately NOT requireKycVerified:
+// a rider whose KYC lapsed must still be able to cancel.
+router.post(
+    "/:id/cancel",
+    validate({ params: v.bookingIdParam, body: v.cancelBookingBody }),
+    asyncHandler(c.cancelMyBookingHandler),
+);
+
 // --- staff pickup/check-in ------------------------------------------------
 router.get(
     "/",

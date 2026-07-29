@@ -9,10 +9,11 @@ import { bookingRepository, maintenanceRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import {
   BOOKING_STATUS_LABEL, BOOKING_STATUS_TONE, MAINTENANCE_STATUS_LABEL, MAINTENANCE_STATUS_TONE,
-  formatDate,
+  REFUND_STATUS_LABEL, REFUND_STATUS_TONE, formatDate,
 } from '../constants/status';
 import { COLORS } from '../constants/theme';
-import { Calendar, Bike, MapPin, Wrench, History } from 'lucide-react-native';
+import { Calendar, Bike, MapPin, Wrench, History, XCircle } from 'lucide-react-native';
+import { useCancelBooking } from '../hooks/useCancelBooking';
 import type { ApiBooking, ApiMaintenanceRecord } from '../types/api';
 
 type Tab = 'bookings' | 'maintenance';
@@ -27,6 +28,12 @@ export default function BookingHistoryScreen() {
   const [maintenance, setMaintenance] = useState<ApiMaintenanceRecord[]>([]);
   const [maintenanceLoading, setMaintenanceLoading] = useState(true);
   const [maintenanceError, setMaintenanceError] = useState<string | null>(null);
+
+  const { cancelling, cancelBooking } = useCancelBooking();
+
+  const handleCancel = async (booking: ApiBooking) => {
+    if (await cancelBooking(booking)) loadBookings();
+  };
 
   const loadBookings = () => {
     setBookingsLoading(true);
@@ -100,6 +107,35 @@ export default function BookingHistoryScreen() {
                       <MapPin size={12} color={COLORS.textSecondary} />
                       <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-2">{b.station.name}</Text>
                     </View>
+                  ) : null}
+
+                  {b.refund_status ? (
+                    <View className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.border }}>
+                      <View className="flex-row items-center justify-between mb-1">
+                        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
+                          Cancelled {b.cancelled_at ? formatDate(b.cancelled_at) : ''}
+                        </Text>
+                        <Badge label={REFUND_STATUS_LABEL[b.refund_status]} tone={REFUND_STATUS_TONE[b.refund_status]} />
+                      </View>
+                      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
+                        Cancellation fee ₹{b.cancellation_penalty_amount ?? 0} · Refund ₹{b.refund_amount ?? 0}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {b.status === 'pending_payment' || b.status === 'confirmed' ? (
+                    <TouchableOpacity
+                      onPress={() => void handleCancel(b)}
+                      disabled={cancelling}
+                      accessibilityRole="button"
+                      className="flex-row items-center justify-center rounded-xl py-2.5 mt-3"
+                      style={{ backgroundColor: COLORS.danger + '14', opacity: cancelling ? 0.6 : 1 }}
+                    >
+                      <XCircle size={13} color={COLORS.danger} />
+                      <Text style={{ color: COLORS.danger }} className="text-xs font-bold ml-2">
+                        {cancelling ? 'Cancelling…' : 'Cancel Booking'}
+                      </Text>
+                    </TouchableOpacity>
                   ) : null}
                 </View>
               ))}

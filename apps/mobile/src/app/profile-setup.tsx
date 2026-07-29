@@ -1,8 +1,6 @@
 import React, { useRef, useState } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView,
-  KeyboardAvoidingView, Platform,
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useAuthStore } from '../store/useAuthStore';
 import { userRepository, referralRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
@@ -134,15 +132,12 @@ export default function ProfileSetupScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardAwareScrollView
+      bottomOffset={24}
+      contentContainerStyle={{ flexGrow: 1 }}
       style={{ flex: 1, backgroundColor: COLORS.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardShouldPersistTaps="handled"
     >
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
-        style={{ backgroundColor: COLORS.background }}
-        keyboardShouldPersistTaps="handled"
-      >
         <View className="flex-1 px-6 pt-16 pb-16">
         <Text style={{ color: COLORS.textPrimary }} className="text-3xl font-black mb-2">
           Complete your profile and get ready to ride.
@@ -347,7 +342,6 @@ export default function ProfileSetupScreen() {
           )}
         </TouchableOpacity>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 }

@@ -1,13 +1,15 @@
 import { ApiError } from '../../lib/ApiError';
 import { isValidStartDay } from '../../lib/bookingDays';
+import { computeCancellationCharge } from '../../lib/cancellationPolicy';
+import { returnDeadlineFor } from '../../lib/returnPolicy';
 import { MANDATORY_KYC_DOC_TYPES } from '../../types/api';
 import type {
     ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
     ApiMaintenanceRecord, ApiMe, ApiPickupBooking, ApiReferralSummary, ApiRental, ApiSignedUrl,
     ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
-    ApiVehicleModelDetail, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
+    ApiVehicleModelDetail, BookingRefundStatus, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
     CreateUserPayload, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
-    RentalStatus, RoleName, StatusAction, SupportPriority, SupportStatus,
+    RentalStatus, ReturnRequestPayload, RoleName, StatusAction, SupportPriority, SupportStatus,
     UpdateSupportRequestPayload, UpdateUserPayload, VerificationStatus,
 } from '../../types/api';
 import type {
@@ -41,6 +43,12 @@ interface MockBookingRow {
     start_day: string;
     status: BookingStatus;
     created_at: string;
+    cancelled_at?: string | null;
+    cancellation_reason?: string | null;
+    plan_price_at_cancellation?: number | null;
+    cancellation_penalty_amount?: number | null;
+    refund_amount?: number | null;
+    refund_status?: BookingRefundStatus | null;
 }
 
 interface MockRentalRow {
@@ -51,6 +59,22 @@ interface MockRentalRow {
     status: RentalStatus;
     started_at: string;
     ended_at: string | null;
+    return_requested_at?: string | null;
+    return_reason?: string | null;
+    return_feedback?: string | null;
+    return_due_at?: string | null;
+    days_late?: number | null;
+    late_penalty_amount?: number | null;
+    late_fee_per_day?: number | null;
+}
+
+interface MockRentalFeedbackRow {
+    id: string;
+    rental_id: string;
+    user_id: string;
+    rating: number;
+    comment: string | null;
+    created_at: string;
 }
 
 interface MockNotificationRow {
@@ -86,6 +110,7 @@ const db = {
     bookings: [] as MockBookingRow[],
     notifications: [] as MockNotificationRow[],
     rentals: [] as MockRentalRow[],
+    rentalFeedback: [] as MockRentalFeedbackRow[],
     supportRequests: [] as MockSupportRow[],
     currentUserId: null as string | null,
     referrals: [] as { referee_id: string; referrer_id: string; code_used: string }[],
@@ -1176,6 +1201,12 @@ function toApiBooking(row: MockBookingRow): ApiBooking {
         // production's pre-pickup reality when no unit has been reserved yet.
         vehicle: null,
         referral_discount_amount: null,
+        cancelled_at: row.cancelled_at ?? null,
+        cancellation_reason: row.cancellation_reason ?? null,
+        plan_price_at_cancellation: row.plan_price_at_cancellation ?? null,
+        cancellation_penalty_amount: row.cancellation_penalty_amount ?? null,
+        refund_amount: row.refund_amount ?? null,
+        refund_status: row.refund_status ?? null,
     };
 }
 
@@ -1208,6 +1239,13 @@ function toApiRental(row: MockRentalRow): ApiRental {
             : null,
         station: station ? { id: station.id, name: station.name, code: station.code } : null,
         plan: plan ? { id: plan.id, name: plan.name, billing_cycle: plan.billing_cycle, price: plan.price } : null,
+        return_requested_at: row.return_requested_at ?? null,
+        return_reason: row.return_reason ?? null,
+        return_feedback: row.return_feedback ?? null,
+        return_due_at: row.return_due_at ?? null,
+        days_late: row.days_late ?? null,
+        late_penalty_amount: row.late_penalty_amount ?? null,
+        late_fee_per_day: row.late_fee_per_day ?? null,
     };
 }
 
@@ -1264,6 +1302,57 @@ export class MockBookingRepository implements BookingRepository {
             .filter((b) => b.user_id === actor.id && ACTIVE_BOOKING_STATUSES.includes(b.status))
             .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
         return rows.length > 0 ? toApiBooking(rows[0]) : null;
+    }
+
+    /**
+     * Mirrors cancelMyBooking on the backend, including the 404-not-403 choice
+     * for another rider's booking. No vehicle bookkeeping — mock mode has no
+     * per-unit allocation (see toApiBooking).
+     */
+    async cancel(bookingId: string, reason?: string): Promise<ApiBooking> {
+        await delay(400);
+        const actor = requireSession();
+
+        const row = db.bookings.find((b) => b.id === bookingId);
+        if (!row || row.user_id !== actor.id) {
+            throw new ApiError(404, 'NOT_FOUND', 'Booking not found.');
+        }
+        if (row.status === 'fulfilled') {
+            throw new ApiError(409, 'CONFLICT', "This booking has already been picked up and can't be cancelled here.");
+        }
+        if (row.status === 'cancelled') {
+            throw new ApiError(409, 'CONFLICT', 'This booking is already cancelled.');
+        }
+        if (row.status === 'expired') {
+            throw new ApiError(409, 'CONFLICT', "This booking has expired and can't be cancelled.");
+        }
+        if (!ACTIVE_BOOKING_STATUSES.includes(row.status)) {
+            throw new ApiError(409, 'CONFLICT', 'This booking can no longer be cancelled.');
+        }
+
+        const model = SEED_VEHICLE_MODELS_DETAIL.find((m) => m.id === row.vehicle_model_id);
+        const plan = model?.plans.find((p) => p.id === row.plan_id);
+        const charge = computeCancellationCharge({
+            startDay: row.start_day,
+            planPrice: plan?.price ?? null,
+            createdAt: row.created_at,
+        });
+
+        row.status = 'cancelled';
+        row.cancelled_at = nowIso();
+        row.cancellation_reason = reason ?? null;
+        row.plan_price_at_cancellation = charge.chargeableAmount;
+        row.cancellation_penalty_amount = charge.penaltyAmount;
+        row.refund_amount = charge.refundAmount;
+        row.refund_status = charge.refundAmount > 0 ? 'pending' : 'not_required';
+
+        audit('booking.cancelled', actor.id, {
+            status: 'cancelled',
+            penalty_amount: charge.penaltyAmount,
+            refund_amount: charge.refundAmount,
+        });
+
+        return toApiBooking(row);
     }
 
     async history(params: { page?: number; pageSize?: number }): Promise<Paginated<ApiBooking>> {
@@ -1382,6 +1471,64 @@ export class MockRentalRepository implements RentalRepository {
             data,
             pagination: { page, pageSize, total: rows.length, totalPages: pageSize > 0 ? Math.ceil(rows.length / pageSize) : 0 },
         };
+    }
+
+    /**
+     * Mirrors requestReturn on the backend, including the 404-not-403 choice
+     * for another rider's rental.
+     *
+     * ⚠️ Deliberately does NOT clear the user's assigned_vehicle. me() derives
+     * has_active_rental from `!!row.assigned_vehicle`, and the rider still
+     * physically holds the scooter until staff confirm the handover — so the
+     * flag must stay true. Clearing it here is the natural instinct when
+     * writing a "return" method and would be wrong.
+     */
+    async requestReturn(rentalId: string, payload: ReturnRequestPayload): Promise<ApiRental> {
+        await delay(400);
+        const actor = requireSession();
+
+        const row = db.rentals.find((r) => r.id === rentalId);
+        if (!row || row.user_id !== actor.id) {
+            throw new ApiError(404, 'NOT_FOUND', 'Rental not found.');
+        }
+        if (row.status !== 'active') {
+            throw new ApiError(409, 'CONFLICT', 'This rental is no longer active.');
+        }
+        if (row.return_requested_at) {
+            throw new ApiError(409, 'CONFLICT', "You've already requested a return for this scooter.");
+        }
+
+        const now = new Date();
+        row.return_requested_at = now.toISOString();
+        row.return_reason = payload.reason;
+        row.return_feedback = payload.feedback ?? null;
+        row.return_due_at = returnDeadlineFor(now).toISOString();
+        // status stays 'active' — see the doc comment above.
+
+        const existingFeedback = db.rentalFeedback.find((f) => f.rental_id === rentalId);
+        if (existingFeedback) {
+            existingFeedback.rating = payload.rating;
+            existingFeedback.comment = payload.feedback ?? null;
+        } else {
+            db.rentalFeedback.push({
+                id: uid('rf'),
+                rental_id: rentalId,
+                user_id: actor.id,
+                rating: payload.rating,
+                comment: payload.feedback ?? null,
+                created_at: nowIso(),
+            });
+        }
+
+        notify(actor.id, {
+            template: 'rental_return_requested',
+            title: 'Return Requested',
+            body: 'Hand your scooter in by 11:59 PM today. Our team will confirm the handover.',
+            screen: 'post-booking-dashboard',
+        });
+        audit('rental.return_requested', actor.id, { return_reason: payload.reason, rating: payload.rating });
+
+        return toApiRental(row);
     }
 }
 
@@ -1548,6 +1695,16 @@ export class MockMaintenanceRepository implements MaintenanceRepository {
         requireSession();
         return { data: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 } };
     }
+}
+
+/**
+ * Test hook: ages a booking so the post-creation grace period can be stepped
+ * over. A mock booking is always created "now", which would otherwise make the
+ * late-cancellation path unreachable from tests.
+ */
+export function backdateBookingCreatedAt(bookingId: string, createdAt: string): void {
+    const row = db.bookings.find((b) => b.id === bookingId);
+    if (row) row.created_at = createdAt;
 }
 
 /** Test hook: restores the seed so a demo can be re-run from a clean slate. */

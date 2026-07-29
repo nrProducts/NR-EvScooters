@@ -3,7 +3,23 @@ export const RENTAL_STATUSES: readonly RentalStatus[] = [
     "active", "completed", "force_ended", "cancelled",
 ] as const;
 
-export interface RentalView {
+/**
+ * Post-pickup return request + late-fee settlement. All null until the rider
+ * requests a return; the settlement half stays null until staff confirm the
+ * physical handover. Note the rental remains 'active' throughout — see
+ * requestReturn for why.
+ */
+export interface RentalReturnFields {
+    return_requested_at: string | null;
+    return_reason: string | null;
+    return_feedback: string | null;
+    return_due_at: string | null;
+    days_late: number | null;
+    late_penalty_amount: number | null;
+    late_fee_per_day: number | null;
+}
+
+export interface RentalView extends RentalReturnFields {
     id: string;
     status: RentalStatus;
     started_at: string;
@@ -13,11 +29,17 @@ export interface RentalView {
     plan: { id: string; name: string; billing_cycle: string; price: number } | null;
 }
 
+export interface RequestReturnInput {
+    reason: string;
+    feedback?: string;
+    rating: number;
+}
+
 // ---------------------------------------------------------------------------
 // Admin — "Ride Management"
 // ---------------------------------------------------------------------------
 
-export interface AdminRentalRow {
+export interface AdminRentalRow extends RentalReturnFields {
     id: string;
     status: RentalStatus;
     started_at: string;

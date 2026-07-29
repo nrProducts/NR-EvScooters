@@ -17,6 +17,17 @@ export interface CreateBookingInput {
     start_day: string; // YYYY-MM-DD
 }
 
+/**
+ * No payment is ever captured in this phase, so a refund is a recorded request
+ * for the future checkout phase rather than a reversal. 'not_required' covers a
+ * cancellation whose refund works out to zero.
+ */
+export type BookingRefundStatus = "pending" | "processed" | "not_required";
+
+export interface CancelBookingInput {
+    reason?: string;
+}
+
 export interface BookingView {
     id: string;
     status: BookingStatus;
@@ -37,6 +48,17 @@ export interface BookingView {
     } | null;
     /** Flat discount stamped by a qualifying first-booking referral, if any. */
     referral_discount_amount: number | null;
+
+    // --- pre-pickup cancellation (all null unless the rider cancelled) ------
+    // Note these stay null for bookings closed by the staff reject flow, which
+    // predates this feature and records nothing beyond status='cancelled'.
+    cancelled_at: string | null;
+    cancellation_reason: string | null;
+    /** Net amount owed (plan price minus referral discount), frozen at cancel time. */
+    plan_price_at_cancellation: number | null;
+    cancellation_penalty_amount: number | null;
+    refund_amount: number | null;
+    refund_status: BookingRefundStatus | null;
 }
 
 export interface PickupQueueFilters {

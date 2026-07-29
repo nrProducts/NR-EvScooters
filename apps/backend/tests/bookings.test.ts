@@ -75,6 +75,12 @@ describe("toBookingView", () => {
             plan: { id: "p-1", name: "NR Volt X1 — Daily", billing_cycle: "daily", price: 149 },
             vehicle: null,
             referral_discount_amount: null,
+            cancelled_at: null,
+            cancellation_reason: null,
+            plan_price_at_cancellation: null,
+            cancellation_penalty_amount: null,
+            refund_amount: null,
+            refund_status: null,
         });
     });
 
@@ -139,6 +145,31 @@ describe("toBookingView", () => {
         });
 
         expect(view.referral_discount_amount).toBeNull();
+    });
+
+    it("passes through the cancellation and refund fields", () => {
+        const view = toBookingView({
+            id: "b-7",
+            status: "cancelled",
+            start_day: "2026-08-03",
+            created_at: "2026-07-22T00:00:00.000Z",
+            vehicle_models: null,
+            stations: null,
+            plans: null,
+            cancelled_at: "2026-08-01T10:00:00.000Z",
+            cancellation_reason: "Change of plans",
+            plan_price_at_cancellation: 4000,
+            cancellation_penalty_amount: 1000,
+            refund_amount: 3000,
+            refund_status: "pending",
+        });
+
+        expect(view.cancelled_at).toBe("2026-08-01T10:00:00.000Z");
+        expect(view.cancellation_reason).toBe("Change of plans");
+        expect(view.plan_price_at_cancellation).toBe(4000);
+        expect(view.cancellation_penalty_amount).toBe(1000);
+        expect(view.refund_amount).toBe(3000);
+        expect(view.refund_status).toBe("pending");
     });
 
     it("passes through a stamped referral_discount_amount", () => {

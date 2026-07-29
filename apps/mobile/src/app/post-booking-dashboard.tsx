@@ -8,7 +8,9 @@ import { useAuthStore } from '../store/useAuthStore';
 import { rentalRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { COLORS } from '../constants/theme';
-import { Bike, CreditCard, LifeBuoy, BatteryFull, ChevronRight, MapPin, Clock } from 'lucide-react-native';
+import { Bike, CreditCard, LifeBuoy, BatteryFull, ChevronRight, MapPin, Clock, PackageCheck } from 'lucide-react-native';
+import { ReturnScooterModal } from '../components/ReturnScooterModal';
+import { ReturnStatusCard } from '../components/ReturnStatusCard';
 import type { ApiRental } from '../types/api';
 
 const CYCLE_LABEL: Record<string, string> = {
@@ -36,6 +38,7 @@ export default function PostBookingDashboardScreen() {
   const [error, setError] = useState<string | null>(null);
   // Ticks once a minute purely to re-render the elapsed-time label below.
   const [, setClockTick] = useState(0);
+  const [showReturn, setShowReturn] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -119,6 +122,33 @@ export default function PostBookingDashboardScreen() {
               </View>
             ) : null}
           </View>
+
+          {rental ? (
+            rental.return_requested_at ? (
+              <ReturnStatusCard rental={rental} />
+            ) : (
+              <TouchableOpacity
+                onPress={() => setShowReturn(true)}
+                accessibilityRole="button"
+                className="flex-row items-center justify-center rounded-2xl py-3 mt-3 mb-3 border"
+                style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
+              >
+                <PackageCheck size={16} color={COLORS.primaryPressed} />
+                <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-bold ml-2">
+                  Return Scooter
+                </Text>
+              </TouchableOpacity>
+            )
+          ) : null}
+
+          {rental ? (
+            <ReturnScooterModal
+              visible={showReturn}
+              rental={rental}
+              onClose={() => setShowReturn(false)}
+              onSubmitted={load}
+            />
+          ) : null}
 
           {/* PLAN SUMMARY CARD */}
           <TouchableOpacity

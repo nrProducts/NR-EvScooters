@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, Animated, Dimensions, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Pressable, Modal, Animated, Easing, Dimensions, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
@@ -14,6 +14,9 @@ import {
 } from 'lucide-react-native';
 
 const DRAWER_WIDTH = Math.min(300, Dimensions.get('window').width * 0.8);
+/** Decelerating in, accelerating out — the drawer should feel eager to open, quick to leave. */
+const DRAWER_OPEN_MS = 260;
+const DRAWER_CLOSE_MS = 200;
 
 interface NavItem {
   label: string;
@@ -57,9 +60,13 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
 
   // Assigned vehicle, plan and KYC come from GET /users/me — real data.
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // Mount state and animation progress are deliberately separate: the Modal
+  // must stay mounted for the duration of an animated close, and must be able
+  // to disappear in a single frame when we navigate away (see below).
+  const [drawerMounted, setDrawerMounted] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const drawerAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  /** 0 = fully closed, 1 = fully open. Drives the slide and the scrim fade together. */
+  const drawerAnim = useRef(new Animated.Value(0)).current;
   const { count: unreadNotifications } = useUnreadNotificationCount();
   const insets = useSafeAreaInsets();
 
@@ -79,25 +86,61 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   );
   const navItems = isStaff ? ADMIN_NAV : riderNav;
 
+  /** Mount first, animate second — see the effect below for why. */
+  const openDrawer = () => {
+    drawerAnim.setValue(0);
+    setDrawerMounted(true);
+  };
+
+  /**
+   * The slide-in has to start on the commit AFTER the Modal mounts. Starting
+   * it in openDrawer() runs it against a native window that isn't on screen
+   * yet, so the opening frames are dropped and the drawer just appears.
+   */
   useEffect(() => {
+    if (!drawerMounted) return;
     Animated.timing(drawerAnim, {
-      toValue: drawerOpen ? 0 : -DRAWER_WIDTH,
-      duration: 220,
+      toValue: 1,
+      duration: DRAWER_OPEN_MS,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [drawerOpen]);
+  }, [drawerMounted, drawerAnim]);
 
-  const closeDrawer = () => setDrawerOpen(false);
+  /**
+   * Slides the drawer out, then unmounts and runs `onDone`. Everything that
+   * dismisses the drawer goes through here, including navigation: waiting for
+   * the drawer to be fully off screen before pushing is what keeps this modal
+   * window from painting over the incoming screen (the old grey flash), while
+   * still letting the close animate properly.
+   */
+  const closeDrawer = (onDone?: () => void) => {
+    if (!drawerMounted) {
+      onDone?.();
+      return;
+    }
+    Animated.timing(drawerAnim, {
+      toValue: 0,
+      duration: DRAWER_CLOSE_MS,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+      // Fires even if the animation is interrupted, so onDone can never be
+      // stranded and leave a tap doing nothing.
+    }).start(() => {
+      setDrawerMounted(false);
+      onDone?.();
+    });
+  };
 
   const handleNavigate = (route: string) => {
-    closeDrawer();
-    router.push(route as any);
+    closeDrawer(() => router.push(route as any));
   };
 
   const handleLogout = () => {
-    closeDrawer();
-    setProfileOpen(false);
-    void signOut().then(() => router.replace('/'));
+    closeDrawer(() => {
+      setProfileOpen(false);
+      void signOut().then(() => router.replace('/'));
+    });
   };
 
   // The root layout holds the loading state while the profile is in flight.
@@ -109,7 +152,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
       <View className="flex-row items-center justify-between px-4 border-b" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, paddingTop: 52, paddingBottom: 14 }}>
         <View className="flex-row items-center flex-1">
           <TouchableOpacity
-            onPress={() => setDrawerOpen(true)}
+            onPress={openDrawer}
             className="w-9 h-9 rounded-xl items-center justify-center mr-3"
             style={{ backgroundColor: COLORS.background }}
           >
@@ -155,13 +198,18 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
       </View>
 
       {/* NAV DRAWER */}
-      <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={closeDrawer}>
+      <Modal visible={drawerMounted} transparent animationType="none" onRequestClose={() => closeDrawer()}>
         <View style={{ flex: 1, flexDirection: 'row' }}>
           <Animated.View
             style={{
               width: DRAWER_WIDTH,
               backgroundColor: COLORS.card,
-              transform: [{ translateX: drawerAnim }],
+              transform: [{
+                translateX: drawerAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-DRAWER_WIDTH, 0],
+                }),
+              }],
               paddingTop: 56,
             }}
           >
@@ -200,7 +248,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
               <View className="h-px my-3" style={{ backgroundColor: COLORS.border }} />
 
               <TouchableOpacity
-                onPress={() => { closeDrawer(); setProfileOpen(true); }}
+                onPress={() => closeDrawer(() => setProfileOpen(true))}
                 className="flex-row items-center px-3.5 py-3 rounded-xl mb-1"
               >
                 <User size={18} color={COLORS.textSecondary} />
@@ -217,11 +265,9 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
             </ScrollView>
           </Animated.View>
 
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={closeDrawer}
-            style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.4)' }}
-          />
+          <Animated.View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.4)', opacity: drawerAnim }}>
+            <Pressable style={{ flex: 1 }} onPress={() => closeDrawer()} />
+          </Animated.View>
         </View>
       </Modal>
 

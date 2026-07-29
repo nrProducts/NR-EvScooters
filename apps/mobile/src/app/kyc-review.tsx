@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator,
-  Modal, Image, RefreshControl, FlatList, KeyboardAvoidingView, Platform,
+  Modal, Image, RefreshControl, FlatList,
 } from 'react-native';
+// Library version, not RN's: RN's only really works on iOS, and Android is
+// edge-to-edge from SDK 54 so the window no longer resizes for the keyboard.
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -633,7 +636,7 @@ const KycDetailView: React.FC<{ userId: string; onBack: () => void }> = ({ userI
       {/* Mandatory rejection reason */}
       <Modal visible={!!rejectTarget} transparent animationType="slide" onRequestClose={() => setRejectTarget(null)}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
           style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' }}
         >
           <View style={{ backgroundColor: COLORS.card, borderTopLeftRadius: 28, borderTopRightRadius: 28 }}>

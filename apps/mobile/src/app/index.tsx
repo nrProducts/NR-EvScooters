@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView,
-  KeyboardAvoidingView, Platform,
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
 import { authRepository, DEMO_ACCOUNTS } from '../services';
@@ -80,13 +78,10 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: COLORS.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-    <ScrollView
+    <KeyboardAwareScrollView
+      bottomOffset={24}
       contentContainerStyle={{ flexGrow: 1 }}
-      style={{ backgroundColor: COLORS.background }}
+      style={{ flex: 1, backgroundColor: COLORS.background }}
       keyboardShouldPersistTaps="handled"
     >
       <View className="flex-1 px-6 justify-center py-16 items-center">
@@ -258,7 +253,6 @@ export default function LoginScreen() {
           )}
         </View>
       </View>
-    </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 }

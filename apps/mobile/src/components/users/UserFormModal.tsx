@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  View, Text, ScrollView, TouchableOpacity, Modal, KeyboardAvoidingView,
-  Platform, ActivityIndicator, Alert,
-} from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, ActivityIndicator, Alert } from 'react-native';
+// Library version, not RN's: RN's only really works on iOS, and Android is
+// edge-to-edge from SDK 54 so the window no longer resizes for the keyboard.
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X, Check } from 'lucide-react-native';
 import { FormField } from '../ui/FormField';
@@ -235,7 +235,7 @@ export const UserFormModal: React.FC<Props> = ({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={requestClose}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' }}
       >
         <View

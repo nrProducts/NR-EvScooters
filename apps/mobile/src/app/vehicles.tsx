@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import {
-  View, Text, ScrollView, TextInput, TouchableOpacity, Alert,
-  Modal, KeyboardAvoidingView, Platform,
-} from 'react-native';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal } from 'react-native';
+// Library version, not RN's: RN's only really works on iOS, and Android is
+// edge-to-edge from SDK 54 so the window no longer resizes for the keyboard.
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
@@ -395,7 +395,7 @@ export default function VehiclesScreen() {
       {/* ADD / EDIT VEHICLE MODAL */}
       <Modal visible={formOpen} transparent animationType="slide" onRequestClose={closeForm}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
           style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' }}
         >
           <View style={{ backgroundColor: COLORS.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '88%' }}>

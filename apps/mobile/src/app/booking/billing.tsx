@@ -5,6 +5,9 @@ import { ChevronLeft, CheckCircle2, Bike, MapPin, Calendar, CreditCard } from 'l
 import { useBookingStore } from '../../store/useBookingStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { COLORS } from '../../constants/theme';
+import {
+  FREE_CANCELLATION_GRACE_MINUTES, FREE_CANCELLATION_NOTICE_DAYS, LATE_CANCELLATION_PENALTY_RATE,
+} from '../../lib/cancellationPolicy';
 
 const CYCLE_LABEL: Record<string, string> = {
   daily: 'Day', weekly: 'Week', monthly: 'Month', yearly: 'Year',
@@ -154,6 +157,11 @@ export default function BillingScreen() {
         </TouchableOpacity>
         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-3">
           Payment isn&apos;t collected yet — this confirms your reservation now; checkout is coming in a later update.
+        </Text>
+        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-2">
+          Free cancellation within {FREE_CANCELLATION_GRACE_MINUTES} minutes of booking, or any time up to{' '}
+          {FREE_CANCELLATION_NOTICE_DAYS} days before pickup. After that a{' '}
+          {Math.round(LATE_CANCELLATION_PENALTY_RATE * 100)}% fee applies.
         </Text>
       </ScrollView>
     </View>

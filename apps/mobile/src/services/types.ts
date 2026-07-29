@@ -4,7 +4,8 @@ import type {
     ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
     ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
     CreateUserPayload, KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile,
-    Paginated, RoleName, StatusAction, SupportStatus, UpdateSupportRequestPayload, UpdateUserPayload,
+    Paginated, ReturnRequestPayload, RoleName, StatusAction, SupportStatus,
+    UpdateSupportRequestPayload, UpdateUserPayload,
 } from '../types/api';
 
 export interface UploadPhotoResult {
@@ -113,6 +114,8 @@ export interface BookingRepository {
     mine(): Promise<ApiBooking | null>;
     /** All of the rider's own bookings, any status, most recent first. */
     history(params: HistoryParams): Promise<Paginated<ApiBooking>>;
+    /** Rider-initiated pre-pickup cancellation. Returns the cancelled booking with its refund fields. */
+    cancel(bookingId: string, reason?: string): Promise<ApiBooking>;
     nearestStation(lat: number, lng: number): Promise<ApiStation>;
 
     // staff pickup/check-in
@@ -126,6 +129,11 @@ export interface RentalRepository {
     mine(): Promise<ApiRental | null>;
     /** All of the rider's own rentals, most recent first. */
     history(params: HistoryParams): Promise<Paginated<ApiRental>>;
+    /**
+     * Asks to hand the scooter back. Does NOT end the rental — it stays
+     * active until staff confirm the physical handover.
+     */
+    requestReturn(rentalId: string, payload: ReturnRequestPayload): Promise<ApiRental>;
 }
 
 export interface MaintenanceRepository {

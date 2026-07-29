@@ -3,7 +3,9 @@ import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import * as service from "./rentals.service";
 import { ListRentalsFilters } from "./rentals.types";
-import { CompleteRideBody, MoveToMaintenanceBody, RentalHistoryQuery } from "./rentals.validation";
+import {
+    CompleteRideBody, MoveToMaintenanceBody, RentalHistoryQuery, RequestReturnBody,
+} from "./rentals.validation";
 
 export async function myCurrentRentalHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getMyCurrentRental(req.user!.id));
@@ -12,6 +14,11 @@ export async function myCurrentRentalHandler(req: AuthedRequest, res: Response) 
 export async function myRentalHistoryHandler(req: AuthedRequest, res: Response) {
     const page = validatedQuery<RentalHistoryQuery>(req);
     res.json(await service.getMyRentalHistory(req.user!.id, page));
+}
+
+export async function requestReturnHandler(req: AuthedRequest, res: Response) {
+    const body = req.body as RequestReturnBody;
+    res.json(await service.requestReturn(req.params.id as string, body, req.user!));
 }
 
 export async function listRentalsHandler(req: AuthedRequest, res: Response) {

@@ -1,16 +1,19 @@
-import React from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
+import { ReturnScooterModal } from '../components/ReturnScooterModal';
+import { ReturnStatusCard } from '../components/ReturnStatusCard';
 import { COLORS } from '../constants/theme';
 import { RENTAL_STATUS_LABEL, RENTAL_STATUS_TONE, VEHICLE_STATUS_LABEL, VEHICLE_STATUS_TONE } from '../constants/status';
-import { Bike, BatteryFull, Hash, MapPin } from 'lucide-react-native';
+import { Bike, BatteryFull, Hash, MapPin, PackageCheck } from 'lucide-react-native';
 import { useCurrentRideOrBooking } from '../hooks/useCurrentRideOrBooking';
 
 export default function MyScooterScreen() {
   const { state, loading, error, reload } = useCurrentRideOrBooking();
+  const [showReturn, setShowReturn] = useState(false);
 
   return (
     <AppShell title="My Scooter">
@@ -44,6 +47,32 @@ export default function MyScooterScreen() {
                 <DetailRow icon={Hash} label="Registration Number" value={state.rental.vehicle.registration_number} first />
                 {state.rental.station ? <DetailRow icon={MapPin} label="Picked Up At" value={state.rental.station.name} /> : null}
               </View>
+
+              {/* Once a return is requested the button is REPLACED, not
+                  disabled — the rental stays active and the only way out is
+                  staff confirming the handover. */}
+              {state.rental.return_requested_at ? (
+                <ReturnStatusCard rental={state.rental} />
+              ) : (
+                <TouchableOpacity
+                  onPress={() => setShowReturn(true)}
+                  accessibilityRole="button"
+                  className="flex-row items-center justify-center rounded-xl py-3 mt-3"
+                  style={{ backgroundColor: COLORS.primary + '14' }}
+                >
+                  <PackageCheck size={15} color={COLORS.primaryPressed} />
+                  <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-bold ml-2">
+                    Return Scooter
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              <ReturnScooterModal
+                visible={showReturn}
+                rental={state.rental}
+                onClose={() => setShowReturn(false)}
+                onSubmitted={reload}
+              />
             </>
           ) : state.kind === 'booking' ? (
             <>

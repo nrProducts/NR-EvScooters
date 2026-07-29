@@ -17,6 +17,15 @@ router.get(
     asyncHandler(c.myRentalHistoryHandler),
 );
 
+// Rider-initiated post-pickup return REQUEST. Scoped to the caller's own
+// rental inside the service, so no requireStaff. Does not end the ride —
+// staff close it via POST /:id/complete below, which settles any late fee.
+router.post(
+    "/:id/return-request",
+    validate({ params: v.rentalIdParam, body: v.requestReturnBody }),
+    asyncHandler(c.requestReturnHandler),
+);
+
 router.get(
     "/",
     requireStaff,

@@ -1,6 +1,6 @@
 import type {
-  AccountStatus, BookingStatus, KycStatus, KycDocType, MaintenanceStatus, RentalStatus,
-  SupportPriority, SupportStatus, VerificationStatus, VehicleStatus,
+  AccountStatus, BookingRefundStatus, BookingStatus, KycStatus, KycDocType, MaintenanceStatus,
+  RentalStatus, SupportPriority, SupportStatus, VerificationStatus, VehicleStatus,
 } from '../types/api';
 
 type Tone = 'success' | 'warning' | 'danger' | 'neutral' | 'primary';
@@ -112,6 +112,18 @@ export const SUPPORT_PRIORITY_LABEL: Record<SupportPriority, string> = {
   medium: 'Medium',
   high: 'High',
   urgent: 'Urgent',
+};
+
+export const REFUND_STATUS_TONE: Record<BookingRefundStatus, Tone> = {
+  pending: 'warning',
+  processed: 'success',
+  not_required: 'neutral',
+};
+
+export const REFUND_STATUS_LABEL: Record<BookingRefundStatus, string> = {
+  pending: 'Refund Pending',
+  processed: 'Refund Processed',
+  not_required: 'No Refund Due',
 };
 
 export const VEHICLE_STATUS_TONE: Record<VehicleStatus, Tone> = {

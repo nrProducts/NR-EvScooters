@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import {
-  View, Text, ScrollView, TextInput, TouchableOpacity, Alert, FlatList,
-  KeyboardAvoidingView, Platform,
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, FlatList } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useScooterStore } from '../store/useScooterStore';
 import { COLORS } from '../constants/theme';
 import { Wrench, Calendar, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react-native';
@@ -52,14 +50,12 @@ export default function MaintenanceScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardAwareScrollView
+      bottomOffset={24}
       style={{ flex: 1, backgroundColor: '#F9FAFB' }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-    <ScrollView
-      style={{ backgroundColor: '#F9FAFB' }}
-      contentContainerStyle={{ paddingBottom: 40 }}
-      className="flex-1 px-6 py-6"
+      // Explicit styles rather than the old `className="flex-1 px-6 py-6"`:
+      // NativeWind doesn't transform className on third-party components.
+      contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 64 }}
       keyboardShouldPersistTaps="handled"
     >
       {/* TICKET REPORTING BOX */}
@@ -152,7 +148,6 @@ export default function MaintenanceScreen() {
         />
       </View>
 
-    </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 }

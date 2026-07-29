@@ -12,8 +12,8 @@ import type {
     ApiReferralSummary, ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest,
     ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload,
     CreateSupportRequestPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
-    ListVehicleModelsParams, LocalFile, Paginated, RoleName, StatusAction, SupportStatus,
-    UpdateSupportRequestPayload, UpdateUserPayload,
+    ListVehicleModelsParams, LocalFile, Paginated, ReturnRequestPayload, RoleName, StatusAction,
+    SupportStatus, UpdateSupportRequestPayload, UpdateUserPayload,
 } from '../types/api';
 
 type OnUnauthorized = () => void;
@@ -331,6 +331,12 @@ export const api = {
 
     myCurrentBooking: () => request<ApiBooking>('/bookings/me/current'),
 
+    cancelBooking: (bookingId: string, reason?: string) =>
+        request<ApiBooking>(`/bookings/${bookingId}/cancel`, {
+            method: 'POST',
+            body: reason ? { reason } : {},
+        }),
+
     bookingHistory: (params: { page?: number; pageSize?: number } = {}) =>
         request<Paginated<ApiBooking>>('/bookings/me/history', {
             query: params as Record<string, string | number | boolean | undefined>,
@@ -362,6 +368,9 @@ export const api = {
 
     // --- rentals -------------------------------------------------------
     myCurrentRental: () => request<ApiRental>('/rentals/me/current'),
+
+    requestRentalReturn: (rentalId: string, body: ReturnRequestPayload) =>
+        request<ApiRental>(`/rentals/${rentalId}/return-request`, { method: 'POST', body }),
 
     rentalHistory: (params: { page?: number; pageSize?: number } = {}) =>
         request<Paginated<ApiRental>>('/rentals/me/history', {

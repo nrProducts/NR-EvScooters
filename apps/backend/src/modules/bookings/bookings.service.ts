@@ -7,12 +7,22 @@ import { hasActiveRentalForUser } from "../users/users.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { AuthContext, Paginated } from "../../types";
 import {
-    ACTIVE_BOOKING_STATUSES, AvailableVehicleView, BookingHistoryFilters, BookingStatus,
-    BookingView, ConfirmPickupInput, CreateBookingInput, PickupBookingView, PickupQueueFilters,
+    ACTIVE_BOOKING_STATUSES, AvailableVehicleView, BookingHistoryFilters, BookingRefundStatus,
+    BookingStatus, BookingView, CancelBookingInput, ConfirmPickupInput, CreateBookingInput,
+    PickupBookingView, PickupQueueFilters,
 } from "./bookings.types";
+import {
+    FREE_CANCELLATION_GRACE_MINUTES, FREE_CANCELLATION_NOTICE_DAYS, LATE_CANCELLATION_PENALTY_RATE,
+} from "./cancellation.constants";
+
+const CANCELLATION_COLUMNS = `
+    cancelled_at, cancellation_reason, plan_price_at_cancellation,
+    cancellation_penalty_amount, refund_amount, refund_status
+`;
 
 const BOOKING_COLUMNS = `
     id, status, start_day, created_at, vehicle_id, referral_discount_amount,
+    ${CANCELLATION_COLUMNS},
     vehicle_models(id, name),
     stations(id, name, code, lat, lng),
     plans(id, name, billing_cycle, price),
@@ -26,6 +36,12 @@ type RawBookingRow = {
     created_at: string;
     vehicle_id: string | null;
     referral_discount_amount: number | null;
+    cancelled_at: string | null;
+    cancellation_reason: string | null;
+    plan_price_at_cancellation: number | null;
+    cancellation_penalty_amount: number | null;
+    refund_amount: number | null;
+    refund_status: BookingRefundStatus | null;
     vehicle_models: unknown;
     stations: unknown;
     plans: unknown;
@@ -67,6 +83,75 @@ export function isValidStartDay(dateStr: string): boolean {
     return parsed.getDay() !== 0;
 }
 
+export interface CancellationCharge {
+    /** Whole calendar days from today to start_day; negative once start_day has passed. */
+    daysUntilPickup: number;
+    isLate: boolean;
+    /** True when the booking is still inside its post-creation grace period. */
+    withinGrace: boolean;
+    /** plans.price minus any referral discount — what the rider would actually have owed. */
+    chargeableAmount: number;
+    penaltyAmount: number;
+    refundAmount: number;
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/**
+ * Cancelling is free when EITHER of these holds:
+ *   1. The booking was created within FREE_CANCELLATION_GRACE_MINUTES, or
+ *   2. start_day is FREE_CANCELLATION_NOTICE_DAYS or more calendar days out.
+ * Otherwise LATE_CANCELLATION_PENALTY_RATE of the net plan price is kept back.
+ *
+ * start_day is DATE-only, so ">24h notice" is expressed in whole days:
+ *   +2 days or more -> free  |  +1 (tomorrow), today, or past -> penalty
+ *
+ * The grace period matters because the notice rule alone only asks how close
+ * pickup is: a booking made FOR tomorrow is born inside the penalty window and
+ * would otherwise be charged seconds after it was created.
+ *
+ * The penalty applies to the NET price (after any referral discount) — charging
+ * a fee on an amount the rider was never going to owe would be wrong.
+ *
+ * Exported so the service and the tests exercise the exact same rule, same
+ * reason isValidStartDay is exported. `now` is injectable for deterministic
+ * tests; like isValidStartDay this works in server-local time, never UTC.
+ */
+export function computeCancellationCharge(input: {
+    startDay: string;
+    planPrice: number | null;
+    discountAmount?: number | null;
+    /** bookings.created_at — omit only where it genuinely isn't known. */
+    createdAt?: string | null;
+    now?: Date;
+}): CancellationCharge {
+    const nowMs = (input.now ? new Date(input.now) : new Date()).getTime();
+
+    const start = new Date(`${input.startDay}T00:00:00`);
+    const today = input.now ? new Date(input.now) : new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Math.round rather than floor: a DST shift makes the gap 23 or 25 hours,
+    // which would otherwise slide the boundary by a whole day.
+    const daysUntilPickup = Number.isNaN(start.getTime())
+        ? 0
+        : Math.round((start.getTime() - today.getTime()) / 86_400_000);
+
+    const createdMs = input.createdAt ? new Date(input.createdAt).getTime() : NaN;
+    const withinGrace = !Number.isNaN(createdMs)
+        && nowMs - createdMs <= FREE_CANCELLATION_GRACE_MINUTES * 60_000
+        // A clock skew that puts creation in the future must not silently
+        // extend the grace window indefinitely.
+        && nowMs >= createdMs;
+
+    const isLate = !withinGrace && daysUntilPickup < FREE_CANCELLATION_NOTICE_DAYS;
+    const chargeableAmount = round2(Math.max(0, (input.planPrice ?? 0) - (input.discountAmount ?? 0)));
+    const penaltyAmount = isLate ? round2(chargeableAmount * LATE_CANCELLATION_PENALTY_RATE) : 0;
+    const refundAmount = Math.max(0, round2(chargeableAmount - penaltyAmount));
+
+    return { daysUntilPickup, isLate, withinGrace, chargeableAmount, penaltyAmount, refundAmount };
+}
+
 export function toBookingView(row: RawBookingRow): BookingView {
     return {
         id: row.id,
@@ -78,6 +163,12 @@ export function toBookingView(row: RawBookingRow): BookingView {
         plan: unwrap(row.plans),
         vehicle: unwrap(row.vehicles),
         referral_discount_amount: row.referral_discount_amount ?? null,
+        cancelled_at: row.cancelled_at ?? null,
+        cancellation_reason: row.cancellation_reason ?? null,
+        plan_price_at_cancellation: row.plan_price_at_cancellation ?? null,
+        cancellation_penalty_amount: row.cancellation_penalty_amount ?? null,
+        refund_amount: row.refund_amount ?? null,
+        refund_status: row.refund_status ?? null,
     };
 }
 
@@ -190,6 +281,105 @@ export async function getMyBookingHistory(
     return paginate(items, count ?? 0, filters);
 }
 
+/**
+ * Rider-initiated PRE-PICKUP cancellation. Distinct from rejectBooking (staff,
+ * pending_payment only): this accepts 'confirmed' too and is scoped to the
+ * caller's own booking. Post-pickup returns are a separate, future policy.
+ *
+ * No money has been captured (there is no checkout yet), so the refund fields
+ * are recorded as a request for the future billing phase, not a reversal.
+ */
+export async function cancelMyBooking(
+    bookingId: string,
+    input: CancelBookingInput,
+    actor: AuthContext,
+): Promise<BookingView> {
+    const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("bookings")
+        .select("id, user_id, status, start_day, created_at, vehicle_id, referral_discount_amount, plans(price)")
+        .eq("id", bookingId)
+        .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    // 404 rather than 403 for someone else's booking: a 403 would confirm that
+    // the id exists, letting a caller probe for other riders' booking ids.
+    if (!existing || existing.user_id !== actor.id) throw notFound("Booking not found.");
+
+    if (existing.status === "fulfilled") {
+        throw conflict("This booking has already been picked up and can't be cancelled here.");
+    }
+    if (existing.status === "cancelled") throw conflict("This booking is already cancelled.");
+    if (existing.status === "expired") throw conflict("This booking has expired and can't be cancelled.");
+    if (!(ACTIVE_BOOKING_STATUSES as string[]).includes(existing.status)) {
+        throw conflict("This booking can no longer be cancelled.");
+    }
+
+    const charge = computeCancellationCharge({
+        startDay: existing.start_day as string,
+        planPrice: unwrap<{ price: number }>(existing.plans)?.price ?? null,
+        discountAmount: existing.referral_discount_amount as number | null,
+        createdAt: existing.created_at as string,
+    });
+
+    const { data: updated, error } = await supabaseAdmin
+        .from("bookings")
+        .update({
+            status: "cancelled",
+            cancelled_at: new Date().toISOString(),
+            cancelled_by: actor.id,
+            cancellation_reason: input.reason ?? null,
+            plan_price_at_cancellation: charge.chargeableAmount,
+            cancellation_penalty_amount: charge.penaltyAmount,
+            refund_amount: charge.refundAmount,
+            refund_status: charge.refundAmount > 0 ? "pending" : "not_required",
+            // vehicle_id is deliberately untouched — trg_release_vehicle_on_booking_close
+            // (20260727095801) frees the held unit and nulls it as part of this update.
+        })
+        .eq("id", bookingId)
+        .eq("user_id", actor.id)
+        // Optimistic-concurrency guard: if staff confirmed pickup between the
+        // read above and here, this matches zero rows instead of cancelling a
+        // booking that is already fulfilled.
+        .in("status", ACTIVE_BOOKING_STATUSES as string[])
+        .select("id")
+        .maybeSingle();
+
+    if (error) throw error;
+    if (!updated) throw conflict("This booking can no longer be cancelled.");
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: actor.id,
+        action: "booking.cancelled",
+        entityType: "booking",
+        entityId: bookingId,
+        before: {
+            status: existing.status,
+            vehicle_id: existing.vehicle_id,
+            start_day: existing.start_day,
+        },
+        after: {
+            status: "cancelled",
+            days_until_pickup: charge.daysUntilPickup,
+            chargeable_amount: charge.chargeableAmount,
+            penalty_amount: charge.penaltyAmount,
+            refund_amount: charge.refundAmount,
+            reason: input.reason ?? null,
+        },
+    });
+
+    await notifyUser(actor.id, {
+        template: "booking_cancelled",
+        title: "Booking Cancelled",
+        body: charge.penaltyAmount > 0
+            ? `Your booking is cancelled. A late-cancellation fee of ₹${charge.penaltyAmount} applies, and a refund request for ₹${charge.refundAmount} has been recorded.`
+            : `Your booking is cancelled with no cancellation fee. A refund request for ₹${charge.refundAmount} has been recorded.`,
+        screen: "booking-history",
+    });
+
+    return getBookingById(bookingId);
+}
+
 /** Mirrors hasActiveRentalForUser in users.service.ts. pending_payment counts as active. */
 export async function hasActiveBookingForUser(userId: string): Promise<boolean> {
     const { count, error } = await supabaseAdmin
@@ -207,8 +397,12 @@ export async function hasActiveBookingForUser(userId: string): Promise<boolean> 
 // this module's own header comment anticipated but deferred.
 // ---------------------------------------------------------------------------
 
+// Keep in sync with BOOKING_COLUMNS: RawPickupBookingRow extends RawBookingRow,
+// so TypeScript will NOT flag a missing column here — the fields would just
+// silently come back undefined in staff responses.
 const PICKUP_BOOKING_COLUMNS = `
     id, status, start_day, created_at, vehicle_id, referral_discount_amount,
+    ${CANCELLATION_COLUMNS},
     vehicle_models(id, name),
     stations(id, name, code),
     plans(id, name, billing_cycle, price),

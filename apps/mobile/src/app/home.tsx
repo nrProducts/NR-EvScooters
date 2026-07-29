@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Linking, Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ChevronRight, Bike, Clock, MapPin, Calendar, Navigation } from 'lucide-react-native';
+import { ChevronRight, Bike, Clock, MapPin, Calendar, Navigation, XCircle, PackageCheck } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { KycBanner } from '../components/KycBanner';
 import { FeaturedScooterCard } from '../components/FeaturedScooterCard';
@@ -12,11 +12,14 @@ import { SkeletonList } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
 import { useAuthStore } from '../store/useAuthStore';
 import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
-import { bookingRepository } from '../services';
+import { bookingRepository, rentalRepository } from '../services';
+import { useCancelBooking } from '../hooks/useCancelBooking';
+import { ReturnScooterModal } from '../components/ReturnScooterModal';
+import { ReturnStatusCard } from '../components/ReturnStatusCard';
 import { buildMapsUrl, buildWebMapsUrl } from '../lib/maps';
 import { COLORS } from '../constants/theme';
 import { VEHICLE_STATUS_LABEL, VEHICLE_STATUS_TONE } from '../constants/status';
-import type { ApiBooking } from '../types/api';
+import type { ApiBooking, ApiRental } from '../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function formatDay(dateStr: string): string {
@@ -38,6 +41,9 @@ export default function HomeScreen() {
     list, loadingList, loadList, availableCount, loadAvailableCount,
   } = useVehicleCatalogStore();
   const [pendingBooking, setPendingBooking] = useState<ApiBooking | null>(null);
+  const [activeRental, setActiveRental] = useState<ApiRental | null>(null);
+  const [showReturn, setShowReturn] = useState(false);
+  const { cancelling, cancelBooking } = useCancelBooking();
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -61,6 +67,27 @@ export default function HomeScreen() {
       cancelled = true;
     };
   }, [profile?.has_active_booking, profile?.has_active_rental]);
+
+  // Home only ever fetched a booking; the return action needs the rental too.
+  const loadRental = () => {
+    if (!profile?.has_active_rental) {
+      setActiveRental(null);
+      return;
+    }
+    void rentalRepository.mine().then(setActiveRental).catch(() => {
+      // Non-critical: the "Go to My Ride" tile still works without it.
+    });
+  };
+
+  useEffect(loadRental, [profile?.has_active_rental]);
+
+  const handleCancelBooking = async () => {
+    if (!pendingBooking) return;
+    const cancelled = await cancelBooking(pendingBooking);
+    // Clear immediately; the has_active_booking effect also clears it once the
+    // refreshed profile lands, but this avoids a flash of the dead card.
+    if (cancelled) setPendingBooking(null);
+  };
 
   const handleGetDirections = async (station: NonNullable<ApiBooking['station']>) => {
     const platform = Platform.OS === 'android' ? 'android' : 'ios';
@@ -141,6 +168,20 @@ export default function HomeScreen() {
                 </Text>
               </TouchableOpacity>
             ) : null}
+            {/* Outside the station conditional above — a booking with no
+                station must still be cancellable. */}
+            <TouchableOpacity
+              onPress={() => void handleCancelBooking()}
+              disabled={cancelling}
+              accessibilityRole="button"
+              className="flex-row items-center justify-center rounded-xl py-2.5 mt-2"
+              style={{ backgroundColor: COLORS.danger + '14', opacity: cancelling ? 0.6 : 1 }}
+            >
+              <XCircle size={14} color={COLORS.danger} />
+              <Text style={{ color: COLORS.danger }} className="text-xs font-bold ml-2">
+                {cancelling ? 'Cancelling…' : 'Cancel Booking'}
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 
@@ -158,6 +199,35 @@ export default function HomeScreen() {
             </View>
             <ChevronRight size={16} color={COLORS.primaryPressed} />
           </TouchableOpacity>
+        ) : null}
+
+        {activeRental ? (
+          activeRental.return_requested_at ? (
+            <View className="mb-4">
+              <ReturnStatusCard rental={activeRental} compact />
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => setShowReturn(true)}
+              accessibilityRole="button"
+              className="rounded-2xl p-4 mb-4 flex-row items-center justify-center border"
+              style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
+            >
+              <PackageCheck size={16} color={COLORS.primaryPressed} />
+              <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-bold ml-2">
+                Return Scooter
+              </Text>
+            </TouchableOpacity>
+          )
+        ) : null}
+
+        {activeRental ? (
+          <ReturnScooterModal
+            visible={showReturn}
+            rental={activeRental}
+            onClose={() => setShowReturn(false)}
+            onSubmitted={loadRental}
+          />
         ) : null}
 
         {loadingFeatured ? (

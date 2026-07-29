@@ -11,11 +11,12 @@ export type AuditAction =
     | "kyc.document_verified" | "kyc.document_rejected"
     | "kyc.approved" | "kyc.rejected"
     | "booking.created" | "booking.approved" | "booking.rejected" | "booking.fulfilled"
+    | "booking.cancelled"
     | "vehicle.created" | "vehicle.updated" | "vehicle.scrapped"
     | "maintenance.created" | "maintenance.updated"
     | "notification.broadcast"
     | "invoice.refunded"
-    | "rental.completed" | "rental.moved_to_maintenance"
+    | "rental.completed" | "rental.moved_to_maintenance" | "rental.return_requested"
     | "referral.redeemed" | "referral.qualified";
 
 export interface AuditEntry {

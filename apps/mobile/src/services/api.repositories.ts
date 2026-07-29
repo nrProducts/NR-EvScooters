@@ -6,8 +6,8 @@ import type {
     ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiReferralSummary, ApiRental,
     ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
     ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
-    CreateUserPayload, ListUsersParams, ListVehicleModelsParams, Paginated, RoleName, StatusAction,
-    UpdateSupportRequestPayload, UpdateUserPayload,
+    CreateUserPayload, ListUsersParams, ListVehicleModelsParams, Paginated, ReturnRequestPayload,
+    RoleName, StatusAction, UpdateSupportRequestPayload, UpdateUserPayload,
 } from '../types/api';
 import type {
     AuthRepository, BookingRepository, HistoryParams, KycQueueParams, KycRepository,
@@ -208,6 +208,9 @@ export class ApiBookingRepository implements BookingRepository {
             throw err;
         }
     }
+    cancel(bookingId: string, reason?: string): Promise<ApiBooking> {
+        return api.cancelBooking(bookingId, reason);
+    }
     history(params: HistoryParams): Promise<Paginated<ApiBooking>> {
         return api.bookingHistory(params);
     }
@@ -236,6 +239,9 @@ export class ApiRentalRepository implements RentalRepository {
     }
     history(params: HistoryParams): Promise<Paginated<ApiRental>> {
         return api.rentalHistory(params);
+    }
+    requestReturn(rentalId: string, payload: ReturnRequestPayload): Promise<ApiRental> {
+        return api.requestRentalReturn(rentalId, payload);
     }
 }
 

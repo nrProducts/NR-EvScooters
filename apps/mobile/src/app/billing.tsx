@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator,
-  KeyboardAvoidingView, Platform,
 } from 'react-native';
+// Library version, not RN's: RN's only really works on iOS, and Android is
+// edge-to-edge from SDK 54 so the window no longer resizes for the keyboard.
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useScooterStore } from '../store/useScooterStore';
 import { COLORS } from '../constants/theme';
@@ -200,7 +202,7 @@ export default function BillingScreen() {
       >
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
         >
         <View className="flex-1 justify-end bg-black/60">
           <View className="bg-white dark:bg-zinc-900 rounded-t-3xl p-6 border-t border-emerald-100" style={{ paddingBottom: 16 + insets.bottom }}>

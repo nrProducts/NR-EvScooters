@@ -3,6 +3,7 @@ import { View, ActivityIndicator } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import * as Notifications from "expo-notifications";
 import { useAuthStore } from "../store/useAuthStore";
 import { userRepository } from "../services";
@@ -149,8 +150,13 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" backgroundColor="#F8FAFC" />
-      <Stack screenOptions={{ headerShown: false }} />
+      {/* Required by KeyboardAwareScrollView on every form screen. Android is
+          edge-to-edge from SDK 54, so the window no longer resizes for the
+          keyboard and plain KeyboardAvoidingView can't see it. */}
+      <KeyboardProvider>
+        <StatusBar style="dark" backgroundColor="#F8FAFC" />
+        <Stack screenOptions={{ headerShown: false }} />
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }

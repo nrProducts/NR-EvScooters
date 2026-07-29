@@ -2,9 +2,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { buildMapsUrl, buildWebMapsUrl } from '../src/lib/maps';
 import { getNextDays, isValidStartDay } from '../src/lib/bookingDays';
 import {
-  MockAuthRepository, MockBookingRepository, MockUserRepository, resetMockDb,
+  MockAuthRepository, MockBookingRepository, MockUserRepository,
+  backdateBookingCreatedAt as backdateBooking, resetMockDb,
 } from '../src/services/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
+import {
+  FREE_CANCELLATION_GRACE_MINUTES, computeCancellationCharge,
+} from '../src/lib/cancellationPolicy';
 
 const fmt = (d: Date): string => {
   const year = d.getFullYear();
@@ -150,5 +154,106 @@ describe('has_active_booking (feeds useHasActiveBooking)', () => {
     await bookings.create(VALID_PAYLOAD());
     const me = await users.me();
     expect(me.has_active_booking).toBe(true);
+  });
+});
+
+/** A start_day `offset` days out that also dodges the no-Sunday booking rule. */
+const startDayIn = (offset: number): string => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + offset);
+  if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+  return fmt(d);
+};
+
+describe('MockBookingRepository.cancel', () => {
+  it('frees the rider to book again and clears the active booking', async () => {
+    await asVerifiedRider();
+    const created = await bookings.create(VALID_PAYLOAD());
+
+    const cancelled = await bookings.cancel(created.id);
+    expect(cancelled.status).toBe('cancelled');
+    expect(cancelled.cancelled_at).not.toBeNull();
+
+    expect(await bookings.mine()).toBeNull();
+    expect((await users.me()).has_active_booking).toBe(false);
+  });
+
+  it('records no fee and a full refund when cancelling well before pickup', async () => {
+    await asVerifiedRider();
+    const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(5) });
+
+    const cancelled = await bookings.cancel(created.id);
+    expect(cancelled.cancellation_penalty_amount).toBe(0);
+    expect(cancelled.refund_status).toBe('pending');
+    expect(cancelled.refund_amount).toBe(created.plan?.price ?? 0);
+  });
+
+  it('charges nothing for a booking cancelled right after it was made, even for tomorrow', async () => {
+    // The reported bug: booking FOR TOMORROW and cancelling minutes later was
+    // charged 25%, because the notice rule only asks how close pickup is.
+    await asVerifiedRider();
+    const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(1) });
+
+    const cancelled = await bookings.cancel(created.id);
+    expect(cancelled.cancellation_penalty_amount).toBe(0);
+    expect(cancelled.refund_amount).toBe(created.plan?.price ?? 0);
+  });
+
+  it('keeps back 25% once the grace period has passed and pickup is imminent', async () => {
+    await asVerifiedRider();
+    // startDayIn(1) can land on a Sunday and be pushed to +2 (which is free),
+    // so assert against the rule's own verdict rather than a fixed amount.
+    const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(1) });
+    const price = created.plan?.price ?? 0;
+
+    // Age the booking past the grace window — otherwise a freshly created mock
+    // booking is always free and the late path is unreachable.
+    const createdAt = new Date(Date.now() - (FREE_CANCELLATION_GRACE_MINUTES + 5) * 60_000).toISOString();
+    backdateBooking(created.id, createdAt);
+
+    const cancelled = await bookings.cancel(created.id);
+    const charge = computeCancellationCharge({
+      startDay: created.start_day, planPrice: price, createdAt,
+    });
+
+    expect(cancelled.cancellation_penalty_amount).toBe(charge.penaltyAmount);
+    expect(cancelled.refund_amount).toBe(charge.refundAmount);
+    if (charge.isLate) expect(cancelled.cancellation_penalty_amount).toBeGreaterThan(0);
+  });
+
+  it('refuses a second cancellation', async () => {
+    await asVerifiedRider();
+    const created = await bookings.create(VALID_PAYLOAD());
+    await bookings.cancel(created.id);
+
+    await expect(bookings.cancel(created.id)).rejects.toBeInstanceOf(ApiError);
+    await bookings.cancel(created.id).catch((e: ApiError) => expect(e.status).toBe(409));
+  });
+
+  it("404s on another rider's booking rather than confirming it exists", async () => {
+    await asVerifiedRider();
+    const created = await bookings.create(VALID_PAYLOAD());
+
+    await auth.signIn('fatima.s@example.com', '');
+    await expect(bookings.cancel(created.id)).rejects.toBeInstanceOf(ApiError);
+    await bookings.cancel(created.id).catch((e: ApiError) => expect(e.status).toBe(404));
+  });
+
+  it('404s on an unknown booking id', async () => {
+    await asVerifiedRider();
+    await bookings.cancel('does-not-exist').catch((e: ApiError) => expect(e.status).toBe(404));
+  });
+
+  it('still lists the cancelled booking in history, with its refund fields', async () => {
+    await asVerifiedRider();
+    const created = await bookings.create(VALID_PAYLOAD());
+    await bookings.cancel(created.id);
+
+    const history = await bookings.history({});
+    const row = history.data.find((b) => b.id === created.id);
+    expect(row?.status).toBe('cancelled');
+    expect(row?.refund_status).toBe('pending');
+    expect(row?.cancelled_at).not.toBeNull();
   });
 });

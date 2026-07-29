@@ -317,6 +317,13 @@ export interface CreateBookingPayload {
 
 export type VehicleStatus = 'available' | 'booked' | 'assigned' | 'maintenance' | 'scrap';
 
+/**
+ * No payment is captured in this phase, so a refund is a recorded request for
+ * the future checkout phase rather than a reversal. 'not_required' covers a
+ * cancellation whose refund works out to zero.
+ */
+export type BookingRefundStatus = 'pending' | 'processed' | 'not_required';
+
 export interface ApiBooking {
     id: string;
     status: BookingStatus;
@@ -335,6 +342,17 @@ export interface ApiBooking {
         status: VehicleStatus;
     } | null;
     referral_discount_amount: number | null;
+
+    // --- pre-pickup cancellation (all null unless the rider cancelled) ------
+    // Also null for bookings closed by the staff reject flow, which predates
+    // this feature and records nothing beyond status='cancelled'.
+    cancelled_at: string | null;
+    cancellation_reason: string | null;
+    /** Net amount owed (plan price minus referral discount), frozen at cancel time. */
+    plan_price_at_cancellation: number | null;
+    cancellation_penalty_amount: number | null;
+    refund_amount: number | null;
+    refund_status: BookingRefundStatus | null;
 }
 
 export interface ApiReferralReward {
@@ -373,6 +391,23 @@ export interface ApiRental {
     vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
     station: { id: string; name: string; code: string } | null;
     plan: { id: string; name: string; billing_cycle: BillingCycle; price: number } | null;
+
+    // --- post-pickup return request (null until the rider asks to return) ---
+    // The rental stays 'active' while a return is pending; only staff
+    // confirming the physical handover ends it and settles the fee below.
+    return_requested_at: string | null;
+    return_reason: string | null;
+    return_feedback: string | null;
+    return_due_at: string | null;
+    days_late: number | null;
+    late_penalty_amount: number | null;
+    late_fee_per_day: number | null;
+}
+
+export interface ReturnRequestPayload {
+    reason: string;
+    feedback?: string;
+    rating: number;
 }
 
 export type MaintenanceStatus = 'reported' | 'in_progress' | 'resolved' | 'cancelled';
