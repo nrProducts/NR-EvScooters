@@ -21,7 +21,7 @@ export const VehicleListItem: React.FC<VehicleListItemProps> = ({ model }) => {
 
   return (
     <TouchableOpacity
-      onPress={() => startBooking(model.id, model.name)}
+      onPress={() => void startBooking(model.id, model.name)}
       accessibilityRole="button"
       accessibilityLabel={`Book ${model.name}`}
       className="rounded-2xl p-3 border flex-row items-center"

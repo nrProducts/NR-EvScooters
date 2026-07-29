@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { AppShell } from '../components/AppShell';
 import { EmptyState } from '../components/ui/EmptyState';
+import { notify, notifySuccess } from '../lib/confirm';
 import { useFleetStore } from '../store/useFleetStore';
 import { COLORS } from '../constants/theme';
 import { ArrowLeftRight, Bike, User, Check, Unlink } from 'lucide-react-native';
@@ -21,13 +22,13 @@ export default function AssignScreen() {
 
   const handleAssign = () => {
     if (!selectedVehicleId || !selectedUserId) {
-      Alert.alert('Select both', 'Please choose an available vehicle and a rider to assign it to.');
+      notify('Select both', 'Please choose an available vehicle and a rider to assign it to.');
       return;
     }
     assignVehicle(selectedVehicleId, selectedUserId);
     setSelectedVehicleId(null);
     setSelectedUserId(null);
-    Alert.alert('Assigned', 'Vehicle has been assigned successfully.');
+    notifySuccess('Assigned', 'Vehicle has been assigned successfully.');
   };
 
   const handleUnassign = (vehicleId: string) => {

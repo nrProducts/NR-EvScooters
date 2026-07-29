@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking, Alert, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, PackageCheck } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
@@ -17,6 +17,7 @@ import { useCancelBooking } from '../hooks/useCancelBooking';
 import { ReturnScooterModal } from '../components/ReturnScooterModal';
 import { ReturnStatusCard } from '../components/ReturnStatusCard';
 import { buildMapsUrl, buildWebMapsUrl } from '../lib/maps';
+import { notifyError } from '../lib/confirm';
 import { COLORS } from '../constants/theme';
 import { VEHICLE_STATUS_LABEL, VEHICLE_STATUS_TONE } from '../constants/status';
 import type { ApiBooking, ApiRental } from '../types/api';
@@ -95,7 +96,7 @@ export default function HomeScreen() {
       const canOpen = await Linking.canOpenURL(url);
       await Linking.openURL(canOpen ? url : buildWebMapsUrl(station.lat, station.lng));
     } catch {
-      Alert.alert("Can't open maps", 'No maps app could be found on this device.');
+      notifyError("Can't open maps", 'No maps app could be found on this device.');
     }
   };
 

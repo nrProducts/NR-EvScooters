@@ -90,7 +90,7 @@ export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model 
         ) : null}
 
         <TouchableOpacity
-          onPress={() => startBooking(model.id, model.name)}
+          onPress={() => void startBooking(model.id, model.name)}
           disabled={alreadyBookedOrRenting}
           accessibilityRole="button"
           className="py-3.5 rounded-2xl items-center mt-4"

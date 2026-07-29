@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator,
+  View, Text, ScrollView, TextInput, TouchableOpacity, ActivityIndicator,
   Modal, Image, RefreshControl, FlatList,
 } from 'react-native';
 // Library version, not RN's: RN's only really works on iOS, and Android is
@@ -17,10 +17,12 @@ import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
 import { SkeletonList } from '../components/ui/Skeleton';
+import { useConfirm } from '../hooks/useConfirm';
 import { useDebounced } from '../hooks/useDebounced';
 import { useKycDetail, useKycQueue } from '../hooks/useKyc';
 import { useIsStaff } from '../store/useAuthStore';
 import { ApiError } from '../lib/ApiError';
+import { confirmAction, notifyError, notifySuccess } from '../lib/confirm';
 import { COLORS } from '../constants/theme';
 import {
   DOC_TYPE_LABEL, KYC_STATUS_LABEL, KYC_STATUS_TONE, VERIFICATION_TONE, formatDate, initialsOf,
@@ -259,6 +261,8 @@ const KycQueueView: React.FC<{ onOpen: (userId: string) => void }> = ({ onOpen }
 const KycDetailView: React.FC<{ userId: string; onBack: () => void }> = ({ userId, onBack }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // Validation inside the rejection Modal — a root dialog would sit behind it.
+  const rejectDialog = useConfirm();
   const { detail, loading, error, busyDocId, approving, rejecting, retry, actions } =
     useKycDetail(userId);
 
@@ -275,32 +279,27 @@ const KycDetailView: React.FC<{ userId: string; onBack: () => void }> = ({ userI
     setPreviewLoading(false);
 
     if (result instanceof ApiError) {
-      Alert.alert('Preview unavailable', result.message);
+      notifyError('Preview unavailable', result.message);
       return;
     }
     setPreview({ url: result.url, isPdf: result.url.toLowerCase().includes('.pdf') });
   };
 
-  const verify = (doc: ApiDocument) => {
-    Alert.alert(
-      'Verify document',
-      `Confirm the ${DOC_TYPE_LABEL[doc.doc_type]} is genuine and matches the rider's details. This is recorded against your account.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Verify',
-          onPress: async () => {
-            const result = await actions.verify(doc.id);
-            if (result instanceof ApiError) Alert.alert('Could not verify', result.message);
-          },
-        },
-      ],
-    );
+  const verify = async (doc: ApiDocument) => {
+    const ok = await confirmAction({
+      title: 'Verify document',
+      message: `Confirm the ${DOC_TYPE_LABEL[doc.doc_type]} is genuine and matches the rider's details. This is recorded against your account.`,
+      confirmLabel: 'Verify',
+    });
+    if (!ok) return;
+    const result = await actions.verify(doc.id);
+    if (result instanceof ApiError) notifyError('Could not verify', result.message);
   };
 
+  // Raised from inside the rejection Modal, so it uses the local dialog.
   const submitRejection = async () => {
     if (rejectReason.trim().length < 10) {
-      Alert.alert('Reason too short', 'Give the rider a clear reason of at least 10 characters.');
+      rejectDialog.alert('Reason too short', 'Give the rider a clear reason of at least 10 characters.');
       return;
     }
     const result =
@@ -309,32 +308,26 @@ const KycDetailView: React.FC<{ userId: string; onBack: () => void }> = ({ userI
         : await actions.rejectAll(rejectReason.trim());
 
     if (result instanceof ApiError) {
-      Alert.alert('Could not reject', result.message);
+      rejectDialog.alert('Could not reject', result.message, true);
       return;
     }
     setRejectTarget(null);
     setRejectReason('');
   };
 
-  const approve = () => {
-    Alert.alert(
-      'Approve KYC',
-      `Approve ${detail?.rider.full_name}? They will be able to unlock a scooter.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Approve',
-          onPress: async () => {
-            const result = await actions.approve();
-            if (result instanceof ApiError) {
-              Alert.alert('Could not approve', result.message);
-              return;
-            }
-            Alert.alert('Approved', 'The rider is now verified.');
-          },
-        },
-      ],
-    );
+  const approve = async () => {
+    const ok = await confirmAction({
+      title: 'Approve KYC',
+      message: `Approve ${detail?.rider.full_name}? They will be able to unlock a scooter.`,
+      confirmLabel: 'Approve',
+    });
+    if (!ok) return;
+    const result = await actions.approve();
+    if (result instanceof ApiError) {
+      notifyError('Could not approve', result.message);
+      return;
+    }
+    notifySuccess('Approved', 'The rider is now verified.');
   };
 
   const back = () => {
@@ -487,7 +480,7 @@ const KycDetailView: React.FC<{ userId: string; onBack: () => void }> = ({ userI
                 {doc.verification_status === 'pending' ? (
                   <View className="flex-row mt-3.5" style={{ gap: 8 }}>
                     <TouchableOpacity
-                      onPress={() => verify(doc)}
+                      onPress={() => void verify(doc)}
                       disabled={busyDocId === doc.id || doc.is_expired}
                       accessibilityRole="button"
                       className="flex-1 flex-row items-center justify-center px-3 py-2.5 rounded-xl"
@@ -535,7 +528,7 @@ const KycDetailView: React.FC<{ userId: string; onBack: () => void }> = ({ userI
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={approve}
+              onPress={() => void approve()}
               disabled={!allVerified || approving}
               accessibilityRole="button"
               accessibilityState={{ disabled: !allVerified || approving }}
@@ -701,6 +694,9 @@ const KycDetailView: React.FC<{ userId: string; onBack: () => void }> = ({ userI
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* Inside the modal's own tree so it stacks above it, not behind. */}
+          {rejectDialog.dialog}
         </KeyboardAvoidingView>
       </Modal>
     </AppShell>

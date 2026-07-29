@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal } from 'react-native';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Modal } from 'react-native';
 // Library version, not RN's: RN's only really works on iOS, and Android is
 // edge-to-edge from SDK 54 so the window no longer resizes for the keyboard.
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -8,6 +8,8 @@ import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { DatePickerField } from '../components/ui/DatePickerField';
+import { useConfirm } from '../hooks/useConfirm';
+import { confirmAction } from '../lib/confirm';
 import { useFleetStore } from '../store/useFleetStore';
 import { COLORS } from '../constants/theme';
 import {
@@ -99,6 +101,9 @@ function FormField({ label, value, onChangeText, placeholder, keyboardType }: {
 
 export default function VehiclesScreen() {
   const insets = useSafeAreaInsets();
+  // Form validation fires from inside the form's own Modal, so it needs the
+  // local dialog rather than the root host.
+  const formDialog = useConfirm();
   const vehicles = useFleetStore(s => s.vehicles);
   const users = useFleetStore(s => s.users);
   const addVehicle = useFleetStore(s => s.addVehicle);
@@ -172,11 +177,11 @@ export default function VehiclesScreen() {
     const battery = Number(form.batteryPercent);
 
     if (!name || !vehicleNumber || !manufacturer || !model || !registrationNumber) {
-      Alert.alert('Missing details', 'Please fill in name, vehicle number, manufacturer, model, and registration number.');
+      formDialog.alert('Missing details', 'Please fill in name, vehicle number, manufacturer, model, and registration number.');
       return;
     }
     if (Number.isNaN(battery) || battery < 0 || battery > 100) {
-      Alert.alert('Invalid battery %', 'Battery percentage must be a number between 0 and 100.');
+      formDialog.alert('Invalid battery %', 'Battery percentage must be a number between 0 and 100.');
       return;
     }
 
@@ -204,22 +209,23 @@ export default function VehiclesScreen() {
     closeForm();
   };
 
-  const handleDelete = (v: Vehicle) => {
-    Alert.alert(
-      'Remove vehicle',
-      `Remove ${v.name} (${v.vehicleNumber}) from the fleet? This can't be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteVehicle(v.id) },
-      ]
-    );
+  const handleDelete = async (v: Vehicle) => {
+    const ok = await confirmAction({
+      title: 'Remove vehicle',
+      message: `Remove ${v.name} (${v.vehicleNumber}) from the fleet? This can't be undone.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (ok) deleteVehicle(v.id);
   };
 
-  const handleUnassign = (v: Vehicle) => {
-    Alert.alert('Unassign vehicle', `Unassign ${v.vehicleNumber} and return it to the available pool?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Unassign', onPress: () => unassignVehicle(v.id) },
-    ]);
+  const handleUnassign = async (v: Vehicle) => {
+    const ok = await confirmAction({
+      title: 'Unassign vehicle',
+      message: `Unassign ${v.vehicleNumber} and return it to the available pool?`,
+      confirmLabel: 'Unassign',
+    });
+    if (ok) unassignVehicle(v.id);
   };
 
   const handlePickRider = (userId: string) => {
@@ -356,7 +362,7 @@ export default function VehiclesScreen() {
                     )}
                     {v.status === 'assigned' && (
                       <TouchableOpacity
-                        onPress={() => handleUnassign(v)}
+                        onPress={() => void handleUnassign(v)}
                         className="flex-row items-center px-3 py-2 rounded-xl flex-1 justify-center"
                         style={{ backgroundColor: COLORS.danger + '10' }}
                       >
@@ -378,7 +384,7 @@ export default function VehiclesScreen() {
                       <Pencil size={14} color={COLORS.textSecondary} />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => handleDelete(v)}
+                      onPress={() => void handleDelete(v)}
                       className="w-9 h-9 rounded-xl items-center justify-center"
                       style={{ backgroundColor: COLORS.danger + '10' }}
                     >
@@ -489,6 +495,9 @@ export default function VehiclesScreen() {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* Inside the modal's own tree so it stacks above it, not behind. */}
+          {formDialog.dialog}
         </KeyboardAvoidingView>
       </Modal>
 

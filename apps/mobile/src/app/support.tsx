@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking, ActivityIndicator } from 'react-native';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { FormField } from '../components/ui/FormField';
 import { SkeletonList } from '../components/ui/Skeleton';
 import { supportRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
+import { notifyError } from '../lib/confirm';
 import { SUPPORT_EMAIL, SUPPORT_PHONE, SUPPORT_PHONE_DISPLAY } from '../constants/support';
 import { SUPPORT_STATUS_LABEL, SUPPORT_STATUS_TONE, formatDate } from '../constants/status';
 import { COLORS } from '../constants/theme';
@@ -31,12 +32,12 @@ async function openChannel(url: string) {
   try {
     const canOpen = await Linking.canOpenURL(url);
     if (!canOpen) {
-      Alert.alert("Can't do that", 'No app on this device can handle that action.');
+      notifyError("Can't do that", 'No app on this device can handle that action.');
       return;
     }
     await Linking.openURL(url);
   } catch {
-    Alert.alert('Something went wrong', 'Please try again.');
+    notifyError('Something went wrong', 'Please try again.');
   }
 }
 

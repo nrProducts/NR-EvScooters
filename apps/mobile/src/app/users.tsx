@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, Alert, ScrollView,
+  View, Text, TextInput, TouchableOpacity, ScrollView,
   RefreshControl, ActivityIndicator, FlatList,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -18,6 +18,7 @@ import { useDebounced } from '../hooks/useDebounced';
 import { useUsers, DEFAULT_USER_FILTERS, type UserFilters } from '../hooks/useUsers';
 import { useAuthStore, useIsAdmin } from '../store/useAuthStore';
 import { ApiError } from '../lib/ApiError';
+import { confirmAction, notifyError, promptAction } from '../lib/confirm';
 import { COLORS } from '../constants/theme';
 import {
   ACCOUNT_STATUS_TONE, KYC_STATUS_LABEL, KYC_STATUS_TONE, formatDate, initialsOf,
@@ -70,7 +71,7 @@ export default function UsersScreen() {
     // The list row is a summary; the form needs the full record.
     const result = await actions.getDetail(user.id);
     if (result instanceof ApiError) {
-      Alert.alert('Could not open', result.message);
+      notifyError('Could not open', result.message);
       return;
     }
     setEditing(result);
@@ -79,91 +80,57 @@ export default function UsersScreen() {
 
   const runStatus = async (user: ApiUser, action: StatusAction, reason?: string) => {
     const result = await actions.changeStatus(user.id, action, reason);
-    if (result instanceof ApiError) Alert.alert('Action failed', result.message);
+    if (result instanceof ApiError) notifyError('Action failed', result.message);
   };
 
-  const confirmStatus = (user: ApiUser, action: StatusAction) => {
+  const confirmStatus = async (user: ApiUser, action: StatusAction) => {
     if (action === 'suspend') {
       // The API rejects a suspension with no reason, so collect one rather
-      // than letting the request bounce. Alert.prompt is iOS-only; Android
-      // gets a confirm dialog with a recorded default reason.
-      if (Alert.prompt) {
-        Alert.prompt(
-          'Suspend account',
-          `Why is ${user.full_name} being suspended? This is written to the audit log.`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Suspend',
-              style: 'destructive',
-              onPress: (reason?: string) => {
-                if (!reason || reason.trim().length < 5) {
-                  Alert.alert('Reason required', 'Give a reason of at least 5 characters.');
-                  return;
-                }
-                void runStatus(user, 'suspend', reason.trim());
-              },
-            },
-          ],
-          'plain-text',
-        );
-      } else {
-        Alert.alert(
-          'Suspend account',
-          `Suspend ${user.full_name}? This is recorded in the audit log.`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Suspend',
-              style: 'destructive',
-              onPress: () => void runStatus(user, 'suspend', 'Suspended by administrator from mobile'),
-            },
-          ],
-        );
-      }
+      // than letting the request bounce. promptAction works on both platforms
+      // (Alert.prompt was iOS-only and needed a separate Android branch).
+      const reason = await promptAction({
+        title: 'Suspend account',
+        message: `Why is ${user.full_name} being suspended? This is written to the audit log.`,
+        placeholder: 'Reason for suspension',
+        multiline: true,
+        confirmLabel: 'Suspend',
+        destructive: true,
+        validate: (value) => (value.length < 5 ? 'Give a reason of at least 5 characters.' : null),
+      });
+      if (reason) await runStatus(user, 'suspend', reason);
       return;
     }
 
     const verb = action === 'activate' ? 'Activate' : 'Deactivate';
-    Alert.alert(`${verb} account`, `${verb} ${user.full_name}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: verb, onPress: () => void runStatus(user, action) },
-    ]);
+    const ok = await confirmAction({
+      title: `${verb} account`,
+      message: `${verb} ${user.full_name}?`,
+      confirmLabel: verb,
+    });
+    if (ok) await runStatus(user, action);
   };
 
-  const confirmDelete = (user: ApiUser) => {
-    Alert.alert(
-      'Delete user',
-      `Delete ${user.full_name}? Their scooter returns to the fleet and they can no longer sign in. Invoices, rentals and KYC history are kept, and an admin can restore the account.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const result = await actions.remove(user.id);
-            if (result instanceof ApiError) Alert.alert('Delete failed', result.message);
-          },
-        },
-      ],
-    );
+  const confirmDelete = async (user: ApiUser) => {
+    const ok = await confirmAction({
+      title: 'Delete user',
+      message: `Delete ${user.full_name}? Their scooter returns to the fleet and they can no longer sign in. Invoices, rentals and KYC history are kept, and an admin can restore the account.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    const result = await actions.remove(user.id);
+    if (result instanceof ApiError) notifyError('Delete failed', result.message);
   };
 
-  const confirmRestore = (user: ApiUser) => {
-    Alert.alert(
-      'Restore user',
-      `Restore ${user.full_name}? The account returns as inactive so you can review it before activating.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Restore',
-          onPress: async () => {
-            const result = await actions.restore(user.id);
-            if (result instanceof ApiError) Alert.alert('Restore failed', result.message);
-          },
-        },
-      ],
-    );
+  const confirmRestore = async (user: ApiUser) => {
+    const ok = await confirmAction({
+      title: 'Restore user',
+      message: `Restore ${user.full_name}? The account returns as inactive so you can review it before activating.`,
+      confirmLabel: 'Restore',
+    });
+    if (!ok) return;
+    const result = await actions.restore(user.id);
+    if (result instanceof ApiError) notifyError('Restore failed', result.message);
   };
 
   const header = (
@@ -328,9 +295,9 @@ export default function UsersScreen() {
                 isSelf={item.id === meId}
                 busy={busyId === item.id}
                 onEdit={() => void openEdit(item)}
-                onDelete={() => confirmDelete(item)}
-                onRestore={() => confirmRestore(item)}
-                onStatus={(action) => confirmStatus(item, action)}
+                onDelete={() => void confirmDelete(item)}
+                onRestore={() => void confirmRestore(item)}
+                onStatus={(action) => void confirmStatus(item, action)}
                 onReviewKyc={() => router.push(`/kyc-review?userId=${item.id}`)}
               />
             )}

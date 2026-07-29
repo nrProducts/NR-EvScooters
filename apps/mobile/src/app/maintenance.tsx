@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, FlatList } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { notify, notifySuccess } from '../lib/confirm';
 import { useScooterStore } from '../store/useScooterStore';
 import { COLORS } from '../constants/theme';
 import { Wrench, Calendar, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react-native';
@@ -14,13 +15,13 @@ export default function MaintenanceScreen() {
 
   const handleSubmit = () => {
     if (!ticketDetails.trim()) {
-      Alert.alert('Form Empty', 'Please provide a short explanation of the diagnostic issue.');
+      notify('Form Empty', 'Please provide a short explanation of the diagnostic issue.');
       return;
     }
 
     submitMaintenanceTicket(selectedCategory, ticketDetails);
     setTicketDetails('');
-    Alert.alert('Ticket Submitted', 'Our customer support team is dispatched to analyze the report.');
+    notifySuccess('Ticket Submitted', 'Our customer support team is dispatched to analyze the report.');
   };
 
   const categories: DiagnosticCategory[] = ['Brake Noise', 'Battery Draining Fast', 'Tire Puncture', 'Other'];

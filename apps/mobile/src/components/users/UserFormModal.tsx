@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
 // Library version, not RN's: RN's only really works on iOS, and Android is
 // edge-to-edge from SDK 54 so the window no longer resizes for the keyboard.
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -8,6 +8,7 @@ import { X, Check } from 'lucide-react-native';
 import { FormField } from '../ui/FormField';
 import { DatePickerField } from '../ui/DatePickerField';
 import { ChipSelect } from '../ui/ChipSelect';
+import { useConfirm } from '../../hooks/useConfirm';
 import { COLORS } from '../../constants/theme';
 import { ApiError } from '../../lib/ApiError';
 import type {
@@ -88,6 +89,7 @@ export const UserFormModal: React.FC<Props> = ({
   visible, editing, selfService, isAdmin, onClose, onSaved, onCreate, onUpdate,
 }) => {
   const insets = useSafeAreaInsets();
+  const discardDialog = useConfirm();
   const [form, setForm] = useState<FormState>(EMPTY);
   const [initial, setInitial] = useState<FormState>(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -218,22 +220,28 @@ export const UserFormModal: React.FC<Props> = ({
     onClose();
   };
 
-  const requestClose = () => {
+  // Local rather than the root DialogHost: this component IS a Modal, and two
+  // sibling root-level Modals fight on iOS.
+  const requestClose = async () => {
     if (submitting) return;
     if (!dirty) {
       onClose();
       return;
     }
-    Alert.alert('Discard changes?', 'Your edits to this profile will be lost.', [
-      { text: 'Keep editing', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: onClose },
-    ]);
+    const discard = await discardDialog.confirm({
+      title: 'Discard changes?',
+      message: 'Your edits to this profile will be lost.',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+      destructive: true,
+    });
+    if (discard) onClose();
   };
 
   const showAccountSection = !selfService && isAdmin;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={requestClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => void requestClose()}>
       <KeyboardAvoidingView
         behavior="padding"
         style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' }}
@@ -251,7 +259,7 @@ export const UserFormModal: React.FC<Props> = ({
               {editing ? (selfService ? 'Edit My Profile' : 'Edit User') : 'Add User'}
             </Text>
             <TouchableOpacity
-              onPress={requestClose}
+              onPress={() => void requestClose()}
               accessibilityRole="button"
               accessibilityLabel="Close"
               className="w-8 h-8 rounded-full items-center justify-center"
@@ -425,6 +433,8 @@ export const UserFormModal: React.FC<Props> = ({
             </TouchableOpacity>
           </View>
         </View>
+        {/* Inside the modal's own tree so it stacks above it, not behind. */}
+        {discardDialog.dialog}
       </KeyboardAvoidingView>
     </Modal>
   );

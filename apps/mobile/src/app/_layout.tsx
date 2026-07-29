@@ -7,6 +7,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import * as Notifications from "expo-notifications";
 import { useAuthStore } from "../store/useAuthStore";
 import { userRepository } from "../services";
+import { DialogHost } from "../components/ui/DialogHost";
 import { registerForPushNotificationsAsync } from "../lib/pushNotifications";
 import { missingEnvVars } from "../constants/env";
 import { COLORS } from "../constants/theme";
@@ -182,6 +183,8 @@ export default function RootLayout() {
       <KeyboardProvider>
         <StatusBar style="dark" backgroundColor="#F8FAFC" />
         <Stack screenOptions={{ headerShown: false }} />
+        {/* Every confirmAction/notify call in the app surfaces here. */}
+        <DialogHost />
       </KeyboardProvider>
     </SafeAreaProvider>
   );

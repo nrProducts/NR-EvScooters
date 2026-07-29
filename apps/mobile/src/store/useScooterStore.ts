@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Alert } from 'react-native';
+import { notifyError } from '../lib/confirm';
 
 export interface SwapStation {
   id: string;
@@ -153,7 +153,7 @@ export const useScooterStore = create<SubscriptionState>((set, get) => ({
   toggleLockState: () => {
     const isImmobilized = get().telemetry.immobilizedState === 'immobilized';
     if (isImmobilized) {
-      Alert.alert('Lock Blocked', 'This vehicle is currently remote-immobilized by Admin. Unlocking is disabled.');
+      notifyError('Lock Blocked', 'This vehicle is currently remote-immobilized by Admin. Unlocking is disabled.');
       return;
     }
 

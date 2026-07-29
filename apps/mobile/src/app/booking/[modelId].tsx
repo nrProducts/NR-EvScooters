@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Linking, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Linking, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft, MapPin, Bike, Clock, Navigation, Check } from 'lucide-react-native';
 import { Badge } from '../../components/ui/Badge';
@@ -7,6 +7,7 @@ import { DayPicker } from '../../components/DayPicker';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { useBookingStore } from '../../store/useBookingStore';
 import { vehicleCatalogRepository } from '../../services';
+import { notify, notifyError } from '../../lib/confirm';
 import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
 import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
@@ -85,7 +86,7 @@ export default function BookingScreen() {
       const canOpen = await Linking.canOpenURL(url);
       await Linking.openURL(canOpen ? url : buildWebMapsUrl(lat, lng));
     } catch {
-      Alert.alert("Can't open maps", 'No maps app could be found on this device.');
+      notifyError("Can't open maps", 'No maps app could be found on this device.');
     }
   };
 
@@ -107,7 +108,7 @@ export default function BookingScreen() {
   const handleContinue = () => {
     const reason = blockedReason();
     if (reason) {
-      Alert.alert('Almost there', reason);
+      notify('Almost there', reason);
       return;
     }
     router.push('/booking/billing');

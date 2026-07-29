@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Modal, ActivityIndicator,
+  View, Text, ScrollView, TouchableOpacity, TextInput, Modal, ActivityIndicator,
 } from 'react-native';
 // Library version, not RN's: RN's only really works on iOS, and Android is
 // edge-to-edge from SDK 54 so the window no longer resizes for the keyboard.
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useConfirm } from '../hooks/useConfirm';
+import { confirmAction, notifySuccess } from '../lib/confirm';
 import { useScooterStore } from '../store/useScooterStore';
 import { COLORS } from '../constants/theme';
 import { CreditCard, Calendar, ShieldCheck, Wallet, ChevronRight, Check } from 'lucide-react-native';
 
 export default function BillingScreen() {
   const insets = useSafeAreaInsets();
+  // Payment validation fires from inside the checkout Modal.
+  const checkoutDialog = useConfirm();
   const { user, payRentBill, addWalletFunds, modifySubscription } = useScooterStore();
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [payAmount, setPayAmount] = useState('');
@@ -22,14 +26,14 @@ export default function BillingScreen() {
   const handlePayBill = () => {
     const amount = parseFloat(payAmount);
     if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Input Error', 'Please enter a valid amount to pay.');
+      checkoutDialog.alert('Input Error', 'Please enter a valid amount to pay.');
       return;
     }
 
     if (amount > user.walletBalance) {
-      Alert.alert(
+      checkoutDialog.alert(
         'Insufficient Funds',
-        `Your wallet balance is $${user.walletBalance.toFixed(2)}. Please top up your wallet first.`
+        `Your wallet balance is $${user.walletBalance.toFixed(2)}. Please top up your wallet first.`,
       );
       return;
     }
@@ -40,7 +44,7 @@ export default function BillingScreen() {
       setIsProcessing(false);
       setCheckoutVisible(false);
       setPayAmount('');
-      Alert.alert('Payment Successful', 'Thank you! Your lease payment has been registered.');
+      notifySuccess('Payment Successful', 'Thank you! Your lease payment has been registered.');
     }, 1500);
   };
 
@@ -49,25 +53,19 @@ export default function BillingScreen() {
     setTimeout(() => {
       addWalletFunds(50);
       setIsProcessing(false);
-      Alert.alert('Top Up Successful', '$50.00 added to your wallet.');
+      notifySuccess('Top Up Successful', '$50.00 added to your wallet.');
     }, 1200);
   };
 
-  const selectNewPlan = (planName: string, cost: number) => {
-    Alert.alert(
-      'Change Subscription Package',
-      `Would you like to switch your plan to the ${planName} for $${cost.toFixed(2)}/cycle?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Confirm Change', 
-          onPress: () => {
-            modifySubscription(planName, cost);
-            Alert.alert('Subscription Swapped', `Your plan has been updated to the ${planName}.`);
-          }
-        }
-      ]
-    );
+  const selectNewPlan = async (planName: string, cost: number) => {
+    const ok = await confirmAction({
+      title: 'Change Subscription Package',
+      message: `Would you like to switch your plan to the ${planName} for $${cost.toFixed(2)}/cycle?`,
+      confirmLabel: 'Confirm Change',
+    });
+    if (!ok) return;
+    modifySubscription(planName, cost);
+    notifySuccess('Subscription Swapped', `Your plan has been updated to the ${planName}.`);
   };
 
   const mockPlans = [
@@ -172,7 +170,7 @@ export default function BillingScreen() {
           return (
             <TouchableOpacity
               key={plan.name}
-              onPress={() => selectNewPlan(plan.name, plan.cost)}
+              onPress={() => void selectNewPlan(plan.name, plan.cost)}
               className={`flex-row justify-between items-center p-3.5 rounded-xl border mb-2.5 ${isActive ? 'bg-emerald-50/50 border-emerald-300 dark:bg-emerald-950/20' : 'bg-slate-50 border-slate-200 dark:bg-zinc-800/40 dark:border-zinc-850'}`}
             >
               <View className="flex-row items-center flex-1 mr-4">
@@ -245,6 +243,9 @@ export default function BillingScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Inside the modal's own tree so it stacks above it, not behind. */}
+        {checkoutDialog.dialog}
         </KeyboardAvoidingView>
       </Modal>
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { ChevronLeft, LifeBuoy, User, Phone } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
@@ -9,6 +9,7 @@ import { SkeletonList } from '../components/ui/Skeleton';
 import { useAuthStore } from '../store/useAuthStore';
 import { supportRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
+import { confirmAction, notifyError } from '../lib/confirm';
 import {
   SUPPORT_PRIORITY_LABEL, SUPPORT_PRIORITY_TONE, SUPPORT_STATUS_LABEL, SUPPORT_STATUS_TONE,
   formatDate,
@@ -54,22 +55,20 @@ export default function SupportReviewScreen() {
       setSelected(updated);
       load();
     } catch (err) {
-      Alert.alert('Could not update', err instanceof ApiError ? err.message : 'Please try again.');
+      notifyError('Could not update', err instanceof ApiError ? err.message : 'Please try again.');
     } finally {
       setUpdating(false);
     }
   };
 
-  const confirmStatusChange = (item: ApiSupportQueueItem, status: SupportStatus) => {
+  const confirmStatusChange = async (item: ApiSupportQueueItem, status: SupportStatus) => {
     if (status === item.status) return;
-    Alert.alert(
-      `Mark as ${SUPPORT_STATUS_LABEL[status]}?`,
-      `"${item.subject}" will be marked ${SUPPORT_STATUS_LABEL[status].toLowerCase()}.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', onPress: () => applyUpdate(item.id, { status }) },
-      ],
-    );
+    const ok = await confirmAction({
+      title: `Mark as ${SUPPORT_STATUS_LABEL[status]}?`,
+      message: `"${item.subject}" will be marked ${SUPPORT_STATUS_LABEL[status].toLowerCase()}.`,
+      confirmLabel: 'Confirm',
+    });
+    if (ok) await applyUpdate(item.id, { status });
   };
 
   if (selected) {
@@ -117,7 +116,7 @@ export default function SupportReviewScreen() {
                 <TouchableOpacity
                   key={status}
                   disabled={updating || active}
-                  onPress={() => confirmStatusChange(selected, status)}
+                  onPress={() => void confirmStatusChange(selected, status)}
                   className="px-3.5 py-2.5 rounded-xl border"
                   style={{
                     backgroundColor: active ? COLORS.primary : COLORS.card,

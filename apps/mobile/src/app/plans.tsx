@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Modal } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal } from 'react-native';
 // Library version, not RN's: RN's only really works on iOS, and Android is
 // edge-to-edge from SDK 54 so the window no longer resizes for the keyboard.
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -9,6 +9,8 @@ import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { FormField } from '../components/ui/FormField';
 import { ChipSelect } from '../components/ui/ChipSelect';
+import { useConfirm } from '../hooks/useConfirm';
+import { confirmAction } from '../lib/confirm';
 import { useFleetStore } from '../store/useFleetStore';
 import { COLORS } from '../constants/theme';
 import {
@@ -45,6 +47,7 @@ const EMPTY_FORM: PlanForm = {
 
 export default function PlansScreen() {
   const insets = useSafeAreaInsets();
+  const formDialog = useConfirm();
   const plans = useFleetStore((s) => s.plans);
   const addPlan = useFleetStore((s) => s.addPlan);
   const updatePlan = useFleetStore((s) => s.updatePlan);
@@ -128,34 +131,41 @@ export default function PlansScreen() {
     setEditingId(null);
   };
 
-  const requestClose = () => {
+  // Raised from inside the form's own Modal, so it uses the local hook —
+  // a root-level dialog would render behind it on iOS.
+  const requestClose = async () => {
     if (JSON.stringify(form) === JSON.stringify(initialForm)) {
       setFormOpen(false);
       return;
     }
-    Alert.alert('Discard changes?', 'Your edits to this plan will be lost.', [
-      { text: 'Keep editing', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: () => setFormOpen(false) },
-    ]);
+    const discard = await formDialog.confirm({
+      title: 'Discard changes?',
+      message: 'Your edits to this plan will be lost.',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+      destructive: true,
+    });
+    if (discard) setFormOpen(false);
   };
 
-  const handleDelete = (plan: Plan) => {
-    Alert.alert(
-      'Delete plan',
-      `Delete "${plan.name}"? Riders already on this plan keep their subscription, but it can't be chosen again.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deletePlan(plan.id) },
-      ],
-    );
+  const handleDelete = async (plan: Plan) => {
+    const ok = await confirmAction({
+      title: 'Delete plan',
+      message: `Delete "${plan.name}"? Riders already on this plan keep their subscription, but it can't be chosen again.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (ok) deletePlan(plan.id);
   };
 
-  const handleToggle = (plan: Plan) => {
+  const handleToggle = async (plan: Plan) => {
     const verb = plan.active ? 'Deactivate' : 'Activate';
-    Alert.alert(`${verb} plan`, `${verb} "${plan.name}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: verb, onPress: () => togglePlanActive(plan.id) },
-    ]);
+    const ok = await confirmAction({
+      title: `${verb} plan`,
+      message: `${verb} "${plan.name}"?`,
+      confirmLabel: verb,
+    });
+    if (ok) togglePlanActive(plan.id);
   };
 
   return (
@@ -258,7 +268,7 @@ export default function PlansScreen() {
                   style={{ borderColor: COLORS.border, gap: 8 }}
                 >
                   <TouchableOpacity
-                    onPress={() => handleToggle(plan)}
+                    onPress={() => void handleToggle(plan)}
                     accessibilityRole="button"
                     className="flex-row items-center px-3 py-2 rounded-xl flex-1 justify-center"
                     style={{
@@ -289,7 +299,7 @@ export default function PlansScreen() {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    onPress={() => handleDelete(plan)}
+                    onPress={() => void handleDelete(plan)}
                     accessibilityRole="button"
                     accessibilityLabel={`Delete ${plan.name}`}
                     className="w-9 h-9 rounded-xl items-center justify-center"
@@ -305,7 +315,7 @@ export default function PlansScreen() {
       </ScrollView>
 
       {/* ADD / EDIT PLAN MODAL */}
-      <Modal visible={formOpen} transparent animationType="slide" onRequestClose={requestClose}>
+      <Modal visible={formOpen} transparent animationType="slide" onRequestClose={() => void requestClose()}>
         <KeyboardAvoidingView
           behavior="padding"
           style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' }}
@@ -323,7 +333,7 @@ export default function PlansScreen() {
                 {editingId ? 'Edit Plan' : 'Add Plan'}
               </Text>
               <TouchableOpacity
-                onPress={requestClose}
+                onPress={() => void requestClose()}
                 accessibilityRole="button"
                 accessibilityLabel="Close"
                 className="w-8 h-8 rounded-full items-center justify-center"
@@ -426,6 +436,9 @@ export default function PlansScreen() {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* Inside the modal's own tree so it stacks above it, not behind. */}
+          {formDialog.dialog}
         </KeyboardAvoidingView>
       </Modal>
     </AppShell>
