@@ -4,7 +4,8 @@ import { computeCancellationCharge } from '../../../src/lib/cancellationPolicy';
 import { returnDeadlineFor } from '../../../src/lib/returnPolicy';
 import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
-    ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
+    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem,
+    ApiKycSummary,
     ApiMaintenanceRecord, ApiMe, ApiPickupBooking, ApiReferralSummary, ApiRental, ApiSignedUrl,
     ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, BookingRefundStatus, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
@@ -1174,6 +1175,15 @@ export class MockVehicleCatalogRepository implements VehicleCatalogRepository {
     async availabilitySummary(): Promise<{ available_count: number }> {
         await delay(150);
         return { available_count: SEED_VEHICLE_MODELS.length * 3 };
+    }
+
+    async availability(id: string): Promise<ApiAvailability> {
+        await delay(150);
+        const model = SEED_VEHICLE_MODELS_DETAIL.find((m) => m.id === id);
+        if (!model) throw new ApiError(404, 'NOT_FOUND', 'This scooter model could not be found.');
+        // The seed fleet all sits at the single seeded station, so a station
+        // filter can't change the answer here.
+        return model.availability;
     }
 }
 

@@ -7,7 +7,7 @@ import { signInWithGoogleBrowser } from './googleAuth';
 // Re-exported so existing `import { ApiError } from '../lib/api'` keeps working.
 export { ApiError };
 import type {
-    ApiAvailableVehicle, ApiBooking, ApiDocument, ApiErrorBody, ApiKycDetail, ApiKycQueueItem,
+    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiErrorBody, ApiKycDetail, ApiKycQueueItem,
     ApiKycSummary, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking,
     ApiReferralSummary, ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest,
     ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload,
@@ -324,6 +324,10 @@ export const api = {
         request<{ available_count: number }>('/vehicle-models/availability-summary'),
 
     getVehicleModel: (id: string) => request<ApiVehicleModelDetail>(`/vehicle-models/${id}`),
+
+    /** Station-scoped when stationId is given — what booking actually needs. */
+    vehicleModelAvailability: (id: string, stationId?: string) =>
+        request<ApiAvailability>(`/vehicle-models/${id}/availability`, { query: { stationId } }),
 
     // --- bookings (Phase 1 — no live payment) -----------------------------
     createBooking: (payload: CreateBookingPayload) =>

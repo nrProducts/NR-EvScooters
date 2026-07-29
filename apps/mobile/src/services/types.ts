@@ -1,5 +1,5 @@
 import type {
-    ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
+    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
     ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiReferralSummary, ApiRental,
     ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
     ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
@@ -90,6 +90,8 @@ export interface VehicleCatalogRepository {
     featured(): Promise<ApiVehicleModel | null>;
     get(id: string): Promise<ApiVehicleModelDetail>;
     availabilitySummary(): Promise<{ available_count: number }>;
+    /** Station-scoped when stationId is given; fleet-wide for the model otherwise. */
+    availability(id: string, stationId?: string): Promise<ApiAvailability>;
 }
 
 export interface ReferralRepository {

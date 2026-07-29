@@ -36,8 +36,8 @@ export function useBookingGate() {
         [
           { text: 'Not now', style: 'cancel' },
           {
-            text: hasActiveRental ? 'View My Ride' : 'View Booking',
-            onPress: () => router.push(hasActiveRental ? '/post-booking-dashboard' : '/home'),
+            text: hasActiveRental ? 'View My Scooter' : 'View Booking',
+            onPress: () => router.push(hasActiveRental ? '/my-scooter' : '/home'),
           },
         ],
       );

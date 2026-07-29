@@ -172,6 +172,44 @@ export function toBookingView(row: RawBookingRow): BookingView {
     };
 }
 
+/**
+ * A booking is only worth taking if a unit can actually be handed over at that
+ * station. tryAllocateVehicle() below is still best-effort — between this count
+ * and the insert another rider could take the last one — but that narrow race
+ * is very different from cheerfully confirming a booking against an empty
+ * station, which is what happened before this check existed.
+ */
+async function assertVehicleAvailable(modelId: string, stationId: string): Promise<void> {
+    const { count, error } = await supabaseAdmin
+        .from("vehicles")
+        .select("id", { count: "exact", head: true })
+        .eq("model_id", modelId)
+        .eq("station_id", stationId)
+        .eq("status", "available")
+        .eq("active", true);
+
+    if (error) throw error;
+    if ((count ?? 0) === 0) {
+        throw businessRule("No scooters of this model are available at that pickup station right now. Try another day or station.");
+    }
+}
+
+/** The plan must belong to the booked model and still be on sale. */
+async function assertPlanBookable(planId: string, modelId: string): Promise<void> {
+    const { data, error } = await supabaseAdmin
+        .from("plans")
+        .select("id, active, vehicle_model_id")
+        .eq("id", planId)
+        .maybeSingle();
+
+    if (error) throw error;
+    if (!data) throw notFound("That plan could not be found.");
+    if (!data.active) throw businessRule("That plan is no longer available. Please choose another.");
+    if (data.vehicle_model_id !== modelId) {
+        throw businessRule("That plan does not apply to the scooter you selected.");
+    }
+}
+
 export async function createBooking(
     input: CreateBookingInput,
     actor: AuthContext,
@@ -183,6 +221,11 @@ export async function createBooking(
     if (alreadyBooked || alreadyRenting) {
         throw conflict("You already have an active booking or rental. Return your scooter or wait for pickup before booking another.");
     }
+
+    await Promise.all([
+        assertPlanBookable(input.plan_id, input.vehicle_model_id),
+        assertVehicleAvailable(input.vehicle_model_id, input.station_id),
+    ]);
 
     const { data, error } = await supabaseAdmin
         .from("bookings")

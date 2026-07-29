@@ -20,6 +20,14 @@ const DETAIL_COLUMNS = `
     plans(id, name, billing_cycle, price, included_minutes)
 `;
 
+/**
+ * Retired pricing must never be bookable, and must never set starting_price
+ * either. PostgREST filters the embedded rows here rather than dropping the
+ * parent (that would need plans!inner), so a model whose plans are all
+ * inactive still lists — it just has no price and nothing to choose.
+ */
+const ACTIVE_PLANS_ONLY = "plans.active";
+
 export type RawModelRow = {
     id: string;
     name: string;
@@ -88,7 +96,8 @@ export async function listVehicleModels(
     let query = supabaseAdmin
         .from("vehicle_models")
         .select(LIST_COLUMNS, { count: "exact" })
-        .eq("active", true);
+        .eq("active", true)
+        .eq(ACTIVE_PLANS_ONLY, true);
 
     if (filters.category) query = query.eq("category", filters.category);
     if (filters.vendorId) query = query.eq("vendor_id", filters.vendorId);
@@ -109,6 +118,7 @@ export async function getFeaturedVehicleModel(): Promise<VehicleModelListItem> {
         .from("vehicle_models")
         .select(LIST_COLUMNS)
         .eq("active", true)
+        .eq(ACTIVE_PLANS_ONLY, true)
         .eq("is_featured", true)
         .limit(1)
         .maybeSingle();
@@ -126,6 +136,7 @@ export async function getVehicleModelById(id: string): Promise<VehicleModelDetai
             .select(DETAIL_COLUMNS)
             .eq("id", id)
             .eq("active", true)
+            .eq(ACTIVE_PLANS_ONLY, true)
             .maybeSingle(),
         getAvailabilityForModel(id),
     ]);

@@ -2,7 +2,8 @@ import { api } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
 import { getSupabase } from '../lib/supabase';
 import type {
-    ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
+    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem,
+    ApiKycSummary,
     ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiReferralSummary, ApiRental,
     ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
     ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
@@ -190,6 +191,9 @@ export class ApiVehicleCatalogRepository implements VehicleCatalogRepository {
     }
     availabilitySummary(): Promise<{ available_count: number }> {
         return api.fleetAvailabilitySummary();
+    }
+    availability(id: string, stationId?: string): Promise<ApiAvailability> {
+        return api.vehicleModelAvailability(id, stationId);
     }
 }
 

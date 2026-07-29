@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Linking, Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ChevronRight, Bike, Clock, MapPin, Calendar, Navigation, XCircle, PackageCheck } from 'lucide-react-native';
+import { ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, PackageCheck } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { KycBanner } from '../components/KycBanner';
 import { FeaturedScooterCard } from '../components/FeaturedScooterCard';
@@ -28,10 +28,9 @@ function formatDay(dateStr: string): string {
 }
 
 /**
- * Pre-Booking Experience: what a rider sees before they've ever booked a
- * scooter. Discovery-focused (featured scooter + browsable catalog), no
- * dashboard stats or scooter-ownership content — that content now lives at
- * post-booking-dashboard.tsx, reachable once profile.has_active_rental is true.
+ * The rider's single home surface: discovery (featured scooter + browsable
+ * catalog) plus whatever is currently live — a pending pickup, or an active
+ * rental with its return flow. Scooter-ownership detail lives on /my-scooter.
  */
 export default function HomeScreen() {
   const router = useRouter();
@@ -75,7 +74,7 @@ export default function HomeScreen() {
       return;
     }
     void rentalRepository.mine().then(setActiveRental).catch(() => {
-      // Non-critical: the "Go to My Ride" tile still works without it.
+      // Non-critical: the rest of Home renders fine without the rental.
     });
   };
 
@@ -186,20 +185,6 @@ export default function HomeScreen() {
         ) : null}
 
         <ReferAndEarnBanner />
-
-        {/* {profile.has_active_rental ? (
-          <TouchableOpacity
-            onPress={() => router.push('/post-booking-dashboard')}
-            className="rounded-2xl p-4 mb-4 flex-row items-center justify-between"
-            style={{ backgroundColor: COLORS.primary + '14', borderWidth: 1, borderColor: COLORS.primary + '33' }}
-          >
-            <View className="flex-row items-center">
-              <Bike size={18} color={COLORS.primary} />
-              <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-bold ml-3">Go to My Ride</Text>
-            </View>
-            <ChevronRight size={16} color={COLORS.primaryPressed} />
-          </TouchableOpacity>
-        ) : null} */}
 
         {activeRental ? (
           activeRental.return_requested_at ? (

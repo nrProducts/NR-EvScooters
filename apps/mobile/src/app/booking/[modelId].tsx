@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Linking, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, MapPin, Bike, Clock, Navigation } from 'lucide-react-native';
+import { ChevronLeft, MapPin, Bike, Clock, Navigation, Check } from 'lucide-react-native';
 import { Badge } from '../../components/ui/Badge';
 import { DayPicker } from '../../components/DayPicker';
 import { ErrorState } from '../../components/ui/ErrorState';
@@ -10,7 +10,7 @@ import { vehicleCatalogRepository } from '../../services';
 import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
 import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
-import type { ApiVehicleModelDetail } from '../../types/api';
+import type { ApiAvailability, ApiPlan, ApiVehicleModelDetail } from '../../types/api';
 
 // Device geolocation isn't wired up yet (no expo-location dependency in
 // this phase) — the backend's nearest_station RPC still does the real
@@ -19,15 +19,31 @@ import type { ApiVehicleModelDetail } from '../../types/api';
 // shortcut in the booking logic itself.
 const PLACEHOLDER_LOCATION = { lat: 9.9312, lng: 76.2673 };
 
+const CYCLE_LABEL: Record<string, string> = {
+  daily: 'Day', weekly: 'Week', monthly: 'Month', yearly: 'Year',
+};
+
+/**
+ * The whole booking choice on one screen: pickup station, day and plan. Plan
+ * selection used to be a second screen, which was a route change for what is
+ * really just a third field. Continue goes straight to the payment/review step.
+ */
 export default function BookingScreen() {
   const { modelId } = useLocalSearchParams<{ modelId: string }>();
   const router = useRouter();
 
-  const { draft, loadingStation, stationError, setVehicleModel, setStartDay, loadNearestStation } = useBookingStore();
+  const { draft, loadingStation, stationError, setVehicleModel, setStartDay, setPlan, loadNearestStation } =
+    useBookingStore();
 
   const [model, setModel] = useState<ApiVehicleModelDetail | null>(null);
   const [loadingModel, setLoadingModel] = useState(true);
   const [modelError, setModelError] = useState<string | null>(null);
+
+  // Model detail carries a fleet-wide count; a booking is placed against one
+  // station, so this is the number that actually decides whether it can go
+  // ahead — and it's the same count POST /bookings validates.
+  const [availability, setAvailability] = useState<ApiAvailability | null>(null);
+  const [loadingAvailability, setLoadingAvailability] = useState(false);
 
   const load = () => {
     setLoadingModel(true);
@@ -48,6 +64,17 @@ export default function BookingScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId]);
 
+  const stationId = draft.station?.id;
+  useEffect(() => {
+    if (!stationId) return;
+    setLoadingAvailability(true);
+    vehicleCatalogRepository
+      .availability(modelId, stationId)
+      .then(setAvailability)
+      .catch(() => setAvailability(null))
+      .finally(() => setLoadingAvailability(false));
+  }, [modelId, stationId]);
+
   const handlePickupDestination = async () => {
     if (!draft.station) return;
     const { lat, lng } = draft.station;
@@ -62,15 +89,32 @@ export default function BookingScreen() {
     }
   };
 
-  const handleBookBike = () => {
-    if (!draft.startDay) {
-      Alert.alert('Pick a day', 'Choose a pickup day (Monday–Saturday) before continuing.');
-      return;
-    }
-    router.push('/booking/plan');
+  const plans = model?.plans ?? [];
+  const availableCount = availability?.available_count ?? null;
+  const noneAvailable = availableCount === 0;
+
+  // Every reason Continue can't proceed, in the order the rider filled them in,
+  // so the message names the first thing they still have to do.
+  const blockedReason = (): string | null => {
+    if (!draft.station) return 'We could not find a pickup station near you. Try again in a moment.';
+    if (noneAvailable) return 'No scooters of this model are free at this station right now. Try another day or check back later.';
+    if (!draft.startDay) return 'Choose a pickup day (Monday–Saturday) before continuing.';
+    if (plans.length === 0) return 'This scooter has no plans on sale right now.';
+    if (!draft.plan) return 'Choose a rental plan before continuing.';
+    return null;
   };
 
-  const loading = loadingModel || loadingStation;
+  const handleContinue = () => {
+    const reason = blockedReason();
+    if (reason) {
+      Alert.alert('Almost there', reason);
+      return;
+    }
+    router.push('/booking/billing');
+  };
+
+  const loading = loadingModel || loadingStation || loadingAvailability;
+  const canContinue = !loading && blockedReason() === null;
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.background }}>
@@ -118,19 +162,37 @@ export default function BookingScreen() {
             </View>
           </View>
 
-          {/* AVAILABILITY */}
+          {/* AVAILABILITY AT THAT STATION */}
           <View className="rounded-2xl p-4 border flex-row items-center justify-between mb-4" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-            <View className="flex-row items-center">
-              <Bike size={16} color={COLORS.primary} />
-              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold ml-2.5">
-                {model.availability.available_count} scooter{model.availability.available_count === 1 ? '' : 's'} available
+            <View className="flex-row items-center flex-1 mr-3">
+              <Bike size={16} color={noneAvailable ? COLORS.danger : COLORS.primary} />
+              {loadingAvailability || availableCount == null ? (
+                <Text style={{ color: COLORS.textSecondary }} className="text-sm font-bold ml-2.5">Checking availability…</Text>
+              ) : (
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold ml-2.5">
+                  {availableCount} scooter{availableCount === 1 ? '' : 's'} available here
+                </Text>
+              )}
+            </View>
+            {availableCount != null ? (
+              <Badge
+                label={noneAvailable ? 'Unavailable' : 'Available'}
+                tone={noneAvailable ? 'danger' : 'success'}
+              />
+            ) : null}
+          </View>
+
+          {noneAvailable ? (
+            <View
+              className="rounded-2xl p-4 mb-4 border"
+              style={{ backgroundColor: COLORS.danger + '0F', borderColor: COLORS.danger + '33' }}
+            >
+              <Text style={{ color: COLORS.danger }} className="text-xs font-semibold leading-relaxed">
+                Every {model.name} at {draft.station?.name ?? 'this station'} is out on rent. You can&apos;t book
+                one right now — check back later or pick a different scooter.
               </Text>
             </View>
-            <Badge
-              label={model.availability.status === 'available' ? 'Available' : 'Unavailable'}
-              tone={model.availability.status === 'available' ? 'success' : 'danger'}
-            />
-          </View>
+          ) : null}
 
           {/* AVAILABLE TIME (static) */}
           <View className="rounded-2xl p-4 border flex-row items-center mb-4" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
@@ -142,10 +204,62 @@ export default function BookingScreen() {
           </View>
 
           {/* DAY PICKER */}
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Pickup Day</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-1">Pickup Day</Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3">Monday – Saturday. Closed Sundays.</Text>
           <View className="mb-6">
             <DayPicker value={draft.startDay} onChange={setStartDay} />
+          </View>
+
+          {/* PLAN PICKER — was its own screen; it's one more field, not a step. */}
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-1">Rental Plan</Text>
+          <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3">
+            {plans.length > 0 ? 'Pick how long you want the scooter for.' : 'No plans are on sale for this scooter yet.'}
+          </Text>
+          <View className="mb-6" style={{ gap: 10 }}>
+            {plans.map((plan: ApiPlan) => {
+              const selected = draft.plan?.id === plan.id;
+              return (
+                <TouchableOpacity
+                  key={plan.id}
+                  onPress={() => setPlan(plan)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`${CYCLE_LABEL[plan.billing_cycle] ?? plan.billing_cycle} plan, ₹${plan.price.toFixed(0)}`}
+                  className="rounded-2xl p-4 border flex-row items-center justify-between"
+                  style={{
+                    backgroundColor: selected ? COLORS.primary + '0F' : COLORS.card,
+                    borderColor: selected ? COLORS.primary : COLORS.border,
+                    borderWidth: selected ? 2 : 1,
+                  }}
+                >
+                  <View className="flex-1 mr-3">
+                    <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
+                      {CYCLE_LABEL[plan.billing_cycle] ?? plan.billing_cycle}
+                    </Text>
+                    {plan.included_minutes != null ? (
+                      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+                        {plan.included_minutes} minutes included
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View className="flex-row items-center">
+                    <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-extrabold mr-2">
+                      ₹{plan.price.toFixed(0)}
+                    </Text>
+                    <View
+                      className="w-5 h-5 rounded-full items-center justify-center"
+                      style={{
+                        backgroundColor: selected ? COLORS.primary : 'transparent',
+                        borderWidth: selected ? 0 : 1.5,
+                        borderColor: COLORS.border,
+                      }}
+                    >
+                      {selected ? <Check size={12} color="#FFF" /> : null}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           {/* ACTIONS */}
@@ -160,12 +274,14 @@ export default function BookingScreen() {
               <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold ml-2">Pickup destination</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={handleBookBike}
+              onPress={handleContinue}
               disabled={loading}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canContinue }}
               className="flex-1 py-4 rounded-2xl items-center"
-              style={{ backgroundColor: COLORS.primary, opacity: loading ? 0.6 : 1 }}
+              style={{ backgroundColor: COLORS.primary, opacity: canContinue ? 1 : 0.5 }}
             >
-              <Text className="text-white text-sm font-bold">Continue</Text>
+              <Text className="text-white text-sm font-bold">Continue to Pay</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>

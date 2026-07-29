@@ -81,8 +81,8 @@ export interface ApiUserDetail extends ApiUser {
 export interface ApiMe extends ApiUserDetail {
     can_rent: boolean;
     is_admin: boolean;
-    /** Does this rider have a live rental right now? Always false until the
-     *  booking flow ships — see post-booking-dashboard.tsx gating in _layout.tsx. */
+    /** Does this rider have a live rental right now? Drives the return flow on
+     *  Home and the rental branch of /my-scooter. */
     has_active_rental: boolean;
     /** Does this rider have a booking in progress? pending_payment counts
      *  as active, same as confirmed — see useHasActiveBooking. */
@@ -260,17 +260,22 @@ export interface ApiVehicleModel {
     starting_price: number | null;
 }
 
+export interface ApiAvailability {
+    available_count: number;
+    status: 'available' | 'unavailable';
+}
+
 export interface ApiVehicleModelDetail extends ApiVehicleModel {
     description: string | null;
     motor_power_watts: number | null;
     battery_capacity: string | null;
     features: string[];
     safety_features: string[];
+    /** Only plans still on sale — the backend filters out inactive ones. */
     plans: ApiPlan[];
-    availability: {
-        available_count: number;
-        status: 'available' | 'unavailable';
-    };
+    /** Fleet-wide for this model. Station-scoped counts come from
+     *  vehicleCatalogRepository.availability(id, stationId). */
+    availability: ApiAvailability;
 }
 
 export interface ListVehicleModelsParams {
