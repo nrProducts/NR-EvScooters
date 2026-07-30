@@ -1,6 +1,5 @@
-import { useState } from "react";
-import { Menu, Search, Bell, Sun, Moon, LogOut, Settings as SettingsIcon } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Menu, Bell, Sun, Moon, LogOut, Settings as SettingsIcon } from "lucide-react";
+import { GlobalSearch } from "@/components/common/GlobalSearch";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -19,7 +18,6 @@ import { useNavigate } from "react-router-dom";
 export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const { theme, toggleTheme } = useUiStore();
   const { user, signOut } = useAuth();
-  const [search, setSearch] = useState("");
   const navigate = useNavigate();
 
   return (
@@ -28,15 +26,7 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
         <Menu className="h-5 w-5" />
       </Button>
 
-      <div className="relative hidden max-w-md flex-1 sm:block">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search riders, vehicles, bookings..."
-          className="h-10 rounded-full border-border/60 bg-card-hover/60 pl-10 focus-visible:bg-background"
-        />
-      </div>
+      <GlobalSearch />
 
       <div className="flex flex-1 items-center justify-end gap-1.5 sm:gap-3">
         <span className="hidden text-xs text-muted-foreground lg:inline">{formatDate(new Date())}</span>
