@@ -1,4 +1,5 @@
-import { NavLink } from "react-router-dom";
+import { useLayoutEffect, useRef, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import { Bike, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,25 @@ export function Sidebar({
   onNavigate?: () => void;
 }) {
   const items = navForRole(role);
+  const location = useLocation();
+  const itemRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
+  const [pill, setPill] = useState<{ top: number; height: number } | null>(null);
+
+  // Longest-prefix match, mirroring NavLink's own isActive semantics — avoids
+  // relying on framer-motion's mount/unmount layoutId matching, which is
+  // sensitive to the nav list's own scroll container and only animated
+  // smoothly in one direction (getBoundingClientRect is viewport-relative,
+  // so it desyncs whenever a route change also involves the list scrolling).
+  // offsetTop/offsetHeight are scroll-position-immune, so a single pill driven
+  // off them animates identically regardless of direction.
+  const activePath = [...items]
+    .filter((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
+    .sort((a, b) => b.path.length - a.path.length)[0]?.path;
+
+  useLayoutEffect(() => {
+    const el = activePath ? itemRefs.current[activePath] : null;
+    setPill(el ? { top: el.offsetTop, height: el.offsetHeight } : null);
+  }, [activePath, collapsed]);
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
@@ -32,38 +52,35 @@ export function Sidebar({
         )}
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto scrollbar-thin px-2 py-4">
+      <nav className="relative flex-1 space-y-1 overflow-y-auto scrollbar-thin px-2 py-4">
+        {pill && (
+          <motion.div
+            className="absolute left-2 right-2 z-0 rounded-2xl bg-primary shadow-[0_6px_16px_-4px_hsl(var(--primary)/0.5)]"
+            animate={{ top: pill.top, height: pill.height }}
+            transition={{ type: "spring", stiffness: 420, damping: 34 }}
+          />
+        )}
         {items.map((item) => (
           <NavLink
             key={item.path}
+            ref={(el) => {
+              itemRefs.current[item.path] = el;
+            }}
             to={item.path}
             onClick={onNavigate}
             className={({ isActive }) =>
               cn(
-                "relative flex items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-smooth",
+                "relative z-10 flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-smooth",
                 isActive
-                  ? "text-primary"
+                  ? "text-primary-foreground"
                   : "text-sidebar-foreground/70 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground",
                 collapsed && "justify-center px-0",
               )
             }
             title={collapsed ? item.label : undefined}
           >
-            {({ isActive }) => (
-              <>
-                {isActive && (
-                  <motion.span
-                    layoutId="active-nav-pill"
-                    className="absolute inset-0 rounded-full bg-primary/12"
-                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                  >
-                    <span className="absolute left-0 top-1/2 h-4/5 w-[3px] -translate-y-1/2 rounded-full bg-primary" />
-                  </motion.span>
-                )}
-                <item.icon className="relative h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
-                {!collapsed && <span className="relative truncate">{item.label}</span>}
-              </>
-            )}
+            <item.icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+            {!collapsed && <span className="truncate">{item.label}</span>}
           </NavLink>
         ))}
       </nav>

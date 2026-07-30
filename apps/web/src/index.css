@@ -63,8 +63,8 @@
     --input: 220 13% 91%;
     --ring: 142 71% 45%;
 
-    /* Sidebar reads as its own plane, distinct from card, same as dark mode. */
-    --sidebar: 220 20% 97%;
+    /* Matches --card (table/panel background) — a whiter sidebar than before. */
+    --sidebar: 0 0% 100%;
     --sidebar-foreground: 215 28% 17%;
 
     --radius: 1.125rem;
@@ -118,7 +118,8 @@
     --input: 224 24% 18%;
     --ring: 142 71% 45%;
 
-    --sidebar: 221 39% 11%; /* #111827 */
+    /* Matches --card (table/panel background) */
+    --sidebar: 217 33% 17%; /* #1E293B */
     --sidebar-foreground: 0 0% 100%;
 
     --shadow-card: 0 8px 30px rgb(0 0 0 / 0.25);

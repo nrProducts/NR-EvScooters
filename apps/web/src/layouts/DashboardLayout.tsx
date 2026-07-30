@@ -17,11 +17,11 @@ export function DashboardLayout() {
   if (!user) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Desktop / tablet sidebar */}
+    <div className="flex h-screen gap-3 overflow-hidden bg-background p-3">
+      {/* Desktop / tablet sidebar — a floating panel, not a flush edge-to-edge bar */}
       <aside
         className={cn(
-          "hidden shrink-0 border-r border-border transition-all duration-200 md:block",
+          "hidden shrink-0 overflow-hidden rounded-3xl border border-border/60 shadow-card transition-all duration-200 md:block",
           sidebarCollapsed ? "w-16" : "w-64",
         )}
       >
@@ -34,12 +34,12 @@ export function DashboardLayout() {
 
       {/* Mobile sidebar in a sheet */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" className="w-64 p-0">
+        <SheetContent side="left" className="w-64 rounded-r-3xl p-0">
           <Sidebar role={user.role} onNavigate={() => setMobileNavOpen(false)} />
         </SheetContent>
       </Sheet>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-3xl border border-border/60 shadow-card">
         <Header onOpenMobileNav={() => setMobileNavOpen(true)} />
         <main className="flex-1 overflow-y-auto scrollbar-thin pb-16 sm:pb-6">
           <div className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6">
