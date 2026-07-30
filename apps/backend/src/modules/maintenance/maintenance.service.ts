@@ -159,6 +159,10 @@ export async function updateMaintenanceTicket(
     if (!data) throw notFound("Maintenance ticket not found.");
     const ticket = toAdminMaintenanceRow(data as unknown as RawAdminMaintenanceRow);
 
+    if (patch.status === "resolved" && ticket.vehicle) {
+        await releaseVehicleIfNoOpenTickets(ticket.vehicle.id);
+    }
+
     await writeAudit({
         actorId: actor.id,
         targetUserId: null,
@@ -170,4 +174,27 @@ export async function updateMaintenanceTicket(
     });
 
     return ticket;
+}
+
+/**
+ * Resolving one ticket shouldn't free a vehicle that still has another open
+ * issue — only flip it back to 'available' once nothing else is outstanding.
+ * The status guard on the vehicles update also protects against clobbering a
+ * vehicle that's moved on (e.g. re-assigned) since entering maintenance.
+ */
+async function releaseVehicleIfNoOpenTickets(vehicleId: string): Promise<void> {
+    const { count, error: openError } = await supabaseAdmin
+        .from("vehicle_maintenance")
+        .select("id", { count: "exact", head: true })
+        .eq("vehicle_id", vehicleId)
+        .in("status", ["reported", "in_progress"]);
+    if (openError) throw openError;
+    if ((count ?? 0) > 0) return;
+
+    const { error: vehicleError } = await supabaseAdmin
+        .from("vehicles")
+        .update({ status: "available" })
+        .eq("id", vehicleId)
+        .eq("status", "maintenance");
+    if (vehicleError) throw vehicleError;
 }

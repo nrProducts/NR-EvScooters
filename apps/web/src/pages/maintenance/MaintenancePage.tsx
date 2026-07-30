@@ -29,6 +29,18 @@ export default function MaintenancePage() {
 
   const { data, isLoading, isError, refetch } = useMaintenanceTickets({ status, page, pageSize: 8 });
   const updateTicket = useUpdateMaintenanceTicket();
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  const handleUpdate = (id: string, ticketStatus: MaintenanceStatus) => {
+    setUpdateError(null);
+    updateTicket.mutate(
+      { id, status: ticketStatus },
+      {
+        onError: (err) =>
+          setUpdateError(err instanceof ApiError ? err.message : "Could not update this ticket."),
+      },
+    );
+  };
 
   const columns: DataTableColumn<MaintenanceTicket>[] = [
     {
@@ -59,21 +71,21 @@ export default function MaintenancePage() {
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             {t.status !== "in_progress" && t.status !== "resolved" && t.status !== "cancelled" && (
-              <DropdownMenuItem onClick={() => updateTicket.mutate({ id: t.id, status: "in_progress" })}>
+              <DropdownMenuItem onClick={() => handleUpdate(t.id, "in_progress")}>
                 <PlayCircle className="mr-2 h-4 w-4" /> Start work
               </DropdownMenuItem>
             )}
             {t.status !== "resolved" && (
-              <DropdownMenuItem onClick={() => updateTicket.mutate({ id: t.id, status: "resolved" })}>
+              <DropdownMenuItem onClick={() => handleUpdate(t.id, "resolved")}>
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Mark resolved
               </DropdownMenuItem>
             )}
             {t.status !== "cancelled" && t.status !== "resolved" && (
               <DropdownMenuItem
                 className="text-destructive"
-                onClick={() => updateTicket.mutate({ id: t.id, status: "cancelled" })}
+                onClick={() => handleUpdate(t.id, "cancelled")}
               >
                 <XCircle className="mr-2 h-4 w-4" /> Cancel
               </DropdownMenuItem>
@@ -117,6 +129,10 @@ export default function MaintenancePage() {
             </SelectContent>
           </Select>
         </div>
+
+        {updateError && (
+          <p className="mx-4 mt-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{updateError}</p>
+        )}
 
         <DataTable
           columns={columns}

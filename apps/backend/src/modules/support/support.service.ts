@@ -2,6 +2,8 @@ import { supabaseAdmin } from "../../config/supabase";
 import { notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { notifyUser } from "../notifications/notifications.service";
+import { createMaintenanceTicket } from "../maintenance/maintenance.service";
+import { updateVehicle } from "../vehicles/vehicles.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     CreateSupportInput, SupportHistoryFilters, SupportQueueFilters, SupportQueueView,
@@ -153,7 +155,7 @@ export async function updateSupportRequest(
 ): Promise<SupportQueueView> {
     const { data: existing, error: existingError } = await supabaseAdmin
         .from("support_requests")
-        .select("id, user_id, subject, status, assigned_to")
+        .select("id, user_id, subject, status, assigned_to, vehicle_id")
         .eq("id", id)
         .maybeSingle();
 
@@ -188,6 +190,30 @@ export async function updateSupportRequest(
             body: `Your request "${existing.subject}" is now ${patch.status.replace("_", " ")}.`,
             screen: "support",
         });
+    }
+
+    // Staff moving a vehicle-linked ticket into 'in_progress' means they've
+    // confirmed it's a real vehicle problem — pull the vehicle out of service
+    // by flagging it for maintenance, same as a manual "mark in maintenance".
+    if (patch.status === "in_progress" && existing.status !== "in_progress" && existing.vehicle_id) {
+        const { data: vehicle, error: vehicleError } = await supabaseAdmin
+            .from("vehicles")
+            .select("id, status")
+            .eq("id", existing.vehicle_id)
+            .maybeSingle();
+        if (vehicleError) throw vehicleError;
+
+        if (vehicle && vehicle.status !== "maintenance" && vehicle.status !== "scrap") {
+            await createMaintenanceTicket(
+                {
+                    vehicle_id: existing.vehicle_id,
+                    description: `Auto-flagged from support ticket "${existing.subject}".`,
+                    status: "in_progress",
+                },
+                actor,
+            );
+            await updateVehicle(existing.vehicle_id, { status: "maintenance" }, actor);
+        }
     }
 
     return toSupportQueueView(data as unknown as RawSupportQueueRow);

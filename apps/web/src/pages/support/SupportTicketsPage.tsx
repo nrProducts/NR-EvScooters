@@ -1,13 +1,18 @@
 import { useState } from "react";
-import { LifeBuoy } from "lucide-react";
+import { LifeBuoy, MoreHorizontal, PlayCircle, CheckCircle2, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { SideDrawer } from "@/components/common/SideDrawer";
 import { useSupportQueue, useUpdateSupportTicket } from "@/hooks/useSupport";
+import { ApiError } from "@/services/api/httpClient";
 import { formatDateTime } from "@/lib/utils";
 import type { SupportPriority, SupportStatus, SupportTicket } from "@/types";
 
@@ -29,6 +34,19 @@ export default function SupportTicketsPage() {
 
   const { data, isLoading, isError, refetch } = useSupportQueue({ status: tab, page, pageSize: 8 });
   const updateTicket = useUpdateSupportTicket();
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const handleStatusChange = (t: SupportTicket, status: SupportStatus) => {
+    setActionError(null);
+    updateTicket.mutate(
+      { id: t.id, input: { status } },
+      {
+        onSuccess: (updated) => setSelected((cur) => (cur?.id === updated.id ? updated : cur)),
+        onError: (err) =>
+          setActionError(err instanceof ApiError ? err.message : "Could not update this ticket."),
+      },
+    );
+  };
 
   const columns: DataTableColumn<SupportTicket>[] = [
     { header: "Rider", key: "rider", render: (t) => t.rider.full_name },
@@ -36,6 +54,39 @@ export default function SupportTicketsPage() {
     { header: "Priority", key: "priority", render: (t) => <StatusBadge status={t.priority} />, hideOnMobile: true },
     { header: "Status", key: "status", render: (t) => <StatusBadge status={t.status} /> },
     { header: "Created", key: "created", render: (t) => formatDateTime(t.created_at), hideOnMobile: true },
+    {
+      header: "Actions",
+      key: "actions",
+      render: (t) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+            {t.status !== "in_progress" && t.status !== "resolved" && t.status !== "closed" && (
+              <DropdownMenuItem onClick={() => handleStatusChange(t, "in_progress")}>
+                <PlayCircle className="mr-2 h-4 w-4" /> Start progress
+              </DropdownMenuItem>
+            )}
+            {t.status !== "resolved" && t.status !== "closed" && (
+              <DropdownMenuItem onClick={() => handleStatusChange(t, "resolved")}>
+                <CheckCircle2 className="mr-2 h-4 w-4" /> Mark resolved
+              </DropdownMenuItem>
+            )}
+            {t.status !== "closed" && (
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => handleStatusChange(t, "closed")}
+              >
+                <XCircle className="mr-2 h-4 w-4" /> Close ticket
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
   ];
 
   return (
@@ -57,6 +108,9 @@ export default function SupportTicketsPage() {
       </Tabs>
 
       <Card>
+        {actionError && (
+          <p className="mx-4 mt-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{actionError}</p>
+        )}
         <CardContent className="p-0">
           <DataTable
             columns={columns}
@@ -81,17 +135,18 @@ export default function SupportTicketsPage() {
             <p className="text-sm">{selected.subject}</p>
             <p className="text-xs text-muted-foreground whitespace-pre-wrap">{selected.description}</p>
             <p className="text-xs text-muted-foreground">Created {formatDateTime(selected.created_at)}</p>
+            {selected.vehicle_id && selected.status !== "in_progress" && (
+              <p className="rounded-md bg-info/10 px-3 py-2 text-xs text-info">
+                This ticket is linked to a vehicle. Setting status to "In progress" will flag that vehicle for
+                maintenance.
+              </p>
+            )}
 
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">Status</p>
               <Select
                 value={selected.status}
-                onValueChange={(v) =>
-                  updateTicket.mutate(
-                    { id: selected.id, input: { status: v as SupportStatus } },
-                    { onSuccess: (updated) => setSelected(updated) },
-                  )
-                }
+                onValueChange={(v) => handleStatusChange(selected, v as SupportStatus)}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -100,6 +155,7 @@ export default function SupportTicketsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {actionError && <p className="text-xs text-destructive">{actionError}</p>}
             </div>
 
             <div className="space-y-1.5">

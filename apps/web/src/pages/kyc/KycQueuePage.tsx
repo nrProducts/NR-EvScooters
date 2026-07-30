@@ -17,6 +17,7 @@ import {
   useKycQueue, useApproveKyc, useRejectKyc, useKycDetail, useVerifyDocument, useRejectDocument, useOpenDocument,
 } from "@/hooks/useKyc";
 import { useOpenUserPhoto } from "@/hooks/useUsers";
+import { ApiError } from "@/services/api/httpClient";
 import { formatDate } from "@/lib/utils";
 import type { KycQueueItem, KycStatus } from "@/types";
 
@@ -33,10 +34,22 @@ export default function KycQueuePage() {
   const [page, setPage] = useState(1);
   const { data, isLoading } = useKycQueue({ status: tab, search, page, pageSize: 9 });
   const approveKyc = useApproveKyc();
+  const [approveError, setApproveError] = useState<{ userId: string; message: string } | null>(null);
   const [rejectTarget, setRejectTarget] = useState<KycQueueItem | null>(null);
   const [reason, setReason] = useState("");
   const rejectKyc = useRejectKyc();
   const [detailTarget, setDetailTarget] = useState<KycQueueItem | null>(null);
+
+  const handleApprove = (item: KycQueueItem) => {
+    setApproveError(null);
+    approveKyc.mutate(item.user_id, {
+      onError: (err) =>
+        setApproveError({
+          userId: item.user_id,
+          message: err instanceof ApiError ? err.message : "Could not approve this rider.",
+        }),
+    });
+  };
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -93,12 +106,18 @@ export default function KycQueuePage() {
                     <FileText className="h-3.5 w-3.5" /> View documents
                   </Button>
 
+                  {approveError?.userId === item.user_id && (
+                    <p className="rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+                      {approveError.message}
+                    </p>
+                  )}
+
                   {(item.kyc_status === "pending" || item.kyc_status === "partially_verified") && (
                     <div className="flex gap-2 pt-1">
                       <Button
                         size="sm"
                         className="flex-1"
-                        onClick={() => approveKyc.mutate(item.user_id)}
+                        onClick={() => handleApprove(item)}
                         disabled={approveKyc.isPending}
                       >
                         <CheckCircle2 className="h-4 w-4" /> Approve
@@ -135,6 +154,11 @@ export default function KycQueuePage() {
               rows={3}
             />
           </div>
+          {rejectKyc.isError && (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {rejectKyc.error instanceof ApiError ? rejectKyc.error.message : "Could not reject this rider."}
+            </p>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectTarget(null)}>Cancel</Button>
             <Button
