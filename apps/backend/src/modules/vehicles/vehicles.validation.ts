@@ -75,3 +75,7 @@ export const scrapVehicleBody = z.object({
     estimated_value: z.coerce.number().min(0).optional(),
     scrapped_on: dateSchema.optional(),
 });
+
+export const assignVehicleToUserBody = z.object({
+    user_id: z.string().uuid("Pick a rider to assign this vehicle to."),
+});

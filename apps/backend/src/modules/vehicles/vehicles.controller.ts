@@ -32,6 +32,12 @@ export async function assignVehicleHandler(req: AuthedRequest, res: Response) {
     res.json(vehicle);
 }
 
+export async function assignVehicleToUserHandler(req: AuthedRequest, res: Response) {
+    const { user_id } = req.body as { user_id: string };
+    const vehicle = await service.assignVehicleToUser(req.params.id as string, user_id, req.user!);
+    res.json(vehicle);
+}
+
 export async function uploadVehiclePhotoHandler(req: AuthedRequest, res: Response) {
     const file = req.file;
     if (!file) throw badRequest("A photo is required.", { photo: "Attach a photo." });

@@ -3,6 +3,7 @@ import { supabaseAdmin } from "../../config/supabase";
 import { AppError, businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
+import { notifyUser } from "../notifications/notifications.service";
 import { Paginated, AuthContext } from "../../types";
 import {
     buildVehiclePhotoPath, createSignedVehiclePhotoUrl, removeVehiclePhotoFile, uploadVehiclePhotoFile,
@@ -431,4 +432,72 @@ export async function assignVehicle(vehicleId: string, userId: string) {
 
     if (error || !data) throw new AppError(400, "Vehicle unavailable or not found");
     return data;
+}
+
+/**
+ * Staff hand a specific available vehicle straight to a specific rider —
+ * no booking involved (walk-in handovers, replacements, demo units). Mirrors
+ * bookings.service.ts's confirmPickup(): opens the same 'rentals' row a
+ * booking-based pickup would, so Unassign/complete-ride and the vehicle's
+ * assignment history work identically regardless of how the ride started.
+ */
+export async function assignVehicleToUser(
+    vehicleId: string,
+    userId: string,
+    actor: AuthContext,
+): Promise<VehicleRow> {
+    const { data: vehicle, error: vehicleError } = await supabaseAdmin
+        .from("vehicles")
+        .select("id, status")
+        .eq("id", vehicleId)
+        .maybeSingle();
+    if (vehicleError) throw vehicleError;
+    if (!vehicle) throw notFound("Vehicle not found.");
+    if (vehicle.status !== "available") throw businessRule("This vehicle is not available to assign.");
+
+    const { data: rider, error: riderError } = await supabaseAdmin
+        .from("users")
+        .select("id, full_name, kyc_status, deleted_at")
+        .eq("id", userId)
+        .maybeSingle();
+    if (riderError) throw riderError;
+    if (!rider || rider.deleted_at) throw notFound("Rider not found.");
+    if (rider.kyc_status !== "verified") {
+        throw businessRule("This rider's KYC must be verified before handing over a vehicle.");
+    }
+
+    const { error: rentalError } = await supabaseAdmin.from("rentals").insert({
+        user_id: userId,
+        vehicle_id: vehicleId,
+        status: "active",
+        started_at: new Date().toISOString(),
+    });
+    if (rentalError) throw rentalError;
+
+    const { data, error } = await supabaseAdmin
+        .from("vehicles")
+        .update({ status: "assigned" })
+        .eq("id", vehicleId)
+        .select(VEHICLE_COLUMNS)
+        .single();
+    if (error) throw error;
+    const updated = toVehicleRow(data as unknown as VehicleRow);
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: userId,
+        action: "vehicle.assigned",
+        entityType: "vehicle",
+        entityId: vehicleId,
+        after: { status: "assigned", user_id: userId },
+    });
+
+    await notifyUser(userId, {
+        template: "vehicle_assigned",
+        title: "Scooter Assigned to You",
+        body: "Staff has handed you a scooter. Enjoy your ride!",
+        screen: "post-booking-dashboard",
+    });
+
+    return updated;
 }

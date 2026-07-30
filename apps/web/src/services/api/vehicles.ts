@@ -77,3 +77,8 @@ export interface ScrapVehicleInput {
 export async function scrapVehicle(id: string, input: ScrapVehicleInput): Promise<Vehicle> {
   return apiClient.post<Vehicle>(`/vehicles/${id}/scrap`, input);
 }
+
+/** POST /vehicles/:id/assign-to-user — requireStaff. Direct handover, no booking involved. */
+export async function assignVehicleToUser(id: string, userId: string): Promise<Vehicle> {
+  return apiClient.post<Vehicle>(`/vehicles/${id}/assign-to-user`, { user_id: userId });
+}

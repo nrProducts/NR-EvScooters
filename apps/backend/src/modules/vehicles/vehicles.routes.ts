@@ -42,6 +42,13 @@ router.patch(
 router.post("/:id/assign", asyncHandler(c.assignVehicleHandler));
 
 router.post(
+    "/:id/assign-to-user",
+    requireStaff,
+    validate({ params: v.uuidParam, body: v.assignVehicleToUserBody }),
+    asyncHandler(c.assignVehicleToUserHandler),
+);
+
+router.post(
     "/:id/photos",
     requireStaff,
     validate({ params: v.uuidParam }),

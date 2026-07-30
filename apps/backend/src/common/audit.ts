@@ -12,7 +12,7 @@ export type AuditAction =
     | "kyc.approved" | "kyc.rejected"
     | "booking.created" | "booking.approved" | "booking.rejected" | "booking.fulfilled"
     | "booking.cancelled"
-    | "vehicle.created" | "vehicle.updated" | "vehicle.scrapped"
+    | "vehicle.created" | "vehicle.updated" | "vehicle.scrapped" | "vehicle.assigned"
     | "maintenance.created" | "maintenance.updated"
     | "notification.broadcast"
     | "invoice.refunded"

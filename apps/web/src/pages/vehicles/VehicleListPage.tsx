@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { BatteryMedium, Eye, Plus, Wrench, CheckCircle2, MoreHorizontal, Loader2 } from "lucide-react";
+import { BatteryMedium, Eye, Plus, Wrench, CheckCircle2, MoreHorizontal, Loader2, Zap } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleAssignmentHistory } from "@/components/vehicles/VehicleAssignmentHistory";
+import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
 import { useVehicles, useCreateVehicle, useUpdateVehicle } from "@/hooks/useVehicles";
 import { useCreateMaintenanceTicket } from "@/hooks/useMaintenance";
 import { ApiError } from "@/services/api/httpClient";
@@ -34,6 +35,7 @@ export default function VehicleListPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [maintenanceTarget, setMaintenanceTarget] = useState<Vehicle | null>(null);
   const [issueDescription, setIssueDescription] = useState("");
+  const [assignTarget, setAssignTarget] = useState<Vehicle | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
@@ -123,6 +125,11 @@ export default function VehicleListPage() {
               </DropdownMenuItem>
             ) : (
               <>
+                {v.status === "available" && (
+                  <DropdownMenuItem onClick={() => setAssignTarget(v)}>
+                    <Zap className="mr-2 h-4 w-4" /> Assign to rider
+                  </DropdownMenuItem>
+                )}
                 {v.status !== "maintenance" && v.status !== "scrap" && (
                   <DropdownMenuItem onClick={() => setMaintenanceTarget(v)}>
                     <Wrench className="mr-2 h-4 w-4" /> Mark in maintenance
@@ -252,6 +259,8 @@ export default function VehicleListPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AssignRiderPalette vehicle={assignTarget} onOpenChange={(o) => !o && setAssignTarget(null)} />
     </div>
   );
 }

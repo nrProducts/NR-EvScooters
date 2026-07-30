@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, Loader2, Wrench, UserX } from "lucide-react";
+import { CheckCircle2, Loader2, Wrench, UserX, Zap } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ErrorState } from "@/components/common/ErrorState";
+import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
 import { useVehicle } from "@/hooks/useVehicles";
 import { useCompleteRide, useMoveRideToMaintenance } from "@/hooks/useRentals";
 import { ApiError } from "@/services/api/httpClient";
@@ -19,6 +20,7 @@ import { cn, formatDate } from "@/lib/utils";
 export function VehicleAssignmentHistory({ vehicleId }: { vehicleId: string }) {
   const { data: vehicle, isLoading, isError, refetch } = useVehicle(vehicleId);
   const [unassignOpen, setUnassignOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
   const [nextStatus, setNextStatus] = useState<"available" | "maintenance">("available");
   const [description, setDescription] = useState("");
   const completeRide = useCompleteRide();
@@ -72,7 +74,14 @@ export function VehicleAssignmentHistory({ vehicleId }: { vehicleId: string }) {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No rider currently assigned to this vehicle.</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-muted-foreground">No rider currently assigned to this vehicle.</p>
+                {vehicle.status === "available" && (
+                  <Button size="sm" onClick={() => setAssignOpen(true)}>
+                    <Zap className="h-3.5 w-3.5" /> Assign a rider
+                  </Button>
+                )}
+              </div>
             )}
           </AccordionContent>
         </AccordionItem>
@@ -165,6 +174,8 @@ export function VehicleAssignmentHistory({ vehicleId }: { vehicleId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AssignRiderPalette vehicle={assignOpen ? vehicle : null} onOpenChange={setAssignOpen} />
     </>
   );
 }
