@@ -108,6 +108,34 @@ export function VehicleAssignmentHistory({ vehicleId }: { vehicleId: string }) {
             )}
           </AccordionContent>
         </AccordionItem>
+
+        <AccordionItem value="maintenance">
+          <AccordionTrigger>Maintenance History ({vehicle.maintenance_history.length})</AccordionTrigger>
+          <AccordionContent>
+            {vehicle.maintenance_history.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No maintenance tickets for this vehicle.</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {vehicle.maintenance_history.map((m) => (
+                  <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate">{m.description}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDate(m.created_at)}
+                        {m.outcome === "quick_fix" && m.expected_ready_at &&
+                          ` · Quick fix, ready by ${formatDate(m.expected_ready_at)}`}
+                        {m.outcome === "standard_temp" && m.temp_vehicle &&
+                          ` · Temp vehicle used: ${m.temp_vehicle.name}`}
+                        {m.outcome === "not_repairable" && " · Not repairable"}
+                      </p>
+                    </div>
+                    <StatusBadge status={m.status} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </AccordionContent>
+        </AccordionItem>
       </Accordion>
 
       <Dialog open={unassignOpen} onOpenChange={(o) => (o ? setUnassignOpen(true) : closeDialog())}>

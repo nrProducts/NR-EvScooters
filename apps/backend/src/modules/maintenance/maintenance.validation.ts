@@ -26,3 +26,29 @@ export const updateMaintenanceBody = z
     })
     .strict()
     .refine((v) => Object.keys(v).length > 0, "Provide at least one field to update.");
+
+const dateSchema = z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use the format YYYY-MM-DD.")
+    .refine((v) => !Number.isNaN(Date.parse(v)), "Enter a real date.");
+
+export const quickFixBody = z.object({
+    expected_ready_at: z
+        .string()
+        .datetime("Provide a valid ETA.")
+        .refine((v) => new Date(v).getTime() > Date.now(), "The ETA should be in the future."),
+});
+
+export const tempVehicleBody = z.object({
+    temp_vehicle_id: z.string().uuid("Pick a temp vehicle."),
+});
+
+export const notRepairableBody = z.object({
+    reason: z.string().trim().min(3, "Give a reason of at least 3 characters.").max(500),
+    estimated_value: z.coerce.number().min(0).optional(),
+    scrapped_on: dateSchema.optional(),
+});
+
+export const reassignBody = z.object({
+    replacement_vehicle_id: z.string().uuid("Pick a replacement vehicle."),
+});

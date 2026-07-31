@@ -55,6 +55,10 @@ export interface VehicleMaintenanceRow {
     description: string;
     resolved_at: string | null;
     created_at: string;
+    outcome: "quick_fix" | "standard_temp" | "not_repairable" | null;
+    expected_ready_at: string | null;
+    /** Set when outcome = standard_temp: the vehicle handed to the rider while this one was repaired. */
+    temp_vehicle: { id: string; name: string; registration_number: string } | null;
 }
 
 export interface VehicleRentalRow {

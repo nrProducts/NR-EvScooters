@@ -492,9 +492,12 @@ export async function moveRideToMaintenance(
         .eq("id", before.vehicle_id);
     if (vehicleError) throw vehicleError;
 
+    const riderId = unwrap<{ id: string }>(before.users)?.id ?? null;
+
     const { error: ticketError } = await supabaseAdmin.from("vehicle_maintenance").insert({
         vehicle_id: before.vehicle_id,
         reported_by: actor.id,
+        displaced_rider_id: riderId,
         description: input.description,
         status: "reported",
     });
@@ -502,7 +505,7 @@ export async function moveRideToMaintenance(
 
     await writeAudit({
         actorId: actor.id,
-        targetUserId: unwrap<{ id: string }>(before.users)?.id ?? null,
+        targetUserId: riderId,
         action: "rental.moved_to_maintenance",
         entityType: "rental",
         entityId: id,

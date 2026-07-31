@@ -6,7 +6,7 @@ import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
     ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem,
     ApiKycSummary,
-    ApiMaintenanceRecord, ApiMe, ApiPickupBooking, ApiReferralSummary, ApiRental, ApiSignedUrl,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiPickupBooking, ApiReferralSummary, ApiRental, ApiSignedUrl,
     ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, BookingRefundStatus, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
     CreateUserPayload, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
@@ -1701,6 +1701,11 @@ export class MockMaintenanceRepository implements MaintenanceRepository {
         await delay(150);
         requireSession();
         return { data: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 } };
+    }
+    async notice(): Promise<ApiMaintenanceNotice | null> {
+        await delay(150);
+        requireSession();
+        return null;
     }
 }
 

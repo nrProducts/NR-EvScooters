@@ -38,3 +38,31 @@ export async function updateMaintenanceTicket(
 ): Promise<MaintenanceTicket> {
   return apiClient.patch<MaintenanceTicket>(`/maintenance/${id}`, patch);
 }
+
+/** POST /maintenance/:id/quick-fix — requireStaff. Same-day repair, no temp vehicle. */
+export async function triageQuickFix(id: string, expectedReadyAt: string): Promise<MaintenanceTicket> {
+  return apiClient.post<MaintenanceTicket>(`/maintenance/${id}/quick-fix`, { expected_ready_at: expectedReadyAt });
+}
+
+/** POST /maintenance/:id/temp-vehicle — requireStaff. Hands the displaced rider a temp vehicle. */
+export async function assignTempVehicle(id: string, tempVehicleId: string): Promise<MaintenanceTicket> {
+  return apiClient.post<MaintenanceTicket>(`/maintenance/${id}/temp-vehicle`, { temp_vehicle_id: tempVehicleId });
+}
+
+export interface NotRepairableInput {
+  reason: string;
+  estimated_value?: number;
+  scrapped_on?: string;
+}
+
+/** POST /maintenance/:id/not-repairable — requireStaff. Scraps the vehicle and closes the ticket. */
+export async function resolveNotRepairable(id: string, input: NotRepairableInput): Promise<MaintenanceTicket> {
+  return apiClient.post<MaintenanceTicket>(`/maintenance/${id}/not-repairable`, input);
+}
+
+/** POST /maintenance/:id/reassign — requireStaff. Permanently hands the displaced rider a new vehicle. */
+export async function reassignAfterScrap(id: string, replacementVehicleId: string): Promise<MaintenanceTicket> {
+  return apiClient.post<MaintenanceTicket>(`/maintenance/${id}/reassign`, {
+    replacement_vehicle_id: replacementVehicleId,
+  });
+}

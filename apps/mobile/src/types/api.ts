@@ -418,6 +418,16 @@ export interface ApiMaintenanceRecord {
     vehicle: { id: string; name: string; registration_number: string } | null;
 }
 
+/** What Home renders for a rider currently displaced by their own vehicle's maintenance. */
+export type MaintenanceNoticeStage = 'pending_triage' | 'quick_fix' | 'temp_vehicle';
+
+export interface ApiMaintenanceNotice {
+    ticket_id: string;
+    stage: MaintenanceNoticeStage;
+    expected_ready_at: string | null;
+    temp_vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
+}
+
 export type SupportStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
 export type SupportPriority = 'low' | 'medium' | 'high' | 'urgent';
 

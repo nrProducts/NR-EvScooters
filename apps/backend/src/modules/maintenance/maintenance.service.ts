@@ -1,22 +1,37 @@
 import { supabaseAdmin } from "../../config/supabase";
-import { notFound } from "../../common/AppError";
+import { businessRule, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
+import { notifyUser } from "../notifications/notifications.service";
+import { assignVehicleToUser, scrapVehicle } from "../vehicles/vehicles.service";
+import { completeRide } from "../rentals/rentals.service";
 import { AuthContext, Paginated } from "../../types";
 import {
-    AdminMaintenanceRow, CreateMaintenanceInput, ListMaintenanceFilters, MaintenanceView,
-    UpdateMaintenanceInput,
+    AdminMaintenanceRow, AssignTempVehicleInput, CreateMaintenanceInput, ListMaintenanceFilters,
+    MaintenanceNoticeStage, MaintenanceNoticeView, MaintenanceOutcome, MaintenanceStatus, MaintenanceView,
+    NotRepairableInput, QuickFixInput, ReassignAfterScrapInput, UpdateMaintenanceInput,
 } from "./maintenance.types";
 
+/**
+ * ⚠️ Every field on MaintenanceView/AdminMaintenanceRow must appear in these
+ * select strings. The select is an untyped template string and the result is
+ * double-cast, so a field added to the interface but omitted here compiles
+ * clean and silently returns undefined. The table now has 3 FKs to `vehicles`
+ * and 3 to `users`, so every embed needs a `!fk_column` disambiguation hint or
+ * PostgREST 300s on ambiguity.
+ */
 const MAINTENANCE_COLUMNS = `
-    id, status, description, resolved_at, created_at,
-    vehicles(id, name, registration_number)
+    id, status, description, resolved_at, created_at, outcome, expected_ready_at, triaged_at,
+    vehicle:vehicles!vehicle_id(id, name, registration_number),
+    displaced_rider:users!displaced_rider_id(id, full_name),
+    temp_vehicle:vehicles!temp_vehicle_id(id, name, registration_number, battery_percentage),
+    replacement_vehicle:vehicles!replacement_vehicle_id(id, name, registration_number)
 `;
 
 const ADMIN_MAINTENANCE_COLUMNS = `
-    id, status, description, resolved_at, created_at,
-    vehicles(id, name, registration_number),
-    users(id, full_name)
+    ${MAINTENANCE_COLUMNS},
+    reported_by:users!reported_by(id, full_name),
+    triaged_by_user:users!triaged_by(id, full_name)
 `;
 
 function unwrap<T>(raw: unknown): T | null {
@@ -30,11 +45,18 @@ interface RawMaintenanceRow {
     description: string;
     resolved_at: string | null;
     created_at: string;
-    vehicles: unknown;
+    outcome: MaintenanceOutcome | null;
+    expected_ready_at: string | null;
+    triaged_at: string | null;
+    vehicle: unknown;
+    displaced_rider: unknown;
+    temp_vehicle: unknown;
+    replacement_vehicle: unknown;
 }
 
 interface RawAdminMaintenanceRow extends RawMaintenanceRow {
-    users: unknown;
+    reported_by: unknown;
+    triaged_by_user: unknown;
 }
 
 function toMaintenanceView(row: RawMaintenanceRow): MaintenanceView {
@@ -44,12 +66,22 @@ function toMaintenanceView(row: RawMaintenanceRow): MaintenanceView {
         description: row.description,
         resolved_at: row.resolved_at,
         created_at: row.created_at,
-        vehicle: unwrap(row.vehicles),
+        outcome: row.outcome,
+        expected_ready_at: row.expected_ready_at,
+        triaged_at: row.triaged_at,
+        vehicle: unwrap(row.vehicle),
+        displaced_rider: unwrap(row.displaced_rider),
+        temp_vehicle: unwrap(row.temp_vehicle),
+        replacement_vehicle: unwrap(row.replacement_vehicle),
     };
 }
 
 function toAdminMaintenanceRow(row: RawAdminMaintenanceRow): AdminMaintenanceRow {
-    return { ...toMaintenanceView(row), reported_by: unwrap(row.users) };
+    return {
+        ...toMaintenanceView(row),
+        reported_by: unwrap(row.reported_by),
+        triaged_by: unwrap(row.triaged_by_user),
+    };
 }
 
 /**
@@ -76,6 +108,45 @@ export async function getMyMaintenanceHistory(userId: string): Promise<Maintenan
 
     if (error) throw error;
     return ((data ?? []) as unknown as RawMaintenanceRow[]).map(toMaintenanceView);
+}
+
+/**
+ * What the rider's home screen renders — the newest open ticket where THEY
+ * were the one displaced, if any. Disappears the instant the ticket resolves
+ * (any outcome), so this never surfaces raw historical assignment data.
+ */
+export async function getMyMaintenanceNotice(userId: string): Promise<MaintenanceNoticeView | null> {
+    interface RawNoticeRow {
+        id: string;
+        outcome: MaintenanceOutcome | null;
+        expected_ready_at: string | null;
+        temp_vehicle: unknown;
+    }
+
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_maintenance")
+        .select("id, outcome, expected_ready_at, temp_vehicle:vehicles!temp_vehicle_id(id, name, registration_number, battery_percentage)")
+        .eq("displaced_rider_id", userId)
+        .in("status", ["reported", "in_progress"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return null;
+
+    const row = data as unknown as RawNoticeRow;
+    const stage: MaintenanceNoticeStage =
+        row.outcome === "quick_fix" ? "quick_fix"
+            : row.outcome === "standard_temp" ? "temp_vehicle"
+                : "pending_triage";
+
+    return {
+        ticket_id: row.id,
+        stage,
+        expected_ready_at: row.expected_ready_at,
+        temp_vehicle: unwrap(row.temp_vehicle),
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -139,11 +210,267 @@ export async function createMaintenanceTicket(
     return ticket;
 }
 
+interface RawTicketState {
+    id: string;
+    vehicle_id: string;
+    status: MaintenanceStatus;
+    outcome: MaintenanceOutcome | null;
+    displaced_rider_id: string | null;
+    temp_vehicle_id: string | null;
+    replacement_vehicle_id: string | null;
+}
+
+/** Lightweight internal read used by the triage/resolve actions to check guards before writing. */
+async function requireTicketState(id: string): Promise<RawTicketState> {
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_maintenance")
+        .select("id, vehicle_id, status, outcome, displaced_rider_id, temp_vehicle_id, replacement_vehicle_id")
+        .eq("id", id)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw notFound("Maintenance ticket not found.");
+    return data as unknown as RawTicketState;
+}
+
+function assertOpenAndUntriaged(ticket: RawTicketState): void {
+    if (ticket.status === "resolved" || ticket.status === "cancelled") {
+        throw businessRule("This ticket is already closed.");
+    }
+    if (ticket.outcome) throw businessRule("This ticket has already been triaged.");
+}
+
+/** Admin verifies the vehicle can be fixed same-day — no temp vehicle needed. */
+export async function triageQuickFix(
+    id: string,
+    input: QuickFixInput,
+    actor: AuthContext,
+): Promise<AdminMaintenanceRow> {
+    const ticket = await requireTicketState(id);
+    assertOpenAndUntriaged(ticket);
+
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_maintenance")
+        .update({
+            outcome: "quick_fix",
+            expected_ready_at: input.expected_ready_at,
+            status: ticket.status === "reported" ? "in_progress" : ticket.status,
+            triaged_by: actor.id,
+            triaged_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select(ADMIN_MAINTENANCE_COLUMNS)
+        .single();
+    if (error) throw error;
+    const updated = toAdminMaintenanceRow(data as unknown as RawAdminMaintenanceRow);
+
+    if (ticket.displaced_rider_id) {
+        await notifyUser(ticket.displaced_rider_id, {
+            template: "maintenance_quick_fix",
+            title: "Your Scooter Is Being Repaired",
+            body: `Expected ready by ${new Date(input.expected_ready_at).toLocaleString()}.`,
+            screen: "home",
+        });
+    }
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: ticket.displaced_rider_id,
+        action: "maintenance.outcome_set",
+        entityType: "vehicle_maintenance",
+        entityId: id,
+        after: { outcome: "quick_fix", expected_ready_at: input.expected_ready_at },
+    });
+
+    return updated;
+}
+
+/**
+ * Admin verifies the vehicle needs longer repair — hands the displaced rider
+ * a temp vehicle so they aren't blocked. Reuses assignVehicleToUser as-is
+ * (KYC-verified guard included) so this is the exact same handover mechanism
+ * as a direct admin assignment, just with the ticket stamped alongside it.
+ */
+export async function assignTempVehicle(
+    id: string,
+    input: AssignTempVehicleInput,
+    actor: AuthContext,
+): Promise<AdminMaintenanceRow> {
+    const ticket = await requireTicketState(id);
+    assertOpenAndUntriaged(ticket);
+    if (!ticket.displaced_rider_id) {
+        throw businessRule("No displaced rider recorded for this ticket — cannot issue a temp vehicle.");
+    }
+    if (input.temp_vehicle_id === ticket.vehicle_id) {
+        throw businessRule("Pick a different vehicle to use as the temporary unit.");
+    }
+
+    await assignVehicleToUser(input.temp_vehicle_id, ticket.displaced_rider_id, actor);
+
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_maintenance")
+        .update({
+            outcome: "standard_temp",
+            temp_vehicle_id: input.temp_vehicle_id,
+            status: ticket.status === "reported" ? "in_progress" : ticket.status,
+            triaged_by: actor.id,
+            triaged_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select(ADMIN_MAINTENANCE_COLUMNS)
+        .single();
+    if (error) throw error;
+    const updated = toAdminMaintenanceRow(data as unknown as RawAdminMaintenanceRow);
+
+    await notifyUser(ticket.displaced_rider_id, {
+        template: "maintenance_temp_vehicle",
+        title: "Temporary Vehicle Assigned",
+        body: "Your scooter is being repaired — use this temporary vehicle until it's ready.",
+        screen: "home",
+    });
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: ticket.displaced_rider_id,
+        action: "maintenance.outcome_set",
+        entityType: "vehicle_maintenance",
+        entityId: id,
+        after: { outcome: "standard_temp", temp_vehicle_id: input.temp_vehicle_id },
+    });
+
+    return updated;
+}
+
+/**
+ * Admin verifies the vehicle can't be fixed — scraps it (reusing the
+ * existing, unmodified scrapVehicle) and closes the ticket immediately.
+ * Reassigning the displaced rider to a replacement vehicle is a deliberately
+ * separate, retryable step (reassignAfterScrap) so a rider-account failure
+ * there can't leave this half-done.
+ */
+export async function resolveNotRepairable(
+    id: string,
+    input: NotRepairableInput,
+    actor: AuthContext,
+): Promise<AdminMaintenanceRow> {
+    const ticket = await requireTicketState(id);
+    assertOpenAndUntriaged(ticket);
+
+    await scrapVehicle(ticket.vehicle_id, input, actor);
+
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_maintenance")
+        .update({
+            outcome: "not_repairable",
+            status: "resolved",
+            resolved_at: new Date().toISOString(),
+            triaged_by: actor.id,
+            triaged_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select(ADMIN_MAINTENANCE_COLUMNS)
+        .single();
+    if (error) throw error;
+    const updated = toAdminMaintenanceRow(data as unknown as RawAdminMaintenanceRow);
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: ticket.displaced_rider_id,
+        action: "maintenance.outcome_set",
+        entityType: "vehicle_maintenance",
+        entityId: id,
+        after: { outcome: "not_repairable" },
+    });
+
+    return updated;
+}
+
+/**
+ * One-way follow-up to resolveNotRepairable: permanently hands the displaced
+ * rider a new vehicle. Idempotent on replacement_vehicle_id so a retry after
+ * a failed attempt (e.g. the rider's KYC had lapsed) can't double-assign.
+ */
+export async function reassignAfterScrap(
+    id: string,
+    input: ReassignAfterScrapInput,
+    actor: AuthContext,
+): Promise<AdminMaintenanceRow> {
+    const ticket = await requireTicketState(id);
+    if (ticket.outcome !== "not_repairable") {
+        throw businessRule("This ticket wasn't marked not-repairable.");
+    }
+    if (ticket.replacement_vehicle_id) {
+        throw businessRule("A replacement vehicle has already been assigned for this ticket.");
+    }
+    if (!ticket.displaced_rider_id) {
+        throw businessRule("No displaced rider recorded for this ticket — nothing to reassign.");
+    }
+
+    await assignVehicleToUser(input.replacement_vehicle_id, ticket.displaced_rider_id, actor);
+
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_maintenance")
+        .update({ replacement_vehicle_id: input.replacement_vehicle_id })
+        .eq("id", id)
+        .select(ADMIN_MAINTENANCE_COLUMNS)
+        .single();
+    if (error) throw error;
+    const updated = toAdminMaintenanceRow(data as unknown as RawAdminMaintenanceRow);
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: ticket.displaced_rider_id,
+        action: "maintenance.outcome_set",
+        entityType: "vehicle_maintenance",
+        entityId: id,
+        after: { replacement_vehicle_id: input.replacement_vehicle_id },
+    });
+
+    return updated;
+}
+
 export async function updateMaintenanceTicket(
     id: string,
     patch: UpdateMaintenanceInput,
     actor: AuthContext,
 ): Promise<AdminMaintenanceRow> {
+    if (patch.status === "resolved") {
+        const ticket = await requireTicketState(id);
+
+        if (ticket.status !== "resolved" && ticket.status !== "cancelled") {
+            if (ticket.outcome && ticket.displaced_rider_id) {
+                // Release from maintenance first (respecting any OTHER still-open
+                // ticket on this vehicle), then hand it back to the same rider —
+                // assignVehicleToUser requires status='available', so this order
+                // is load-bearing.
+                await releaseVehicleIfNoOpenTickets(ticket.vehicle_id, id);
+                await assignVehicleToUser(ticket.vehicle_id, ticket.displaced_rider_id, actor);
+
+                if (ticket.outcome === "standard_temp" && ticket.temp_vehicle_id) {
+                    const { data: tempRental, error: tempRentalError } = await supabaseAdmin
+                        .from("rentals")
+                        .select("id")
+                        .eq("vehicle_id", ticket.temp_vehicle_id)
+                        .eq("status", "active")
+                        .maybeSingle();
+                    if (tempRentalError) throw tempRentalError;
+                    if (tempRental) await completeRide(tempRental.id, {}, actor);
+                }
+
+                await notifyUser(ticket.displaced_rider_id, {
+                    template: "maintenance_vehicle_returned",
+                    title: "Your Scooter Is Ready",
+                    body: ticket.outcome === "standard_temp"
+                        ? "Your original scooter is back and ready. The temporary vehicle has been released."
+                        : "Your scooter has been repaired and is ready to ride.",
+                    screen: "home",
+                });
+            } else {
+                // Untriaged ticket — identical to the original, simpler behavior.
+                await releaseVehicleIfNoOpenTickets(ticket.vehicle_id, id);
+            }
+        }
+    }
+
     const next: Record<string, unknown> = { ...patch };
     // resolved_at is server-derived from the status transition, never client-supplied.
     if (patch.status) next.resolved_at = patch.status === "resolved" ? new Date().toISOString() : null;
@@ -158,10 +485,6 @@ export async function updateMaintenanceTicket(
     if (error) throw error;
     if (!data) throw notFound("Maintenance ticket not found.");
     const ticket = toAdminMaintenanceRow(data as unknown as RawAdminMaintenanceRow);
-
-    if (patch.status === "resolved" && ticket.vehicle) {
-        await releaseVehicleIfNoOpenTickets(ticket.vehicle.id);
-    }
 
     await writeAudit({
         actorId: actor.id,
@@ -179,15 +502,23 @@ export async function updateMaintenanceTicket(
 /**
  * Resolving one ticket shouldn't free a vehicle that still has another open
  * issue — only flip it back to 'available' once nothing else is outstanding.
+ * `excludeTicketId` leaves the ticket currently being resolved out of that
+ * count — it's still 'reported'/'in_progress' in the DB at the moment this
+ * runs (the status write happens after any vehicle-side effects, so a
+ * mid-flight failure leaves the ticket safely retryable), so without the
+ * exclusion this would always see itself as "still open" and never release.
  * The status guard on the vehicles update also protects against clobbering a
  * vehicle that's moved on (e.g. re-assigned) since entering maintenance.
  */
-async function releaseVehicleIfNoOpenTickets(vehicleId: string): Promise<void> {
-    const { count, error: openError } = await supabaseAdmin
+async function releaseVehicleIfNoOpenTickets(vehicleId: string, excludeTicketId?: string): Promise<void> {
+    let query = supabaseAdmin
         .from("vehicle_maintenance")
         .select("id", { count: "exact", head: true })
         .eq("vehicle_id", vehicleId)
         .in("status", ["reported", "in_progress"]);
+    if (excludeTicketId) query = query.neq("id", excludeTicketId);
+
+    const { count, error: openError } = await query;
     if (openError) throw openError;
     if ((count ?? 0) > 0) return;
 

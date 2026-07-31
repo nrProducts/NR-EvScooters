@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, PackageCheck } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { KycBanner } from '../components/KycBanner';
+import { MaintenanceNoticeBanner } from '../components/MaintenanceNoticeBanner';
 import { FeaturedScooterCard } from '../components/FeaturedScooterCard';
 import { ReferAndEarnBanner } from '../components/ReferAndEarnBanner';
 import { VehicleListItem } from '../components/VehicleListItem';
@@ -12,7 +13,7 @@ import { SkeletonList } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
 import { useAuthStore } from '../store/useAuthStore';
 import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
-import { bookingRepository, rentalRepository } from '../services';
+import { bookingRepository, maintenanceRepository, rentalRepository } from '../services';
 import { useCancelBooking } from '../hooks/useCancelBooking';
 import { ReturnScooterModal } from '../components/ReturnScooterModal';
 import { ReturnStatusCard } from '../components/ReturnStatusCard';
@@ -20,7 +21,7 @@ import { buildMapsUrl, buildWebMapsUrl } from '../lib/maps';
 import { notifyError } from '../lib/confirm';
 import { COLORS } from '../constants/theme';
 import { VEHICLE_STATUS_LABEL, VEHICLE_STATUS_TONE } from '../constants/status';
-import type { ApiBooking, ApiRental } from '../types/api';
+import type { ApiBooking, ApiMaintenanceNotice, ApiRental } from '../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function formatDay(dateStr: string): string {
@@ -42,6 +43,7 @@ export default function HomeScreen() {
   } = useVehicleCatalogStore();
   const [pendingBooking, setPendingBooking] = useState<ApiBooking | null>(null);
   const [activeRental, setActiveRental] = useState<ApiRental | null>(null);
+  const [maintenanceNotice, setMaintenanceNotice] = useState<ApiMaintenanceNotice | null>(null);
   const [showReturn, setShowReturn] = useState(false);
   const { cancelling, cancelBooking } = useCancelBooking();
   const insets = useSafeAreaInsets();
@@ -51,6 +53,14 @@ export default function HomeScreen() {
     void loadList();
     void loadAvailableCount();
   }, [loadFeatured, loadList, loadAvailableCount]);
+
+  // Independent of has_active_rental/has_active_booking — a rider can be
+  // mid-displacement (no temp vehicle yet) with neither flag set.
+  useEffect(() => {
+    void maintenanceRepository.notice().then(setMaintenanceNotice).catch(() => {
+      // Non-critical: the rest of Home renders fine without the notice.
+    });
+  }, []);
 
   // has_active_rental takes priority once pickup happens — this card is
   // only relevant for the window between booking and pickup.
@@ -114,6 +124,8 @@ export default function HomeScreen() {
         </Text>
 
         <KycBanner />
+
+        <MaintenanceNoticeBanner notice={maintenanceNotice} />
 
         {pendingBooking ? (
           <View

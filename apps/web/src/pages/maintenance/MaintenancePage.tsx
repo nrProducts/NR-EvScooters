@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, CheckCircle2, PlayCircle, XCircle, MoreHorizontal, Loader2 } from "lucide-react";
+import { Plus, CheckCircle2, PlayCircle, XCircle, MoreHorizontal, Loader2, ClipboardCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,10 +14,11 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { TriageDialog } from "@/components/maintenance/TriageDialog";
 import { useMaintenanceTickets, useCreateMaintenanceTicket, useUpdateMaintenanceTicket } from "@/hooks/useMaintenance";
 import { useVehicles } from "@/hooks/useVehicles";
 import { ApiError } from "@/services/api/httpClient";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import type { MaintenanceStatus, MaintenanceTicket } from "@/types";
 
 const STATUS_OPTIONS: (MaintenanceStatus | "all")[] = ["all", "reported", "in_progress", "resolved", "cancelled"];
@@ -30,6 +31,7 @@ export default function MaintenancePage() {
   const { data, isLoading, isError, refetch } = useMaintenanceTickets({ status, page, pageSize: 8 });
   const updateTicket = useUpdateMaintenanceTicket();
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [triageTarget, setTriageTarget] = useState<MaintenanceTicket | null>(null);
 
   const handleUpdate = (id: string, ticketStatus: MaintenanceStatus) => {
     setUpdateError(null);
@@ -59,6 +61,25 @@ export default function MaintenancePage() {
       render: (t) => <p className="max-w-xs truncate">{t.description}</p>,
     },
     { header: "Status", key: "status", render: (t) => <StatusBadge status={t.status} /> },
+    {
+      header: "Outcome",
+      key: "outcome",
+      render: (t) => {
+        if (!t.outcome) return <span className="text-xs text-muted-foreground">Not triaged</span>;
+        if (t.outcome === "quick_fix") {
+          return (
+            <span className="text-xs">
+              Quick fix{t.expected_ready_at && ` · ready ${formatDateTime(t.expected_ready_at)}`}
+            </span>
+          );
+        }
+        if (t.outcome === "standard_temp") {
+          return <span className="text-xs">Temp vehicle: {t.temp_vehicle?.name ?? "—"}</span>;
+        }
+        return <span className="text-xs">Not repairable</span>;
+      },
+      hideOnMobile: true,
+    },
     { header: "Reported by", key: "reported_by", render: (t) => t.reported_by?.full_name ?? "—", hideOnMobile: true },
     { header: "Reported", key: "created_at", render: (t) => formatDate(t.created_at), hideOnMobile: true },
     {
@@ -72,6 +93,11 @@ export default function MaintenancePage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+            {t.status !== "resolved" && t.status !== "cancelled" && !t.outcome && (
+              <DropdownMenuItem onClick={() => setTriageTarget(t)}>
+                <ClipboardCheck className="mr-2 h-4 w-4" /> Triage
+              </DropdownMenuItem>
+            )}
             {t.status !== "in_progress" && t.status !== "resolved" && t.status !== "cancelled" && (
               <DropdownMenuItem onClick={() => handleUpdate(t.id, "in_progress")}>
                 <PlayCircle className="mr-2 h-4 w-4" /> Start work
@@ -148,6 +174,7 @@ export default function MaintenancePage() {
       </Card>
 
       <CreateTicketDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <TriageDialog ticket={triageTarget} onOpenChange={(o) => !o && setTriageTarget(null)} />
     </div>
   );
 }

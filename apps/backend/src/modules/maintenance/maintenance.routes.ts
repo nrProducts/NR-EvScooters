@@ -11,6 +11,7 @@ const router = Router();
 router.use(requireAuth);
 
 router.get("/me/history", asyncHandler(c.myMaintenanceHistoryHandler));
+router.get("/me/notice", asyncHandler(c.myMaintenanceNoticeHandler));
 
 router.get(
     "/",
@@ -31,6 +32,34 @@ router.patch(
     requireStaff,
     validate({ params: v.uuidParam, body: v.updateMaintenanceBody }),
     asyncHandler(c.updateMaintenanceHandler),
+);
+
+router.post(
+    "/:id/quick-fix",
+    requireStaff,
+    validate({ params: v.uuidParam, body: v.quickFixBody }),
+    asyncHandler(c.quickFixHandler),
+);
+
+router.post(
+    "/:id/temp-vehicle",
+    requireStaff,
+    validate({ params: v.uuidParam, body: v.tempVehicleBody }),
+    asyncHandler(c.assignTempVehicleHandler),
+);
+
+router.post(
+    "/:id/not-repairable",
+    requireStaff,
+    validate({ params: v.uuidParam, body: v.notRepairableBody }),
+    asyncHandler(c.notRepairableHandler),
+);
+
+router.post(
+    "/:id/reassign",
+    requireStaff,
+    validate({ params: v.uuidParam, body: v.reassignBody }),
+    asyncHandler(c.reassignHandler),
 );
 
 export default router;

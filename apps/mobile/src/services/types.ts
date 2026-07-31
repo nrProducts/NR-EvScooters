@@ -1,7 +1,7 @@
 import type {
     ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
-    ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiReferralSummary, ApiRental,
-    ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiReferralSummary,
+    ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
     ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
     CreateUserPayload, KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile,
     Paginated, ReturnRequestPayload, RoleName, StatusAction, SupportStatus,
@@ -141,6 +141,8 @@ export interface RentalRepository {
 export interface MaintenanceRepository {
     /** Maintenance events for vehicles the rider has personally rented. */
     history(): Promise<Paginated<ApiMaintenanceRecord>>;
+    /** The rider's own currently-open displacement ticket, if any — drives the Home screen banner. */
+    notice(): Promise<ApiMaintenanceNotice | null>;
 }
 
 export interface SupportQueueParams {

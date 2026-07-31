@@ -124,11 +124,28 @@ async function documentsForVehicle(vehicleId: string): Promise<VehicleDocumentRo
 async function maintenanceForVehicle(vehicleId: string): Promise<VehicleMaintenanceRow[]> {
     const { data, error } = await supabaseAdmin
         .from("vehicle_maintenance")
-        .select("id, status, description, resolved_at, created_at")
+        .select(`
+            id, status, description, resolved_at, created_at, outcome, expected_ready_at,
+            temp_vehicle:vehicles!temp_vehicle_id(id, name, registration_number)
+        `)
         .eq("vehicle_id", vehicleId)
         .order("created_at", { ascending: false });
     if (error) throw error;
-    return (data ?? []) as unknown as VehicleMaintenanceRow[];
+
+    return ((data ?? []) as unknown as Array<{
+        id: string; status: VehicleMaintenanceRow["status"]; description: string; resolved_at: string | null;
+        created_at: string; outcome: VehicleMaintenanceRow["outcome"]; expected_ready_at: string | null;
+        temp_vehicle: unknown;
+    }>).map((row) => ({
+        id: row.id,
+        status: row.status,
+        description: row.description,
+        resolved_at: row.resolved_at,
+        created_at: row.created_at,
+        outcome: row.outcome,
+        expected_ready_at: row.expected_ready_at,
+        temp_vehicle: unwrap<{ id: string; name: string; registration_number: string }>(row.temp_vehicle),
+    }));
 }
 
 async function rentalsForVehicle(vehicleId: string): Promise<VehicleRentalRow[]> {

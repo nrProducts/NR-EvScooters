@@ -13,7 +13,7 @@ export type AuditAction =
     | "booking.created" | "booking.approved" | "booking.rejected" | "booking.fulfilled"
     | "booking.cancelled"
     | "vehicle.created" | "vehicle.updated" | "vehicle.scrapped" | "vehicle.assigned"
-    | "maintenance.created" | "maintenance.updated"
+    | "maintenance.created" | "maintenance.updated" | "maintenance.outcome_set"
     | "notification.broadcast"
     | "invoice.refunded"
     | "rental.completed" | "rental.moved_to_maintenance" | "rental.return_requested"

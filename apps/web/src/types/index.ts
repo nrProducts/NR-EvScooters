@@ -223,6 +223,10 @@ export interface VehicleMaintenanceRecord {
   description: string;
   resolved_at: string | null;
   created_at: string;
+  outcome: "quick_fix" | "standard_temp" | "not_repairable" | null;
+  expected_ready_at: string | null;
+  /** Set when outcome = standard_temp: the vehicle handed to the rider while this one was repaired. */
+  temp_vehicle: { id: string; name: string; registration_number: string } | null;
 }
 
 export interface VehicleRentalRecord {
@@ -257,14 +261,24 @@ export interface VehicleDetail extends Vehicle {
 
 export type MaintenanceStatus = "reported" | "in_progress" | "resolved" | "cancelled";
 
+/** Set once staff verify a displaced vehicle. Null until triaged. */
+export type MaintenanceOutcome = "quick_fix" | "standard_temp" | "not_repairable";
+
 export interface MaintenanceTicket {
   id: string;
   status: MaintenanceStatus;
   description: string;
   resolved_at: string | null;
   created_at: string;
+  outcome: MaintenanceOutcome | null;
+  expected_ready_at: string | null;
+  triaged_at: string | null;
   vehicle: { id: string; name: string; registration_number: string } | null;
   reported_by: { id: string; full_name: string } | null;
+  triaged_by: { id: string; full_name: string } | null;
+  displaced_rider: { id: string; full_name: string } | null;
+  temp_vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
+  replacement_vehicle: { id: string; name: string; registration_number: string } | null;
 }
 
 // ---------------------------------------------------------------------------

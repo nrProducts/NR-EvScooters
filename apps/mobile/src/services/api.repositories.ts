@@ -4,8 +4,8 @@ import { getSupabase } from '../lib/supabase';
 import type {
     ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem,
     ApiKycSummary,
-    ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiReferralSummary, ApiRental,
-    ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiReferralSummary,
+    ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
     ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
     CreateUserPayload, ListUsersParams, ListVehicleModelsParams, Paginated, ReturnRequestPayload,
     RoleName, StatusAction, UpdateSupportRequestPayload, UpdateUserPayload,
@@ -249,6 +249,9 @@ export class ApiRentalRepository implements RentalRepository {
 export class ApiMaintenanceRepository implements MaintenanceRepository {
     history(): Promise<Paginated<ApiMaintenanceRecord>> {
         return api.maintenanceHistory();
+    }
+    notice(): Promise<ApiMaintenanceNotice | null> {
+        return api.maintenanceNotice();
     }
 }
 

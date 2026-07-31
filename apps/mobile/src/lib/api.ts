@@ -8,7 +8,7 @@ import { signInWithGoogleBrowser } from './googleAuth';
 export { ApiError };
 import type {
     ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiErrorBody, ApiKycDetail, ApiKycQueueItem,
-    ApiKycSummary, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking,
+    ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking,
     ApiReferralSummary, ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest,
     ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload,
     CreateSupportRequestPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
@@ -383,6 +383,7 @@ export const api = {
 
     // --- maintenance ---------------------------------------------------
     maintenanceHistory: () => request<Paginated<ApiMaintenanceRecord>>('/maintenance/me/history'),
+    maintenanceNotice: () => request<ApiMaintenanceNotice | null>('/maintenance/me/notice'),
 
     // --- support ---------------------------------------------------------
     createSupportRequest: (payload: CreateSupportRequestPayload) =>
