@@ -77,8 +77,8 @@ export function VehicleHistoryDialog({
   return (
     <>
       <Dialog open={!!vehicleId} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto scrollbar-thin sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-lg">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{vehicle?.name ?? "Vehicle history"}</DialogTitle>
             <DialogDescription>{vehicle?.registration_number}</DialogDescription>
           </DialogHeader>
@@ -87,9 +87,9 @@ export function VehicleHistoryDialog({
           {isError && <ErrorState message="Could not load this vehicle's history." onRetry={() => refetch()} />}
 
           {vehicle && (
-            <div className="space-y-5">
-              {/* Trunk root — current status */}
-              <div className="flex items-center justify-between gap-2 rounded-2xl border border-primary/30 bg-primary/5 p-3.5">
+            <div className="flex min-h-0 flex-1 flex-col gap-5">
+              {/* Trunk root — current status. Stays put; only the timeline below scrolls. */}
+              <div className="flex shrink-0 items-center justify-between gap-2 rounded-2xl border border-primary/30 bg-primary/5 p-3.5">
                 <div className="flex items-center gap-2.5">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                     <Bike className="h-4 w-4" />
@@ -118,11 +118,11 @@ export function VehicleHistoryDialog({
                 </div>
               </div>
 
-              {/* Branching timeline */}
+              {/* Branching timeline — its own scroll region once it outgrows the dialog. */}
               {nodes.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No earlier history for this vehicle.</p>
               ) : (
-                <div>
+                <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin pr-1">
                   {nodes.map((node, i) => {
                     const isLast = i === nodes.length - 1;
                     return (
