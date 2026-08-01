@@ -17,7 +17,6 @@ import BookingListPage from "@/pages/bookings/BookingListPage";
 import MaintenancePage from "@/pages/maintenance/MaintenancePage";
 import SupportTicketsPage from "@/pages/support/SupportTicketsPage";
 import PaymentsPage from "@/pages/payments/PaymentsPage";
-import ReportsPage from "@/pages/reports/ReportsPage";
 import NotificationsPage from "@/pages/notifications/NotificationsPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
 import NotFoundPage from "@/pages/errors/NotFoundPage";
@@ -54,7 +53,6 @@ export function AppRoutes() {
         <Route path="/support" element={<SupportTicketsPage />} />
 
         <Route path="/payments" element={<PaymentsPage />} />
-        <Route path="/reports" element={<ReportsPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
 
