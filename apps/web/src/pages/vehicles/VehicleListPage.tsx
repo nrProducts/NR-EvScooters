@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { BatteryMedium, Eye, Plus, Wrench, CheckCircle2, MoreHorizontal, Loader2, Zap } from "lucide-react";
+import { BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, MoreHorizontal, Loader2, Zap } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,7 +17,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
-import { VehicleAssignmentHistory } from "@/components/vehicles/VehicleAssignmentHistory";
+import { VehicleHistoryDialog } from "@/components/vehicles/VehicleHistoryDialog";
 import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
 import { useVehicles, useCreateVehicle, useUpdateVehicle } from "@/hooks/useVehicles";
 import { useCreateMaintenanceTicket } from "@/hooks/useMaintenance";
@@ -32,7 +32,7 @@ export default function VehicleListPage() {
   const [status, setStatus] = useState<VehicleStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<string | null>(null);
   const [maintenanceTarget, setMaintenanceTarget] = useState<Vehicle | null>(null);
   const [issueDescription, setIssueDescription] = useState("");
   const [assignTarget, setAssignTarget] = useState<Vehicle | null>(null);
@@ -119,28 +119,23 @@ export default function VehicleListPage() {
             <DropdownMenuItem onClick={() => navigate(`/vehicles/${v.id}`)}>
               <Eye className="mr-2 h-4 w-4" /> View details
             </DropdownMenuItem>
-            {v.status === "assigned" ? (
-              <DropdownMenuItem onClick={() => setExpandedId(v.id)}>
-                <Wrench className="mr-2 h-4 w-4" /> Unassign to change status
+            <DropdownMenuItem onClick={() => setHistoryTarget(v.id)}>
+              <History className="mr-2 h-4 w-4" /> View history
+            </DropdownMenuItem>
+            {v.status === "available" && (
+              <DropdownMenuItem onClick={() => setAssignTarget(v)}>
+                <Zap className="mr-2 h-4 w-4" /> Assign to rider
               </DropdownMenuItem>
-            ) : (
-              <>
-                {v.status === "available" && (
-                  <DropdownMenuItem onClick={() => setAssignTarget(v)}>
-                    <Zap className="mr-2 h-4 w-4" /> Assign to rider
-                  </DropdownMenuItem>
-                )}
-                {v.status !== "maintenance" && v.status !== "scrap" && (
-                  <DropdownMenuItem onClick={() => setMaintenanceTarget(v)}>
-                    <Wrench className="mr-2 h-4 w-4" /> Mark in maintenance
-                  </DropdownMenuItem>
-                )}
-                {v.status !== "available" && v.status !== "scrap" && (
-                  <DropdownMenuItem onClick={() => updateVehicle.mutate({ id: v.id, patch: { status: "available" } })}>
-                    <CheckCircle2 className="mr-2 h-4 w-4" /> Mark available
-                  </DropdownMenuItem>
-                )}
-              </>
+            )}
+            {v.status !== "maintenance" && v.status !== "scrap" && v.status !== "assigned" && (
+              <DropdownMenuItem onClick={() => setMaintenanceTarget(v)}>
+                <Wrench className="mr-2 h-4 w-4" /> Mark in maintenance
+              </DropdownMenuItem>
+            )}
+            {v.status !== "available" && v.status !== "scrap" && v.status !== "assigned" && (
+              <DropdownMenuItem onClick={() => updateVehicle.mutate({ id: v.id, patch: { status: "available" } })}>
+                <CheckCircle2 className="mr-2 h-4 w-4" /> Mark available
+              </DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -197,9 +192,7 @@ export default function VehicleListPage() {
           isLoading={isLoading}
           isError={isError}
           onRetry={() => refetch()}
-          onRowClick={(v) => setExpandedId((prev) => (prev === v.id ? null : v.id))}
-          expandedRowId={expandedId}
-          renderExpandedRow={(v) => <VehicleAssignmentHistory vehicleId={v.id} />}
+          onRowClick={(v) => setHistoryTarget(v.id)}
           emptyTitle="No vehicles match your filters"
         />
 
@@ -261,6 +254,7 @@ export default function VehicleListPage() {
       </Dialog>
 
       <AssignRiderPalette vehicle={assignTarget} onOpenChange={(o) => !o && setAssignTarget(null)} />
+      <VehicleHistoryDialog vehicleId={historyTarget} onOpenChange={(o) => !o && setHistoryTarget(null)} />
     </div>
   );
 }

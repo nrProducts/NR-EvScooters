@@ -3,6 +3,7 @@ import { AppRoutes } from "@/routes/AppRoutes";
 import { useUiStore } from "@/store/uiStore";
 import { useAuthStore } from "@/store/authStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { RealtimeProvider } from "@/providers/RealtimeProvider";
 import { fetchCurrentSession } from "@/services/api/staff";
 
 export default function App() {
@@ -42,7 +43,9 @@ export default function App() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <AppRoutes />
+      <RealtimeProvider>
+        <AppRoutes />
+      </RealtimeProvider>
     </TooltipProvider>
   );
 }
