@@ -4,7 +4,7 @@ import {
   computeLateReturnPenalty, returnDeadlineFor,
 } from '../src/lib/returnPolicy';
 import {
-  MockAuthRepository, MockBookingRepository, MockRentalRepository, MockUserRepository,
+  MockBookingRepository, MockRentalRepository, MockUserRepository, signInAs, startMockRental,
   resetMockDb,
 } from './fixtures/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
@@ -98,13 +98,11 @@ describe('computeLateReturnPenalty â€” no request to be late against', () =
 // Mock repository flow
 // ---------------------------------------------------------------------------
 
-const auth = new MockAuthRepository();
 const users = new MockUserRepository();
 const bookings = new MockBookingRepository();
 const rentals = new MockRentalRepository();
 
-const asVerifiedRider = () => auth.signIn('rider@fleet.com', '');
-const asStaff = () => auth.signIn('staff@fleet.com', '');
+const asVerifiedRider = () => signInAs('rider@fleet.com');
 
 const fmt = (d: Date): string => {
   const year = d.getFullYear();
@@ -113,7 +111,7 @@ const fmt = (d: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-/** Books, then has staff confirm pickup, leaving the rider on an active rental. */
+/** Books, then starts the rental, leaving the rider mid-ride. */
 async function startRental(): Promise<string> {
   await asVerifiedRider();
   const start = new Date(Date.now() + 24 * 3600 * 1000);
@@ -125,12 +123,7 @@ async function startRental(): Promise<string> {
     start_day: fmt(start),
   });
 
-  await asStaff();
-  await bookings.confirmPickup(booking.id, 'mock-vehicle-1');
-
-  await asVerifiedRider();
-  const rental = await rentals.mine();
-  return rental!.id;
+  return startMockRental(booking.id);
 }
 
 beforeEach(async () => {
@@ -175,7 +168,7 @@ describe('MockRentalRepository.requestReturn', () => {
   it("404s on another rider's rental rather than confirming it exists", async () => {
     const rentalId = await startRental();
 
-    await auth.signIn('fatima.s@example.com', '');
+    await signInAs('fatima.s@example.com');
     await expect(rentals.requestReturn(rentalId, { reason: 'plan_ended', rating: 4 }))
       .rejects.toBeInstanceOf(ApiError);
     await rentals.requestReturn(rentalId, { reason: 'plan_ended', rating: 4 })

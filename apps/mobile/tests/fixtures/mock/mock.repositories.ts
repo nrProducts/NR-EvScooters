@@ -4,19 +4,18 @@ import { computeCancellationCharge } from '../../../src/lib/cancellationPolicy';
 import { returnDeadlineFor } from '../../../src/lib/returnPolicy';
 import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
-    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem,
-    ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiPickupBooking, ApiReferralSummary, ApiRental, ApiSignedUrl,
-    ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
+    ApiAvailability, ApiBooking, ApiDocument, ApiKycSummary,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiReferralSummary, ApiRental, ApiSignedUrl,
+    ApiStation, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, BookingRefundStatus, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
-    CreateUserPayload, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
-    RentalStatus, ReturnRequestPayload, RoleName, StatusAction, SupportPriority, SupportStatus,
-    UpdateSupportRequestPayload, UpdateUserPayload, VerificationStatus,
+    KycStatus, ListVehicleModelsParams, LocalFile, Paginated,
+    RentalStatus, ReturnRequestPayload, SupportPriority, SupportStatus,
+    UpdateUserPayload, VerificationStatus,
 } from '../../../src/types/api';
 import type {
-    AuthRepository, BookingRepository, KycQueueParams, KycRepository, MaintenanceRepository,
-    NotificationRepository, PickupQueueParams, ReferralRepository, RentalRepository, SessionRef,
-    SupportQueueParams, SupportRepository, UpdateDocumentInput, UploadDocumentInput,
+    AuthRepository, BookingRepository, KycRepository, MaintenanceRepository,
+    NotificationRepository, ReferralRepository, RentalRepository, SessionRef,
+    SupportRepository, UpdateDocumentInput, UploadDocumentInput,
     UploadPhotoResult, UserRepository, VehicleCatalogRepository,
 } from '../../../src/services/types';
 import type { ApiNotification } from '../../../src/types/api';
@@ -120,7 +119,10 @@ const db = {
 const REFERRAL_OFFER_AMOUNT = 100;
 
 function mockReferralCodeFor(userId: string): string {
-    return userId.replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase() || 'REFERME1';
+    // slice(-8), not slice(0, 8): the seed ids share a prefix, so taking the
+    // FRONT collapsed every u-rider-00X to the same "URIDER00" code and made
+    // any rider-to-rider redemption look like self-referral.
+    return userId.replace(/[^A-Za-z0-9]/g, '').slice(-8).toUpperCase() || 'REFERME1';
 }
 
 /** Mimics a real round trip so loading states and spinners actually appear. */
@@ -171,24 +173,7 @@ function requireSession(): MockUserRow {
     return user;
 }
 
-const isStaffRow = (u: MockUserRow) => u.roles.some((r) => r !== 'rider');
 const isAdminRow = (u: MockUserRow) => u.roles.includes('admin');
-
-function requireAdmin(): MockUserRow {
-    const actor = requireSession();
-    if (!isAdminRow(actor)) {
-        throw new ApiError(403, 'FORBIDDEN', 'This action requires the admin role.');
-    }
-    return actor;
-}
-
-function requireStaff(): MockUserRow {
-    const actor = requireSession();
-    if (!isStaffRow(actor)) {
-        throw new ApiError(403, 'FORBIDDEN', 'This action requires a staff or admin role.');
-    }
-    return actor;
-}
 
 /**
  * Mirrors public.compute_kyc_status() and deriveKycStatus() on the backend.
@@ -265,20 +250,6 @@ function toApiUserDetail(row: MockUserRow): ApiUserDetail {
     };
 }
 
-function findUser(id: string): MockUserRow {
-    const row = db.users.find((u) => u.id === id);
-    if (!row) throw new ApiError(404, 'NOT_FOUND', 'User not found.');
-    return row;
-}
-
-function findLiveUser(id: string): MockUserRow {
-    const row = findUser(id);
-    if (row.deleted_at) {
-        throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'This account is deleted. Restore it first.');
-    }
-    return row;
-}
-
 function assertEmailPhoneFree(email?: string, phone?: string, exceptId?: string) {
     if (email) {
         const clash = db.users.some(
@@ -299,19 +270,6 @@ function assertEmailPhoneFree(email?: string, phone?: string, exceptId?: string)
                 phone: 'This phone number is already registered.',
             });
         }
-    }
-}
-
-function assertNotLastAdmin(userId: string) {
-    const activeAdmins = db.users.filter(
-        (u) => !u.deleted_at && u.account_status === 'active' && u.roles.includes('admin'),
-    );
-    if (activeAdmins.length <= 1 && activeAdmins.some((u) => u.id === userId)) {
-        throw new ApiError(
-            422,
-            'BUSINESS_RULE_VIOLATION',
-            'This is the last active administrator. Promote another admin first.',
-        );
     }
 }
 
@@ -392,31 +350,8 @@ export class MockAuthRepository implements AuthRepository {
         return { id: user.id, email: user.email };
     }
 
-    async signIn(email: string, _password?: string): Promise<SessionRef> {
-        await delay();
-        const user = db.users.find((u) => u.email?.toLowerCase() === normEmail(email));
-
-        if (!user) {
-            throw new ApiError(
-                401,
-                'UNAUTHENTICATED',
-                `No demo account for "${email}". Try ${DEMO_ACCOUNTS.map((d) => d.email).join(', ')}.`,
-            );
-        }
-        if (user.deleted_at) throw new ApiError(403, 'FORBIDDEN', 'This account has been deactivated.');
-        if (user.account_status === 'suspended') throw new ApiError(403, 'FORBIDDEN', 'This account is suspended.');
-
-        db.currentUserId = user.id;
-        return { id: user.id, email: user.email };
-    }
-
     async signOut(): Promise<void> {
         db.currentUserId = null;
-    }
-
-    async sendPasswordReset(): Promise<void> {
-        await delay();
-        // No-op: there are no passwords to reset in mock mode.
     }
 
     subscribe(): () => void {
@@ -447,10 +382,32 @@ export class MockUserRepository implements UserRepository {
         };
     }
 
+    /**
+     * Inlined from the removed staff `update(id, patch)`, which this used to
+     * delegate to. The cross-user 403 branch is gone by construction — a rider
+     * can only ever edit themselves — but everything else is verbatim,
+     * `profile_completed: true` included: the onboarding flow depends on it.
+     */
     async updateMe(patch: UpdateUserPayload): Promise<ApiUserDetail> {
         await delay();
         const row = requireSession();
-        return this.update(row.id, patch);
+
+        assertEmailPhoneFree(patch.email, patch.phone, row.id);
+
+        Object.assign(row, {
+            ...patch,
+            email: patch.email ? normEmail(patch.email) : row.email,
+            phone: patch.phone ? normPhone(patch.phone) : row.phone,
+            emergency_contact_phone: patch.emergency_contact_phone
+                ? normPhone(patch.emergency_contact_phone)
+                : row.emergency_contact_phone,
+            // Mirrors the backend: any successful profile write completes onboarding.
+            profile_completed: true,
+            updated_at: nowIso(),
+        });
+
+        audit('user.updated', row.id, { fields: Object.keys(patch) });
+        return toApiUserDetail(row);
     }
 
     async uploadMyPhoto(photo: LocalFile): Promise<UploadPhotoResult> {
@@ -467,214 +424,6 @@ export class MockUserRepository implements UserRepository {
         const row = requireSession();
         if (!row.profile_photo_url) throw new ApiError(404, 'NOT_FOUND', 'No profile photo has been uploaded yet.');
         return { url: row.profile_photo_url, expires_in: 300 };
-    }
-
-    async list(params: ListUsersParams): Promise<Paginated<ApiUser>> {
-        await delay();
-        const actor = requireStaff();
-
-        const page = params.page ?? 1;
-        const pageSize = params.pageSize ?? 20;
-        const includeDeleted = !!params.includeDeleted && isAdminRow(actor);
-
-        let rows = db.users.filter((u) => (includeDeleted ? true : !u.deleted_at));
-
-        if (params.accountStatus) rows = rows.filter((u) => u.account_status === params.accountStatus);
-        if (params.kycStatus) rows = rows.filter((u) => computeKycStatus(u.id) === params.kycStatus);
-        if (params.role) rows = rows.filter((u) => u.roles.includes(params.role!));
-
-        if (params.search) {
-            const q = params.search.trim().toLowerCase();
-            // Document-number search too, matching the backend's behaviour.
-            const idsByDoc = new Set(
-                db.documents.filter((d) => d.doc_number.toLowerCase().includes(q)).map((d) => d.user_id),
-            );
-            rows = rows.filter(
-                (u) =>
-                    u.full_name.toLowerCase().includes(q) ||
-                    (u.email ?? '').toLowerCase().includes(q) ||
-                    (u.phone ?? '').includes(q) ||
-                    idsByDoc.has(u.id),
-            );
-        }
-
-        const sortBy = params.sortBy ?? 'created_at';
-        const dir = params.sortDir === 'asc' ? 1 : -1;
-        rows = [...rows].sort((a, b) => {
-            const av = sortBy === 'full_name' ? a.full_name : sortBy === 'kyc_status' ? computeKycStatus(a.id) : a.created_at;
-            const bv = sortBy === 'full_name' ? b.full_name : sortBy === 'kyc_status' ? computeKycStatus(b.id) : b.created_at;
-            return av < bv ? -dir : av > bv ? dir : 0;
-        });
-
-        const total = rows.length;
-        const start = (page - 1) * pageSize;
-
-        return {
-            data: rows.slice(start, start + pageSize).map(toApiUser),
-            pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
-        };
-    }
-
-    async get(id: string): Promise<ApiUserDetail> {
-        await delay(180);
-        const actor = requireSession();
-        const row = findUser(id);
-        if (row.deleted_at && !isAdminRow(actor)) throw new ApiError(404, 'NOT_FOUND', 'User not found.');
-        return toApiUserDetail(row);
-    }
-
-    async create(payload: CreateUserPayload): Promise<ApiUserDetail> {
-        await delay(450);
-        requireAdmin();
-
-        const email = normEmail(payload.email);
-        const phone = normPhone(payload.phone);
-        assertEmailPhoneFree(email, phone);
-
-        const row: MockUserRow = {
-            id: uid('u'),
-            full_name: payload.full_name.trim(),
-            email,
-            phone,
-            date_of_birth: payload.date_of_birth ?? null,
-            gender: payload.gender ?? null,
-            address_line_1: payload.address_line_1 ?? null,
-            address_line_2: payload.address_line_2 ?? null,
-            city: payload.city ?? null,
-            state: payload.state ?? null,
-            postal_code: payload.postal_code ?? null,
-            country: payload.country ?? 'IN',
-            emergency_contact_name: payload.emergency_contact_name ?? null,
-            emergency_contact_phone: payload.emergency_contact_phone
-                ? normPhone(payload.emergency_contact_phone)
-                : null,
-            account_status: payload.account_status ?? 'active',
-            profile_photo_url: null,
-            // Admin-created accounts arrive with a full profile already.
-            profile_completed: true,
-            created_at: nowIso(),
-            updated_at: nowIso(),
-            deleted_at: null,
-            roles: [payload.role ?? 'rider'],
-            assigned_vehicle: null,
-            current_plan: null,
-        };
-
-        db.users.unshift(row);
-        audit('user.created', row.id, { email, role: row.roles[0] });
-        return toApiUserDetail(row);
-    }
-
-    async update(id: string, patch: UpdateUserPayload): Promise<ApiUserDetail> {
-        await delay();
-        const actor = requireSession();
-        const row = findLiveUser(id);
-
-        if (row.id !== actor.id && !isStaffRow(actor)) {
-            throw new ApiError(403, 'FORBIDDEN', 'You may only edit your own profile.');
-        }
-
-        assertEmailPhoneFree(patch.email, patch.phone, id);
-
-        Object.assign(row, {
-            ...patch,
-            email: patch.email ? normEmail(patch.email) : row.email,
-            phone: patch.phone ? normPhone(patch.phone) : row.phone,
-            emergency_contact_phone: patch.emergency_contact_phone
-                ? normPhone(patch.emergency_contact_phone)
-                : row.emergency_contact_phone,
-            // Mirrors the backend: any successful profile write completes onboarding.
-            profile_completed: true,
-            updated_at: nowIso(),
-        });
-
-        audit('user.updated', id, { fields: Object.keys(patch) });
-        return toApiUserDetail(row);
-    }
-
-    async remove(id: string): Promise<void> {
-        await delay();
-        const actor = requireAdmin();
-        const row = findLiveUser(id);
-
-        if (id === actor.id) {
-            throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'You cannot delete your own account.');
-        }
-        assertNotLastAdmin(id);
-
-        // Soft delete: the scooter goes back to the fleet, history is kept.
-        row.deleted_at = nowIso();
-        row.account_status = 'inactive';
-        row.assigned_vehicle = null;
-        row.updated_at = nowIso();
-        audit('user.soft_deleted', id);
-    }
-
-    async restore(id: string): Promise<ApiUserDetail> {
-        await delay();
-        requireAdmin();
-        const row = findUser(id);
-
-        if (!row.deleted_at) throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'This account is not deleted.');
-        // The address may have been claimed while the account was gone.
-        assertEmailPhoneFree(row.email ?? undefined, row.phone ?? undefined, id);
-
-        row.deleted_at = null;
-        row.account_status = 'inactive'; // restored, not automatically re-activated
-        row.updated_at = nowIso();
-        audit('user.restored', id);
-        return toApiUserDetail(row);
-    }
-
-    async changeStatus(id: string, action: StatusAction, reason?: string): Promise<ApiUserDetail> {
-        await delay();
-        const actor = requireStaff();
-        const row = findLiveUser(id);
-
-        const next = action === 'activate' ? 'active' : action === 'deactivate' ? 'inactive' : 'suspended';
-
-        if (id === actor.id && action !== 'activate') {
-            throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'You cannot deactivate or suspend your own account.');
-        }
-        if (action === 'suspend' && (!reason || reason.trim().length < 5)) {
-            throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'A reason is required when suspending an account.', {
-                reason: 'Give a reason of at least 5 characters.',
-            });
-        }
-        if (action !== 'activate') assertNotLastAdmin(id);
-        if (row.account_status === next) {
-            throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', `This account is already ${next}.`);
-        }
-
-        if (action !== 'activate') row.assigned_vehicle = null;
-        row.account_status = next;
-        row.updated_at = nowIso();
-        audit(`user.${action}d`, id, { reason: reason ?? null });
-        return toApiUserDetail(row);
-    }
-
-    async getRoles(id: string): Promise<RoleName[]> {
-        await delay(120);
-        return [...findUser(id).roles];
-    }
-
-    async setRoles(id: string, roles: RoleName[]): Promise<RoleName[]> {
-        await delay();
-        const actor = requireAdmin();
-        const row = findLiveUser(id);
-
-        if (id === actor.id) {
-            throw new ApiError(403, 'FORBIDDEN', 'You cannot change your own roles. Ask another administrator.');
-        }
-        if (roles.length === 0) {
-            throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'A user must keep at least one role.');
-        }
-        if (row.roles.includes('admin') && !roles.includes('admin')) assertNotLastAdmin(id);
-
-        row.roles = [...roles];
-        row.updated_at = nowIso();
-        audit('user.roles_changed', id, { roles });
-        return [...roles];
     }
 
     async registerPushToken(_token: string): Promise<void> {
@@ -917,211 +666,6 @@ export class MockKycRepository implements KycRepository {
         return kycSummaryFor(actor.id, true);
     }
 
-    async queue(params: KycQueueParams): Promise<Paginated<ApiKycQueueItem>> {
-        await delay();
-        requireStaff();
-
-        const page = params.page ?? 1;
-        const pageSize = params.pageSize ?? 20;
-
-        let rows = db.users.filter((u) => !u.deleted_at);
-        rows = params.status
-            ? rows.filter((u) => computeKycStatus(u.id) === params.status)
-            : rows.filter((u) => computeKycStatus(u.id) !== 'not_submitted');
-
-        if (params.search) {
-            const q = params.search.trim().toLowerCase();
-            rows = rows.filter(
-                (u) =>
-                    u.full_name.toLowerCase().includes(q) ||
-                    (u.email ?? '').toLowerCase().includes(q) ||
-                    (u.phone ?? '').includes(q),
-            );
-        }
-        if (params.docType) {
-            rows = rows.filter((u) =>
-                db.documents.some((d) => d.user_id === u.id && d.doc_type === params.docType),
-            );
-        }
-
-        const items: ApiKycQueueItem[] = rows.map((u) => {
-            const docs = db.documents.filter((d) => d.user_id === u.id);
-            const submitted = docs.map((d) => d.submitted_at).filter((s): s is string => !!s).sort();
-            return {
-                user_id: u.id,
-                full_name: u.full_name,
-                email: u.email,
-                phone: u.phone,
-                kyc_status: computeKycStatus(u.id),
-                completion_percent: completionPercent(u.id),
-                document_count: docs.length,
-                earliest_submitted_at: submitted[0] ?? null,
-                has_expired_document: docs.some((d) => isExpired(d.expiry_date)),
-            };
-        });
-
-        const total = items.length;
-        const start = (page - 1) * pageSize;
-        return {
-            data: items.slice(start, start + pageSize),
-            pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
-        };
-    }
-
-    async detail(userId: string): Promise<ApiKycDetail> {
-        await delay(220);
-        requireStaff();
-        const row = findUser(userId);
-
-        return {
-            rider: {
-                id: row.id,
-                full_name: row.full_name,
-                email: row.email,
-                phone: row.phone,
-                date_of_birth: row.date_of_birth,
-                address_line_1: row.address_line_1,
-                city: row.city,
-                state: row.state,
-                postal_code: row.postal_code,
-                country: row.country,
-                kyc_status: computeKycStatus(row.id),
-                account_status: row.account_status,
-            },
-            kyc_status: computeKycStatus(row.id),
-            completion_percent: completionPercent(row.id),
-            // Staff reviewing a document see the real number, not a mask.
-            documents: db.documents.filter((d) => d.user_id === userId).map((d) => toApiDocument(d, true)),
-            history: db.audit
-                .filter((a) => a.target_user_id === userId && a.action.startsWith('kyc.'))
-                .map((a) => ({ id: a.id, action: a.action, actor_id: a.actor_id, created_at: a.created_at, after_data: a.after_data })),
-        };
-    }
-
-    async reviewDocumentUrl(documentId: string, side: 'front' | 'back'): Promise<ApiSignedUrl> {
-        await delay(200);
-        requireStaff();
-        return this.urlFor(findDocument(documentId), side);
-    }
-
-    async verifyDocument(documentId: string): Promise<ApiDocument> {
-        await delay(400);
-        const actor = requireStaff();
-        const doc = findDocument(documentId);
-
-        if (doc.user_id === actor.id) {
-            throw new ApiError(403, 'FORBIDDEN', 'You cannot verify your own document.');
-        }
-        if (doc.verification_status === 'verified') {
-            throw new ApiError(409, 'CONFLICT', 'This document is already verified.');
-        }
-        if (isExpired(doc.expiry_date)) {
-            throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'This document has expired and cannot be verified.');
-        }
-
-        doc.verification_status = 'verified';
-        doc.rejection_reason = null;
-        doc.verified_by = actor.id;
-        doc.verified_at = nowIso();
-        doc.updated_at = nowIso();
-
-        audit('kyc.document_verified', doc.user_id, { doc_type: doc.doc_type });
-        return toApiDocument(doc, true);
-    }
-
-    async rejectDocument(documentId: string, reason: string): Promise<ApiDocument> {
-        await delay(400);
-        const actor = requireStaff();
-        const doc = findDocument(documentId);
-
-        if (doc.user_id === actor.id) {
-            throw new ApiError(403, 'FORBIDDEN', 'You cannot reject your own document.');
-        }
-        if (!reason?.trim()) {
-            throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'A rejection reason is required.', {
-                reason: 'Give a reason.',
-            });
-        }
-
-        doc.verification_status = 'rejected';
-        doc.rejection_reason = reason.trim();
-        doc.verified_by = actor.id;
-        doc.verified_at = nowIso();
-        doc.updated_at = nowIso();
-
-        audit('kyc.document_rejected', doc.user_id, { reason: reason.trim() });
-        return toApiDocument(doc, true);
-    }
-
-    async approve(userId: string): Promise<ApiKycSummary> {
-        await delay(400);
-        const actor = requireStaff();
-        if (userId === actor.id) throw new ApiError(403, 'FORBIDDEN', 'You cannot approve your own KYC.');
-
-        const unverified = MANDATORY_KYC_DOC_TYPES.filter(
-            (type) =>
-                !db.documents.some(
-                    (d) => d.user_id === userId && d.doc_type === type && d.verification_status === 'verified',
-                ),
-        );
-        if (unverified.length > 0) {
-            throw new ApiError(
-                422,
-                'BUSINESS_RULE_VIOLATION',
-                `Every required document must be verified first. Outstanding: ${unverified.join(', ')}.`,
-            );
-        }
-        if (db.documents.some((d) => d.user_id === userId && d.verification_status === 'verified' && isExpired(d.expiry_date))) {
-            throw new ApiError(
-                422,
-                'BUSINESS_RULE_VIOLATION',
-                'A verified document has expired. The rider must upload a current one.',
-            );
-        }
-
-        audit('kyc.approved', userId, { kyc_status: 'verified' });
-        notify(userId, {
-            template: 'kyc_approved',
-            title: 'KYC Approved',
-            body: "You're verified â€” go ahead and book a scooter.",
-            screen: 'home',
-        });
-        return kycSummaryFor(userId, true);
-    }
-
-    async reject(userId: string, reason: string): Promise<ApiKycSummary> {
-        await delay(400);
-        const actor = requireStaff();
-        if (userId === actor.id) throw new ApiError(403, 'FORBIDDEN', 'You cannot reject your own KYC.');
-        if (!reason?.trim()) {
-            throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'A rejection reason is required.', {
-                reason: 'Give a reason.',
-            });
-        }
-
-        const open = db.documents.filter((d) => d.user_id === userId && d.verification_status === 'pending');
-        if (open.length === 0 && computeKycStatus(userId) === 'rejected') {
-            throw new ApiError(409, 'CONFLICT', "This rider's KYC is already rejected.");
-        }
-
-        for (const d of open) {
-            d.verification_status = 'rejected';
-            d.rejection_reason = reason.trim();
-            d.verified_by = actor.id;
-            d.verified_at = nowIso();
-            d.updated_at = nowIso();
-        }
-
-        audit('kyc.rejected', userId, { reason: reason.trim() });
-        notify(userId, {
-            template: 'kyc_rejected',
-            title: 'KYC Needs Attention',
-            body: reason.trim(),
-            screen: 'kyc',
-        });
-        return kycSummaryFor(userId, true);
-    }
-
     /**
      * Stands in for a signed URL. Seeded rows carry a data-URI placeholder;
      * documents uploaded during the session return the real local file URI, so
@@ -1217,16 +761,6 @@ function toApiBooking(row: MockBookingRow): ApiBooking {
     };
 }
 
-function toApiPickupBooking(row: MockBookingRow): ApiPickupBooking {
-    const rider = db.users.find((u) => u.id === row.user_id);
-    return {
-        ...toApiBooking(row),
-        rider: rider
-            ? { id: rider.id, full_name: rider.full_name, phone: rider.phone }
-            : { id: row.user_id, full_name: 'Unknown rider', phone: null },
-    };
-}
-
 function toApiRental(row: MockRentalRow): ApiRental {
     const booking = db.bookings.find((b) => b.id === row.booking_id);
     const model = booking ? SEED_VEHICLE_MODELS_DETAIL.find((m) => m.id === booking.vehicle_model_id) : undefined;
@@ -1238,9 +772,8 @@ function toApiRental(row: MockRentalRow): ApiRental {
         status: row.status,
         started_at: row.started_at,
         ended_at: row.ended_at,
-        // Mock mode has no per-unit fleet inventory wired to bookings (that
-        // lives in the separate useFleetStore used by the admin mock
-        // screens) â€” stand in with the booked model's name.
+        // Mock mode has no per-unit fleet inventory wired to bookings —
+        // stand in with the booked model's name.
         vehicle: model
             ? { id: row.vehicle_id, name: model.name, registration_number: 'MOCK-0001', battery_percentage: 87 }
             : null,
@@ -1390,68 +923,6 @@ export class MockBookingRepository implements BookingRepository {
         return { ...station, distance_km: 2.4 };
     }
 
-    async pickupQueue(params: PickupQueueParams): Promise<Paginated<ApiPickupBooking>> {
-        await delay(200);
-        requireStaff();
-        const page = params.page ?? 1;
-        const pageSize = params.pageSize ?? 20;
-
-        let rows = db.bookings.filter((b) => b.status === 'confirmed');
-        if (params.stationId) rows = rows.filter((b) => b.station_id === params.stationId);
-        rows = rows.sort((a, b) => (a.start_day < b.start_day ? -1 : 1));
-
-        const start = (page - 1) * pageSize;
-        const data = rows.slice(start, start + pageSize).map(toApiPickupBooking);
-        return {
-            data,
-            pagination: { page, pageSize, total: rows.length, totalPages: pageSize > 0 ? Math.ceil(rows.length / pageSize) : 0 },
-        };
-    }
-
-    async availableVehicles(bookingId: string): Promise<ApiAvailableVehicle[]> {
-        await delay(150);
-        requireStaff();
-        const booking = db.bookings.find((b) => b.id === bookingId);
-        if (!booking) throw new ApiError(404, 'NOT_FOUND', 'Booking not found.');
-        // Mock mode has no per-unit fleet inventory tied to bookings (see
-        // toApiRental's comment) â€” fabricate a couple of plausible options
-        // so the staff picker UI has something to demo against.
-        return [
-            { id: 'mock-vehicle-1', name: 'Unit A', registration_number: 'MOCK-0001', battery_percentage: 92 },
-            { id: 'mock-vehicle-2', name: 'Unit B', registration_number: 'MOCK-0002', battery_percentage: 78 },
-        ];
-    }
-
-    async confirmPickup(bookingId: string, vehicleId: string): Promise<ApiPickupBooking> {
-        await delay(400);
-        requireStaff();
-        const booking = db.bookings.find((b) => b.id === bookingId);
-        if (!booking) throw new ApiError(404, 'NOT_FOUND', 'Booking not found.');
-        if (booking.status !== 'confirmed') {
-            throw new ApiError(409, 'CONFLICT', 'This booking is not awaiting pickup.');
-        }
-
-        booking.status = 'fulfilled';
-        db.rentals.push({
-            id: uid('rt'),
-            user_id: booking.user_id,
-            vehicle_id: vehicleId,
-            booking_id: booking.id,
-            status: 'active',
-            started_at: nowIso(),
-            ended_at: null,
-        });
-
-        audit('booking.fulfilled', booking.user_id, { vehicle_id: vehicleId, status: 'fulfilled' });
-        notify(booking.user_id, {
-            template: 'pickup_confirmed',
-            title: 'Scooter Picked Up',
-            body: 'Enjoy your ride! Your rental is now active.',
-            screen: 'post-booking-dashboard',
-        });
-
-        return toApiPickupBooking(booking);
-    }
 }
 
 export class MockRentalRepository implements RentalRepository {
@@ -1551,19 +1022,6 @@ function toApiSupportRequest(row: MockSupportRow): ApiSupportRequest {
     };
 }
 
-function toApiSupportQueueItem(row: MockSupportRow): ApiSupportQueueItem {
-    const rider = db.users.find((u) => u.id === row.user_id);
-    return {
-        ...toApiSupportRequest(row),
-        assigned_to: row.assigned_to,
-        rental_id: row.rental_id,
-        vehicle_id: row.vehicle_id,
-        rider: rider
-            ? { id: rider.id, full_name: rider.full_name, phone: rider.phone }
-            : { id: row.user_id, full_name: 'Unknown rider', phone: null },
-    };
-}
-
 export class MockSupportRepository implements SupportRepository {
     async create(payload: CreateSupportRequestPayload): Promise<ApiSupportRequest> {
         await delay(400);
@@ -1608,61 +1066,6 @@ export class MockSupportRepository implements SupportRepository {
         };
     }
 
-    async queue(params: SupportQueueParams): Promise<Paginated<ApiSupportQueueItem>> {
-        await delay(200);
-        requireStaff();
-        const page = params.page ?? 1;
-        const pageSize = params.pageSize ?? 20;
-
-        let rows = db.supportRequests.slice();
-        if (params.status) rows = rows.filter((r) => r.status === params.status);
-        rows = rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-
-        const start = (page - 1) * pageSize;
-        const data = rows.slice(start, start + pageSize).map(toApiSupportQueueItem);
-        return {
-            data,
-            pagination: { page, pageSize, total: rows.length, totalPages: pageSize > 0 ? Math.ceil(rows.length / pageSize) : 0 },
-        };
-    }
-
-    async detail(id: string): Promise<ApiSupportQueueItem> {
-        await delay(150);
-        requireStaff();
-        const row = db.supportRequests.find((r) => r.id === id);
-        if (!row) throw new ApiError(404, 'NOT_FOUND', 'Support request not found.');
-        return toApiSupportQueueItem(row);
-    }
-
-    async update(id: string, patch: UpdateSupportRequestPayload): Promise<ApiSupportQueueItem> {
-        await delay(300);
-        const actor = requireStaff();
-        const row = db.supportRequests.find((r) => r.id === id);
-        if (!row) throw new ApiError(404, 'NOT_FOUND', 'Support request not found.');
-
-        const previousStatus = row.status;
-
-        if (patch.status) row.status = patch.status;
-        if (patch.priority) row.priority = patch.priority;
-        if (patch.assigned_to) row.assigned_to = patch.assigned_to;
-        if (patch.status && patch.status !== 'open' && !patch.assigned_to && !row.assigned_to) {
-            row.assigned_to = actor.id;
-        }
-        if (patch.status && (patch.status === 'resolved' || patch.status === 'closed')) {
-            row.resolved_at = nowIso();
-        }
-
-        if (patch.status && patch.status !== previousStatus) {
-            notify(row.user_id, {
-                template: 'support_status_updated',
-                title: 'Support Request Updated',
-                body: `Your request "${row.subject}" is now ${patch.status.replace('_', ' ')}.`,
-                screen: 'support',
-            });
-        }
-
-        return toApiSupportQueueItem(row);
-    }
 }
 
 export class MockReferralRepository implements ReferralRepository {
@@ -1707,6 +1110,108 @@ export class MockMaintenanceRepository implements MaintenanceRepository {
         requireSession();
         return null;
     }
+}
+
+// -------------------------------------------------------------------------
+// Test hooks
+//
+// Module-level functions, deliberately NOT repository methods. The app is
+// rider-only (the admin console is apps/web), so the repositories expose no
+// staff surface — but tests still need to open a session, start a rental and
+// inspect derived state. These give them that without reintroducing an admin
+// API that nothing in src/ would call.
+// -------------------------------------------------------------------------
+
+/**
+ * Opens a session as the given seeded account. Was MockAuthRepository.signIn,
+ * which every test file used to establish a session; the real app signs in
+ * with phone + OTP or Google, so email/password no longer belongs on the
+ * repository. Guards are unchanged, so the tests covering them still bite.
+ */
+export async function signInAs(email: string): Promise<SessionRef> {
+    await delay();
+    const user = db.users.find((u) => u.email?.toLowerCase() === normEmail(email));
+
+    if (!user) {
+        throw new ApiError(
+            401,
+            'UNAUTHENTICATED',
+            `No demo account for "${email}". Try ${DEMO_ACCOUNTS.map((d) => d.email).join(', ')}.`,
+        );
+    }
+    if (user.deleted_at) throw new ApiError(403, 'FORBIDDEN', 'This account has been deactivated.');
+    if (user.account_status === 'suspended') throw new ApiError(403, 'FORBIDDEN', 'This account is suspended.');
+
+    db.currentUserId = user.id;
+    return { id: user.id, email: user.email };
+}
+
+/**
+ * Moves a confirmed booking to an active rental — what staff pickup used to do
+ * on the counter, and what several rider tests need as *setup* before they can
+ * exercise returns or support-ticket auto-attach.
+ *
+ * Throws a plain Error, not ApiError: a broken fixture is a broken test, and
+ * dressing it as a 404 would let a setup bug masquerade as the behaviour under
+ * test.
+ */
+export function startMockRental(bookingId: string, vehicleId = 'mock-vehicle-1'): string {
+    const booking = db.bookings.find((b) => b.id === bookingId);
+    if (!booking) throw new Error(`startMockRental: no booking ${bookingId}`);
+    if (booking.status !== 'confirmed') {
+        throw new Error(`startMockRental: booking ${bookingId} is ${booking.status}, expected confirmed`);
+    }
+
+    booking.status = 'fulfilled';
+    const rentalId = uid('rt');
+    db.rentals.push({
+        id: rentalId,
+        user_id: booking.user_id,
+        vehicle_id: vehicleId,
+        booking_id: booking.id,
+        status: 'active',
+        started_at: nowIso(),
+        ended_at: null,
+    });
+    return rentalId;
+}
+
+/**
+ * Marks a document rejected, as a reviewer would from the web console.
+ *
+ * Needed as setup for the rider-side "correct a rejected document" path: the
+ * only seeded rejection belongs to u-rider-004, who is suspended and therefore
+ * cannot sign in to correct anything.
+ */
+export function rejectMockDocument(documentId: string, reason: string): void {
+    const doc = db.documents.find((d) => d.id === documentId);
+    if (!doc) throw new Error(`rejectMockDocument: no document ${documentId}`);
+    doc.verification_status = 'rejected';
+    doc.rejection_reason = reason;
+    doc.verified_by = 'u-staff-001';
+    doc.verified_at = nowIso();
+    doc.updated_at = nowIso();
+}
+
+/**
+ * The KYC status/completion the fixture derives for a user, without needing a
+ * session. Used to be read through the staff detail endpoint, which made the
+ * derivation tests dependent on a staff login — and unusable for suspended
+ * riders, who cannot sign in at all.
+ */
+export function mockKycDerivation(userId: string): { kyc_status: KycStatus; completion_percent: number } {
+    return { kyc_status: computeKycStatus(userId), completion_percent: completionPercent(userId) };
+}
+
+/**
+ * The rental/vehicle a support request was auto-attached to. Previously read
+ * via the staff support detail projection; reading the row directly is more
+ * precise about what the rider-side create() is actually being tested for.
+ */
+export function mockSupportContext(id: string): { rental_id: string | null; vehicle_id: string | null } {
+    const row = db.supportRequests.find((r) => r.id === id);
+    if (!row) throw new Error(`mockSupportContext: no support request ${id}`);
+    return { rental_id: row.rental_id ?? null, vehicle_id: row.vehicle_id ?? null };
 }
 
 /**

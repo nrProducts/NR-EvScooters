@@ -76,7 +76,7 @@ export const StationSearch: React.FC<{
                     {results.length === 0 ? (
                         <View className="px-4 py-5">
                             <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold text-center">
-                                No station matches "{value.trim()}".
+                                No station matches &quot;{value.trim()}&quot;.
                             </Text>
                         </View>
                     ) : (

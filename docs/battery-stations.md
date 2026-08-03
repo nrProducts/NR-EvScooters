@@ -79,6 +79,16 @@ Do **not** ship `https://demotiles.maplibre.org/style.json`. It renders country
 borders and nothing else — useful only for confirming markers land in the right
 place, useless for navigating to one.
 
+**Changing provider? Check the font too.** The marker labels (battery count,
+cluster count) are drawn with `MARKER_TEXT_FONT` in
+`components/mapContract.ts`, currently `["Noto Sans Bold"]` — what OpenFreeMap
+hosts. A style whose `glyphs` endpoint serves different fonts needs that
+constant changed, or every label silently fails with
+`Failed to load glyph range 0-255 ... (HTTP status code 404)` while the map
+itself still renders fine. Omitting `text-font` is not an option: the style
+spec substitutes a fixed default of `["Open Sans Regular", "Arial Unicode MS
+Regular"]`, which most OSM styles do not serve.
+
 Keep the mobile and web values in sync so an admin picking a location sees the
 same map a rider does.
 
@@ -229,9 +239,17 @@ an open-ended number later, re-rendered on every camera frame, is exactly where
 per-marker views drop frames on mid-range Android. Clustering is done by the
 GeoJSON source.
 
-**Status never depends on colour alone.** Each marker also draws a two-letter
-ASCII tag — `OK` / `MT` / `NW` — above its battery count, and the details sheet
-spells the status out with an icon.
+**Status never depends on colour alone.** Each marker draws a battery icon
+whose *silhouette* differs per status — check / `!` / cross — above its battery
+count, and the details sheet spells the status out in words with an icon.
+Colour alone fails for red-green colour blindness, direct sunlight, and
+greyscale screenshots.
+
+The three icons live in `assets/map/` and are produced by
+`node scripts/generate-station-icons.mjs` — a generator rather than hand-drawn
+art so the three stay visually consistent and stroke weights are a one-line
+change. Registered with the style via `<Images>` in `BatteryStationMapView`,
+selected by an `icon-image` match on the feature's `status`.
 
 **Location denial is a normal outcome.** Markers, search, details and Navigate
 all work without a position; only distances and the "nearest station" banner

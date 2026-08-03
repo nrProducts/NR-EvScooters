@@ -57,18 +57,6 @@ export const STATION_STATUS_LABEL: Record<StationStatus, string> = {
 };
 
 /**
- * Short, ASCII-only status tag drawn on the marker itself. Colour alone can't
- * carry status (colour-blind riders, glare, greyscale screenshots), and a
- * two-letter tag renders in any style's default glyph set where an emoji or a
- * symbol character would not.
- */
-export const STATION_STATUS_CODE: Record<StationStatus, string> = {
-    WORKING: "OK",
-    NOT_WORKING: "NW",
-    MAINTENANCE: "MT",
-};
-
-/**
  * Operator-supplied names carry underscores ("Mogappaire_Hub"). Display only —
  * the stored name is never rewritten.
  */

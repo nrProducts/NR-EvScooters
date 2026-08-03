@@ -2,18 +2,16 @@ import { api } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
 import { getSupabase } from '../lib/supabase';
 import type {
-    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem,
-    ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiReferralSummary,
-    ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
+    ApiAvailability, ApiBooking, ApiDocument, ApiKycSummary,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiReferralSummary,
+    ApiRental, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail,
     ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
-    CreateUserPayload, ListUsersParams, ListVehicleModelsParams, Paginated, ReturnRequestPayload,
-    RoleName, StatusAction, UpdateSupportRequestPayload, UpdateUserPayload,
+    ListVehicleModelsParams, Paginated, ReturnRequestPayload, UpdateUserPayload,
 } from '../types/api';
 import type {
-    AuthRepository, BookingRepository, HistoryParams, KycQueueParams, KycRepository,
-    MaintenanceRepository, NotificationRepository, PickupQueueParams, ReferralRepository,
-    RentalRepository, SessionRef, SupportQueueParams, SupportRepository, UpdateDocumentInput,
+    AuthRepository, BookingRepository, HistoryParams, KycRepository,
+    MaintenanceRepository, NotificationRepository, ReferralRepository,
+    RentalRepository, SessionRef, SupportRepository, UpdateDocumentInput,
     UploadDocumentInput, UploadPhotoResult, UserRepository, VehicleCatalogRepository,
 } from './types';
 import type { LocalFile } from '../types/api';
@@ -49,19 +47,8 @@ export class SupabaseAuthRepository implements AuthRepository {
         return ref;
     }
 
-    async signIn(email: string, password: string): Promise<SessionRef> {
-        await api.signIn(email, password);
-        const ref = await this.restore();
-        if (!ref) throw new ApiError(401, 'UNAUTHENTICATED', 'Sign-in succeeded but no session was returned.');
-        return ref;
-    }
-
     signOut(): Promise<void> {
         return api.signOutEverywhere();
-    }
-
-    sendPasswordReset(email: string): Promise<void> {
-        return api.sendPasswordReset(email);
     }
 
     subscribe(onChange: (ref: SessionRef | null) => void): () => void {
@@ -84,33 +71,6 @@ export class ApiUserRepository implements UserRepository {
     }
     myPhotoUrl(): Promise<ApiSignedUrl> {
         return api.myPhotoUrl();
-    }
-    list(params: ListUsersParams): Promise<Paginated<ApiUser>> {
-        return api.listUsers(params);
-    }
-    get(id: string): Promise<ApiUserDetail> {
-        return api.getUser(id);
-    }
-    create(payload: CreateUserPayload): Promise<ApiUserDetail> {
-        return api.createUser(payload);
-    }
-    update(id: string, patch: UpdateUserPayload): Promise<ApiUserDetail> {
-        return api.updateUser(id, patch);
-    }
-    remove(id: string): Promise<void> {
-        return api.deleteUser(id);
-    }
-    restore(id: string): Promise<ApiUserDetail> {
-        return api.restoreUser(id);
-    }
-    changeStatus(id: string, action: StatusAction, reason?: string): Promise<ApiUserDetail> {
-        return api.changeStatus(id, action, reason);
-    }
-    async getRoles(id: string): Promise<RoleName[]> {
-        return (await api.getRoles(id)).roles;
-    }
-    async setRoles(id: string, roles: RoleName[]): Promise<RoleName[]> {
-        return (await api.setRoles(id, roles)).roles;
     }
     registerPushToken(token: string): Promise<void> {
         return api.registerPushToken(token);
@@ -150,27 +110,6 @@ export class ApiKycRepository implements KycRepository {
     }
     submitMine(): Promise<ApiKycSummary> {
         return api.submitMyKyc();
-    }
-    queue(params: KycQueueParams): Promise<Paginated<ApiKycQueueItem>> {
-        return api.listKyc(params);
-    }
-    detail(userId: string): Promise<ApiKycDetail> {
-        return api.getKycDetail(userId);
-    }
-    reviewDocumentUrl(documentId: string, side: 'front' | 'back'): Promise<ApiSignedUrl> {
-        return api.reviewDocumentUrl(documentId, side);
-    }
-    verifyDocument(documentId: string): Promise<ApiDocument> {
-        return api.verifyDocument(documentId);
-    }
-    rejectDocument(documentId: string, reason: string): Promise<ApiDocument> {
-        return api.rejectDocument(documentId, reason);
-    }
-    approve(userId: string): Promise<ApiKycSummary> {
-        return api.approveKyc(userId);
-    }
-    reject(userId: string, reason: string): Promise<ApiKycSummary> {
-        return api.rejectKyc(userId, reason);
     }
 }
 
@@ -218,15 +157,6 @@ export class ApiBookingRepository implements BookingRepository {
     nearestStation(lat: number, lng: number): Promise<ApiStation> {
         return api.nearestStation(lat, lng);
     }
-    pickupQueue(params: PickupQueueParams): Promise<Paginated<ApiPickupBooking>> {
-        return api.pickupQueue(params);
-    }
-    availableVehicles(bookingId: string): Promise<ApiAvailableVehicle[]> {
-        return api.availableVehiclesForBooking(bookingId);
-    }
-    confirmPickup(bookingId: string, vehicleId: string): Promise<ApiPickupBooking> {
-        return api.confirmPickup(bookingId, vehicleId);
-    }
 }
 
 export class ApiRentalRepository implements RentalRepository {
@@ -261,15 +191,6 @@ export class ApiSupportRepository implements SupportRepository {
     }
     mine(params: HistoryParams): Promise<Paginated<ApiSupportRequest>> {
         return api.mySupportRequests(params);
-    }
-    queue(params: SupportQueueParams): Promise<Paginated<ApiSupportQueueItem>> {
-        return api.supportQueue(params);
-    }
-    detail(id: string): Promise<ApiSupportQueueItem> {
-        return api.supportDetail(id);
-    }
-    update(id: string, patch: UpdateSupportRequestPayload): Promise<ApiSupportQueueItem> {
-        return api.updateSupportRequest(id, patch);
     }
 }
 

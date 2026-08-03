@@ -1,6 +1,7 @@
 import React from 'react';
 import { Layer } from '@maplibre/maplibre-react-native';
 import { COLORS } from '../../../constants/theme';
+import { MARKER_TEXT_FONT } from './mapContract';
 
 /**
  * Cluster bubbles for overlapping stations. Like BatteryStationMarker these
@@ -32,6 +33,8 @@ export const StationClusterMarker: React.FC = () => (
             filter={['has', 'point_count']}
             layout={{
                 'text-field': ['to-string', ['get', 'point_count']],
+                // Required — see MARKER_TEXT_FONT.
+                'text-font': MARKER_TEXT_FONT,
                 'text-size': 13,
                 'text-allow-overlap': true,
                 'text-ignore-placement': true,

@@ -89,22 +89,15 @@ export interface ApiMe extends ApiUserDetail {
     has_active_booking: boolean;
 }
 
-export interface ListUsersParams {
-    page?: number;
-    pageSize?: number;
-    search?: string;
-    accountStatus?: AccountStatus;
-    kycStatus?: KycStatus;
-    role?: RoleName;
-    sortBy?: 'full_name' | 'created_at' | 'kyc_status';
-    sortDir?: 'asc' | 'desc';
-    includeDeleted?: boolean;
-}
-
-export interface CreateUserPayload {
-    full_name: string;
-    email: string;
-    phone: string;
+/**
+ * PATCH /users/me. Mirrors selfUpdateUserBody in the backend's
+ * users.validation.ts — `role` and `account_status` are deliberately absent:
+ * the API rejects them with a 400 rather than silently dropping them.
+ */
+export interface UpdateUserPayload {
+    full_name?: string;
+    email?: string;
+    phone?: string;
     date_of_birth?: string;
     gender?: Gender;
     address_line_1?: string;
@@ -115,13 +108,7 @@ export interface CreateUserPayload {
     country?: string;
     emergency_contact_name?: string;
     emergency_contact_phone?: string;
-    role?: RoleName;
-    account_status?: AccountStatus;
 }
-
-export type UpdateUserPayload = Partial<Omit<CreateUserPayload, 'role' | 'account_status'>>;
-
-export type StatusAction = 'activate' | 'deactivate' | 'suspend';
 
 export interface ApiDocument {
     id: string;
@@ -159,45 +146,6 @@ export interface ApiKycSummary {
     missing_document_types: KycDocType[];
     can_submit: boolean;
     documents: ApiDocument[];
-}
-
-export interface ApiKycQueueItem {
-    user_id: string;
-    full_name: string;
-    email: string | null;
-    phone: string | null;
-    kyc_status: KycStatus;
-    completion_percent: number;
-    document_count: number;
-    earliest_submitted_at: string | null;
-    has_expired_document: boolean;
-}
-
-export interface ApiKycDetail {
-    rider: {
-        id: string;
-        full_name: string;
-        email: string | null;
-        phone: string | null;
-        date_of_birth: string | null;
-        address_line_1: string | null;
-        city: string | null;
-        state: string | null;
-        postal_code: string | null;
-        country: string | null;
-        kyc_status: KycStatus;
-        account_status: AccountStatus;
-    };
-    kyc_status: KycStatus;
-    completion_percent: number;
-    documents: ApiDocument[];
-    history: Array<{
-        id: string;
-        action: string;
-        actor_id: string | null;
-        created_at: string;
-        after_data: Record<string, unknown> | null;
-    }>;
 }
 
 export interface ApiSignedUrl {
@@ -367,17 +315,6 @@ export interface ApiReferralSummary {
     rewards: ApiReferralReward[];
 }
 
-export interface ApiPickupBooking extends ApiBooking {
-    rider: { id: string; full_name: string; phone: string | null };
-}
-
-export interface ApiAvailableVehicle {
-    id: string;
-    name: string;
-    registration_number: string;
-    battery_percentage: number;
-}
-
 export type RentalStatus = 'active' | 'completed' | 'force_ended' | 'cancelled';
 
 export interface ApiRental {
@@ -444,18 +381,4 @@ export interface ApiSupportRequest {
     priority: SupportPriority;
     resolved_at: string | null;
     created_at: string;
-}
-
-export interface ApiSupportQueueItem extends ApiSupportRequest {
-    assigned_to: string | null;
-    /** Auto-attached at creation from the rider's active rental, if any. */
-    rental_id: string | null;
-    vehicle_id: string | null;
-    rider: { id: string; full_name: string; phone: string | null };
-}
-
-export interface UpdateSupportRequestPayload {
-    status?: SupportStatus;
-    priority?: SupportPriority;
-    assigned_to?: string;
 }

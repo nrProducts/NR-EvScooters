@@ -208,7 +208,7 @@ export default function BatteryStationsScreen() {
                     >
                         <TriangleAlert size={14} color={COLORS.warning} />
                         <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-bold ml-2 flex-1">
-                            Location is off — stations still show, but distances don't. Tap the location button to allow it.
+                            Location is off — stations still show, but distances don&apos;t. Tap the location button to allow it.
                         </Text>
                     </TouchableOpacity>
                 ) : null}

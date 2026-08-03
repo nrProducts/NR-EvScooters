@@ -7,7 +7,7 @@ import {
 } from '../src/features/battery-stations/utils/geojson';
 import { resolvePressedFeature } from '../src/features/battery-stations/utils/mapInteraction';
 import {
-    formatStationName, STATION_STATUS_CODE, type BatteryStation,
+    formatStationName, type BatteryStation,
 } from '../src/features/battery-stations/types/batteryStation.types';
 
 /**
@@ -55,8 +55,9 @@ describe('GeoJSON conversion', () => {
             id: 'station-1',
             name: 'KAVYA AGENCIES',
             qisIds: 'WMQISXM1V1-00774, WMQISXM1V1-00776',
+            // status drives the icon-image match in BatteryStationMarker,
+            // so the raw enum value must survive the projection verbatim.
             status: 'MAINTENANCE',
-            statusCode: STATION_STATUS_CODE.MAINTENANCE,
             batteryCount: 14,
         });
     });

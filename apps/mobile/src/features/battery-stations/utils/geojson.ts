@@ -3,7 +3,7 @@
  * maplibre imports so the coordinate ordering can be unit-tested.
  */
 
-import { STATION_STATUS_CODE, type BatteryStation, type StationStatus } from "../types/batteryStation.types";
+import { type BatteryStation, type StationStatus } from "../types/batteryStation.types";
 
 /** Feature properties the marker layers read via ["get", ...]. */
 export interface StationFeatureProperties {
@@ -12,7 +12,6 @@ export interface StationFeatureProperties {
     /** Joined for display; the array itself lives on the station record. */
     qisIds: string;
     status: StationStatus;
-    statusCode: string;
     batteryCount: number;
 }
 
@@ -48,7 +47,6 @@ export function toFeature(station: BatteryStation): StationFeature {
             name: station.name,
             qisIds: station.qisIds.join(", "),
             status: station.status,
-            statusCode: STATION_STATUS_CODE[station.status],
             batteryCount: station.batteryCount,
         },
     };

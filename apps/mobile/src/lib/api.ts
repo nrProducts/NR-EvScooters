@@ -7,13 +7,13 @@ import { signInWithGoogleBrowser } from './googleAuth';
 // Re-exported so existing `import { ApiError } from '../lib/api'` keeps working.
 export { ApiError };
 import type {
-    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiErrorBody, ApiKycDetail, ApiKycQueueItem,
-    ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking,
-    ApiReferralSummary, ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest,
-    ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload,
-    CreateSupportRequestPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
-    ListVehicleModelsParams, LocalFile, Paginated, ReturnRequestPayload, RoleName, StatusAction,
-    SupportStatus, UpdateSupportRequestPayload, UpdateUserPayload,
+    ApiAvailability, ApiBooking, ApiDocument, ApiErrorBody,
+    ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
+    ApiReferralSummary, ApiRental, ApiSignedUrl, ApiStation, ApiSupportRequest,
+    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload,
+    CreateSupportRequestPayload, KycDocType,
+    ListVehicleModelsParams, LocalFile, Paginated, ReturnRequestPayload,
+    UpdateUserPayload,
 } from '../types/api';
 
 type OnUnauthorized = () => void;
@@ -149,24 +149,6 @@ async function appendFile(form: FormData, field: string, file: LocalFile): Promi
 }
 
 export const api = {
-    // --- auth ------------------------------------------------------------
-    async signIn(email: string, password: string): Promise<void> {
-        const { error } = await getSupabase().auth.signInWithPassword({
-            email: email.trim().toLowerCase(),
-            password,
-        });
-        if (error) throw new ApiError(401, 'UNAUTHENTICATED', error.message);
-    },
-
-    async signOut(): Promise<void> {
-        await getSupabase().auth.signOut();
-    },
-
-    async sendPasswordReset(email: string): Promise<void> {
-        const { error } = await getSupabase().auth.resetPasswordForEmail(email.trim().toLowerCase());
-        if (error) throw new ApiError(400, 'VALIDATION_ERROR', error.message);
-    },
-
     // --- phone OTP (primary rider login) ---------------------------------
     async requestPhoneOtp(phone: string): Promise<void> {
         // Supabase generates the code, rate-limits it, and invokes the send-sms
@@ -207,24 +189,6 @@ export const api = {
     updateMe: (patch: UpdateUserPayload) =>
         request<ApiUserDetail>('/users/me', { method: 'PATCH', body: patch }),
 
-    listUsers: (params: ListUsersParams = {}) =>
-        request<Paginated<ApiUser>>('/users', { query: params as Record<string, string | number | boolean | undefined> }),
-
-    getUser: (id: string) => request<ApiUserDetail>(`/users/${id}`),
-
-    createUser: (payload: CreateUserPayload) =>
-        request<ApiUserDetail>('/users', { method: 'POST', body: payload }),
-
-    updateUser: (id: string, patch: UpdateUserPayload) =>
-        request<ApiUserDetail>(`/users/${id}`, { method: 'PATCH', body: patch }),
-
-    deleteUser: (id: string) => request<void>(`/users/${id}`, { method: 'DELETE' }),
-
-    restoreUser: (id: string) => request<ApiUserDetail>(`/users/${id}/restore`, { method: 'POST' }),
-
-    changeStatus: (id: string, action: StatusAction, reason?: string) =>
-        request<ApiUserDetail>(`/users/${id}/status`, { method: 'PATCH', body: { action, reason } }),
-
     uploadMyPhoto: async (photo: LocalFile) => {
         const form = new FormData();
         await appendFile(form, 'photo', photo);
@@ -232,11 +196,6 @@ export const api = {
     },
 
     myPhotoUrl: () => request<ApiSignedUrl>('/users/me/photo/url'),
-
-    getRoles: (id: string) => request<{ roles: RoleName[] }>(`/users/${id}/roles`),
-
-    setRoles: (id: string, roles: RoleName[]) =>
-        request<{ roles: RoleName[] }>(`/users/${id}/roles`, { method: 'PUT', body: { roles } }),
 
     registerPushToken: (token: string) =>
         request<void>('/users/me/push-token', { method: 'POST', body: { token } }),
@@ -295,30 +254,6 @@ export const api = {
 
     submitMyKyc: () => request<ApiKycSummary>('/users/me/kyc/submit', { method: 'POST' }),
 
-    // --- admin KYC -------------------------------------------------------
-    listKyc: (params: {
-        page?: number; pageSize?: number; search?: string; status?: KycStatus;
-        docType?: KycDocType; sortBy?: string; sortDir?: 'asc' | 'desc';
-    } = {}) =>
-        request<Paginated<ApiKycQueueItem>>('/kyc', { query: params as Record<string, string | number | boolean | undefined> }),
-
-    getKycDetail: (userId: string) => request<ApiKycDetail>(`/kyc/${userId}`),
-
-    reviewDocumentUrl: (documentId: string, side: 'front' | 'back' = 'front') =>
-        request<ApiSignedUrl>(`/kyc/documents/${documentId}/url`, { query: { side } }),
-
-    verifyDocument: (documentId: string) =>
-        request<ApiDocument>(`/kyc/documents/${documentId}/verify`, { method: 'POST' }),
-
-    rejectDocument: (documentId: string, reason: string) =>
-        request<ApiDocument>(`/kyc/documents/${documentId}/reject`, { method: 'POST', body: { reason } }),
-
-    approveKyc: (userId: string) =>
-        request<ApiKycSummary>(`/kyc/${userId}/approve`, { method: 'POST' }),
-
-    rejectKyc: (userId: string, reason: string) =>
-        request<ApiKycSummary>(`/kyc/${userId}/reject`, { method: 'POST', body: { reason } }),
-
     // --- vehicle catalog (rider browse/detail) ----------------------------
     listVehicleModels: (params: ListVehicleModelsParams = {}) =>
         request<Paginated<ApiVehicleModel>>('/vehicle-models', {
@@ -362,21 +297,6 @@ export const api = {
     redeemReferralCode: (code: string) =>
         request<void>('/referrals/redeem', { method: 'POST', body: { code } }),
 
-    // --- staff pickup/check-in ---------------------------------------------
-    pickupQueue: (params: { page?: number; pageSize?: number; stationId?: string } = {}) =>
-        request<Paginated<ApiPickupBooking>>('/bookings', {
-            query: params as Record<string, string | number | boolean | undefined>,
-        }),
-
-    availableVehiclesForBooking: (bookingId: string) =>
-        request<ApiAvailableVehicle[]>(`/bookings/${bookingId}/available-vehicles`),
-
-    confirmPickup: (bookingId: string, vehicleId: string) =>
-        request<ApiPickupBooking>(`/bookings/${bookingId}/pickup`, {
-            method: 'POST',
-            body: { vehicle_id: vehicleId },
-        }),
-
     // --- rentals -------------------------------------------------------
     myCurrentRental: () => request<ApiRental>('/rentals/me/current'),
 
@@ -401,13 +321,4 @@ export const api = {
             query: params as Record<string, string | number | boolean | undefined>,
         }),
 
-    supportQueue: (params: { page?: number; pageSize?: number; status?: SupportStatus } = {}) =>
-        request<Paginated<ApiSupportQueueItem>>('/support', {
-            query: params as Record<string, string | number | boolean | undefined>,
-        }),
-
-    supportDetail: (id: string) => request<ApiSupportQueueItem>(`/support/${id}`),
-
-    updateSupportRequest: (id: string, patch: UpdateSupportRequestPayload) =>
-        request<ApiSupportQueueItem>(`/support/${id}`, { method: 'PATCH', body: patch }),
 };

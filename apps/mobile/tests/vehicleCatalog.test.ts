@@ -1,10 +1,9 @@
 ﻿import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  MockAuthRepository, MockUserRepository, MockVehicleCatalogRepository, resetMockDb,
+  MockUserRepository, MockVehicleCatalogRepository, resetMockDb, signInAs,
 } from './fixtures/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
 
-const auth = new MockAuthRepository();
 const users = new MockUserRepository();
 const catalog = new MockVehicleCatalogRepository();
 
@@ -64,13 +63,13 @@ describe('MockVehicleCatalogRepository: get', () => {
 
 describe('me(): has_active_rental', () => {
   it('is true for a rider with an assigned scooter', async () => {
-    await auth.signIn('rider@fleet.com', '');
+    await signInAs('rider@fleet.com');
     const me = await users.me();
     expect(me.has_active_rental).toBe(true);
   });
 
   it('is false for a rider without an assigned scooter', async () => {
-    await auth.signIn('fatima.s@example.com', '');
+    await signInAs('fatima.s@example.com');
     const me = await users.me();
     expect(me.has_active_rental).toBe(false);
   });

@@ -15,26 +15,21 @@ import { COLORS } from "../constants/theme";
 import "../../global.css";
 
 /**
- * Route gating is a convenience, not a security control: every one of these
- * screens is also enforced server-side by requireRole/requireAdmin. A rider
- * who forced their way to /users would see an empty list and 403s.
+ * This app is rider-only — the admin/staff console is apps/web. Every account
+ * that signs in here follows the rider flow, including staff ones; there is no
+ * privileged surface left to gate.
+ *
+ * "booking" covers booking/[modelId] and booking/billing, and
+ * "battery-stations" covers both its index and [id] — Expo Router reports a
+ * route's top-level segment name, not the file's bracketed param.
  */
-const STAFF_ROUTES = [
-  "dashboard", "users", "vehicles", "plans", "assign", "reports", "settings", "kyc-review",
-  "notifications", "bookings-pickup", "support-review", "battery-stations",
-];
-// "booking" covers booking/[modelId] and booking/billing — Expo
-// Router reports a dynamic route's top-level segment name, not the file's
-// bracketed param.
 const RIDER_ROUTES = [
   "home", "my-scooter", "my-plan", "support", "kyc", "kyc-intro",
   "browse-vehicles", "booking", "notifications", "booking-history",
-  // Covers both battery-stations/index and battery-stations/[id]: Expo Router
-  // reports the top-level segment, not the file.
   "battery-stations",
 ];
 // Screens reachable while signed OUT (the login surface).
-const AUTH_ROUTES = ["index", "otp-verify", "admin-login", "auth-callback"];
+const AUTH_ROUTES = ["index", "otp-verify", "auth-callback"];
 
 /**
  * Query cache for the feature modules that use React Query (currently
@@ -142,7 +137,7 @@ export default function RootLayout() {
     const atAuthScreen = segs.length === 0 || AUTH_ROUTES.includes(current);
 
     if (!session) {
-      // Signed out: allow the login surface (phone, OTP, admin), bounce anything else.
+      // Signed out: allow the login surface (phone, OTP), bounce anything else.
       if (!atAuthScreen) router.replace("/");
       return;
     }
@@ -157,15 +152,6 @@ export default function RootLayout() {
     const needsProfile = !profile.profile_completed;
     if (needsProfile) {
       if (current !== "profile-setup") router.replace("/profile-setup");
-      return;
-    }
-
-    const isStaff = profile.is_admin || profile.roles.some((r) => r !== "rider");
-
-    if (isStaff) {
-      if (atAuthScreen || current === "profile-setup" || !STAFF_ROUTES.includes(current)) {
-        router.replace("/dashboard");
-      }
       return;
     }
 
