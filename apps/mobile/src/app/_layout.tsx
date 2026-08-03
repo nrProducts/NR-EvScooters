@@ -4,6 +4,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";
 import { useAuthStore } from "../store/useAuthStore";
 import { userRepository } from "../services";
@@ -20,7 +21,7 @@ import "../../global.css";
  */
 const STAFF_ROUTES = [
   "dashboard", "users", "vehicles", "plans", "assign", "reports", "settings", "kyc-review",
-  "notifications", "bookings-pickup", "support-review",
+  "notifications", "bookings-pickup", "support-review", "battery-stations",
 ];
 // "booking" covers booking/[modelId] and booking/billing — Expo
 // Router reports a dynamic route's top-level segment name, not the file's
@@ -28,9 +29,31 @@ const STAFF_ROUTES = [
 const RIDER_ROUTES = [
   "home", "my-scooter", "my-plan", "support", "kyc", "kyc-intro",
   "browse-vehicles", "booking", "notifications", "booking-history",
+  // Covers both battery-stations/index and battery-stations/[id]: Expo Router
+  // reports the top-level segment, not the file.
+  "battery-stations",
 ];
 // Screens reachable while signed OUT (the login surface).
 const AUTH_ROUTES = ["index", "otp-verify", "admin-login", "auth-callback"];
+
+/**
+ * Query cache for the feature modules that use React Query (currently
+ * battery-stations). Created once at module scope, not per render, so the
+ * cache survives every re-render of the root layout. The older screens still
+ * use their own useX hooks over the repositories — this is additive, not a
+ * migration.
+ */
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // A phone loses connectivity constantly; refetching when the app comes
+      // back to the foreground is what makes an admin's change show up
+      // without the rider restarting anything.
+      refetchOnWindowFocus: true,
+      staleTime: 60_000,
+    },
+  },
+});
 
 /**
  * With no mock mode, a build missing its EXPO_PUBLIC_* values can do nothing at
@@ -176,16 +199,18 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      {/* Required by KeyboardAwareScrollView on every form screen. Android is
-          edge-to-edge from SDK 54, so the window no longer resizes for the
-          keyboard and plain KeyboardAvoidingView can't see it. */}
-      <KeyboardProvider>
-        <StatusBar style="dark" backgroundColor="#F8FAFC" />
-        <Stack screenOptions={{ headerShown: false }} />
-        {/* Every confirmAction/notify call in the app surfaces here. */}
-        <DialogHost />
-      </KeyboardProvider>
-    </SafeAreaProvider>
+    <QueryClientProvider client={queryClient}>
+      <SafeAreaProvider>
+        {/* Required by KeyboardAwareScrollView on every form screen. Android is
+            edge-to-edge from SDK 54, so the window no longer resizes for the
+            keyboard and plain KeyboardAvoidingView can't see it. */}
+        <KeyboardProvider>
+          <StatusBar style="dark" backgroundColor="#F8FAFC" />
+          <Stack screenOptions={{ headerShown: false }} />
+          {/* Every confirmAction/notify call in the app surfaces here. */}
+          <DialogHost />
+        </KeyboardProvider>
+      </SafeAreaProvider>
+    </QueryClientProvider>
   );
 }

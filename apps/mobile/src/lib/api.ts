@@ -50,7 +50,14 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
     return url.toString();
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+/**
+ * Exported so a feature module can own its own typed service (see
+ * features/battery-stations/api/batteryStationService.ts) while still going
+ * through this client — auth header, timeout, 401 handling and ApiError
+ * mapping all stay in one place. Prefer the `api` object below for anything
+ * that belongs to the app's core surface.
+ */
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const { method = 'GET', body, query, form } = options;
 
     const token = await getAccessToken();

@@ -8,7 +8,7 @@ import { Badge } from './ui/Badge';
 import { COLORS } from '../constants/theme';
 import { KYC_STATUS_LABEL, KYC_STATUS_TONE } from '../constants/status';
 import {
-  Menu, X, User, LogOut, LayoutDashboard, Users, Bike, CreditCard,
+  Menu, X, User, LogOut, LayoutDashboard, Users, Bike, BatteryCharging, CreditCard,
   ArrowLeftRight, BarChart3, Settings, Home, LifeBuoy, Mail, Phone,
   ShieldCheck, ChevronRight, FileCheck, Bell, PackageCheck, History
 } from 'lucide-react-native';
@@ -33,6 +33,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: 'Support Requests', icon: LifeBuoy, route: '/support-review' },
   { label: 'Plans', icon: CreditCard, route: '/plans' },
   { label: 'Assign Vehicles', icon: ArrowLeftRight, route: '/assign' },
+  { label: 'Battery Stations', icon: BatteryCharging, route: '/battery-stations' },
   { label: 'Reports', icon: BarChart3, route: '/reports' },
   { label: 'Settings', icon: Settings, route: '/settings' },
 ];
@@ -41,6 +42,7 @@ const USER_NAV: NavItem[] = [
   { label: 'Home', icon: Home, route: '/home' },
   { label: 'My Scooter', icon: Bike, route: '/my-scooter' },
   { label: 'My Plan', icon: CreditCard, route: '/my-plan' },
+  { label: 'Battery Stations', icon: BatteryCharging, route: '/battery-stations' },
   { label: 'Booking History', icon: History, route: '/booking-history' },
   { label: 'KYC Verification', icon: ShieldCheck, route: '/kyc' },
   { label: 'Support', icon: LifeBuoy, route: '/support' },

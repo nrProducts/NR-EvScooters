@@ -47,4 +47,13 @@ export const ENV = {
     get apiUrl(): string {
         return required('EXPO_PUBLIC_API_URL');
     },
+    /**
+     * MapLibre-compatible vector style for the Battery Stations map. Not in
+     * REQUIRED_ENV_VARS on purpose: the whole app must not refuse to start
+     * because one screen has no tiles. Empty string when unset — that screen
+     * renders a "map not configured" notice and keeps its station list usable.
+     */
+    get mapStyleUrl(): string {
+        return read('EXPO_PUBLIC_MAP_STYLE_URL') ?? '';
+    },
 };

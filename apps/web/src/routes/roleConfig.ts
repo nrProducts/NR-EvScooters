@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
+  BatteryCharging,
   Bike,
   Users,
   CalendarCheck,
@@ -31,6 +32,9 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, roles: ["admin", "staff"] },
   { label: "Live Monitoring", path: "/monitoring", icon: Radio, roles: ["admin", "staff"] },
   { label: "Live Map", path: "/map", icon: Map, roles: ["admin", "staff"] },
+  // Admin-only: every write on /admin/battery-stations is requireAdmin, so
+  // showing this to staff would only lead them to a wall of 403s.
+  { label: "Battery Stations", path: "/battery-stations", icon: BatteryCharging, roles: ["admin"] },
   { label: "Vehicles", path: "/vehicles", icon: Bike, roles: ["admin", "staff"] },
   { label: "Users", path: "/users", icon: Users, roles: ["admin", "staff"] },
   { label: "KYC Queue", path: "/kyc", icon: ShieldCheck, roles: ["admin", "staff"] },
