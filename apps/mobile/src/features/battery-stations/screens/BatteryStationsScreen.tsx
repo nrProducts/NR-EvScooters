@@ -21,9 +21,12 @@ import { MapControlButton } from '../components/MapControlButton';
 import { useBatteryStations } from '../hooks/useBatteryStations';
 import { useCurrentLocation } from '../hooks/useCurrentLocation';
 import { useNearestStation } from '../hooks/useNearestStation';
+import { useAreaSearch } from '../hooks/useAreaSearch';
+import { CHENNAI } from '../components/mapContract';
 import { filterStations } from '../utils/geojson';
-import { distanceOrNull, formatDistance } from '../utils/distance';
+import { distanceOrNull, formatDistance, recommendStationsNear } from '../utils/distance';
 import { formatStationName, type BatteryStation } from '../types/batteryStation.types';
+import type { AreaResult } from '../api/geocodeService';
 
 /**
  * Full-screen battery-station map.
@@ -39,6 +42,7 @@ export default function BatteryStationsScreen() {
 
     const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
     const [search, setSearch] = useState('');
+    const [selectedArea, setSelectedArea] = useState<AreaResult | null>(null);
     const [permissionNoticeDismissed, setPermissionNoticeDismissed] = useState(false);
 
     const { stations, isInitialLoading, isRefreshing, isError, error, refetch } = useBatteryStations();
@@ -52,20 +56,57 @@ export default function BatteryStationsScreen() {
 
     const searchResults = useMemo(() => filterStations(stations, search).slice(0, 20), [stations, search]);
 
+    /**
+     * Only ask the geocoder when the station list can't answer. Typing
+     * "Velachery" already finds the Velachery station locally — there is no
+     * reason to bother a public geocoder for it, and the round trip would only
+     * add latency to a result the rider already has.
+     */
+    const { areas, isSearching: isSearchingAreas } = useAreaSearch(
+        search,
+        coords ?? CHENNAI,
+        // Not while an area is already picked: the panel is showing its
+        // recommendations, so the suggestion list is off screen and the lookup
+        // would be a wasted round trip. Editing the text clears selectedArea,
+        // which re-enables this on the same keystroke.
+        searchResults.length < 3 && !selectedArea,
+    );
+
+    /**
+     * Stations to suggest for the picked area, measured FROM that area rather
+     * than from the rider — "what's near Adyar" is the question being asked,
+     * and the rider may well be nowhere near Adyar when they ask it.
+     */
+    const recommendations = useMemo(
+        () =>
+            selectedArea
+                ? recommendStationsNear(stations, selectedArea).map((s) => ({
+                      station: s,
+                      distanceKm: s.distanceKm,
+                  }))
+                : [],
+        [stations, selectedArea],
+    );
+
     const distanceTo = useCallback(
         (station: BatteryStation): number | null => distanceOrNull(coords, station),
         [coords],
     );
 
     /**
-     * Android hardware back closes the open card first, then the search
-     * results, and only then leaves the screen — otherwise the first press
-     * throws the rider off the map with the sheet still open behind them.
+     * Android hardware back unwinds the screen one layer at a time — open card,
+     * then area recommendations, then the search text — and only leaves once
+     * there is nothing left to close. Otherwise the first press throws the
+     * rider off the map with the sheet still open behind them.
      */
     useEffect(() => {
         const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
             if (selectedStationId) {
                 setSelectedStationId(null);
+                return true;
+            }
+            if (selectedArea) {
+                setSelectedArea(null);
                 return true;
             }
             if (search.trim()) {
@@ -75,7 +116,7 @@ export default function BatteryStationsScreen() {
             return false;
         });
         return () => subscription.remove();
-    }, [selectedStationId, search]);
+    }, [selectedStationId, selectedArea, search]);
 
     // The very first fix arrives after the map has already opened on Chennai;
     // move to the rider once, and never again, so a later refetch can't yank
@@ -98,8 +139,42 @@ export default function BatteryStationsScreen() {
 
     const handleSearchSelect = useCallback((station: BatteryStation) => {
         setSearch('');
+        setSelectedArea(null);
         setSelectedStationId(station.id);
         mapRef.current?.focusStation(station);
+    }, []);
+
+    /**
+     * Frames the area rather than a single station: the point of an area
+     * search is to see what is around it, so zoom out far enough that the
+     * recommended stations are on screen alongside it.
+     */
+    /**
+     * Typing is how a rider asks a NEW question, so it always drops the
+     * previously picked area. Without this they had to back out of "Stations
+     * near Adyar" before a second area search would do anything — the box
+     * accepted the new text while the panel kept answering the old query.
+     */
+    const handleSearchChange = useCallback((next: string) => {
+        setSearch(next);
+        setSelectedArea(null);
+    }, []);
+
+    const handleAreaSelect = useCallback((area: AreaResult) => {
+        setSelectedArea(area);
+        setSelectedStationId(null);
+        // Put the resolved name in the box so it agrees with the panel heading
+        // and reads as "you are looking at Adyar" rather than whatever partial
+        // text got you here. Editing it clears the area again, via
+        // handleSearchChange.
+        setSearch(area.name);
+        mapRef.current?.focusCoordinates(area, 12.5);
+    }, []);
+
+    /** Back arrow: drop the area but keep the text, so the rider lands back on
+     *  the suggestion list they came from rather than an empty box. */
+    const clearAreaSelection = useCallback(() => {
+        setSelectedArea(null);
     }, []);
 
     const handleMyLocation = useCallback(async () => {
@@ -190,10 +265,16 @@ export default function BatteryStationsScreen() {
                     <View className="flex-1">
                         <StationSearch
                             value={search}
-                            onChangeText={setSearch}
+                            onChangeText={handleSearchChange}
                             results={searchResults}
                             onSelect={handleSearchSelect}
                             distanceFor={distanceTo}
+                            areas={areas}
+                            isSearchingAreas={isSearchingAreas}
+                            onSelectArea={handleAreaSelect}
+                            selectedArea={selectedArea}
+                            onClearArea={clearAreaSelection}
+                            recommendations={recommendations}
                         />
                     </View>
                 </View>
@@ -268,11 +349,17 @@ export default function BatteryStationsScreen() {
                 </View>
             ) : null}
 
-            {/* --- initial load only: never covers the map on a refetch --- */}
+            {/* --- initial load only: never covers the map on a refetch ---
+                Opaque, not translucent. The map renders its own spinner while
+                its lazy chunk resolves, and at 85% alpha that one showed
+                through this one — two large spinners, slightly offset because
+                this one sits higher to make room for the label. Solid means
+                exactly one is ever visible, while the map's still covers the
+                case where data arrives before the map engine does. */}
             {isInitialLoading ? (
                 <View
                     className="absolute inset-0 items-center justify-center"
-                    style={{ backgroundColor: 'rgba(248,250,252,0.85)' }}
+                    style={{ backgroundColor: COLORS.background }}
                 >
                     <ActivityIndicator size="large" color={COLORS.primary} />
                     <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold mt-3">

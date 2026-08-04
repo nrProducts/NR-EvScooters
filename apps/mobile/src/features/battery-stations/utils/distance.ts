@@ -56,6 +56,31 @@ export function withDistances(stations: BatteryStation[], origin: Coordinates): 
 }
 
 /**
+ * The stations to suggest for a searched area, nearest first.
+ *
+ * WORKING stations are ranked ahead of MAINTENANCE/NOT_WORKING ones rather
+ * than filtered out: a rider searching an area wants to know what is there,
+ * and hiding a dead cabinet they can see on the map would be confusing. But a
+ * closer dead cabinet is still worse than a live one slightly further, so
+ * status outranks distance — the same judgement findNearestWorkingStation
+ * makes for the banner.
+ */
+export function recommendStationsNear(
+    stations: BatteryStation[],
+    origin: Coordinates,
+    limit = 5,
+): StationWithDistance[] {
+    return withDistances(stations, origin)
+        .sort((a, b) => {
+            const aWorking = a.status === 'WORKING' ? 0 : 1;
+            const bWorking = b.status === 'WORKING' ? 0 : 1;
+            if (aWorking !== bWorking) return aWorking - bWorking;
+            return a.distanceKm - b.distanceKm;
+        })
+        .slice(0, limit);
+}
+
+/**
  * Nearest station a rider can actually swap at — WORKING only, because
  * routing someone to the closest dead cabinet is worse than routing them
  * 2 km further to a live one.

@@ -54,6 +54,7 @@ Already in the lockfile; a plain `pnpm install` at the repo root is enough.
 | App | Variable | Required | Purpose |
 |---|---|---|---|
 | mobile | `EXPO_PUBLIC_MAP_STYLE_URL` | optional | MapLibre-compatible vector style for the rider map |
+| mobile | `EXPO_PUBLIC_GEOCODE_URL` | optional | Photon-compatible geocoder for area search (see §5) |
 | web | `VITE_MAP_STYLE_URL` | optional | Same, for the admin's "Pick location on map" |
 
 Both are documented in `apps/mobile/.env.example` and `apps/web/.env.example`.
@@ -238,6 +239,27 @@ Routes: `/battery-stations` and `/battery-stations/[id]`, thin re-exports under
 an open-ended number later, re-rendered on every camera frame, is exactly where
 per-marker views drop frames on mid-range Android. Clustering is done by the
 GeoJSON source.
+
+**Search covers stations *and* areas.** Typing matches station names and QIS
+IDs locally against the already-loaded list, so those results are instant. If
+that turns up fewer than three matches, a debounced (350 ms) geocoder lookup
+runs in parallel and offers matching localities under an "Areas" heading —
+which is how a rider finds stations near somewhere with no station of its own,
+like Adyar. Picking an area frames it on the map and lists the five nearest
+stations, measured **from that area** rather than from the rider (they may be
+nowhere near it when they ask), with WORKING ones ranked first.
+
+The geocoder is `EXPO_PUBLIC_GEOCODE_URL`, unset by default in the same spirit
+as the map style: without it the search box behaves exactly as it did before —
+station names and QIS IDs only. `searchAreas()` never throws; a timeout,
+offline, non-200 or malformed body all yield no suggestions rather than an
+error state. Response parsing lives in `utils/geocode.ts`, free of react-native
+imports so it stays unit-testable — the same split as `lib/maps.ts`.
+
+Photon rather than Nominatim because it is designed for type-ahead and takes a
+lat/lon bias; Nominatim's usage policy explicitly discourages per-keystroke
+querying. The public instance is community-run — self-host Photon for
+production traffic.
 
 **Status never depends on colour alone.** Each marker draws a battery icon
 whose *silhouette* differs per status — check / `!` / cross — above its battery

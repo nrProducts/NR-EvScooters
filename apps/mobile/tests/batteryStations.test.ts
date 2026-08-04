@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-    distanceOrNull, findNearestWorkingStation, formatDistance, haversineKm, withDistances,
+    distanceOrNull, findNearestWorkingStation, formatDistance, haversineKm,
+    recommendStationsNear, withDistances,
 } from '../src/features/battery-stations/utils/distance';
+import { parsePhotonResponse } from '../src/features/battery-stations/utils/geocode';
 import {
     boundsOf, filterStations, toFeature, toFeatureCollection,
 } from '../src/features/battery-stations/utils/geojson';
@@ -262,6 +264,96 @@ describe('search', () => {
 
     it('returns nothing for a term that matches neither field', () => {
         expect(filterStations(stations, 'zzzz')).toEqual([]);
+    });
+});
+
+describe('area search — recommendations', () => {
+    // Roughly Adyar: no station of its own, but several within a few km.
+    const ADYAR = { latitude: 13.0012, longitude: 80.2565 };
+
+    const near = station({ id: 'near', latitude: 12.989378, longitude: 80.2511327 });   // Thiruvanmiyur ~1.4 km
+    const mid = station({ id: 'mid', latitude: 13.021062, longitude: 80.252794 });      // Greenways ~2.2 km
+    const far = station({ id: 'far', latitude: 12.877046, longitude: 80.202494 });      // Semmancherry ~14 km
+
+    it('ranks by distance from the AREA, not from the rider', () => {
+        expect(recommendStationsNear([far, mid, near], ADYAR).map((s) => s.id))
+            .toEqual(['near', 'mid', 'far']);
+    });
+
+    it('attaches each distance so the list can show it', () => {
+        const [first] = recommendStationsNear([near], ADYAR);
+        expect(first.distanceKm).toBeGreaterThan(1);
+        expect(first.distanceKm).toBeLessThan(2);
+    });
+
+    it('puts a working station ahead of a closer broken one', () => {
+        const closerButDead = station({ id: 'dead', status: 'NOT_WORKING', ...ADYAR });
+        expect(recommendStationsNear([closerButDead, near], ADYAR).map((s) => s.id))
+            .toEqual(['near', 'dead']);
+    });
+
+    it('still lists non-working stations — they are visible on the map either way', () => {
+        const maintenance = station({ id: 'mt', status: 'MAINTENANCE', ...ADYAR });
+        expect(recommendStationsNear([maintenance], ADYAR).map((s) => s.id)).toEqual(['mt']);
+    });
+
+    it('caps the list', () => {
+        const many = Array.from({ length: 12 }, (_, i) =>
+            station({ id: `s-${i}`, latitude: 13 + i * 0.01, longitude: 80.25 }),
+        );
+        expect(recommendStationsNear(many, ADYAR)).toHaveLength(5);
+        expect(recommendStationsNear(many, ADYAR, 3)).toHaveLength(3);
+    });
+
+    it('returns nothing when there are no stations', () => {
+        expect(recommendStationsNear([], ADYAR)).toEqual([]);
+    });
+});
+
+describe('area search — geocoder response parsing', () => {
+    const feature = (props: Record<string, unknown>, coords: unknown) => ({
+        geometry: { coordinates: coords },
+        properties: props,
+    });
+
+    it('reads coordinates in GeoJSON order', () => {
+        const [area] = parsePhotonResponse({
+            features: [feature({ name: 'Adyar', city: 'Chennai', osm_type: 'N', osm_id: 1 }, [80.2565, 13.0012])],
+        });
+        expect(area.latitude).toBe(13.0012);
+        expect(area.longitude).toBe(80.2565);
+    });
+
+    it('builds a description without repeating the same place twice', () => {
+        const [area] = parsePhotonResponse({
+            features: [feature(
+                { name: 'Adyar', district: 'Chennai', city: 'Chennai', state: 'Tamil Nadu', osm_type: 'N', osm_id: 1 },
+                [80.2565, 13.0012],
+            )],
+        });
+        expect(area.description).toBe('Chennai, Tamil Nadu');
+    });
+
+    it('skips features with no usable name or coordinates', () => {
+        expect(parsePhotonResponse({
+            features: [
+                feature({ city: 'Chennai' }, undefined),
+                feature({}, [80.25, 13.0]),
+                feature({ name: 'Ok', osm_type: 'N', osm_id: 2 }, [80.25, 13.0]),
+            ],
+        })).toHaveLength(1);
+    });
+
+    it('rejects non-numeric coordinates rather than emitting NaN', () => {
+        expect(parsePhotonResponse({
+            features: [feature({ name: 'Bad' }, ['x', 'y'])],
+        })).toEqual([]);
+    });
+
+    it('survives a malformed body', () => {
+        expect(parsePhotonResponse(null)).toEqual([]);
+        expect(parsePhotonResponse({})).toEqual([]);
+        expect(parsePhotonResponse({ features: 'nope' })).toEqual([]);
     });
 });
 
