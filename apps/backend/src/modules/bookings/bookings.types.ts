@@ -35,7 +35,8 @@ export interface BookingView {
     created_at: string;
     vehicle_model: { id: string; name: string } | null;
     station: { id: string; name: string; code: string; lat: number; lng: number } | null;
-    plan: { id: string; name: string; billing_cycle: string; price: number } | null;
+    /** duration_days is the plan's renewal period — what confirmPickup freezes onto the rental as expires_at. */
+    plan: { id: string; name: string; billing_cycle: string; price: number; duration_days: number } | null;
     /**
      * The specific physical unit reserved for this booking, if any —
      * populated by allocate_vehicle_for_booking() (20260727095801), which

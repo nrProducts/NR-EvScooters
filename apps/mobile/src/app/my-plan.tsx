@@ -4,12 +4,9 @@ import { AppShell } from '../components/AppShell';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
 import { COLORS } from '../constants/theme';
+import { BILLING_CYCLE_LABEL } from '../constants/status';
 import { CreditCard } from 'lucide-react-native';
 import { useCurrentRideOrBooking } from '../hooks/useCurrentRideOrBooking';
-
-const CYCLE_LABEL: Record<string, string> = {
-  daily: 'Day', weekly: 'Week', monthly: 'Month', yearly: 'Year',
-};
 
 export default function MyPlanScreen() {
   const { state, loading, error, reload } = useCurrentRideOrBooking();
@@ -41,12 +38,12 @@ export default function MyPlanScreen() {
               <Text className="text-white/80 text-xs font-medium capitalize mb-4">
                 {state.kind === 'booking'
                   ? 'Pending pickup'
-                  : `Billed ${CYCLE_LABEL[plan.billing_cycle] ?? plan.billing_cycle}`}
+                  : `Billed ${BILLING_CYCLE_LABEL[plan.billing_cycle] ?? plan.billing_cycle}`}
               </Text>
               <Text className="text-white text-3xl font-black">
                 ₹{plan.price.toFixed(0)}{' '}
                 <Text className="text-sm font-medium text-white/70">
-                  / {CYCLE_LABEL[plan.billing_cycle] ?? plan.billing_cycle}
+                  / {BILLING_CYCLE_LABEL[plan.billing_cycle] ?? plan.billing_cycle}
                 </Text>
               </Text>
             </View>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
+import { DetailRow } from '../components/ui/DetailRow';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
 import { ReturnScooterModal } from '../components/ReturnScooterModal';
@@ -112,15 +113,5 @@ export default function MyScooterScreen() {
         </ScrollView>
       )}
     </AppShell>
-  );
-}
-
-function DetailRow({ icon: Icon, label, value, first }: { icon: any; label: string; value: string; first?: boolean }) {
-  return (
-    <View className="flex-row items-center px-4 py-3.5" style={{ borderTopWidth: first ? 0 : 1, borderColor: COLORS.border }}>
-      <Icon size={15} color={COLORS.textSecondary} />
-      <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-2.5 flex-1">{label}</Text>
-      <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold">{value}</Text>
-    </View>
   );
 }

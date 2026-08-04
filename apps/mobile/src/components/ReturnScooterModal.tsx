@@ -26,12 +26,25 @@ interface ReturnScooterModalProps {
 
 const REASON_OPTIONS = RETURN_REASONS.map((key) => ({ key, label: RETURN_REASON_LABEL[key] }));
 
-/** Deadline shown before submitting — an estimate; the server's value wins after. */
-function deadlineCopy(): string {
-  return returnDeadlineFor(new Date()).toLocaleDateString(undefined, {
-    weekday: 'short', month: 'short', day: 'numeric',
-  });
+/**
+ * The deadline this request will actually carry — an estimate; the server's
+ * value wins after submitting.
+ *
+ * Clamped to the plan's expiry exactly as requestReturn does on the backend.
+ * Without the clamp a rider already past expires_at would be told "return by
+ * today, no fee" and then charged for the days they'd already run over.
+ */
+function deadlineFor(rental: ApiRental): { date: Date; alreadyOverdue: boolean } {
+  const requestDeadline = returnDeadlineFor(new Date());
+  const expiresAt = rental.expires_at ? new Date(rental.expires_at) : null;
+  if (expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt < requestDeadline) {
+    return { date: expiresAt, alreadyOverdue: true };
+  }
+  return { date: requestDeadline, alreadyOverdue: false };
 }
+
+const formatDeadline = (d: Date): string =>
+  d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
 export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
   visible, rental, onClose, onSubmitted,
@@ -43,6 +56,8 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
   const [feedback, setFeedback] = useState('');
   const [rating, setRating] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const deadline = deadlineFor(rental);
 
   const reset = () => {
     setReason('');
@@ -149,17 +164,27 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
 
             <View
               className="rounded-2xl p-3.5 mb-3"
-              style={{ backgroundColor: COLORS.warning + '14', borderWidth: 1, borderColor: COLORS.warning + '33' }}
+              style={{
+                backgroundColor: (deadline.alreadyOverdue ? COLORS.danger : COLORS.warning) + '14',
+                borderWidth: 1,
+                borderColor: (deadline.alreadyOverdue ? COLORS.danger : COLORS.warning) + '33',
+              }}
             >
               <View className="flex-row items-center mb-1">
-                <AlertTriangle size={14} color={COLORS.warning} />
-                <Text style={{ color: COLORS.warning }} className="text-xs font-extrabold ml-2">
-                  Return by {deadlineCopy()}, 11:59 PM
+                <AlertTriangle size={14} color={deadline.alreadyOverdue ? COLORS.danger : COLORS.warning} />
+                <Text
+                  style={{ color: deadline.alreadyOverdue ? COLORS.danger : COLORS.warning }}
+                  className="text-xs font-extrabold ml-2"
+                >
+                  {deadline.alreadyOverdue
+                    ? `Your plan ended ${formatDeadline(deadline.date)}`
+                    : `Return by ${formatDeadline(deadline.date)}, 11:59 PM`}
                 </Text>
               </View>
               <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed">
-                Each day after that adds a ₹{LATE_RETURN_FEE_PER_DAY} late fee, charged when our team
-                confirms the handover.
+                {deadline.alreadyOverdue
+                  ? `A ₹${LATE_RETURN_FEE_PER_DAY}/day late fee has already been accruing since then, and will be charged when our team confirms the handover.`
+                  : `Each day after that adds a ₹${LATE_RETURN_FEE_PER_DAY} late fee, charged when our team confirms the handover.`}
               </Text>
             </View>
 

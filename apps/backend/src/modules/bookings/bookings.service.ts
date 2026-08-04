@@ -4,6 +4,7 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
 import { hasActiveRentalForUser } from "../users/users.service";
+import { planExpiryFor } from "../rentals/rentals.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { AuthContext, Paginated } from "../../types";
 import {
@@ -25,7 +26,7 @@ const BOOKING_COLUMNS = `
     ${CANCELLATION_COLUMNS},
     vehicle_models(id, name),
     stations(id, name, code, lat, lng),
-    plans(id, name, billing_cycle, price),
+    plans(id, name, billing_cycle, price, duration_days),
     vehicles(id, name, registration_number, battery_percentage, status)
 `;
 
@@ -448,7 +449,7 @@ const PICKUP_BOOKING_COLUMNS = `
     ${CANCELLATION_COLUMNS},
     vehicle_models(id, name),
     stations(id, name, code),
-    plans(id, name, billing_cycle, price),
+    plans(id, name, billing_cycle, price, duration_days),
     vehicles(id, name, registration_number, battery_percentage, status),
     users!bookings_user_id_fkey(id, full_name, phone)
 `;
@@ -565,12 +566,24 @@ export async function confirmPickup(
 
     const rider = unwrap<{ id: string; full_name: string; phone: string | null }>(bookingRow.users);
 
+    // The plan is FROZEN onto the rental here rather than read back through
+    // booking_id -> bookings -> plans, so a later repricing can't rewrite this
+    // rental's deadline or its settled penalty (20260804100000). A booking
+    // with no plan leaves all four null — that rental simply never expires.
+    const plan = unwrap<{ id: string; price: number; duration_days: number }>(bookingRow.plans);
+    const startedAt = new Date();
+    const expiresAt = plan ? planExpiryFor(startedAt, plan.duration_days) : null;
+
     const { error: rentalError } = await supabaseAdmin.from("rentals").insert({
         user_id: rider!.id,
         vehicle_id: vehicleId,
         booking_id: bookingId,
         status: "active",
-        started_at: new Date().toISOString(),
+        started_at: startedAt.toISOString(),
+        plan_id: plan?.id ?? null,
+        plan_duration_days: plan?.duration_days ?? null,
+        plan_price_at_pickup: plan?.price ?? null,
+        expires_at: expiresAt?.toISOString() ?? null,
     });
     if (rentalError) throw rentalError;
 
@@ -594,13 +607,15 @@ export async function confirmPickup(
         action: "booking.fulfilled",
         entityType: "booking",
         entityId: bookingId,
-        after: { vehicle_id: vehicleId, status: "fulfilled" },
+        after: { vehicle_id: vehicleId, status: "fulfilled", expires_at: expiresAt?.toISOString() ?? null },
     });
 
     await notifyUser(rider!.id, {
         template: "pickup_confirmed",
         title: "Scooter Picked Up",
-        body: "Enjoy your ride! Your rental is now active.",
+        body: expiresAt
+            ? `Enjoy your ride! Your rental is now active until ${expiresAt.toLocaleDateString()}.`
+            : "Enjoy your ride! Your rental is now active.",
         screen: "post-booking-dashboard",
     });
 

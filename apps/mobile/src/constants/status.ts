@@ -1,9 +1,17 @@
 import type {
-  BookingRefundStatus, BookingStatus, KycStatus, KycDocType, MaintenanceStatus,
+  BillingCycle, BookingRefundStatus, BookingStatus, KycStatus, KycDocType, MaintenanceStatus,
   RentalStatus, SupportStatus, VerificationStatus, VehicleStatus,
 } from '../types/api';
 
 type Tone = 'success' | 'warning' | 'danger' | 'neutral' | 'primary';
+
+/** The unit a plan's price is quoted in — "₹2499 / Month". */
+export const BILLING_CYCLE_LABEL: Record<BillingCycle, string> = {
+  daily: 'Day',
+  weekly: 'Week',
+  monthly: 'Month',
+  yearly: 'Year',
+};
 
 export const KYC_STATUS_TONE: Record<KycStatus, Tone> = {
   not_submitted: 'neutral',

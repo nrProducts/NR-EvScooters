@@ -1,7 +1,7 @@
 ﻿import { beforeEach, describe, expect, it } from 'vitest';
 import {
   LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS,
-  computeLateReturnPenalty, returnDeadlineFor,
+  computeLateReturnPenalty, effectiveDueAt, planExpiryFor, returnDeadlineFor,
 } from '../src/lib/returnPolicy';
 import {
   MockBookingRepository, MockRentalRepository, MockUserRepository, signInAs, startMockRental,
@@ -46,7 +46,7 @@ describe('computeLateReturnPenalty â€” on time', () => {
     expect(c.daysLate).toBe(0);
     expect(c.isLate).toBe(false);
     expect(c.penaltyAmount).toBe(0);
-    expect(c.hadRequest).toBe(true);
+    expect(c.hadDeadline).toBe(true);
   });
 
   it('is free right up to the last second of the due day', () => {
@@ -80,17 +80,55 @@ describe('computeLateReturnPenalty â€” late', () => {
   });
 });
 
-describe('computeLateReturnPenalty â€” no request to be late against', () => {
-  it('charges nothing when there was never a return request', () => {
+describe('computeLateReturnPenalty â€” no deadline to be late against', () => {
+  it('charges nothing when there was neither a return request nor a plan expiry', () => {
     const c = computeLateReturnPenalty({ returnDueAt: null, now: at(30) });
-    expect(c.hadRequest).toBe(false);
+    expect(c.hadDeadline).toBe(false);
     expect(c.penaltyAmount).toBe(0);
   });
 
   it('fails open on an unparseable deadline rather than charging', () => {
     const c = computeLateReturnPenalty({ returnDueAt: 'not-a-date', now: at(30) });
-    expect(c.hadRequest).toBe(false);
+    expect(c.hadDeadline).toBe(false);
     expect(c.penaltyAmount).toBe(0);
+  });
+});
+
+describe('planExpiryFor', () => {
+  it('counts the pickup day as day 1, so a 1-day plan ends that same evening', () => {
+    expect(planExpiryFor(at(0, 9), 1).getTime()).toBe(returnDeadlineFor(at(0)).getTime());
+  });
+
+  it('ends a 30-day plan on day 30, not day 31', () => {
+    expect(planExpiryFor(at(0, 9), 30).getTime()).toBe(returnDeadlineFor(at(29)).getTime());
+  });
+
+  it('rolls month and year boundaries', () => {
+    const jan31 = new Date(2027, 0, 31, 9, 0, 0, 0);
+    const expires = planExpiryFor(jan31, 30);
+    expect(expires.getMonth()).toBe(2);
+    expect(expires.getDate()).toBe(1);
+  });
+});
+
+describe('effectiveDueAt', () => {
+  it("falls back to the plan's expiry when no return was requested", () => {
+    const expires = dueAt(5);
+    expect(effectiveDueAt({ return_due_at: null, expires_at: expires })).toBe(expires);
+  });
+
+  it("prefers an early return request over the plan's expiry", () => {
+    const requested = dueAt(0);
+    expect(effectiveDueAt({ return_due_at: requested, expires_at: dueAt(20) })).toBe(requested);
+  });
+
+  it('charges a rider past their plan who never requested a return', () => {
+    const c = computeLateReturnPenalty({
+      returnDueAt: effectiveDueAt({ return_due_at: null, expires_at: dueAt(-3) }),
+      now: at(0, 10),
+    });
+    expect(c.daysLate).toBe(3);
+    expect(c.penaltyAmount).toBe(3 * LATE_RETURN_FEE_PER_DAY);
   });
 });
 

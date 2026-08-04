@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, PackageCheck } from 'lucide-react-native';
+import { ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { KycBanner } from '../components/KycBanner';
 import { MaintenanceNoticeBanner } from '../components/MaintenanceNoticeBanner';
+import { ActiveRentalCard } from '../components/ActiveRentalCard';
 import { FeaturedScooterCard } from '../components/FeaturedScooterCard';
 import { ReferAndEarnBanner } from '../components/ReferAndEarnBanner';
 import { VehicleListItem } from '../components/VehicleListItem';
@@ -16,7 +17,6 @@ import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
 import { bookingRepository, maintenanceRepository, rentalRepository } from '../services';
 import { useCancelBooking } from '../hooks/useCancelBooking';
 import { ReturnScooterModal } from '../components/ReturnScooterModal';
-import { ReturnStatusCard } from '../components/ReturnStatusCard';
 import { buildMapsUrl, buildWebMapsUrl } from '../lib/maps';
 import { notifyError } from '../lib/confirm';
 import { COLORS } from '../constants/theme';
@@ -43,11 +43,16 @@ export default function HomeScreen() {
   } = useVehicleCatalogStore();
   const [pendingBooking, setPendingBooking] = useState<ApiBooking | null>(null);
   const [activeRental, setActiveRental] = useState<ApiRental | null>(null);
+  // Without this, a rider with has_active_rental sees the booking card flash
+  // in the shared slot before rentalRepository.mine() resolves.
+  const [rentalLoading, setRentalLoading] = useState(false);
   const [maintenanceNotice, setMaintenanceNotice] = useState<ApiMaintenanceNotice | null>(null);
   const [showReturn, setShowReturn] = useState(false);
   const { cancelling, cancelBooking } = useCancelBooking();
   const insets = useSafeAreaInsets();
 
+  // Loaded even mid-rental: ActiveRentalCard reuses the featured model's
+  // artwork, since the rental payload carries no image of its own.
   useEffect(() => {
     void loadFeatured();
     void loadList();
@@ -82,11 +87,16 @@ export default function HomeScreen() {
   const loadRental = () => {
     if (!profile?.has_active_rental) {
       setActiveRental(null);
+      setRentalLoading(false);
       return;
     }
-    void rentalRepository.mine().then(setActiveRental).catch(() => {
-      // Non-critical: the rest of Home renders fine without the rental.
-    });
+    setRentalLoading(true);
+    void rentalRepository.mine()
+      .then(setActiveRental)
+      .catch(() => {
+        // Non-critical: the rest of Home renders fine without the rental.
+      })
+      .finally(() => setRentalLoading(false));
   };
 
   useEffect(loadRental, [profile?.has_active_rental]);
@@ -200,26 +210,6 @@ export default function HomeScreen() {
         <ReferAndEarnBanner />
 
         {activeRental ? (
-          activeRental.return_requested_at ? (
-            <View className="mb-4">
-              <ReturnStatusCard rental={activeRental} compact />
-            </View>
-          ) : (
-            <TouchableOpacity
-              onPress={() => setShowReturn(true)}
-              accessibilityRole="button"
-              className="rounded-2xl p-4 mb-4 flex-row items-center justify-center border"
-              style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
-            >
-              <PackageCheck size={16} color={COLORS.primaryPressed} />
-              <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-bold ml-2">
-                Return Scooter
-              </Text>
-            </TouchableOpacity>
-          )
-        ) : null}
-
-        {activeRental ? (
           <ReturnScooterModal
             visible={showReturn}
             rental={activeRental}
@@ -228,7 +218,18 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {loadingFeatured ? (
+        {/* One slot, two audiences: discovery for a rider who can still book,
+            and their own scooter once pickup is confirmed. Showing the
+            featured card mid-rental just renders a disabled CTA. */}
+        {activeRental ? (
+          <ActiveRentalCard
+            rental={activeRental}
+            onReturn={() => setShowReturn(true)}
+            imageUrl={featured?.image_url ?? null}
+          />
+        ) : rentalLoading ? (
+          <View className="mb-5"><SkeletonList count={1} /></View>
+        ) : loadingFeatured ? (
           <View className="mb-5"><SkeletonList count={1} /></View>
         ) : featuredError ? (
           <ErrorState message={featuredError} onRetry={() => void loadFeatured()} />
@@ -236,7 +237,8 @@ export default function HomeScreen() {
           <FeaturedScooterCard model={featured} />
         ) : null}
 
-        <View className="flex-row items-center justify-between mb-3">
+        {/* Currently having one vendor so this feature will be comming soon... */}
+        {/* <View className="flex-row items-center justify-between mb-3">
           <View>
             <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Available Vehicles</Text>
             {availableCount != null ? (
@@ -249,9 +251,9 @@ export default function HomeScreen() {
             <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">See All</Text>
             <ChevronRight size={14} color={COLORS.primary} />
           </TouchableOpacity>
-        </View>
+        </View> */}
 
-        {loadingList && list.length === 0 ? (
+        {/* {loadingList && list.length === 0 ? (
           <SkeletonList count={2} />
         ) : (
           <View className="gap-3">
@@ -259,7 +261,7 @@ export default function HomeScreen() {
               <VehicleListItem key={model.id} model={model} />
             ))}
           </View>
-        )}
+        )} */}
       </ScrollView>
     </AppShell>
   );

@@ -326,6 +326,16 @@ export interface ApiRental {
     station: { id: string; name: string; code: string } | null;
     plan: { id: string; name: string; billing_cycle: BillingCycle; price: number } | null;
 
+    // --- the rider's plan, frozen at pickup (20260804100000) ---------------
+    // expires_at is the DEFAULT return deadline, so the effective deadline is
+    // `return_due_at ?? expires_at` — see effectiveDueAt in lib/returnPolicy.
+    // All null on a rental with no booking to inherit a plan from; those
+    // never expire.
+    plan_id: string | null;
+    plan_duration_days: number | null;
+    plan_price_at_pickup: number | null;
+    expires_at: string | null;
+
     // --- post-pickup return request (null until the rider asks to return) ---
     // The rental stays 'active' while a return is pending; only staff
     // confirming the physical handover ends it and settles the fee below.

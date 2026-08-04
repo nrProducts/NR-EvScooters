@@ -19,7 +19,21 @@ export interface RentalReturnFields {
     late_fee_per_day: number | null;
 }
 
-export interface RentalView extends RentalReturnFields {
+/**
+ * The rider's plan, frozen at pickup (20260804100000). Null on rentals with
+ * no booking to inherit a plan from — those simply never expire.
+ *
+ * expires_at is the DEFAULT return deadline, so the rider's effective
+ * deadline is `return_due_at ?? expires_at` — see effectiveDueAt().
+ */
+export interface RentalPlanPeriodFields {
+    plan_id: string | null;
+    plan_duration_days: number | null;
+    plan_price_at_pickup: number | null;
+    expires_at: string | null;
+}
+
+export interface RentalView extends RentalReturnFields, RentalPlanPeriodFields {
     id: string;
     status: RentalStatus;
     started_at: string;
@@ -39,7 +53,7 @@ export interface RequestReturnInput {
 // Admin — "Ride Management"
 // ---------------------------------------------------------------------------
 
-export interface AdminRentalRow extends RentalReturnFields {
+export interface AdminRentalRow extends RentalReturnFields, RentalPlanPeriodFields {
     id: string;
     status: RentalStatus;
     started_at: string;

@@ -1,7 +1,7 @@
 ﻿import { ApiError } from '../../../src/lib/ApiError';
 import { isValidStartDay } from '../../../src/lib/bookingDays';
 import { computeCancellationCharge } from '../../../src/lib/cancellationPolicy';
-import { returnDeadlineFor } from '../../../src/lib/returnPolicy';
+import { planExpiryFor, returnDeadlineFor } from '../../../src/lib/returnPolicy';
 import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
     ApiAvailability, ApiBooking, ApiDocument, ApiKycSummary,
@@ -59,6 +59,10 @@ interface MockRentalRow {
     status: RentalStatus;
     started_at: string;
     ended_at: string | null;
+    plan_id?: string | null;
+    plan_duration_days?: number | null;
+    plan_price_at_pickup?: number | null;
+    expires_at?: string | null;
     return_requested_at?: string | null;
     return_reason?: string | null;
     return_feedback?: string | null;
@@ -67,6 +71,16 @@ interface MockRentalRow {
     late_penalty_amount?: number | null;
     late_fee_per_day?: number | null;
 }
+
+/**
+ * Mirrors the plans.duration_days backfill in
+ * 20260804100000_plan_period_and_rental_expiry.sql. Mock mode's catalog plans
+ * (ApiPlan) predate that column, so the mapping lives here rather than on the
+ * seed rows.
+ */
+const PLAN_DURATION_DAYS: Record<string, number> = {
+    daily: 1, weekly: 7, monthly: 30, yearly: 365,
+};
 
 interface MockRentalFeedbackRow {
     id: string;
@@ -779,6 +793,10 @@ function toApiRental(row: MockRentalRow): ApiRental {
             : null,
         station: station ? { id: station.id, name: station.name, code: station.code } : null,
         plan: plan ? { id: plan.id, name: plan.name, billing_cycle: plan.billing_cycle, price: plan.price } : null,
+        plan_id: row.plan_id ?? null,
+        plan_duration_days: row.plan_duration_days ?? null,
+        plan_price_at_pickup: row.plan_price_at_pickup ?? null,
+        expires_at: row.expires_at ?? null,
         return_requested_at: row.return_requested_at ?? null,
         return_reason: row.return_reason ?? null,
         return_feedback: row.return_feedback ?? null,
@@ -980,7 +998,12 @@ export class MockRentalRepository implements RentalRepository {
         row.return_requested_at = now.toISOString();
         row.return_reason = payload.reason;
         row.return_feedback = payload.feedback ?? null;
-        row.return_due_at = returnDeadlineFor(now).toISOString();
+        // Clamped to the plan's expiry, same as the backend: a rider already
+        // past expires_at must not get their overrun wiped by requesting a
+        // return with a deadline of today.
+        const expiresAt = row.expires_at ? new Date(row.expires_at) : null;
+        const requestDeadline = returnDeadlineFor(now);
+        row.return_due_at = (expiresAt && expiresAt < requestDeadline ? expiresAt : requestDeadline).toISOString();
         // status stays 'active' â€” see the doc comment above.
 
         const existingFeedback = db.rentalFeedback.find((f) => f.rental_id === rentalId);
@@ -1164,14 +1187,25 @@ export function startMockRental(bookingId: string, vehicleId = 'mock-vehicle-1')
 
     booking.status = 'fulfilled';
     const rentalId = uid('rt');
+    // Mirrors confirmPickup: the plan is FROZEN onto the rental here, so
+    // expires_at exists from the moment the rental does.
+    const model = SEED_VEHICLE_MODELS_DETAIL.find((m) => m.id === booking.vehicle_model_id);
+    const plan = model?.plans.find((p) => p.id === booking.plan_id);
+    const durationDays = plan ? PLAN_DURATION_DAYS[plan.billing_cycle] : null;
+    const startedAt = new Date();
+
     db.rentals.push({
         id: rentalId,
         user_id: booking.user_id,
         vehicle_id: vehicleId,
         booking_id: booking.id,
         status: 'active',
-        started_at: nowIso(),
+        started_at: startedAt.toISOString(),
         ended_at: null,
+        plan_id: plan?.id ?? null,
+        plan_duration_days: durationDays,
+        plan_price_at_pickup: plan?.price ?? null,
+        expires_at: durationDays ? planExpiryFor(startedAt, durationDays).toISOString() : null,
     });
     return rentalId;
 }

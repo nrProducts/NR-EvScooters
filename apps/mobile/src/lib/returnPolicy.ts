@@ -49,7 +49,8 @@ export interface LateReturnCharge {
   isLate: boolean;
   feePerDay: number;
   penaltyAmount: number;
-  hadRequest: boolean;
+  /** false when the rental had no deadline at all — neither a return request nor a plan expiry. */
+  hadDeadline: boolean;
 }
 
 /** End of the calendar day `at` falls on, in device-local time. */
@@ -60,10 +61,39 @@ export function returnDeadlineFor(at: Date): Date {
 }
 
 /**
+ * When a plan bought on `startedAt` runs out. Day 1 is the pickup day, so a
+ * 30-day plan runs through the end of day 30 — not day 31.
+ *
+ * Mirrors planExpiryFor in apps/backend/src/modules/rentals/rentals.service.ts
+ * and the backfill in 20260804100000_plan_period_and_rental_expiry.sql. The
+ * server writes rentals.expires_at at pickup and that value is what the UI
+ * renders — this exists so mock mode produces the same dates.
+ */
+export function planExpiryFor(startedAt: Date, durationDays: number): Date {
+  const expires = new Date(startedAt);
+  expires.setDate(expires.getDate() + durationDays - 1);
+  return returnDeadlineFor(expires);
+}
+
+/**
+ * The rider's real deadline. Their plan's expiry is the default; requesting an
+ * early return overrides it. Mirrors effectiveDueAt in
+ * apps/backend/src/modules/rentals/rentals.service.ts — pass this into
+ * computeLateReturnPenalty rather than return_due_at alone, or a rider sitting
+ * past their plan's expiry will show a zero fee that the server then charges.
+ */
+export function effectiveDueAt(
+  rental: { return_due_at: string | null; expires_at: string | null },
+): string | null {
+  return rental.return_due_at ?? rental.expires_at;
+}
+
+/**
  *   handed over any time on the due day -> 0  |  00:30 the next day -> 1 day
  *
- * A null/unparseable deadline means there was no return request, so nothing
- * is owed — fail open rather than charge.
+ * A null/unparseable deadline means the rental had no deadline at all — no
+ * return request and no plan to expire — so nothing is owed. Fail open rather
+ * than charge.
  */
 export function computeLateReturnPenalty(input: {
   returnDueAt: string | null;
@@ -72,12 +102,12 @@ export function computeLateReturnPenalty(input: {
   const feePerDay = LATE_RETURN_FEE_PER_DAY;
 
   if (!input.returnDueAt) {
-    return { daysLate: 0, isLate: false, feePerDay, penaltyAmount: 0, hadRequest: false };
+    return { daysLate: 0, isLate: false, feePerDay, penaltyAmount: 0, hadDeadline: false };
   }
 
   const due = new Date(input.returnDueAt);
   if (Number.isNaN(due.getTime())) {
-    return { daysLate: 0, isLate: false, feePerDay, penaltyAmount: 0, hadRequest: false };
+    return { daysLate: 0, isLate: false, feePerDay, penaltyAmount: 0, hadDeadline: false };
   }
 
   const dueDay = new Date(due);
@@ -95,7 +125,7 @@ export function computeLateReturnPenalty(input: {
     isLate: daysLate > 0,
     feePerDay,
     penaltyAmount: Math.round(daysLate * feePerDay * 100) / 100,
-    hadRequest: true,
+    hadDeadline: true,
   };
 }
 
