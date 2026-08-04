@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  Bike, Calendar, CalendarClock, CreditCard, Hash, LifeBuoy, PackageCheck, AlertTriangle,
+  Calendar, CalendarClock, CreditCard, Hash, LifeBuoy, PackageCheck, AlertTriangle,
 } from 'lucide-react-native';
 import { Badge } from './ui/Badge';
 import { DetailRow } from './ui/DetailRow';
@@ -78,14 +78,6 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
           <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-bold tracking-widest mb-3">
             YOUR SCOOTER
           </Text>
-          {imageUrl ? null : (
-            <View
-              className="w-16 h-16 rounded-3xl items-center justify-center mb-3"
-              style={{ backgroundColor: COLORS.primary + '14' }}
-            >
-              <Bike size={30} color={COLORS.primary} />
-            </View>
-          )}
           <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">
             {vehicle?.name ?? 'Your scooter'}
           </Text>

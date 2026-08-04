@@ -12,6 +12,7 @@ import { SUPPORT_STATUS_LABEL, SUPPORT_STATUS_TONE, formatDate } from '../consta
 import { COLORS } from '../constants/theme';
 import { LifeBuoy, Mail, Phone, Send, CheckCircle2 } from 'lucide-react-native';
 import type { ApiSupportRequest } from '../types/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const CHANNELS = [
   {
@@ -42,6 +43,10 @@ async function openChannel(url: string) {
 }
 
 export default function SupportScreen() {
+  // AppShell insets its drawer sheet but not screen content, so each screen
+  // pads its own scroll tail — otherwise the Android nav/gesture bar covers
+  // the last rows.
+  const insets = useSafeAreaInsets();
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{ subject?: string; description?: string }>({});
@@ -87,7 +92,10 @@ export default function SupportScreen() {
 
   return (
     <AppShell title="Support">
-      <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        className="flex-1 px-5 pt-5"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+      >
         <View className="items-center mb-6">
           <View className="w-14 h-14 rounded-2xl items-center justify-center mb-3" style={{ backgroundColor: COLORS.primary + '14' }}>
             <LifeBuoy size={26} color={COLORS.primary} />

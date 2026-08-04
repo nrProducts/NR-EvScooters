@@ -12,15 +12,34 @@ import { COLORS } from '../constants/theme';
  * The design's tilt/shadow loop was dropped on request — this is the static
  * pose only.
  *
- * The vehicle is always `contain`ed — cropping a product shot is the one thing
- * this presentation must never do.
+ * The full-size presentation always `contain`s the vehicle — cropping a
+ * product shot is the one thing it must never do. `compact` is the documented
+ * exception; see that prop.
  */
 interface VehicleStageProps {
   imageUrl: string | null;
-  /** Fallback stage height, used until the image's aspect ratio is known. */
+  /**
+   * Stage height. Normally a fallback used only until the image's aspect ratio
+   * is known — pass `compact` to make it binding.
+   */
   height: number;
   /** Vehicle width as a share of the stage. */
   imageWidth?: DimensionValue;
+  /**
+   * Fixed-height, full-bleed banner for secondary surfaces (a detail screen)
+   * where the full showroom treatment would dominate the page.
+   *
+   * Switches to `cover`, which is the ONE place this component crops. It has
+   * to: `contain` inside a short box scales the artwork down until it only
+   * fills a fraction of the width, leaving the backdrop visible either side —
+   * and since the catalog shots carry their own baked-in grey background, that
+   * reads as two mismatched greys rather than a deliberate stage.
+   *
+   * Safe because the source shots are framed with generous empty margin, so
+   * what gets trimmed is background, not vehicle. Keep `height` a modest
+   * fraction of the card width or that stops being true.
+   */
+  compact?: boolean;
   shadow?: { bottom: number; width: DimensionValue; height: number };
   accessibilityLabel?: string;
 }
@@ -29,6 +48,7 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
   imageUrl,
   height,
   imageWidth = '100%',
+  compact = false,
   shadow = { bottom: 34, width: '64%', height: 16 },
   accessibilityLabel,
 }) => {
@@ -47,7 +67,7 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
     <View
       style={[
         { overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
-        aspectRatio ? { width: '100%', aspectRatio } : { height },
+        aspectRatio && !compact ? { width: '100%', aspectRatio } : { height },
       ]}
     >
       {/* Backdrop: radial vignette, lighter at top-centre. RN has no CSS
@@ -62,32 +82,36 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
         <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${backdropId})`} />
       </Svg>
 
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          bottom: shadow.bottom,
-          width: shadow.width,
-          height: shadow.height,
-          opacity: 0.3,
-        }}
-      >
-        <Svg width="100%" height="100%">
-          <Defs>
-            <RadialGradient id={contactId} cx="50%" cy="50%" rx="50%" ry="50%">
-              <Stop offset="0%" stopColor="#141414" stopOpacity={0.5} />
-              <Stop offset="70%" stopColor="#141414" stopOpacity={0} />
-            </RadialGradient>
-          </Defs>
-          <Ellipse cx="50%" cy="50%" rx="50%" ry="50%" fill={`url(#${contactId})`} />
-        </Svg>
-      </View>
+      {/* Skipped when compact: a full-bleed image covers the stage floor, so
+          the contact shadow would sit behind the artwork and never be seen. */}
+      {compact ? null : (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            bottom: shadow.bottom,
+            width: shadow.width,
+            height: shadow.height,
+            opacity: 0.3,
+          }}
+        >
+          <Svg width="100%" height="100%">
+            <Defs>
+              <RadialGradient id={contactId} cx="50%" cy="50%" rx="50%" ry="50%">
+                <Stop offset="0%" stopColor="#141414" stopOpacity={0.5} />
+                <Stop offset="70%" stopColor="#141414" stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Ellipse cx="50%" cy="50%" rx="50%" ry="50%" fill={`url(#${contactId})`} />
+          </Svg>
+        </View>
+      )}
 
       {imageUrl ? (
         <Image
           source={imageUrl}
-          style={{ width: imageWidth, height: '100%' }}
-          contentFit="contain"
+          style={{ width: compact ? '100%' : imageWidth, height: '100%' }}
+          contentFit={compact ? 'cover' : 'contain'}
           cachePolicy="memory-disk"
           transition={250}
           accessibilityLabel={accessibilityLabel}

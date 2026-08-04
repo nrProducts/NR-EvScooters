@@ -7,8 +7,13 @@ import { COLORS } from '../constants/theme';
 import { BILLING_CYCLE_LABEL } from '../constants/status';
 import { CreditCard } from 'lucide-react-native';
 import { useCurrentRideOrBooking } from '../hooks/useCurrentRideOrBooking';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function MyPlanScreen() {
+  // AppShell insets its drawer sheet but not screen content, so each screen
+  // pads its own scroll tail — otherwise the Android nav/gesture bar covers
+  // the last rows.
+  const insets = useSafeAreaInsets();
   const { state, loading, error, reload } = useCurrentRideOrBooking();
   const plan = state.kind === 'rental' ? state.rental.plan : state.kind === 'booking' ? state.booking.plan : null;
 
@@ -21,7 +26,10 @@ export default function MyPlanScreen() {
       ) : error ? (
         <ErrorState message={error} onRetry={reload} />
       ) : (
-        <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView
+          className="flex-1 px-5 pt-5"
+          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        >
           <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Current Plan</Text>
 
           {!plan ? (

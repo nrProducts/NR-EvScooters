@@ -12,7 +12,7 @@ import type {
     ApiReferralSummary, ApiRental, ApiSignedUrl, ApiStation, ApiSupportRequest,
     ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload,
     CreateSupportRequestPayload, KycDocType,
-    ListVehicleModelsParams, LocalFile, Paginated, ReturnRequestPayload,
+    ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
     UpdateUserPayload,
 } from '../types/api';
 
@@ -309,7 +309,10 @@ export const api = {
         }),
 
     // --- maintenance ---------------------------------------------------
-    maintenanceHistory: () => request<Paginated<ApiMaintenanceRecord>>('/maintenance/me/history'),
+    maintenanceHistory: (params: MaintenanceHistoryParams = {}) =>
+        request<Paginated<ApiMaintenanceRecord>>('/maintenance/me/history', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
     maintenanceNotice: () => request<ApiMaintenanceNotice | null>('/maintenance/me/notice'),
 
     // --- support ---------------------------------------------------------

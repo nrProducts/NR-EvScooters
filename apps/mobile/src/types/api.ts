@@ -322,7 +322,14 @@ export interface ApiRental {
     status: RentalStatus;
     started_at: string;
     ended_at: string | null;
-    vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
+    vehicle: {
+        id: string;
+        name: string;
+        registration_number: string;
+        battery_percentage: number;
+        /** Scheduled service date. Null until fleet ops set one, so the UI must hide the row. */
+        next_service_due_date: string | null;
+    } | null;
     station: { id: string; name: string; code: string } | null;
     plan: { id: string; name: string; billing_cycle: BillingCycle; price: number } | null;
 
@@ -362,7 +369,21 @@ export interface ApiMaintenanceRecord {
     description: string;
     resolved_at: string | null;
     created_at: string;
+    /** Staff's ETA, set at triage. Null until then, and meaningless once resolved. */
+    expected_ready_at: string | null;
     vehicle: { id: string; name: string; registration_number: string } | null;
+}
+
+/**
+ * Filters for GET /maintenance/me/history. The server additionally scopes
+ * results to vehicles this rider rented, from their pickup onward — these
+ * narrow that set, they don't widen it.
+ */
+export interface MaintenanceHistoryParams {
+    page?: number;
+    pageSize?: number;
+    status?: MaintenanceStatus;
+    vehicleId?: string;
 }
 
 /** What Home renders for a rider currently displaced by their own vehicle's maintenance. */

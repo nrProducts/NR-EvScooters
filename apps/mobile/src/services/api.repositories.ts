@@ -6,7 +6,7 @@ import type {
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiReferralSummary,
     ApiRental, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail,
     ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
-    ListVehicleModelsParams, Paginated, ReturnRequestPayload, UpdateUserPayload,
+    ListVehicleModelsParams, MaintenanceHistoryParams, Paginated, ReturnRequestPayload, UpdateUserPayload,
 } from '../types/api';
 import type {
     AuthRepository, BookingRepository, HistoryParams, KycRepository,
@@ -177,8 +177,8 @@ export class ApiRentalRepository implements RentalRepository {
 }
 
 export class ApiMaintenanceRepository implements MaintenanceRepository {
-    history(): Promise<Paginated<ApiMaintenanceRecord>> {
-        return api.maintenanceHistory();
+    history(params?: MaintenanceHistoryParams): Promise<Paginated<ApiMaintenanceRecord>> {
+        return api.maintenanceHistory(params);
     }
     notice(): Promise<ApiMaintenanceNotice | null> {
         return api.maintenanceNotice();

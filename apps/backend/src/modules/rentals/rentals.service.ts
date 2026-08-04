@@ -34,7 +34,7 @@ const RENTAL_COLUMNS = `
     id, status, started_at, ended_at,
     ${RETURN_COLUMNS},
     ${PLAN_PERIOD_COLUMNS},
-    vehicles(id, name, registration_number, battery_percentage),
+    vehicles(id, name, registration_number, battery_percentage, next_service_due_date),
     bookings(
         plans(id, name, billing_cycle, price),
         stations(id, name, code)
@@ -201,15 +201,19 @@ interface RawRentalRow extends RawReturnFields, RawPlanPeriodFields {
 
 function toRentalView(row: RawRentalRow): RentalView {
     const booking = unwrap<{ plans: unknown; stations: unknown }>(row.bookings);
-    const vehicle = unwrap<{ id: string; name: string; registration_number: string; battery_percentage: number }>(
-        row.vehicles,
-    );
+    const vehicle = unwrap<NonNullable<RentalView["vehicle"]>>(row.vehicles);
     return {
         id: row.id,
         status: row.status,
         started_at: row.started_at,
         ended_at: row.ended_at,
-        vehicle: vehicle ? { ...vehicle, battery_percentage: Number(vehicle.battery_percentage) } : null,
+        vehicle: vehicle
+            ? {
+                ...vehicle,
+                battery_percentage: Number(vehicle.battery_percentage),
+                next_service_due_date: vehicle.next_service_due_date ?? null,
+            }
+            : null,
         plan: booking ? unwrap(booking.plans) : null,
         station: booking ? unwrap(booking.stations) : null,
         ...toReturnView(row),

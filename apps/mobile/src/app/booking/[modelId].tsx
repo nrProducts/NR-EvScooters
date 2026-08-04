@@ -12,6 +12,7 @@ import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
 import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
 import type { ApiAvailability, ApiPlan, ApiVehicleModelDetail } from '../../types/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Device geolocation isn't wired up yet (no expo-location dependency in
 // this phase) — the backend's nearest_station RPC still does the real
@@ -30,6 +31,9 @@ const CYCLE_LABEL: Record<string, string> = {
  * really just a third field. Continue goes straight to the payment/review step.
  */
 export default function BookingScreen() {
+  // This screen renders its own header rather than AppShell's, so nothing
+  // upstream pads the scroll tail past the Android nav/gesture bar.
+  const insets = useSafeAreaInsets();
   const { modelId } = useLocalSearchParams<{ modelId: string }>();
   const router = useRouter();
 
@@ -140,7 +144,10 @@ export default function BookingScreen() {
       ) : modelError || !model ? (
         <ErrorState message={modelError ?? 'This scooter could not be found.'} onRetry={load} />
       ) : (
-        <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView
+          className="flex-1 px-5 pt-5"
+          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        >
           {/* PICKUP STATION */}
           <View className="rounded-2xl p-4 border mb-4" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
             <View className="flex-row items-center mb-2">

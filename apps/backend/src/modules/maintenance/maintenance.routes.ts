@@ -10,7 +10,11 @@ import * as v from "./maintenance.validation";
 const router = Router();
 router.use(requireAuth);
 
-router.get("/me/history", asyncHandler(c.myMaintenanceHistoryHandler));
+router.get(
+    "/me/history",
+    validate({ query: v.myMaintenanceHistoryQuery }),
+    asyncHandler(c.myMaintenanceHistoryHandler),
+);
 router.get("/me/notice", asyncHandler(c.myMaintenanceNoticeHandler));
 
 router.get(

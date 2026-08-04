@@ -11,6 +11,7 @@ import { useDebounced } from '../hooks/useDebounced';
 import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
 import { COLORS } from '../constants/theme';
 import { VEHICLE_CATEGORIES, VehicleCategory } from '../types/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const CATEGORY_OPTIONS: { key: VehicleCategory | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -18,6 +19,10 @@ const CATEGORY_OPTIONS: { key: VehicleCategory | 'all'; label: string }[] = [
 ];
 
 export default function BrowseVehiclesScreen() {
+  // AppShell insets its drawer sheet but not screen content, so each screen
+  // pads its own scroll tail — otherwise the Android nav/gesture bar covers
+  // the last rows.
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { list, loadingList, listError, loadList, loadMore, pagination } = useVehicleCatalogStore();
 
@@ -80,7 +85,7 @@ export default function BrowseVehiclesScreen() {
         <FlatList
           data={list}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: 40 }}
+          contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: insets.bottom + 24 }}
           renderItem={({ item }) => <VehicleListItem model={item} />}
           onEndReachedThreshold={0.4}
           onEndReached={() => void loadMore()}

@@ -23,6 +23,7 @@ import { computeInitialKycStep } from '../lib/kycProgress';
 import { COLORS } from '../constants/theme';
 import { DOC_TYPE_LABEL, KYC_STATUS_LABEL, KYC_STATUS_TONE, VERIFICATION_TONE, formatDate } from '../constants/status';
 import type { ApiDocument, ApiKycSummary, KycDocType, LocalFile } from '../types/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Step = 0 | 1 | 2 | 3 | 4;
 const STEP_TITLES = ['Photo', 'Emergency Contact', 'Aadhaar', 'Licence', 'Review'];
@@ -37,6 +38,10 @@ interface DraftDoc {
 const EMPTY_DRAFT: DraftDoc = { doc_number: '', expiry_date: '', front: null, back: null };
 
 export default function KycScreen() {
+  // AppShell insets its drawer sheet but not screen content, so each screen
+  // pads its own scroll tail — otherwise the Android nav/gesture bar covers
+  // the last rows.
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
@@ -227,7 +232,7 @@ export default function KycScreen() {
     <Shell>
       <ScrollView
         className="flex-1 px-5 pt-5"
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl

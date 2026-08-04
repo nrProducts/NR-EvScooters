@@ -3,7 +3,7 @@ import type {
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiReferralSummary,
     ApiRental, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail,
     ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
-    KycDocType, ListVehicleModelsParams, LocalFile,
+    KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams,
     Paginated, ReturnRequestPayload, UpdateUserPayload,
 } from '../types/api';
 
@@ -100,8 +100,12 @@ export interface RentalRepository {
 }
 
 export interface MaintenanceRepository {
-    /** Maintenance events for vehicles the rider has personally rented. */
-    history(): Promise<Paginated<ApiMaintenanceRecord>>;
+    /**
+     * Maintenance events for vehicles the rider has personally rented, scoped
+     * server-side to tickets raised from their pickup onward. Pass `vehicleId`
+     * to narrow to a single scooter.
+     */
+    history(params?: MaintenanceHistoryParams): Promise<Paginated<ApiMaintenanceRecord>>;
     /** The rider's own currently-open displacement ticket, if any — drives the Home screen banner. */
     notice(): Promise<ApiMaintenanceNotice | null>;
 }

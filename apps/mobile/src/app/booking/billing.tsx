@@ -8,6 +8,7 @@ import { COLORS } from '../../constants/theme';
 import {
   FREE_CANCELLATION_GRACE_MINUTES, FREE_CANCELLATION_NOTICE_DAYS, LATE_CANCELLATION_PENALTY_RATE,
 } from '../../lib/cancellationPolicy';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const CYCLE_LABEL: Record<string, string> = {
   daily: 'Day', weekly: 'Week', monthly: 'Month', yearly: 'Year',
@@ -19,6 +20,9 @@ function formatDay(dateStr: string): string {
 }
 
 export default function BillingScreen() {
+  // This screen renders its own header rather than AppShell's, so nothing
+  // upstream pads the scroll tail past the Android nav/gesture bar.
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { draft, creating, createError, created, createBooking, reset } = useBookingStore();
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
@@ -92,7 +96,10 @@ export default function BillingScreen() {
         </Text>
       </View>
 
-      <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        className="flex-1 px-5 pt-5"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+      >
         <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Booking Summary</Text>
         <View className="rounded-2xl p-4 border mb-6 gap-4" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
           <View className="flex-row items-center">

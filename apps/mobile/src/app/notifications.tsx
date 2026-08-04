@@ -9,8 +9,13 @@ import { useMyNotifications } from '../hooks/useNotifications';
 import { COLORS } from '../constants/theme';
 import { formatDate } from '../constants/status';
 import type { ApiNotification } from '../types/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function NotificationsScreen() {
+  // AppShell insets its drawer sheet but not screen content, so each screen
+  // pads its own scroll tail — otherwise the Android nav/gesture bar covers
+  // the last rows.
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { notifications, unreadCount, loading, refreshing, error, refresh, retry, markRead, markAllRead } =
     useMyNotifications();
@@ -32,7 +37,7 @@ export default function NotificationsScreen() {
         <FlatList
           data={notifications}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 40, flexGrow: 1 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 24, flexGrow: 1 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
           ListHeaderComponent={
             unreadCount > 0 ? (

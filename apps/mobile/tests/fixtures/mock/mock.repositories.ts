@@ -8,7 +8,7 @@ import type {
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiReferralSummary, ApiRental, ApiSignedUrl,
     ApiStation, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, BookingRefundStatus, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
-    KycStatus, ListVehicleModelsParams, LocalFile, Paginated,
+    KycStatus, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
     RentalStatus, ReturnRequestPayload, SupportPriority, SupportStatus,
     UpdateUserPayload, VerificationStatus,
 } from '../../../src/types/api';
@@ -789,7 +789,15 @@ function toApiRental(row: MockRentalRow): ApiRental {
         // Mock mode has no per-unit fleet inventory wired to bookings —
         // stand in with the booked model's name.
         vehicle: model
-            ? { id: row.vehicle_id, name: model.name, registration_number: 'MOCK-0001', battery_percentage: 87 }
+            ? {
+                id: row.vehicle_id,
+                name: model.name,
+                registration_number: 'MOCK-0001',
+                battery_percentage: 87,
+                // Mock DB has no fleet servicing schedule; null exercises the
+                // same "hide the row" path a real unset date takes.
+                next_service_due_date: null,
+            }
             : null,
         station: station ? { id: station.id, name: station.name, code: station.code } : null,
         plan: plan ? { id: plan.id, name: plan.name, billing_cycle: plan.billing_cycle, price: plan.price } : null,
@@ -1122,11 +1130,16 @@ export class MockReferralRepository implements ReferralRepository {
 }
 
 export class MockMaintenanceRepository implements MaintenanceRepository {
-    /** Mock DB has no vehicle_maintenance concept â€” matches production's early-days reality anyway. */
-    async history(): Promise<Paginated<ApiMaintenanceRecord>> {
+    /**
+     * Mock DB has no vehicle_maintenance concept â€” matches production's
+     * early-days reality anyway. Params are accepted and ignored: there is
+     * nothing to filter, so mock mode always shows the empty state.
+     */
+    async history(params?: MaintenanceHistoryParams): Promise<Paginated<ApiMaintenanceRecord>> {
         await delay(150);
         requireSession();
-        return { data: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 } };
+        const pageSize = params?.pageSize ?? 20;
+        return { data: [], pagination: { page: params?.page ?? 1, pageSize, total: 0, totalPages: 0 } };
     }
     async notice(): Promise<ApiMaintenanceNotice | null> {
         await delay(150);
