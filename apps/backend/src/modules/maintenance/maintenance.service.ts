@@ -2,7 +2,7 @@ import { supabaseAdmin } from "../../config/supabase";
 import { businessRule, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
-import { notifyUser } from "../notifications/notifications.service";
+import { notifyAdmins, notifyUser } from "../notifications/notifications.service";
 import { assignVehicleToUser, scrapVehicle } from "../vehicles/vehicles.service";
 import { completeRide } from "../rentals/rentals.service";
 import { AuthContext, Paginated } from "../../types";
@@ -267,6 +267,18 @@ export async function createMaintenanceTicket(
         entityId: ticket.id,
         after: { vehicle_id: input.vehicle_id, status: ticket.status },
     });
+
+    await notifyAdmins(
+        {
+            template: "maintenance_review_needed",
+            title: "Maintenance Ticket Reported",
+            body: ticket.vehicle
+                ? `${ticket.vehicle.name} (${ticket.vehicle.registration_number}) needs triage: ${input.description}`
+                : `A vehicle needs triage: ${input.description}`,
+            screen: "maintenance",
+        },
+        actor.id,
+    );
 
     return ticket;
 }

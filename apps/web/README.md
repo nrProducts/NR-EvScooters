@@ -66,8 +66,6 @@ mock data, listing exactly what route would need to exist:
 - **Notifications** (compose/broadcast) — the notifications module is 100%
   rider-facing (a rider reading their own notifications). No admin broadcast
   or "see what's gone out to everyone" endpoint.
-- **Live Map** — no vehicles endpoint, and no queryable lat/lng projection of
-  the `stations.location` PostGIS column.
 - **Reports** — depends on the same missing vehicles/invoices data.
 
 ### One thing worth knowing about roles
@@ -93,7 +91,7 @@ backend's `{ data, pagination: {...} }` envelope into the
 ## Roles
 
 - **Admin** — full nav, including Settings.
-- **Staff** — same operational modules (Dashboard, Live Monitoring, Vehicles,
+- **Staff** — same operational modules (Dashboard, Vehicles,
   Riders, KYC, Bookings, Maintenance, Support) minus Payments, Reports,
   Notifications, Settings. Enforced in both nav (`roleConfig.ts`) and route
   guarding (`ProtectedRoute.tsx`) — but see the roles note above re: no real
@@ -118,7 +116,7 @@ src/
 ## Next steps
 
 The natural next slice of backend work, in rough priority order:
-1. `GET /vehicles` (+ detail) — unlocks Vehicles, Live Map, and half of
+1. `GET /vehicles` (+ detail) — unlocks Vehicles and half of
    Reports/Dashboard.
 2. `GET /invoices` (+ a refund action) — unlocks Payments and the revenue
    half of Reports/Dashboard.

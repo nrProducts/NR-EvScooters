@@ -6,8 +6,6 @@ import { ProtectedRoute } from "./ProtectedRoute";
 import LoginPage from "@/pages/auth/LoginPage";
 import AuthCallbackPage from "@/pages/auth/AuthCallbackPage";
 import DashboardRouter from "@/pages/dashboard/DashboardRouter";
-import LiveMonitoringPage from "@/pages/monitoring/LiveMonitoringPage";
-import LiveMapPage from "@/pages/map/LiveMapPage";
 import BatteryStationsPage from "@/pages/battery-stations/BatteryStationsPage";
 import VehicleListPage from "@/pages/vehicles/VehicleListPage";
 import VehicleDetailPage from "@/pages/vehicles/VehicleDetailPage";
@@ -39,8 +37,6 @@ export function AppRoutes() {
         }
       >
         <Route path="/dashboard" element={<DashboardRouter />} />
-        <Route path="/monitoring" element={<LiveMonitoringPage />} />
-        <Route path="/map" element={<LiveMapPage />} />
         <Route path="/battery-stations" element={<BatteryStationsPage />} />
 
         <Route path="/vehicles" element={<VehicleListPage />} />
