@@ -339,6 +339,12 @@ export interface ApiPaymentOrder {
     currency: string;
     /** Razorpay's PUBLIC key id — safe on-device, never the secret. */
     keyId: string;
+    /**
+     * True when the backend has no Razorpay keys configured yet — the order
+     * is already settled server-side with temp data. Skip Checkout and
+     * /payments/verify entirely and treat this as paid immediately.
+     */
+    mock: boolean;
 }
 
 export interface VerifyPaymentPayload {

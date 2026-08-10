@@ -10,6 +10,14 @@ export interface CreateOrderResult {
     currency: string;
     /** Razorpay's PUBLIC key id — safe to send to the client, never the secret. */
     keyId: string;
+    /**
+     * True when no RAZORPAY_KEY_ID/SECRET is configured yet. The order is
+     * already settled server-side with temp data by the time this response
+     * goes out — the client must skip Razorpay Checkout and /payments/verify
+     * entirely and treat the booking/invoice as paid immediately. Once real
+     * keys are set, this flips to false with no client change needed.
+     */
+    mock: boolean;
 }
 
 export interface VerifyPaymentInput {

@@ -9,6 +9,10 @@ export async function listPlansHandler(req: AuthedRequest, res: Response) {
     res.json(await service.listPlans({ ...page, vehicleModelId, active }));
 }
 
+export async function listVehicleModelOptionsHandler(_req: AuthedRequest, res: Response) {
+    res.json(await service.listVehicleModelOptions());
+}
+
 export async function getPlanHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getPlanById(req.params.id as string));
 }

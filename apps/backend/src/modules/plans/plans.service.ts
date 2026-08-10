@@ -40,6 +40,23 @@ function toPlanRow(row: RawPlanRow): PlanRow {
 // duration/deposit per the spec, hence this module.
 // ---------------------------------------------------------------------------
 
+/**
+ * Every active vehicle model, for the plan editor's model picker.
+ * Deliberately NOT vehicle-catalog's listVehicleModels() — that endpoint is
+ * rider-browse-only and filters to models that already have an active plan
+ * (plans.active=true), which makes it impossible to ever create a model's
+ * FIRST plan through the admin UI. This has no such filter.
+ */
+export async function listVehicleModelOptions(): Promise<{ id: string; name: string }[]> {
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_models")
+        .select("id, name")
+        .eq("active", true)
+        .order("name", { ascending: true });
+    if (error) throw error;
+    return (data ?? []) as { id: string; name: string }[];
+}
+
 export async function listPlans(filters: ListPlansFilters): Promise<Paginated<PlanRow>> {
     let query = supabaseAdmin.from("plans").select(PLAN_COLUMNS, { count: "exact" });
     if (filters.vehicleModelId) query = query.eq("vehicle_model_id", filters.vehicleModelId);

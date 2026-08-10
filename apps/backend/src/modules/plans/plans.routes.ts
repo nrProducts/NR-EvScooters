@@ -12,6 +12,11 @@ router.use(requireAuth, requireAdmin);
 
 router.get("/", validate({ query: v.listPlansQuery }), asyncHandler(c.listPlansHandler));
 router.post("/", validate({ body: v.createPlanBody }), asyncHandler(c.createPlanHandler));
+
+// Declared before "/:id" so "vehicle-model-options" is never parsed as a
+// uuid param — same care already taken for GET /users/me vs GET /users/:id.
+router.get("/vehicle-model-options", asyncHandler(c.listVehicleModelOptionsHandler));
+
 router.get("/:id", validate({ params: v.planIdParam }), asyncHandler(c.getPlanHandler));
 router.patch(
     "/:id",

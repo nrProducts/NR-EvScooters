@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Razorpay from "razorpay";
 import { supabaseAdmin } from "../../config/supabase";
 import { getRazorpay } from "../../config/razorpay";
@@ -22,6 +23,18 @@ const rupeesToPaise = (rupees: number): number => Math.round(rupees * 100);
 function mapGatewayMethod(method: string | null): "card" | "wallet" | "upi" | "cash" | null {
     if (method === "card" || method === "wallet" || method === "upi") return method;
     return null;
+}
+
+/**
+ * No RAZORPAY_KEY_ID/SECRET set yet (see env.ts — deliberately allowed to be
+ * empty so the server boots in dev without them). Order creation falls back
+ * to settling the order immediately with temp data instead of calling out to
+ * Razorpay, so the booking/payment flow stays fully testable until real test
+ * keys are supplied. Remove nothing to switch over — the moment both env vars
+ * are set this branch stops being taken.
+ */
+function isGatewayConfigured(): boolean {
+    return !!env.razorpayKeyId && !!env.razorpayKeySecret;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,18 +75,20 @@ export async function createOrderForBooking(bookingId: string, actor: AuthContex
     const existing = await findReusableOrder(bookingId, "booking_initial");
     if (existing) return existing;
 
-    const razorpay = getRazorpay();
-    const gatewayOrder = await razorpay.orders.create({
-        amount: rupeesToPaise(totalAmount),
-        currency: "INR",
-        receipt: `booking_${bookingId}`.slice(0, 40),
-        notes: { booking_id: bookingId, purpose: "booking_initial" },
-    });
+    const configured = isGatewayConfigured();
+    const gatewayOrderId = configured
+        ? (await getRazorpay().orders.create({
+            amount: rupeesToPaise(totalAmount),
+            currency: "INR",
+            receipt: `booking_${bookingId}`.slice(0, 40),
+            notes: { booking_id: bookingId, purpose: "booking_initial" },
+        })).id
+        : `mock_order_${randomUUID()}`;
 
     const { data: order, error: orderError } = await supabaseAdmin
         .from("payment_orders")
         .insert({
-            gateway_order_id: gatewayOrder.id,
+            gateway_order_id: gatewayOrderId,
             purpose: "booking_initial",
             user_id: actor.id,
             booking_id: bookingId,
@@ -105,6 +120,18 @@ export async function createOrderForBooking(bookingId: string, actor: AuthContex
         entityType: "payment_order", entityId: order.id,
         after: { booking_id: bookingId, purpose: "booking_initial", amount: totalAmount },
     });
+
+    if (!configured) {
+        await applyPaymentSuccess({
+            paymentOrderId: order.id,
+            gatewayPaymentId: `mock_payment_${randomUUID()}`,
+            gatewaySignature: null,
+            amount: totalAmount,
+            method: null,
+            rawPayload: { source: "mock_mode" },
+        });
+        return toOrderResult(order, true);
+    }
 
     return toOrderResult(order);
 }
@@ -143,18 +170,20 @@ export async function createOrderForInvoice(invoiceId: string, actor: AuthContex
         if (existingOrder) return toOrderResult(existingOrder);
     }
 
-    const razorpay = getRazorpay();
-    const gatewayOrder = await razorpay.orders.create({
-        amount: rupeesToPaise(amount),
-        currency: "INR",
-        receipt: `invoice_${invoiceId}`.slice(0, 40),
-        notes: { invoice_id: invoiceId, booking_id: invoice.booking_id ?? "", purpose },
-    });
+    const configured = isGatewayConfigured();
+    const gatewayOrderId = configured
+        ? (await getRazorpay().orders.create({
+            amount: rupeesToPaise(amount),
+            currency: "INR",
+            receipt: `invoice_${invoiceId}`.slice(0, 40),
+            notes: { invoice_id: invoiceId, booking_id: invoice.booking_id ?? "", purpose },
+        })).id
+        : `mock_order_${randomUUID()}`;
 
     const { data: order, error: orderError } = await supabaseAdmin
         .from("payment_orders")
         .insert({
-            gateway_order_id: gatewayOrder.id,
+            gateway_order_id: gatewayOrderId,
             purpose,
             user_id: actor.id,
             booking_id: invoice.booking_id,
@@ -178,6 +207,18 @@ export async function createOrderForInvoice(invoiceId: string, actor: AuthContex
         after: { invoice_id: invoiceId, purpose, amount },
     });
 
+    if (!configured) {
+        await applyPaymentSuccess({
+            paymentOrderId: order.id,
+            gatewayPaymentId: `mock_payment_${randomUUID()}`,
+            gatewaySignature: null,
+            amount,
+            method: null,
+            rawPayload: { source: "mock_mode" },
+        });
+        return toOrderResult(order, true);
+    }
+
     return toOrderResult(order);
 }
 
@@ -193,13 +234,17 @@ async function findReusableOrder(bookingId: string, purpose: PaymentPurpose): Pr
     return data ? toOrderResult(data) : null;
 }
 
-function toOrderResult(order: { id: string; gateway_order_id: string | null; amount: number | string; currency: string }): CreateOrderResult {
+function toOrderResult(
+    order: { id: string; gateway_order_id: string | null; amount: number | string; currency: string },
+    mock = false,
+): CreateOrderResult {
     return {
         orderId: order.id,
         gatewayOrderId: order.gateway_order_id!,
         amount: Number(order.amount),
         currency: order.currency,
         keyId: env.razorpayKeyId,
+        mock,
     };
 }
 

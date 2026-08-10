@@ -66,4 +66,14 @@ router.post(
     asyncHandler(c.confirmPickupHandler),
 );
 
+// Staff-initiated cancellation of a pending_payment/confirmed booking — e.g.
+// releasing a vehicle a booking is holding without the rider having cancelled
+// it themselves. See adminCancelBooking's comment for why this exists.
+router.post(
+    "/:id/admin-cancel",
+    requireStaff,
+    validate({ params: v.bookingIdParam, body: v.rejectBookingBody }),
+    asyncHandler(c.adminCancelBookingHandler),
+);
+
 export default router;

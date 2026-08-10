@@ -4,6 +4,7 @@ import { AppError, businessRule, conflict, notFound } from "../../common/AppErro
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
+import { adminCancelBooking } from "../bookings/bookings.service";
 import { Paginated, AuthContext } from "../../types";
 import {
     buildVehiclePhotoPath, createSignedVehiclePhotoUrl, removeVehiclePhotoFile, uploadVehiclePhotoFile,
@@ -11,7 +12,8 @@ import {
 import type { UploadedFile } from "../kyc/kyc.storage";
 import {
     CreateVehicleInput, ListVehiclesFilters, ScrapRecordRow, ScrapVehicleInput, UpdateVehicleInput,
-    VehicleDetail, VehicleDocumentRow, VehicleMaintenanceRow, VehiclePhotoRow, VehicleRentalRow, VehicleRow,
+    VehicleDetail, VehicleDocumentRow, VehicleMaintenanceRow, VehiclePaymentStatus, VehiclePhotoRow,
+    VehicleRentalRow, VehicleRow,
 } from "./vehicles.types";
 
 const VEHICLE_COLUMNS = `
@@ -24,6 +26,32 @@ const VEHICLE_COLUMNS = `
 /** Postgres `numeric` columns round-trip through PostgREST as strings, not numbers. */
 function toVehicleRow(row: VehicleRow): VehicleRow {
     return { ...row, battery_percentage: Number(row.battery_percentage) };
+}
+
+/**
+ * Payment/billing status per vehicle, derived from whichever booking
+ * currently holds it — bookings.vehicle_id is never cleared on close (see
+ * confirmPickup's comment), so a vehicle can have several past bookings;
+ * only a live one (not cancelled/expired) is ever relevant, and a vehicle's
+ * status trigger machinery guarantees at most one is live at a time.
+ */
+async function paymentStatusesForVehicles(vehicleIds: string[]): Promise<Map<string, VehiclePaymentStatus>> {
+    const map = new Map<string, VehiclePaymentStatus>();
+    if (vehicleIds.length === 0) return map;
+
+    const { data, error } = await supabaseAdmin
+        .from("bookings")
+        .select("vehicle_id, status, plan_status, created_at")
+        .in("vehicle_id", vehicleIds)
+        .in("status", ["pending_payment", "confirmed", "fulfilled"])
+        .order("created_at", { ascending: false });
+    if (error) throw error;
+
+    for (const row of (data ?? []) as { vehicle_id: string | null; status: string; plan_status: string | null; created_at: string }[]) {
+        if (!row.vehicle_id || map.has(row.vehicle_id)) continue; // newest first — first hit per vehicle wins
+        map.set(row.vehicle_id, (row.status === "fulfilled" ? row.plan_status : row.status) as VehiclePaymentStatus);
+    }
+    return map;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,7 +80,11 @@ export async function listVehicles(filters: ListVehiclesFilters): Promise<Pagina
     const { data, error, count } = await query;
     if (error) throw error;
 
-    return paginate(((data ?? []) as unknown as VehicleRow[]).map(toVehicleRow), count ?? 0, filters);
+    const rows = ((data ?? []) as unknown as VehicleRow[]).map(toVehicleRow);
+    const paymentStatuses = await paymentStatusesForVehicles(rows.map((r) => r.id));
+    const withPaymentStatus = rows.map((r) => ({ ...r, payment_status: paymentStatuses.get(r.id) ?? null }));
+
+    return paginate(withPaymentStatus, count ?? 0, filters);
 }
 
 // ---------------------------------------------------------------------------
@@ -78,9 +110,11 @@ export async function getVehicleById(id: string): Promise<VehicleDetail> {
     ]);
 
     const currentRental = rentalHistory.find((r) => r.status === "active") ?? null;
+    const paymentStatuses = await paymentStatusesForVehicles([id]);
 
     return {
         ...toVehicleRow(data as unknown as VehicleRow),
+        payment_status: paymentStatuses.get(id) ?? null,
         documents,
         photos,
         maintenance_history: maintenanceHistory,
@@ -309,17 +343,48 @@ export async function updateVehicle(
 ): Promise<VehicleRow> {
     const before = await requireVehicle(id);
 
-    const { data, error } = await supabaseAdmin
-        .from("vehicles")
-        .update(patch)
-        .eq("id", id)
-        .select(VEHICLE_COLUMNS)
-        .maybeSingle();
+    // A 'booked' vehicle is still held by a live pending_payment/confirmed
+    // booking (bookings.vehicle_id) — force-flipping it straight to
+    // 'available' here used to leave that booking dangling, so the rider's
+    // app kept showing it as a current booking with a cancel option even
+    // though the vehicle had already moved on. Cancel the booking properly
+    // instead; trg_release_vehicle_on_booking_close_fn (20260727095801)
+    // frees the vehicle back to 'available' as a side effect of that, so
+    // `status` is dropped from the direct column write below to avoid
+    // racing the trigger.
+    const releasingFromBooking = before.status === "booked" && patch.status === "available";
+    if (releasingFromBooking) {
+        const { data: liveBooking, error: bookingError } = await supabaseAdmin
+            .from("bookings")
+            .select("id")
+            .eq("vehicle_id", id)
+            .in("status", ["pending_payment", "confirmed"])
+            .maybeSingle();
+        if (bookingError) throw bookingError;
+        if (liveBooking) {
+            await adminCancelBooking(liveBooking.id, "Vehicle released by admin.", actor);
+        }
+    }
 
-    if (error) throw mapPostgresError(error);
-    if (!data) throw notFound("Vehicle not found.");
+    const columnsToWrite: UpdateVehicleInput = { ...patch };
+    if (releasingFromBooking) delete columnsToWrite.status;
 
-    const vehicle = toVehicleRow(data as unknown as VehicleRow);
+    let vehicle: VehicleRow;
+    if (Object.keys(columnsToWrite).length === 0) {
+        vehicle = await requireVehicle(id);
+    } else {
+        const { data, error } = await supabaseAdmin
+            .from("vehicles")
+            .update(columnsToWrite)
+            .eq("id", id)
+            .select(VEHICLE_COLUMNS)
+            .maybeSingle();
+
+        if (error) throw mapPostgresError(error);
+        if (!data) throw notFound("Vehicle not found.");
+
+        vehicle = toVehicleRow(data as unknown as VehicleRow);
+    }
 
     await writeAudit({
         actorId: actor.id,

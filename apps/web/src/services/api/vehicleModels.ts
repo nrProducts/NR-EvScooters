@@ -1,4 +1,4 @@
-import { apiClient, type BackendPaginated } from "./httpClient";
+import { apiClient } from "./httpClient";
 
 export interface VehicleModelOption {
   id: string;
@@ -6,13 +6,12 @@ export interface VehicleModelOption {
 }
 
 /**
- * GET /vehicle-models — requireAuth (no staff gate). Only used here to
- * populate the plan-editor's model picker, so a minimal shape suffices.
- * Note: the backend only returns models that already have an active plan
- * (rider-catalog behavior) — a brand-new model with no plan yet won't show
- * up here until it has one.
+ * GET /plans/vehicle-model-options — requireAdmin. Every active vehicle
+ * model, for the plan editor's model picker. Deliberately NOT the rider
+ * catalog endpoint (/vehicle-models) — that one only lists models that
+ * already have an active plan, which makes it impossible to ever create a
+ * model's first plan.
  */
 export async function fetchVehicleModelOptions(): Promise<VehicleModelOption[]> {
-  const res = await apiClient.get<BackendPaginated<VehicleModelOption>>("/vehicle-models", { pageSize: 100 });
-  return res.data;
+  return apiClient.get<VehicleModelOption[]>("/plans/vehicle-model-options");
 }

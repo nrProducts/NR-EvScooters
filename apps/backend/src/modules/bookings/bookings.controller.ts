@@ -44,3 +44,8 @@ export async function availableVehiclesHandler(req: AuthedRequest, res: Response
 export async function getBookingHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getBookingById(req.params.id as string));
 }
+
+export async function adminCancelBookingHandler(req: AuthedRequest, res: Response) {
+    const body = req.body as RejectBookingBody;
+    res.json(await service.adminCancelBooking(req.params.id as string, body.reason, req.user!));
+}

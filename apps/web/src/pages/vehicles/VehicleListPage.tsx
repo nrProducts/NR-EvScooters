@@ -98,6 +98,11 @@ export default function VehicleListPage() {
       ),
     },
     { header: "Status", key: "status", render: (v) => <StatusBadge status={v.status} /> },
+    {
+      header: "Payment",
+      key: "payment_status",
+      render: (v) => (v.payment_status ? <StatusBadge status={v.payment_status} /> : <span className="text-muted-foreground">—</span>),
+    },
     { header: "VIN", key: "vin", render: (v) => v.vin, hideOnMobile: true },
     {
       header: "Next service",

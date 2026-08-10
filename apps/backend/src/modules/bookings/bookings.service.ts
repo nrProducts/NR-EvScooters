@@ -450,6 +450,87 @@ export async function cancelMyBooking(
     return getBookingById(bookingId);
 }
 
+/**
+ * Staff-initiated cancellation — the fix for a vehicle getting force-released
+ * (e.g. the Vehicles admin screen's "Mark available") out from under a
+ * booking that still held it as 'pending_payment'/'confirmed': that only
+ * ever touched vehicles.status directly, leaving the booking itself active,
+ * so the rider's app kept showing it as a current booking with a cancel
+ * option. This closes the booking out properly instead. No late-cancellation
+ * penalty applies — the rider isn't the one backing out — and whatever was
+ * already captured for the initial rental+deposit payment (nothing, if still
+ * 'pending_payment') is recorded as owed back, same "recorded request, not a
+ * live reversal" convention cancelMyBooking already uses for refund_amount.
+ */
+export async function adminCancelBooking(
+    bookingId: string,
+    reason: string,
+    actor: AuthContext,
+): Promise<BookingView> {
+    const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("bookings")
+        .select("id, user_id, status, vehicle_id")
+        .eq("id", bookingId)
+        .maybeSingle();
+    if (fetchError) throw fetchError;
+    if (!existing) throw notFound("Booking not found.");
+    if (!(ACTIVE_BOOKING_STATUSES as string[]).includes(existing.status)) {
+        throw conflict("Only a pending or confirmed booking can be cancelled.");
+    }
+
+    const { data: paidInvoices, error: invoiceError } = await supabaseAdmin
+        .from("invoices")
+        .select("amount_due")
+        .eq("booking_id", bookingId)
+        .eq("payment_status", "succeeded")
+        .in("payment_type", ["rental", "deposit"]);
+    if (invoiceError) throw invoiceError;
+    const refundAmount = (paidInvoices ?? []).reduce((sum, inv) => sum + Number(inv.amount_due), 0);
+
+    const { data: updated, error } = await supabaseAdmin
+        .from("bookings")
+        .update({
+            status: "cancelled",
+            cancelled_at: new Date().toISOString(),
+            cancelled_by: actor.id,
+            cancellation_reason: reason,
+            cancellation_penalty_amount: 0,
+            refund_amount: refundAmount,
+            refund_status: refundAmount > 0 ? "pending" : "not_required",
+            // vehicle_id is deliberately untouched — trg_release_vehicle_on_booking_close
+            // (20260727095801) frees the held unit and nulls it as part of this update.
+            // If the vehicle was already force-marked available out-of-band, the trigger's
+            // own `where status = 'booked'` guard just no-ops on that part — harmless.
+        })
+        .eq("id", bookingId)
+        .in("status", ACTIVE_BOOKING_STATUSES as string[])
+        .select("id")
+        .maybeSingle();
+    if (error) throw error;
+    if (!updated) throw conflict("This booking can no longer be cancelled.");
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: existing.user_id,
+        action: "booking.cancelled",
+        entityType: "booking",
+        entityId: bookingId,
+        before: { status: existing.status, vehicle_id: existing.vehicle_id },
+        after: { status: "cancelled", reason, refund_amount: refundAmount },
+    });
+
+    await notifyUser(existing.user_id, {
+        template: "booking_cancelled",
+        title: "Booking Cancelled",
+        body: refundAmount > 0
+            ? `Your booking was cancelled by our team: ${reason}. A refund of ₹${refundAmount} has been recorded.`
+            : `Your booking was cancelled by our team: ${reason}.`,
+        screen: "booking-history",
+    });
+
+    return getBookingById(bookingId);
+}
+
 /** Mirrors hasActiveRentalForUser in users.service.ts. pending_payment counts as active. */
 export async function hasActiveBookingForUser(userId: string): Promise<boolean> {
     const { count, error } = await supabaseAdmin

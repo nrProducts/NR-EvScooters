@@ -50,21 +50,25 @@ export default function BillingScreen() {
     setPayingInvoiceId(invoice.id);
     try {
       const order = await billingRepository.createOrderForInvoice(invoice.id);
-      const verifyPayload = await openRazorpayCheckout({
-        key: order.keyId,
-        amount: Math.round(order.amount * 100),
-        currency: order.currency,
-        order_id: order.gatewayOrderId,
-        name: 'NR EV Scooters',
-        description: PAYMENT_TYPE_LABEL[invoice.payment_type ?? 'other'],
-        prefill: {
-          email: profile?.email ?? undefined,
-          contact: profile?.phone ?? undefined,
-          name: profile?.full_name,
-        },
-        theme: { color: COLORS.primary },
-      });
-      await billingRepository.verifyPayment(verifyPayload);
+      // No Razorpay keys configured on the backend yet — the order was
+      // already settled server-side with temp data. Skip Checkout entirely.
+      if (!order.mock) {
+        const verifyPayload = await openRazorpayCheckout({
+          key: order.keyId,
+          amount: Math.round(order.amount * 100),
+          currency: order.currency,
+          order_id: order.gatewayOrderId,
+          name: 'NR EV Scooters',
+          description: PAYMENT_TYPE_LABEL[invoice.payment_type ?? 'other'],
+          prefill: {
+            email: profile?.email ?? undefined,
+            contact: profile?.phone ?? undefined,
+            name: profile?.full_name,
+          },
+          theme: { color: COLORS.primary },
+        });
+        await billingRepository.verifyPayment(verifyPayload);
+      }
       reload();
     } catch (err) {
       if (err instanceof PaymentCancelledError || err instanceof PaymentUnavailableError) {

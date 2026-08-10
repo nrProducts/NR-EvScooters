@@ -58,21 +58,25 @@ export default function BillingScreen() {
 
       setPaying(true);
       const order = await billingRepository.createOrderForBooking(booking.id);
-      const verifyPayload = await openRazorpayCheckout({
-        key: order.keyId,
-        amount: Math.round(order.amount * 100),
-        currency: order.currency,
-        order_id: order.gatewayOrderId,
-        name: 'NR EV Scooters',
-        description: plan ? `${plan.name} — weekly rental + deposit` : 'Scooter rental',
-        prefill: {
-          email: profile?.email ?? undefined,
-          contact: profile?.phone ?? undefined,
-          name: profile?.full_name,
-        },
-        theme: { color: COLORS.primary },
-      });
-      await billingRepository.verifyPayment(verifyPayload);
+      // No Razorpay keys configured on the backend yet — the order was
+      // already settled server-side with temp data. Skip Checkout entirely.
+      if (!order.mock) {
+        const verifyPayload = await openRazorpayCheckout({
+          key: order.keyId,
+          amount: Math.round(order.amount * 100),
+          currency: order.currency,
+          order_id: order.gatewayOrderId,
+          name: 'NR EV Scooters',
+          description: plan ? `${plan.name} — weekly rental + deposit` : 'Scooter rental',
+          prefill: {
+            email: profile?.email ?? undefined,
+            contact: profile?.phone ?? undefined,
+            name: profile?.full_name,
+          },
+          theme: { color: COLORS.primary },
+        });
+        await billingRepository.verifyPayment(verifyPayload);
+      }
       setPaid(true);
     } catch (err) {
       if (err instanceof PaymentCancelledError) {

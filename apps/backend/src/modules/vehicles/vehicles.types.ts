@@ -9,6 +9,15 @@ export const VEHICLE_STATUSES: readonly VehicleStatus[] = [
     "available", "booked", "assigned", "maintenance", "scrap",
 ] as const;
 
+/**
+ * Derived, not a vehicles column — the payment/billing state of whichever
+ * booking currently holds this vehicle (status 'booked'/'assigned'). 'pending_payment'
+ * and 'confirmed' mirror bookings.status for a rider who hasn't been picked
+ * up yet; 'active'/'due'/'paused' mirror bookings.plan_status once the
+ * rental is underway. null when no live booking holds the vehicle.
+ */
+export type VehiclePaymentStatus = "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
+
 export interface VehicleRow {
     id: string;
     name: string;
@@ -30,6 +39,7 @@ export interface VehicleRow {
     insurance_expiry: string | null;
     created_at: string;
     updated_at: string | null;
+    payment_status: VehiclePaymentStatus;
 }
 
 export interface VehiclePhotoRow {

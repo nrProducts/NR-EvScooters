@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { KycBanner } from '../components/KycBanner';
@@ -49,7 +49,21 @@ export default function HomeScreen() {
   const [maintenanceNotice, setMaintenanceNotice] = useState<ApiMaintenanceNotice | null>(null);
   const [showReturn, setShowReturn] = useState(false);
   const { cancelling, cancelBooking } = useCancelBooking();
+  const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const insets = useSafeAreaInsets();
+
+  // has_active_booking/has_active_rental can change server-side without any
+  // action the rider took here — an admin releasing a vehicle that was still
+  // holding their booking, a sweep job expiring it, etc. The store's profile
+  // is otherwise only ever refreshed after the rider's own mutations (booking
+  // created, KYC submitted...), so without this, Home keeps showing a
+  // pending-booking card (with its "Cancel Booking" action) that the server
+  // no longer agrees with until something unrelated happens to refresh it.
+  useFocusEffect(
+    useCallback(() => {
+      void refreshProfile();
+    }, [refreshProfile]),
+  );
 
   // Loaded even mid-rental: ActiveRentalCard reuses the featured model's
   // artwork, since the rental payload carries no image of its own.

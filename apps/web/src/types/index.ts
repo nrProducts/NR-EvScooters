@@ -198,6 +198,12 @@ export interface Vehicle {
   insurance_expiry: string | null;
   created_at: string;
   updated_at: string | null;
+  /**
+   * Billing state of whichever booking currently holds this vehicle —
+   * 'pending_payment'/'confirmed' before pickup, 'active'/'due'/'paused'
+   * once the rental's underway. null when no live booking holds it.
+   */
+  payment_status: "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
 }
 
 export interface VehicleDocument {
