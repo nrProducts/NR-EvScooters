@@ -8,9 +8,8 @@ import { Badge } from './ui/Badge';
 import { COLORS } from '../constants/theme';
 import { KYC_STATUS_LABEL, KYC_STATUS_TONE } from '../constants/status';
 import {
-  Menu, X, User, LogOut, LayoutDashboard, Users, Bike, CreditCard,
-  ArrowLeftRight, BarChart3, Settings, Home, LifeBuoy, Mail, Phone,
-  ShieldCheck, ChevronRight, FileCheck, Bell, PackageCheck, History
+  Menu, X, User, LogOut, Bike, BatteryCharging, CreditCard,
+  Home, LifeBuoy, Mail, Phone, ShieldCheck, ChevronRight, Bell, History
 } from 'lucide-react-native';
 
 const DRAWER_WIDTH = Math.min(300, Dimensions.get('window').width * 0.8);
@@ -24,23 +23,11 @@ interface NavItem {
   route: string;
 }
 
-const ADMIN_NAV: NavItem[] = [
-  { label: 'Dashboard', icon: LayoutDashboard, route: '/dashboard' },
-  { label: 'Manage Users', icon: Users, route: '/users' },
-  { label: 'KYC Review', icon: FileCheck, route: '/kyc-review' },
-  { label: 'Manage Vehicles', icon: Bike, route: '/vehicles' },
-  { label: 'Pickup Queue', icon: PackageCheck, route: '/bookings-pickup' },
-  { label: 'Support Requests', icon: LifeBuoy, route: '/support-review' },
-  { label: 'Plans', icon: CreditCard, route: '/plans' },
-  { label: 'Assign Vehicles', icon: ArrowLeftRight, route: '/assign' },
-  { label: 'Reports', icon: BarChart3, route: '/reports' },
-  { label: 'Settings', icon: Settings, route: '/settings' },
-];
-
 const USER_NAV: NavItem[] = [
   { label: 'Home', icon: Home, route: '/home' },
   { label: 'My Scooter', icon: Bike, route: '/my-scooter' },
   { label: 'Billing', icon: CreditCard, route: '/billing' },
+  { label: 'Battery Stations', icon: BatteryCharging, route: '/battery-stations' },
   { label: 'Booking History', icon: History, route: '/booking-history' },
   { label: 'KYC Verification', icon: ShieldCheck, route: '/kyc' },
   { label: 'Support', icon: LifeBuoy, route: '/support' },
@@ -70,10 +57,6 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   const { count: unreadNotifications } = useUnreadNotificationCount();
   const insets = useSafeAreaInsets();
 
-  // Staff = anything other than a plain rider. The server enforces this too;
-  // hiding the link is only so riders aren't shown doors they can't open.
-  const isAdmin = profile?.is_admin ?? false;
-  const isStaff = isAdmin || (profile?.roles ?? []).some(r => r !== 'rider');
   // "My Scooter"/"My Plan" only make sense once a booking or rental exists.
   // has_active_booking excludes 'fulfilled' by design (see bookings.types.ts)
   // — the moment a booking is picked up, has_active_rental takes over as the
@@ -81,10 +64,9 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   // when the rider needs it most.
   const hasActiveBooking = profile?.has_active_booking ?? false;
   const hasActiveRental = profile?.has_active_rental ?? false;
-  const riderNav = USER_NAV.filter(
+  const navItems = USER_NAV.filter(
     item => (item.route === '/my-scooter' || item.route === '/billing') ? (hasActiveBooking || hasActiveRental) : true,
   );
-  const navItems = isStaff ? ADMIN_NAV : riderNav;
 
   /** Mount first, animate second — see the effect below for why. */
   const openDrawer = () => {
@@ -219,7 +201,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
               </View>
               <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">NR FleetHub</Text>
               <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5">
-                {isStaff ? 'Admin Console' : 'Rider App'}
+                Rider App
               </Text>
             </View>
 
@@ -291,10 +273,13 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
                 <User size={28} color={COLORS.primary} />
               </View>
               <Text style={{ color: COLORS.textPrimary }} className="text-base font-extrabold">{profile.full_name}</Text>
-              <View className="flex-row items-center mt-1 px-2.5 py-1 rounded-full" style={{ backgroundColor: isAdmin ? COLORS.primary + '1A' : COLORS.secondary + '30' }}>
+              {/* Static now that the app is rider-only. Kept as the visual
+                  anchor for the avatar block — the badge that actually varies
+                  (KYC status) sits a few rows below. */}
+              <View className="flex-row items-center mt-1 px-2.5 py-1 rounded-full" style={{ backgroundColor: COLORS.secondary + '30' }}>
                 <ShieldCheck size={12} color={COLORS.primary} />
                 <Text style={{ color: COLORS.primaryPressed }} className="text-[10px] font-bold uppercase tracking-wider ml-1">
-                  {isAdmin ? 'Admin' : isStaff ? 'Staff' : 'Rider'}
+                  Rider
                 </Text>
               </View>
             </View>
@@ -330,7 +315,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
               <Badge label={KYC_STATUS_LABEL[profile.kyc_status]} tone={KYC_STATUS_TONE[profile.kyc_status]} />
             </View>
 
-            {!isStaff && !profile.can_rent ? (
+            {!profile.can_rent ? (
               <TouchableOpacity
                 onPress={() => { setProfileOpen(false); router.push('/kyc'); }}
                 accessibilityRole="button"

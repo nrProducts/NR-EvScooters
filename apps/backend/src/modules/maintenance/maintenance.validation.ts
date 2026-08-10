@@ -13,6 +13,13 @@ export const listMaintenanceQuery = z.object({
     vehicleId: z.string().uuid().optional(),
 });
 
+/**
+ * Same shape as the staff filters above, but a different endpoint: the rider's
+ * results are additionally scoped to vehicles they rented, from their pickup
+ * onward. See getMyMaintenanceHistory.
+ */
+export const myMaintenanceHistoryQuery = listMaintenanceQuery;
+
 export const createMaintenanceBody = z.object({
     vehicle_id: z.string().uuid("Select a vehicle."),
     description: z.string().trim().min(3, "Describe the issue.").max(1000),

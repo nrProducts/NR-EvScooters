@@ -31,15 +31,6 @@ export interface SubscriptionPlan {
   billingStatus: 'paid' | 'past_due';
 }
 
-export interface MaintenanceTicket {
-  id: string;
-  scooterId: string;
-  category: 'Brake Noise' | 'Battery Draining Fast' | 'Tire Puncture' | 'Other';
-  description: string;
-  status: 'reported' | 'in_progress' | 'resolved';
-  date: string;
-}
-
 export interface UserAccount {
   name: string;
   email: string;
@@ -55,7 +46,6 @@ export interface SubscriptionState {
   user: UserAccount | null;
   telemetry: Telemetry;
   stations: SwapStation[];
-  tickets: MaintenanceTicket[];
   adminScooterLogs: { [scooterId: string]: Telemetry }; // administrative tracking
   
   // Actions
@@ -68,8 +58,7 @@ export interface SubscriptionState {
   payRentBill: (amount: number) => void;
   addWalletFunds: (amount: number) => void;
   modifySubscription: (planName: string, monthlyCost: number) => void;
-  submitMaintenanceTicket: (category: 'Brake Noise' | 'Battery Draining Fast' | 'Tire Puncture' | 'Other', description: string) => void;
-  
+
   // Admin / Staff Actions
   toggleRemoteImmobilization: (scooterId: string) => void;
   applyBillingPenalty: (scooterId: string, amount: number) => void;
@@ -103,10 +92,7 @@ export const useScooterStore = create<SubscriptionState>((set, get) => ({
   user: null,
   telemetry: initialTelemetry,
   stations: initialStations,
-  tickets: [
-    { id: 'TKT-991', scooterId: 'EV-SUB-8812', category: 'Brake Noise', description: 'Left handle brake squeals when applying high pressure.', status: 'resolved', date: '2026-06-12' }
-  ],
-  
+
   // High fidelity tracking registry for administrative control
   adminScooterLogs: {
     'EV-SUB-8812': initialTelemetry,
@@ -216,21 +202,6 @@ export const useScooterStore = create<SubscriptionState>((set, get) => ({
         }
       };
     });
-  },
-
-  submitMaintenanceTicket: (category, description) => {
-    const newTicket: MaintenanceTicket = {
-      id: `TKT-${Math.floor(Math.random() * 900) + 100}`,
-      scooterId: get().telemetry.scooterId,
-      category,
-      description,
-      status: 'reported',
-      date: new Date().toISOString().split('T')[0]
-    };
-
-    set((state) => ({
-      tickets: [newTicket, ...state.tickets]
-    }));
   },
 
   // ADMIN OPERATIONS

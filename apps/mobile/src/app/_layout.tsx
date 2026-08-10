@@ -4,6 +4,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";
 import { useAuthStore } from "../store/useAuthStore";
 import { userRepository } from "../services";
@@ -14,23 +15,40 @@ import { COLORS } from "../constants/theme";
 import "../../global.css";
 
 /**
- * Route gating is a convenience, not a security control: every one of these
- * screens is also enforced server-side by requireRole/requireAdmin. A rider
- * who forced their way to /users would see an empty list and 403s.
+ * This app is rider-only — the admin/staff console is apps/web. Every account
+ * that signs in here follows the rider flow, including staff ones; there is no
+ * privileged surface left to gate.
+ *
+ * "booking" covers booking/[modelId] and booking/billing, and
+ * "battery-stations" covers both its index and [id] — Expo Router reports a
+ * route's top-level segment name, not the file's bracketed param.
  */
-const STAFF_ROUTES = [
-  "dashboard", "users", "vehicles", "plans", "assign", "reports", "settings", "kyc-review",
-  "notifications", "bookings-pickup", "support-review",
-];
-// "booking" covers booking/[modelId] and booking/billing — Expo
-// Router reports a dynamic route's top-level segment name, not the file's
-// bracketed param.
 const RIDER_ROUTES = [
   "home", "my-scooter", "my-plan", "support", "kyc", "kyc-intro",
   "browse-vehicles", "booking", "notifications", "booking-history",
+  "battery-stations",
 ];
 // Screens reachable while signed OUT (the login surface).
-const AUTH_ROUTES = ["index", "otp-verify", "admin-login", "auth-callback"];
+const AUTH_ROUTES = ["index", "otp-verify", "auth-callback"];
+
+/**
+ * Query cache for the feature modules that use React Query (currently
+ * battery-stations). Created once at module scope, not per render, so the
+ * cache survives every re-render of the root layout. The older screens still
+ * use their own useX hooks over the repositories — this is additive, not a
+ * migration.
+ */
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // A phone loses connectivity constantly; refetching when the app comes
+      // back to the foreground is what makes an admin's change show up
+      // without the rider restarting anything.
+      refetchOnWindowFocus: true,
+      staleTime: 60_000,
+    },
+  },
+});
 
 /**
  * With no mock mode, a build missing its EXPO_PUBLIC_* values can do nothing at
@@ -119,7 +137,7 @@ export default function RootLayout() {
     const atAuthScreen = segs.length === 0 || AUTH_ROUTES.includes(current);
 
     if (!session) {
-      // Signed out: allow the login surface (phone, OTP, admin), bounce anything else.
+      // Signed out: allow the login surface (phone, OTP), bounce anything else.
       if (!atAuthScreen) router.replace("/");
       return;
     }
@@ -134,15 +152,6 @@ export default function RootLayout() {
     const needsProfile = !profile.profile_completed;
     if (needsProfile) {
       if (current !== "profile-setup") router.replace("/profile-setup");
-      return;
-    }
-
-    const isStaff = profile.is_admin || profile.roles.some((r) => r !== "rider");
-
-    if (isStaff) {
-      if (atAuthScreen || current === "profile-setup" || !STAFF_ROUTES.includes(current)) {
-        router.replace("/dashboard");
-      }
       return;
     }
 
@@ -176,16 +185,18 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      {/* Required by KeyboardAwareScrollView on every form screen. Android is
-          edge-to-edge from SDK 54, so the window no longer resizes for the
-          keyboard and plain KeyboardAvoidingView can't see it. */}
-      <KeyboardProvider>
-        <StatusBar style="dark" backgroundColor="#F8FAFC" />
-        <Stack screenOptions={{ headerShown: false }} />
-        {/* Every confirmAction/notify call in the app surfaces here. */}
-        <DialogHost />
-      </KeyboardProvider>
-    </SafeAreaProvider>
+    <QueryClientProvider client={queryClient}>
+      <SafeAreaProvider>
+        {/* Required by KeyboardAwareScrollView on every form screen. Android is
+            edge-to-edge from SDK 54, so the window no longer resizes for the
+            keyboard and plain KeyboardAvoidingView can't see it. */}
+        <KeyboardProvider>
+          <StatusBar style="dark" backgroundColor="#F8FAFC" />
+          <Stack screenOptions={{ headerShown: false }} />
+          {/* Every confirmAction/notify call in the app surfaces here. */}
+          <DialogHost />
+        </KeyboardProvider>
+      </SafeAreaProvider>
+    </QueryClientProvider>
   );
 }

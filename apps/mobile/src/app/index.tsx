@@ -9,9 +9,9 @@ import { isValidPhone, toE164 } from '../lib/authValidation';
 import { Bike, Phone, ArrowRight } from 'lucide-react-native';
 
 /**
- * Primary rider login = phone + OTP. Google is offered as a secondary /
- * recovery method. Admins get NO visible entry point here (there is a hidden
- * long-press on the logo -> /admin-login) so riders never see an admin option.
+ * Rider login = phone + OTP. Google is offered as a secondary / recovery
+ * method. There is no staff sign-in here: the admin console is apps/web, and
+ * this app is rider-only.
  */
 export default function LoginScreen() {
   const router = useRouter();
@@ -67,21 +67,14 @@ export default function LoginScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <View className="flex-1 px-6 justify-center py-16 items-center">
-        {/* Brand - long-press the logo to reach admin sign-in (hidden from riders). */}
         <View className="items-center mb-10">
-          <TouchableOpacity
-            activeOpacity={1}
-            delayLongPress={800}
-            onLongPress={() => router.push('/admin-login')}
+          <View
+            className="w-16 h-16 rounded-3xl items-center justify-center mb-4"
+            style={{ backgroundColor: COLORS.primary }}
             accessibilityLabel="NR FleetHub"
           >
-            <View
-              className="w-16 h-16 rounded-3xl items-center justify-center mb-4"
-              style={{ backgroundColor: COLORS.primary }}
-            >
-              <Bike size={32} color="#FFF" />
-            </View>
-          </TouchableOpacity>
+            <Bike size={32} color="#FFF" />
+          </View>
           <Text style={{ color: COLORS.textPrimary }} className="text-3xl font-black tracking-tight text-center">
             NR <Text style={{ color: COLORS.primary }}>FleetHub</Text>
           </Text>

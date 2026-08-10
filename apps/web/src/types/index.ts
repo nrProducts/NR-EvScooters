@@ -156,7 +156,7 @@ export interface PickupBooking {
   created_at: string;
   vehicle_model: { id: string; name: string } | null;
   station: { id: string; name: string; code: string; lat: number; lng: number } | null;
-  plan: { id: string; name: string; billing_cycle: string; price: number } | null;
+  plan: { id: string; name: string; billing_cycle: string; price: number; duration_days: number } | null;
   rider: { id: string; full_name: string; phone: string | null };
   /** The physical unit already reserved by allocate_vehicle_for_booking(), if any. */
   vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;

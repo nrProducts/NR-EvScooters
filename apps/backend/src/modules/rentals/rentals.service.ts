@@ -21,6 +21,11 @@ const RETURN_COLUMNS = `
     days_late, late_penalty_amount, late_fee_per_day
 `;
 
+/** The plan snapshot frozen at pickup (20260804100000). */
+const PLAN_PERIOD_COLUMNS = `
+    plan_id, plan_duration_days, plan_price_at_pickup, expires_at
+`;
+
 /**
  * ⚠️ Every field on RentalView must appear in this string. TypeScript CANNOT
  * check it — the select is an untyped template string and the result is
@@ -30,7 +35,8 @@ const RETURN_COLUMNS = `
 const RENTAL_COLUMNS = `
     id, status, started_at, ended_at, booking_id,
     ${RETURN_COLUMNS},
-    vehicles(id, name, registration_number, battery_percentage),
+    ${PLAN_PERIOD_COLUMNS},
+    vehicles(id, name, registration_number, battery_percentage, next_service_due_date),
     bookings(
         plans(id, name, billing_cycle, price),
         stations(id, name, code)
@@ -39,12 +45,13 @@ const RENTAL_COLUMNS = `
 
 /**
  * Same warning as RENTAL_COLUMNS — and with higher stakes: requireActiveRental
- * reads through this, so omitting return_due_at here would make every
- * late-return penalty silently compute as zero.
+ * reads through this, so omitting return_due_at or expires_at here would make
+ * every late-return penalty silently compute as zero.
  */
 const ADMIN_RENTAL_COLUMNS = `
     id, status, started_at, ended_at, start_battery_pct, end_battery_pct, fare, vehicle_id, booking_id,
     ${RETURN_COLUMNS},
+    ${PLAN_PERIOD_COLUMNS},
     users(id, full_name, phone),
     vehicles(id, name, registration_number, battery_percentage)
 `;
@@ -61,14 +68,35 @@ export function returnDeadlineFor(at: Date): Date {
     return due;
 }
 
+/**
+ * When a plan bought on `startedAt` runs out. Day 1 is the pickup day, so a
+ * 30-day plan runs through the end of day 30 — not day 31. Mirrors the
+ * backfill arithmetic in 20260804100000_plan_period_and_rental_expiry.sql.
+ */
+export function planExpiryFor(startedAt: Date, durationDays: number): Date {
+    const expires = new Date(startedAt);
+    expires.setDate(expires.getDate() + durationDays - 1);
+    return returnDeadlineFor(expires);
+}
+
+/**
+ * The rider's real deadline. The plan's own expiry is the default; an early
+ * return request overrides it with the (necessarily earlier) request-day
+ * deadline. requestReturn clamps to expires_at when writing return_due_at, so
+ * this can never move a deadline later than the plan allowed.
+ */
+export function effectiveDueAt(row: { return_due_at: string | null; expires_at: string | null }): string | null {
+    return row.return_due_at ?? row.expires_at;
+}
+
 export interface LateReturnCharge {
     /** Whole calendar days the handover day is past the due day; 0 when on time. */
     daysLate: number;
     isLate: boolean;
     feePerDay: number;
     penaltyAmount: number;
-    /** false when staff close a ride the rider never requested to return. */
-    hadRequest: boolean;
+    /** false when the rental had no deadline at all — neither a return request nor a plan expiry. */
+    hadDeadline: boolean;
 }
 
 /**
@@ -77,9 +105,13 @@ export interface LateReturnCharge {
  * 00:30 the next morning is 1. That is deliberate under a per-day fee ("you
  * kept it into another day") and is what the rider-facing warning states.
  *
- * A null/unparseable due date means there was no return request at all —
- * staff closing a ride the rider never asked to end, or a force-end. Those
- * must NOT be retro-penalised, so this fails open with a zero charge.
+ * Callers pass effectiveDueAt(rental), so this now settles plan overrun as
+ * well as a missed return request — the same fee either way, deliberately.
+ *
+ * A null/unparseable due date means the rental had NO deadline: no return
+ * request and no plan to expire (a rental created outside the pickup flow, or
+ * one predating 20260804100000 with no booking to backfill from). Those must
+ * NOT be retro-penalised, so this fails open with a zero charge.
  *
  * Exported so the service and the tests exercise the same rule, same reason
  * computeCancellationCharge is exported from bookings.service.ts. `now` is
@@ -92,12 +124,12 @@ export function computeLateReturnPenalty(input: {
     const feePerDay = LATE_RETURN_FEE_PER_DAY;
 
     if (!input.returnDueAt) {
-        return { daysLate: 0, isLate: false, feePerDay, penaltyAmount: 0, hadRequest: false };
+        return { daysLate: 0, isLate: false, feePerDay, penaltyAmount: 0, hadDeadline: false };
     }
 
     const due = new Date(input.returnDueAt);
     if (Number.isNaN(due.getTime())) {
-        return { daysLate: 0, isLate: false, feePerDay, penaltyAmount: 0, hadRequest: false };
+        return { daysLate: 0, isLate: false, feePerDay, penaltyAmount: 0, hadDeadline: false };
     }
 
     const dueDay = new Date(due);
@@ -115,7 +147,7 @@ export function computeLateReturnPenalty(input: {
         isLate: daysLate > 0,
         feePerDay,
         penaltyAmount: Math.round(daysLate * feePerDay * 100) / 100,
-        hadRequest: true,
+        hadDeadline: true,
     };
 }
 
@@ -143,7 +175,24 @@ function toReturnView(row: RawReturnFields) {
     };
 }
 
-interface RawRentalRow extends RawReturnFields {
+/** The pickup-time plan snapshot, shared by both raw row shapes. */
+interface RawPlanPeriodFields {
+    plan_id: string | null;
+    plan_duration_days: number | null;
+    plan_price_at_pickup: number | string | null;
+    expires_at: string | null;
+}
+
+function toPlanPeriodView(row: RawPlanPeriodFields) {
+    return {
+        plan_id: row.plan_id ?? null,
+        plan_duration_days: row.plan_duration_days ?? null,
+        plan_price_at_pickup: row.plan_price_at_pickup == null ? null : Number(row.plan_price_at_pickup),
+        expires_at: row.expires_at ?? null,
+    };
+}
+
+interface RawRentalRow extends RawReturnFields, RawPlanPeriodFields {
     id: string;
     status: RentalView["status"];
     started_at: string;
@@ -155,23 +204,28 @@ interface RawRentalRow extends RawReturnFields {
 
 function toRentalView(row: RawRentalRow): RentalView {
     const booking = unwrap<{ plans: unknown; stations: unknown }>(row.bookings);
-    const vehicle = unwrap<{ id: string; name: string; registration_number: string; battery_percentage: number }>(
-        row.vehicles,
-    );
+    const vehicle = unwrap<NonNullable<RentalView["vehicle"]>>(row.vehicles);
     return {
         id: row.id,
         status: row.status,
         started_at: row.started_at,
         ended_at: row.ended_at,
         booking_id: row.booking_id,
-        vehicle: vehicle ? { ...vehicle, battery_percentage: Number(vehicle.battery_percentage) } : null,
+        vehicle: vehicle
+            ? {
+                ...vehicle,
+                battery_percentage: Number(vehicle.battery_percentage),
+                next_service_due_date: vehicle.next_service_due_date ?? null,
+            }
+            : null,
         plan: booking ? unwrap(booking.plans) : null,
         station: booking ? unwrap(booking.stations) : null,
         ...toReturnView(row),
+        ...toPlanPeriodView(row),
     };
 }
 
-interface RawAdminRentalRow extends RawReturnFields {
+interface RawAdminRentalRow extends RawReturnFields, RawPlanPeriodFields {
     id: string;
     status: RentalView["status"];
     started_at: string;
@@ -200,6 +254,7 @@ function toAdminRentalRow(row: RawAdminRentalRow): AdminRentalRow {
         rider: unwrap(row.users),
         vehicle: vehicle ? { ...vehicle, battery_percentage: Number(vehicle.battery_percentage) } : null,
         ...toReturnView(row),
+        ...toPlanPeriodView(row),
     };
 }
 
@@ -239,7 +294,7 @@ export async function requestReturn(
 ): Promise<RentalView> {
     const { data: existing, error: fetchError } = await supabaseAdmin
         .from("rentals")
-        .select("id, user_id, status, return_requested_at")
+        .select("id, user_id, status, return_requested_at, expires_at")
         .eq("id", rentalId)
         .maybeSingle();
 
@@ -254,7 +309,12 @@ export async function requestReturn(
     }
 
     const now = new Date();
-    const dueAt = returnDeadlineFor(now);
+    // Clamped to the plan's expiry: a rider already 5 days past expires_at
+    // would otherwise request a return and get a deadline of TODAY, wiping
+    // out the overrun they've already accrued.
+    const expiresAt = existing.expires_at ? new Date(existing.expires_at) : null;
+    const requestDeadline = returnDeadlineFor(now);
+    const dueAt = expiresAt && expiresAt < requestDeadline ? expiresAt : requestDeadline;
 
     const { data: updated, error } = await supabaseAdmin
         .from("rentals")
@@ -370,9 +430,13 @@ export async function getRentalById(id: string): Promise<AdminRentalRow> {
  * completeRide and moveRideToMaintenance so the two can't drift — otherwise
  * "return it damaged" would be a free late-fee bypass, and those rows would
  * keep days_late null forever.
+ *
+ * Settles against effectiveDueAt, not return_due_at alone: a rider who never
+ * requested a return but sat on the scooter past their plan's expiry is late
+ * too. Before 20260804100000 that case was silently free.
  */
 function settlementPayload(before: RawAdminRentalRow) {
-    const charge = computeLateReturnPenalty({ returnDueAt: before.return_due_at });
+    const charge = computeLateReturnPenalty({ returnDueAt: effectiveDueAt(before) });
     return {
         payload: {
             days_late: charge.daysLate,
@@ -465,7 +529,7 @@ export async function completeRide(
             end_battery_pct: rental.end_battery_pct,
             days_late: charge.daysLate,
             late_penalty_amount: charge.penaltyAmount,
-            had_return_request: charge.hadRequest,
+            had_deadline: charge.hadDeadline,
         },
     });
 
@@ -553,7 +617,7 @@ export async function moveRideToMaintenance(
             description: input.description,
             days_late: charge.daysLate,
             late_penalty_amount: charge.penaltyAmount,
-            had_return_request: charge.hadRequest,
+            had_deadline: charge.hadDeadline,
         },
     });
 

@@ -40,7 +40,7 @@ describe('MockAuthRepository â€” phone OTP', () => {
   });
 });
 
-describe('MockAuthRepository â€” Google & demo', () => {
+describe('MockAuthRepository â€” Google', () => {
   let auth: MockAuthRepository;
   beforeEach(() => {
     resetMockDb();
@@ -52,12 +52,4 @@ describe('MockAuthRepository â€” Google & demo', () => {
     expect(ref.email).toBe('rider@fleet.com');
   });
 
-  it('keeps demo email login working (admin account)', async () => {
-    const ref = await auth.signIn('admin@fleet.com', '');
-    expect(ref.email).toBe('admin@fleet.com');
-  });
-
-  it('still rejects an unknown demo email', async () => {
-    await expect(auth.signIn('nobody@nowhere.com', '')).rejects.toBeInstanceOf(ApiError);
-  });
 });

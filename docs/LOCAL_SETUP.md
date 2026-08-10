@@ -198,3 +198,4 @@ stack. The only things you lose without the local stack:
 - [`docs/auth/README.md`](./auth/README.md) — auth architecture
 - [`docs/auth/DEVELOPMENT.md`](./auth/DEVELOPMENT.md) — auth-specific local setup (OTP test numbers, MSG91, Google Sign-In)
 - [`users-and-kyc.md`](../users-and-kyc.md) — users & KYC schema/backend implementation
+- [`docs/battery-stations.md`](./battery-stations.md) — battery swap stations: schema, APIs, rider map, admin console, and the `*_MAP_STYLE_URL` variables

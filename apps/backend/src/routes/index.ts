@@ -6,6 +6,7 @@ import authRoutes from "../modules/auth/auth.routes";
 import { riderKycRouter, adminKycRouter } from "../modules/kyc/kyc.routes";
 import bookingsRoutes from "../modules/bookings/bookings.routes";
 import stationsRoutes from "../modules/stations/stations.routes";
+import { batteryStationsRouter, adminBatteryStationsRouter } from "../modules/battery-stations/battery-stations.routes";
 import { riderNotificationsRouter, adminNotificationsRouter } from "../modules/notifications/notifications.routes";
 import rentalsRoutes from "../modules/rentals/rentals.routes";
 import maintenanceRoutes from "../modules/maintenance/maintenance.routes";
@@ -42,6 +43,10 @@ router.use("/vehicles", vehiclesRoutes);
 router.use("/vehicle-models", vehicleCatalogRoutes);
 router.use("/bookings", bookingsRoutes);
 router.use("/stations", stationsRoutes);
+// Battery swap stations — a separate network from /stations (pickup points).
+// Mounted before the admin router so neither path can shadow the other.
+router.use("/battery-stations", batteryStationsRouter);
+router.use("/admin/battery-stations", adminBatteryStationsRouter);
 router.use("/rentals", rentalsRoutes);
 router.use("/maintenance", maintenanceRoutes);
 // Mounted before /invoices, same reasoning as /users/me/kyc before /users.

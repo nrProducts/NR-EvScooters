@@ -8,7 +8,7 @@ import {
     AuthContext, KycDocType, KycStatus, MANDATORY_KYC_DOC_TYPES, Paginated, VerificationStatus,
 } from "../../types";
 import { kycCompletionPercent } from "../users/users.service";
-import { notifyUser } from "../notifications/notifications.service";
+import { notifyAdmins, notifyUser } from "../notifications/notifications.service";
 import {
     assertValidFile, buildStoragePath, createSignedUrl, pathBelongsToUser,
     removeKycFiles, UploadedFile, uploadKycFile,
@@ -375,6 +375,14 @@ export async function submitKyc(userId: string, actor: AuthContext, req?: Reques
         entityId: userId,
         after: { submitted_at: stamp, document_count: docs.length },
         req,
+    });
+
+    const { data: rider } = await supabaseAdmin.from("users").select("full_name").eq("id", userId).maybeSingle();
+    await notifyAdmins({
+        template: "kyc_review_needed",
+        title: "KYC Review Needed",
+        body: rider?.full_name ? `${rider.full_name} submitted documents for review.` : "A rider submitted documents for review.",
+        screen: "kyc",
     });
 
     // kyc_status is maintained by trg_sync_user_kyc_status, so re-read rather

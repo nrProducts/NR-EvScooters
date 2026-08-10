@@ -2,7 +2,7 @@ import { supabaseAdmin } from "../../config/supabase";
 import { businessRule, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
-import { notifyUser } from "../notifications/notifications.service";
+import { notifyAdmins, notifyUser } from "../notifications/notifications.service";
 import { assignVehicleToUser, scrapVehicle } from "../vehicles/vehicles.service";
 import { completeRide } from "../rentals/rentals.service";
 import { resumePlanForBooking } from "../plans/plans.service";
@@ -10,7 +10,8 @@ import { AuthContext, Paginated } from "../../types";
 import {
     AdminMaintenanceRow, AssignTempVehicleInput, CreateMaintenanceInput, ListMaintenanceFilters,
     MaintenanceNoticeStage, MaintenanceNoticeView, MaintenanceOutcome, MaintenanceStatus, MaintenanceView,
-    NotRepairableInput, QuickFixInput, ReassignAfterScrapInput, UpdateMaintenanceInput,
+    MyMaintenanceHistoryFilters, NotRepairableInput, QuickFixInput, ReassignAfterScrapInput,
+    UpdateMaintenanceInput,
 } from "./maintenance.types";
 
 /**
@@ -85,30 +86,90 @@ function toAdminMaintenanceRow(row: RawAdminMaintenanceRow): AdminMaintenanceRow
     };
 }
 
+export interface RiderRental {
+    vehicle_id: string;
+    started_at: string;
+}
+
 /**
- * Maintenance events for vehicles this rider has personally rented — there's
- * no direct rider<->maintenance link in the schema (vehicle_maintenance is
- * reported by staff, not the rider), so this goes through the rider's own
- * rental history to find which vehicles are theirs to see history for.
+ * Turns the rider's rentals into the PostgREST `or=` filter that decides which
+ * maintenance tickets they may see: per vehicle, only tickets raised at or
+ * after their FIRST pickup of that unit.
+ *
+ * This is the whole access check for /me/history — the query runs as
+ * supabaseAdmin, so the vehicle_maintenance_admin_only RLS policy is bypassed
+ * and nothing else stands between a rider and other people's incident reports.
+ *
+ * Returns null when the rider has rented nothing, which callers must treat as
+ * "no results" rather than "no filter" — an empty or= string would match every
+ * row in the table.
+ *
+ * Exported for tests, same reason computeCancellationCharge is.
  */
-export async function getMyMaintenanceHistory(userId: string): Promise<MaintenanceView[]> {
-    const { data: rentals, error: rentalsError } = await supabaseAdmin
+export function buildOwnershipScope(rentals: RiderRental[]): string | null {
+    // Earliest pickup per vehicle — a rider who rented the same unit twice
+    // sees from the first time they had it.
+    const since = new Map<string, string>();
+    for (const r of rentals) {
+        const current = since.get(r.vehicle_id);
+        if (!current || r.started_at < current) since.set(r.vehicle_id, r.started_at);
+    }
+    if (since.size === 0) return null;
+
+    return [...since.entries()]
+        .map(([vehicleId, startedAt]) => `and(vehicle_id.eq.${vehicleId},created_at.gte.${startedAt})`)
+        .join(",");
+}
+
+/**
+ * Maintenance events for vehicles this rider has personally rented. There's no
+ * direct rider<->maintenance link in the schema (vehicle_maintenance is
+ * reported by staff, not the rider), so ownership is derived from the rider's
+ * own rental history.
+ *
+ * SCOPED PER VEHICLE TO THE RIDER'S PICKUP DATE. `description` is staff-authored
+ * free text about a specific incident, so returning every ticket on a vehicle
+ * the rider once had would show them another rider's damage report. Each
+ * vehicle therefore contributes only tickets raised at or after the rider's
+ * FIRST pickup of that unit.
+ *
+ * Deliberately a lower bound only, with no ceiling at ended_at:
+ * moveRideToMaintenance ends the rental AND opens the ticket in one flow, so an
+ * upper bound would race that write and hide the ticket for damage the rider
+ * themselves just reported.
+ */
+export async function getMyMaintenanceHistory(
+    userId: string,
+    filters: MyMaintenanceHistoryFilters,
+): Promise<Paginated<MaintenanceView>> {
+    let rentalsQuery = supabaseAdmin
         .from("rentals")
-        .select("vehicle_id")
+        .select("vehicle_id, started_at")
         .eq("user_id", userId);
 
-    if (rentalsError) throw rentalsError;
-    const vehicleIds = [...new Set((rentals ?? []).map((r) => r.vehicle_id as string))];
-    if (vehicleIds.length === 0) return [];
+    if (filters.vehicleId) rentalsQuery = rentalsQuery.eq("vehicle_id", filters.vehicleId);
 
-    const { data, error } = await supabaseAdmin
+    const { data: rentals, error: rentalsError } = await rentalsQuery;
+    if (rentalsError) throw rentalsError;
+
+    const ownershipFilter = buildOwnershipScope((rentals ?? []) as RiderRental[]);
+    if (!ownershipFilter) return paginate([], 0, filters);
+
+    const [from, to] = toRange(filters);
+    let query = supabaseAdmin
         .from("vehicle_maintenance")
-        .select(MAINTENANCE_COLUMNS)
-        .in("vehicle_id", vehicleIds)
-        .order("created_at", { ascending: false });
+        .select(MAINTENANCE_COLUMNS, { count: "exact" })
+        .or(ownershipFilter);
+
+    if (filters.status) query = query.eq("status", filters.status);
+
+    const { data, error, count } = await query
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
     if (error) throw error;
-    return ((data ?? []) as unknown as RawMaintenanceRow[]).map(toMaintenanceView);
+    const items = ((data ?? []) as unknown as RawMaintenanceRow[]).map(toMaintenanceView);
+    return paginate(items, count ?? 0, filters);
 }
 
 /**
@@ -207,6 +268,18 @@ export async function createMaintenanceTicket(
         entityId: ticket.id,
         after: { vehicle_id: input.vehicle_id, status: ticket.status },
     });
+
+    await notifyAdmins(
+        {
+            template: "maintenance_review_needed",
+            title: "Maintenance Ticket Reported",
+            body: ticket.vehicle
+                ? `${ticket.vehicle.name} (${ticket.vehicle.registration_number}) needs triage: ${input.description}`
+                : `A vehicle needs triage: ${input.description}`,
+            screen: "maintenance",
+        },
+        actor.id,
+    );
 
     return ticket;
 }

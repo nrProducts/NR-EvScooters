@@ -47,4 +47,30 @@ export const ENV = {
     get apiUrl(): string {
         return required('EXPO_PUBLIC_API_URL');
     },
+    /**
+     * MapLibre-compatible vector style for the Battery Stations map. Not in
+     * REQUIRED_ENV_VARS on purpose: the whole app must not refuse to start
+     * because one screen has no tiles. Empty string when unset — that screen
+     * renders a "map not configured" notice and keeps its station list usable.
+     */
+    get mapStyleUrl(): string {
+        return read('EXPO_PUBLIC_MAP_STYLE_URL') ?? '';
+    },
+    /**
+     * Photon-compatible geocoding endpoint, used to turn an area name typed
+     * into the map's search box ("Adyar") into coordinates so nearby stations
+     * can be recommended. Keyless by design, like the tile style.
+     *
+     * Optional, and for the same reason as mapStyleUrl: unset simply means the
+     * search box keeps matching station names and QIS IDs, which is what it
+     * did before area search existed.
+     *
+     * Photon specifically because it is built for type-ahead and accepts a
+     * lat/lon bias; Nominatim's usage policy explicitly discourages
+     * per-keystroke querying. Self-hosting Photon is the production answer if
+     * the public instance is too slow or too restrictive.
+     */
+    get geocodeUrl(): string {
+        return read('EXPO_PUBLIC_GEOCODE_URL') ?? '';
+    },
 };

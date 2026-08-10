@@ -1,14 +1,16 @@
 import type {
-  AccountStatus, BookingRefundStatus, BookingStatus, KycStatus, KycDocType, MaintenanceStatus,
-  RentalStatus, SupportPriority, SupportStatus, VerificationStatus, VehicleStatus,
+  BillingCycle, BookingRefundStatus, BookingStatus, KycStatus, KycDocType, MaintenanceStatus,
+  RentalStatus, SupportStatus, VerificationStatus, VehicleStatus,
 } from '../types/api';
 
 type Tone = 'success' | 'warning' | 'danger' | 'neutral' | 'primary';
 
-export const ACCOUNT_STATUS_TONE: Record<AccountStatus, Tone> = {
-  active: 'success',
-  inactive: 'neutral',
-  suspended: 'danger',
+/** The unit a plan's price is quoted in — "₹2499 / Month". */
+export const BILLING_CYCLE_LABEL: Record<BillingCycle, string> = {
+  daily: 'Day',
+  weekly: 'Week',
+  monthly: 'Month',
+  yearly: 'Year',
 };
 
 export const KYC_STATUS_TONE: Record<KycStatus, Tone> = {
@@ -100,20 +102,6 @@ export const SUPPORT_STATUS_LABEL: Record<SupportStatus, string> = {
   closed: 'Closed',
 };
 
-export const SUPPORT_PRIORITY_TONE: Record<SupportPriority, Tone> = {
-  low: 'neutral',
-  medium: 'primary',
-  high: 'warning',
-  urgent: 'danger',
-};
-
-export const SUPPORT_PRIORITY_LABEL: Record<SupportPriority, string> = {
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  urgent: 'Urgent',
-};
-
 export const REFUND_STATUS_TONE: Record<BookingRefundStatus, Tone> = {
   pending: 'warning',
   processed: 'success',
@@ -141,14 +129,6 @@ export const VEHICLE_STATUS_LABEL: Record<VehicleStatus, string> = {
   maintenance: 'In Maintenance',
   scrap: 'Retired',
 };
-
-export const initialsOf = (name: string): string =>
-  name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? '')
-    .join('') || '?';
 
 export const formatDate = (iso: string | null): string => {
   if (!iso) return '—';

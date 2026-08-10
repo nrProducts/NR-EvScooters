@@ -1,11 +1,9 @@
 import type {
-    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiBookingWithPlan, ApiDamage, ApiDeposit, ApiDocument, ApiInvoice,
-    ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe,
-    ApiNotification, ApiPaymentOrder, ApiPickupBooking, ApiReferralSummary, ApiRental, ApiSignedUrl,
-    ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
-    ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, CreateUserPayload,
-    KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
-    ReturnRequestPayload, RoleName, StatusAction, SupportStatus, UpdateSupportRequestPayload,
+    ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiInvoice, ApiKycSummary,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiReferralSummary,
+    ApiRental, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
+    ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, KycDocType,
+    ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
     UpdateUserPayload, VerifyPaymentPayload,
 } from '../types/api';
 
@@ -25,15 +23,6 @@ export interface UserRepository {
     updateMe(patch: UpdateUserPayload): Promise<ApiUserDetail>;
     uploadMyPhoto(photo: LocalFile): Promise<UploadPhotoResult>;
     myPhotoUrl(): Promise<ApiSignedUrl>;
-    list(params: ListUsersParams): Promise<Paginated<ApiUser>>;
-    get(id: string): Promise<ApiUserDetail>;
-    create(payload: CreateUserPayload): Promise<ApiUserDetail>;
-    update(id: string, patch: UpdateUserPayload): Promise<ApiUserDetail>;
-    remove(id: string): Promise<void>;
-    restore(id: string): Promise<ApiUserDetail>;
-    changeStatus(id: string, action: StatusAction, reason?: string): Promise<ApiUserDetail>;
-    getRoles(id: string): Promise<RoleName[]>;
-    setRoles(id: string, roles: RoleName[]): Promise<RoleName[]>;
     registerPushToken(token: string): Promise<void>;
 }
 
@@ -42,14 +31,6 @@ export interface NotificationRepository {
     unreadCount(): Promise<number>;
     markRead(id: string): Promise<ApiNotification>;
     markAllRead(): Promise<void>;
-}
-
-export interface KycQueueParams {
-    page?: number;
-    pageSize?: number;
-    search?: string;
-    status?: KycStatus;
-    docType?: KycDocType;
 }
 
 export interface UploadDocumentInput {
@@ -68,22 +49,12 @@ export interface UpdateDocumentInput {
 }
 
 export interface KycRepository {
-    // rider
     mine(): Promise<ApiKycSummary>;
     uploadMine(input: UploadDocumentInput): Promise<ApiDocument>;
     updateMine(documentId: string, input: UpdateDocumentInput): Promise<ApiDocument>;
     deleteMine(documentId: string): Promise<void>;
     myDocumentUrl(documentId: string, side: 'front' | 'back'): Promise<ApiSignedUrl>;
     submitMine(): Promise<ApiKycSummary>;
-
-    // staff
-    queue(params: KycQueueParams): Promise<Paginated<ApiKycQueueItem>>;
-    detail(userId: string): Promise<ApiKycDetail>;
-    reviewDocumentUrl(documentId: string, side: 'front' | 'back'): Promise<ApiSignedUrl>;
-    verifyDocument(documentId: string): Promise<ApiDocument>;
-    rejectDocument(documentId: string, reason: string): Promise<ApiDocument>;
-    approve(userId: string): Promise<ApiKycSummary>;
-    reject(userId: string, reason: string): Promise<ApiKycSummary>;
 }
 
 export interface VehicleCatalogRepository {
@@ -98,12 +69,6 @@ export interface VehicleCatalogRepository {
 export interface ReferralRepository {
     mine(): Promise<ApiReferralSummary>;
     redeem(code: string): Promise<void>;
-}
-
-export interface PickupQueueParams {
-    page?: number;
-    pageSize?: number;
-    stationId?: string;
 }
 
 export interface HistoryParams {
@@ -126,11 +91,6 @@ export interface BookingRepository {
     /** Rider-initiated pre-pickup cancellation. Returns the cancelled booking with its refund fields. */
     cancel(bookingId: string, reason?: string): Promise<ApiBooking>;
     nearestStation(lat: number, lng: number): Promise<ApiStation>;
-
-    // staff pickup/check-in
-    pickupQueue(params: PickupQueueParams): Promise<Paginated<ApiPickupBooking>>;
-    availableVehicles(bookingId: string): Promise<ApiAvailableVehicle[]>;
-    confirmPickup(bookingId: string, vehicleId: string): Promise<ApiPickupBooking>;
 }
 
 /**
@@ -162,27 +122,20 @@ export interface RentalRepository {
 }
 
 export interface MaintenanceRepository {
-    /** Maintenance events for vehicles the rider has personally rented. */
-    history(): Promise<Paginated<ApiMaintenanceRecord>>;
+    /**
+     * Maintenance events for vehicles the rider has personally rented, scoped
+     * server-side to tickets raised from their pickup onward. Pass `vehicleId`
+     * to narrow to a single scooter.
+     */
+    history(params?: MaintenanceHistoryParams): Promise<Paginated<ApiMaintenanceRecord>>;
     /** The rider's own currently-open displacement ticket, if any — drives the Home screen banner. */
     notice(): Promise<ApiMaintenanceNotice | null>;
-}
-
-export interface SupportQueueParams {
-    page?: number;
-    pageSize?: number;
-    status?: SupportStatus;
 }
 
 export interface SupportRepository {
     create(payload: CreateSupportRequestPayload): Promise<ApiSupportRequest>;
     /** The rider's own submitted requests, most recent first. */
     mine(params: HistoryParams): Promise<Paginated<ApiSupportRequest>>;
-
-    // staff
-    queue(params: SupportQueueParams): Promise<Paginated<ApiSupportQueueItem>>;
-    detail(id: string): Promise<ApiSupportQueueItem>;
-    update(id: string, patch: UpdateSupportRequestPayload): Promise<ApiSupportQueueItem>;
 }
 
 /** Identity of the signed-in account, before roles are resolved. */
@@ -203,10 +156,6 @@ export interface AuthRepository {
 
     // --- Google (secondary / recovery) ----------------------------------
     signInWithGoogle(): Promise<SessionRef>;
-
-    // --- email/password (admin surface + demo) --------------------------
-    signIn(email: string, password: string): Promise<SessionRef>;
-    sendPasswordReset(email: string): Promise<void>;
 
     signOut(): Promise<void>;
     /** Fires on external session changes (token refresh, expiry). */

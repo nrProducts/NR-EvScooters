@@ -57,6 +57,13 @@ export interface ListMaintenanceFilters {
     vehicleId?: string;
 }
 
+/**
+ * The rider-facing equivalent. Identical fields, but the service applies an
+ * ownership scope on top: only vehicles this rider rented, and only tickets
+ * raised from their pickup onward.
+ */
+export type MyMaintenanceHistoryFilters = ListMaintenanceFilters;
+
 export interface CreateMaintenanceInput {
     vehicle_id: string;
     description: string;

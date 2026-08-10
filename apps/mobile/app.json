@@ -41,6 +41,16 @@
         {
           "color": "#208AEF"
         }
+      ],
+      "@maplibre/maplibre-react-native",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow NR EV Scooters to use your location to show nearby battery swap stations and how far away they are.",
+          "locationWhenInUsePermission": "Allow NR EV Scooters to use your location to show nearby battery swap stations and how far away they are.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
+        }
       ]
     ],
     "experiments": {

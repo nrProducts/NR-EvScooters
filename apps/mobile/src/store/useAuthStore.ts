@@ -3,10 +3,7 @@ import { authRepository, userRepository } from '../services';
 import type { SessionRef } from '../services/types';
 import { setUnauthorizedHandler } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
-import { useFleetStore } from './useFleetStore';
 import type { ApiMe, RoleName } from '../types/api';
-
-const STAFF_ROLES: RoleName[] = ['staff', 'technician', 'station_manager', 'admin'];
 
 /**
  * Collapses overlapping sign-out triggers (e.g. two 401s arriving close
@@ -34,7 +31,6 @@ interface AuthState {
     requestOtp: (phone: string) => Promise<void>;
     verifyOtp: (phone: string, code: string) => Promise<void>;
     signInWithGoogle: () => Promise<void>;
-    signIn: (email: string, password: string) => Promise<void>;
     signOut: () => Promise<void>;
     markKycIntroSeen: () => void;
 }
@@ -79,8 +75,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         try {
             const profile = await userRepository.me();
             set({ profile, loadingProfile: false });
-            // SHIM: keeps the un-migrated mock screens alive.
-            useFleetStore.getState().bindAuthUser(profile.email);
         } catch (err) {
             const message = err instanceof ApiError ? err.message : 'Could not load your profile.';
             // 403 = valid token, unusable account (suspended or deleted). End
@@ -114,18 +108,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await get().refreshProfile();
     },
 
-    signIn: async (email, password) => {
-        set({ error: null });
-        const ref = await authRepository.signIn(email, password);
-        set({ session: ref });
-        await get().refreshProfile();
-    },
-
     signOut: async () => {
         if (signOutInFlight) return signOutInFlight;
         signOutInFlight = (async () => {
             await authRepository.signOut();
-            useFleetStore.getState().bindAuthUser(null);
             set({ session: null, profile: null, error: null, hasSeenKycIntro: false });
         })();
         try {
@@ -141,9 +127,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 // --- selectors -----------------------------------------------------------
 export const useIsAuthed = () => useAuthStore((s) => !!s.session);
 export const useRoles = (): RoleName[] => useAuthStore((s) => s.profile?.roles ?? []);
-export const useIsAdmin = () => useAuthStore((s) => s.profile?.is_admin ?? false);
-export const useIsStaff = () =>
-    useAuthStore((s) => (s.profile?.roles ?? []).some((r) => STAFF_ROLES.includes(r)));
 export const useCanRent = () => useAuthStore((s) => s.profile?.can_rent ?? false);
 /** pending_payment counts as active, same as confirmed. */
 export const useHasActiveBooking = () => useAuthStore((s) => s.profile?.has_active_booking ?? false);

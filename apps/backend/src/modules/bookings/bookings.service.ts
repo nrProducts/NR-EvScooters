@@ -5,6 +5,7 @@ import { writeAudit } from "../../common/audit";
 import { addDays } from "../../common/dates";
 import { notifyUser } from "../notifications/notifications.service";
 import { hasActiveRentalForUser } from "../users/users.service";
+import { planExpiryFor } from "../rentals/rentals.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { AuthContext, Paginated } from "../../types";
 import {
@@ -591,7 +592,13 @@ export async function confirmPickup(
     if (vehicle.model_id !== modelId) throw businessRule("This vehicle does not match the booked model.");
 
     const rider = unwrap<{ id: string; full_name: string; phone: string | null }>(bookingRow.users);
-    const plan = unwrap<{ id: string; duration_days: number; deposit_amount: number }>(bookingRow.plans);
+    // The plan is FROZEN onto the rental here rather than read back through
+    // booking_id -> bookings -> plans, so a later repricing can't rewrite this
+    // rental's deadline or its settled penalty (20260804100000). A booking
+    // with no plan leaves those fields null — that rental simply never expires.
+    const plan = unwrap<{ id: string; price: number; duration_days: number; deposit_amount: number }>(bookingRow.plans);
+    const startedAt = new Date();
+    const expiresAt = plan ? planExpiryFor(startedAt, plan.duration_days) : null;
 
     const { data: rental, error: rentalError } = await supabaseAdmin
         .from("rentals")
@@ -600,7 +607,11 @@ export async function confirmPickup(
             vehicle_id: vehicleId,
             booking_id: bookingId,
             status: "active",
-            started_at: new Date().toISOString(),
+            started_at: startedAt.toISOString(),
+            plan_id: plan?.id ?? null,
+            plan_duration_days: plan?.duration_days ?? null,
+            plan_price_at_pickup: plan?.price ?? null,
+            expires_at: expiresAt?.toISOString() ?? null,
         })
         .select("id")
         .single();
@@ -615,8 +626,7 @@ export async function confirmPickup(
     // Plan/billing rental period starts HERE — at vehicle assignment, never
     // at payment time, per spec. duration_days is snapshotted so a later
     // admin edit to the plan template can't reshape an already-active plan.
-    const now = new Date();
-    const nowIso = now.toISOString();
+    const nowIso = startedAt.toISOString();
     const today = nowIso.slice(0, 10);
     const durationDays = plan?.duration_days ?? 7;
     const nextDueAt = addDays(today, durationDays);
@@ -645,7 +655,7 @@ export async function confirmPickup(
         action: "booking.fulfilled",
         entityType: "booking",
         entityId: bookingId,
-        after: { vehicle_id: vehicleId, status: "fulfilled" },
+        after: { vehicle_id: vehicleId, status: "fulfilled", expires_at: expiresAt?.toISOString() ?? null },
     });
 
     await writeAudit({
@@ -660,7 +670,9 @@ export async function confirmPickup(
     await notifyUser(rider!.id, {
         template: "pickup_confirmed",
         title: "Scooter Picked Up",
-        body: "Enjoy your ride! Your rental is now active.",
+        body: expiresAt
+            ? `Enjoy your ride! Your rental is now active until ${expiresAt.toLocaleDateString()}.`
+            : "Enjoy your ride! Your rental is now active.",
         screen: "post-booking-dashboard",
     });
 

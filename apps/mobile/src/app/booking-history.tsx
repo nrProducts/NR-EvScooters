@@ -5,29 +5,30 @@ import { Badge } from '../components/ui/Badge';
 import { SkeletonList } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
 import { EmptyState } from '../components/ui/EmptyState';
-import { bookingRepository, maintenanceRepository } from '../services';
+import { bookingRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import {
-  BOOKING_STATUS_LABEL, BOOKING_STATUS_TONE, MAINTENANCE_STATUS_LABEL, MAINTENANCE_STATUS_TONE,
+  BOOKING_STATUS_LABEL, BOOKING_STATUS_TONE,
   REFUND_STATUS_LABEL, REFUND_STATUS_TONE, formatDate,
 } from '../constants/status';
 import { COLORS } from '../constants/theme';
-import { Calendar, Bike, MapPin, Wrench, History, XCircle } from 'lucide-react-native';
+import { Calendar, Bike, MapPin, History, XCircle } from 'lucide-react-native';
 import { useCancelBooking } from '../hooks/useCancelBooking';
-import type { ApiBooking, ApiMaintenanceRecord } from '../types/api';
+import type { ApiBooking } from '../types/api';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type Tab = 'bookings' | 'maintenance';
-
+/**
+ * Bookings only. Maintenance used to live here in a second tab — it now
+ * belongs to /my-scooter, scoped to the scooter the rider actually has.
+ */
 export default function BookingHistoryScreen() {
-  const [tab, setTab] = useState<Tab>('bookings');
-
+  // AppShell insets its drawer sheet but not screen content, so each screen
+  // pads its own scroll tail — otherwise the Android nav/gesture bar covers
+  // the last rows.
+  const insets = useSafeAreaInsets();
   const [bookings, setBookings] = useState<ApiBooking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
   const [bookingsError, setBookingsError] = useState<string | null>(null);
-
-  const [maintenance, setMaintenance] = useState<ApiMaintenanceRecord[]>([]);
-  const [maintenanceLoading, setMaintenanceLoading] = useState(true);
-  const [maintenanceError, setMaintenanceError] = useState<string | null>(null);
 
   const { cancelling, cancelBooking } = useCancelBooking();
 
@@ -45,51 +46,25 @@ export default function BookingHistoryScreen() {
       .finally(() => setBookingsLoading(false));
   };
 
-  const loadMaintenance = () => {
-    setMaintenanceLoading(true);
-    setMaintenanceError(null);
-    maintenanceRepository
-      .history()
-      .then((res) => setMaintenance(res.data))
-      .catch((err) => setMaintenanceError(err instanceof ApiError ? err.message : 'Could not load maintenance history.'))
-      .finally(() => setMaintenanceLoading(false));
-  };
-
   useEffect(() => {
     loadBookings();
-    loadMaintenance();
   }, []);
 
   return (
     <AppShell title="Booking History">
-      <View className="flex-row px-5 pt-4 gap-2">
-        <TouchableOpacity
-          onPress={() => setTab('bookings')}
-          className="flex-1 py-2.5 rounded-xl items-center"
-          style={{ backgroundColor: tab === 'bookings' ? COLORS.primary : COLORS.card, borderWidth: 1, borderColor: tab === 'bookings' ? COLORS.primary : COLORS.border }}
+      {bookingsLoading ? (
+        <View className="px-5 pt-5"><SkeletonList count={3} /></View>
+      ) : bookingsError ? (
+        <ErrorState message={bookingsError} onRetry={loadBookings} />
+      ) : bookings.length === 0 ? (
+        <EmptyState icon={History} title="No bookings yet" subtitle="Your booking history will show up here." />
+      ) : (
+        <ScrollView
+          className="flex-1 px-5 pt-4"
+          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         >
-          <Text className="text-xs font-extrabold" style={{ color: tab === 'bookings' ? '#FFF' : COLORS.textPrimary }}>Booking</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setTab('maintenance')}
-          className="flex-1 py-2.5 rounded-xl items-center"
-          style={{ backgroundColor: tab === 'maintenance' ? COLORS.primary : COLORS.card, borderWidth: 1, borderColor: tab === 'maintenance' ? COLORS.primary : COLORS.border }}
-        >
-          <Text className="text-xs font-extrabold" style={{ color: tab === 'maintenance' ? '#FFF' : COLORS.textPrimary }}>Maintenance</Text>
-        </TouchableOpacity>
-      </View>
-
-      {tab === 'bookings' ? (
-        bookingsLoading ? (
-          <View className="px-5 pt-5"><SkeletonList count={3} /></View>
-        ) : bookingsError ? (
-          <ErrorState message={bookingsError} onRetry={loadBookings} />
-        ) : bookings.length === 0 ? (
-          <EmptyState icon={History} title="No bookings yet" subtitle="Your booking history will show up here." />
-        ) : (
-          <ScrollView className="flex-1 px-5 pt-4" contentContainerStyle={{ paddingBottom: 40 }}>
-            <View className="gap-3">
-              {bookings.map((b) => (
+          <View className="gap-3">
+            {bookings.map((b) => (
                 <View key={b.id} className="rounded-2xl p-4 border" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
                   <View className="flex-row items-center justify-between mb-2">
                     <View className="flex-row items-center">
@@ -139,36 +114,6 @@ export default function BookingHistoryScreen() {
                   ) : null}
                 </View>
               ))}
-            </View>
-          </ScrollView>
-        )
-      ) : maintenanceLoading ? (
-        <View className="px-5 pt-5"><SkeletonList count={3} /></View>
-      ) : maintenanceError ? (
-        <ErrorState message={maintenanceError} onRetry={loadMaintenance} />
-      ) : maintenance.length === 0 ? (
-        <EmptyState icon={Wrench} title="Nothing here yet" subtitle="Maintenance events for scooters you've ridden will show up here." />
-      ) : (
-        <ScrollView className="flex-1 px-5 pt-4" contentContainerStyle={{ paddingBottom: 40 }}>
-          <View className="gap-3">
-            {maintenance.map((m) => (
-              <View key={m.id} className="rounded-2xl p-4 border" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-                <View className="flex-row items-center justify-between mb-2">
-                  <View className="flex-row items-center flex-1">
-                    <Wrench size={15} color={COLORS.primary} />
-                    <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold ml-2" numberOfLines={1}>
-                      {m.vehicle?.name ?? 'Scooter'}
-                    </Text>
-                  </View>
-                  <Badge label={MAINTENANCE_STATUS_LABEL[m.status]} tone={MAINTENANCE_STATUS_TONE[m.status]} />
-                </View>
-                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-2">{m.description}</Text>
-                <View className="flex-row items-center">
-                  <Calendar size={12} color={COLORS.textSecondary} />
-                  <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-2">{formatDate(m.created_at)}</Text>
-                </View>
-              </View>
-            ))}
           </View>
         </ScrollView>
       )}

@@ -1,6 +1,6 @@
 ﻿import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  MockAuthRepository, MockBookingRepository, MockSupportRepository, resetMockDb,
+  MockBookingRepository, MockSupportRepository, mockSupportContext, resetMockDb, signInAs, startMockRental,
 } from './fixtures/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
 
@@ -18,12 +18,12 @@ function nextDow(targetDow: number, from = new Date()): Date {
   return d;
 }
 
-const auth = new MockAuthRepository();
 const bookings = new MockBookingRepository();
 const support = new MockSupportRepository();
 
-const asVerifiedRider = () => auth.signIn('rider@fleet.com', ''); // u-rider-001
-const asStaff = () => auth.signIn('staff@fleet.com', '');
+const asVerifiedRider = () => signInAs('rider@fleet.com'); // u-rider-001
+/** Matches startMockRental's default, so the attach assertion has a target. */
+const VEHICLE_ID = 'mock-vehicle-1';
 
 const VALID_BOOKING_PAYLOAD = () => ({
   vehicle_model_id: 'model-nr-volt-x1',
@@ -57,27 +57,21 @@ describe('MockSupportRepository.create', () => {
   it('leaves rental context null when the rider has no active rental', async () => {
     await asVerifiedRider();
     const req = await support.create(VALID_TICKET());
-    await asStaff();
-    const detail = await support.detail(req.id);
-    expect(detail.rental_id).toBeNull();
-    expect(detail.vehicle_id).toBeNull();
+    const ctx = mockSupportContext(req.id);
+    expect(ctx.rental_id).toBeNull();
+    expect(ctx.vehicle_id).toBeNull();
   });
 
   it("auto-attaches the rider's active rental context", async () => {
     await asVerifiedRider();
     const booking = await bookings.create(VALID_BOOKING_PAYLOAD());
+    startMockRental(booking.id, VEHICLE_ID);
 
-    await asStaff();
-    const vehicles = await bookings.availableVehicles(booking.id);
-    await bookings.confirmPickup(booking.id, vehicles[0].id);
-
-    await asVerifiedRider();
     const req = await support.create(VALID_TICKET());
 
-    await asStaff();
-    const detail = await support.detail(req.id);
-    expect(detail.vehicle_id).toBe(vehicles[0].id);
-    expect(detail.rental_id).not.toBeNull();
+    const ctx = mockSupportContext(req.id);
+    expect(ctx.vehicle_id).toBe(VEHICLE_ID);
+    expect(ctx.rental_id).not.toBeNull();
   });
 });
 
@@ -96,46 +90,8 @@ describe('MockSupportRepository.mine', () => {
     await asVerifiedRider();
     await support.create(VALID_TICKET());
 
-    await auth.signIn('fatima.s@example.com', '');
+    await signInAs('fatima.s@example.com');
     const mine = await support.mine({ page: 1, pageSize: 20 });
     expect(mine.data).toHaveLength(0);
-  });
-});
-
-describe('MockSupportRepository staff flow', () => {
-  it('queue lists every rider\'s requests and can filter by status', async () => {
-    await asVerifiedRider();
-    const req = await support.create(VALID_TICKET());
-
-    await asStaff();
-    const all = await support.queue({ page: 1, pageSize: 20 });
-    expect(all.data.some((r) => r.id === req.id)).toBe(true);
-
-    const openOnly = await support.queue({ page: 1, pageSize: 20, status: 'open' });
-    expect(openOnly.data.every((r) => r.status === 'open')).toBe(true);
-
-    const resolvedOnly = await support.queue({ page: 1, pageSize: 20, status: 'resolved' });
-    expect(resolvedOnly.data.some((r) => r.id === req.id)).toBe(false);
-  });
-
-  it('update advances status, sets resolved_at, and claims an unassigned ticket for the acting staff member', async () => {
-    await asVerifiedRider();
-    const req = await support.create(VALID_TICKET());
-
-    const staffRef = await asStaff();
-    const updated = await support.update(req.id, { status: 'in_progress' });
-    expect(updated.status).toBe('in_progress');
-    expect(updated.assigned_to).toBe(staffRef.id);
-    expect(updated.resolved_at).toBeNull();
-
-    const resolved = await support.update(req.id, { status: 'resolved' });
-    expect(resolved.status).toBe('resolved');
-    expect(resolved.resolved_at).not.toBeNull();
-  });
-
-  it('a rider cannot update a ticket (staff-only action)', async () => {
-    await asVerifiedRider();
-    const req = await support.create(VALID_TICKET());
-    await expect(support.update(req.id, { status: 'closed' })).rejects.toBeInstanceOf(ApiError);
   });
 });

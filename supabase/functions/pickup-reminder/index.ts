@@ -49,7 +49,12 @@ Deno.serve(async (_req) => {
 
     const { data: bookings, error } = await admin
         .from("bookings")
-        .select("id, user_id, start_day, vehicle_models(name), stations(name), users(push_token)")
+        // The FK hint is REQUIRED, not decoration: 20260729100000 added
+        // bookings.cancelled_by -> users, giving bookings two foreign keys to
+        // users. A bare users(...) embed then fails to resolve (PGRST201) and
+        // this whole function 500s. Same disambiguation the backend already
+        // does in bookings.service.ts's PICKUP_BOOKING_COLUMNS.
+        .select("id, user_id, start_day, vehicle_models(name), stations(name), users!bookings_user_id_fkey(push_token)")
         .eq("status", "confirmed")
         .eq("start_day", tomorrowIso());
 

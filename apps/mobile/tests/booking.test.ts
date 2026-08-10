@@ -2,7 +2,7 @@
 import { buildMapsUrl, buildWebMapsUrl } from '../src/lib/maps';
 import { getNextDays, isValidStartDay } from '../src/lib/bookingDays';
 import {
-  MockAuthRepository, MockBookingRepository, MockUserRepository,
+  MockBookingRepository, MockUserRepository, signInAs,
   backdateBookingCreatedAt as backdateBooking, resetMockDb,
 } from './fixtures/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
@@ -76,12 +76,11 @@ describe('getNextDays', () => {
   });
 });
 
-const auth = new MockAuthRepository();
 const users = new MockUserRepository();
 const bookings = new MockBookingRepository();
 
-const asVerifiedRider = () => auth.signIn('rider@fleet.com', ''); // u-rider-001: both docs verified
-const asUnverifiedRider = () => auth.signIn('fatima.s@example.com', ''); // u-rider-003: partially_verified
+const asVerifiedRider = () => signInAs('rider@fleet.com'); // u-rider-001: both docs verified
+const asUnverifiedRider = () => signInAs('fatima.s@example.com'); // u-rider-003: partially_verified
 
 const VALID_PAYLOAD = () => ({
   vehicle_model_id: 'model-nr-volt-x1',
@@ -235,7 +234,7 @@ describe('MockBookingRepository.cancel', () => {
     await asVerifiedRider();
     const created = await bookings.create(VALID_PAYLOAD());
 
-    await auth.signIn('fatima.s@example.com', '');
+    await signInAs('fatima.s@example.com');
     await expect(bookings.cancel(created.id)).rejects.toBeInstanceOf(ApiError);
     await bookings.cancel(created.id).catch((e: ApiError) => expect(e.status).toBe(404));
   });

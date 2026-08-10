@@ -229,3 +229,29 @@ async function allActiveRiderIds(): Promise<string[]> {
     if (error) throw error;
     return [...new Set((data ?? []).map((r) => r.user_id as string))];
 }
+
+async function allActiveAdminIds(): Promise<string[]> {
+    const { data, error } = await supabaseAdmin
+        .from("user_roles")
+        .select("user_id, roles!inner(name), users!inner(deleted_at, account_status)")
+        .eq("roles.name", "admin")
+        .is("users.deleted_at", null)
+        .eq("users.account_status", "active");
+    if (error) throw error;
+    return [...new Set((data ?? []).map((r) => r.user_id as string))];
+}
+
+/**
+ * Notifies every active admin — used for "staff needs to act" events (e.g. a
+ * rider submitting KYC documents for review, or a maintenance ticket being
+ * reported). Same best-effort contract as notifyUser: never throws, a
+ * delivery failure must not roll back the business action that triggered it.
+ * `excludeUserId` skips the admin who caused the event themselves (e.g. the
+ * staff member who just filed the maintenance ticket).
+ */
+export async function notifyAdmins(input: NotifyInput, excludeUserId?: string): Promise<void> {
+    const adminIds = await allActiveAdminIds();
+    await Promise.all(
+        adminIds.filter((id) => id !== excludeUserId).map((id) => notifyUser(id, input)),
+    );
+}

@@ -3,13 +3,15 @@ import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import * as service from "./maintenance.service";
 import {
-    AssignTempVehicleInput, CreateMaintenanceInput, ListMaintenanceFilters, NotRepairableInput,
-    QuickFixInput, ReassignAfterScrapInput, UpdateMaintenanceInput,
+    AssignTempVehicleInput, CreateMaintenanceInput, ListMaintenanceFilters,
+    MyMaintenanceHistoryFilters, NotRepairableInput, QuickFixInput, ReassignAfterScrapInput,
+    UpdateMaintenanceInput,
 } from "./maintenance.types";
 
 export async function myMaintenanceHistoryHandler(req: AuthedRequest, res: Response) {
-    const data = await service.getMyMaintenanceHistory(req.user!.id);
-    res.json({ data, pagination: { page: 1, pageSize: data.length, total: data.length, totalPages: 1 } });
+    const filters = validatedQuery<MyMaintenanceHistoryFilters>(req);
+    const result = await service.getMyMaintenanceHistory(req.user!.id, filters);
+    res.json(result);
 }
 
 export async function myMaintenanceNoticeHandler(req: AuthedRequest, res: Response) {

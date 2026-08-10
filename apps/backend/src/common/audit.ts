@@ -22,7 +22,9 @@ export type AuditAction =
     | "deposit.held" | "deposit.refund_initiated" | "deposit.refunded" | "deposit.forfeited"
     | "damage.created" | "damage.disputed" | "damage.resolved"
     | "refund.initiated" | "refund.processed" | "refund.failed"
-    | "plan.activated" | "plan.paused" | "plan.resumed" | "plan.due" | "plan.updated";
+    | "plan.activated" | "plan.paused" | "plan.resumed" | "plan.due" | "plan.updated"
+    | "battery_station.created" | "battery_station.updated" | "battery_station.shown"
+    | "battery_station.hidden" | "battery_station.soft_deleted";
 
 export interface AuditEntry {
     actorId: string | null;
@@ -30,7 +32,7 @@ export interface AuditEntry {
     action: AuditAction;
     entityType:
         | "user" | "user_document" | "user_role" | "booking" | "vehicle" | "vehicle_maintenance"
-        | "notification_broadcast" | "invoice" | "rental" | "referral"
+        | "notification_broadcast" | "invoice" | "rental" | "referral" | "battery_station"
         | "payment_order" | "payment_transaction" | "webhook_event" | "deposit" | "damage" | "refund" | "plan";
     entityId: string;
     before?: Record<string, unknown> | null;

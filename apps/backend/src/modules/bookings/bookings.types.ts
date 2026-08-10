@@ -35,6 +35,11 @@ export interface BookingView {
     created_at: string;
     vehicle_model: { id: string; name: string } | null;
     station: { id: string; name: string; code: string; lat: number; lng: number } | null;
+    /**
+     * duration_days is the plan's renewal period — both the recurring-billing
+     * cadence (next_due_at) and what confirmPickup freezes onto the rental as
+     * expires_at. deposit_amount is the security deposit charged alongside it.
+     */
     plan: {
         id: string; name: string; billing_cycle: string; price: number;
         duration_days: number; deposit_amount: number;
