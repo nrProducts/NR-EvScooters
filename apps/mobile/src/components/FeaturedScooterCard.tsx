@@ -41,13 +41,12 @@ export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model 
       />
 
       <View className="p-5">
-        <View className="flex-row items-center justify-between mb-1">
-          <Badge label="Featured" tone="primary" />
-          <Badge
-            label={model.availability.status === 'available' ? 'Available' : 'Unavailable'}
-            tone={model.availability.status === 'available' ? 'success' : 'danger'}
-          />
-        </View>
+        {/* No Available/Unavailable badge here — this card sits in the "Your
+            Scooter" section, and "Unavailable" reads as if the rider's own
+            scooter were unavailable rather than describing fleet-wide stock
+            of the featured model. Fleet availability lives in the "Available
+            Scooters" section below instead. */}
+        <Badge label="Featured" tone="primary" />
 
         <Text style={{ color: COLORS.textPrimary }} className="text-xl font-black mt-2">{model.name}</Text>
         {model.vendor ? (

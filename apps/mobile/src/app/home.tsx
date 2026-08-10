@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking, Platform, RefreshControl } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
@@ -8,7 +8,6 @@ import { MaintenanceNoticeBanner } from '../components/MaintenanceNoticeBanner';
 import { ActiveRentalCard } from '../components/ActiveRentalCard';
 import { FeaturedScooterCard } from '../components/FeaturedScooterCard';
 import { ReferAndEarnBanner } from '../components/ReferAndEarnBanner';
-import { VehicleListItem } from '../components/VehicleListItem';
 import { Badge } from '../components/ui/Badge';
 import { SkeletonList } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
@@ -39,7 +38,7 @@ export default function HomeScreen() {
   const profile = useAuthStore((s) => s.profile);
   const {
     featured, loadingFeatured, featuredError, loadFeatured,
-    list, loadingList, loadList, availableCount, loadAvailableCount,
+    list, loadingList, loadList,
   } = useVehicleCatalogStore();
   const [pendingBooking, setPendingBooking] = useState<ApiBooking | null>(null);
   const [activeRental, setActiveRental] = useState<ApiRental | null>(null);
@@ -50,6 +49,7 @@ export default function HomeScreen() {
   const [showReturn, setShowReturn] = useState(false);
   const { cancelling, cancelBooking } = useCancelBooking();
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
+  const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
 
   // has_active_booking/has_active_rental can change server-side without any
@@ -70,8 +70,7 @@ export default function HomeScreen() {
   useEffect(() => {
     void loadFeatured();
     void loadList();
-    void loadAvailableCount();
-  }, [loadFeatured, loadList, loadAvailableCount]);
+  }, [loadFeatured, loadList]);
 
   // Independent of has_active_rental/has_active_booking — a rider can be
   // mid-displacement (no temp vehicle yet) with neither flag set.
@@ -123,6 +122,23 @@ export default function HomeScreen() {
     if (cancelled) setPendingBooking(null);
   };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refreshProfile(),
+        loadFeatured(),
+        loadList(),
+        maintenanceRepository.notice().then(setMaintenanceNotice).catch(() => {
+          // Non-critical: the rest of Home renders fine without the notice.
+        }),
+      ]);
+      loadRental();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const handleGetDirections = async (station: NonNullable<ApiBooking['station']>) => {
     const platform = Platform.OS === 'android' ? 'android' : 'ios';
     const url = buildMapsUrl(station.lat, station.lng, platform);
@@ -142,14 +158,22 @@ export default function HomeScreen() {
 
   return (
     <AppShell title="Home">
-      <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
+      <ScrollView
+        className="flex-1 px-5 pt-5"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} />}
+      >
         <Text style={{ color: COLORS.textPrimary }} className="text-xl font-black mb-5">
           {greeting}, {firstName}
         </Text>
 
+        <ReferAndEarnBanner />
+
         <KycBanner />
 
         <MaintenanceNoticeBanner notice={maintenanceNotice} />
+
+        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Your Scooter</Text>
 
         {pendingBooking ? (
           <View
@@ -221,8 +245,6 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        <ReferAndEarnBanner />
-
         {activeRental ? (
           <ReturnScooterModal
             visible={showReturn}
@@ -251,31 +273,36 @@ export default function HomeScreen() {
           <FeaturedScooterCard model={featured} />
         ) : null}
 
-        {/* Currently having one vendor so this feature will be comming soon... */}
-        {/* <View className="flex-row items-center justify-between mb-3">
-          <View>
-            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Available Vehicles</Text>
-            {availableCount != null ? (
-              <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold mt-0.5">
-                {availableCount} available fleet-wide
-              </Text>
-            ) : null}
-          </View>
+        <View className="flex-row items-center justify-between mb-3">
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Available Scooters</Text>
           <TouchableOpacity onPress={() => router.push('/browse-vehicles')} className="flex-row items-center">
             <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">See All</Text>
             <ChevronRight size={14} color={COLORS.primary} />
           </TouchableOpacity>
-        </View> */}
+        </View>
 
-        {/* {loadingList && list.length === 0 ? (
+        {loadingList && list.length === 0 ? (
           <SkeletonList count={2} />
         ) : (
-          <View className="gap-3">
-            {list.slice(0, 3).map((model) => (
-              <VehicleListItem key={model.id} model={model} />
+          <View className="rounded-2xl border overflow-hidden mb-5" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+            {list.map((model, i) => (
+              <View
+                key={model.id}
+                className="flex-row items-center justify-between px-4 py-3"
+                style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
+              >
+                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold flex-1 mr-2" numberOfLines={1}>
+                  {[model.vendor?.name, model.name].filter(Boolean).join(' - ')}
+                  {model.battery_range_km != null ? ` / ${model.battery_range_km} km` : ''}
+                  {model.top_speed_kmph != null ? ` / ${model.top_speed_kmph} km/h` : ''}
+                </Text>
+                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold">
+                  {model.availability.available_count}
+                </Text>
+              </View>
             ))}
           </View>
-        )} */}
+        )}
       </ScrollView>
     </AppShell>
   );

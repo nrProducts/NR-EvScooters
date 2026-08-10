@@ -71,7 +71,7 @@ export function toPlans(raw: unknown): PlanSummary[] {
         .sort((a, b) => (order[a.billing_cycle] ?? 99) - (order[b.billing_cycle] ?? 99));
 }
 
-export function toListItem(row: RawModelRow): VehicleModelListItem {
+export function toListItem(row: RawModelRow, availableCount = 0): VehicleModelListItem {
     const plans = toPlans(row.plans);
     const startingPrice = plans.length > 0 ? Math.min(...plans.map((p) => p.price)) : null;
 
@@ -87,7 +87,27 @@ export function toListItem(row: RawModelRow): VehicleModelListItem {
         vendor: toVendorSummary(row.vendors),
         image_url: row.image ?? null,
         starting_price: startingPrice,
+        availability: toAvailability(availableCount),
     };
+}
+
+/** One query for however many models are on the current page/response — avoids N+1. */
+async function getAvailableCountsForModels(modelIds: string[]): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    if (modelIds.length === 0) return counts;
+
+    const { data, error } = await supabaseAdmin
+        .from("vehicles")
+        .select("model_id")
+        .in("model_id", modelIds)
+        .eq("status", "available")
+        .eq("active", true);
+    if (error) throw error;
+
+    for (const row of (data ?? []) as { model_id: string }[]) {
+        counts.set(row.model_id, (counts.get(row.model_id) ?? 0) + 1);
+    }
+    return counts;
 }
 
 export async function listVehicleModels(
@@ -109,7 +129,9 @@ export async function listVehicleModels(
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const items = ((data ?? []) as unknown as RawModelRow[]).map(toListItem);
+    const rows = (data ?? []) as unknown as RawModelRow[];
+    const counts = await getAvailableCountsForModels(rows.map((r) => r.id));
+    const items = rows.map((row) => toListItem(row, counts.get(row.id) ?? 0));
     return paginate(items, count ?? 0, filters);
 }
 
@@ -126,7 +148,9 @@ export async function getFeaturedVehicleModel(): Promise<VehicleModelListItem> {
     if (error) throw error;
     if (!data) throw notFound("No featured scooter is configured yet.");
 
-    return toListItem(data as unknown as RawModelRow);
+    const row = data as unknown as RawModelRow;
+    const counts = await getAvailableCountsForModels([row.id]);
+    return toListItem(row, counts.get(row.id) ?? 0);
 }
 
 export async function getVehicleModelById(id: string): Promise<VehicleModelDetail> {
@@ -145,7 +169,7 @@ export async function getVehicleModelById(id: string): Promise<VehicleModelDetai
     if (!data) throw notFound("This scooter model could not be found.");
 
     const row = data as unknown as RawModelRow;
-    const listItem = toListItem(row);
+    const listItem = toListItem(row, availability.available_count);
 
     return {
         ...listItem,
@@ -155,7 +179,6 @@ export async function getVehicleModelById(id: string): Promise<VehicleModelDetai
         features: (row.features as string[] | null) ?? [],
         safety_features: (row.safety_features as string[] | null) ?? [],
         plans: toPlans(row.plans),
-        availability,
     };
 }
 

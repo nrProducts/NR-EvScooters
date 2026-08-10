@@ -31,6 +31,11 @@ export interface VehicleModelListItem {
     /** vehicle_models.image — a directly-fetchable public URL, or null. */
     image_url: string | null;
     starting_price: number | null;
+    /** Fleet-wide, computed per model — how many units are free right now. */
+    availability: {
+        available_count: number;
+        status: "available" | "unavailable";
+    };
 }
 
 export interface VehicleModelDetail extends VehicleModelListItem {
@@ -40,10 +45,6 @@ export interface VehicleModelDetail extends VehicleModelListItem {
     features: string[];
     safety_features: string[];
     plans: PlanSummary[];
-    availability: {
-        available_count: number;
-        status: "available" | "unavailable";
-    };
 }
 
 export interface ListVehicleModelsFilters extends PageParams {

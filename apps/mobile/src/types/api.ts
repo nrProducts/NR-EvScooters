@@ -196,6 +196,11 @@ export interface ApiPlan {
     deposit_amount: number;
 }
 
+export interface ApiAvailability {
+    available_count: number;
+    status: 'available' | 'unavailable';
+}
+
 export interface ApiVehicleModel {
     id: string;
     name: string;
@@ -209,11 +214,9 @@ export interface ApiVehicleModel {
     /** Public URL of the model's catalog artwork. */
     image_url: string | null;
     starting_price: number | null;
-}
-
-export interface ApiAvailability {
-    available_count: number;
-    status: 'available' | 'unavailable';
+    /** Fleet-wide for this model. Station-scoped counts come from
+     *  vehicleCatalogRepository.availability(id, stationId). */
+    availability: ApiAvailability;
 }
 
 export interface ApiVehicleModelDetail extends ApiVehicleModel {
@@ -224,9 +227,6 @@ export interface ApiVehicleModelDetail extends ApiVehicleModel {
     safety_features: string[];
     /** Only plans still on sale — the backend filters out inactive ones. */
     plans: ApiPlan[];
-    /** Fleet-wide for this model. Station-scoped counts come from
-     *  vehicleCatalogRepository.availability(id, stationId). */
-    availability: ApiAvailability;
 }
 
 export interface ListVehicleModelsParams {

@@ -483,6 +483,7 @@ export const SEED_VEHICLE_MODELS: ApiVehicleModel[] = SEED_VEHICLE_MODELS_DETAIL
     vendor: m.vendor,
     image_url: m.image_url,
     starting_price: m.starting_price,
+    availability: m.availability,
 }));
 
 // ---------------------------------------------------------------------------
