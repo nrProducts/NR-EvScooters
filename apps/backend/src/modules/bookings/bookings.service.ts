@@ -317,6 +317,26 @@ export async function getBookingById(id: string): Promise<BookingView> {
     return toBookingView(data as unknown as RawBookingRow);
 }
 
+/**
+ * Rider-scoped "get one of my own bookings by id" — unlike getMyCurrentBooking
+ * (GET /bookings/me/current), which only ever returns a pending_payment/confirmed
+ * booking, this also serves a 'fulfilled' one. The Billing screen needs that:
+ * plan_status/next_due_at live on bookings, not rentals, so once a rider has
+ * been picked up (the normal case for most of a rental's life), this is the
+ * only way for the app to keep showing their recurring-billing state.
+ */
+export async function getMyBookingById(bookingId: string, userId: string): Promise<BookingView> {
+    const { data, error } = await supabaseAdmin
+        .from("bookings")
+        .select(BOOKING_COLUMNS)
+        .eq("id", bookingId)
+        .eq("user_id", userId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw notFound("Booking not found.");
+    return toBookingView(data as unknown as RawBookingRow);
+}
+
 export async function getMyCurrentBooking(userId: string): Promise<BookingView> {
     const { data, error } = await supabaseAdmin
         .from("bookings")

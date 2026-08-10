@@ -148,6 +148,9 @@ export class ApiBookingRepository implements BookingRepository {
             throw err;
         }
     }
+    byId(bookingId: string): Promise<ApiBooking> {
+        return api.myBookingById(bookingId);
+    }
     cancel(bookingId: string, reason?: string): Promise<ApiBooking> {
         return api.cancelBooking(bookingId, reason);
     }

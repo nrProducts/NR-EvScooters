@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { billingRepository } from '../services';
+import { billingRepository, bookingRepository } from '../services';
 import { useCurrentRideOrBooking } from './useCurrentRideOrBooking';
 import type { ApiBookingWithPlan, ApiDamage, ApiDeposit, ApiInvoice } from '../types/api';
 
 export interface MyBillingState {
     bookingId: string | null;
-    /** Present only when the rider's current state is a booking (pre-pickup) — carries plan_status/next_due_at. */
+    /** Carries plan_status/next_due_at — fetched by id so it's present both pre-pickup and mid-rental. */
     booking: ApiBookingWithPlan | null;
     deposit: ApiDeposit | null;
     damages: ApiDamage[];
@@ -17,9 +17,14 @@ const EMPTY: MyBillingState = { bookingId: null, booking: null, deposit: null, d
 /**
  * Resolves the rider's current booking id — whether they're still
  * pre-pickup (a booking) or already riding (a rental, which only carries
- * booking_id, not the plan fields) — then loads deposit/damage/payment
- * history for it. All amounts/statuses come straight from the backend; this
- * hook never computes one itself.
+ * booking_id, not the plan fields) — then loads the booking's own
+ * plan/billing state plus deposit/damage/payment history for it.
+ * bookingRepository.byId (not mine()/rideState.booking) is what makes this
+ * work once the rider has been picked up: mine() only ever returns a
+ * pending_payment/confirmed booking, so plan_status/next_due_at would
+ * otherwise go blank the moment the booking becomes 'fulfilled' — which is
+ * most of a rental's life. All amounts/statuses come straight from the
+ * backend; this hook never computes one itself.
  */
 export function useMyBilling() {
     const { state: rideState, loading: rideLoading, error: rideError, reload: reloadRide } = useCurrentRideOrBooking();
@@ -44,14 +49,15 @@ export function useMyBilling() {
         setLoading(true);
         setError(null);
         Promise.all([
+            bookingRepository.byId(bookingId),
             billingRepository.myDeposit(bookingId),
             billingRepository.myDamages(bookingId),
             billingRepository.myInvoices({ bookingId, pageSize: 50 }),
         ])
-            .then(([deposit, damages, invoicesPage]) => {
+            .then(([booking, deposit, damages, invoicesPage]) => {
                 setBilling({
                     bookingId,
-                    booking: rideState.kind === 'booking' ? (rideState.booking as ApiBookingWithPlan) : null,
+                    booking: booking as ApiBookingWithPlan,
                     deposit,
                     damages,
                     invoices: invoicesPage.data,

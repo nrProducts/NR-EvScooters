@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { CreditCard, ShieldCheck, AlertTriangle, Receipt } from 'lucide-react-native';
+import { useFocusEffect } from 'expo-router';
+import { CreditCard, ShieldCheck, AlertTriangle, Receipt, Zap } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
@@ -10,6 +11,7 @@ import { useMyBilling } from '../hooks/useMyBilling';
 import { useAuthStore } from '../store/useAuthStore';
 import { billingRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
+import { computeLatePaymentFee } from '../lib/latePaymentPolicy';
 import { ApiError } from '../lib/ApiError';
 import type { ApiInvoice, InvoicePaymentStatus, PlanStatus } from '../types/api';
 
@@ -41,9 +43,25 @@ export default function BillingScreen() {
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
 
+  // The admin side can change this rider's plan_status (a payment going
+  // overdue, a vehicle being released) with no action of the rider's own —
+  // refetch whenever the screen regains focus, not just on first mount.
+  useFocusEffect(
+    useCallback(() => {
+      reload();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []),
+  );
+
   const plan = booking?.plan;
   const outstandingInvoices = invoices.filter((inv) => inv.payment_status === 'pending' || inv.payment_status === 'failed');
-  const outstandingTotal = outstandingInvoices.reduce((sum, inv) => sum + inv.amount_due, 0);
+  // Late fee only accrues on a weekly-due 'rental' renewal — mirrors the
+  // backend's createOrderForInvoice exactly (see latePaymentPolicy.ts); the
+  // server always recomputes authoritatively when the order is created, this
+  // is just what's shown before tapping Pay.
+  const lateFeeFor = (inv: ApiInvoice) => (inv.payment_type === 'rental' ? computeLatePaymentFee(inv.due_date).lateFeeAmount : 0);
+  const outstandingTotal = outstandingInvoices.reduce((sum, inv) => sum + inv.amount_due + lateFeeFor(inv), 0);
+  const isDue = booking?.plan_status === 'due';
 
   const payInvoice = async (invoice: ApiInvoice) => {
     setPayError(null);
@@ -122,6 +140,27 @@ export default function BillingScreen() {
             </Text>
           </View>
 
+          {/* Vehicle-lock warning — shown whenever the plan is overdue,
+              regardless of whether an outstanding invoice happens to be
+              loaded yet, since it's describing the consequence of plan_status
+              itself, not any one invoice. */}
+          {isDue ? (
+            <View
+              className="rounded-2xl p-4 mb-6 flex-row items-start"
+              style={{ backgroundColor: COLORS.danger + '14', borderWidth: 1, borderColor: COLORS.danger + '55' }}
+            >
+              <Zap size={16} color={COLORS.danger} style={{ marginTop: 1 }} />
+              <View className="flex-1 ml-3">
+                <Text style={{ color: COLORS.danger }} className="text-xs font-extrabold">
+                  Your scooter won't start until this is paid
+                </Text>
+                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-1 leading-relaxed">
+                  A ₹300/day late fee is added for every day the payment stays overdue. Pay now to keep riding and stop the fee from growing.
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
           {/* Outstanding payment */}
           {outstandingInvoices.length > 0 && (
             <>
@@ -131,24 +170,35 @@ export default function BillingScreen() {
                   <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">Amount due</Text>
                   <Text style={{ color: COLORS.danger }} className="text-lg font-black">₹{outstandingTotal.toFixed(0)}</Text>
                 </View>
-                {outstandingInvoices.map((inv) => (
-                  <TouchableOpacity
-                    key={inv.id}
-                    onPress={() => payInvoice(inv)}
-                    disabled={payingInvoiceId === inv.id}
-                    className="py-3 rounded-xl items-center flex-row justify-center mt-2"
-                    style={{ backgroundColor: COLORS.primary, opacity: payingInvoiceId === inv.id ? 0.6 : 1 }}
-                  >
-                    {payingInvoiceId === inv.id ? (
-                      <ActivityIndicator size="small" color="#FFF" />
-                    ) : (
-                      <CreditCard size={14} color="#FFF" />
-                    )}
-                    <Text className="text-white text-xs font-bold ml-2">
-                      Pay {PAYMENT_TYPE_LABEL[inv.payment_type ?? 'other']} — ₹{inv.amount_due.toFixed(0)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {outstandingInvoices.map((inv) => {
+                  const lateFee = lateFeeFor(inv);
+                  const totalForInvoice = inv.amount_due + lateFee;
+                  return (
+                    <View key={inv.id}>
+                      {lateFee > 0 ? (
+                        <Text style={{ color: COLORS.danger }} className="text-[11px] font-semibold mb-1.5">
+                          Includes ₹{lateFee.toFixed(0)} late fee ({computeLatePaymentFee(inv.due_date).daysLate} day
+                          {computeLatePaymentFee(inv.due_date).daysLate === 1 ? '' : 's'} overdue)
+                        </Text>
+                      ) : null}
+                      <TouchableOpacity
+                        onPress={() => payInvoice(inv)}
+                        disabled={payingInvoiceId === inv.id}
+                        className="py-3 rounded-xl items-center flex-row justify-center mt-1"
+                        style={{ backgroundColor: COLORS.primary, opacity: payingInvoiceId === inv.id ? 0.6 : 1 }}
+                      >
+                        {payingInvoiceId === inv.id ? (
+                          <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                          <CreditCard size={14} color="#FFF" />
+                        )}
+                        <Text className="text-white text-xs font-bold ml-2">
+                          Pay {PAYMENT_TYPE_LABEL[inv.payment_type ?? 'other']} — ₹{totalForInvoice.toFixed(0)}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
                 {payError ? (
                   <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mt-3">{payError}</Text>
                 ) : null}

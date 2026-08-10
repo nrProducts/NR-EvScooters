@@ -5,7 +5,8 @@ import { getRazorpay } from "../../config/razorpay";
 import { env } from "../../config/env";
 import { badRequest, businessRule, conflict, notFound } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
-import { addDays } from "../../common/dates";
+import { addDays, wholeDaysBetween } from "../../common/dates";
+import { LATE_PAYMENT_FEE_PER_DAY } from "./billing.constants";
 import { notifyUser } from "../notifications/notifications.service";
 import { applyRefundWebhookResult } from "../refunds/refunds.service";
 import { AuthContext } from "../../types";
@@ -146,7 +147,7 @@ export async function createOrderForBooking(bookingId: string, actor: AuthContex
 export async function createOrderForInvoice(invoiceId: string, actor: AuthContext): Promise<CreateOrderResult> {
     const { data: invoice, error } = await supabaseAdmin
         .from("invoices")
-        .select("id, user_id, booking_id, payment_type, amount_due, payment_status, payment_order_id")
+        .select("id, user_id, booking_id, payment_type, amount_due, due_date, payment_status, payment_order_id")
         .eq("id", invoiceId)
         .maybeSingle();
     if (error) throw error;
@@ -157,7 +158,15 @@ export async function createOrderForInvoice(invoiceId: string, actor: AuthContex
     }
 
     const purpose: PaymentPurpose = invoice.payment_type === "damage" ? "damage_settlement" : "weekly_due";
-    const amount = round2(Number(invoice.amount_due));
+
+    // Late fee only applies to a weekly-due rental renewal, computed fresh
+    // from due_date every time — never stored, so it naturally compounds the
+    // longer the rider waits, with no separate daily job needed to bump it.
+    const daysLate = invoice.payment_type === "rental"
+        ? Math.max(0, wholeDaysBetween(new Date(`${invoice.due_date}T00:00:00Z`), new Date()))
+        : 0;
+    const lateFee = round2(daysLate * LATE_PAYMENT_FEE_PER_DAY);
+    const amount = round2(Number(invoice.amount_due) + lateFee);
 
     if (invoice.payment_order_id) {
         const { data: existingOrder, error: existingError } = await supabaseAdmin
@@ -204,7 +213,7 @@ export async function createOrderForInvoice(invoiceId: string, actor: AuthContex
     await writeAudit({
         actorId: actor.id, targetUserId: actor.id, action: "payment.order_created",
         entityType: "payment_order", entityId: order.id,
-        after: { invoice_id: invoiceId, purpose, amount },
+        after: { invoice_id: invoiceId, purpose, amount, days_late: daysLate, late_fee: lateFee },
     });
 
     if (!configured) {

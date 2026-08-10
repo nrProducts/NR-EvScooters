@@ -276,6 +276,8 @@ export const api = {
 
     myCurrentBooking: () => request<ApiBookingWithPlan>('/bookings/me/current'),
 
+    myBookingById: (bookingId: string) => request<ApiBookingWithPlan>(`/bookings/me/${bookingId}`),
+
     cancelBooking: (bookingId: string, reason?: string) =>
         request<ApiBooking>(`/bookings/${bookingId}/cancel`, {
             method: 'POST',

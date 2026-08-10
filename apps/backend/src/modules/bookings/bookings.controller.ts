@@ -17,6 +17,10 @@ export async function myCurrentBookingHandler(req: AuthedRequest, res: Response)
     res.json(await service.getMyCurrentBooking(req.user!.id));
 }
 
+export async function myBookingByIdHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.getMyBookingById(req.params.id as string, req.user!.id));
+}
+
 export async function myBookingHistoryHandler(req: AuthedRequest, res: Response) {
     const page = validatedQuery<BookingHistoryQuery>(req);
     res.json(await service.getMyBookingHistory(req.user!.id, page));

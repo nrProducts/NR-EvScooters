@@ -876,6 +876,14 @@ export class MockBookingRepository implements BookingRepository {
         return rows.length > 0 ? toApiBooking(rows[0]) : null;
     }
 
+    async byId(bookingId: string): Promise<ApiBooking> {
+        await delay(200);
+        const actor = requireSession();
+        const row = db.bookings.find((b) => b.id === bookingId && b.user_id === actor.id);
+        if (!row) throw new ApiError(404, 'NOT_FOUND', 'Booking not found.');
+        return toApiBooking(row);
+    }
+
     /**
      * Mirrors cancelMyBooking on the backend, including the 404-not-403 choice
      * for another rider's booking. No vehicle bookkeeping â€” mock mode has no

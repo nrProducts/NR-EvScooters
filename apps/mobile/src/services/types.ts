@@ -86,6 +86,13 @@ export interface BookingRepository {
      * mock fixture (tests/fixtures/mock) doesn't simulate the billing engine.
      */
     mine(): Promise<ApiBooking | null>;
+    /**
+     * A specific one of the rider's own bookings, by id — unlike mine()
+     * (pending_payment/confirmed only), this also serves a 'fulfilled' one,
+     * which is what Billing needs to keep reading plan_status/next_due_at
+     * once the rider has been picked up. Same cast convention as mine().
+     */
+    byId(bookingId: string): Promise<ApiBooking>;
     /** All of the rider's own bookings, any status, most recent first. */
     history(params: HistoryParams): Promise<Paginated<ApiBooking>>;
     /** Rider-initiated pre-pickup cancellation. Returns the cancelled booking with its refund fields. */

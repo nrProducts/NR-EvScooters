@@ -3,10 +3,15 @@
 //
 // A booking's plan_status flips 'active' -> 'due' the day its next_due_at
 // passes unpaid. This is the one place that happens — nothing else in the
-// app writes plan_status='due'. Also writes an audit_logs row directly
-// (can't import common/audit.ts's writeAudit from Deno) and notifies the
-// rider, following the same "log first, best-effort push" contract as the
-// backend's notifyUser().
+// app writes plan_status='due'. It also opens the invoice that period is
+// actually payable through: nothing else in the system ever creates a
+// 'rental' invoice past the very first one (createOrderForBooking, at
+// initial checkout), so without this, POST /invoices/:id/payment-order has
+// nothing to point at and the rider's Billing screen would show "Due" with
+// no way to pay it off. Writes an audit_logs row directly (can't import
+// common/audit.ts's writeAudit from Deno) and notifies the rider, following
+// the same "log first, best-effort push" contract as the backend's
+// notifyUser().
 // =========================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -18,6 +23,11 @@ const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 interface BookingRow {
     id: string;
     user_id: string;
+    next_due_at: string;
+    plans: { price: number } | { price: number }[] | null;
+    // Aliased below as `users:users!bookings_user_id_fkey(...)` — bookings has
+    // TWO fkeys to users (user_id and cancelled_by), so the embed is ambiguous
+    // without naming which one PostgREST should follow.
     users: { push_token: string | null } | { push_token: string | null }[] | null;
 }
 
@@ -36,7 +46,7 @@ Deno.serve(async (_req) => {
 
     const { data: overdue, error } = await admin
         .from("bookings")
-        .select("id, user_id, users(push_token)")
+        .select("id, user_id, next_due_at, plans(price), users:users!bookings_user_id_fkey(push_token)")
         .eq("plan_status", "active")
         .lt("next_due_at", todayIso());
 
@@ -65,6 +75,25 @@ Deno.serve(async (_req) => {
         }
         if (!updated) continue;
         flipped++;
+
+        // Full plan price, no referral discount — that's a one-time
+        // first-booking incentive (bookings.referral_discount_amount),
+        // never repeated on renewals.
+        const plan = unwrap<{ price: number }>(row.plans);
+        if (plan) {
+            const { error: invoiceError } = await admin.from("invoices").insert({
+                user_id: row.user_id,
+                booking_id: row.id,
+                payment_type: "rental",
+                status: "issued",
+                amount_due: plan.price,
+                due_date: row.next_due_at,
+                payment_status: "pending",
+            });
+            if (invoiceError) {
+                console.error("[payment-overdue-sweep] invoice insert failed", { bookingId: row.id, error: invoiceError });
+            }
+        }
 
         await admin.from("audit_logs").insert({
             actor_id: null,

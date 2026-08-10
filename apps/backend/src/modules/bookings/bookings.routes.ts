@@ -19,6 +19,14 @@ router.get(
     validate({ query: v.bookingHistoryQuery }),
     asyncHandler(c.myBookingHistoryHandler),
 );
+// Unlike /me/current (pending_payment/confirmed only), this also serves a
+// 'fulfilled' booking — the Billing screen's only way to read plan_status/
+// next_due_at once the rider has been picked up and is riding.
+router.get(
+    "/me/:id",
+    validate({ params: v.bookingIdParam }),
+    asyncHandler(c.myBookingByIdHandler),
+);
 
 router.post(
     "/",

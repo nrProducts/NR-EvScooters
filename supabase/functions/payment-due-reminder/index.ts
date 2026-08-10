@@ -66,7 +66,9 @@ Deno.serve(async (_req) => {
     for (const offsetDays of REMINDER_DAYS) {
         const { data: bookings, error } = await admin
             .from("bookings")
-            .select("id, user_id, next_due_at, plans(name, price), users(push_token)")
+            // users aliased + fkey-qualified: bookings has two fkeys to users
+            // (user_id and cancelled_by), so the plain embed is ambiguous.
+            .select("id, user_id, next_due_at, plans(name, price), users:users!bookings_user_id_fkey(push_token)")
             .eq("plan_status", "active")
             .eq("next_due_at", dateOffsetIso(offsetDays));
 
