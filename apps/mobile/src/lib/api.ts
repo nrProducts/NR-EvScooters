@@ -7,13 +7,14 @@ import { signInWithGoogleBrowser } from './googleAuth';
 // Re-exported so existing `import { ApiError } from '../lib/api'` keeps working.
 export { ApiError };
 import type {
-    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiErrorBody, ApiKycDetail, ApiKycQueueItem,
-    ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking,
-    ApiReferralSummary, ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest,
-    ApiUser, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload,
-    CreateSupportRequestPayload, CreateUserPayload, KycDocType, KycStatus, ListUsersParams,
-    ListVehicleModelsParams, LocalFile, Paginated, ReturnRequestPayload, RoleName, StatusAction,
-    SupportStatus, UpdateSupportRequestPayload, UpdateUserPayload,
+    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiBookingWithPlan, ApiDamage, ApiDeposit, ApiDocument,
+    ApiErrorBody, ApiInvoice, ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMaintenanceNotice,
+    ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiPickupBooking, ApiReferralSummary,
+    ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
+    ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
+    CreateUserPayload, KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
+    ReturnRequestPayload, RoleName, StatusAction, SupportStatus, UpdateSupportRequestPayload,
+    UpdateUserPayload, VerifyPaymentPayload,
 } from '../types/api';
 
 type OnUnauthorized = () => void;
@@ -329,11 +330,11 @@ export const api = {
     vehicleModelAvailability: (id: string, stationId?: string) =>
         request<ApiAvailability>(`/vehicle-models/${id}/availability`, { query: { stationId } }),
 
-    // --- bookings (Phase 1 — no live payment) -----------------------------
+    // --- bookings -----------------------------------------------------
     createBooking: (payload: CreateBookingPayload) =>
         request<ApiBooking>('/bookings', { method: 'POST', body: payload }),
 
-    myCurrentBooking: () => request<ApiBooking>('/bookings/me/current'),
+    myCurrentBooking: () => request<ApiBookingWithPlan>('/bookings/me/current'),
 
     cancelBooking: (bookingId: string, reason?: string) =>
         request<ApiBooking>(`/bookings/${bookingId}/cancel`, {
@@ -348,6 +349,32 @@ export const api = {
 
     nearestStation: (lat: number, lng: number) =>
         request<ApiStation>('/stations/nearest', { query: { lat, lng } }),
+
+    // --- payments ----------------------------------------------------------
+    // Amount is always computed server-side from the plan/invoice on record —
+    // the app only ever sends an id, never an amount.
+    createPaymentOrderForBooking: (bookingId: string) =>
+        request<ApiPaymentOrder>(`/payments/bookings/${bookingId}/order`, { method: 'POST' }),
+
+    createPaymentOrderForInvoice: (invoiceId: string) =>
+        request<ApiPaymentOrder>(`/payments/invoices/${invoiceId}/order`, { method: 'POST' }),
+
+    verifyPayment: (payload: VerifyPaymentPayload) =>
+        request<{ status: string }>('/payments/verify', { method: 'POST', body: payload }),
+
+    // --- rider billing (payment history, deposit, damage) ------------------
+    myInvoices: (params: { page?: number; pageSize?: number; bookingId?: string } = {}) =>
+        request<Paginated<ApiInvoice>>('/invoices/me', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
+
+    myDepositForBooking: (bookingId: string) => request<ApiDeposit>(`/deposits/me/booking/${bookingId}`),
+
+    myDamagesForBooking: (bookingId: string) =>
+        request<ApiDamage[]>('/damages/me', { query: { bookingId } }),
+
+    disputeDamage: (damageId: string, reason: string) =>
+        request<ApiDamage>(`/damages/${damageId}/dispute`, { method: 'POST', body: { reason } }),
 
     // --- referrals ---------------------------------------------------------
     myReferralSummary: () => request<ApiReferralSummary>('/referrals/me'),

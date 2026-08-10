@@ -3,18 +3,25 @@ export const INVOICE_STATUSES: readonly InvoiceStatus[] = [
     "draft", "issued", "paid", "overdue", "void",
 ] as const;
 
-export type PaymentStatus = "pending" | "succeeded" | "failed" | "refunded";
+export type PaymentStatus = "pending" | "processing" | "succeeded" | "failed" | "refunded";
 export const PAYMENT_STATUSES: readonly PaymentStatus[] = [
-    "pending", "succeeded", "failed", "refunded",
+    "pending", "processing", "succeeded", "failed", "refunded",
 ] as const;
 
 export type PaymentMethod = "card" | "wallet" | "upi" | "cash";
+
+export type PaymentType = "rental" | "deposit" | "damage" | "penalty" | "refund" | "other";
+export const PAYMENT_TYPES: readonly PaymentType[] = [
+    "rental", "deposit", "damage", "penalty", "refund", "other",
+] as const;
 
 export interface InvoiceRow {
     id: string;
     user_id: string;
     subscription_id: string | null;
     rental_id: string | null;
+    booking_id: string | null;
+    payment_type: PaymentType | null;
     status: InvoiceStatus;
     amount_due: number;
     due_date: string;
@@ -37,5 +44,7 @@ export interface ListInvoicesFilters {
     pageSize: number;
     status?: InvoiceStatus;
     paymentStatus?: PaymentStatus;
+    paymentType?: PaymentType;
     userId?: string;
+    bookingId?: string;
 }

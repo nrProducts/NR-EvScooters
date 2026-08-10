@@ -3,6 +3,8 @@ import { requireAuth } from "../../middleware/auth.middleware";
 import { requireStaff } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
+import { damagePhotoUpload } from "../damages/damages.photo.upload";
+import { recordDamageBody, rentalIdParam as damageRentalIdParam } from "../damages/damages.validation";
 import * as c from "./rentals.controller";
 import * as v from "./rentals.validation";
 
@@ -52,6 +54,18 @@ router.post(
     requireStaff,
     validate({ params: v.rentalIdParam, body: v.moveToMaintenanceBody }),
     asyncHandler(c.moveToMaintenanceHandler),
+);
+
+// Return-inspection damage entry — a separate action from /:id/complete
+// (which staff still call to close the physical ride out and settle any
+// late fee); a no-damage return never touches this endpoint at all.
+router.post(
+    "/:id/return-inspection",
+    requireStaff,
+    validate({ params: damageRentalIdParam }),
+    damagePhotoUpload,
+    validate({ body: recordDamageBody }),
+    asyncHandler(c.returnInspectionHandler),
 );
 
 export default router;

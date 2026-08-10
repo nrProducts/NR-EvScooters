@@ -9,11 +9,17 @@ import stationsRoutes from "../modules/stations/stations.routes";
 import { riderNotificationsRouter, adminNotificationsRouter } from "../modules/notifications/notifications.routes";
 import rentalsRoutes from "../modules/rentals/rentals.routes";
 import maintenanceRoutes from "../modules/maintenance/maintenance.routes";
-import invoicesRoutes from "../modules/invoices/invoices.routes";
+import invoicesRoutes, { riderRouter as riderInvoicesRouter } from "../modules/invoices/invoices.routes";
 import reportsRoutes from "../modules/reports/reports.routes";
 import auditRoutes from "../modules/audit/audit.routes";
 import { riderSupportRouter, adminSupportRouter } from "../modules/support/support.routes";
 import referralsRoutes from "../modules/referrals/referrals.routes";
+import paymentsRoutes from "../modules/payments/payments.routes";
+import plansRoutes from "../modules/plans/plans.routes";
+import damagesRoutes from "../modules/damages/damages.routes";
+import { adminRouter as adminDepositsRouter, riderRouter as riderDepositsRouter } from "../modules/deposits/deposits.routes";
+import refundsRoutes from "../modules/refunds/refunds.routes";
+import reconciliationRoutes from "../modules/reconciliation/reconciliation.routes";
 
 const router = Router();
 
@@ -38,9 +44,20 @@ router.use("/bookings", bookingsRoutes);
 router.use("/stations", stationsRoutes);
 router.use("/rentals", rentalsRoutes);
 router.use("/maintenance", maintenanceRoutes);
+// Mounted before /invoices, same reasoning as /users/me/kyc before /users.
+router.use("/invoices/me", riderInvoicesRouter);
 router.use("/invoices", invoicesRoutes);
 router.use("/reports", reportsRoutes);
 router.use("/audit-logs", auditRoutes);
 router.use("/referrals", referralsRoutes);
+router.use("/payments", paymentsRoutes);
+router.use("/plans", plansRoutes);
+router.use("/damages", damagesRoutes);
+// Mounted before /deposits, same reasoning as /users/me/kyc before /users:
+// the admin router's requireStaff would otherwise swallow every rider request.
+router.use("/deposits/me", riderDepositsRouter);
+router.use("/deposits", adminDepositsRouter);
+router.use("/refunds", refundsRoutes);
+router.use("/reconciliation", reconciliationRoutes);
 
 export default router;

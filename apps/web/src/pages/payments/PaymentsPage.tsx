@@ -14,22 +14,33 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { Link, useSearchParams } from "react-router-dom";
 import { useInvoices, useInvoice, useRefundInvoice } from "@/hooks/usePayments";
 import { ApiError } from "@/services/api/httpClient";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import type { Invoice, InvoiceStatus, PaymentStatus } from "@/types";
+import type { Invoice, InvoiceStatus, PaymentStatus, PaymentType } from "@/types";
 
 const STATUS_OPTIONS: (InvoiceStatus | "all")[] = ["all", "draft", "issued", "paid", "overdue", "void"];
-const PAYMENT_STATUS_OPTIONS: (PaymentStatus | "all")[] = ["all", "pending", "succeeded", "failed", "refunded"];
+const PAYMENT_STATUS_OPTIONS: (PaymentStatus | "all")[] = [
+  "all", "pending", "processing", "succeeded", "failed", "refunded",
+];
+const PAYMENT_TYPE_OPTIONS: (PaymentType | "all")[] = [
+  "all", "rental", "deposit", "damage", "penalty", "refund", "other",
+];
 
 export default function PaymentsPage() {
+  const [searchParams] = useSearchParams();
+  const bookingId = searchParams.get("bookingId") ?? undefined;
   const [status, setStatus] = useState<InvoiceStatus | "all">("all");
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | "all">("all");
+  const [paymentType, setPaymentType] = useState<PaymentType | "all">("all");
   const [page, setPage] = useState(1);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [refundTarget, setRefundTarget] = useState<Invoice | null>(null);
 
-  const { data, isLoading, isError, refetch } = useInvoices({ status, paymentStatus, page, pageSize: 8 });
+  const { data, isLoading, isError, refetch } = useInvoices({
+    status, paymentStatus, paymentType, bookingId, page, pageSize: 8,
+  });
 
   const columns: DataTableColumn<Invoice>[] = [
     {
@@ -41,6 +52,11 @@ export default function PaymentsPage() {
           <p className="truncate text-xs text-muted-foreground">{inv.rider?.email ?? ""}</p>
         </div>
       ),
+    },
+    {
+      header: "Type",
+      key: "payment_type",
+      render: (inv) => <span className="capitalize text-sm">{inv.payment_type ?? "—"}</span>,
     },
     { header: "Amount", key: "amount", render: (inv) => formatCurrency(inv.amount_due) },
     { header: "Status", key: "status", render: (inv) => <StatusBadge status={inv.status} /> },
@@ -65,6 +81,20 @@ export default function PaymentsPage() {
                 <Undo2 className="mr-2 h-4 w-4" /> Refund
               </DropdownMenuItem>
             )}
+            {inv.booking_id && (
+              <DropdownMenuItem asChild>
+                <Link to={`/payments?bookingId=${inv.booking_id}`} onClick={(e) => e.stopPropagation()}>
+                  <Eye className="mr-2 h-4 w-4" /> View payment history
+                </Link>
+              </DropdownMenuItem>
+            )}
+            {inv.booking_id && inv.payment_type === "damage" && (
+              <DropdownMenuItem asChild>
+                <Link to={`/damages?bookingId=${inv.booking_id}`} onClick={(e) => e.stopPropagation()}>
+                  <Eye className="mr-2 h-4 w-4" /> View damage
+                </Link>
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -73,13 +103,52 @@ export default function PaymentsPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Payments</h1>
-        <p className="text-sm text-muted-foreground">{data?.total ?? 0} invoices · revenue, transactions and refunds</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Payments</h1>
+          <p className="text-sm text-muted-foreground">
+            {data?.total ?? 0} invoices · revenue, transactions and refunds
+            {bookingId && (
+              <>
+                {" · filtered to one booking — "}
+                <Link to="/payments" className="underline">clear</Link>
+              </>
+            )}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/damages">Damages</Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/refunds">Refunds</Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/plans">Plans</Link>
+          </Button>
+        </div>
       </div>
 
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
+          <Select
+            value={paymentType}
+            onValueChange={(v) => {
+              setPaymentType(v as PaymentType | "all");
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="sm:w-48">
+              <SelectValue placeholder="Payment type" />
+            </SelectTrigger>
+            <SelectContent>
+              {PAYMENT_TYPE_OPTIONS.map((t) => (
+                <SelectItem key={t} value={t} className="capitalize">
+                  {t === "all" ? "All payment types" : t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select
             value={status}
             onValueChange={(v) => {

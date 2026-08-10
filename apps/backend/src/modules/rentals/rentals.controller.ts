@@ -6,6 +6,10 @@ import { ListRentalsFilters } from "./rentals.types";
 import {
     CompleteRideBody, MoveToMaintenanceBody, RentalHistoryQuery, RequestReturnBody,
 } from "./rentals.validation";
+import * as damagesService from "../damages/damages.service";
+import { assertValidDamagePhoto, buildDamagePhotoPath, uploadDamagePhotoFile } from "../damages/damages.photo.storage";
+import { RecordDamageBody } from "../damages/damages.validation";
+import type { UploadedFile } from "../kyc/kyc.storage";
 
 export async function myCurrentRentalHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getMyCurrentRental(req.user!.id));
@@ -42,4 +46,28 @@ export async function moveToMaintenanceHandler(req: AuthedRequest, res: Response
         req.user!,
     );
     res.json(rental);
+}
+
+/**
+ * Staff return-inspection damage entry — a separate, explicit action
+ * alongside POST /:id/complete or /:id/maintenance (which staff still call
+ * to close the physical ride out), so a no-damage return never touches this.
+ */
+export async function returnInspectionHandler(req: AuthedRequest, res: Response) {
+    const body = req.body as RecordDamageBody;
+    const files = ((req.files as Express.Multer.File[] | undefined) ?? []);
+
+    const paths: string[] = [];
+    for (const file of files) {
+        const uploaded: UploadedFile = {
+            buffer: file.buffer, mimetype: file.mimetype, size: file.size, originalname: file.originalname,
+        };
+        const mime = assertValidDamagePhoto(uploaded);
+        const path = buildDamagePhotoPath(req.params.id as string, mime);
+        await uploadDamagePhotoFile(path, uploaded, mime);
+        paths.push(path);
+    }
+
+    const damage = await damagesService.recordDamage(req.params.id as string, body, paths, req.user!);
+    res.status(201).json(damage);
 }

@@ -34,7 +34,7 @@ export async function assignVehicleHandler(req: AuthedRequest, res: Response) {
 
 export async function assignVehicleToUserHandler(req: AuthedRequest, res: Response) {
     const { user_id } = req.body as { user_id: string };
-    const vehicle = await service.assignVehicleToUser(req.params.id as string, user_id, req.user!);
+    const { vehicle } = await service.assignVehicleToUser(req.params.id as string, user_id, req.user!);
     res.json(vehicle);
 }
 

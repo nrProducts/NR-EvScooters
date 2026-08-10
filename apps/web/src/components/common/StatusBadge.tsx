@@ -45,6 +45,15 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   admin: "info",
   rider: "secondary",
   staff: "outline",
+  // payments/plans/deposits/damages/refunds
+  processing: "info",
+  held: "info",
+  partially_refunded: "secondary",
+  forfeited: "destructive",
+  recorded: "warning",
+  disputed: "destructive",
+  paused: "warning",
+  due: "warning",
 };
 
 export function StatusBadge({ status }: { status: string }) {

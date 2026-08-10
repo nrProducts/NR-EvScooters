@@ -1,11 +1,12 @@
 import type {
-    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiReferralSummary,
-    ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
-    ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
-    CreateUserPayload, KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile,
-    Paginated, ReturnRequestPayload, RoleName, StatusAction, SupportStatus,
-    UpdateSupportRequestPayload, UpdateUserPayload,
+    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiBookingWithPlan, ApiDamage, ApiDeposit, ApiDocument, ApiInvoice,
+    ApiKycDetail, ApiKycQueueItem, ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe,
+    ApiNotification, ApiPaymentOrder, ApiPickupBooking, ApiReferralSummary, ApiRental, ApiSignedUrl,
+    ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
+    ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, CreateUserPayload,
+    KycDocType, KycStatus, ListUsersParams, ListVehicleModelsParams, LocalFile, Paginated,
+    ReturnRequestPayload, RoleName, StatusAction, SupportStatus, UpdateSupportRequestPayload,
+    UpdateUserPayload, VerifyPaymentPayload,
 } from '../types/api';
 
 export interface UploadPhotoResult {
@@ -112,7 +113,13 @@ export interface HistoryParams {
 
 export interface BookingRepository {
     create(payload: CreateBookingPayload): Promise<ApiBooking>;
-    /** The rider's current in-progress booking, or null if none exists. */
+    /**
+     * The rider's current in-progress booking, or null if none exists. The
+     * real implementation's object actually carries the plan/billing fields
+     * too (ApiBookingWithPlan extends ApiBooking) — screens that need them
+     * cast the result rather than widening this shared interface, since the
+     * mock fixture (tests/fixtures/mock) doesn't simulate the billing engine.
+     */
     mine(): Promise<ApiBooking | null>;
     /** All of the rider's own bookings, any status, most recent first. */
     history(params: HistoryParams): Promise<Paginated<ApiBooking>>;
@@ -124,6 +131,22 @@ export interface BookingRepository {
     pickupQueue(params: PickupQueueParams): Promise<Paginated<ApiPickupBooking>>;
     availableVehicles(bookingId: string): Promise<ApiAvailableVehicle[]>;
     confirmPickup(bookingId: string, vehicleId: string): Promise<ApiPickupBooking>;
+}
+
+/**
+ * Payment gateway + rider billing. Amounts always come from the order the
+ * backend hands back — this repository never accepts one as input.
+ */
+export interface BillingRepository {
+    createOrderForBooking(bookingId: string): Promise<ApiPaymentOrder>;
+    createOrderForInvoice(invoiceId: string): Promise<ApiPaymentOrder>;
+    verifyPayment(payload: VerifyPaymentPayload): Promise<void>;
+
+    myInvoices(params: HistoryParams & { bookingId?: string }): Promise<Paginated<ApiInvoice>>;
+    /** The rider's deposit for a booking, or null before one exists (booking not yet paid). */
+    myDeposit(bookingId: string): Promise<ApiDeposit | null>;
+    myDamages(bookingId: string): Promise<ApiDamage[]>;
+    disputeDamage(damageId: string, reason: string): Promise<ApiDamage>;
 }
 
 export interface RentalRepository {

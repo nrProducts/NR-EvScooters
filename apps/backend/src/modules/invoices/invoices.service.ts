@@ -6,7 +6,7 @@ import { AuthContext, Paginated } from "../../types";
 import { InvoiceDetail, InvoiceRow, ListInvoicesFilters } from "./invoices.types";
 
 const LIST_COLUMNS = `
-    id, user_id, subscription_id, rental_id, status, amount_due, due_date,
+    id, user_id, subscription_id, rental_id, booking_id, payment_type, status, amount_due, due_date,
     payment_status, payment_method, gateway_ref, paid_at, created_at, updated_at,
     users(id, full_name, email)
 `;
@@ -27,6 +27,8 @@ interface RawInvoiceRow {
     user_id: string;
     subscription_id: string | null;
     rental_id: string | null;
+    booking_id: string | null;
+    payment_type: InvoiceRow["payment_type"];
     status: InvoiceRow["status"];
     amount_due: number | string;
     due_date: string;
@@ -51,6 +53,8 @@ function toInvoiceRow(row: RawInvoiceRow): InvoiceRow {
         user_id: row.user_id,
         subscription_id: row.subscription_id,
         rental_id: row.rental_id,
+        booking_id: row.booking_id,
+        payment_type: row.payment_type,
         status: row.status,
         amount_due: Number(row.amount_due),
         due_date: row.due_date,
@@ -79,7 +83,9 @@ export async function listInvoices(filters: ListInvoicesFilters): Promise<Pagina
 
     if (filters.status) query = query.eq("status", filters.status);
     if (filters.paymentStatus) query = query.eq("payment_status", filters.paymentStatus);
+    if (filters.paymentType) query = query.eq("payment_type", filters.paymentType);
     if (filters.userId) query = query.eq("user_id", filters.userId);
+    if (filters.bookingId) query = query.eq("booking_id", filters.bookingId);
 
     const [from, to] = toRange(filters);
     query = query.order("created_at", { ascending: false }).range(from, to);

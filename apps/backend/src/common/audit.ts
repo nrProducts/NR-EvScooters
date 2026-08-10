@@ -11,13 +11,18 @@ export type AuditAction =
     | "kyc.document_verified" | "kyc.document_rejected"
     | "kyc.approved" | "kyc.rejected"
     | "booking.created" | "booking.approved" | "booking.rejected" | "booking.fulfilled"
-    | "booking.cancelled"
+    | "booking.cancelled" | "booking.payment_completed"
     | "vehicle.created" | "vehicle.updated" | "vehicle.scrapped" | "vehicle.assigned"
     | "maintenance.created" | "maintenance.updated" | "maintenance.outcome_set"
     | "notification.broadcast"
     | "invoice.refunded"
     | "rental.completed" | "rental.moved_to_maintenance" | "rental.return_requested"
-    | "referral.redeemed" | "referral.qualified";
+    | "referral.redeemed" | "referral.qualified"
+    | "payment.order_created" | "payment.verified" | "payment.failed" | "payment.webhook_received"
+    | "deposit.held" | "deposit.refund_initiated" | "deposit.refunded" | "deposit.forfeited"
+    | "damage.created" | "damage.disputed" | "damage.resolved"
+    | "refund.initiated" | "refund.processed" | "refund.failed"
+    | "plan.activated" | "plan.paused" | "plan.resumed" | "plan.due" | "plan.updated";
 
 export interface AuditEntry {
     actorId: string | null;
@@ -25,7 +30,8 @@ export interface AuditEntry {
     action: AuditAction;
     entityType:
         | "user" | "user_document" | "user_role" | "booking" | "vehicle" | "vehicle_maintenance"
-        | "notification_broadcast" | "invoice" | "rental" | "referral";
+        | "notification_broadcast" | "invoice" | "rental" | "referral"
+        | "payment_order" | "payment_transaction" | "webhook_event" | "deposit" | "damage" | "refund" | "plan";
     entityId: string;
     before?: Record<string, unknown> | null;
     after?: Record<string, unknown> | null;

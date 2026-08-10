@@ -50,4 +50,21 @@ export const env = {
     /** Name of the OTP variable in the MSG91 Flow/DLT template. */
     msg91OtpVar: process.env.MSG91_OTP_VAR ?? "otp",
     msg91BaseUrl: process.env.MSG91_BASE_URL ?? "https://control.msg91.com",
+
+    // --- Razorpay (payment gateway) -----------------------------------
+    // Deliberately optional/empty-default, never `required(...)`: the app
+    // must still boot in dev with no keys configured. Anything that actually
+    // needs them throws a clear error at call time — see config/razorpay.ts.
+    razorpayKeyId: process.env.RAZORPAY_KEY_ID ?? "",
+    razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET ?? "",
+    razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ?? "",
+
+    /** Default security deposit when a plan doesn't override it, in rupees. */
+    defaultDepositAmount: intFromEnv("DEFAULT_DEPOSIT_AMOUNT", 2000),
+    /** Minutes a `pending_payment` booking is held before the expiry sweep releases its vehicle. */
+    bookingPaymentGraceMinutes: intFromEnv("BOOKING_PAYMENT_GRACE_MINUTES", 30),
+    /** Hours a rider has to dispute a recorded damage before the refund-eligibility sweep ignores it. */
+    damageDisputeWindowHours: intFromEnv("DAMAGE_DISPUTE_WINDOW_HOURS", 72),
+    /** Days after vehicle return before a held deposit becomes refund-eligible. */
+    depositRefundEligibilityDays: intFromEnv("DEPOSIT_REFUND_ELIGIBILITY_DAYS", 15),
 };

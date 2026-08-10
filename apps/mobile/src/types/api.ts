@@ -243,6 +243,9 @@ export interface ApiPlan {
     billing_cycle: BillingCycle;
     price: number;
     included_minutes: number | null;
+    /** Source of truth for the recurring-billing cadence — billing_cycle is display-only. */
+    duration_days: number;
+    deposit_amount: number;
 }
 
 export interface ApiVehicleModel {
@@ -328,7 +331,10 @@ export interface ApiBooking {
     created_at: string;
     vehicle_model: { id: string; name: string } | null;
     station: { id: string; name: string; code: string; lat: number; lng: number } | null;
-    plan: { id: string; name: string; billing_cycle: BillingCycle; price: number } | null;
+    plan: {
+        id: string; name: string; billing_cycle: BillingCycle; price: number;
+        duration_days: number; deposit_amount: number;
+    } | null;
     /**
      * The specific physical unit reserved for this booking, if any —
      * populated by the backend's allocate_vehicle_for_booking() once a
@@ -371,6 +377,87 @@ export interface ApiPickupBooking extends ApiBooking {
     rider: { id: string; full_name: string; phone: string | null };
 }
 
+// ---------------------------------------------------------------------------
+// Payments — mirrors apps/backend/src/modules/payments/payments.types.ts.
+// Amounts are always computed server-side; the app never sends one.
+// ---------------------------------------------------------------------------
+
+export interface ApiPaymentOrder {
+    /** Our internal payment_orders.id, not the gateway's. */
+    orderId: string;
+    gatewayOrderId: string;
+    /** Rupees. */
+    amount: number;
+    currency: string;
+    /** Razorpay's PUBLIC key id — safe on-device, never the secret. */
+    keyId: string;
+}
+
+export interface VerifyPaymentPayload {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+}
+
+// ---------------------------------------------------------------------------
+// Rider billing — mirrors the plan/deposit/damage/refund fields
+// bookings.types.ts adds on top of ApiBooking, plus the invoices/deposit
+// views the rider payment screen reads.
+// ---------------------------------------------------------------------------
+
+export type PlanStatus = 'active' | 'due' | 'paused';
+
+export interface ApiBookingWithPlan extends ApiBooking {
+    plan_status: PlanStatus | null;
+    plan_activated_at: string | null;
+    plan_duration_days: number | null;
+    deposit_amount_at_booking: number | null;
+    current_period_start: string | null;
+    next_due_at: string | null;
+    plan_paused_at: string | null;
+    plan_paused_days_total: number;
+}
+
+export type InvoicePaymentType = 'rental' | 'deposit' | 'damage' | 'penalty' | 'refund' | 'other';
+export type InvoicePaymentStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'refunded';
+
+export interface ApiInvoice {
+    id: string;
+    payment_type: InvoicePaymentType | null;
+    amount_due: number;
+    due_date: string;
+    payment_status: InvoicePaymentStatus;
+    paid_at: string | null;
+    created_at: string;
+}
+
+export type DepositStatus = 'pending' | 'held' | 'partially_refunded' | 'refunded' | 'forfeited';
+
+export interface ApiDeposit {
+    id: string;
+    booking_id: string;
+    amount: number;
+    status: DepositStatus;
+    held_at: string | null;
+    refund_eligible_at: string | null;
+    refunded_at: string | null;
+}
+
+export type DamageStatus = 'recorded' | 'disputed' | 'resolved';
+
+export interface ApiDamage {
+    id: string;
+    booking_id: string;
+    amount: number;
+    description: string;
+    deposit_deduction: number;
+    outstanding_amount: number;
+    status: DamageStatus;
+    created_at: string;
+    disputed_at: string | null;
+    dispute_reason: string | null;
+}
+
 export interface ApiAvailableVehicle {
     id: string;
     name: string;
@@ -385,6 +472,8 @@ export interface ApiRental {
     status: RentalStatus;
     started_at: string;
     ended_at: string | null;
+    /** Resolves which booking's plan/deposit/damage/payment history this rental belongs to. */
+    booking_id: string | null;
     vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
     station: { id: string; name: string; code: string } | null;
     plan: { id: string; name: string; billing_cycle: BillingCycle; price: number } | null;

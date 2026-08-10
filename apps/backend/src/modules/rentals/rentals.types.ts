@@ -24,6 +24,8 @@ export interface RentalView extends RentalReturnFields {
     status: RentalStatus;
     started_at: string;
     ended_at: string | null;
+    /** Lets the rider app resolve which booking's plan/deposit/damage/payment history this rental belongs to. */
+    booking_id: string | null;
     vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
     station: { id: string; name: string; code: string } | null;
     plan: { id: string; name: string; billing_cycle: string; price: number } | null;

@@ -451,18 +451,30 @@ export async function assignVehicle(vehicleId: string, userId: string) {
     return data;
 }
 
+export interface AssignVehicleToUserResult {
+    vehicle: VehicleRow;
+    /** The rentals row this handover just opened — callers that need to resume a paused billing plan use this. */
+    rentalId: string;
+}
+
 /**
  * Staff hand a specific available vehicle straight to a specific rider —
  * no booking involved (walk-in handovers, replacements, demo units). Mirrors
  * bookings.service.ts's confirmPickup(): opens the same 'rentals' row a
  * booking-based pickup would, so Unassign/complete-ride and the vehicle's
  * assignment history work identically regardless of how the ride started.
+ *
+ * `bookingId` is optional and stamped onto the new rentals row when this is
+ * a maintenance-flow handover (temp vehicle / handback / replacement) tied
+ * to an existing booking's recurring plan — omitted for a plain walk-in
+ * assignment with no booking behind it.
  */
 export async function assignVehicleToUser(
     vehicleId: string,
     userId: string,
     actor: AuthContext,
-): Promise<VehicleRow> {
+    bookingId?: string,
+): Promise<AssignVehicleToUserResult> {
     const { data: vehicle, error: vehicleError } = await supabaseAdmin
         .from("vehicles")
         .select("id, status")
@@ -483,12 +495,17 @@ export async function assignVehicleToUser(
         throw businessRule("This rider's KYC must be verified before handing over a vehicle.");
     }
 
-    const { error: rentalError } = await supabaseAdmin.from("rentals").insert({
-        user_id: userId,
-        vehicle_id: vehicleId,
-        status: "active",
-        started_at: new Date().toISOString(),
-    });
+    const { data: rental, error: rentalError } = await supabaseAdmin
+        .from("rentals")
+        .insert({
+            user_id: userId,
+            vehicle_id: vehicleId,
+            booking_id: bookingId ?? null,
+            status: "active",
+            started_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
     if (rentalError) throw rentalError;
 
     const { data, error } = await supabaseAdmin
@@ -516,5 +533,5 @@ export async function assignVehicleToUser(
         screen: "post-booking-dashboard",
     });
 
-    return updated;
+    return { vehicle: updated, rentalId: rental.id as string };
 }

@@ -6,6 +6,7 @@ export type ErrorCode =
     | "CONFLICT"
     | "PAYLOAD_TOO_LARGE"
     | "BUSINESS_RULE_VIOLATION"
+    | "SERVICE_UNAVAILABLE"
     | "INTERNAL_ERROR";
 
 export type FieldErrors = Record<string, string>;
@@ -42,6 +43,7 @@ function defaultCodeForStatus(status: number): ErrorCode {
         case 409: return "CONFLICT";
         case 413: return "PAYLOAD_TOO_LARGE";
         case 422: return "BUSINESS_RULE_VIOLATION";
+        case 503: return "SERVICE_UNAVAILABLE";
         default:  return "INTERNAL_ERROR";
     }
 }
@@ -61,3 +63,6 @@ export const tooLarge = (message: string) =>
 /** 422: request was well-formed but violates a domain rule. */
 export const businessRule = (message: string, fields?: FieldErrors) =>
     new AppError(422, message, "BUSINESS_RULE_VIOLATION", fields);
+/** 503: a required external dependency (e.g. the payment gateway) isn't configured or reachable. */
+export const serviceUnavailable = (message: string) =>
+    new AppError(503, message, "SERVICE_UNAVAILABLE");

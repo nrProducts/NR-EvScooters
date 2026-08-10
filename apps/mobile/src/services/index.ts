@@ -1,10 +1,10 @@
 import {
-    ApiBookingRepository, ApiKycRepository, ApiMaintenanceRepository, ApiNotificationRepository,
-    ApiReferralRepository, ApiRentalRepository, ApiSupportRepository, ApiUserRepository,
-    ApiVehicleCatalogRepository, SupabaseAuthRepository,
+    ApiBillingRepository, ApiBookingRepository, ApiKycRepository, ApiMaintenanceRepository,
+    ApiNotificationRepository, ApiReferralRepository, ApiRentalRepository, ApiSupportRepository,
+    ApiUserRepository, ApiVehicleCatalogRepository, SupabaseAuthRepository,
 } from './api.repositories';
 import type {
-    AuthRepository, BookingRepository, KycRepository, MaintenanceRepository,
+    AuthRepository, BillingRepository, BookingRepository, KycRepository, MaintenanceRepository,
     NotificationRepository, ReferralRepository, RentalRepository, SupportRepository,
     UserRepository, VehicleCatalogRepository,
 } from './types';
@@ -27,6 +27,8 @@ export const kycRepository: KycRepository = new ApiKycRepository();
 export const vehicleCatalogRepository: VehicleCatalogRepository = new ApiVehicleCatalogRepository();
 
 export const bookingRepository: BookingRepository = new ApiBookingRepository();
+
+export const billingRepository: BillingRepository = new ApiBillingRepository();
 
 export const notificationRepository: NotificationRepository = new ApiNotificationRepository();
 

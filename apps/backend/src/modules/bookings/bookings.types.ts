@@ -35,7 +35,10 @@ export interface BookingView {
     created_at: string;
     vehicle_model: { id: string; name: string } | null;
     station: { id: string; name: string; code: string; lat: number; lng: number } | null;
-    plan: { id: string; name: string; billing_cycle: string; price: number } | null;
+    plan: {
+        id: string; name: string; billing_cycle: string; price: number;
+        duration_days: number; deposit_amount: number;
+    } | null;
     /**
      * The specific physical unit reserved for this booking, if any —
      * populated by allocate_vehicle_for_booking() (20260727095801), which
@@ -59,6 +62,18 @@ export interface BookingView {
     cancellation_penalty_amount: number | null;
     refund_amount: number | null;
     refund_status: BookingRefundStatus | null;
+
+    // --- recurring-billing plan state (all null until confirmPickup activates it) ---
+    plan_status: "active" | "due" | "paused" | null;
+    plan_activated_at: string | null;
+    /** Snapshot of plans.duration_days at activation — the plan template may change later. */
+    plan_duration_days: number | null;
+    /** Snapshot of plans.deposit_amount at booking-payment time. */
+    deposit_amount_at_booking: number | null;
+    current_period_start: string | null;
+    next_due_at: string | null;
+    plan_paused_at: string | null;
+    plan_paused_days_total: number;
 }
 
 export interface PickupQueueFilters {

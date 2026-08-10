@@ -40,7 +40,7 @@ const ADMIN_NAV: NavItem[] = [
 const USER_NAV: NavItem[] = [
   { label: 'Home', icon: Home, route: '/home' },
   { label: 'My Scooter', icon: Bike, route: '/my-scooter' },
-  { label: 'My Plan', icon: CreditCard, route: '/my-plan' },
+  { label: 'Billing', icon: CreditCard, route: '/billing' },
   { label: 'Booking History', icon: History, route: '/booking-history' },
   { label: 'KYC Verification', icon: ShieldCheck, route: '/kyc' },
   { label: 'Support', icon: LifeBuoy, route: '/support' },
@@ -82,7 +82,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   const hasActiveBooking = profile?.has_active_booking ?? false;
   const hasActiveRental = profile?.has_active_rental ?? false;
   const riderNav = USER_NAV.filter(
-    item => (item.route === '/my-scooter' || item.route === '/my-plan') ? (hasActiveBooking || hasActiveRental) : true,
+    item => (item.route === '/my-scooter' || item.route === '/billing') ? (hasActiveBooking || hasActiveRental) : true,
   );
   const navItems = isStaff ? ADMIN_NAV : riderNav;
 

@@ -6,7 +6,12 @@ import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./invoices.controller";
 import * as v from "./invoices.validation";
 
-/** Admin console only, mounted at /api/v1/invoices. Riders see their own billing via /rentals/me/history. */
+/** Rider's own payment history/receipts — mounted at /invoices/me, before the admin router below. */
+export const riderRouter = Router();
+riderRouter.use(requireAuth);
+riderRouter.get("/", validate({ query: v.myInvoicesQuery }), asyncHandler(c.myInvoicesHandler));
+
+/** Admin console only, mounted at /api/v1/invoices. */
 const router = Router();
 router.use(requireAuth, requireStaff);
 

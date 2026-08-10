@@ -1203,7 +1203,12 @@ function toApiBooking(row: MockBookingRow): ApiBooking {
         created_at: row.created_at,
         vehicle_model: model ? { id: model.id, name: model.name } : null,
         station: station ? { id: station.id, name: station.name, code: station.code, lat: station.lat, lng: station.lng } : null,
-        plan: plan ? { id: plan.id, name: plan.name, billing_cycle: plan.billing_cycle, price: plan.price } : null,
+        plan: plan
+            ? {
+                id: plan.id, name: plan.name, billing_cycle: plan.billing_cycle, price: plan.price,
+                duration_days: plan.duration_days, deposit_amount: plan.deposit_amount,
+            }
+            : null,
         // Mock DB has no per-unit vehicle allocation concept â€” matches
         // production's pre-pickup reality when no unit has been reserved yet.
         vehicle: null,
@@ -1238,6 +1243,7 @@ function toApiRental(row: MockRentalRow): ApiRental {
         status: row.status,
         started_at: row.started_at,
         ended_at: row.ended_at,
+        booking_id: row.booking_id,
         // Mock mode has no per-unit fleet inventory wired to bookings (that
         // lives in the separate useFleetStore used by the admin mock
         // screens) â€” stand in with the booked model's name.

@@ -313,14 +313,17 @@ export interface BroadcastResult {
 // ---------------------------------------------------------------------------
 
 export type InvoiceStatus = "draft" | "issued" | "paid" | "overdue" | "void";
-export type PaymentStatus = "pending" | "succeeded" | "failed" | "refunded";
+export type PaymentStatus = "pending" | "processing" | "succeeded" | "failed" | "refunded";
 export type PaymentMethod = "card" | "wallet" | "upi" | "cash";
+export type PaymentType = "rental" | "deposit" | "damage" | "penalty" | "refund" | "other";
 
 export interface Invoice {
   id: string;
   user_id: string;
   subscription_id: string | null;
   rental_id: string | null;
+  booking_id: string | null;
+  payment_type: PaymentType | null;
   status: InvoiceStatus;
   amount_due: number;
   due_date: string;
@@ -336,6 +339,94 @@ export interface Invoice {
 export interface InvoiceDetail extends Invoice {
   plan: { id: string; name: string } | null;
   vehicle: { id: string; name: string; registration_number: string } | null;
+}
+
+// ---------------------------------------------------------------------------
+// Plans (admin) — mirrors apps/backend/src/modules/plans/plans.types.ts
+// ---------------------------------------------------------------------------
+
+export type BillingCycle = "daily" | "weekly" | "monthly" | "yearly";
+
+export interface Plan {
+  id: string;
+  name: string;
+  billing_cycle: BillingCycle;
+  price: number;
+  included_minutes: number | null;
+  duration_days: number;
+  deposit_amount: number;
+  vehicle_model_id: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Deposits (admin) — mirrors apps/backend/src/modules/deposits/deposits.types.ts
+// ---------------------------------------------------------------------------
+
+export type DepositStatus = "pending" | "held" | "partially_refunded" | "refunded" | "forfeited";
+
+export interface Deposit {
+  id: string;
+  booking_id: string;
+  amount: number;
+  status: DepositStatus;
+  held_at: string | null;
+  refund_eligible_at: string | null;
+  refunded_at: string | null;
+  forfeited_at: string | null;
+  refund_id: string | null;
+  refundable_amount: number;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Damages (admin + rider) — mirrors apps/backend/src/modules/damages/damages.types.ts
+// ---------------------------------------------------------------------------
+
+export type DamageStatus = "recorded" | "disputed" | "resolved";
+
+export interface Damage {
+  id: string;
+  booking_id: string;
+  rental_id: string;
+  reported_by: { id: string; full_name: string } | null;
+  amount: number;
+  description: string;
+  photo_urls: string[];
+  deposit_deduction: number;
+  outstanding_amount: number;
+  status: DamageStatus;
+  created_at: string;
+  disputed_at: string | null;
+  disputed_by: { id: string; full_name: string } | null;
+  dispute_reason: string | null;
+  dispute_resolved_at: string | null;
+  dispute_resolution_notes: string | null;
+  disputed_amount_held: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Refunds (admin) — mirrors apps/backend/src/modules/refunds/refunds.types.ts
+// ---------------------------------------------------------------------------
+
+export type RefundStatus = "pending" | "processing" | "success" | "failed";
+
+export interface Refund {
+  id: string;
+  deposit_id: string;
+  booking_id: string;
+  amount: number;
+  status: RefundStatus;
+  gateway_refund_id: string | null;
+  source_gateway_payment_id: string | null;
+  attempt_count: number;
+  last_attempted_at: string | null;
+  failure_reason: string | null;
+  initiated_at: string;
+  processed_at: string | null;
+  created_at: string;
 }
 
 // ---------------------------------------------------------------------------

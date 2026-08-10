@@ -5,6 +5,7 @@ import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
 import { assignVehicleToUser, scrapVehicle } from "../vehicles/vehicles.service";
 import { completeRide } from "../rentals/rentals.service";
+import { resumePlanForBooking } from "../plans/plans.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     AdminMaintenanceRow, AssignTempVehicleInput, CreateMaintenanceInput, ListMaintenanceFilters,
@@ -218,13 +219,14 @@ interface RawTicketState {
     displaced_rider_id: string | null;
     temp_vehicle_id: string | null;
     replacement_vehicle_id: string | null;
+    booking_id: string | null;
 }
 
 /** Lightweight internal read used by the triage/resolve actions to check guards before writing. */
 async function requireTicketState(id: string): Promise<RawTicketState> {
     const { data, error } = await supabaseAdmin
         .from("vehicle_maintenance")
-        .select("id, vehicle_id, status, outcome, displaced_rider_id, temp_vehicle_id, replacement_vehicle_id")
+        .select("id, vehicle_id, status, outcome, displaced_rider_id, temp_vehicle_id, replacement_vehicle_id, booking_id")
         .eq("id", id)
         .maybeSingle();
     if (error) throw error;
@@ -304,7 +306,9 @@ export async function assignTempVehicle(
         throw businessRule("Pick a different vehicle to use as the temporary unit.");
     }
 
-    await assignVehicleToUser(input.temp_vehicle_id, ticket.displaced_rider_id, actor);
+    const { rentalId } = await assignVehicleToUser(
+        input.temp_vehicle_id, ticket.displaced_rider_id, actor, ticket.booking_id ?? undefined,
+    );
 
     const { data, error } = await supabaseAdmin
         .from("vehicle_maintenance")
@@ -320,6 +324,12 @@ export async function assignTempVehicle(
         .single();
     if (error) throw error;
     const updated = toAdminMaintenanceRow(data as unknown as RawAdminMaintenanceRow);
+
+    // The rider's existing weekly-billing plan continues on the temp
+    // vehicle — never restarted or re-charged just because the vehicle changed.
+    if (ticket.booking_id) {
+        await resumePlanForBooking(ticket.booking_id, id, "temp_vehicle", rentalId, actor);
+    }
 
     await notifyUser(ticket.displaced_rider_id, {
         template: "maintenance_temp_vehicle",
@@ -405,7 +415,9 @@ export async function reassignAfterScrap(
         throw businessRule("No displaced rider recorded for this ticket — nothing to reassign.");
     }
 
-    await assignVehicleToUser(input.replacement_vehicle_id, ticket.displaced_rider_id, actor);
+    const { rentalId } = await assignVehicleToUser(
+        input.replacement_vehicle_id, ticket.displaced_rider_id, actor, ticket.booking_id ?? undefined,
+    );
 
     const { data, error } = await supabaseAdmin
         .from("vehicle_maintenance")
@@ -415,6 +427,12 @@ export async function reassignAfterScrap(
         .single();
     if (error) throw error;
     const updated = toAdminMaintenanceRow(data as unknown as RawAdminMaintenanceRow);
+
+    // The rider's existing plan continues on the replacement vehicle — the
+    // old one was scrapped, but this is not a new booking or a new charge.
+    if (ticket.booking_id) {
+        await resumePlanForBooking(ticket.booking_id, id, "replacement", rentalId, actor);
+    }
 
     await writeAudit({
         actorId: actor.id,
@@ -443,7 +461,15 @@ export async function updateMaintenanceTicket(
                 // assignVehicleToUser requires status='available', so this order
                 // is load-bearing.
                 await releaseVehicleIfNoOpenTickets(ticket.vehicle_id, id);
-                await assignVehicleToUser(ticket.vehicle_id, ticket.displaced_rider_id, actor);
+                const { rentalId } = await assignVehicleToUser(
+                    ticket.vehicle_id, ticket.displaced_rider_id, actor, ticket.booking_id ?? undefined,
+                );
+
+                // The rider's plan resumes on their own original vehicle,
+                // remaining duration intact.
+                if (ticket.booking_id) {
+                    await resumePlanForBooking(ticket.booking_id, id, "original_handback", rentalId, actor);
+                }
 
                 if (ticket.outcome === "standard_temp" && ticket.temp_vehicle_id) {
                     const { data: tempRental, error: tempRentalError } = await supabaseAdmin

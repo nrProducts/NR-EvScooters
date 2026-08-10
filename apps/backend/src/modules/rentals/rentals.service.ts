@@ -3,6 +3,8 @@ import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
+import { pausePlanForBooking } from "../plans/plans.service";
+import { setDepositRefundEligible } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     AdminRentalRow, CompleteRideInput, ListRentalsFilters, MoveToMaintenanceInput, RentalView,
@@ -26,7 +28,7 @@ const RETURN_COLUMNS = `
  * interface but omitted here compiles clean and silently returns undefined.
  */
 const RENTAL_COLUMNS = `
-    id, status, started_at, ended_at,
+    id, status, started_at, ended_at, booking_id,
     ${RETURN_COLUMNS},
     vehicles(id, name, registration_number, battery_percentage),
     bookings(
@@ -41,7 +43,7 @@ const RENTAL_COLUMNS = `
  * late-return penalty silently compute as zero.
  */
 const ADMIN_RENTAL_COLUMNS = `
-    id, status, started_at, ended_at, start_battery_pct, end_battery_pct, fare, vehicle_id,
+    id, status, started_at, ended_at, start_battery_pct, end_battery_pct, fare, vehicle_id, booking_id,
     ${RETURN_COLUMNS},
     users(id, full_name, phone),
     vehicles(id, name, registration_number, battery_percentage)
@@ -146,6 +148,7 @@ interface RawRentalRow extends RawReturnFields {
     status: RentalView["status"];
     started_at: string;
     ended_at: string | null;
+    booking_id: string | null;
     vehicles: unknown;
     bookings: unknown;
 }
@@ -160,6 +163,7 @@ function toRentalView(row: RawRentalRow): RentalView {
         status: row.status,
         started_at: row.started_at,
         ended_at: row.ended_at,
+        booking_id: row.booking_id,
         vehicle: vehicle ? { ...vehicle, battery_percentage: Number(vehicle.battery_percentage) } : null,
         plan: booking ? unwrap(booking.plans) : null,
         station: booking ? unwrap(booking.stations) : null,
@@ -176,6 +180,7 @@ interface RawAdminRentalRow extends RawReturnFields {
     end_battery_pct: number | string | null;
     fare: number | string | null;
     vehicle_id: string;
+    booking_id: string | null;
     users: unknown;
     vehicles: unknown;
 }
@@ -406,12 +411,13 @@ export async function completeRide(
 ): Promise<AdminRentalRow> {
     const before = await requireActiveRental(id);
     const { payload: settlement, charge } = settlementPayload(before);
+    const endedAt = new Date();
 
     const { data, error } = await supabaseAdmin
         .from("rentals")
         .update({
             status: "completed",
-            ended_at: new Date().toISOString(),
+            ended_at: endedAt.toISOString(),
             end_battery_pct: input.end_battery_pct ?? null,
             ...settlement,
         })
@@ -425,6 +431,24 @@ export async function completeRide(
         .update({ status: "available" })
         .eq("id", before.vehicle_id);
     if (vehicleError) throw vehicleError;
+
+    // Start the deposit's 15-day refund-eligibility clock — but only for a
+    // GENUINE final return, not the temp-vehicle rental closure
+    // updateMaintenanceTicket triggers mid-maintenance (maintenance.service.ts).
+    // By the time that closure calls completeRide, resumePlanForBooking has
+    // already moved bookings.active_rental_id to the NEW (original/handback)
+    // rental, so this rental no longer being the booking's active one is
+    // exactly the signal that distinguishes the two cases.
+    if (before.booking_id) {
+        const { data: booking } = await supabaseAdmin
+            .from("bookings")
+            .select("active_rental_id")
+            .eq("id", before.booking_id)
+            .maybeSingle();
+        if (booking && booking.active_rental_id === id) {
+            await setDepositRefundEligible(before.booking_id, endedAt);
+        }
+    }
 
     const rental = toAdminRentalRow(data as unknown as RawAdminRentalRow);
     const riderId = unwrap<{ id: string }>(before.users)?.id ?? null;
@@ -494,14 +518,27 @@ export async function moveRideToMaintenance(
 
     const riderId = unwrap<{ id: string }>(before.users)?.id ?? null;
 
-    const { error: ticketError } = await supabaseAdmin.from("vehicle_maintenance").insert({
-        vehicle_id: before.vehicle_id,
-        reported_by: actor.id,
-        displaced_rider_id: riderId,
-        description: input.description,
-        status: "reported",
-    });
+    const { data: ticket, error: ticketError } = await supabaseAdmin
+        .from("vehicle_maintenance")
+        .insert({
+            vehicle_id: before.vehicle_id,
+            reported_by: actor.id,
+            displaced_rider_id: riderId,
+            booking_id: before.booking_id,
+            description: input.description,
+            status: "reported",
+        })
+        .select("id")
+        .single();
     if (ticketError) throw ticketError;
+
+    // Pause the rider's recurring-billing plan (if this ride belongs to one)
+    // — they must not lose rental days or be charged while the vehicle they
+    // were assigned is unavailable. A no-op for a rental with no booking_id
+    // (e.g. a walk-in assignment) or whose plan isn't active.
+    if (before.booking_id) {
+        await pausePlanForBooking(before.booking_id, ticket.id as string, actor);
+    }
 
     await writeAudit({
         actorId: actor.id,

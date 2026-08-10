@@ -2,16 +2,16 @@ import { api } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
 import { getSupabase } from '../lib/supabase';
 import type {
-    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDocument, ApiKycDetail, ApiKycQueueItem,
-    ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPickupBooking, ApiReferralSummary,
-    ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser, ApiUserDetail,
-    ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
+    ApiAvailability, ApiAvailableVehicle, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiInvoice,
+    ApiKycDetail, ApiKycQueueItem, ApiKycSummary,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiPickupBooking,
+    ApiReferralSummary, ApiRental, ApiSignedUrl, ApiStation, ApiSupportQueueItem, ApiSupportRequest, ApiUser,
+    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
     CreateUserPayload, ListUsersParams, ListVehicleModelsParams, Paginated, ReturnRequestPayload,
-    RoleName, StatusAction, UpdateSupportRequestPayload, UpdateUserPayload,
+    RoleName, StatusAction, UpdateSupportRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
 } from '../types/api';
 import type {
-    AuthRepository, BookingRepository, HistoryParams, KycQueueParams, KycRepository,
+    AuthRepository, BillingRepository, BookingRepository, HistoryParams, KycQueueParams, KycRepository,
     MaintenanceRepository, NotificationRepository, PickupQueueParams, ReferralRepository,
     RentalRepository, SessionRef, SupportQueueParams, SupportRepository, UpdateDocumentInput,
     UploadDocumentInput, UploadPhotoResult, UserRepository, VehicleCatalogRepository,
@@ -226,6 +226,35 @@ export class ApiBookingRepository implements BookingRepository {
     }
     confirmPickup(bookingId: string, vehicleId: string): Promise<ApiPickupBooking> {
         return api.confirmPickup(bookingId, vehicleId);
+    }
+}
+
+export class ApiBillingRepository implements BillingRepository {
+    createOrderForBooking(bookingId: string): Promise<ApiPaymentOrder> {
+        return api.createPaymentOrderForBooking(bookingId);
+    }
+    createOrderForInvoice(invoiceId: string): Promise<ApiPaymentOrder> {
+        return api.createPaymentOrderForInvoice(invoiceId);
+    }
+    async verifyPayment(payload: VerifyPaymentPayload): Promise<void> {
+        await api.verifyPayment(payload);
+    }
+    myInvoices(params: HistoryParams & { bookingId?: string }): Promise<Paginated<ApiInvoice>> {
+        return api.myInvoices(params);
+    }
+    async myDeposit(bookingId: string): Promise<ApiDeposit | null> {
+        try {
+            return await api.myDepositForBooking(bookingId);
+        } catch (err) {
+            if (err instanceof ApiError && err.status === 404) return null;
+            throw err;
+        }
+    }
+    myDamages(bookingId: string): Promise<ApiDamage[]> {
+        return api.myDamagesForBooking(bookingId);
+    }
+    disputeDamage(damageId: string, reason: string): Promise<ApiDamage> {
+        return api.disputeDamage(damageId, reason);
     }
 }
 

@@ -1,254 +1,237 @@
 import React, { useState } from 'react';
-import {
-  View, Text, ScrollView, TouchableOpacity, TextInput, Modal, ActivityIndicator,
-} from 'react-native';
-// Library version, not RN's: RN's only really works on iOS, and Android is
-// edge-to-edge from SDK 54 so the window no longer resizes for the keyboard.
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useConfirm } from '../hooks/useConfirm';
-import { confirmAction, notifySuccess } from '../lib/confirm';
-import { useScooterStore } from '../store/useScooterStore';
+import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { CreditCard, ShieldCheck, AlertTriangle, Receipt } from 'lucide-react-native';
+import { AppShell } from '../components/AppShell';
+import { EmptyState } from '../components/ui/EmptyState';
+import { ErrorState } from '../components/ui/ErrorState';
+import { Badge } from '../components/ui/Badge';
 import { COLORS } from '../constants/theme';
-import { CreditCard, Calendar, ShieldCheck, Wallet, ChevronRight, Check } from 'lucide-react-native';
+import { useMyBilling } from '../hooks/useMyBilling';
+import { useAuthStore } from '../store/useAuthStore';
+import { billingRepository } from '../services';
+import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
+import { ApiError } from '../lib/ApiError';
+import type { ApiInvoice, InvoicePaymentStatus, PlanStatus } from '../types/api';
+
+const CYCLE_LABEL: Record<string, string> = {
+  daily: 'Day', weekly: 'Week', monthly: 'Month', yearly: 'Year',
+};
+
+const PLAN_STATUS_TONE: Record<PlanStatus, 'success' | 'warning' | 'danger'> = {
+  active: 'success', due: 'warning', paused: 'warning',
+};
+
+const PAYMENT_STATUS_TONE: Record<InvoicePaymentStatus, 'success' | 'warning' | 'danger' | undefined> = {
+  succeeded: 'success', pending: 'warning', processing: 'warning', failed: 'danger', refunded: undefined,
+};
+
+const PAYMENT_TYPE_LABEL: Record<string, string> = {
+  rental: 'Weekly Rental', deposit: 'Security Deposit', damage: 'Damage Charge',
+  penalty: 'Penalty', refund: 'Refund', other: 'Payment',
+};
+
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return '—';
+  return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 export default function BillingScreen() {
-  const insets = useSafeAreaInsets();
-  // Payment validation fires from inside the checkout Modal.
-  const checkoutDialog = useConfirm();
-  const { user, payRentBill, addWalletFunds, modifySubscription } = useScooterStore();
-  const [checkoutVisible, setCheckoutVisible] = useState(false);
-  const [payAmount, setPayAmount] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  
-  if (!user) return null;
+  const { bookingId, booking, deposit, damages, invoices, loading, error, reload } = useMyBilling();
+  const profile = useAuthStore((s) => s.profile);
+  const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
 
-  const handlePayBill = () => {
-    const amount = parseFloat(payAmount);
-    if (isNaN(amount) || amount <= 0) {
-      checkoutDialog.alert('Input Error', 'Please enter a valid amount to pay.');
-      return;
+  const plan = booking?.plan;
+  const outstandingInvoices = invoices.filter((inv) => inv.payment_status === 'pending' || inv.payment_status === 'failed');
+  const outstandingTotal = outstandingInvoices.reduce((sum, inv) => sum + inv.amount_due, 0);
+
+  const payInvoice = async (invoice: ApiInvoice) => {
+    setPayError(null);
+    setPayingInvoiceId(invoice.id);
+    try {
+      const order = await billingRepository.createOrderForInvoice(invoice.id);
+      const verifyPayload = await openRazorpayCheckout({
+        key: order.keyId,
+        amount: Math.round(order.amount * 100),
+        currency: order.currency,
+        order_id: order.gatewayOrderId,
+        name: 'NR EV Scooters',
+        description: PAYMENT_TYPE_LABEL[invoice.payment_type ?? 'other'],
+        prefill: {
+          email: profile?.email ?? undefined,
+          contact: profile?.phone ?? undefined,
+          name: profile?.full_name,
+        },
+        theme: { color: COLORS.primary },
+      });
+      await billingRepository.verifyPayment(verifyPayload);
+      reload();
+    } catch (err) {
+      if (err instanceof PaymentCancelledError || err instanceof PaymentUnavailableError) {
+        setPayError(err.message);
+      } else if (err instanceof ApiError) {
+        setPayError(err.message);
+      } else {
+        setPayError('Payment failed. Please try again.');
+      }
+    } finally {
+      setPayingInvoiceId(null);
     }
-
-    if (amount > user.walletBalance) {
-      checkoutDialog.alert(
-        'Insufficient Funds',
-        `Your wallet balance is $${user.walletBalance.toFixed(2)}. Please top up your wallet first.`,
-      );
-      return;
-    }
-
-    setIsProcessing(true);
-    setTimeout(() => {
-      payRentBill(amount);
-      setIsProcessing(false);
-      setCheckoutVisible(false);
-      setPayAmount('');
-      notifySuccess('Payment Successful', 'Thank you! Your lease payment has been registered.');
-    }, 1500);
   };
-
-  const handleTopUp = () => {
-    setIsProcessing(true);
-    setTimeout(() => {
-      addWalletFunds(50);
-      setIsProcessing(false);
-      notifySuccess('Top Up Successful', '$50.00 added to your wallet.');
-    }, 1200);
-  };
-
-  const selectNewPlan = async (planName: string, cost: number) => {
-    const ok = await confirmAction({
-      title: 'Change Subscription Package',
-      message: `Would you like to switch your plan to the ${planName} for $${cost.toFixed(2)}/cycle?`,
-      confirmLabel: 'Confirm Change',
-    });
-    if (!ok) return;
-    modifySubscription(planName, cost);
-    notifySuccess('Subscription Swapped', `Your plan has been updated to the ${planName}.`);
-  };
-
-  const mockPlans = [
-    { name: 'Weekly Commuter Lease', cost: 29.00, cycle: 'Week' },
-    { name: 'Monthly Premium Lease', cost: 89.00, cycle: 'Month' },
-    { name: 'Monthly Pro Heavy Lease', cost: 129.00, cycle: 'Month' }
-  ];
 
   return (
-    <ScrollView className="flex-1 bg-slate-50 dark:bg-zinc-950 px-6 py-6">
-      
-      {/* WALLET & OUTSTANDING BALANCE CARDS */}
-      <View className="bg-white dark:bg-zinc-900 rounded-3xl p-5 border border-emerald-100/30 shadow-sm mb-5">
-        <View className="flex-row justify-between items-center mb-4">
-          <View className="flex-row items-center">
-            <Wallet size={20} color={COLORS.primaryDark} className="mr-2" />
-            <Text style={{ color: COLORS.forestDeep }} className="font-extrabold text-sm dark:text-emerald-50">
-              My Wallet Balance
-            </Text>
-          </View>
-          <Text style={{ color: COLORS.primaryDark }} className="text-xl font-black">
-            ${user.walletBalance.toFixed(2)}
-          </Text>
+    <AppShell title="Billing">
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
-
-        <TouchableOpacity 
-          onPress={handleTopUp}
-          style={{ backgroundColor: COLORS.primaryLight }}
-          className="w-full py-3.5 rounded-2xl justify-center items-center mb-2.5 border border-emerald-100"
-        >
-          <Text style={{ color: COLORS.primaryDark }} className="font-extrabold text-sm">
-            Top Up Wallet +$50.00
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* RENTAL BILL OUTSTANDING INVOICE CARD */}
-      <View className="bg-white dark:bg-zinc-900 rounded-3xl p-5 border border-emerald-100/30 shadow-sm mb-5">
-        <View className="flex-row justify-between items-start mb-4">
-          <View>
-            <Text className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Outstanding Rent Due</Text>
-            <Text 
-              style={{ color: user.outstandingBalance > 0 ? '#EF4444' : COLORS.primaryDark }} 
-              className="text-2xl font-black mt-0.5"
-            >
-              ${user.outstandingBalance.toFixed(2)}
+      ) : error ? (
+        <ErrorState message={error} onRetry={reload} />
+      ) : !bookingId ? (
+        <EmptyState
+          icon={CreditCard}
+          title="No active plan"
+          subtitle="Book a scooter to see your billing details here."
+        />
+      ) : (
+        <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: 40 }}>
+          {/* Current plan */}
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Current Plan</Text>
+          <View className="rounded-3xl p-5 mb-6" style={{ backgroundColor: COLORS.primary }}>
+            <View className="flex-row justify-between items-start mb-2">
+              <Text className="text-white text-lg font-black">{plan?.name ?? 'Rental Plan'}</Text>
+              {booking?.plan_status ? (
+                <Badge label={booking.plan_status} tone={PLAN_STATUS_TONE[booking.plan_status]} />
+              ) : null}
+            </View>
+            <Text className="text-white/80 text-xs font-medium mb-4">
+              {plan ? `${CYCLE_LABEL[plan.billing_cycle] ?? plan.billing_cycle} rental` : ''}
+              {booking?.next_due_at ? ` · Next due ${formatDate(booking.next_due_at)}` : ''}
+            </Text>
+            <Text className="text-white text-3xl font-black">
+              ₹{(plan?.price ?? 0).toFixed(0)}{' '}
+              {plan ? (
+                <Text className="text-sm font-medium text-white/70">
+                  / {CYCLE_LABEL[plan.billing_cycle] ?? plan.billing_cycle}
+                </Text>
+              ) : null}
             </Text>
           </View>
-          <View className={`px-2.5 py-1.5 rounded-lg border ${user.outstandingBalance > 0 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
-            <Text className={`text-[10px] font-black uppercase ${user.outstandingBalance > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
-              {user.outstandingBalance > 0 ? 'PAST DUE' : 'CLEARED'}
-            </Text>
-          </View>
-        </View>
 
-        {user.outstandingBalance > 0 && (
-          <TouchableOpacity 
-            onPress={() => setCheckoutVisible(true)}
-            style={{ backgroundColor: COLORS.primaryDark }}
-            className="w-full py-4 rounded-2xl justify-center items-center shadow-sm"
-          >
-            <Text className="text-white font-bold text-sm">Pay Rent Bill Now</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* PLAN LIMITS & DATES */}
-      <View className="bg-white dark:bg-zinc-900 rounded-3xl p-5 border border-emerald-100/30 shadow-sm mb-5">
-        <Text style={{ color: COLORS.forestDeep }} className="font-extrabold text-sm dark:text-emerald-50 mb-4">
-          Plan & Renewal Cycle
-        </Text>
-
-        <View className="flex-row items-center border-b border-slate-100 dark:border-zinc-800 pb-3.5 mb-3.5">
-          <Calendar size={18} color={COLORS.primaryDark} className="mr-3" />
-          <View>
-            <Text className="text-slate-400 text-[9px] uppercase font-bold tracking-wider">Automated Deduction Date</Text>
-            <Text style={{ color: COLORS.forestDeep }} className="text-sm font-bold mt-0.5 dark:text-emerald-100">
-              {user.subscription.autoRenewDate}
-            </Text>
-          </View>
-        </View>
-
-        <View className="flex-row items-center">
-          <CreditCard size={18} color={COLORS.primaryDark} className="mr-3" />
-          <View>
-            <Text className="text-slate-400 text-[9px] uppercase font-bold tracking-wider">Payment Instrument</Text>
-            <Text style={{ color: COLORS.forestDeep }} className="text-sm font-bold mt-0.5 dark:text-emerald-100">
-              {user.paymentMethod}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* SUBSCRIPTION PACKAGES - SWITCHER PANEL */}
-      <View className="bg-white dark:bg-zinc-900 rounded-3xl p-5 border border-emerald-100/30 shadow-sm mb-10">
-        <Text style={{ color: COLORS.forestDeep }} className="font-extrabold text-sm dark:text-emerald-50 mb-4">
-          Upgrade or Switch Lease Packages
-        </Text>
-
-        {mockPlans.map((plan) => {
-          const isActive = user.subscription.name === plan.name;
-          return (
-            <TouchableOpacity
-              key={plan.name}
-              onPress={() => void selectNewPlan(plan.name, plan.cost)}
-              className={`flex-row justify-between items-center p-3.5 rounded-xl border mb-2.5 ${isActive ? 'bg-emerald-50/50 border-emerald-300 dark:bg-emerald-950/20' : 'bg-slate-50 border-slate-200 dark:bg-zinc-800/40 dark:border-zinc-850'}`}
-            >
-              <View className="flex-row items-center flex-1 mr-4">
-                <View className={`w-5 h-5 rounded-full border items-center justify-center mr-3 ${isActive ? 'border-emerald-600 bg-emerald-600' : 'border-slate-350 bg-white dark:bg-zinc-900'}`}>
-                  {isActive && <Check size={12} color="#FFF" />}
+          {/* Outstanding payment */}
+          {outstandingInvoices.length > 0 && (
+            <>
+              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Outstanding</Text>
+              <View className="rounded-2xl p-4 border mb-6" style={{ backgroundColor: COLORS.card, borderColor: COLORS.danger }}>
+                <View className="flex-row items-center justify-between mb-3">
+                  <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">Amount due</Text>
+                  <Text style={{ color: COLORS.danger }} className="text-lg font-black">₹{outstandingTotal.toFixed(0)}</Text>
                 </View>
-                <View className="flex-1">
-                  <Text style={{ color: COLORS.forestDeep }} className="font-bold text-xs dark:text-emerald-100">{plan.name}</Text>
-                  <Text className="text-slate-400 text-[10px] mt-0.5">Renewed every {plan.cycle}</Text>
-                </View>
+                {outstandingInvoices.map((inv) => (
+                  <TouchableOpacity
+                    key={inv.id}
+                    onPress={() => payInvoice(inv)}
+                    disabled={payingInvoiceId === inv.id}
+                    className="py-3 rounded-xl items-center flex-row justify-center mt-2"
+                    style={{ backgroundColor: COLORS.primary, opacity: payingInvoiceId === inv.id ? 0.6 : 1 }}
+                  >
+                    {payingInvoiceId === inv.id ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <CreditCard size={14} color="#FFF" />
+                    )}
+                    <Text className="text-white text-xs font-bold ml-2">
+                      Pay {PAYMENT_TYPE_LABEL[inv.payment_type ?? 'other']} — ₹{inv.amount_due.toFixed(0)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {payError ? (
+                  <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mt-3">{payError}</Text>
+                ) : null}
               </View>
+            </>
+          )}
 
-              <Text style={{ color: COLORS.primaryDark }} className="font-black text-sm">
-                ${plan.cost.toFixed(0)} <Text className="text-[10px] font-medium text-slate-400">/{plan.cycle.substring(0,2)}</Text>
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {/* CHECKOUT MODAL OVERLAY */}
-      <Modal
-        visible={checkoutVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setCheckoutVisible(false)}
-      >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior="padding"
-        >
-        <View className="flex-1 justify-end bg-black/60">
-          <View className="bg-white dark:bg-zinc-900 rounded-t-3xl p-6 border-t border-emerald-100" style={{ paddingBottom: 16 + insets.bottom }}>
-            
-            <View className="flex-row justify-between items-center mb-6">
-              <Text style={{ color: COLORS.forestDeep }} className="text-lg font-black dark:text-emerald-50">
-                Checkout Lease Payment
-              </Text>
-              <TouchableOpacity onPress={() => setCheckoutVisible(false)} className="p-2 bg-slate-100 rounded-full">
-                <Text style={{ color: COLORS.forestDeep }} className="font-bold text-xs">Close</Text>
-              </TouchableOpacity>
+          {/* Security deposit */}
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Security Deposit</Text>
+          <View className="rounded-2xl p-4 border mb-6 flex-row items-center justify-between" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+            <View className="flex-row items-center">
+              <ShieldCheck size={16} color={COLORS.primary} />
+              <View className="ml-3">
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">₹{(deposit?.amount ?? 0).toFixed(0)}</Text>
+                {deposit?.status === 'refunded' && deposit.refunded_at ? (
+                  <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+                    Refunded {formatDate(deposit.refunded_at)}
+                  </Text>
+                ) : deposit?.status === 'held' && deposit.refund_eligible_at ? (
+                  <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+                    Refund eligible from {formatDate(deposit.refund_eligible_at)}
+                  </Text>
+                ) : null}
+              </View>
             </View>
-
-            <Text className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Payment Amount</Text>
-            <View className="flex-row items-center border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-3 mb-6 bg-slate-50 dark:bg-zinc-950">
-              <Text style={{ color: COLORS.forestDeep }} className="text-lg font-black dark:text-emerald-50 mr-2">$</Text>
-              <TextInput
-                value={payAmount}
-                onChangeText={setPayAmount}
-                placeholder="e.g. 45.00"
-                keyboardType="numeric"
-                className="flex-1 text-lg font-extrabold text-slate-800 dark:text-zinc-200"
-              />
-            </View>
-
-            {isProcessing ? (
-              <ActivityIndicator size="large" color={COLORS.primaryDark} className="py-4" />
-            ) : (
-              <TouchableOpacity
-                onPress={handlePayBill}
-                style={{ backgroundColor: COLORS.primaryDark }}
-                className="w-full py-4 rounded-2xl justify-center items-center shadow-lg"
-              >
-                <Text className="text-white font-bold text-base">Pay from Wallet</Text>
-              </TouchableOpacity>
-            )}
-
-            <Text className="text-center text-[10px] text-slate-400 mt-4 leading-normal">
-              Funds will be directly deducted from your active NR wallet balance (${user.walletBalance.toFixed(2)} available).
-            </Text>
+            {deposit ? <Badge label={deposit.status.replace('_', ' ')} tone={deposit.status === 'refunded' ? 'success' : 'neutral'} /> : null}
           </View>
-        </View>
 
-        {/* Inside the modal's own tree so it stacks above it, not behind. */}
-        {checkoutDialog.dialog}
-        </KeyboardAvoidingView>
-      </Modal>
+          {/* Damage charges */}
+          {damages.length > 0 && (
+            <>
+              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Damage Charges</Text>
+              <View className="rounded-2xl border mb-6 overflow-hidden" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+                {damages.map((d, i) => (
+                  <View
+                    key={d.id}
+                    className="p-4 flex-row items-start justify-between"
+                    style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
+                  >
+                    <View className="flex-1 pr-3">
+                      <View className="flex-row items-center">
+                        <AlertTriangle size={14} color={COLORS.warning} />
+                        <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2">{d.description}</Text>
+                      </View>
+                      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-1">
+                        {formatDate(d.created_at)} · <Text className="capitalize">{d.status}</Text>
+                      </Text>
+                    </View>
+                    <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">₹{d.amount.toFixed(0)}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
 
-    </ScrollView>
+          {/* Payment history */}
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Payment History</Text>
+          {invoices.length === 0 ? (
+            <EmptyState icon={Receipt} title="No payments yet" />
+          ) : (
+            <View className="rounded-2xl border overflow-hidden" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+              {invoices.map((inv, i) => (
+                <View
+                  key={inv.id}
+                  className="p-4 flex-row items-center justify-between"
+                  style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
+                >
+                  <View>
+                    <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">
+                      {PAYMENT_TYPE_LABEL[inv.payment_type ?? 'other']}
+                    </Text>
+                    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+                      {formatDate(inv.paid_at ?? inv.due_date)}
+                    </Text>
+                  </View>
+                  <View className="items-end">
+                    <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">₹{inv.amount_due.toFixed(0)}</Text>
+                    <View className="mt-1">
+                      <Badge label={inv.payment_status} tone={PAYMENT_STATUS_TONE[inv.payment_status]} />
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </ScrollView>
+      )}
+    </AppShell>
   );
 }

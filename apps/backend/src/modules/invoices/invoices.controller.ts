@@ -9,6 +9,12 @@ export async function listInvoicesHandler(req: AuthedRequest, res: Response) {
     res.json(await service.listInvoices(filters));
 }
 
+/** Rider's own payment history — userId is always the caller's, never client-supplied. */
+export async function myInvoicesHandler(req: AuthedRequest, res: Response) {
+    const { bookingId, ...page } = validatedQuery<{ page: number; pageSize: number; bookingId?: string }>(req);
+    res.json(await service.listInvoices({ ...page, userId: req.user!.id, bookingId }));
+}
+
 export async function getInvoiceHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getInvoiceById(req.params.id as string));
 }

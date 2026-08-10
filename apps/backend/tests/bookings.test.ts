@@ -81,6 +81,14 @@ describe("toBookingView", () => {
             cancellation_penalty_amount: null,
             refund_amount: null,
             refund_status: null,
+            plan_status: null,
+            plan_activated_at: null,
+            plan_duration_days: null,
+            deposit_amount_at_booking: null,
+            current_period_start: null,
+            next_due_at: null,
+            plan_paused_at: null,
+            plan_paused_days_total: 0,
         });
     });
 

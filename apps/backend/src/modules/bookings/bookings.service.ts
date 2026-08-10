@@ -2,6 +2,7 @@ import { supabaseAdmin } from "../../config/supabase";
 import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
+import { addDays } from "../../common/dates";
 import { notifyUser } from "../notifications/notifications.service";
 import { hasActiveRentalForUser } from "../users/users.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
@@ -20,12 +21,19 @@ const CANCELLATION_COLUMNS = `
     cancellation_penalty_amount, refund_amount, refund_status
 `;
 
+/** Recurring-billing state — see 20260810100300_booking_plan_billing.sql. */
+const PLAN_BILLING_COLUMNS = `
+    plan_status, plan_activated_at, plan_duration_days, deposit_amount_at_booking,
+    current_period_start, next_due_at, plan_paused_at, plan_paused_days_total
+`;
+
 const BOOKING_COLUMNS = `
     id, status, start_day, created_at, vehicle_id, referral_discount_amount,
     ${CANCELLATION_COLUMNS},
+    ${PLAN_BILLING_COLUMNS},
     vehicle_models(id, name),
     stations(id, name, code, lat, lng),
-    plans(id, name, billing_cycle, price),
+    plans(id, name, billing_cycle, price, duration_days, deposit_amount),
     vehicles(id, name, registration_number, battery_percentage, status)
 `;
 
@@ -42,6 +50,14 @@ type RawBookingRow = {
     cancellation_penalty_amount: number | null;
     refund_amount: number | null;
     refund_status: BookingRefundStatus | null;
+    plan_status: BookingView["plan_status"];
+    plan_activated_at: string | null;
+    plan_duration_days: number | null;
+    deposit_amount_at_booking: number | string | null;
+    current_period_start: string | null;
+    next_due_at: string | null;
+    plan_paused_at: string | null;
+    plan_paused_days_total: number;
     vehicle_models: unknown;
     stations: unknown;
     plans: unknown;
@@ -169,6 +185,14 @@ export function toBookingView(row: RawBookingRow): BookingView {
         cancellation_penalty_amount: row.cancellation_penalty_amount ?? null,
         refund_amount: row.refund_amount ?? null,
         refund_status: row.refund_status ?? null,
+        plan_status: row.plan_status ?? null,
+        plan_activated_at: row.plan_activated_at ?? null,
+        plan_duration_days: row.plan_duration_days ?? null,
+        deposit_amount_at_booking: row.deposit_amount_at_booking == null ? null : Number(row.deposit_amount_at_booking),
+        current_period_start: row.current_period_start ?? null,
+        next_due_at: row.next_due_at ?? null,
+        plan_paused_at: row.plan_paused_at ?? null,
+        plan_paused_days_total: row.plan_paused_days_total ?? 0,
     };
 }
 
@@ -235,10 +259,12 @@ export async function createBooking(
             station_id: input.station_id,
             plan_id: input.plan_id,
             start_day: input.start_day,
-            // Confirmed immediately — no payment gateway or admin approval
-            // gates a booking anymore. Staff still hand over the physical
-            // vehicle via confirmPickup() below, which is the real checkpoint.
-            status: "confirmed",
+            // Payment-gated: the rider must pay (weekly rent + deposit) via
+            // POST /payments/bookings/:id/order before this moves to
+            // 'confirmed' — see payments.service.ts's applyPaymentSuccess.
+            // Staff then hand over the physical vehicle via confirmPickup()
+            // below, which activates the plan.
+            status: "pending_payment",
         })
         .select(BOOKING_COLUMNS)
         .single();
@@ -446,9 +472,10 @@ export async function hasActiveBookingForUser(userId: string): Promise<boolean> 
 const PICKUP_BOOKING_COLUMNS = `
     id, status, start_day, created_at, vehicle_id, referral_discount_amount,
     ${CANCELLATION_COLUMNS},
+    ${PLAN_BILLING_COLUMNS},
     vehicle_models(id, name),
     stations(id, name, code),
-    plans(id, name, billing_cycle, price),
+    plans(id, name, billing_cycle, price, duration_days, deposit_amount),
     vehicles(id, name, registration_number, battery_percentage, status),
     users!bookings_user_id_fkey(id, full_name, phone)
 `;
@@ -564,14 +591,19 @@ export async function confirmPickup(
     if (vehicle.model_id !== modelId) throw businessRule("This vehicle does not match the booked model.");
 
     const rider = unwrap<{ id: string; full_name: string; phone: string | null }>(bookingRow.users);
+    const plan = unwrap<{ id: string; duration_days: number; deposit_amount: number }>(bookingRow.plans);
 
-    const { error: rentalError } = await supabaseAdmin.from("rentals").insert({
-        user_id: rider!.id,
-        vehicle_id: vehicleId,
-        booking_id: bookingId,
-        status: "active",
-        started_at: new Date().toISOString(),
-    });
+    const { data: rental, error: rentalError } = await supabaseAdmin
+        .from("rentals")
+        .insert({
+            user_id: rider!.id,
+            vehicle_id: vehicleId,
+            booking_id: bookingId,
+            status: "active",
+            started_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
     if (rentalError) throw rentalError;
 
     const { error: vehicleUpdateError } = await supabaseAdmin
@@ -580,9 +612,28 @@ export async function confirmPickup(
         .eq("id", vehicleId);
     if (vehicleUpdateError) throw vehicleUpdateError;
 
+    // Plan/billing rental period starts HERE — at vehicle assignment, never
+    // at payment time, per spec. duration_days is snapshotted so a later
+    // admin edit to the plan template can't reshape an already-active plan.
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const today = nowIso.slice(0, 10);
+    const durationDays = plan?.duration_days ?? 7;
+    const nextDueAt = addDays(today, durationDays);
+
     const { data: updated, error: bookingUpdateError } = await supabaseAdmin
         .from("bookings")
-        .update({ status: "fulfilled", vehicle_id: vehicleId })
+        .update({
+            status: "fulfilled",
+            vehicle_id: vehicleId,
+            plan_status: "active",
+            plan_activated_at: nowIso,
+            plan_duration_days: durationDays,
+            deposit_amount_at_booking: plan?.deposit_amount ?? null,
+            current_period_start: today,
+            next_due_at: nextDueAt,
+            active_rental_id: rental.id,
+        })
         .eq("id", bookingId)
         .select(PICKUP_BOOKING_COLUMNS)
         .single();
@@ -595,6 +646,15 @@ export async function confirmPickup(
         entityType: "booking",
         entityId: bookingId,
         after: { vehicle_id: vehicleId, status: "fulfilled" },
+    });
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: rider!.id,
+        action: "plan.activated",
+        entityType: "booking",
+        entityId: bookingId,
+        after: { plan_status: "active", next_due_at: nextDueAt, plan_duration_days: durationDays },
     });
 
     await notifyUser(rider!.id, {

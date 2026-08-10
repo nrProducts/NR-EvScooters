@@ -1,21 +1,27 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
-import type { Invoice, InvoiceDetail, InvoiceStatus, PaginatedResult, PaymentStatus } from "@/types";
+import type {
+  Invoice, InvoiceDetail, InvoiceStatus, PaginatedResult, PaymentStatus, PaymentType,
+} from "@/types";
 
 export interface InvoiceFilters {
   status?: InvoiceStatus | "all";
   paymentStatus?: PaymentStatus | "all";
+  paymentType?: PaymentType | "all";
+  bookingId?: string;
   page?: number;
   pageSize?: number;
 }
 
 /** GET /invoices — requireStaff. See apps/backend/src/modules/invoices/invoices.routes.ts */
 export async function fetchInvoices(filters: InvoiceFilters = {}): Promise<PaginatedResult<Invoice>> {
-  const { status, paymentStatus, page = 1, pageSize = 8 } = filters;
+  const { status, paymentStatus, paymentType, bookingId, page = 1, pageSize = 8 } = filters;
   const res = await apiClient.get<BackendPaginated<Invoice>>("/invoices", {
     page,
     pageSize,
     status: status && status !== "all" ? status : undefined,
     paymentStatus: paymentStatus && paymentStatus !== "all" ? paymentStatus : undefined,
+    paymentType: paymentType && paymentType !== "all" ? paymentType : undefined,
+    bookingId,
   });
   return toPaginatedResult(res);
 }
