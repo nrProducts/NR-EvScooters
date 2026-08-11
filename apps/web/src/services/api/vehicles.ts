@@ -6,16 +6,20 @@ export interface VehicleFilters {
   status?: VehicleStatus | "all";
   page?: number;
   pageSize?: number;
+  sortBy?: "created_at" | "name" | "battery_percentage" | "next_service_due_date";
+  sortDir?: "asc" | "desc";
 }
 
 /** GET /vehicles — requireStaff. See apps/backend/src/modules/vehicles/vehicles.routes.ts */
 export async function fetchVehicles(filters: VehicleFilters = {}): Promise<PaginatedResult<Vehicle>> {
-  const { search, status, page = 1, pageSize = 8 } = filters;
+  const { search, status, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<Vehicle>>("/vehicles", {
     page,
     pageSize,
     search,
     status: status && status !== "all" ? status : undefined,
+    sortBy,
+    sortDir,
   });
   return toPaginatedResult(res);
 }

@@ -96,6 +96,8 @@ export interface PickupQueueFilters {
     status?: BookingStatus;
     /** Further narrows a 'fulfilled' view into Active/Due/Paused. Ignored for any other status. */
     planStatus?: "active" | "due" | "paused";
+    sortBy: "created_at" | "start_day" | "next_due_at";
+    sortDir: "asc" | "desc";
 }
 
 export interface BookingHistoryFilters {

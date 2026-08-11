@@ -33,6 +33,8 @@ export interface SupportQueueFilters {
     page: number;
     pageSize: number;
     status?: SupportStatus;
+    sortBy: "created_at";
+    sortDir: "asc" | "desc";
 }
 
 export interface UpdateSupportInput {

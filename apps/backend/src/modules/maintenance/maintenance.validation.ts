@@ -11,6 +11,8 @@ export const listMaintenanceQuery = z.object({
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     status: statusEnum.optional(),
     vehicleId: z.string().uuid().optional(),
+    sortBy: z.enum(["created_at"]).default("created_at"),
+    sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 
 /**

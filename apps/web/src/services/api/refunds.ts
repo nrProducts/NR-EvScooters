@@ -6,16 +6,20 @@ export interface RefundFilters {
   bookingId?: string;
   page?: number;
   pageSize?: number;
+  sortBy?: "created_at" | "amount";
+  sortDir?: "asc" | "desc";
 }
 
 /** GET /refunds — requireStaff. See apps/backend/src/modules/refunds/refunds.routes.ts */
 export async function fetchRefunds(filters: RefundFilters = {}): Promise<PaginatedResult<Refund>> {
-  const { status, bookingId, page = 1, pageSize = 8 } = filters;
+  const { status, bookingId, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<Refund>>("/refunds", {
     page,
     pageSize,
     status: status && status !== "all" ? status : undefined,
     bookingId,
+    sortBy,
+    sortDir,
   });
   return toPaginatedResult(res);
 }

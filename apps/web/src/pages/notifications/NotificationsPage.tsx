@@ -10,6 +10,7 @@ import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { useNotificationLog, useBroadcastNotification } from "@/hooks/useNotifications";
+import { useTableSort } from "@/hooks/useTableSort";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate } from "@/lib/utils";
 import type { NotificationDeliveryStatus, NotificationLogEntry } from "@/types";
@@ -23,7 +24,10 @@ export default function NotificationsPage() {
   const [body, setBody] = useState("");
   const [result, setResult] = useState<string | null>(null);
 
-  const { data, isLoading, isError, refetch } = useNotificationLog({ status, page, pageSize: 8 });
+  const { sort, onSortChange } = useTableSort("created_at", "desc");
+  const { data, isLoading, isError, refetch } = useNotificationLog({
+    status, page, pageSize: 8, sortBy: "created_at", sortDir: sort.dir,
+  });
   const broadcast = useBroadcastNotification();
 
   const columns: DataTableColumn<NotificationLogEntry>[] = [
@@ -40,7 +44,7 @@ export default function NotificationsPage() {
     { header: "Rider", key: "rider", render: (n) => n.rider?.full_name ?? "—" },
     { header: "Channel", key: "channel", render: (n) => <span className="capitalize">{n.channel}</span>, hideOnMobile: true },
     { header: "Status", key: "status", render: (n) => <StatusBadge status={n.status} /> },
-    { header: "Sent", key: "sent_at", render: (n) => (n.sent_at ? formatDate(n.sent_at) : "—"), hideOnMobile: true },
+    { header: "Sent", key: "sent_at", sortKey: "created_at", render: (n) => (n.sent_at ? formatDate(n.sent_at) : "—"), hideOnMobile: true },
   ];
 
   const canSend = title.trim() && body.trim();
@@ -127,6 +131,8 @@ export default function NotificationsPage() {
           isError={isError}
           onRetry={() => refetch()}
           emptyTitle="No notifications sent yet"
+          sort={sort}
+          onSortChange={onSortChange}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}

@@ -21,4 +21,6 @@ export interface ListRefundsFilters {
     pageSize: number;
     status?: RefundStatus;
     bookingId?: string;
+    sortBy: "created_at" | "amount";
+    sortDir: "asc" | "desc";
 }

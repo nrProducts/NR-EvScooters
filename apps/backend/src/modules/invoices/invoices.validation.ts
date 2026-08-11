@@ -12,6 +12,8 @@ export const listInvoicesQuery = z.object({
     paymentType: z.enum(PAYMENT_TYPES as [string, ...string[]]).optional(),
     userId: z.string().uuid().optional(),
     bookingId: z.string().uuid().optional(),
+    sortBy: z.enum(["created_at", "amount_due", "due_date"]).default("created_at"),
+    sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 
 export const refundBody = z.object({

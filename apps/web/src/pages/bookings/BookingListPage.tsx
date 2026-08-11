@@ -11,6 +11,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { usePickupQueue, useAvailableVehicles, useConfirmPickup } from "@/hooks/useBookings";
+import { useTableSort } from "@/hooks/useTableSort";
 import type { PickupQueueFilters } from "@/services/api/bookings";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { computeLatePaymentFee } from "@/lib/latePaymentPolicy";
@@ -60,7 +61,14 @@ export default function BookingListPage() {
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
 
-  const { data, isLoading, isError, refetch } = usePickupQueue({ ...filtersForView(view), page, pageSize: 8 });
+  const { sort, onSortChange } = useTableSort("created_at", "desc");
+  const { data, isLoading, isError, refetch } = usePickupQueue({
+    ...filtersForView(view),
+    page,
+    pageSize: 8,
+    sortBy: sort.by as PickupQueueFilters["sortBy"],
+    sortDir: sort.dir,
+  });
   const { data: availableVehicles, isLoading: vehiclesLoading } = useAvailableVehicles(
     pickupTarget && !pickupTarget.vehicle ? pickupTarget.id : undefined,
   );
@@ -77,7 +85,7 @@ export default function BookingListPage() {
       render: (b) => (b.plan ? formatCurrency(b.plan.price) : "—"),
       hideOnMobile: true,
     },
-    { header: "Start day", key: "start", render: (b) => formatDate(b.start_day) },
+    { header: "Start day", key: "start", sortKey: "start_day", render: (b) => formatDate(b.start_day) },
     {
       header: "Vehicle",
       key: "vehicle",
@@ -118,6 +126,7 @@ export default function BookingListPage() {
       },
       hideOnMobile: true,
     },
+    { header: "Created", key: "created_at", sortKey: "created_at", render: (b) => formatDate(b.created_at), hideOnMobile: true },
     {
       header: "Actions",
       key: "actions",

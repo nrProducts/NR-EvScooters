@@ -63,7 +63,7 @@ export async function listPlans(filters: ListPlansFilters): Promise<Paginated<Pl
     if (filters.active !== undefined) query = query.eq("active", filters.active);
 
     const [from, to] = toRange(filters);
-    query = query.order("created_at", { ascending: false }).range(from, to);
+    query = query.order(filters.sortBy, { ascending: filters.sortDir === "asc" }).range(from, to);
 
     const { data, error, count } = await query;
     if (error) throw error;

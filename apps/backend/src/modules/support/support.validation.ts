@@ -18,6 +18,8 @@ export const supportQueueQuery = z.object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     status: z.enum(SUPPORT_STATUSES).optional(),
+    sortBy: z.enum(["created_at"]).default("created_at"),
+    sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 
 export const supportIdParam = z.object({

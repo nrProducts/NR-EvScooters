@@ -9,17 +9,21 @@ export interface PickupQueueFilters {
   planStatus?: BookingPlanStatus;
   page?: number;
   pageSize?: number;
+  sortBy?: "created_at" | "start_day" | "next_due_at";
+  sortDir?: "asc" | "desc";
 }
 
 /** GET /bookings — requireStaff. Omit status/planStatus for the "All" tab; pass either for any other stage. */
 export async function fetchBookings(filters: PickupQueueFilters = {}): Promise<PaginatedResult<PickupBooking>> {
-  const { stationId, status, planStatus, page = 1, pageSize = 8 } = filters;
+  const { stationId, status, planStatus, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<PickupBooking>>("/bookings", {
     page,
     pageSize,
     stationId,
     status,
     planStatus,
+    sortBy,
+    sortDir,
   });
   return toPaginatedResult(res);
 }

@@ -60,5 +60,5 @@ export const kycListQuery = z.object({
     submittedTo: z.string().datetime().optional(),
     expiringBefore: isoDate.optional(),
     sortBy: z.enum(["submitted_at", "full_name", "kyc_status"]).default("submitted_at"),
-    sortDir: z.enum(["asc", "desc"]).default("asc"),
+    sortDir: z.enum(["asc", "desc"]).default("desc"),
 });

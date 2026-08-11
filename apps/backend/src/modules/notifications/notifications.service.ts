@@ -135,7 +135,7 @@ export async function listAllNotifications(
     if (filters.userId) query = query.eq("user_id", filters.userId);
 
     const [from, to] = toRange(filters);
-    query = query.order("created_at", { ascending: false }).range(from, to);
+    query = query.order(filters.sortBy, { ascending: filters.sortDir === "asc" }).range(from, to);
 
     const { data, error, count } = await query;
     if (error) throw error;

@@ -5,15 +5,19 @@ export interface NotificationFilters {
   status?: NotificationDeliveryStatus | "all";
   page?: number;
   pageSize?: number;
+  sortBy?: "created_at";
+  sortDir?: "asc" | "desc";
 }
 
 /** GET /notifications — requireStaff. See apps/backend/src/modules/notifications/notifications.routes.ts */
 export async function fetchNotifications(filters: NotificationFilters = {}): Promise<PaginatedResult<NotificationLogEntry>> {
-  const { status, page = 1, pageSize = 8 } = filters;
+  const { status, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<NotificationLogEntry>>("/notifications", {
     page,
     pageSize,
     status: status && status !== "all" ? status : undefined,
+    sortBy,
+    sortDir,
   });
   return toPaginatedResult(res);
 }

@@ -27,6 +27,8 @@ export const listDamagesQuery = z.object({
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     bookingId: z.string().uuid().optional(),
     status: z.enum(["recorded", "disputed", "resolved"]).optional(),
+    sortBy: z.enum(["created_at", "amount"]).default("created_at"),
+    sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 
 export type RecordDamageBody = z.infer<typeof recordDamageBody>;

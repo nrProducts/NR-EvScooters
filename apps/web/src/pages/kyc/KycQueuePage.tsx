@@ -3,6 +3,7 @@ import { CheckCircle2, XCircle, FileText, ExternalLink, AlertTriangle, RotateCcw
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -28,11 +29,20 @@ const TABS: { value: KycStatus | "all"; label: string }[] = [
   { value: "rejected", label: "Rejected" },
 ];
 
+const SORT_OPTIONS: { value: `${"submitted_at" | "full_name" | "kyc_status"}:${"asc" | "desc"}`; label: string }[] = [
+  { value: "submitted_at:desc", label: "Newest submitted" },
+  { value: "submitted_at:asc", label: "Oldest submitted" },
+  { value: "full_name:asc", label: "Name (A–Z)" },
+  { value: "full_name:desc", label: "Name (Z–A)" },
+];
+
 export default function KycQueuePage() {
   const [tab, setTab] = useState<KycStatus | "all">("pending");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const { data, isLoading } = useKycQueue({ status: tab, search, page, pageSize: 9 });
+  const [sort, setSort] = useState<(typeof SORT_OPTIONS)[number]["value"]>("submitted_at:desc");
+  const [sortBy, sortDir] = sort.split(":") as ["submitted_at" | "full_name" | "kyc_status", "asc" | "desc"];
+  const { data, isLoading } = useKycQueue({ status: tab, search, page, pageSize: 9, sortBy, sortDir });
   const approveKyc = useApproveKyc();
   const [approveError, setApproveError] = useState<{ userId: string; message: string } | null>(null);
   const [rejectTarget, setRejectTarget] = useState<KycQueueItem | null>(null);
@@ -66,12 +76,24 @@ export default function KycQueuePage() {
             ))}
           </TabsList>
         </Tabs>
-        <SearchBar
-          value={search}
-          onChange={(v) => { setSearch(v); setPage(1); }}
-          placeholder="Search by name, email or phone..."
-          className="sm:max-w-xs"
-        />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <SearchBar
+            value={search}
+            onChange={(v) => { setSearch(v); setPage(1); }}
+            placeholder="Search by name, email or phone..."
+            className="sm:max-w-xs"
+          />
+          <Select value={sort} onValueChange={(v) => { setSort(v as typeof sort); setPage(1); }}>
+            <SelectTrigger className="sm:w-44">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {isLoading ? (

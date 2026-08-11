@@ -21,6 +21,8 @@ export interface ListPlansFilters {
     pageSize: number;
     vehicleModelId?: string;
     active?: boolean;
+    sortBy: "created_at" | "name" | "price";
+    sortDir: "asc" | "desc";
 }
 
 export interface CreatePlanInput {

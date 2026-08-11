@@ -23,8 +23,9 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { useUsers, useDeleteUser, useChangeUserStatus } from "@/hooks/useUsers";
+import { useTableSort } from "@/hooks/useTableSort";
 import { useAuthStore } from "@/store/authStore";
-import { initials } from "@/lib/utils";
+import { initials, formatDate } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "pending", "partially_verified", "verified", "rejected"];
@@ -46,7 +47,11 @@ export default function UserListPage() {
   const [suspendTarget, setSuspendTarget] = useState<AppUser | null>(null);
   const [reason, setReason] = useState("");
 
-  const { data, isLoading, isError, refetch } = useUsers({ search, kycStatus, role: roleFilter, page, pageSize: 8 });
+  const { sort, onSortChange } = useTableSort("created_at", "desc");
+  const { data, isLoading, isError, refetch } = useUsers({
+    search, kycStatus, role: roleFilter, page, pageSize: 8,
+    sortBy: sort.by as "full_name" | "created_at" | "kyc_status", sortDir: sort.dir,
+  });
   const deleteUser = useDeleteUser();
   const changeStatus = useChangeUserStatus();
 
@@ -54,6 +59,7 @@ export default function UserListPage() {
     {
       header: "User",
       key: "name",
+      sortKey: "full_name",
       render: (u) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
@@ -77,7 +83,7 @@ export default function UserListPage() {
       ),
     },
     { header: "Account", key: "account", render: (u) => <StatusBadge status={u.account_status} /> },
-    { header: "KYC", key: "kyc", render: (u) => <StatusBadge status={u.kyc_status} /> },
+    { header: "KYC", key: "kyc", sortKey: "kyc_status", render: (u) => <StatusBadge status={u.kyc_status} /> },
     {
       header: "Assigned vehicle",
       key: "vehicle",
@@ -120,6 +126,7 @@ export default function UserListPage() {
       render: (u) => (u.payment_status ? <StatusBadge status={u.payment_status} /> : "—"),
       hideOnMobile: true,
     },
+    { header: "Joined", key: "created_at", sortKey: "created_at", render: (u) => formatDate(u.created_at), hideOnMobile: true },
     {
       header: "Actions",
       key: "actions",
@@ -226,6 +233,8 @@ export default function UserListPage() {
           onRetry={() => refetch()}
           onRowClick={(u) => navigate(`/users/${u.id}`)}
           emptyTitle="No users match your filters"
+          sort={sort}
+          onSortChange={onSortChange}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}

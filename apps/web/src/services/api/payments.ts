@@ -10,11 +10,13 @@ export interface InvoiceFilters {
   bookingId?: string;
   page?: number;
   pageSize?: number;
+  sortBy?: "created_at" | "amount_due" | "due_date";
+  sortDir?: "asc" | "desc";
 }
 
 /** GET /invoices — requireStaff. See apps/backend/src/modules/invoices/invoices.routes.ts */
 export async function fetchInvoices(filters: InvoiceFilters = {}): Promise<PaginatedResult<Invoice>> {
-  const { status, paymentStatus, paymentType, bookingId, page = 1, pageSize = 8 } = filters;
+  const { status, paymentStatus, paymentType, bookingId, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<Invoice>>("/invoices", {
     page,
     pageSize,
@@ -22,6 +24,8 @@ export async function fetchInvoices(filters: InvoiceFilters = {}): Promise<Pagin
     paymentStatus: paymentStatus && paymentStatus !== "all" ? paymentStatus : undefined,
     paymentType: paymentType && paymentType !== "all" ? paymentType : undefined,
     bookingId,
+    sortBy,
+    sortDir,
   });
   return toPaginatedResult(res);
 }

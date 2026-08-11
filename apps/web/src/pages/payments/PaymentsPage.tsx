@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Link, useSearchParams } from "react-router-dom";
 import { useInvoices, useInvoice, useRefundInvoice } from "@/hooks/usePayments";
+import { useTableSort } from "@/hooks/useTableSort";
 import { ApiError } from "@/services/api/httpClient";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Invoice, InvoiceStatus, PaymentStatus, PaymentType } from "@/types";
@@ -38,8 +39,10 @@ export default function PaymentsPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [refundTarget, setRefundTarget] = useState<Invoice | null>(null);
 
+  const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useInvoices({
     status, paymentStatus, paymentType, bookingId, page, pageSize: 8,
+    sortBy: sort.by as "created_at" | "amount_due" | "due_date", sortDir: sort.dir,
   });
 
   const columns: DataTableColumn<Invoice>[] = [
@@ -58,10 +61,11 @@ export default function PaymentsPage() {
       key: "payment_type",
       render: (inv) => <span className="capitalize text-sm">{inv.payment_type ?? "—"}</span>,
     },
-    { header: "Amount", key: "amount", render: (inv) => formatCurrency(inv.amount_due) },
+    { header: "Amount", key: "amount", sortKey: "amount_due", render: (inv) => formatCurrency(inv.amount_due) },
     { header: "Status", key: "status", render: (inv) => <StatusBadge status={inv.status} /> },
     { header: "Payment", key: "payment_status", render: (inv) => <StatusBadge status={inv.payment_status} /> },
-    { header: "Due", key: "due_date", render: (inv) => formatDate(inv.due_date), hideOnMobile: true },
+    { header: "Due", key: "due_date", sortKey: "due_date", render: (inv) => formatDate(inv.due_date), hideOnMobile: true },
+    { header: "Created", key: "created_at", sortKey: "created_at", render: (inv) => formatDate(inv.created_at), hideOnMobile: true },
     {
       header: "Actions",
       key: "actions",
@@ -195,6 +199,8 @@ export default function PaymentsPage() {
           onRetry={() => refetch()}
           onRowClick={(inv) => setDetailId(inv.id)}
           emptyTitle="No invoices match your filters"
+          sort={sort}
+          onSortChange={onSortChange}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}

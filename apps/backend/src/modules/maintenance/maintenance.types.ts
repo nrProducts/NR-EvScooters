@@ -55,6 +55,8 @@ export interface ListMaintenanceFilters {
     pageSize: number;
     status?: MaintenanceStatus;
     vehicleId?: string;
+    sortBy: "created_at";
+    sortDir: "asc" | "desc";
 }
 
 /**

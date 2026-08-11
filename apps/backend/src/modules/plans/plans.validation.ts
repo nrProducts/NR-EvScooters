@@ -10,6 +10,8 @@ export const listPlansQuery = z.object({
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     vehicleModelId: z.string().uuid().optional(),
     active: z.coerce.boolean().optional(),
+    sortBy: z.enum(["created_at", "name", "price"]).default("created_at"),
+    sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 
 export const createPlanBody = z.object({

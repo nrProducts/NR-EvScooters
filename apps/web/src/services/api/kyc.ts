@@ -6,16 +6,20 @@ export interface KycFilters {
   search?: string;
   page?: number;
   pageSize?: number;
+  sortBy?: "submitted_at" | "full_name" | "kyc_status";
+  sortDir?: "asc" | "desc";
 }
 
 /** GET /kyc — requireStaff. See apps/backend/src/modules/kyc/kyc.routes.ts */
 export async function fetchKycQueue(filters: KycFilters = {}): Promise<PaginatedResult<KycQueueItem>> {
-  const { status, search, page = 1, pageSize = 9 } = filters;
+  const { status, search, page = 1, pageSize = 9, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<KycQueueItem>>("/kyc", {
     page,
     pageSize,
     search,
     status: status && status !== "all" ? status : undefined,
+    sortBy,
+    sortDir,
   });
   return toPaginatedResult(res);
 }

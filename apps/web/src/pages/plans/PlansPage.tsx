@@ -11,9 +11,10 @@ import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { usePlans, useCreatePlan, useUpdatePlan } from "@/hooks/usePlans";
 import { useVehicleModelOptions } from "@/hooks/useVehicleModelOptions";
+import { useTableSort } from "@/hooks/useTableSort";
 import { ApiError } from "@/services/api/httpClient";
 import type { PlanInput } from "@/services/api/plans";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import type { BillingCycle, Plan } from "@/types";
 
 const BILLING_CYCLES: BillingCycle[] = ["daily", "weekly", "monthly", "yearly"];
@@ -42,17 +43,21 @@ function toForm(plan: Plan): PlanInput {
 }
 
 export default function PlansPage() {
-  const { data, isLoading, isError, refetch } = usePlans({ page: 1, pageSize: 100 });
+  const { sort, onSortChange } = useTableSort("created_at", "desc");
+  const { data, isLoading, isError, refetch } = usePlans({
+    page: 1, pageSize: 100, sortBy: sort.by as "created_at" | "name" | "price", sortDir: sort.dir,
+  });
   const [editing, setEditing] = useState<Plan | null>(null);
   const [creating, setCreating] = useState(false);
 
   const columns: DataTableColumn<Plan>[] = [
-    { header: "Name", key: "name", render: (p) => p.name },
+    { header: "Name", key: "name", sortKey: "name", render: (p) => p.name },
     { header: "Billing cycle", key: "billing_cycle", render: (p) => <span className="capitalize">{p.billing_cycle}</span> },
     { header: "Duration", key: "duration_days", render: (p) => `${p.duration_days} day${p.duration_days === 1 ? "" : "s"}` },
-    { header: "Price", key: "price", render: (p) => formatCurrency(p.price) },
+    { header: "Price", key: "price", sortKey: "price", render: (p) => formatCurrency(p.price) },
     { header: "Deposit", key: "deposit_amount", render: (p) => formatCurrency(p.deposit_amount) },
     { header: "Status", key: "active", render: (p) => <StatusBadge status={p.active ? "active" : "inactive"} /> },
+    { header: "Created", key: "created_at", sortKey: "created_at", render: (p) => formatDate(p.created_at), hideOnMobile: true },
     {
       header: "Actions",
       key: "actions",
@@ -87,6 +92,8 @@ export default function PlansPage() {
           onRetry={() => refetch()}
           onRowClick={(p) => setEditing(p)}
           emptyTitle="No plans yet"
+          sort={sort}
+          onSortChange={onSortChange}
         />
       </Card>
 

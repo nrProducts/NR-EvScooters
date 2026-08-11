@@ -6,16 +6,20 @@ export interface MaintenanceFilters {
   vehicleId?: string;
   page?: number;
   pageSize?: number;
+  sortBy?: "created_at";
+  sortDir?: "asc" | "desc";
 }
 
 /** GET /maintenance — requireStaff. See apps/backend/src/modules/maintenance/maintenance.routes.ts */
 export async function fetchMaintenanceTickets(filters: MaintenanceFilters = {}): Promise<PaginatedResult<MaintenanceTicket>> {
-  const { status, vehicleId, page = 1, pageSize = 8 } = filters;
+  const { status, vehicleId, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<MaintenanceTicket>>("/maintenance", {
     page,
     pageSize,
     status: status && status !== "all" ? status : undefined,
     vehicleId,
+    sortBy,
+    sortDir,
   });
   return toPaginatedResult(res);
 }

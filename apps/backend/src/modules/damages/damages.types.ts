@@ -41,4 +41,6 @@ export interface ListDamagesFilters {
     pageSize: number;
     bookingId?: string;
     status?: DamageStatus;
+    sortBy: "created_at" | "amount";
+    sortDir: "asc" | "desc";
 }

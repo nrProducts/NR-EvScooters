@@ -222,7 +222,7 @@ export async function listMaintenance(filters: ListMaintenanceFilters): Promise<
     if (filters.vehicleId) query = query.eq("vehicle_id", filters.vehicleId);
 
     const [from, to] = toRange(filters);
-    query = query.order("created_at", { ascending: false }).range(from, to);
+    query = query.order(filters.sortBy, { ascending: filters.sortDir === "asc" }).range(from, to);
 
     const { data, error, count } = await query;
     if (error) throw error;

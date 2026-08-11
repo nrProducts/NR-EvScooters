@@ -12,6 +12,7 @@ import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { SideDrawer } from "@/components/common/SideDrawer";
 import { useSupportQueue, useUpdateSupportTicket } from "@/hooks/useSupport";
+import { useTableSort } from "@/hooks/useTableSort";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDateTime } from "@/lib/utils";
 import type { SupportPriority, SupportStatus, SupportTicket } from "@/types";
@@ -32,7 +33,10 @@ export default function SupportTicketsPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<SupportTicket | null>(null);
 
-  const { data, isLoading, isError, refetch } = useSupportQueue({ status: tab, page, pageSize: 8 });
+  const { sort, onSortChange } = useTableSort("created_at", "desc");
+  const { data, isLoading, isError, refetch } = useSupportQueue({
+    status: tab, page, pageSize: 8, sortBy: "created_at", sortDir: sort.dir,
+  });
   const updateTicket = useUpdateSupportTicket();
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -53,7 +57,7 @@ export default function SupportTicketsPage() {
     { header: "Subject", key: "subject", render: (t) => t.subject },
     { header: "Priority", key: "priority", render: (t) => <StatusBadge status={t.priority} />, hideOnMobile: true },
     { header: "Status", key: "status", render: (t) => <StatusBadge status={t.status} /> },
-    { header: "Created", key: "created", render: (t) => formatDateTime(t.created_at), hideOnMobile: true },
+    { header: "Created", key: "created", sortKey: "created_at", render: (t) => formatDateTime(t.created_at), hideOnMobile: true },
     {
       header: "Actions",
       key: "actions",
@@ -120,6 +124,8 @@ export default function SupportTicketsPage() {
             onRetry={() => refetch()}
             emptyTitle="No tickets in this queue"
             onRowClick={(t) => setSelected(t)}
+            sort={sort}
+            onSortChange={onSortChange}
           />
         </CardContent>
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}

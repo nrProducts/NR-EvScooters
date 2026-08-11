@@ -6,6 +6,8 @@ export interface PlanFilters {
   active?: boolean;
   page?: number;
   pageSize?: number;
+  sortBy?: "created_at" | "name" | "price";
+  sortDir?: "asc" | "desc";
 }
 
 export interface PlanInput {
@@ -21,9 +23,9 @@ export interface PlanInput {
 
 /** GET /plans — requireAdmin. See apps/backend/src/modules/plans/plans.routes.ts */
 export async function fetchPlans(filters: PlanFilters = {}): Promise<PaginatedResult<Plan>> {
-  const { vehicleModelId, active, page = 1, pageSize = 20 } = filters;
+  const { vehicleModelId, active, page = 1, pageSize = 20, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<Plan>>("/plans", {
-    page, pageSize, vehicleModelId, active,
+    page, pageSize, vehicleModelId, active, sortBy, sortDir,
   });
   return toPaginatedResult(res);
 }

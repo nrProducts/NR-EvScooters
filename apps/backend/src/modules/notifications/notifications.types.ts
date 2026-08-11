@@ -43,6 +43,8 @@ export interface ListAdminNotificationsFilters {
     pageSize: number;
     status?: NotificationStatus;
     userId?: string;
+    sortBy: "created_at";
+    sortDir: "asc" | "desc";
 }
 
 export interface BroadcastInput {

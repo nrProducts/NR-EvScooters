@@ -21,7 +21,9 @@ import { VehicleHistoryDialog } from "@/components/vehicles/VehicleHistoryDialog
 import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
 import { useVehicles, useCreateVehicle, useUpdateVehicle } from "@/hooks/useVehicles";
 import { useCreateMaintenanceTicket } from "@/hooks/useMaintenance";
+import { useTableSort } from "@/hooks/useTableSort";
 import { ApiError } from "@/services/api/httpClient";
+import { formatDate } from "@/lib/utils";
 import type { Vehicle, VehicleStatus } from "@/types";
 
 const STATUS_OPTIONS: (VehicleStatus | "all")[] = ["all", "available", "booked", "assigned", "maintenance", "scrap"];
@@ -49,7 +51,11 @@ export default function VehicleListPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { data, isLoading, isError, refetch } = useVehicles({ search, status, page, pageSize: 8 });
+  const { sort, onSortChange } = useTableSort("created_at", "desc");
+  const { data, isLoading, isError, refetch } = useVehicles({
+    search, status, page, pageSize: 8,
+    sortBy: sort.by as "created_at" | "name" | "battery_percentage" | "next_service_due_date", sortDir: sort.dir,
+  });
   const createVehicle = useCreateVehicle();
   const updateVehicle = useUpdateVehicle();
   const createMaintenanceTicket = useCreateMaintenanceTicket();
@@ -78,6 +84,7 @@ export default function VehicleListPage() {
     {
       header: "Vehicle",
       key: "name",
+      sortKey: "name",
       render: (v) => (
         <div className="min-w-0">
           <p className="truncate font-medium">{v.name}</p>
@@ -90,6 +97,7 @@ export default function VehicleListPage() {
     {
       header: "Battery",
       key: "battery",
+      sortKey: "battery_percentage",
       render: (v) => (
         <div className="flex items-center gap-1.5">
           <BatteryMedium className="h-4 w-4 text-muted-foreground" />
@@ -107,9 +115,11 @@ export default function VehicleListPage() {
     {
       header: "Next service",
       key: "service",
+      sortKey: "next_service_due_date",
       render: (v) => v.next_service_due_date ?? "—",
       hideOnMobile: true,
     },
+    { header: "Added", key: "created_at", sortKey: "created_at", render: (v) => formatDate(v.created_at), hideOnMobile: true },
     {
       header: "Actions",
       key: "actions",
@@ -199,6 +209,8 @@ export default function VehicleListPage() {
           onRetry={() => refetch()}
           onRowClick={(v) => setHistoryTarget(v.id)}
           emptyTitle="No vehicles match your filters"
+          sort={sort}
+          onSortChange={onSortChange}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TriageDialog } from "@/components/maintenance/TriageDialog";
 import { useMaintenanceTickets, useCreateMaintenanceTicket, useUpdateMaintenanceTicket } from "@/hooks/useMaintenance";
+import { useTableSort } from "@/hooks/useTableSort";
 import { useVehicles } from "@/hooks/useVehicles";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate, formatDateTime } from "@/lib/utils";
@@ -28,7 +29,10 @@ export default function MaintenancePage() {
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const { data, isLoading, isError, refetch } = useMaintenanceTickets({ status, page, pageSize: 8 });
+  const { sort, onSortChange } = useTableSort("created_at", "desc");
+  const { data, isLoading, isError, refetch } = useMaintenanceTickets({
+    status, page, pageSize: 8, sortBy: "created_at", sortDir: sort.dir,
+  });
   const updateTicket = useUpdateMaintenanceTicket();
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [triageTarget, setTriageTarget] = useState<MaintenanceTicket | null>(null);
@@ -81,7 +85,7 @@ export default function MaintenancePage() {
       hideOnMobile: true,
     },
     { header: "Reported by", key: "reported_by", render: (t) => t.reported_by?.full_name ?? "—", hideOnMobile: true },
-    { header: "Reported", key: "created_at", render: (t) => formatDate(t.created_at), hideOnMobile: true },
+    { header: "Reported", key: "created_at", sortKey: "created_at", render: (t) => formatDate(t.created_at), hideOnMobile: true },
     {
       header: "Actions",
       key: "actions",
@@ -168,6 +172,8 @@ export default function MaintenancePage() {
           onRetry={() => refetch()}
           emptyTitle="No maintenance tickets"
           emptyDescription="Nothing has been reported for the fleet yet."
+          sort={sort}
+          onSortChange={onSortChange}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}

@@ -7,6 +7,7 @@ import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { useRefunds, useRetryRefund } from "@/hooks/useRefunds";
+import { useTableSort } from "@/hooks/useTableSort";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Refund, RefundStatus } from "@/types";
 
@@ -15,14 +16,17 @@ const STATUS_OPTIONS: (RefundStatus | "all")[] = ["all", "pending", "processing"
 export default function RefundsPage() {
   const [status, setStatus] = useState<RefundStatus | "all">("all");
   const [page, setPage] = useState(1);
-  const { data, isLoading, isError, refetch } = useRefunds({ status, page, pageSize: 8 });
+  const { sort, onSortChange } = useTableSort("created_at", "desc");
+  const { data, isLoading, isError, refetch } = useRefunds({
+    status, page, pageSize: 8, sortBy: sort.by as "created_at" | "amount", sortDir: sort.dir,
+  });
   const retry = useRetryRefund();
 
   const columns: DataTableColumn<Refund>[] = [
-    { header: "Amount", key: "amount", render: (r) => formatCurrency(r.amount) },
+    { header: "Amount", key: "amount", sortKey: "amount", render: (r) => formatCurrency(r.amount) },
     { header: "Status", key: "status", render: (r) => <StatusBadge status={r.status} /> },
     { header: "Attempts", key: "attempt_count", render: (r) => r.attempt_count, hideOnMobile: true },
-    { header: "Initiated", key: "initiated_at", render: (r) => formatDate(r.initiated_at) },
+    { header: "Initiated", key: "initiated_at", sortKey: "created_at", render: (r) => formatDate(r.initiated_at) },
     { header: "Processed", key: "processed_at", render: (r) => (r.processed_at ? formatDate(r.processed_at) : "—"), hideOnMobile: true },
     {
       header: "Failure reason",
@@ -88,6 +92,8 @@ export default function RefundsPage() {
           isError={isError}
           onRetry={() => refetch()}
           emptyTitle="No refunds match your filters"
+          sort={sort}
+          onSortChange={onSortChange}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}

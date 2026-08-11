@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { LoadingSkeletonRows } from "./LoadingSkeletonRows";
 import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./ErrorState";
@@ -10,6 +11,13 @@ export interface DataTableColumn<T> {
   render: (row: T) => ReactNode;
   className?: string;
   hideOnMobile?: boolean;
+  /** Backend sort field this column maps to. Presence makes the header clickable (requires `sort`/`onSortChange` on the table). */
+  sortKey?: string;
+}
+
+export interface DataTableSort {
+  by: string;
+  dir: "asc" | "desc";
 }
 
 /**
@@ -27,6 +35,8 @@ export function DataTable<T extends { id: string }>({
   onRowClick,
   expandedRowId,
   renderExpandedRow,
+  sort,
+  onSortChange,
 }: {
   columns: DataTableColumn<T>[];
   data: T[];
@@ -40,6 +50,10 @@ export function DataTable<T extends { id: string }>({
   expandedRowId?: string | null;
   /** Renders inline below a row when its id matches expandedRowId. */
   renderExpandedRow?: (row: T) => ReactNode;
+  /** Current sort state. Columns whose `sortKey` matches `sort.by` show a directional indicator. */
+  sort?: DataTableSort;
+  /** Called with a column's `sortKey` when its header is clicked. Toggling asc/desc is the caller's responsibility. */
+  onSortChange?: (sortKey: string) => void;
 }) {
   if (isLoading) return <LoadingSkeletonRows cols={columns.length} />;
   if (isError) return <ErrorState onRetry={onRetry} />;
@@ -52,11 +66,37 @@ export function DataTable<T extends { id: string }>({
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {columns.map((col) => (
-                <th key={col.key} className={cn("px-4 py-3 font-medium", col.className)}>
-                  {col.header}
-                </th>
-              ))}
+              {columns.map((col) => {
+                const sortable = col.sortKey && onSortChange;
+                const active = sortable && sort?.by === col.sortKey;
+                return (
+                  <th key={col.key} className={cn("px-4 py-3 font-medium", col.className)}>
+                    {sortable ? (
+                      <button
+                        type="button"
+                        onClick={() => onSortChange(col.sortKey!)}
+                        className={cn(
+                          "inline-flex items-center gap-1 transition-smooth hover:text-foreground",
+                          active && "text-foreground"
+                        )}
+                      >
+                        {col.header}
+                        {active ? (
+                          sort!.dir === "asc" ? (
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          ) : (
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+                        )}
+                      </button>
+                    ) : (
+                      col.header
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

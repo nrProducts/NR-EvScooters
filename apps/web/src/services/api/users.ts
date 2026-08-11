@@ -9,11 +9,13 @@ export interface UserFilters {
   role?: BackendRoleName | "all";
   page?: number;
   pageSize?: number;
+  sortBy?: "full_name" | "created_at" | "kyc_status";
+  sortDir?: "asc" | "desc";
 }
 
 /** GET /users — requireStaff. See apps/backend/src/modules/users/users.routes.ts */
 export async function fetchUsers(filters: UserFilters = {}): Promise<PaginatedResult<AppUser>> {
-  const { search, kycStatus, accountStatus, role, page = 1, pageSize = 8 } = filters;
+  const { search, kycStatus, accountStatus, role, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<AppUser>>("/users", {
     page,
     pageSize,
@@ -21,6 +23,8 @@ export async function fetchUsers(filters: UserFilters = {}): Promise<PaginatedRe
     kycStatus: kycStatus && kycStatus !== "all" ? kycStatus : undefined,
     accountStatus: accountStatus && accountStatus !== "all" ? accountStatus : undefined,
     role: role && role !== "all" ? role : undefined,
+    sortBy,
+    sortDir,
   });
   return toPaginatedResult(res);
 }

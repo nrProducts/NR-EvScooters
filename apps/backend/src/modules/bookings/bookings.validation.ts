@@ -29,6 +29,8 @@ export const pickupQueueQuery = z.object({
         .optional(),
     /** Further narrows a 'fulfilled' view into Active/Due/Paused. Ignored for any other status. */
     planStatus: z.enum(["active", "due", "paused"]).optional(),
+    sortBy: z.enum(["created_at", "start_day", "next_due_at"]).default("created_at"),
+    sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 
 export const bookingHistoryQuery = z.object({

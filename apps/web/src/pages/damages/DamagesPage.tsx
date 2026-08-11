@@ -15,6 +15,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { useDamages, useDamage, useResolveDamageDispute } from "@/hooks/useDamages";
+import { useTableSort } from "@/hooks/useTableSort";
 import { ApiError } from "@/services/api/httpClient";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Damage, DamageStatus } from "@/types";
@@ -28,15 +29,18 @@ export default function DamagesPage() {
   const [page, setPage] = useState(1);
   const [detailId, setDetailId] = useState<string | null>(null);
 
-  const { data, isLoading, isError, refetch } = useDamages({ status, bookingId, page, pageSize: 8 });
+  const { sort, onSortChange } = useTableSort("created_at", "desc");
+  const { data, isLoading, isError, refetch } = useDamages({
+    status, bookingId, page, pageSize: 8, sortBy: sort.by as "created_at" | "amount", sortDir: sort.dir,
+  });
 
   const columns: DataTableColumn<Damage>[] = [
     { header: "Reported by", key: "reported_by", render: (d) => d.reported_by?.full_name ?? "—" },
-    { header: "Amount", key: "amount", render: (d) => formatCurrency(d.amount) },
+    { header: "Amount", key: "amount", sortKey: "amount", render: (d) => formatCurrency(d.amount) },
     { header: "Deposit deduction", key: "deposit_deduction", render: (d) => formatCurrency(d.deposit_deduction), hideOnMobile: true },
     { header: "Outstanding", key: "outstanding_amount", render: (d) => formatCurrency(d.outstanding_amount) },
     { header: "Status", key: "status", render: (d) => <StatusBadge status={d.status} /> },
-    { header: "Recorded", key: "created_at", render: (d) => formatDate(d.created_at), hideOnMobile: true },
+    { header: "Recorded", key: "created_at", sortKey: "created_at", render: (d) => formatDate(d.created_at), hideOnMobile: true },
     {
       header: "Actions",
       key: "actions",
@@ -107,6 +111,8 @@ export default function DamagesPage() {
           onRetry={() => refetch()}
           onRowClick={(d) => setDetailId(d.id)}
           emptyTitle="No damage records match your filters"
+          sort={sort}
+          onSortChange={onSortChange}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}

@@ -47,4 +47,6 @@ export interface ListInvoicesFilters {
     paymentType?: PaymentType;
     userId?: string;
     bookingId?: string;
+    sortBy: "created_at" | "amount_due" | "due_date";
+    sortDir: "asc" | "desc";
 }

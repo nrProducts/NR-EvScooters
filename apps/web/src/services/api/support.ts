@@ -5,15 +5,19 @@ export interface SupportFilters {
   status?: SupportStatus | "all";
   page?: number;
   pageSize?: number;
+  sortBy?: "created_at";
+  sortDir?: "asc" | "desc";
 }
 
 /** GET /support — requireStaff. See apps/backend/src/modules/support/support.routes.ts */
 export async function fetchSupportQueue(filters: SupportFilters = {}): Promise<PaginatedResult<SupportTicket>> {
-  const { status, page = 1, pageSize = 8 } = filters;
+  const { status, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<SupportTicket>>("/support", {
     page,
     pageSize,
     status: status && status !== "all" ? status : undefined,
+    sortBy,
+    sortDir,
   });
   return toPaginatedResult(res);
 }

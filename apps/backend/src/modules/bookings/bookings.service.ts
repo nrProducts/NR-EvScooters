@@ -609,7 +609,7 @@ export async function listPickupQueue(filters: PickupQueueFilters): Promise<Pagi
     if (filters.stationId) query = query.eq("station_id", filters.stationId);
 
     const { data, error, count } = await query
-        .order("start_day", { ascending: true })
+        .order(filters.sortBy, { ascending: filters.sortDir === "asc" })
         .range(from, to);
 
     if (error) throw error;

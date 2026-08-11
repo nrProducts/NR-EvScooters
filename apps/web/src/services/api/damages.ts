@@ -6,16 +6,20 @@ export interface DamageFilters {
   status?: DamageStatus | "all";
   page?: number;
   pageSize?: number;
+  sortBy?: "created_at" | "amount";
+  sortDir?: "asc" | "desc";
 }
 
 /** GET /damages — requireStaff. See apps/backend/src/modules/damages/damages.routes.ts */
 export async function fetchDamages(filters: DamageFilters = {}): Promise<PaginatedResult<Damage>> {
-  const { bookingId, status, page = 1, pageSize = 8 } = filters;
+  const { bookingId, status, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<Damage>>("/damages", {
     page,
     pageSize,
     bookingId,
     status: status && status !== "all" ? status : undefined,
+    sortBy,
+    sortDir,
   });
   return toPaginatedResult(res);
 }
