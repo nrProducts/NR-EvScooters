@@ -21,40 +21,51 @@ export function useCurrentRideOrBooking() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = () => {
+  /**
+   * Returns the in-flight request so callers (pull-to-refresh) can await the
+   * real settle instead of resolving on the next tick.
+   *
+   * `background` suppresses the `loading` flip. Screens swap their whole body
+   * for a full-screen loader when `loading` is true, which during a pull would
+   * unmount the RefreshControl mid-gesture and strand its spinner.
+   */
+  const load = (background = false): Promise<void> => {
     if (!profile) {
       setState({ kind: 'none' });
       setLoading(false);
-      return;
+      return Promise.resolve();
     }
 
-    setLoading(true);
+    if (!background) setLoading(true);
     setError(null);
 
     if (profile.has_active_rental) {
-      void rentalRepository
+      return rentalRepository
         .mine()
         .then((rental) => setState(rental ? { kind: 'rental', rental } : { kind: 'none' }))
         .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your ride.'))
         .finally(() => setLoading(false));
-      return;
     }
 
     if (profile.has_active_booking) {
-      void bookingRepository
+      return bookingRepository
         .mine()
         .then((booking) => setState(booking ? { kind: 'booking', booking } : { kind: 'none' }))
         .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your booking.'))
         .finally(() => setLoading(false));
-      return;
     }
 
     setState({ kind: 'none' });
     setLoading(false);
+    return Promise.resolve();
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(load, [profile?.has_active_rental, profile?.has_active_booking]);
+  // Must not pass `load` directly: it now returns a Promise, and React would
+  // take that as the effect's cleanup function and blow up on unmount.
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.has_active_rental, profile?.has_active_booking]);
 
   return { state, loading, error, reload: load };
 }

@@ -7,6 +7,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
 import { SkeletonList } from '../components/ui/Skeleton';
 import { ChipSelect } from '../components/ui/ChipSelect';
+import { pullToRefresh, useRefresh } from '../components/ui/PullToRefresh';
 import { useDebounced } from '../hooks/useDebounced';
 import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
 import { COLORS } from '../constants/theme';
@@ -29,6 +30,15 @@ export default function BrowseVehiclesScreen() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<VehicleCategory | 'all'>('all');
   const debouncedSearch = useDebounced(search, 350);
+
+  // Refetches page 1 under whatever search/category is active, so a pull never
+  // silently resets the rider's filters back to "all".
+  const { refreshing, onRefresh } = useRefresh(() =>
+    loadList({
+      search: debouncedSearch || undefined,
+      category: category === 'all' ? undefined : category,
+    }),
+  );
 
   useEffect(() => {
     void loadList({
@@ -89,6 +99,7 @@ export default function BrowseVehiclesScreen() {
           renderItem={({ item }) => <VehicleListItem model={item} />}
           onEndReachedThreshold={0.4}
           onEndReached={() => void loadMore()}
+          refreshControl={pullToRefresh(refreshing, onRefresh)}
           ListFooterComponent={
             pagination && pagination.page < pagination.totalPages && loadingList
               ? <View className="py-4"><SkeletonList count={1} /></View>

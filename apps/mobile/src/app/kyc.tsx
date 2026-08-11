@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  Modal, Image, RefreshControl,
+  Modal, Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { confirmAction, notify } from '../lib/confirm';
@@ -12,6 +12,7 @@ import {
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { ErrorState } from '../components/ui/ErrorState';
+import { pullToRefresh } from '../components/ui/PullToRefresh';
 import { FormField } from '../components/ui/FormField';
 import { DatePickerField } from '../components/ui/DatePickerField';
 import { useAuthStore } from '../store/useAuthStore';
@@ -234,14 +235,7 @@ export default function KycScreen() {
         className="flex-1 px-5 pt-5"
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void refresh()}
-            tintColor={COLORS.primary}
-            colors={[COLORS.primary]}
-          />
-        }
+        refreshControl={pullToRefresh(refreshing, () => void refresh())}
       >
         <StatusHeader kyc={kyc} />
 

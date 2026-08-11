@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Bell, ChevronRight, Check } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
+import { pullToRefresh } from '../components/ui/PullToRefresh';
 import { useMyNotifications } from '../hooks/useNotifications';
 import { COLORS } from '../constants/theme';
 import { formatDate } from '../constants/status';
@@ -38,7 +39,7 @@ export default function NotificationsScreen() {
           data={notifications}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingBottom: insets.bottom + 24, flexGrow: 1 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+          refreshControl={pullToRefresh(refreshing, refresh)}
           ListHeaderComponent={
             unreadCount > 0 ? (
               <View className="flex-row items-center justify-between px-5 pt-4 pb-2">
