@@ -22,6 +22,10 @@ import "../../global.css";
  * "booking" covers booking/[modelId] and booking/billing, and
  * "battery-stations" covers both its index and [id] — Expo Router reports a
  * route's top-level segment name, not the file's bracketed param.
+ *
+ * Any segment missing here is silently replace()d to /home by the guard below,
+ * with no error — which is exactly how /billing stayed unreachable from the
+ * drawer. Add the segment whenever a screen is added under src/app.
  */
 const RIDER_ROUTES = [
   "home", "my-scooter", "my-plan", "billing", "support", "kyc", "kyc-intro",

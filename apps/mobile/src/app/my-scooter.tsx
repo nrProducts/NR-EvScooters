@@ -11,6 +11,7 @@ import { DetailRow } from '../components/ui/DetailRow';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
 import { SkeletonList } from '../components/ui/Skeleton';
+import { pullToRefresh, useRefresh } from '../components/ui/PullToRefresh';
 import { MaintenanceCard, MAINTENANCE_FILTERS } from '../components/MaintenanceCard';
 import { VehicleDocumentsCard } from '../components/VehicleDocumentsCard';
 import { ReturnScooterModal } from '../components/ReturnScooterModal';
@@ -40,6 +41,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export default function MyScooterScreen() {
   const router = useRouter();
   const { state, loading, error, reload } = useCurrentRideOrBooking();
+  const { refreshing, onRefresh } = useRefresh(() => reload(true));
   const [showReturn, setShowReturn] = useState(false);
   // AppShell insets its drawer sheet but not screen content, so each screen
   // pads its own scroll tail — otherwise the Android nav/gesture bar covers
@@ -151,11 +153,12 @@ export default function MyScooterScreen() {
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
       ) : error ? (
-        <ErrorState message={error} onRetry={reload} />
+        <ErrorState message={error} onRetry={() => void reload()} />
       ) : (
         <ScrollView
           className="flex-1 px-5 pt-5"
           contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
           {state.kind === 'rental' && state.rental.vehicle ? (
             <>
@@ -261,7 +264,7 @@ export default function MyScooterScreen() {
                 visible={showReturn}
                 rental={state.rental}
                 onClose={() => setShowReturn(false)}
-                onSubmitted={reload}
+                onSubmitted={() => void reload()}
               />
 
               <VehicleDocumentsCard />

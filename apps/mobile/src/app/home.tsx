@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking, Platform, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, Zap } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
@@ -10,6 +10,7 @@ import { FeaturedScooterCard } from '../components/FeaturedScooterCard';
 import { ReferAndEarnBanner } from '../components/ReferAndEarnBanner';
 import { Badge } from '../components/ui/Badge';
 import { SkeletonList } from '../components/ui/Skeleton';
+import { pullToRefresh } from '../components/ui/PullToRefresh';
 import { ErrorState } from '../components/ui/ErrorState';
 import { useAuthStore } from '../store/useAuthStore';
 import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
@@ -163,7 +164,7 @@ export default function HomeScreen() {
       <ScrollView
         className="flex-1 px-5 pt-5"
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} />}
+        refreshControl={pullToRefresh(refreshing, () => void handleRefresh())}
       >
         <Text style={{ color: COLORS.textPrimary }} className="text-xl font-black mb-5">
           {greeting}, {firstName}

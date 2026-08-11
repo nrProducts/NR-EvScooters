@@ -5,6 +5,7 @@ import { Badge } from '../components/ui/Badge';
 import { SkeletonList } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
 import { EmptyState } from '../components/ui/EmptyState';
+import { pullToRefresh, useRefresh } from '../components/ui/PullToRefresh';
 import { bookingRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import {
@@ -36,15 +37,26 @@ export default function BookingHistoryScreen() {
     if (await cancelBooking(booking)) loadBookings();
   };
 
-  const loadBookings = () => {
-    setBookingsLoading(true);
+  /**
+   * `background` is what a pull-to-refresh passes. It skips the skeleton
+   * swap, because flipping bookingsLoading unmounts the ScrollView — and with
+   * it the RefreshControl that is mid-gesture — which strands the spinner and
+   * kills the rubber-band animation under the rider's finger.
+   *
+   * Returns the promise so useRefresh can await the real settle rather than
+   * resolving instantly and blinking the spinner off.
+   */
+  const loadBookings = (background = false) => {
+    if (!background) setBookingsLoading(true);
     setBookingsError(null);
-    bookingRepository
+    return bookingRepository
       .history({ page: 1, pageSize: 50 })
       .then((res) => setBookings(res.data))
       .catch((err) => setBookingsError(err instanceof ApiError ? err.message : 'Could not load your booking history.'))
       .finally(() => setBookingsLoading(false));
   };
+
+  const { refreshing, onRefresh } = useRefresh(() => loadBookings(true));
 
   useEffect(() => {
     loadBookings();
@@ -55,13 +67,14 @@ export default function BookingHistoryScreen() {
       {bookingsLoading ? (
         <View className="px-5 pt-5"><SkeletonList count={3} /></View>
       ) : bookingsError ? (
-        <ErrorState message={bookingsError} onRetry={loadBookings} />
+        <ErrorState message={bookingsError} onRetry={() => loadBookings()} />
       ) : bookings.length === 0 ? (
         <EmptyState icon={History} title="No bookings yet" subtitle="Your booking history will show up here." />
       ) : (
         <ScrollView
           className="flex-1 px-5 pt-4"
           contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
           <View className="gap-3">
             {bookings.map((b) => (

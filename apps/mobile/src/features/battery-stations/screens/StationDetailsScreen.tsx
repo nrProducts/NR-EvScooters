@@ -8,6 +8,7 @@ import { buildMapsUrl, buildWebMapsUrl } from '../../../lib/maps';
 import { copyToClipboard } from '../../../lib/clipboard';
 import { notifyError, notifySuccess } from '../../../lib/confirm';
 import { ErrorState } from '../../../components/ui/ErrorState';
+import { pullToRefresh, useRefresh } from '../../../components/ui/PullToRefresh';
 import { StationStatusBadge } from '../components/StationStatusBadge';
 import { useBatteryStation } from '../hooks/useBatteryStations';
 import { formatStationName, type BatteryStation } from '../types/batteryStation.types';
@@ -18,6 +19,9 @@ export default function StationDetailsScreen() {
     const insets = useSafeAreaInsets();
     const { id } = useLocalSearchParams<{ id: string }>();
     const { data: station, isLoading, isError, error, refetch } = useBatteryStation(id);
+    // refetch() ignores the 60s staleTime configured on the root QueryClient,
+    // so a pull always goes to the network rather than replaying cache.
+    const { refreshing, onRefresh } = useRefresh(refetch);
 
     const copy = useCallback(async (value: string, label: string) => {
         if (await copyToClipboard(value)) {
@@ -73,6 +77,7 @@ export default function StationDetailsScreen() {
                     className="flex-1 px-5 pt-5"
                     contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
                     showsVerticalScrollIndicator={false}
+                    refreshControl={pullToRefresh(refreshing, onRefresh)}
                 >
                     <View className="flex-row items-center mb-4" style={{ gap: 8 }}>
                         <StationStatusBadge status={station.status} />

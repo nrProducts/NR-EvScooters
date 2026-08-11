@@ -6,6 +6,7 @@ import { AppShell } from '../components/AppShell';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ErrorState } from '../components/ui/ErrorState';
 import { Badge } from '../components/ui/Badge';
+import { pullToRefresh, useRefresh } from '../components/ui/PullToRefresh';
 import { COLORS } from '../constants/theme';
 import { useMyBilling } from '../hooks/useMyBilling';
 import { useAuthStore } from '../store/useAuthStore';
@@ -39,6 +40,7 @@ function formatDate(dateStr: string | null): string {
 
 export default function BillingScreen() {
   const { bookingId, booking, deposit, damages, invoices, loading, error, reload } = useMyBilling();
+  const { refreshing, onRefresh } = useRefresh(() => reload(true));
   const profile = useAuthStore((s) => s.profile);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
@@ -122,7 +124,7 @@ export default function BillingScreen() {
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
       ) : error ? (
-        <ErrorState message={error} onRetry={reload} />
+        <ErrorState message={error} onRetry={() => void reload()} />
       ) : !bookingId ? (
         <EmptyState
           icon={CreditCard}
@@ -130,7 +132,11 @@ export default function BillingScreen() {
           subtitle="Book a scooter to see your billing details here."
         />
       ) : (
-        <ScrollView className="flex-1 px-5 pt-5" contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView
+          className="flex-1 px-5 pt-5"
+          contentContainerStyle={{ paddingBottom: 40 }}
+          refreshControl={pullToRefresh(refreshing, onRefresh)}
+        >
           {/* Current plan */}
           <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Current Plan</Text>
           <View className="rounded-3xl p-5 mb-6" style={{ backgroundColor: COLORS.primary }}>

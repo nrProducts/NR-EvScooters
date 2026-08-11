@@ -38,17 +38,17 @@ export function useMyBilling() {
             ? rideState.rental.booking_id
             : null;
 
-    const load = () => {
-        if (rideLoading) return;
+    const load = (background = false): Promise<void> => {
+        if (rideLoading) return Promise.resolve();
         if (!bookingId) {
             setBilling(EMPTY);
             setLoading(false);
-            return;
+            return Promise.resolve();
         }
 
-        setLoading(true);
+        if (!background) setLoading(true);
         setError(null);
-        Promise.all([
+        return Promise.all([
             bookingRepository.byId(bookingId),
             billingRepository.myDeposit(bookingId),
             billingRepository.myDamages(bookingId),
@@ -67,16 +67,25 @@ export function useMyBilling() {
             .finally(() => setLoading(false));
     };
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    useEffect(load, [rideLoading, bookingId]);
+    // Not `useEffect(load, ...)`: load returns a Promise now, which React would
+    // mistake for the effect's cleanup function.
+    useEffect(() => {
+        void load();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rideLoading, bookingId]);
 
     return {
         ...billing,
         loading: rideLoading || loading,
         error: rideError ?? error,
-        reload: () => {
-            reloadRide();
-            load();
-        },
+        /**
+         * Both halves are refetched. They run concurrently rather than
+         * sequentially because `load` keys off the bookingId already in state —
+         * chaining it after reloadRide would still read the pre-reload id, so
+         * waiting buys nothing. If the ride reload does change the booking, the
+         * effect above re-fires `load` against the new id.
+         */
+        reload: (background = false): Promise<void> =>
+            Promise.all([reloadRide(background), load(background)]).then(() => undefined),
     };
 }
