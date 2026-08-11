@@ -743,20 +743,20 @@ async function userIdsMatchingDocNumber(search: string): Promise<string[]> {
 
 async function activeVehicleByUser(
     userIds: string[],
-): Promise<Map<string, { id: string; vin: string; model: string }>> {
-    const map = new Map<string, { id: string; vin: string; model: string }>();
+): Promise<Map<string, { id: string; vin: string; model: string; name: string; registration_number: string }>> {
+    const map = new Map<string, { id: string; vin: string; model: string; name: string; registration_number: string }>();
     if (userIds.length === 0) return map;
 
     const { data, error } = await supabaseAdmin
         .from("rentals")
-        .select("user_id, vehicles(id, vin, model)")
+        .select("user_id, vehicles(id, vin, model, name, registration_number)")
         .in("user_id", userIds)
         .eq("status", "active");
     if (error) throw error;
 
     for (const row of (data ?? []) as Array<{ user_id: string; vehicles: unknown }>) {
         const v = Array.isArray(row.vehicles) ? row.vehicles[0] : row.vehicles;
-        if (v) map.set(row.user_id, v as { id: string; vin: string; model: string });
+        if (v) map.set(row.user_id, v as { id: string; vin: string; model: string; name: string; registration_number: string });
     }
     return map;
 }

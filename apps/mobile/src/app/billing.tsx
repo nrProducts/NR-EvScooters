@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { CreditCard, ShieldCheck, AlertTriangle, Receipt, Zap } from 'lucide-react-native';
@@ -46,10 +46,24 @@ export default function BillingScreen() {
   // The admin side can change this rider's plan_status (a payment going
   // overdue, a vehicle being released) with no action of the rider's own —
   // refetch whenever the screen regains focus, not just on first mount.
+  //
+  // Neither `[]` nor `[reload]` works here: useMyBilling returns a brand-new
+  // `reload` closure every render, so
+  //   - an empty-deps useCallback freezes that FIRST render's closure
+  //     forever — before bookingId had even resolved — so later focus
+  //     events call a stale reload() that resets billing back to empty.
+  //   - depending on `[reload]` re-runs the effect on every render (not just
+  //     focus/blur transitions), because useFocusEffect re-invokes whenever
+  //     its callback identity changes — reload() -> state update -> re-render
+  //     -> new reload -> effect fires again -> infinite loop.
+  // A ref sidesteps both: the effect callback's identity stays stable
+  // (empty deps, so it only fires on real focus events), while always
+  // calling whatever the latest reload closure is.
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
   useFocusEffect(
     useCallback(() => {
-      reload();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      reloadRef.current();
     }, []),
   );
 

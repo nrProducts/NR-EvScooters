@@ -41,7 +41,7 @@ export default function UserListPage() {
   const role = useAuthStore((s) => s.user?.role);
   const [search, setSearch] = useState("");
   const [kycStatus, setKycStatus] = useState<KycStatus | "all">("all");
-  const [roleFilter, setRoleFilter] = useState<BackendRoleName | "all">("all");
+  const [roleFilter, setRoleFilter] = useState<BackendRoleName | "all">("rider");
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<AppUser | null>(null);
@@ -82,7 +82,21 @@ export default function UserListPage() {
     {
       header: "Assigned vehicle",
       key: "vehicle",
-      render: (u) => u.assigned_vehicle?.model ?? "—",
+      render: (u) =>
+        u.assigned_vehicle ? (
+          <button
+            type="button"
+            className="truncate font-medium text-primary underline-offset-2 hover:underline"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/vehicles/${u.assigned_vehicle!.id}`);
+            }}
+          >
+            {u.assigned_vehicle.name}
+          </button>
+        ) : (
+          "—"
+        ),
       hideOnMobile: true,
     },
     {

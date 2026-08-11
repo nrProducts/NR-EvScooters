@@ -22,6 +22,7 @@ import {
   VEHICLE_STATUS_TONE, formatDate,
 } from '../constants/status';
 import { describeExpiry, rentalDayNumber } from '../lib/rentalTiming';
+import { canReturnYet } from '../lib/returnPolicy';
 import { useCurrentRideOrBooking } from '../hooks/useCurrentRideOrBooking';
 import { useMaintenanceHistory, type MaintenanceStatusFilter } from '../hooks/useMaintenanceHistory';
 import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
@@ -58,6 +59,11 @@ export default function MyScooterScreen() {
     : state.kind === 'booking' ? state.booking.vehicle
       : null;
   const maintenance = useMaintenanceHistory(vehicle?.id ?? null);
+  // Riders can't back out mid-period — only once their current committed
+  // week is up (bookings.next_due_at). The server re-enforces this
+  // regardless; disabling here just avoids letting a rider into the return
+  // form only to be rejected at submit.
+  const canReturn = state.kind === 'rental' ? canReturnYet(state.rental.next_due_at) : true;
 
   const renderHero = (title: string, badge: React.ReactNode) => (
     <View
@@ -218,17 +224,25 @@ export default function MyScooterScreen() {
               {state.rental.return_requested_at ? (
                 <ReturnStatusCard rental={state.rental} />
               ) : (
-                <TouchableOpacity
-                  onPress={() => setShowReturn(true)}
-                  accessibilityRole="button"
-                  className="flex-row items-center justify-center rounded-xl py-3 mt-3"
-                  style={{ backgroundColor: COLORS.primary + '14' }}
-                >
-                  <PackageCheck size={15} color={COLORS.primaryPressed} />
-                  <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-bold ml-2">
-                    Return Scooter
-                  </Text>
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    onPress={() => setShowReturn(true)}
+                    disabled={!canReturn}
+                    accessibilityRole="button"
+                    className="flex-row items-center justify-center rounded-xl py-3 mt-3"
+                    style={{ backgroundColor: COLORS.primary + '14', opacity: canReturn ? 1 : 0.5 }}
+                  >
+                    <PackageCheck size={15} color={COLORS.primaryPressed} />
+                    <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-bold ml-2">
+                      Return Scooter
+                    </Text>
+                  </TouchableOpacity>
+                  {!canReturn && state.rental.next_due_at ? (
+                    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-2">
+                      You can return once your current plan period ends on {formatDate(state.rental.next_due_at)}.
+                    </Text>
+                  ) : null}
+                </>
               )}
 
               <TouchableOpacity

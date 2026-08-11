@@ -37,7 +37,8 @@ const RENTAL_COLUMNS = `
     ${RETURN_COLUMNS},
     ${PLAN_PERIOD_COLUMNS},
     vehicles(id, name, registration_number, battery_percentage, next_service_due_date),
-    bookings(
+    bookings!rentals_booking_id_fkey(
+        plan_status, next_due_at,
         plans(id, name, billing_cycle, price),
         stations(id, name, code)
     )
@@ -203,7 +204,10 @@ interface RawRentalRow extends RawReturnFields, RawPlanPeriodFields {
 }
 
 function toRentalView(row: RawRentalRow): RentalView {
-    const booking = unwrap<{ plans: unknown; stations: unknown }>(row.bookings);
+    const booking = unwrap<{
+        plans: unknown; stations: unknown;
+        plan_status: RentalView["plan_status"]; next_due_at: string | null;
+    }>(row.bookings);
     const vehicle = unwrap<NonNullable<RentalView["vehicle"]>>(row.vehicles);
     return {
         id: row.id,
@@ -220,6 +224,8 @@ function toRentalView(row: RawRentalRow): RentalView {
             : null,
         plan: booking ? unwrap(booking.plans) : null,
         station: booking ? unwrap(booking.stations) : null,
+        plan_status: booking?.plan_status ?? null,
+        next_due_at: booking?.next_due_at ?? null,
         ...toReturnView(row),
         ...toPlanPeriodView(row),
     };
@@ -294,7 +300,7 @@ export async function requestReturn(
 ): Promise<RentalView> {
     const { data: existing, error: fetchError } = await supabaseAdmin
         .from("rentals")
-        .select("id, user_id, status, return_requested_at, expires_at")
+        .select("id, user_id, status, return_requested_at, expires_at, bookings!rentals_booking_id_fkey(next_due_at)")
         .eq("id", rentalId)
         .maybeSingle();
 
@@ -306,6 +312,19 @@ export async function requestReturn(
     if (existing.status !== "active") throw conflict("This rental is no longer active.");
     if (existing.return_requested_at) {
         throw conflict("You've already requested a return for this scooter.");
+    }
+
+    // Riders can't back out mid-period — only once the current committed
+    // week is up. Anchored to bookings.next_due_at (rolls forward every
+    // renewal), not rentals.expires_at (frozen at pickup as the FIRST
+    // period's end, so it'd stop meaning anything by week 2). No plan at
+    // all (next_due_at null) fails open — nothing to gate against.
+    const booking = unwrap<{ next_due_at: string | null }>(existing.bookings);
+    const todayIso = new Date().toISOString().slice(0, 10);
+    if (booking?.next_due_at && todayIso < booking.next_due_at) {
+        throw businessRule(
+            `You can return your scooter once your current plan period ends on ${booking.next_due_at}.`,
+        );
     }
 
     const now = new Date();

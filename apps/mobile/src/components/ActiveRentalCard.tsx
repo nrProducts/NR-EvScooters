@@ -10,7 +10,7 @@ import { ReturnStatusCard } from './ReturnStatusCard';
 import { VehicleStage } from './VehicleStage';
 import { COLORS } from '../constants/theme';
 import { BILLING_CYCLE_LABEL, RENTAL_STATUS_LABEL, RENTAL_STATUS_TONE, formatDate } from '../constants/status';
-import { LATE_RETURN_FEE_PER_DAY } from '../lib/returnPolicy';
+import { LATE_RETURN_FEE_PER_DAY, canReturnYet } from '../lib/returnPolicy';
 import { describeExpiry, rentalDayNumber } from '../lib/rentalTiming';
 import type { ApiRental } from '../types/api';
 
@@ -48,6 +48,11 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
   // Once a return is requested, ReturnStatusCard owns the deadline messaging.
   const showNudge = expiry != null && expiry.tone !== 'neutral' && !returnRequested;
   const nudgeTint = expiry?.tone === 'danger' ? COLORS.danger : COLORS.warning;
+  // Riders can't back out mid-period — only once their current committed
+  // week is up (bookings.next_due_at). The server re-enforces this
+  // regardless; disabling here is just so a rider isn't let into the return
+  // form only to be rejected at submit.
+  const canReturn = canReturnYet(rental.next_due_at);
 
   return (
     <View
@@ -142,15 +147,23 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
         {returnRequested ? (
           <ReturnStatusCard rental={rental} compact />
         ) : (
-          <TouchableOpacity
-            onPress={onReturn}
-            accessibilityRole="button"
-            className="flex-row items-center justify-center rounded-2xl py-3.5 mt-3"
-            style={{ backgroundColor: COLORS.primary }}
-          >
-            <PackageCheck size={16} color={COLORS.white} />
-            <Text className="text-white text-sm font-bold ml-2">Return Scooter</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity
+              onPress={onReturn}
+              disabled={!canReturn}
+              accessibilityRole="button"
+              className="flex-row items-center justify-center rounded-2xl py-3.5 mt-3"
+              style={{ backgroundColor: COLORS.primary, opacity: canReturn ? 1 : 0.5 }}
+            >
+              <PackageCheck size={16} color={COLORS.white} />
+              <Text className="text-white text-sm font-bold ml-2">Return Scooter</Text>
+            </TouchableOpacity>
+            {!canReturn && rental.next_due_at ? (
+              <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-2">
+                You can return once your current plan period ends on {formatDate(rental.next_due_at)}.
+              </Text>
+            ) : null}
+          </>
         )}
 
         <View className="flex-row mt-3" style={{ gap: 12 }}>

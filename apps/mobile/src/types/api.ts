@@ -449,6 +449,14 @@ export interface ApiRental {
     plan_price_at_pickup: number | null;
     expires_at: string | null;
 
+    // --- recurring-billing state (bookings.plan_status/next_due_at) --------
+    // Unlike expires_at above (frozen at pickup as the FIRST period's end),
+    // next_due_at rolls forward every renewal — it's what actually reflects
+    // whether the rider's current committed week is over yet. Both null on a
+    // rental with no plan.
+    plan_status: PlanStatus | null;
+    next_due_at: string | null;
+
     // --- post-pickup return request (null until the rider asks to return) ---
     // The rental stays 'active' while a return is pending; only staff
     // confirming the physical handover ends it and settles the fee below.

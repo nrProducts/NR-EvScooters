@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Linking, Platform, RefreshControl } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle } from 'lucide-react-native';
+import { ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, Zap } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { KycBanner } from '../components/KycBanner';
 import { MaintenanceNoticeBanner } from '../components/MaintenanceNoticeBanner';
@@ -97,6 +97,8 @@ export default function HomeScreen() {
   }, [profile?.has_active_booking, profile?.has_active_rental]);
 
   // Home only ever fetched a booking; the return action needs the rental too.
+  // rental.plan_status/next_due_at (bookings' recurring-billing state) come
+  // embedded on the rental itself — no separate booking fetch needed.
   const loadRental = () => {
     if (!profile?.has_active_rental) {
       setActiveRental(null);
@@ -252,6 +254,26 @@ export default function HomeScreen() {
             onClose={() => setShowReturn(false)}
             onSubmitted={loadRental}
           />
+        ) : null}
+
+        {activeRental && activeRental.plan_status === 'due' ? (
+          <TouchableOpacity
+            onPress={() => router.push('/billing')}
+            accessibilityRole="button"
+            className="rounded-2xl p-4 mb-4 flex-row items-center"
+            style={{ backgroundColor: COLORS.danger + '14', borderWidth: 1, borderColor: COLORS.danger + '55' }}
+          >
+            <Zap size={16} color={COLORS.danger} />
+            <View className="flex-1 ml-3">
+              <Text style={{ color: COLORS.danger }} className="text-xs font-extrabold">
+                Your scooter won't start — payment overdue
+              </Text>
+              <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+                ₹300/day late fee is accruing. Tap to pay now.
+              </Text>
+            </View>
+            <ChevronRight size={16} color={COLORS.danger} />
+          </TouchableOpacity>
         ) : null}
 
         {/* One slot, two audiences: discovery for a rider who can still book,

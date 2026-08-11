@@ -24,7 +24,7 @@ import "../../global.css";
  * route's top-level segment name, not the file's bracketed param.
  */
 const RIDER_ROUTES = [
-  "home", "my-scooter", "my-plan", "support", "kyc", "kyc-intro",
+  "home", "my-scooter", "my-plan", "billing", "support", "kyc", "kyc-intro",
   "browse-vehicles", "booking", "notifications", "booking-history",
   "battery-stations",
 ];

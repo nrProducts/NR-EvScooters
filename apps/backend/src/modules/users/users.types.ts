@@ -27,7 +27,7 @@ export interface UserProfile {
 
 export interface UserListItem extends UserProfile {
     roles: RoleName[];
-    assigned_vehicle: { id: string; vin: string; model: string } | null;
+    assigned_vehicle: { id: string; vin: string; model: string; name: string; registration_number: string } | null;
     current_plan: { id: string; name: string; status: string } | null;
 }
 

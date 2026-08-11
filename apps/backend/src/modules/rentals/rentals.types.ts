@@ -50,6 +50,16 @@ export interface RentalView extends RentalReturnFields, RentalPlanPeriodFields {
     } | null;
     station: { id: string; name: string; code: string } | null;
     plan: { id: string; name: string; billing_cycle: string; price: number } | null;
+    /**
+     * The recurring-billing state of the booking this rental belongs to
+     * (bookings.plan_status/next_due_at — null on a rental with no plan).
+     * Unlike expires_at (frozen at pickup as the FIRST period's end),
+     * next_due_at rolls forward every time the rider pays for a new week —
+     * it's what actually reflects "is the rider's current committed period
+     * over yet", which requestReturn's early-return gate is anchored to.
+     */
+    plan_status: "active" | "due" | "paused" | null;
+    next_due_at: string | null;
 }
 
 export interface RequestReturnInput {

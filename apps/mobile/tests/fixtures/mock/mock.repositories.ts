@@ -811,6 +811,10 @@ function toApiRental(row: MockRentalRow): ApiRental {
         plan_duration_days: row.plan_duration_days ?? null,
         plan_price_at_pickup: row.plan_price_at_pickup ?? null,
         expires_at: row.expires_at ?? null,
+        // Mock mode doesn't simulate the recurring-billing engine — null
+        // means the return-gate fails open, same as a real rental with no plan.
+        plan_status: null,
+        next_due_at: null,
         return_requested_at: row.return_requested_at ?? null,
         return_reason: row.return_reason ?? null,
         return_feedback: row.return_feedback ?? null,

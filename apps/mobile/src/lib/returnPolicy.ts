@@ -21,6 +21,20 @@
 /** Flat fee, in rupees, per WHOLE CALENDAR DAY past the deadline. */
 export const LATE_RETURN_FEE_PER_DAY = 100;
 
+/**
+ * Riders can't back out mid-period — only once their current committed week
+ * is up. Mirrors requestReturn's gate in rentals.service.ts, anchored to
+ * bookings.next_due_at (rolls forward every renewal) rather than
+ * rentals.expires_at (frozen at pickup as the FIRST period's end, so it'd
+ * stop meaning anything by week 2+). No plan at all (next_due_at null)
+ * fails open — nothing to gate against.
+ */
+export function canReturnYet(nextDueAt: string | null, now: Date = new Date()): boolean {
+  if (!nextDueAt) return true;
+  const todayIso = now.toISOString().slice(0, 10);
+  return todayIso >= nextDueAt;
+}
+
 /** Safety cap so an abandoned rental can't show an absurd running total. */
 export const MAX_LATE_PENALTY_DAYS = 30;
 
