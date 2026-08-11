@@ -28,7 +28,14 @@ export interface UserProfile {
 export interface UserListItem extends UserProfile {
     roles: RoleName[];
     assigned_vehicle: { id: string; vin: string; model: string; name: string; registration_number: string } | null;
-    current_plan: { id: string; name: string; status: string } | null;
+    current_plan: { id: string; name: string; price: number; billing_cycle: string } | null;
+    /**
+     * bookings.status before pickup (pending_payment/confirmed), or
+     * bookings.plan_status (active/due/paused) once fulfilled — same
+     * derivation as vehicles.service.ts's VehiclePaymentStatus. Null when the
+     * rider has no live booking at all.
+     */
+    payment_status: "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
 }
 
 export interface UserDetail extends UserListItem {

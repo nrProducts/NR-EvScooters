@@ -73,15 +73,19 @@ export async function listUsers(
     const userIds = rows.map((r) => r.id);
     const [vehicles, plans] = await Promise.all([
         activeVehicleByUser(userIds),
-        activePlanByUser(userIds),
+        currentPlanByUser(userIds),
     ]);
 
-    const items: UserListItem[] = rows.map((row) => ({
-        ...stripJoins(row),
-        roles: flattenRoles(row),
-        assigned_vehicle: vehicles.get(row.id) ?? null,
-        current_plan: plans.get(row.id) ?? null,
-    }));
+    const items: UserListItem[] = rows.map((row) => {
+        const planInfo = plans.get(row.id);
+        return {
+            ...stripJoins(row),
+            roles: flattenRoles(row),
+            assigned_vehicle: vehicles.get(row.id) ?? null,
+            current_plan: planInfo?.plan ?? null,
+            payment_status: planInfo?.payment_status ?? null,
+        };
+    });
 
     return paginate(items, count ?? 0, filters);
 }
@@ -107,15 +111,17 @@ export async function getUserById(id: string, actor: AuthContext): Promise<UserD
 
     const [vehicles, plans, documents] = await Promise.all([
         activeVehicleByUser([id]),
-        activePlanByUser([id]),
+        currentPlanByUser([id]),
         documentsForUser(id),
     ]);
+    const planInfo = plans.get(id);
 
     return {
         ...stripJoins(row),
         roles: flattenRoles(row),
         assigned_vehicle: vehicles.get(id) ?? null,
-        current_plan: plans.get(id) ?? null,
+        current_plan: planInfo?.plan ?? null,
+        payment_status: planInfo?.payment_status ?? null,
         kyc_completion_percent: kycCompletionPercent(documents),
         // Storage paths are never included — see §2 "Do not expose confidential
         // storage paths". Bytes are reached only via POST /kyc signed-url flows.
@@ -761,25 +767,43 @@ async function activeVehicleByUser(
     return map;
 }
 
-async function activePlanByUser(
-    userIds: string[],
-): Promise<Map<string, { id: string; name: string; status: string }>> {
-    const map = new Map<string, { id: string; name: string; status: string }>();
+/**
+ * "subscriptions" is dead — nothing in the app has written to that table
+ * since the recurring-billing engine moved plan state onto bookings
+ * (plan_id/plan_status/next_due_at). This reads the rider's current live
+ * booking instead — same source, same derivation, as
+ * vehicles.service.ts's paymentStatusesForVehicles: bookings.status before
+ * pickup (pending_payment/confirmed), bookings.plan_status once fulfilled.
+ */
+async function currentPlanByUser(userIds: string[]): Promise<Map<string, {
+    plan: { id: string; name: string; price: number; billing_cycle: string } | null;
+    payment_status: "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
+}>> {
+    const map = new Map<string, {
+        plan: { id: string; name: string; price: number; billing_cycle: string } | null;
+        payment_status: "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
+    }>();
     if (userIds.length === 0) return map;
 
     const { data, error } = await supabaseAdmin
-        .from("subscriptions")
-        .select("user_id, status, plans(id, name)")
+        .from("bookings")
+        .select("user_id, status, plan_status, created_at, plans(id, name, price, billing_cycle)")
         .in("user_id", userIds)
-        .eq("status", "active");
+        .in("status", ["pending_payment", "confirmed", "fulfilled"])
+        .order("created_at", { ascending: false });
     if (error) throw error;
 
-    for (const row of (data ?? []) as Array<{ user_id: string; status: string; plans: unknown }>) {
+    for (const row of (data ?? []) as Array<{
+        user_id: string; status: string; plan_status: string | null; plans: unknown;
+    }>) {
+        if (map.has(row.user_id)) continue; // newest first — first hit per user wins
         const p = Array.isArray(row.plans) ? row.plans[0] : row.plans;
-        if (p) {
-            const plan = p as { id: string; name: string };
-            map.set(row.user_id, { id: plan.id, name: plan.name, status: row.status });
-        }
+        const plan = p as { id: string; name: string; price: number | string; billing_cycle: string } | null;
+        map.set(row.user_id, {
+            plan: plan ? { id: plan.id, name: plan.name, price: Number(plan.price), billing_cycle: plan.billing_cycle } : null,
+            payment_status: (row.status === "fulfilled" ? row.plan_status : row.status) as
+                "pending_payment" | "confirmed" | "active" | "due" | "paused" | null,
+        });
     }
     return map;
 }

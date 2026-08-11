@@ -11,24 +11,56 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { usePickupQueue, useAvailableVehicles, useConfirmPickup } from "@/hooks/useBookings";
+import type { PickupQueueFilters } from "@/services/api/bookings";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import { computeLatePaymentFee } from "@/lib/latePaymentPolicy";
 import { ApiError } from "@/services/api/httpClient";
-import type { BookingStatus, PickupBooking } from "@/types";
+import type { PickupBooking } from "@/types";
 
-const STATUS_TABS: { value: BookingStatus; label: string }[] = [
-  { value: "confirmed", label: "Awaiting Pickup" },
-  { value: "fulfilled", label: "Assigned" },
+/**
+ * Admin-facing view, one tab per stage of the booking/vehicle lifecycle:
+ *   Payment successful -> Pending (confirmed) -> Admin confirms -> Assigned
+ *   (fulfilled) -> Active/Due (fulfilled, split by plan_status) -> Completed.
+ * Distinct from BookingStatus/PickupQueueFilters — several of these views
+ * (Active, Due) are the SAME status filtered further by plan_status, and
+ * "All" is deliberately no filter at all, so this can't just be the raw
+ * status type.
+ */
+type BookingView = "pending" | "assigned" | "active" | "due" | "completed" | "cancelled" | "expired" | "all";
+
+const VIEW_TABS: { value: BookingView; label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "assigned", label: "Assigned" },
+  { value: "active", label: "Active" },
+  { value: "due", label: "Due" },
+  { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
+  { value: "all", label: "All" },
+  // Not part of the required tab set, but existing functionality — keeping
+  // it rather than losing visibility into expired reservations.
   { value: "expired", label: "Expired" },
 ];
 
+function filtersForView(view: BookingView): Pick<PickupQueueFilters, "status" | "planStatus"> {
+  switch (view) {
+    case "pending": return { status: "confirmed" };
+    case "assigned": return { status: "fulfilled" };
+    case "active": return { status: "fulfilled", planStatus: "active" };
+    case "due": return { status: "fulfilled", planStatus: "due" };
+    case "completed": return { status: "completed" };
+    case "cancelled": return { status: "cancelled" };
+    case "expired": return { status: "expired" };
+    case "all": return {};
+  }
+}
+
 export default function BookingListPage() {
-  const [status, setStatus] = useState<BookingStatus>("confirmed");
+  const [view, setView] = useState<BookingView>("pending");
   const [page, setPage] = useState(1);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
 
-  const { data, isLoading, isError, refetch } = usePickupQueue({ status, page, pageSize: 8 });
+  const { data, isLoading, isError, refetch } = usePickupQueue({ ...filtersForView(view), page, pageSize: 8 });
   const { data: availableVehicles, isLoading: vehiclesLoading } = useAvailableVehicles(
     pickupTarget && !pickupTarget.vehicle ? pickupTarget.id : undefined,
   );
@@ -52,7 +84,40 @@ export default function BookingListPage() {
       render: (b) => (b.vehicle ? `${b.vehicle.registration_number}` : "Not allocated yet"),
       hideOnMobile: true,
     },
-    { header: "Status", key: "status", render: (b) => <StatusBadge status={b.status} /> },
+    {
+      header: "Status",
+      key: "status",
+      render: (b) => (
+        <div className="flex flex-wrap gap-1">
+          <StatusBadge status={b.status} />
+          {/* plan_status is only meaningful once fulfilled (still riding) —
+              null before pickup and after a genuine completion. */}
+          {b.plan_status ? <StatusBadge status={b.plan_status} /> : null}
+        </div>
+      ),
+    },
+    {
+      header: "Payment due",
+      key: "payment_due",
+      render: (b) => {
+        if (!b.next_due_at) return "—";
+        if (b.plan_status !== "due") {
+          // Active (paid up) or paused (clock frozen) — just the date, no warning.
+          return <span className="text-muted-foreground">{formatDate(b.next_due_at)}</span>;
+        }
+        // Same estimate the rider's own app shows them — see latePaymentPolicy.ts.
+        const { daysLate, lateFeeAmount } = computeLatePaymentFee(b.next_due_at);
+        return (
+          <div className="text-destructive">
+            <p className="font-medium">Due {formatDate(b.next_due_at)}</p>
+            <p className="text-xs">
+              {daysLate} day{daysLate === 1 ? "" : "s"} overdue · {formatCurrency(lateFeeAmount)} late fee
+            </p>
+          </div>
+        );
+      },
+      hideOnMobile: true,
+    },
     {
       header: "Actions",
       key: "actions",
@@ -82,9 +147,9 @@ export default function BookingListPage() {
         <p className="text-sm text-muted-foreground">{data?.total ?? 0} bookings in this stage</p>
       </div>
 
-      <Tabs value={status} onValueChange={(v) => { setStatus(v as BookingStatus); setPage(1); }}>
+      <Tabs value={view} onValueChange={(v) => { setView(v as BookingView); setPage(1); }}>
         <TabsList className="flex-wrap">
-          {STATUS_TABS.map((t) => (
+          {VIEW_TABS.map((t) => (
             <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
           ))}
         </TabsList>

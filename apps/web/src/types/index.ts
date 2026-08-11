@@ -53,7 +53,13 @@ export interface AppUser {
   deleted_at: string | null;
   roles: BackendRoleName[];
   assigned_vehicle: { id: string; vin: string; model: string; name: string; registration_number: string } | null;
-  current_plan: { id: string; name: string; status: string } | null;
+  current_plan: { id: string; name: string; price: number; billing_cycle: string } | null;
+  /**
+   * bookings.status before pickup (pending_payment/confirmed), or
+   * bookings.plan_status (active/due/paused) once fulfilled. Null when the
+   * rider has no live booking at all.
+   */
+  payment_status: "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
 }
 
 export interface AppUserDocument {
@@ -147,7 +153,14 @@ export interface SupportTicket {
 // apps/backend/src/modules/bookings/bookings.types.ts
 // ---------------------------------------------------------------------------
 
-export type BookingStatus = "pending_payment" | "confirmed" | "cancelled" | "expired" | "fulfilled";
+/**
+ * 'completed' (20260811100000): the rider returned the scooter for good.
+ * Distinct from 'fulfilled', which now means "picked up and still riding"
+ * (plan_status active/due/paused) — before this, a fulfilled booking never
+ * had a terminal state at all.
+ */
+export type BookingStatus = "pending_payment" | "confirmed" | "cancelled" | "expired" | "fulfilled" | "completed";
+export type BookingPlanStatus = "active" | "due" | "paused";
 
 export interface PickupBooking {
   id: string;
@@ -160,6 +173,9 @@ export interface PickupBooking {
   rider: { id: string; full_name: string; phone: string | null };
   /** The physical unit already reserved by allocate_vehicle_for_booking(), if any. */
   vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
+  /** Recurring-billing state — set once the booking reaches 'fulfilled', null before and after (see BookingStatus). */
+  plan_status: BookingPlanStatus | null;
+  next_due_at: string | null;
 }
 
 export interface AvailableVehicle {

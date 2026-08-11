@@ -1,6 +1,13 @@
-export type BookingStatus = "pending_payment" | "confirmed" | "cancelled" | "expired" | "fulfilled";
+/**
+ * 'completed' (20260811100000): the booking's whole lifecycle is over — the
+ * rider returned the scooter for good (completeRide on the booking's
+ * active_rental_id). Distinct from 'fulfilled', which now means "picked up
+ * and still riding" (plan_status active/due/paused) — before this, a
+ * fulfilled booking never had a terminal state at all.
+ */
+export type BookingStatus = "pending_payment" | "confirmed" | "cancelled" | "expired" | "fulfilled" | "completed";
 export const BOOKING_STATUSES: readonly BookingStatus[] = [
-    "pending_payment", "confirmed", "cancelled", "expired", "fulfilled",
+    "pending_payment", "confirmed", "cancelled", "expired", "fulfilled", "completed",
 ] as const;
 
 /**
@@ -85,8 +92,10 @@ export interface PickupQueueFilters {
     page: number;
     pageSize: number;
     stationId?: string;
-    /** Omit for the original "awaiting pickup" behavior (confirmed only). */
+    /** Omit to see every status ("All" tab) — no default is applied server-side. */
     status?: BookingStatus;
+    /** Further narrows a 'fulfilled' view into Active/Due/Paused. Ignored for any other status. */
+    planStatus?: "active" | "due" | "paused";
 }
 
 export interface BookingHistoryFilters {

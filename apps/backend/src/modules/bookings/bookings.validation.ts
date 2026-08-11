@@ -23,10 +23,12 @@ export const pickupQueueQuery = z.object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     stationId: z.string().uuid().optional(),
-    /** Omit for the original "awaiting pickup" behavior (confirmed only). */
+    /** Omit to see every status (the "All" tab) — no default is applied server-side. */
     status: z
-        .enum(["pending_payment", "confirmed", "cancelled", "expired", "fulfilled"])
+        .enum(["pending_payment", "confirmed", "cancelled", "expired", "fulfilled", "completed"])
         .optional(),
+    /** Further narrows a 'fulfilled' view into Active/Due/Paused. Ignored for any other status. */
+    planStatus: z.enum(["active", "due", "paused"]).optional(),
 });
 
 export const bookingHistoryQuery = z.object({

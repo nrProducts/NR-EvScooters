@@ -533,6 +533,13 @@ export interface AssignVehicleToUserResult {
  * a maintenance-flow handover (temp vehicle / handback / replacement) tied
  * to an existing booking's recurring plan — omitted for a plain walk-in
  * assignment with no booking behind it.
+ *
+ * The vehicle is claimed with a guarded UPDATE *before* the rentals row is
+ * inserted — same reasoning as confirmPickup's step ordering: two racing
+ * calls on the same vehicle (a double-click, a retry) can only ever have
+ * one succeed, so at most one 'assigned' rentals row is ever created here.
+ * rentals_one_active_per_vehicle_idx / _per_booking_idx (20260811100000)
+ * back this up at the database level.
  */
 export async function assignVehicleToUser(
     vehicleId: string,
@@ -540,15 +547,6 @@ export async function assignVehicleToUser(
     actor: AuthContext,
     bookingId?: string,
 ): Promise<AssignVehicleToUserResult> {
-    const { data: vehicle, error: vehicleError } = await supabaseAdmin
-        .from("vehicles")
-        .select("id, status")
-        .eq("id", vehicleId)
-        .maybeSingle();
-    if (vehicleError) throw vehicleError;
-    if (!vehicle) throw notFound("Vehicle not found.");
-    if (vehicle.status !== "available") throw businessRule("This vehicle is not available to assign.");
-
     const { data: rider, error: riderError } = await supabaseAdmin
         .from("users")
         .select("id, full_name, kyc_status, deleted_at")
@@ -559,6 +557,23 @@ export async function assignVehicleToUser(
     if (rider.kyc_status !== "verified") {
         throw businessRule("This rider's KYC must be verified before handing over a vehicle.");
     }
+
+    const { data: claimed, error: claimError } = await supabaseAdmin
+        .from("vehicles")
+        .update({ status: "assigned" })
+        .eq("id", vehicleId)
+        .eq("status", "available")
+        .select(VEHICLE_COLUMNS)
+        .maybeSingle();
+    if (claimError) throw claimError;
+    if (!claimed) {
+        // Distinguish "doesn't exist" from "exists but already taken" the
+        // same way the original single-select version did.
+        const { data: exists } = await supabaseAdmin.from("vehicles").select("id").eq("id", vehicleId).maybeSingle();
+        if (!exists) throw notFound("Vehicle not found.");
+        throw businessRule("This vehicle is not available to assign.");
+    }
+    const updated = toVehicleRow(claimed as unknown as VehicleRow);
 
     const { data: rental, error: rentalError } = await supabaseAdmin
         .from("rentals")
@@ -571,16 +586,16 @@ export async function assignVehicleToUser(
         })
         .select("id")
         .single();
-    if (rentalError) throw rentalError;
-
-    const { data, error } = await supabaseAdmin
-        .from("vehicles")
-        .update({ status: "assigned" })
-        .eq("id", vehicleId)
-        .select(VEHICLE_COLUMNS)
-        .single();
-    if (error) throw error;
-    const updated = toVehicleRow(data as unknown as VehicleRow);
+    if (rentalError) {
+        // Revert the claim — there's no transaction infra here, so this
+        // compensating write is what stops the vehicle being stranded
+        // 'assigned' with no rental behind it.
+        await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", vehicleId);
+        if ((rentalError as { code?: string }).code === "23505") {
+            throw conflict("This vehicle or booking was just assigned elsewhere — refresh and try again.");
+        }
+        throw rentalError;
+    }
 
     await writeAudit({
         actorId: actor.id,

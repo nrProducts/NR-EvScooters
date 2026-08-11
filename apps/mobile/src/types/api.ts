@@ -244,7 +244,12 @@ export interface ListVehicleModelsParams {
 // apps/backend/src/modules/bookings/bookings.types.ts.
 // ---------------------------------------------------------------------------
 
-export type BookingStatus = 'pending_payment' | 'confirmed' | 'cancelled' | 'expired' | 'fulfilled';
+/**
+ * 'completed': the rider returned the scooter for good. Distinct from
+ * 'fulfilled', which now means "picked up and still riding" — before this,
+ * a fulfilled booking never had a terminal state at all.
+ */
+export type BookingStatus = 'pending_payment' | 'confirmed' | 'cancelled' | 'expired' | 'fulfilled' | 'completed';
 export const BOOKING_STATUSES: BookingStatus[] = ['pending_payment', 'confirmed', 'cancelled', 'expired'];
 
 export interface ApiStation {

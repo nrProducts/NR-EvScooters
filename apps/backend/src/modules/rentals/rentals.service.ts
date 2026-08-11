@@ -515,13 +515,21 @@ export async function completeRide(
         .eq("id", before.vehicle_id);
     if (vehicleError) throw vehicleError;
 
-    // Start the deposit's 15-day refund-eligibility clock — but only for a
-    // GENUINE final return, not the temp-vehicle rental closure
-    // updateMaintenanceTicket triggers mid-maintenance (maintenance.service.ts).
-    // By the time that closure calls completeRide, resumePlanForBooking has
-    // already moved bookings.active_rental_id to the NEW (original/handback)
-    // rental, so this rental no longer being the booking's active one is
-    // exactly the signal that distinguishes the two cases.
+    // Start the deposit's 15-day refund-eligibility clock, and close the
+    // booking out to 'completed' — but only for a GENUINE final return, not
+    // the temp-vehicle rental closure updateMaintenanceTicket triggers
+    // mid-maintenance (maintenance.service.ts). By the time that closure
+    // calls completeRide, resumePlanForBooking has already moved
+    // bookings.active_rental_id to the NEW (original/handback) rental, so
+    // this rental no longer being the booking's active one is exactly the
+    // signal that distinguishes the two cases.
+    //
+    // plan_status is cleared to null alongside the status flip so the
+    // payment-overdue-sweep cron (which only ever acts on plan_status='active')
+    // can never fire a bogus weekly-due invoice against a booking whose
+    // rider has already returned the vehicle for good. next_due_at and the
+    // rest of the plan snapshot are left as-is — historical record, not
+    // something a completed booking needs cleared.
     if (before.booking_id) {
         const { data: booking } = await supabaseAdmin
             .from("bookings")
@@ -530,6 +538,11 @@ export async function completeRide(
             .maybeSingle();
         if (booking && booking.active_rental_id === id) {
             await setDepositRefundEligible(before.booking_id, endedAt);
+            await supabaseAdmin
+                .from("bookings")
+                .update({ status: "completed", plan_status: null })
+                .eq("id", before.booking_id)
+                .eq("status", "fulfilled");
         }
     }
 

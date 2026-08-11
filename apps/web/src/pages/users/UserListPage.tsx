@@ -29,11 +29,10 @@ import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "pending", "partially_verified", "verified", "rejected"];
 
-/** Only "admin" and "rider" have any real accounts today — see types/index.ts. */
-const ROLE_TABS: { value: BackendRoleName | "all"; label: string }[] = [
-  { value: "all", label: "All Users" },
-  { value: "admin", label: "Admin" },
+/** Only "admin" and "rider" have any real accounts today — see types/index.ts. No "All" tab — Rider is the default and first. */
+const ROLE_TABS: { value: BackendRoleName; label: string }[] = [
   { value: "rider", label: "Rider" },
+  { value: "admin", label: "Admin" },
 ];
 
 export default function UserListPage() {
@@ -41,7 +40,7 @@ export default function UserListPage() {
   const role = useAuthStore((s) => s.user?.role);
   const [search, setSearch] = useState("");
   const [kycStatus, setKycStatus] = useState<KycStatus | "all">("all");
-  const [roleFilter, setRoleFilter] = useState<BackendRoleName | "all">("rider");
+  const [roleFilter, setRoleFilter] = useState<BackendRoleName>("rider");
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<AppUser | null>(null);
@@ -102,7 +101,23 @@ export default function UserListPage() {
     {
       header: "Plan",
       key: "plan",
-      render: (u) => u.current_plan?.name ?? "—",
+      render: (u) =>
+        u.current_plan ? (
+          <div className="min-w-0">
+            <p className="truncate font-medium">{u.current_plan.name}</p>
+            <p className="truncate text-xs text-muted-foreground capitalize">
+              ₹{u.current_plan.price.toFixed(0)} / {u.current_plan.billing_cycle}
+            </p>
+          </div>
+        ) : (
+          "—"
+        ),
+      hideOnMobile: true,
+    },
+    {
+      header: "Payment",
+      key: "payment_status",
+      render: (u) => (u.payment_status ? <StatusBadge status={u.payment_status} /> : "—"),
       hideOnMobile: true,
     },
     {
@@ -160,7 +175,7 @@ export default function UserListPage() {
         <Tabs
           value={roleFilter}
           onValueChange={(v) => {
-            setRoleFilter(v as BackendRoleName | "all");
+            setRoleFilter(v as BackendRoleName);
             setPage(1);
           }}
         >

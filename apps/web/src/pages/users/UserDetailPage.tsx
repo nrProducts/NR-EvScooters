@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Phone, Mail, MapPin, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,8 +75,27 @@ export default function UserDetailPage() {
             <CardTitle>Fleet &amp; plan</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <Row label="Assigned vehicle" value={user.assigned_vehicle ? `${user.assigned_vehicle.model} (${user.assigned_vehicle.vin})` : "None"} />
-            <Row label="Current plan" value={user.current_plan ? `${user.current_plan.name} (${user.current_plan.status})` : "None"} />
+            <Row
+              label="Assigned vehicle"
+              value={
+                user.assigned_vehicle ? (
+                  <button
+                    type="button"
+                    className="font-medium text-primary underline-offset-2 hover:underline"
+                    onClick={() => navigate(`/vehicles/${user.assigned_vehicle!.id}`)}
+                  >
+                    {user.assigned_vehicle.name}
+                  </button>
+                ) : (
+                  "None"
+                )
+              }
+            />
+            <Row
+              label="Current plan"
+              value={user.current_plan ? `${user.current_plan.name} — ₹${user.current_plan.price.toFixed(0)}/${user.current_plan.billing_cycle}` : "None"}
+            />
+            <Row label="Payment status" value={user.payment_status ? <StatusBadge status={user.payment_status} /> : "—"} />
             <Row label="KYC completion" value={`${user.kyc_completion_percent}%`} />
             <Row label="Roles" value={user.roles.join(", ") || "—"} />
           </CardContent>
@@ -130,7 +150,7 @@ function Detail({ icon: Icon, label, value }: { icon: typeof Phone; label: strin
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-muted-foreground">{label}</span>

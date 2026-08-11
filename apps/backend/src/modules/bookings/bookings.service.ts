@@ -592,17 +592,20 @@ function toPickupBookingView(row: RawPickupBookingRow): PickupBookingView {
 }
 
 /**
- * Bookings for the admin "Bookings" screen. Defaults to 'confirmed' (the
- * original pickup-queue behavior) when no status filter is given; pass one
- * to see any other stage (pending_payment/cancelled/expired/fulfilled).
+ * Bookings for the admin "Bookings" screen, one row per tab: Pending
+ * (confirmed), Assigned (fulfilled), Active/Due (fulfilled + planStatus),
+ * Completed, Cancelled, Expired, or All (both status and planStatus
+ * omitted — no filter is applied server-side, the caller decides the
+ * default view).
  */
 export async function listPickupQueue(filters: PickupQueueFilters): Promise<Paginated<PickupBookingView>> {
     const [from, to] = toRange(filters);
     let query = supabaseAdmin
         .from("bookings")
-        .select(PICKUP_BOOKING_COLUMNS, { count: "exact" })
-        .eq("status", filters.status ?? "confirmed");
+        .select(PICKUP_BOOKING_COLUMNS, { count: "exact" });
 
+    if (filters.status) query = query.eq("status", filters.status);
+    if (filters.planStatus) query = query.eq("plan_status", filters.planStatus);
     if (filters.stationId) query = query.eq("station_id", filters.stationId);
 
     const { data, error, count } = await query
@@ -643,9 +646,24 @@ export async function listAvailableVehiclesForBooking(bookingId: string): Promis
  * Normally the vehicle was already reserved by allocate_vehicle_for_booking()
  * at booking/approval time (booking.vehicle_id); input.vehicle_id is only
  * needed as a manual override (e.g. that reservation never found a unit).
- * Sequential writes with error propagation, same convention
- * kyc.service.ts's approveKyc/rejectKyc already use for multi-step writes —
- * no transaction infra exists here.
+ *
+ * Write order is deliberate, not incidental — it's what prevents two racing
+ * calls (a double-click, a network retry, two staff confirming the same
+ * booking from two tabs) from each creating their own 'assigned' rentals
+ * row for the same booking/vehicle:
+ *   1. Claim the vehicle with a guarded UPDATE (only succeeds from its
+ *      current status) — whoever's update actually matches a row wins.
+ *   2. Claim the booking the same way (only succeeds from 'confirmed'). If
+ *      this loses the race (someone else already confirmed this exact
+ *      booking a moment earlier), the vehicle claim from step 1 is reverted
+ *      before returning an error — there's no transaction infra here, so
+ *      this compensating write is how a partial failure doesn't strand the
+ *      vehicle as 'assigned' with nothing behind it.
+ *   3. Only once BOTH claims succeed does the rentals row (the actual
+ *      assignment record) get inserted — so at most one can ever exist per
+ *      confirmPickup call sequence. rentals_one_active_per_vehicle_idx /
+ *      rentals_one_active_per_booking_idx (20260811100000) are the
+ *      database-level backstop if any of this is ever bypassed.
  */
 export async function confirmPickup(
     bookingId: string,
@@ -692,6 +710,21 @@ export async function confirmPickup(
     if (vehicle.station_id !== stationId) throw businessRule("This vehicle is not at the booking's pickup station.");
     if (vehicle.model_id !== modelId) throw businessRule("This vehicle does not match the booked model.");
 
+    // Step 1: claim the vehicle. Guarded on the exact status just read, so a
+    // concurrent claim on the SAME vehicle (from this booking retried, or a
+    // different booking that also had it allocated) can only ever win once.
+    const { data: claimedVehicle, error: vehicleClaimError } = await supabaseAdmin
+        .from("vehicles")
+        .update({ status: "assigned" })
+        .eq("id", vehicleId)
+        .eq("status", vehicle.status)
+        .select("id")
+        .maybeSingle();
+    if (vehicleClaimError) throw vehicleClaimError;
+    if (!claimedVehicle) {
+        throw conflict("This vehicle was just assigned elsewhere — refresh and try again.");
+    }
+
     const rider = unwrap<{ id: string; full_name: string; phone: string | null }>(bookingRow.users);
     // The plan is FROZEN onto the rental here rather than read back through
     // booking_id -> bookings -> plans, so a later repricing can't rewrite this
@@ -701,6 +734,44 @@ export async function confirmPickup(
     const startedAt = new Date();
     const expiresAt = plan ? planExpiryFor(startedAt, plan.duration_days) : null;
 
+    // Plan/billing rental period starts HERE — at vehicle assignment, never
+    // at payment time, per spec. duration_days is snapshotted so a later
+    // admin edit to the plan template can't reshape an already-active plan.
+    const nowIso = startedAt.toISOString();
+    const today = nowIso.slice(0, 10);
+    const durationDays = plan?.duration_days ?? 7;
+    const nextDueAt = addDays(today, durationDays);
+
+    // Step 2: claim the booking. Guarded on 'confirmed' — if this booking was
+    // already fulfilled by a racing call, undo step 1's vehicle claim (it's
+    // otherwise left 'assigned' with no rental behind it) and surface a
+    // clean, idempotency-friendly error instead of a duplicate assignment.
+    const { data: updated, error: bookingUpdateError } = await supabaseAdmin
+        .from("bookings")
+        .update({
+            status: "fulfilled",
+            vehicle_id: vehicleId,
+            plan_status: "active",
+            plan_activated_at: nowIso,
+            plan_duration_days: durationDays,
+            deposit_amount_at_booking: plan?.deposit_amount ?? null,
+            current_period_start: today,
+            next_due_at: nextDueAt,
+        })
+        .eq("id", bookingId)
+        .eq("status", "confirmed")
+        .select(PICKUP_BOOKING_COLUMNS)
+        .maybeSingle();
+    if (bookingUpdateError) throw bookingUpdateError;
+    if (!updated) {
+        await supabaseAdmin.from("vehicles").update({ status: vehicle.status }).eq("id", vehicleId);
+        throw conflict("This booking has already been confirmed.");
+    }
+
+    // Step 3: only now insert the actual assignment record. rentalError.code
+    // 23505 would mean rentals_one_active_per_vehicle_idx /
+    // _per_booking_idx caught a duplicate that somehow got past steps 1-2 —
+    // translated to the same conflict message rather than a raw DB error.
     const { data: rental, error: rentalError } = await supabaseAdmin
         .from("rentals")
         .insert({
@@ -716,39 +787,18 @@ export async function confirmPickup(
         })
         .select("id")
         .single();
-    if (rentalError) throw rentalError;
+    if (rentalError) {
+        if ((rentalError as { code?: string }).code === "23505") {
+            throw conflict("This vehicle or booking was just assigned elsewhere — refresh and try again.");
+        }
+        throw rentalError;
+    }
 
-    const { error: vehicleUpdateError } = await supabaseAdmin
-        .from("vehicles")
-        .update({ status: "assigned" })
-        .eq("id", vehicleId);
-    if (vehicleUpdateError) throw vehicleUpdateError;
-
-    // Plan/billing rental period starts HERE — at vehicle assignment, never
-    // at payment time, per spec. duration_days is snapshotted so a later
-    // admin edit to the plan template can't reshape an already-active plan.
-    const nowIso = startedAt.toISOString();
-    const today = nowIso.slice(0, 10);
-    const durationDays = plan?.duration_days ?? 7;
-    const nextDueAt = addDays(today, durationDays);
-
-    const { data: updated, error: bookingUpdateError } = await supabaseAdmin
+    const { error: activeRentalLinkError } = await supabaseAdmin
         .from("bookings")
-        .update({
-            status: "fulfilled",
-            vehicle_id: vehicleId,
-            plan_status: "active",
-            plan_activated_at: nowIso,
-            plan_duration_days: durationDays,
-            deposit_amount_at_booking: plan?.deposit_amount ?? null,
-            current_period_start: today,
-            next_due_at: nextDueAt,
-            active_rental_id: rental.id,
-        })
-        .eq("id", bookingId)
-        .select(PICKUP_BOOKING_COLUMNS)
-        .single();
-    if (bookingUpdateError) throw bookingUpdateError;
+        .update({ active_rental_id: rental.id })
+        .eq("id", bookingId);
+    if (activeRentalLinkError) throw activeRentalLinkError;
 
     await writeAudit({
         actorId: actor.id,

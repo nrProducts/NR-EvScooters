@@ -48,6 +48,7 @@ export const BOOKING_STATUS_TONE: Record<BookingStatus, Tone> = {
   pending_payment: 'warning',
   confirmed: 'primary',
   fulfilled: 'success',
+  completed: 'neutral',
   cancelled: 'danger',
   expired: 'neutral',
 };
@@ -56,6 +57,7 @@ export const BOOKING_STATUS_LABEL: Record<BookingStatus, string> = {
   pending_payment: 'Pending Payment',
   confirmed: 'Confirmed',
   fulfilled: 'Picked Up',
+  completed: 'Completed',
   cancelled: 'Cancelled',
   expired: 'Expired',
 };
