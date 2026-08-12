@@ -66,7 +66,7 @@ export default function BillingScreen() {
           amount: Math.round(order.amount * 100),
           currency: order.currency,
           order_id: order.gatewayOrderId,
-          name: 'NR EV Scooters',
+          name: 'SwapNgo',
           description: plan ? `${plan.name} — weekly rental + deposit` : 'Scooter rental',
           prefill: {
             email: profile?.email ?? undefined,

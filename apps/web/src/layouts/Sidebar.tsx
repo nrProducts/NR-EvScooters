@@ -1,10 +1,14 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { Bike, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { navForRole } from "@/routes/roleConfig";
 import type { Role } from "@/types";
+import { useUiStore } from "@/store/uiStore";
+import logoMark from "@/assets/logo-mark.png";
+import logoWordmark from "@/assets/logo-wordmark.png";
+import logoWordmarkDark from "@/assets/logo-wordmark-dark.png";
 
 export function Sidebar({
   role,
@@ -18,6 +22,7 @@ export function Sidebar({
   onNavigate?: () => void;
 }) {
   const items = navForRole(role);
+  const theme = useUiStore((s) => s.theme);
   const location = useLocation();
   const itemRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
   const [pill, setPill] = useState<{ top: number; height: number } | null>(null);
@@ -40,15 +45,11 @@ export function Sidebar({
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className={cn("flex h-16 items-center gap-2 border-b border-border px-4", collapsed && "justify-center px-2")}>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary">
-          <Bike className="h-[18px] w-[18px] text-primary-foreground" strokeWidth={1.75} />
-        </div>
-        {!collapsed && (
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold leading-tight">Swapngo</p>
-            <p className="truncate text-[11px] leading-tight text-sidebar-foreground/60">EV Fleet Admin</p>
-          </div>
+      <div className={cn("flex h-16 items-center justify-center border-b border-border px-4", collapsed && "px-2")}>
+        {collapsed ? (
+          <img src={logoMark} alt="SwapNgo" className="h-8 w-8 shrink-0" />
+        ) : (
+          <img src={theme === "dark" ? logoWordmarkDark : logoWordmark} alt="SwapNgo" className="h-6 w-auto" />
         )}
       </div>
 

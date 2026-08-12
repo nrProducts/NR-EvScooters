@@ -965,7 +965,7 @@ const ReviewStep: React.FC<{
       <CheckRow
         checked={consented}
         onToggle={() => setConsented(!consented)}
-        text="I consent to NR FleetHub storing and verifying these documents for identity checks."
+        text="I consent to SwapNgo storing and verifying these documents for identity checks."
       />
     </View>
 

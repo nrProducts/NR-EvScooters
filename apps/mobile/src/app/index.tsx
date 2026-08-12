@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
 import { ApiError } from '../lib/ApiError';
 import { COLORS } from '../constants/theme';
 import { isValidPhone, toE164 } from '../lib/authValidation';
-import { Bike, Phone, ArrowRight } from 'lucide-react-native';
+import { Phone, ArrowRight } from 'lucide-react-native';
 
 /**
  * Rider login = phone + OTP. Google is offered as a secondary / recovery
@@ -68,16 +68,12 @@ export default function LoginScreen() {
     >
       <View className="flex-1 px-6 justify-center py-16 items-center">
         <View className="items-center mb-10">
-          <View
-            className="w-16 h-16 rounded-3xl items-center justify-center mb-4"
-            style={{ backgroundColor: COLORS.primary }}
-            accessibilityLabel="NR FleetHub"
-          >
-            <Bike size={32} color="#FFF" />
-          </View>
-          <Text style={{ color: COLORS.textPrimary }} className="text-3xl font-black tracking-tight text-center">
-            NR <Text style={{ color: COLORS.primary }}>FleetHub</Text>
-          </Text>
+          <Image
+            source={require('../../assets/images/logo-wordmark.png')}
+            accessibilityLabel="SwapNgo"
+            className="h-10 w-48 mb-4"
+            resizeMode="contain"
+          />
           <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium mt-1.5 text-center px-4">
             Sign in with your mobile number to start riding.
           </Text>

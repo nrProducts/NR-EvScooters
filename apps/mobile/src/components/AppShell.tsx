@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, Pressable, Modal, Animated, Easing, Dimensions, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Pressable, Modal, Animated, Easing, Dimensions, ScrollView, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
@@ -196,10 +196,12 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
             }}
           >
             <View className="px-5 pb-5 border-b" style={{ borderColor: COLORS.border }}>
-              <View className="w-11 h-11 rounded-2xl items-center justify-center mb-3" style={{ backgroundColor: COLORS.primary }}>
-                <Bike size={22} color="#FFF" />
-              </View>
-              <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">NR FleetHub</Text>
+              <Image
+                source={require('../../assets/images/logo-wordmark.png')}
+                accessibilityLabel="SwapNgo"
+                className="h-7 w-32 mb-3"
+                resizeMode="contain"
+              />
               <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5">
                 Rider App
               </Text>

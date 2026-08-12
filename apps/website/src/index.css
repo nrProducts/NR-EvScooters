@@ -1,0 +1,65 @@
+@import "@fontsource-variable/inter";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Same brand-green (#22C55E) token language as apps/web/src/index.css, light
+ * mode only — a public marketing site has no admin theme toggle to serve.
+ * The real logo art (logo/swapngo_logo_1.png) ships with its own slightly
+ * different green — recolored to this exact hue/saturation (see
+ * scripts/notes in the asset pipeline) so the mark matches the site theme
+ * rather than the other way around. `--surface` is new here: the very light
+ * gray section background the brief calls for, one step below `--background`
+ * so hero/CTA bands can alternate with plain white cards without a third
+ * gray in the mix.
+ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 215 28% 17%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 17%;
+
+    --surface: 210 40% 98%;
+
+    --primary: 142 71% 45%;
+    --primary-hover: 142 76% 36%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 142 40% 90%;
+    --secondary-foreground: 142 39% 22%;
+
+    --muted: 220 14% 95%;
+    --muted-foreground: 220 9% 46%;
+
+    --border: 220 13% 91%;
+    --radius: 1.125rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased font-sans;
+    font-feature-settings:
+      "cv02",
+      "cv03",
+      "cv04",
+      "cv11";
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
