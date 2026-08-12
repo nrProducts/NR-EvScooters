@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, BatteryMedium, Pencil, FileText, History, Wrench, Images, Upload, Trash2, Loader2, Recycle,
+  ArrowLeft, BatteryMedium, Pencil, FileText, Images, Upload, Trash2, Loader2, Recycle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
+import { VehicleHistorySplitView } from "@/components/vehicles/VehicleHistorySplitView";
 import {
   useVehicle, useUpdateVehicle, useUploadVehiclePhoto, useDeleteVehiclePhoto, useScrapVehicle,
 } from "@/hooks/useVehicles";
@@ -197,61 +198,7 @@ export default function VehicleDetailPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Wrench className="h-4 w-4" /> Maintenance history
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {vehicle.maintenance_history.length === 0 ? (
-            <EmptyState title="No maintenance events" description="This vehicle has no reported issues." />
-          ) : (
-            <div className="divide-y divide-border">
-              {vehicle.maintenance_history.map((m) => (
-                <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                  <div>
-                    <p className="font-medium">{m.description}</p>
-                    <p className="text-xs text-muted-foreground">
-                      reported {formatDate(m.created_at)}
-                      {m.resolved_at ? ` · resolved ${formatDate(m.resolved_at)}` : ""}
-                    </p>
-                  </div>
-                  <StatusBadge status={m.status} />
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="h-4 w-4" /> Ride history
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {vehicle.rental_history.length === 0 ? (
-            <EmptyState title="No rides yet" description="This vehicle hasn't been rented out." />
-          ) : (
-            <div className="divide-y divide-border">
-              {vehicle.rental_history.map((r) => (
-                <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                  <div>
-                    <p className="font-medium">{r.rider?.full_name ?? "Unknown rider"}</p>
-                    <p className="text-xs text-muted-foreground">
-                      started {formatDate(r.started_at)}
-                      {r.ended_at ? ` · ended ${formatDate(r.ended_at)}` : ""}
-                    </p>
-                  </div>
-                  <StatusBadge status={r.status} />
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <VehicleHistorySplitView vehicle={vehicle} />
 
       <VehicleFormDialog
         open={editOpen}

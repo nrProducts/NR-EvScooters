@@ -259,6 +259,15 @@ export interface VehicleRentalRecord {
   rider: { id: string; full_name: string } | null;
 }
 
+export interface VehicleBookingRecord {
+  id: string;
+  status: string;
+  plan_status: "active" | "due" | "paused" | null;
+  start_day: string;
+  created_at: string;
+  rider: { id: string; full_name: string } | null;
+}
+
 export interface ScrapRecord {
   id: string;
   reason: string;
@@ -273,6 +282,7 @@ export interface VehicleDetail extends Vehicle {
   photos: VehiclePhoto[];
   maintenance_history: VehicleMaintenanceRecord[];
   rental_history: VehicleRentalRecord[];
+  booking_history: VehicleBookingRecord[];
   current_rider: { id: string; full_name: string } | null;
   scrap_record: ScrapRecord | null;
 }

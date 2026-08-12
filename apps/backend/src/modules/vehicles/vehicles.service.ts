@@ -12,8 +12,8 @@ import {
 import type { UploadedFile } from "../kyc/kyc.storage";
 import {
     CreateVehicleInput, ListVehiclesFilters, ScrapRecordRow, ScrapVehicleInput, UpdateVehicleInput,
-    VehicleDetail, VehicleDocumentRow, VehicleMaintenanceRow, VehiclePaymentStatus, VehiclePhotoRow,
-    VehicleRentalRow, VehicleRow,
+    VehicleBookingRow, VehicleDetail, VehicleDocumentRow, VehicleMaintenanceRow, VehiclePaymentStatus,
+    VehiclePhotoRow, VehicleRentalRow, VehicleRow,
 } from "./vehicles.types";
 
 const VEHICLE_COLUMNS = `
@@ -101,11 +101,12 @@ export async function getVehicleById(id: string): Promise<VehicleDetail> {
     if (error) throw error;
     if (!data) throw notFound("Vehicle not found.");
 
-    const [documents, photos, maintenanceHistory, rentalHistory, scrapRecord] = await Promise.all([
+    const [documents, photos, maintenanceHistory, rentalHistory, bookingHistory, scrapRecord] = await Promise.all([
         documentsForVehicle(id),
         photosForVehicle(id),
         maintenanceForVehicle(id),
         rentalsForVehicle(id),
+        bookingsForVehicle(id),
         scrapRecordForVehicle(id),
     ]);
 
@@ -119,6 +120,7 @@ export async function getVehicleById(id: string): Promise<VehicleDetail> {
         photos,
         maintenance_history: maintenanceHistory,
         rental_history: rentalHistory,
+        booking_history: bookingHistory,
         current_rider: currentRental?.rider ?? null,
         scrap_record: scrapRecord,
     };
@@ -198,6 +200,29 @@ async function rentalsForVehicle(vehicleId: string): Promise<VehicleRentalRow[]>
         status: row.status,
         started_at: row.started_at,
         ended_at: row.ended_at,
+        rider: unwrap<{ id: string; full_name: string }>(row.users),
+    }));
+}
+
+/** Bookings that have (at some point) held this vehicle — the "booked" leg of its lifecycle. */
+async function bookingsForVehicle(vehicleId: string): Promise<VehicleBookingRow[]> {
+    const { data, error } = await supabaseAdmin
+        .from("bookings")
+        .select("id, status, plan_status, start_day, created_at, users!bookings_user_id_fkey(id, full_name)")
+        .eq("vehicle_id", vehicleId)
+        .order("created_at", { ascending: false })
+        .limit(20);
+    if (error) throw error;
+
+    return ((data ?? []) as unknown as Array<{
+        id: string; status: string; plan_status: VehicleBookingRow["plan_status"];
+        start_day: string; created_at: string; users: unknown;
+    }>).map((row) => ({
+        id: row.id,
+        status: row.status,
+        plan_status: row.plan_status,
+        start_day: row.start_day,
+        created_at: row.created_at,
         rider: unwrap<{ id: string; full_name: string }>(row.users),
     }));
 }

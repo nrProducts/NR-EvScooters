@@ -61,35 +61,42 @@ export default function SupportTicketsPage() {
     {
       header: "Actions",
       key: "actions",
-      render: (t) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            {t.status !== "in_progress" && t.status !== "resolved" && t.status !== "closed" && (
-              <DropdownMenuItem onClick={() => handleStatusChange(t, "in_progress")}>
-                <PlayCircle className="mr-2 h-4 w-4" /> Start progress
-              </DropdownMenuItem>
-            )}
-            {t.status !== "resolved" && t.status !== "closed" && (
-              <DropdownMenuItem onClick={() => handleStatusChange(t, "resolved")}>
-                <CheckCircle2 className="mr-2 h-4 w-4" /> Mark resolved
-              </DropdownMenuItem>
-            )}
-            {t.status !== "closed" && (
+      render: (t) => {
+        // Every item below is gated on status !== "closed", so a closed
+        // ticket has nothing to show — render a dash instead of an empty
+        // dropdown (an empty DropdownMenuContent has no content to size
+        // itself against, so it opens mispositioned/invisible).
+        if (t.status === "closed") {
+          return <span className="text-xs text-muted-foreground">—</span>;
+        }
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              {t.status !== "in_progress" && t.status !== "resolved" && (
+                <DropdownMenuItem onClick={() => handleStatusChange(t, "in_progress")}>
+                  <PlayCircle className="mr-2 h-4 w-4" /> Start progress
+                </DropdownMenuItem>
+              )}
+              {t.status !== "resolved" && (
+                <DropdownMenuItem onClick={() => handleStatusChange(t, "resolved")}>
+                  <CheckCircle2 className="mr-2 h-4 w-4" /> Mark resolved
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 className="text-destructive"
                 onClick={() => handleStatusChange(t, "closed")}
               >
                 <XCircle className="mr-2 h-4 w-4" /> Close ticket
               </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
     },
   ];
 

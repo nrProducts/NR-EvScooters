@@ -79,6 +79,15 @@ export interface VehicleRentalRow {
     rider: { id: string; full_name: string } | null;
 }
 
+export interface VehicleBookingRow {
+    id: string;
+    status: string;
+    plan_status: "active" | "due" | "paused" | null;
+    start_day: string;
+    created_at: string;
+    rider: { id: string; full_name: string } | null;
+}
+
 export interface ScrapRecordRow {
     id: string;
     reason: string;
@@ -93,6 +102,7 @@ export interface VehicleDetail extends VehicleRow {
     photos: VehiclePhotoRow[];
     maintenance_history: VehicleMaintenanceRow[];
     rental_history: VehicleRentalRow[];
+    booking_history: VehicleBookingRow[];
     /** The rider currently holding this vehicle, derived from the active rental (if any). */
     current_rider: { id: string; full_name: string } | null;
     /** Set only once this vehicle has been scrapped. */

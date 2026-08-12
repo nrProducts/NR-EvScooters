@@ -89,40 +89,47 @@ export default function MaintenancePage() {
     {
       header: "Actions",
       key: "actions",
-      render: (t) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            {t.status !== "resolved" && t.status !== "cancelled" && !t.outcome && (
-              <DropdownMenuItem onClick={() => setTriageTarget(t)}>
-                <ClipboardCheck className="mr-2 h-4 w-4" /> Triage
-              </DropdownMenuItem>
-            )}
-            {t.status !== "in_progress" && t.status !== "resolved" && t.status !== "cancelled" && (
-              <DropdownMenuItem onClick={() => handleUpdate(t.id, "in_progress")}>
-                <PlayCircle className="mr-2 h-4 w-4" /> Start work
-              </DropdownMenuItem>
-            )}
-            {t.status !== "resolved" && (
+      render: (t) => {
+        // Every item below is gated on status !== "resolved", so a resolved
+        // ticket has nothing to show — render a dash instead of an empty
+        // dropdown (an empty DropdownMenuContent has no content to size
+        // itself against, so it opens mispositioned/invisible).
+        if (t.status === "resolved") {
+          return <span className="text-xs text-muted-foreground">—</span>;
+        }
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              {t.status !== "cancelled" && !t.outcome && (
+                <DropdownMenuItem onClick={() => setTriageTarget(t)}>
+                  <ClipboardCheck className="mr-2 h-4 w-4" /> Triage
+                </DropdownMenuItem>
+              )}
+              {t.status !== "in_progress" && t.status !== "cancelled" && (
+                <DropdownMenuItem onClick={() => handleUpdate(t.id, "in_progress")}>
+                  <PlayCircle className="mr-2 h-4 w-4" /> Start work
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => handleUpdate(t.id, "resolved")}>
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Mark resolved
               </DropdownMenuItem>
-            )}
-            {t.status !== "cancelled" && t.status !== "resolved" && (
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={() => handleUpdate(t.id, "cancelled")}
-              >
-                <XCircle className="mr-2 h-4 w-4" /> Cancel
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
+              {t.status !== "cancelled" && (
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={() => handleUpdate(t.id, "cancelled")}
+                >
+                  <XCircle className="mr-2 h-4 w-4" /> Cancel
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
     },
   ];
 
