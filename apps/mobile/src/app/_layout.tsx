@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { View, Text, ActivityIndicator } from "react-native";
+import { View, Text, ActivityIndicator, TouchableOpacity } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -91,6 +91,10 @@ export default function RootLayout() {
   const session = useAuthStore((s) => s.session);
   const profile = useAuthStore((s) => s.profile);
   const hasSeenKycIntro = useAuthStore((s) => s.hasSeenKycIntro);
+  const profileError = useAuthStore((s) => s.error);
+  const loadingProfile = useAuthStore((s) => s.loadingProfile);
+  const refreshProfile = useAuthStore((s) => s.refreshProfile);
+  const signOut = useAuthStore((s) => s.signOut);
 
   const router = useRouter();
   const segments = useSegments();
@@ -183,6 +187,43 @@ export default function RootLayout() {
         <StatusBar style="dark" backgroundColor={COLORS.background} />
         <View className="flex-1 items-center justify-center" style={{ backgroundColor: COLORS.background }}>
           <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
+  // Signed in, but GET /users/me never came back with a profile — e.g. the
+  // API is unreachable. Without this, the routing effect above just holds
+  // position forever with zero feedback, which looks exactly like an
+  // infinite "loading" hang. Show the failure and let the rider retry or
+  // back out, instead of leaving them stuck on whatever screen they were on.
+  if (session && !profile) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="dark" backgroundColor={COLORS.background} />
+        <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
+          {loadingProfile ? (
+            <ActivityIndicator size="large" color={COLORS.primary} />
+          ) : (
+            <>
+              <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
+                Couldn't load your profile
+              </Text>
+              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-3 leading-relaxed">
+                {profileError ?? "Something went wrong. Please try again."}
+              </Text>
+              <TouchableOpacity
+                onPress={() => void refreshProfile()}
+                className="mt-6 px-6 py-3 rounded-2xl"
+                style={{ backgroundColor: COLORS.primary }}
+              >
+                <Text style={{ color: '#FFF' }} className="font-bold text-sm">Try Again</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => void signOut()} className="mt-4 px-4 py-2">
+                <Text style={{ color: COLORS.textSecondary }} className="font-medium text-xs">Sign out</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </SafeAreaProvider>
     );

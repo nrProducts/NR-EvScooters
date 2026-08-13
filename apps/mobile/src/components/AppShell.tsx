@@ -195,14 +195,17 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
               paddingTop: 56,
             }}
           >
-            <View className="px-5 pb-5 border-b" style={{ borderColor: COLORS.border }}>
+            <View className="px-5 pb-5 border-b flex-row items-center" style={{ borderColor: COLORS.border }}>
               <Image
                 source={require('../../assets/images/logo-wordmark.png')}
                 accessibilityLabel="SwapNgo"
-                className="h-7 w-32 mb-3"
+                className="h-7 w-32"
                 resizeMode="contain"
               />
-              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5">
+              <Text
+                style={{ color: COLORS.textSecondary }}
+                className="text-[11px] font-semibold uppercase tracking-wide ml-2"
+              >
                 Rider App
               </Text>
             </View>
