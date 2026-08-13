@@ -156,7 +156,7 @@ async function startRental(): Promise<string> {
   while (start.getDay() === 0) start.setDate(start.getDate() + 1);
   const booking = await bookings.create({
     vehicle_model_id: 'model-nr-volt-x1',
-    station_id: 'station-mg-road-hub',
+    station_id: 'station-medavakkam-hub',
     plan_id: 'plan-daily',
     start_day: fmt(start),
   });

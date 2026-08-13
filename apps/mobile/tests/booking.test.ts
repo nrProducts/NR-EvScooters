@@ -84,7 +84,7 @@ const asUnverifiedRider = () => signInAs('fatima.s@example.com'); // u-rider-003
 
 const VALID_PAYLOAD = () => ({
   vehicle_model_id: 'model-nr-volt-x1',
-  station_id: 'station-mg-road-hub',
+  station_id: 'station-medavakkam-hub',
   plan_id: 'plan-daily',
   start_day: fmt(nextDow(1, new Date(Date.now() + 24 * 3600 * 1000))), // next Monday-or-later
 });
@@ -101,7 +101,7 @@ describe('MockBookingRepository.create', () => {
     const booking = await bookings.create(VALID_PAYLOAD());
     expect(booking.status).toBe('confirmed');
     expect(booking.vehicle_model?.id).toBe('model-nr-volt-x1');
-    expect(booking.station?.id).toBe('station-mg-road-hub');
+    expect(booking.station?.id).toBe('station-medavakkam-hub');
     expect(booking.plan?.id).toBe('plan-daily');
   });
 
