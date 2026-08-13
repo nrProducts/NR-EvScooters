@@ -1,7 +1,11 @@
-import logoWordmark from "@/assets/logo-wordmark.png";
+import logoWordmark from "@/assets/logo-wordmark.svg";
 import { cn } from "@/lib/utils";
 
-/** The real SwapNgo wordmark, supplied by the team — see apps/website/src/assets/logo-wordmark.png. */
+/**
+ * The approved SwapNgo wordmark (`src/assets/logo-wordmark.svg`).
+ * This is the tagline-free lockup — the full "SWAP. RIDE. GO GREEN." version
+ * lives on the OG cover and app splash, where it is large enough to read.
+ */
 export function Logo({ className }: { className?: string }) {
   return (
     <img

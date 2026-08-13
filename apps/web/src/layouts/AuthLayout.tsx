@@ -2,8 +2,8 @@ import { Outlet } from "react-router-dom";
 import { useUiStore } from "@/store/uiStore";
 import { Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import logoWordmark from "@/assets/logo-wordmark.png";
-import logoWordmarkDark from "@/assets/logo-wordmark-dark.png";
+import logoWordmark from "@/assets/logo-wordmark.svg";
+import logoWordmarkDark from "@/assets/logo-wordmark-dark.svg";
 
 export function AuthLayout() {
   const { theme, toggleTheme } = useUiStore();

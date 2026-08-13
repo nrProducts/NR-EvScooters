@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "nr-ev-scooters",
+    "name": "SwapNgo",
     "slug": "nr-ev-scooters",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,12 +8,12 @@
     "scheme": "nrevscooters",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/icon.png"
     },
     "android": {
       "package": "com.nrproducts.evscooters",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#2EAF4A",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -29,25 +29,25 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#2EAF4A",
           "android": {
             "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+            "imageWidth": 140
           }
         }
       ],
       [
         "expo-notifications",
         {
-          "color": "#208AEF"
+          "color": "#2EAF4A"
         }
       ],
       "@maplibre/maplibre-react-native",
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow NR EV Scooters to use your location to show nearby battery swap stations and how far away they are.",
-          "locationWhenInUsePermission": "Allow NR EV Scooters to use your location to show nearby battery swap stations and how far away they are.",
+          "locationAlwaysAndWhenInUsePermission": "Allow SwapNgo to use your location to show nearby battery swap stations and how far away they are.",
+          "locationWhenInUsePermission": "Allow SwapNgo to use your location to show nearby battery swap stations and how far away they are.",
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
         }

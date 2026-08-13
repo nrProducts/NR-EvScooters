@@ -2,9 +2,9 @@
 
 Responsive React 19 + TypeScript + Vite admin/staff console for the Swapngo
 fleet. Lives alongside `apps/mobile` (rider app, untouched) and `apps/backend`
-(Express + Supabase API) in this monorepo. Shares the same green theme and
-logo as the rider app (`apps/mobile/src/constants/theme.ts`,
-`apps/mobile/assets/images/icon.png`).
+(Express + Supabase API) in this monorepo. Shares the Swapngo brand marks with
+the rider app (`src/assets/logo-wordmark.svg`, `logo-mark.svg`); its UI palette
+is deliberately its own — see the note at the top of `src/index.css`.
 
 ## Stack
 React 19 · TypeScript · Vite · Tailwind CSS · shadcn/ui-style components ·

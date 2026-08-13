@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { View, Text, ActivityIndicator, TouchableOpacity } from "react-native";
+import { View, Text, ActivityIndicator, TouchableOpacity, Image } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -181,12 +181,24 @@ export default function RootLayout() {
 
   if (missing.length > 0) return <MisconfiguredScreen missing={missing} />;
 
+  // First thing a rider sees while the keychain session is read back. The
+  // native splash before this shows the SNG mark alone — Android 12+ clips
+  // windowSplashScreenAnimatedIcon to a circle, so the wordmark can only be
+  // shown here, once JS owns the screen.
   if (initialising) {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" backgroundColor={COLORS.background} />
         <View className="flex-1 items-center justify-center" style={{ backgroundColor: COLORS.background }}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Image
+            source={require('../../assets/images/logo-lockup.png')}
+            accessibilityLabel="SwapNgo — Swap. Ride. Go Green."
+            className="w-60 h-16"
+            resizeMode="contain"
+          />
+          <View className="mt-8">
+            <ActivityIndicator size="large" color={COLORS.primary} />
+          </View>
         </View>
       </SafeAreaProvider>
     );

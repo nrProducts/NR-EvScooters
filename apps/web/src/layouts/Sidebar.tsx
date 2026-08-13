@@ -6,9 +6,9 @@ import { cn } from "@/lib/utils";
 import { navForRole } from "@/routes/roleConfig";
 import type { Role } from "@/types";
 import { useUiStore } from "@/store/uiStore";
-import logoMark from "@/assets/logo-mark.png";
-import logoWordmark from "@/assets/logo-wordmark.png";
-import logoWordmarkDark from "@/assets/logo-wordmark-dark.png";
+import logoMark from "@/assets/logo-mark.svg";
+import logoWordmark from "@/assets/logo-wordmark.svg";
+import logoWordmarkDark from "@/assets/logo-wordmark-dark.svg";
 
 export function Sidebar({
   role,
