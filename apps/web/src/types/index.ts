@@ -11,6 +11,33 @@ export type BackendRoleName = "rider" | "staff" | "technician" | "station_manage
 /** What the web console's nav/route-guarding cares about. */
 export type Role = "admin" | "staff";
 
+/**
+ * Modules a staff account can be individually granted access to. Mirrors
+ * apps/backend/src/types/index.ts MODULE_KEYS — keep both lists in sync by
+ * hand (no shared package exists in this monorepo).
+ */
+export type ModuleKey =
+  | "vehicles" | "users" | "kyc" | "bookings" | "maintenance" | "support"
+  | "payments" | "notifications" | "damages" | "refunds";
+export const MODULE_KEYS: readonly ModuleKey[] = [
+  "vehicles", "users", "kyc", "bookings", "maintenance", "support",
+  "payments", "notifications", "damages", "refunds",
+];
+
+/** Human-readable labels for the module-permission checkboxes in Settings. */
+export const MODULE_LABELS: Record<ModuleKey, string> = {
+  vehicles: "Vehicles",
+  users: "Users",
+  kyc: "KYC Queue",
+  bookings: "Bookings",
+  maintenance: "Maintenance",
+  support: "Support Tickets",
+  payments: "Payments",
+  notifications: "Notifications",
+  damages: "Damage Review",
+  refunds: "Refunds",
+};
+
 export interface StaffUser {
   id: string;
   name: string;
@@ -18,6 +45,8 @@ export interface StaffUser {
   role: Role;
   /** Every backend role the account actually holds (for future fine-grained UI). */
   roles: BackendRoleName[];
+  /** null = unrestricted (admin). Array = exact granted module keys (staff). */
+  permissions: ModuleKey[] | null;
   avatarUrl?: string;
   phone?: string;
 }

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireStaff } from "../../middleware/authorize.middleware";
+import { requireModule } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./invoices.controller";
@@ -13,7 +13,7 @@ riderRouter.get("/", validate({ query: v.myInvoicesQuery }), asyncHandler(c.myIn
 
 /** Admin console only, mounted at /api/v1/invoices. */
 const router = Router();
-router.use(requireAuth, requireStaff);
+router.use(requireAuth, requireModule("payments"));
 
 router.get(
     "/",

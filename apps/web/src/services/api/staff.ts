@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 import { apiClient, ApiError } from "./httpClient";
-import type { BackendRoleName, Role, StaffUser } from "@/types";
+import type { BackendRoleName, ModuleKey, Role, StaffUser } from "@/types";
 
 const STAFF_ROLES: BackendRoleName[] = ["staff", "technician", "station_manager", "admin"];
 
@@ -12,6 +12,8 @@ interface SessionResponse {
   profile_photo_url: string | null;
   roles: BackendRoleName[];
   is_admin: boolean;
+  /** null = unrestricted (admin). Array = exact granted module keys (staff). */
+  permissions: ModuleKey[] | null;
 }
 
 function resolveRole(roles: BackendRoleName[]): Role | null {
@@ -53,6 +55,7 @@ async function resolveStaffSession(): Promise<StaffUser> {
     avatarUrl: session.profile_photo_url ?? undefined,
     role,
     roles: session.roles,
+    permissions: session.permissions,
   };
 }
 
@@ -113,6 +116,7 @@ export async function fetchCurrentSession(): Promise<StaffUser | null> {
       avatarUrl: session.profile_photo_url ?? undefined,
       role,
       roles: session.roles,
+      permissions: session.permissions,
     };
   } catch {
     return null;

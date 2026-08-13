@@ -26,7 +26,7 @@ export function DashboardLayout() {
         )}
       >
         <Sidebar
-          role={user.role}
+          user={user}
           collapsed={sidebarCollapsed}
           onToggleCollapsed={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
@@ -35,7 +35,7 @@ export function DashboardLayout() {
       {/* Mobile sidebar in a sheet */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-64 rounded-r-3xl p-0">
-          <Sidebar role={user.role} onNavigate={() => setMobileNavOpen(false)} />
+          <Sidebar user={user} onNavigate={() => setMobileNavOpen(false)} />
         </SheetContent>
       </Sheet>
 

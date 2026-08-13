@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireStaff } from "../../middleware/authorize.middleware";
+import { requireModule } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./refunds.controller";
@@ -8,7 +8,7 @@ import * as v from "./refunds.validation";
 
 /** Admin-only — deposit refunds are a staff/reconciliation concern, not a rider self-service action. */
 const router = Router();
-router.use(requireAuth, requireStaff);
+router.use(requireAuth, requireModule("refunds"));
 
 router.get("/", validate({ query: v.listRefundsQuery }), asyncHandler(c.listRefundsHandler));
 router.post("/", validate({ body: v.initiateRefundBody }), asyncHandler(c.createRefundHandler));

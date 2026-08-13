@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireAdmin, requireStaff } from "../../middleware/authorize.middleware";
+import { requireAdmin, requireModule } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import { photoUpload } from "./users.photo.upload";
@@ -31,7 +31,7 @@ router.post(
 // --- staff/admin --------------------------------------------------------
 router.get(
     "/",
-    requireStaff,
+    requireModule("users"),
     validate({ query: v.listUsersQuery }),
     asyncHandler(c.listUsersHandler),
 );
@@ -51,7 +51,7 @@ router.get(
 
 router.patch(
     "/:id",
-    requireStaff,
+    requireModule("users"),
     validate({ params: v.uuidParam, body: v.updateUserBody }),
     asyncHandler(c.updateUserHandler),
 );
@@ -72,7 +72,7 @@ router.post(
 
 router.patch(
     "/:id/status",
-    requireStaff,
+    requireModule("users"),
     validate({ params: v.uuidParam, body: v.updateStatusBody }),
     asyncHandler(c.updateStatusHandler),
 );
@@ -94,6 +94,20 @@ router.put(
     requireAdmin,
     validate({ params: v.uuidParam, body: v.updateRolesBody }),
     asyncHandler(c.updateRolesHandler),
+);
+
+router.get(
+    "/:id/permissions",
+    requireAdmin,
+    validate({ params: v.uuidParam }),
+    asyncHandler(c.getPermissionsHandler),
+);
+
+router.put(
+    "/:id/permissions",
+    requireAdmin,
+    validate({ params: v.uuidParam, body: v.updatePermissionsBody }),
+    asyncHandler(c.updatePermissionsHandler),
 );
 
 export default router;

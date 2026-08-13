@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     createUserBody, listUsersQuery, normaliseEmail, normalisePhone,
-    selfUpdateUserBody, updateRolesBody, updateStatusBody, updateUserBody,
+    selfUpdateUserBody, updatePermissionsBody, updateRolesBody, updateStatusBody, updateUserBody,
 } from "../src/modules/users/users.validation";
 import { rejectBody, uploadDocumentBody } from "../src/modules/kyc/kyc.validation";
 import { assertValidAadhaar } from "../src/modules/kyc/kyc.service";
@@ -127,6 +127,22 @@ describe("updateRolesBody", () => {
 
     it("accepts a known role", () => {
         expect(updateRolesBody.parse({ roles: ["staff"] }).roles).toEqual(["staff"]);
+    });
+});
+
+describe("updatePermissionsBody", () => {
+    it("accepts an empty module list (revoke everything is valid, unlike roles)", () => {
+        expect(updatePermissionsBody.parse({ modules: [] }).modules).toEqual([]);
+    });
+
+    it("accepts known module keys", () => {
+        expect(updatePermissionsBody.parse({ modules: ["vehicles", "bookings"] }).modules).toEqual([
+            "vehicles", "bookings",
+        ]);
+    });
+
+    it("refuses an unknown module key", () => {
+        expect(() => updatePermissionsBody.parse({ modules: ["reconciliation"] })).toThrow();
     });
 });
 

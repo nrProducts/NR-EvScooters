@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireStaff } from "../../middleware/authorize.middleware";
+import { requireModule } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import { kycUpload } from "./kyc.upload";
@@ -49,7 +49,7 @@ riderKycRouter.post("/submit", asyncHandler(c.submitMyKycHandler));
  * Admin/staff review routes, mounted at /api/v1/kyc.
  */
 export const adminKycRouter = Router();
-adminKycRouter.use(requireAuth, requireStaff);
+adminKycRouter.use(requireAuth, requireModule("kyc"));
 
 adminKycRouter.get(
     "/",

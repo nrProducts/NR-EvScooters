@@ -3,25 +3,25 @@ import { NavLink, useLocation } from "react-router-dom";
 import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { navForRole } from "@/routes/roleConfig";
-import type { Role } from "@/types";
+import { navForUser } from "@/routes/roleConfig";
+import type { StaffUser } from "@/types";
 import { useUiStore } from "@/store/uiStore";
 import logoMark from "@/assets/logo-mark.svg";
 import logoWordmark from "@/assets/logo-wordmark.svg";
 import logoWordmarkDark from "@/assets/logo-wordmark-dark.svg";
 
 export function Sidebar({
-  role,
+  user,
   collapsed,
   onToggleCollapsed,
   onNavigate,
 }: {
-  role: Role;
+  user: Pick<StaffUser, "role" | "permissions">;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
   onNavigate?: () => void;
 }) {
-  const items = navForRole(role);
+  const items = navForUser(user);
   const theme = useUiStore((s) => s.theme);
   const location = useLocation();
   const itemRefs = useRef<Record<string, HTMLAnchorElement | null>>({});

@@ -5,6 +5,21 @@ export const ROLE_NAMES: readonly RoleName[] = [
 
 export const STAFF_ROLES: readonly RoleName[] = ["staff", "technician", "station_manager", "admin"] as const;
 
+/**
+ * Modules a staff account can be individually granted access to (see
+ * public.staff_permissions / requireModule() in authorize.middleware.ts).
+ * Admin bypasses this entirely — always unconditional access. Mirrored in
+ * apps/web/src/types/index.ts — keep both lists in sync by hand (no shared
+ * package exists in this monorepo).
+ */
+export type ModuleKey =
+    | "vehicles" | "users" | "kyc" | "bookings" | "maintenance" | "support"
+    | "payments" | "notifications" | "damages" | "refunds";
+export const MODULE_KEYS: readonly ModuleKey[] = [
+    "vehicles", "users", "kyc", "bookings", "maintenance", "support",
+    "payments", "notifications", "damages", "refunds",
+] as const;
+
 export type AccountStatus = "active" | "inactive" | "suspended";
 export const ACCOUNT_STATUSES: readonly AccountStatus[] = ["active", "inactive", "suspended"] as const;
 

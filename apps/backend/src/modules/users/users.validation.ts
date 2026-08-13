@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACCOUNT_STATUSES, KYC_STATUSES, ROLE_NAMES } from "../../types";
+import { ACCOUNT_STATUSES, KYC_STATUSES, ROLE_NAMES, MODULE_KEYS } from "../../types";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
 
 export const uuidParam = z.object({ id: z.string().uuid("A valid user id is required.") });
@@ -133,6 +133,13 @@ export const updateRolesBody = z.object({
         .array(z.enum(ROLE_NAMES as [string, ...string[]]))
         .min(1, "A user must keep at least one role.")
         .max(ROLE_NAMES.length),
+});
+
+/** Empty array is valid here (unlike roles) — "revoke every module" is a legitimate call. */
+export const updatePermissionsBody = z.object({
+    modules: z
+        .array(z.enum(MODULE_KEYS as [string, ...string[]]))
+        .max(MODULE_KEYS.length),
 });
 
 /** Normalises an email the same way the unique index does (lower(email)). */

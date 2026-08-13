@@ -2,8 +2,9 @@ import type { Request } from "express";
 import { supabaseAdmin } from "../../config/supabase";
 import { env } from "../../config/env";
 import { businessRule } from "../../common/AppError";
-import { AccountStatus, AuthContext } from "../../types";
+import { AccountStatus, AuthContext, ModuleKey, STAFF_ROLES } from "../../types";
 import { getUserById } from "../users/users.service";
+import { getModulePermissions } from "../users/staff-permissions.service";
 import type { UserDetail } from "../users/users.types";
 import { generateNumericOtp, sendOtpSms, toMsg91Mobile } from "./msg91";
 
@@ -14,6 +15,8 @@ export interface SessionContext extends UserDetail {
     is_admin: boolean;
     /** Whether first-time profile creation is still needed. */
     needs_profile: boolean;
+    /** null = unrestricted (admin). Array = exact granted module keys (staff). Empty for rider. */
+    permissions: ModuleKey[] | null;
 }
 
 /**
@@ -40,7 +43,19 @@ export function deriveSessionFlags(
  */
 export async function getSessionContext(actor: AuthContext): Promise<SessionContext> {
     const detail = await getUserById(actor.id, actor);
-    return { ...detail, ...deriveSessionFlags(detail, actor.roles) };
+    const permissions = await resolveSessionPermissions(actor);
+    return { ...detail, ...deriveSessionFlags(detail, actor.roles), permissions };
+}
+
+/**
+ * Kept separate from deriveSessionFlags (not folded in) so that function can
+ * stay pure/DB-free for its own unit tests — this one necessarily hits the
+ * database for staff accounts.
+ */
+async function resolveSessionPermissions(actor: AuthContext): Promise<ModuleKey[] | null> {
+    if (actor.roles.includes("admin")) return null;
+    if (!actor.roles.some((r) => STAFF_ROLES.includes(r))) return [];
+    return getModulePermissions(actor.id);
 }
 
 /**

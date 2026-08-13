@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireStaff } from "../../middleware/authorize.middleware";
+import { requireModule } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import { vehiclePhotoUpload } from "./vehicles.photo.upload";
@@ -13,28 +13,28 @@ router.use(requireAuth);
 
 router.get(
     "/",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ query: v.listVehiclesQuery }),
     asyncHandler(c.listVehiclesHandler),
 );
 
 router.post(
     "/",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ body: v.createVehicleBody }),
     asyncHandler(c.createVehicleHandler),
 );
 
 router.get(
     "/:id",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ params: v.uuidParam }),
     asyncHandler(c.getVehicleHandler),
 );
 
 router.patch(
     "/:id",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ params: v.uuidParam, body: v.updateVehicleBody }),
     asyncHandler(c.updateVehicleHandler),
 );
@@ -43,14 +43,14 @@ router.post("/:id/assign", asyncHandler(c.assignVehicleHandler));
 
 router.post(
     "/:id/assign-to-user",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ params: v.uuidParam, body: v.assignVehicleToUserBody }),
     asyncHandler(c.assignVehicleToUserHandler),
 );
 
 router.post(
     "/:id/photos",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ params: v.uuidParam }),
     vehiclePhotoUpload,
     asyncHandler(c.uploadVehiclePhotoHandler),
@@ -58,14 +58,14 @@ router.post(
 
 router.delete(
     "/:id/photos/:photoId",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ params: v.photoIdParam }),
     asyncHandler(c.deleteVehiclePhotoHandler),
 );
 
 router.post(
     "/:id/scrap",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ params: v.uuidParam, body: v.scrapVehicleBody }),
     asyncHandler(c.scrapVehicleHandler),
 );
