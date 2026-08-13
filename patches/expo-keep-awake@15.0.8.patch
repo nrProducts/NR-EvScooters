@@ -1,0 +1,37 @@
+diff --git a/src/index.ts b/src/index.ts
+index b7a856e..6d526f1 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -30,11 +30,27 @@ export function useKeepAwake(tag?: string, options?: KeepAwakeOptions): void {
+ 
+   useEffect(() => {
+     let isMounted = true;
+-    activateKeepAwakeAsync(tagOrDefault).then(() => {
+-      if (isMounted && ExpoKeepAwake.addListenerForTag && options?.listener) {
+-        addListener(tagOrDefault, options.listener);
+-      }
+-    });
++    activateKeepAwakeAsync(tagOrDefault)
++      .then(() => {
++        if (isMounted && ExpoKeepAwake.addListenerForTag && options?.listener) {
++          addListener(tagOrDefault, options.listener);
++        }
++      })
++      .catch(() => {
++        // Native activate() rejects with ActivateKeepAwakeException whenever
++        // there is no resumed Activity at mount (KeepAwakeModule.kt catches
++        // CurrentActivityNotFoundException). On Android that happens routinely
++        // in development: expo's withDevTools mounts this hook as soon as the
++        // JS bundle evaluates, which on a slow dev-client bundle is often
++        // while the screen is locked or the app is backgrounded.
++        //
++        // Unhandled, it surfaces as "Uncaught (in promise) Error: Unable to
++        // activate keep awake" and clutters LogBox, hiding real errors.
++        // Keeping the screen awake is a dev convenience — failing to do so is
++        // never worth an error. The deactivate path below already swallows the
++        // mirror-image failure, and native deactivate() resolves on any
++        // exception; this makes activate consistent with both.
++      });
+     return () => {
+       isMounted = false;
+       if (options?.suppressDeactivateWarnings) {

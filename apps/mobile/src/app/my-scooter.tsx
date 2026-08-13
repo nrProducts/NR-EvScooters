@@ -72,12 +72,12 @@ export default function MyScooterScreen() {
       className="rounded-3xl mb-4 overflow-hidden"
       style={{ backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }}
     >
-      {/* `compact` is load-bearing: without it VehicleStage drops `height` the
-          moment the image loads and grows to the artwork's full aspect ratio,
-          which on a detail screen pushes every actual detail below the fold.
-          It also makes the artwork span the full card width — see the prop. */}
+      {/* `compact` keeps this a restrained banner — a detail screen shouldn't
+          lead with the full showroom treatment and push the actual details
+          below the fold. VehicleStage always honours `height` now, so this no
+          longer has to defend against the stage resizing itself on load. */}
       {imageUrl ? (
-        <VehicleStage imageUrl={imageUrl} height={150} compact accessibilityLabel={title} />
+        <VehicleStage imageUrl={imageUrl} height={160} compact accessibilityLabel={title} />
       ) : null}
       <View className="p-5 items-center">
         {imageUrl ? null : (
