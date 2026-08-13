@@ -488,10 +488,11 @@ export const SEED_VEHICLE_MODELS: ApiVehicleModel[] = SEED_VEHICLE_MODELS_DETAIL
 
 // ---------------------------------------------------------------------------
 // Bookings â€” pickup station, kept in sync conceptually with
-// supabase/migrations/20260721100200_bookings_seed.sql (same "MG Road Hub"
-// station in Kochi). Mock mode has no PostGIS, so lat/lng are plain numbers.
+// supabase/migrations/20260813100000_relocate_pickup_hub_medavakkam.sql (the
+// single Medavakkam Hub in Chennai). Mock mode has no PostGIS, so lat/lng are
+// plain numbers.
 // ---------------------------------------------------------------------------
 
 export const SEED_STATIONS: ApiStation[] = [
-    { id: 'station-mg-road-hub', name: 'MG Road Hub', code: 'STN-MGR', lat: 9.9312, lng: 76.2673 },
+    { id: 'station-medavakkam-hub', name: 'Medavakkam Hub', code: 'STN-MDVK', lat: 12.9221733, lng: 80.1920445 },
 ];
