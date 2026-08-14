@@ -10,9 +10,12 @@ import {
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/common/StatCard";
+import { SparkStatCard } from "@/components/common/SparkStatCard";
 import { ChartCard } from "@/components/common/ChartCard";
 import { MotionCard } from "@/components/motion/MotionCard";
 import { FleetStatusCard, VEHICLE_STATUS_LABEL } from "@/components/dashboard/FleetStatusCard";
+import { StationNetworkMap } from "@/components/dashboard/StationNetworkMap";
+import { StationStatusGauge } from "@/components/dashboard/StationStatusGauge";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
@@ -26,14 +29,27 @@ import { useInvoices } from "@/hooks/usePayments";
 import { useMaintenanceTickets } from "@/hooks/useMaintenance";
 import { useAuditLogs } from "@/hooks/useAudit";
 import { useNotificationLog } from "@/hooks/useNotifications";
+import { useAdminStations, useStationSummary } from "@/hooks/useBatteryStations";
 import { useUiStore } from "@/store/uiStore";
 import { cn, formatCurrency, formatDate, greetingForHour, timeAgo } from "@/lib/utils";
 import type { PickupBooking, VehicleStatus } from "@/types";
+
+const NOTIFICATION_DOT: Record<string, string> = {
+  sent: "bg-success",
+  pending: "bg-warning",
+  failed: "bg-destructive",
+};
 
 const VEHICLE_STATUS_COLORS: Record<"light" | "dark", Record<VehicleStatus, string>> = {
   light: { available: "#16A34A", booked: "#3B82F6", assigned: "#22C55E", maintenance: "#F59E0B", scrap: "#94A3B8" },
   dark: { available: "#22C55E", booked: "#3B82F6", assigned: "#10B981", maintenance: "#F59E0B", scrap: "#64748B" },
 };
+
+/** "2026-03" -> "Mar" — short enough to fit a quarter-width chart's x-axis. */
+function monthLabel(month: string): string {
+  const d = new Date(`${month}-01T00:00:00`);
+  return Number.isNaN(d.getTime()) ? month : d.toLocaleDateString("en-IN", { month: "short" });
+}
 
 function activityTone(action: string): TimelineItem["tone"] {
   if (/approved|verified|resolved|fulfilled|completed/.test(action)) return "success";
@@ -53,6 +69,8 @@ export default function AdminDashboardPage() {
   const { data: recentMaintenance, isLoading: maintenanceLoading } = useMaintenanceTickets({ pageSize: 5 });
   const { data: recentActivity, isLoading: activityLoading } = useAuditLogs({ pageSize: 6 });
   const { data: recentAlerts, isLoading: alertsLoading } = useNotificationLog({ pageSize: 5 });
+  const { data: stations, isLoading: stationsLoading } = useAdminStations({ page: 1, pageSize: 100 });
+  const { data: stationSummary, isLoading: stationSummaryLoading } = useStationSummary();
 
   const isLoading = summaryLoading || pendingLoading;
   const statusColors = VEHICLE_STATUS_COLORS[theme === "dark" ? "dark" : "light"];
@@ -89,7 +107,7 @@ export default function AdminDashboardPage() {
   ];
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
       {/* Hero */}
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
@@ -137,6 +155,24 @@ export default function AdminDashboardPage() {
         </MotionCard>
       </div>
 
+      {/* Station Network */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <ChartCard title="Station Network" description="Battery swap stations, plotted by status">
+          <StationNetworkMap stations={stations?.data ?? []} isLoading={stationsLoading} />
+        </ChartCard>
+        <ChartCard
+          title="Battery Stations"
+          description="Network health at a glance"
+          action={
+            <Button variant="ghost" size="sm" onClick={() => navigate("/battery-stations")}>
+              View all
+            </Button>
+          }
+        >
+          <StationStatusGauge summary={stationSummary} isLoading={stationSummaryLoading} />
+        </ChartCard>
+      </div>
+
       {/* Statistics grid, 2 rows */}
       {isLoading || !summary ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -159,6 +195,34 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
+      {/* Trends at a glance — real month-over-month series, not fabricated deltas */}
+      {summaryLoading || !summary ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <SparkStatCard
+            label="Revenue (this month)"
+            value={formatCurrency(summary.trends.revenue.at(-1)?.amount ?? 0)}
+            points={summary.trends.revenue.map((t) => t.amount)}
+            tone="success"
+          />
+          <SparkStatCard
+            label="Bookings (this month)"
+            value={String(summary.trends.bookings.at(-1)?.count ?? 0)}
+            points={summary.trends.bookings.map((t) => t.count)}
+            tone="info"
+          />
+          <SparkStatCard
+            label="Maintenance (this month)"
+            value={String(summary.trends.maintenance.at(-1)?.count ?? 0)}
+            points={summary.trends.maintenance.map((t) => t.count)}
+            tone="warning"
+          />
+        </div>
+      )}
+
       {/* Recent Bookings table */}
       <MotionCard>
         <CardHeader className="p-4 pb-2">
@@ -175,12 +239,12 @@ export default function AdminDashboardPage() {
       </MotionCard>
 
       {/* Analytics */}
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <ChartCard title="Vehicle Status" description="Current fleet by status">
           {summaryLoading || !summary ? (
-            <Skeleton className="h-52 w-full" />
+            <Skeleton className="h-40 w-full" />
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={150}>
               <BarChart
                 data={(Object.keys(summary.vehicles.by_status) as VehicleStatus[]).map((s) => ({
                   status: VEHICLE_STATUS_LABEL[s],
@@ -189,8 +253,8 @@ export default function AdminDashboardPage() {
                 }))}
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis dataKey="status" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                <XAxis dataKey="status" tick={{ fontSize: 10 }} interval={0} stroke="hsl(var(--muted-foreground))" />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10 }} width={28} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip
                   contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12 }}
                 />
@@ -202,9 +266,9 @@ export default function AdminDashboardPage() {
 
         <ChartCard title="Monthly Revenue" description="Last 6 months, invoices paid">
           {summaryLoading || !summary ? (
-            <Skeleton className="h-52 w-full" />
+            <Skeleton className="h-40 w-full" />
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={150}>
               <AreaChart data={summary.trends.revenue}>
                 <defs>
                   <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
@@ -213,8 +277,8 @@ export default function AdminDashboardPage() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                <XAxis dataKey="month" tickFormatter={monthLabel} tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis tick={{ fontSize: 10 }} width={32} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip
                   formatter={(v: number) => formatCurrency(v)}
                   contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12 }}
@@ -235,13 +299,13 @@ export default function AdminDashboardPage() {
 
         <ChartCard title="Bookings" description="Last 6 months, created">
           {summaryLoading || !summary ? (
-            <Skeleton className="h-52 w-full" />
+            <Skeleton className="h-40 w-full" />
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={150}>
               <BarChart data={summary.trends.bookings}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                <XAxis dataKey="month" tickFormatter={monthLabel} tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10 }} width={24} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip
                   contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12 }}
                 />
@@ -253,13 +317,13 @@ export default function AdminDashboardPage() {
 
         <ChartCard title="Maintenance Trend" description="Last 6 months, tickets reported">
           {summaryLoading || !summary ? (
-            <Skeleton className="h-52 w-full" />
+            <Skeleton className="h-40 w-full" />
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={150}>
               <LineChart data={summary.trends.maintenance}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                <XAxis dataKey="month" tickFormatter={monthLabel} tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10 }} width={24} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip
                   contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12 }}
                 />
@@ -342,23 +406,29 @@ export default function AdminDashboardPage() {
         </MotionCard>
 
         <MotionCard>
-          <CardHeader className="flex-row items-center gap-2 space-y-0 p-4 pb-2">
-            <Bell className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm">Latest Alerts</CardTitle>
+          <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-2">
+            <div className="flex items-center gap-2">
+              <Bell className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm">Alerts</CardTitle>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/notifications")}>
+              View all
+            </Button>
           </CardHeader>
-          <CardContent className="space-y-2 p-4 pt-2">
+          <CardContent className="space-y-1 p-4 pt-2">
             {alertsLoading ? (
               <Skeleton className="h-28 w-full" />
             ) : !recentAlerts || recentAlerts.data.length === 0 ? (
               <EmptyState title="No notifications sent yet" />
             ) : (
               recentAlerts.data.map((n) => (
-                <div key={n.id} className="flex items-center justify-between gap-2 border-b border-border pb-2 text-sm last:border-0 last:pb-0">
-                  <div className="min-w-0">
+                <div key={n.id} className="flex items-start gap-2.5 border-b border-border py-2 text-sm last:border-0">
+                  <span className={cn("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", NOTIFICATION_DOT[n.status] ?? "bg-muted-foreground")} />
+                  <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{n.payload?.title ?? n.template.replace(/_/g, " ")}</p>
-                    <p className="truncate text-xs text-muted-foreground">{n.rider?.full_name ?? "—"} · {timeAgo(n.created_at)}</p>
+                    <p className="truncate text-xs text-muted-foreground">{n.rider?.full_name ?? "—"}</p>
                   </div>
-                  <StatusBadge status={n.status} />
+                  <span className="shrink-0 text-[11px] text-muted-foreground">{timeAgo(n.created_at)}</span>
                 </div>
               ))
             )}

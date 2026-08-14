@@ -16,17 +16,19 @@ function invalidateStations(qc: ReturnType<typeof useQueryClient>) {
 const errorMessage = (error: unknown): string =>
   error instanceof ApiError ? error.message : "Something went wrong. Please try again.";
 
-export function useAdminStations(filters: AdminStationFilters) {
+export function useAdminStations(filters: AdminStationFilters, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [...STATIONS_KEY, "admin", filters],
     queryFn: () => api.getAdminStations(filters),
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useStationSummary() {
+export function useStationSummary(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [...STATIONS_KEY, "summary"],
     queryFn: () => api.getStationSummary(),
+    enabled: options?.enabled ?? true,
   });
 }
 

@@ -4,12 +4,16 @@ import { StatCard } from "@/components/common/StatCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChartCard } from "@/components/common/ChartCard";
 import { FleetStatusCard } from "@/components/dashboard/FleetStatusCard";
+import { StationNetworkMap } from "@/components/dashboard/StationNetworkMap";
+import { StationStatusGauge } from "@/components/dashboard/StationStatusGauge";
 import { useAuth } from "@/hooks/useAuth";
 import { usePickupQueue } from "@/hooks/useBookings";
 import { useSupportQueue } from "@/hooks/useSupport";
 import { useKycQueue } from "@/hooks/useKyc";
 import { useReportsSummary } from "@/hooks/useReports";
+import { useAdminStations, useStationSummary } from "@/hooks/useBatteryStations";
 import { hasAction } from "@/lib/permissions";
 import { formatDate, greetingForHour } from "@/lib/utils";
 
@@ -22,11 +26,14 @@ export default function StaffDashboardPage() {
   const canViewVehicles = hasAction(user, "vehicles", "view");
   const canViewMaintenance = hasAction(user, "maintenance", "view");
   const canViewDashboard = hasAction(user, "dashboard", "view");
+  const canViewStations = hasAction(user, "battery_stations", "view");
 
   const { data: pickups, isLoading: pickupsLoading } = usePickupQueue({ pageSize: 5 }, { enabled: canViewBookings });
   const { data: openTickets, isLoading: ticketsLoading } = useSupportQueue({ status: "open", pageSize: 1 }, { enabled: canViewSupport });
   const { data: kycQueue, isLoading: kycLoading } = useKycQueue({ status: "pending", pageSize: 1 }, { enabled: canViewKyc });
   const { data: summary, isLoading: summaryLoading } = useReportsSummary({ enabled: canViewDashboard });
+  const { data: stations, isLoading: stationsLoading } = useAdminStations({ page: 1, pageSize: 100 }, { enabled: canViewStations });
+  const { data: stationSummary, isLoading: stationSummaryLoading } = useStationSummary({ enabled: canViewStations });
 
   const pendingMaintenance = summary
     ? summary.maintenance.by_status.reported + summary.maintenance.by_status.in_progress
@@ -71,6 +78,17 @@ export default function StaffDashboardPage() {
         />
       )}
 
+      {canViewStations && (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <ChartCard title="Station Network" description="Battery swap stations, plotted by status">
+            <StationNetworkMap stations={stations?.data ?? []} isLoading={stationsLoading} />
+          </ChartCard>
+          <ChartCard title="Battery Stations" description="Network health at a glance">
+            <StationStatusGauge summary={stationSummary} isLoading={stationSummaryLoading} />
+          </ChartCard>
+        </div>
+      )}
+
       {canViewBookings && (
         <Card>
           <CardHeader>
@@ -98,7 +116,7 @@ export default function StaffDashboardPage() {
         </Card>
       )}
 
-      {statCards.length === 0 && !canViewBookings && !canViewVehicles && (
+      {statCards.length === 0 && !canViewBookings && !canViewVehicles && !canViewStations && (
         <EmptyState title="Nothing to show yet" description="Ask an admin to grant you module access from Settings → Staff Access." />
       )}
     </div>
