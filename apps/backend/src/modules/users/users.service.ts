@@ -37,7 +37,7 @@ export async function listUsers(
 
     let query = supabaseAdmin
         .from("users")
-        .select(`${PROFILE_COLUMNS}, user_roles(roles(name))`, { count: "exact" });
+        .select(`${PROFILE_COLUMNS}, user_roles!user_roles_user_id_fkey(roles(name))`, { count: "exact" });
 
     if (!includeDeleted) query = query.is("deleted_at", null);
     if (filters.accountStatus) query = query.eq("account_status", filters.accountStatus);
@@ -97,7 +97,7 @@ export async function listUsers(
 export async function getUserById(id: string, actor: AuthContext): Promise<UserDetail> {
     const { data, error } = await supabaseAdmin
         .from("users")
-        .select(`${PROFILE_COLUMNS}, user_roles(roles(name))`)
+        .select(`${PROFILE_COLUMNS}, user_roles!user_roles_user_id_fkey(roles(name))`)
         .eq("id", id)
         .maybeSingle();
 
