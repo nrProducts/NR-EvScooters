@@ -9,7 +9,7 @@ import { COLORS } from '../constants/theme';
 import { KYC_STATUS_LABEL, KYC_STATUS_TONE } from '../constants/status';
 import {
   Menu, X, User, LogOut, Bike, BatteryCharging, CreditCard,
-  Home, LifeBuoy, Mail, Phone, ShieldCheck, ChevronRight, Bell, History
+  Home, LifeBuoy, Mail, Phone, ShieldCheck, ChevronRight, Bell, History, Lock
 } from 'lucide-react-native';
 
 const DRAWER_WIDTH = Math.min(300, Dimensions.get('window').width * 0.8);
@@ -31,6 +31,9 @@ const USER_NAV: NavItem[] = [
   { label: 'Booking History', icon: History, route: '/booking-history' },
   { label: 'KYC Verification', icon: ShieldCheck, route: '/kyc' },
   { label: 'Support', icon: LifeBuoy, route: '/support' },
+  // DPDPA: consent toggles, data export, correction, erasure, nominee and the
+  // grievance channel all live behind this one entry.
+  { label: 'Privacy & Data', icon: Lock, route: '/privacy' },
 ];
 
 interface AppShellProps {

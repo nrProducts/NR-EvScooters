@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 import { apiClient, ApiError } from "./httpClient";
-import type { BackendRoleName, Role, StaffUser } from "@/types";
+import type { BackendRoleName, Capability, Role, StaffUser } from "@/types";
 
 const STAFF_ROLES: BackendRoleName[] = ["staff", "technician", "station_manager", "admin"];
 
@@ -11,7 +11,22 @@ interface SessionResponse {
   phone: string | null;
   profile_photo_url: string | null;
   roles: BackendRoleName[];
+  capabilities?: Capability[];
   is_admin: boolean;
+}
+
+/** One place to build the client-side user, so login and refresh cannot drift. */
+function toStaffUser(session: SessionResponse, role: Role): StaffUser {
+  return {
+    id: session.id,
+    name: session.full_name || session.email || "Unnamed",
+    email: session.email ?? "",
+    phone: session.phone ?? undefined,
+    avatarUrl: session.profile_photo_url ?? undefined,
+    role,
+    roles: session.roles,
+    capabilities: session.capabilities ?? [],
+  };
 }
 
 function resolveRole(roles: BackendRoleName[]): Role | null {
@@ -45,15 +60,7 @@ async function resolveStaffSession(): Promise<StaffUser> {
     );
   }
 
-  return {
-    id: session.id,
-    name: session.full_name || session.email || "Unnamed",
-    email: session.email ?? "",
-    phone: session.phone ?? undefined,
-    avatarUrl: session.profile_photo_url ?? undefined,
-    role,
-    roles: session.roles,
-  };
+  return toStaffUser(session, role);
 }
 
 /**
@@ -105,15 +112,7 @@ export async function fetchCurrentSession(): Promise<StaffUser | null> {
     const session = await apiClient.get<SessionResponse>("/auth/session");
     const role = resolveRole(session.roles);
     if (!role) return null;
-    return {
-      id: session.id,
-      name: session.full_name || session.email || "Unnamed",
-      email: session.email ?? "",
-      phone: session.phone ?? undefined,
-      avatarUrl: session.profile_photo_url ?? undefined,
-      role,
-      roles: session.roles,
-    };
+    return toStaffUser(session, role);
   } catch {
     return null;
   }

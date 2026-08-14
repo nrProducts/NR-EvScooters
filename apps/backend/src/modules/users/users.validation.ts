@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACCOUNT_STATUSES, KYC_STATUSES, ROLE_NAMES } from "../../types";
+import { ACCOUNT_STATUSES, KYC_STATUSES, ROLE_NAMES, STAFF_CAPABILITIES } from "../../types";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
 
 export const uuidParam = z.object({ id: z.string().uuid("A valid user id is required.") });
@@ -60,6 +60,10 @@ export const listUsersQuery = z.object({
     accountStatus: z.enum(ACCOUNT_STATUSES as [string, ...string[]]).optional(),
     kycStatus: z.enum(KYC_STATUSES as [string, ...string[]]).optional(),
     role: z.enum(ROLE_NAMES as [string, ...string[]]).optional(),
+    staffOnly: z
+        .enum(["true", "false"])
+        .default("false")
+        .transform((v) => v === "true"),
     sortBy: z.enum(["full_name", "created_at", "kyc_status"]).default("created_at"),
     sortDir: z.enum(["asc", "desc"]).default("desc"),
     includeDeleted: z
@@ -133,6 +137,16 @@ export const updateRolesBody = z.object({
         .array(z.enum(ROLE_NAMES as [string, ...string[]]))
         .min(1, "A user must keep at least one role.")
         .max(ROLE_NAMES.length),
+});
+
+/**
+ * Capabilities are replaced wholesale, so an empty array is the valid way to
+ * revoke everything — unlike roles, where a user must keep at least one.
+ */
+export const updateCapabilitiesBody = z.object({
+    capabilities: z
+        .array(z.enum(STAFF_CAPABILITIES as unknown as [string, ...string[]]))
+        .max(STAFF_CAPABILITIES.length),
 });
 
 /** Normalises an email the same way the unique index does (lower(email)). */

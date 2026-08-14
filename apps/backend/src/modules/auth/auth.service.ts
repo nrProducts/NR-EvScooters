@@ -2,7 +2,7 @@ import type { Request } from "express";
 import { supabaseAdmin } from "../../config/supabase";
 import { env } from "../../config/env";
 import { businessRule } from "../../common/AppError";
-import { AccountStatus, AuthContext } from "../../types";
+import { AccountStatus, AuthContext, StaffCapability } from "../../types";
 import { getUserById } from "../users/users.service";
 import type { UserDetail } from "../users/users.types";
 import { generateNumericOtp, sendOtpSms, toMsg91Mobile } from "./msg91";
@@ -14,6 +14,12 @@ export interface SessionContext extends UserDetail {
     is_admin: boolean;
     /** Whether first-time profile creation is still needed. */
     needs_profile: boolean;
+    /**
+     * Capabilities granting access to raw personal data. The admin console
+     * uses these to hide controls the caller cannot use — the server enforces
+     * them regardless, so this is UX rather than a control.
+     */
+    capabilities: StaffCapability[];
 }
 
 /**
@@ -40,7 +46,11 @@ export function deriveSessionFlags(
  */
 export async function getSessionContext(actor: AuthContext): Promise<SessionContext> {
     const detail = await getUserById(actor.id, actor);
-    return { ...detail, ...deriveSessionFlags(detail, actor.roles) };
+    return {
+        ...detail,
+        ...deriveSessionFlags(detail, actor.roles),
+        capabilities: actor.capabilities,
+    };
 }
 
 /**

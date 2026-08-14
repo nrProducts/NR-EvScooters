@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/kyc";
+import type { PiiAccessReason } from "@/types";
 
 export function useKycQueue(filters: api.KycFilters) {
   return useQuery({ queryKey: ["kyc-queue", filters], queryFn: () => api.fetchKycQueue(filters) });
@@ -55,7 +56,16 @@ export function useRejectDocument() {
 
 export function useOpenDocument() {
   return useMutation({
-    mutationFn: ({ documentId, side }: { documentId: string; side: "front" | "back" }) =>
-      api.fetchDocumentUrl(documentId, side),
+    mutationFn: ({
+      documentId,
+      side,
+      reason,
+      contextRef,
+    }: {
+      documentId: string;
+      side: "front" | "back";
+      reason?: PiiAccessReason;
+      contextRef?: string;
+    }) => api.fetchDocumentUrl(documentId, side, reason, contextRef),
   });
 }

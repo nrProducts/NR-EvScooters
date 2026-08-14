@@ -39,6 +39,22 @@ export const env = {
     /** Keep in sync with storage.buckets.file_size_limit in the migration. */
     vehiclePhotoMaxFileBytes: intFromEnv("VEHICLE_PHOTO_MAX_FILE_BYTES", 10 * 1024 * 1024),
 
+    // --- Geocoding proxy -------------------------------------------------
+    // Riders used to call this third-party endpoint straight from the handset
+    // with their exact coordinates, which meant an undisclosed disclosure of
+    // precise location to a processor we had no contract with, no log of, and
+    // no way to stop. Proxied here so it is logged, contractable and coarsened.
+    /** Photon-compatible search endpoint, e.g. https://photon.komoot.io/api. */
+    geocodeUrl: process.env.GEOCODE_URL ?? "",
+    /** Upstream timeout. An area lookup is a convenience, not a dependency. */
+    geocodeTimeoutMs: intFromEnv("GEOCODE_TIMEOUT_MS", 6000),
+    /**
+     * Decimal places kept on the location bias sent upstream. 2 dp is roughly
+     * 1 km — enough to disambiguate "Nagar" in Chennai from a namesake three
+     * states away, and far too coarse to identify a person or an address.
+     */
+    geocodeBiasPrecision: intFromEnv("GEOCODE_BIAS_PRECISION", 2),
+
     /** Where an invited user lands to set their password. */
     inviteRedirectUrl: process.env.INVITE_REDIRECT_URL ?? "",
 

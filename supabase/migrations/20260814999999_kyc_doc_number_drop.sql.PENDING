@@ -1,0 +1,59 @@
+-- =========================================================================
+-- kyc_doc_number_drop  —  NOT A LIVE MIGRATION
+--
+-- The `.PENDING` suffix keeps this out of the Supabase CLI's migration set.
+-- It will not run. Renaming it to `<new-timestamp>_kyc_doc_number_drop.sql`
+-- is a deliberate, one-way act that must not happen until BOTH gates below
+-- are cleared and recorded in docs/dpdpa/README.md.
+--
+-- ---------------------------------------------------------------------
+-- GATE 1 — LEGAL (blocking)
+--
+-- Counsel must confirm Swapngo is not required to retain the full DRIVING
+-- LICENCE number for:
+--   - Motor Vehicles Act / state transport rules on rental operators
+--   - insurance claims and subrogation
+--   - police or court requests relating to an incident
+--
+-- If the answer to any of these is "yes, retain", DO NOT RUN THIS. The
+-- correct design in that case is field-level encryption at rest (AES-256-GCM
+-- in the backend, key in the environment, decrypt only on an explicitly
+-- capability-gated reveal path), not truncation. That is a different change
+-- and this file should be deleted rather than adapted.
+--
+-- Aadhaar is a separate question and a much easier one: nothing in the
+-- product reads it, and holding full Aadhaar numbers is the single largest
+-- concentration of risk in the schema.
+--
+-- ---------------------------------------------------------------------
+-- GATE 2 — SOAK (blocking)
+--
+-- 20260814100700_kyc_doc_number_prep.sql and the backend change that stops
+-- writing full numbers must have been live in production for at least two
+-- weeks with no doc-number-related defects. Until this file runs, that work
+-- is reversible; afterwards it is not.
+--
+-- Verify before running:
+--   select count(*) from public.user_documents where doc_number_last4 is null;
+--   -- expect 0 for every row that has a doc_number
+--
+-- ---------------------------------------------------------------------
+-- AFTER RUNNING — two manual steps this file CANNOT perform
+--
+-- 1. VACUUM FULL public.user_documents;
+--
+--    `drop column` only marks the attribute dropped. The bytes survive in
+--    dead tuples until the table is rewritten. VACUUM FULL takes an ACCESS
+--    EXCLUSIVE lock and cannot run inside a transaction, so it cannot live in
+--    a migration file. Schedule it in a maintenance window immediately after.
+--
+-- 2. Wait out the backup-retention window.
+--
+--    Supabase PITR backups contain the full numbers for the whole retention
+--    period. Until the last backup predating this migration has expired,
+--    Swapngo still holds Aadhaar numbers, and NOBODY MAY STATE OTHERWISE —
+--    not in the privacy notice, not to a rider, not to the Board. Record the
+--    exact date after which the claim becomes true in docs/dpdpa/README.md.
+-- =========================================================================
+
+alter table public.user_documents drop column doc_number;

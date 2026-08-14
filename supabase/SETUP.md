@@ -124,8 +124,12 @@ production project — `seed.sql` is destructive-by-design for local dev.
   are `ON DELETE RESTRICT` to protect financial/trip history, while
   `public.users` cascades from `auth.users`. Practical effect: never call
   `supabase.auth.admin.deleteUser()` on a rider with ride history. For
-  "right to erasure" requests, anonymize the row (`full_name`, `email`,
-  `phone` → null/redacted) and set `deleted_at`, rather than hard-deleting.
+  "right to erasure" requests, anonymize the row rather than hard-deleting.
+  **This is now implemented** as `public.anonymise_user(uuid, uuid)` — do not
+  hand-roll it. Callers must gather storage paths BEFORE invoking it, because
+  the rows naming those objects are destroyed by it. See
+  `apps/backend/src/modules/privacy/privacy.erasure.ts` and
+  [docs/dpdpa/README.md](../docs/dpdpa/README.md).
 - **`vehicle_telemetry` partitions only exist through Aug 2026.** Before
   September, either enable `pg_partman` or add a `pg_cron` job that
   creates next month's partition ahead of time. An insert into an
@@ -136,10 +140,22 @@ production project — `seed.sql` is destructive-by-design for local dev.
   active zone. Enforce this in your "end rental" application/edge
   function logic using `ST_Contains`, once you've confirmed which zones
   are live.
-- **`audit_logs` has no UPDATE/DELETE policy for any role** — it's
-  effectively immutable once a row lands. Write to it only from a
-  trusted server-side path (Edge Function or service role), never
-  directly from a rider-facing client.
+- **`audit_logs`, `pii_access_log` and `consent_records` are append-only by
+  TRIGGER, not merely by policy** — the trigger raises for the service role
+  too. The only sanctioned exceptions are the retention functions
+  (`purge_audit_logs`, `purge_pii_access_log`, `purge_consent_records`), which
+  suspend the trigger for exactly one statement and re-enable it in an
+  exception handler. Do not add another. Write to these tables only from a
+  trusted server-side path, never from a rider-facing client.
+
+- **Migration `20260814100700` prepared the Aadhaar/DL minimisation but the
+  DROP is deliberately not applied.**
+  `20260814999999_kyc_doc_number_drop.sql.PENDING` is not a live migration and
+  will not run. It is gated on legal sign-off, and running it needs a
+  `VACUUM FULL` in a maintenance window afterwards (the bytes survive a
+  `DROP COLUMN` until the table is rewritten) plus the backup-retention window
+  to roll over. All three steps are tracked in
+  [docs/dpdpa/README.md](../docs/dpdpa/README.md).
 - **First admin user has no self-serve path**, by design. After your own
   account signs up (the new-user trigger creates your `public.users` row
   automatically), insert your first `user_roles` row with `role_id`

@@ -222,7 +222,7 @@ export async function broadcastNotification(
 async function allActiveRiderIds(): Promise<string[]> {
     const { data, error } = await supabaseAdmin
         .from("user_roles")
-        .select("user_id, roles!inner(name), users!inner(deleted_at, account_status)")
+        .select("user_id, roles!inner(name), users!user_roles_user_id_fkey!inner(deleted_at, account_status)")
         .eq("roles.name", "rider")
         .is("users.deleted_at", null)
         .eq("users.account_status", "active");
@@ -233,7 +233,7 @@ async function allActiveRiderIds(): Promise<string[]> {
 async function allActiveAdminIds(): Promise<string[]> {
     const { data, error } = await supabaseAdmin
         .from("user_roles")
-        .select("user_id, roles!inner(name), users!inner(deleted_at, account_status)")
+        .select("user_id, roles!inner(name), users!user_roles_user_id_fkey!inner(deleted_at, account_status)")
         .eq("roles.name", "admin")
         .is("users.deleted_at", null)
         .eq("users.account_status", "active");

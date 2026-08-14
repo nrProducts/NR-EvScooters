@@ -7,7 +7,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { confirmAction, notify } from '../lib/confirm';
 import {
   ShieldCheck, Upload, FileText, Check, X, ChevronRight, ChevronLeft,
-  Trash2, Eye, AlertTriangle, Clock, Camera, Phone,
+  Trash2, Eye, AlertTriangle, Clock, Camera, Phone, ShieldAlert,
 } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
@@ -15,8 +15,10 @@ import { ErrorState } from '../components/ui/ErrorState';
 import { pullToRefresh } from '../components/ui/PullToRefresh';
 import { FormField } from '../components/ui/FormField';
 import { DatePickerField } from '../components/ui/DatePickerField';
+import { CheckRow } from '../components/ui/CheckRow';
 import { useAuthStore } from '../store/useAuthStore';
 import { useMyKyc } from '../hooks/useKyc';
+import { useConsent } from '../hooks/useConsent';
 import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { pickDocument, pickPhoto } from '../lib/filePicker';
@@ -85,7 +87,13 @@ export default function KycScreen() {
   const [aadhaarDraft, setAadhaarDraft] = useState<DraftDoc>(EMPTY_DRAFT);
   const [dlDraft, setDlDraft] = useState<DraftDoc>(EMPTY_DRAFT);
   const [declared, setDeclared] = useState(false);
-  const [consented, setConsented] = useState(false);
+
+  // Read-only here. The rider gave (or withheld) this on /consent, and the
+  // upload endpoint enforces it server-side — this is only so the review step
+  // can show what was actually recorded rather than asking again.
+  const { state: consentState } = useConsent();
+  const consentGivenAt =
+    consentState?.items.find((i) => i.purpose === 'kyc_identity_verification')?.decided_at ?? null;
 
   const [preview, setPreview] = useState<{ url: string; isPdf: boolean } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -178,8 +186,8 @@ export default function KycScreen() {
   };
 
   const submit = async () => {
-    if (!declared || !consented) {
-      notify('Confirmation needed', 'Tick both boxes to submit your KYC.');
+    if (!declared) {
+      notify('Confirmation needed', 'Confirm your details are true to submit your KYC.');
       return;
     }
     const result = await actions.submit();
@@ -328,9 +336,8 @@ export default function KycScreen() {
                 kyc={kyc}
                 profile={profile}
                 declared={declared}
-                consented={consented}
                 setDeclared={setDeclared}
-                setConsented={setConsented}
+                consentGivenAt={consentGivenAt}
                 submitting={submitting}
                 onSubmit={() => void submit()}
                 onBack={() => goToStep(3)}
@@ -893,7 +900,7 @@ const DocSummaryRow: React.FC<{ doc: ApiDocument; onPreview: () => void }> = ({ 
         {DOC_TYPE_LABEL[doc.doc_type]}
       </Text>
       <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-medium mt-0.5">
-        {doc.doc_number ?? '—'}
+        {doc.doc_number_masked ?? '—'}
         {doc.expiry_date ? ` • expires ${formatDate(doc.expiry_date)}` : ''}
       </Text>
       {doc.is_expired ? (
@@ -922,11 +929,13 @@ const ReviewStep: React.FC<{
     profile_photo_url: string | null; emergency_contact_name: string | null;
     emergency_contact_phone: string | null;
   } | null;
-  declared: boolean; consented: boolean;
-  setDeclared: (v: boolean) => void; setConsented: (v: boolean) => void;
+  declared: boolean;
+  setDeclared: (v: boolean) => void;
+  /** When identity-verification consent was recorded, or null while loading. */
+  consentGivenAt: string | null;
   submitting: boolean; onSubmit: () => void; onBack: () => void;
   onPreview: (doc: ApiDocument) => void;
-}> = ({ kyc, profile, declared, consented, setDeclared, setConsented, submitting, onSubmit, onBack, onPreview }) => (
+}> = ({ kyc, profile, declared, setDeclared, consentGivenAt, submitting, onSubmit, onBack, onPreview }) => (
   <View className="rounded-2xl p-4 border" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
     <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">
       Review & Declare
@@ -957,16 +966,19 @@ const ReviewStep: React.FC<{
     ) : null}
 
     <View className="mt-4" style={{ gap: 10 }}>
+      {/* A declaration of accuracy, not consent — it belongs on the submit
+          step and stays a checkbox. */}
       <CheckRow
         checked={declared}
         onToggle={() => setDeclared(!declared)}
         text="I declare the information and documents provided are true and belong to me."
       />
-      <CheckRow
-        checked={consented}
-        onToggle={() => setConsented(!consented)}
-        text="I consent to SwapNgo storing and verifying these documents for identity checks."
-      />
+      {/* Consent is a RECORD now, not a checkbox: it was captured on the
+          consent screen against a specific notice version and is stored in
+          consent_records. Re-asking here would create a second, weaker
+          answer to a question already answered, and the upload endpoint
+          refuses without the real record anyway. */}
+      <ConsentRecordRow givenAt={consentGivenAt} />
     </View>
 
     <View className="flex-row mt-4" style={{ gap: 10 }}>
@@ -1010,29 +1022,51 @@ const ReadOnlyRow: React.FC<{ label: string; value: string }> = ({ label, value 
   </View>
 );
 
-const CheckRow: React.FC<{ checked: boolean; onToggle: () => void; text: string }> = ({
-  checked, onToggle, text,
-}) => (
-  <TouchableOpacity
-    onPress={onToggle}
-    accessibilityRole="checkbox"
-    accessibilityState={{ checked }}
-    className="flex-row items-start"
-  >
+/**
+ * Shows the consent that was actually recorded, with a link to change it.
+ *
+ * Deliberately not interactive: consent lives in consent_records against a
+ * specific notice version. A checkbox here would either duplicate that record
+ * or contradict it, and neither is a thing you want to explain to a regulator.
+ */
+const ConsentRecordRow: React.FC<{ givenAt: string | null }> = ({ givenAt }) => {
+  const router = useRouter();
+  const ok = !!givenAt;
+  return (
     <View
-      className="w-5 h-5 rounded-md items-center justify-center mr-3 mt-0.5 border"
+      className="flex-row items-start rounded-xl p-3 border"
       style={{
-        backgroundColor: checked ? COLORS.primary : COLORS.background,
-        borderColor: checked ? COLORS.primary : COLORS.border,
+        borderColor: ok ? COLORS.border : COLORS.warning,
+        backgroundColor: ok ? COLORS.background : COLORS.warning + '10',
       }}
     >
-      {checked ? <Check size={12} color="#FFF" /> : null}
+      {ok ? (
+        <ShieldCheck size={14} color={COLORS.success} />
+      ) : (
+        <ShieldAlert size={14} color={COLORS.warning} />
+      )}
+      <View className="flex-1 ml-2.5">
+        <Text
+          style={{ color: COLORS.textSecondary }}
+          className="text-[11px] font-medium leading-relaxed"
+        >
+          {ok
+            ? `Consent for identity verification given on ${formatDate(givenAt)}.`
+            : 'We do not have your consent to verify your identity yet.'}
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.push('/privacy' as never)}
+          accessibilityRole="link"
+          className="mt-1"
+        >
+          <Text style={{ color: COLORS.primary }} className="text-[11px] font-bold">
+            {ok ? 'Manage' : 'Give consent'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
-    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium flex-1 leading-relaxed">
-      {text}
-    </Text>
-  </TouchableOpacity>
-);
+  );
+};
 
 const PreviewModal: React.FC<{
   preview: { url: string; isPdf: boolean } | null;

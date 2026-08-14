@@ -1,34 +1,39 @@
-import { ENV } from '../../../constants/env';
-import { parsePhotonResponse, type AreaResult } from '../utils/geocode';
+import { api } from '../../../lib/api';
+import type { AreaResult } from '../utils/geocode';
 import type { Coordinates } from '../utils/distance';
 
 /**
  * Area lookup for the map's search box: "Adyar" → coordinates, so the screen
  * can recommend the stations nearest to it.
  *
- * Deliberately does NOT go through lib/api's `request`: that client is for our
- * backend, and would attach a Supabase access token and trigger the global
- * 401 sign-out. This talks to a third party, so it carries no credentials and
- * treats every failure as "no suggestions".
+ * This used to call a third-party Photon endpoint directly from the handset,
+ * passing the rider's exact latitude and longitude. That was an undisclosed
+ * disclosure of precise location to a processor we had no contract with, no
+ * log of, and no ability to stop — the one flow in the app that was neither
+ * documented nor gated.
  *
- * Response parsing lives in ../utils/geocode.ts so it stays unit-testable —
- * importing ENV here pulls in expo-constants and therefore react-native.
+ * It now goes through GET /geocode/search on our own backend, which coarsens
+ * the location bias to roughly 1 km before anything leaves our
+ * infrastructure, forwards no rider identity, caches, and can be switched off
+ * centrally. See apps/backend/src/modules/geocode/geocode.service.ts.
  */
 
 export type { AreaResult };
 
-const TIMEOUT_MS = 6000;
-
-export const isGeocodingConfigured = (): boolean => ENV.geocodeUrl.trim().length > 0;
+/**
+ * The backend owns the upstream configuration now, so the client cannot know
+ * ahead of time whether it is set up. It reports true and lets a 503 fall
+ * through to the empty-results path below — the search box degrades to
+ * station-name matching either way, which is what it did before.
+ */
+export const isGeocodingConfigured = (): boolean => true;
 
 /**
  * Areas matching `query`, biased towards `near` so "Nagar" resolves to the
  * Chennai one rather than a namesake three states away.
  *
- * Never throws. An area lookup failing is not worth breaking a search box
- * over, and the caller still has station-name matching. Returns [] on an
- * unconfigured endpoint, a too-short query, abort, timeout, offline, a
- * non-200, or an unparseable body.
+ * Never throws. Returns [] on a too-short query, abort, timeout, offline, an
+ * unconfigured backend (503) or any other failure.
  */
 export async function searchAreas(
     query: string,
@@ -36,34 +41,16 @@ export async function searchAreas(
     signal?: AbortSignal,
 ): Promise<AreaResult[]> {
     const term = query.trim();
-    if (!isGeocodingConfigured() || term.length < 2) return [];
-
-    const url = new URL(ENV.geocodeUrl);
-    url.searchParams.set('q', term);
-    url.searchParams.set('limit', '5');
-    url.searchParams.set('lang', 'en');
-    url.searchParams.set('lat', String(near.latitude));
-    url.searchParams.set('lon', String(near.longitude));
-
-    // Own timeout, chained to the caller's abort so a newer keystroke cancels
-    // an in-flight lookup rather than racing it.
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const onAbort = () => controller.abort();
-    signal?.addEventListener('abort', onAbort);
+    if (term.length < 2) return [];
+    if (signal?.aborted) return [];
 
     try {
-        const response = await fetch(url.toString(), {
-            signal: controller.signal,
-            // Photon and Nominatim both ask callers to identify themselves.
-            headers: { Accept: 'application/json' },
-        });
-        if (!response.ok) return [];
-        return parsePhotonResponse(await response.json());
+        const { data } = await api.geocodeSearch(
+            { q: term, lat: near.latitude, lng: near.longitude },
+            signal,
+        );
+        return data;
     } catch {
         return [];
-    } finally {
-        clearTimeout(timeout);
-        signal?.removeEventListener('abort', onAbort);
     }
 }

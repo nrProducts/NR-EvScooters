@@ -12,7 +12,7 @@ import rentalsRoutes from "../modules/rentals/rentals.routes";
 import maintenanceRoutes from "../modules/maintenance/maintenance.routes";
 import invoicesRoutes, { riderRouter as riderInvoicesRouter } from "../modules/invoices/invoices.routes";
 import reportsRoutes from "../modules/reports/reports.routes";
-import auditRoutes from "../modules/audit/audit.routes";
+import auditRoutes, { piiAccessRouter } from "../modules/audit/audit.routes";
 import { riderSupportRouter, adminSupportRouter } from "../modules/support/support.routes";
 import referralsRoutes from "../modules/referrals/referrals.routes";
 import paymentsRoutes from "../modules/payments/payments.routes";
@@ -21,6 +21,9 @@ import damagesRoutes from "../modules/damages/damages.routes";
 import { adminRouter as adminDepositsRouter, riderRouter as riderDepositsRouter } from "../modules/deposits/deposits.routes";
 import refundsRoutes from "../modules/refunds/refunds.routes";
 import reconciliationRoutes from "../modules/reconciliation/reconciliation.routes";
+import { consentRouter, riderConsentRouter } from "../modules/consent/consent.routes";
+import geocodeRoutes from "../modules/geocode/geocode.routes";
+import { adminPrivacyRouter, riderPrivacyRouter } from "../modules/privacy/privacy.routes";
 
 const router = Router();
 
@@ -33,8 +36,12 @@ router.use("/auth", authRoutes);
 router.use("/users/me/kyc", riderKycRouter);
 router.use("/users/me/notifications", riderNotificationsRouter);
 router.use("/users/me/support", riderSupportRouter);
+router.use("/users/me/consents", riderConsentRouter);
+router.use("/users/me/privacy", riderPrivacyRouter);
 router.use("/users", usersRoutes);
 router.use("/kyc", adminKycRouter);
+router.use("/consent", consentRouter);
+router.use("/privacy", adminPrivacyRouter);
 router.use("/support", adminSupportRouter);
 router.use("/notifications", adminNotificationsRouter);
 router.use("/vehicles", vehiclesRoutes);
@@ -43,6 +50,7 @@ router.use("/vehicles", vehiclesRoutes);
 router.use("/vehicle-models", vehicleCatalogRoutes);
 router.use("/bookings", bookingsRoutes);
 router.use("/stations", stationsRoutes);
+router.use("/geocode", geocodeRoutes);
 // Battery swap stations — a separate network from /stations (pickup points).
 // Mounted before the admin router so neither path can shadow the other.
 router.use("/battery-stations", batteryStationsRouter);
@@ -54,6 +62,7 @@ router.use("/invoices/me", riderInvoicesRouter);
 router.use("/invoices", invoicesRoutes);
 router.use("/reports", reportsRoutes);
 router.use("/audit-logs", auditRoutes);
+router.use("/pii-access", piiAccessRouter);
 router.use("/referrals", referralsRoutes);
 router.use("/payments", paymentsRoutes);
 router.use("/plans", plansRoutes);

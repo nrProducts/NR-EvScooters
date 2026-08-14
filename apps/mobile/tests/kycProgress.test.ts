@@ -5,7 +5,7 @@ import type { ApiDocument } from '../src/types/api';
 const doc = (overrides: Partial<ApiDocument>): ApiDocument => ({
   id: 'doc-1',
   doc_type: 'aadhaar',
-  doc_number: '1234 5678 9012',
+  doc_number_masked: '•••• 9012',
   verification_status: 'pending',
   rejection_reason: null,
   expiry_date: null,

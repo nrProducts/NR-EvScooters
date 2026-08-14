@@ -87,6 +87,14 @@ export interface ApiMe extends ApiUserDetail {
     /** Does this rider have a booking in progress? pending_payment counts
      *  as active, same as confirmed — see useHasActiveBooking. */
     has_active_booking: boolean;
+    /**
+     * False when any required consent is missing OR was given against an
+     * older privacy notice. Folded in here so the routing gate in _layout.tsx
+     * can send the rider to /consent without a second request, and so
+     * publishing a notice revision re-prompts everyone automatically.
+     */
+    consent_up_to_date: boolean;
+    consent_notice_version: string;
 }
 
 /**
@@ -113,7 +121,12 @@ export interface UpdateUserPayload {
 export interface ApiDocument {
     id: string;
     doc_type: KycDocType;
-    doc_number: string | null;
+    /**
+     * Display-only tail, e.g. "•••• 0124". The full Aadhaar/DL number is
+     * validated at upload and deliberately never stored, so there is no
+     * unmasked form of this field anywhere in the system.
+     */
+    doc_number_masked: string | null;
     verification_status: VerificationStatus;
     rejection_reason: string | null;
     expiry_date: string | null;
@@ -531,4 +544,141 @@ export interface ApiSupportRequest {
     priority: SupportPriority;
     resolved_at: string | null;
     created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// DPDPA — consent (mirrors apps/backend/src/modules/consent/consent.types.ts)
+// ---------------------------------------------------------------------------
+
+export type ConsentPurpose =
+    | 'kyc_identity_verification'
+    | 'service_delivery'
+    | 'payments_and_billing'
+    | 'safety_and_incident'
+    | 'service_communications'
+    | 'marketing_communications'
+    | 'referral_program'
+    | 'location_services';
+
+export type ConsentAction = 'granted' | 'withdrawn';
+
+export interface ApiConsentNotice {
+    id: string;
+    version: string;
+    effective_from: string;
+    language: 'en' | 'ta';
+    /** Markdown, authored per language and served from the database. */
+    body: string;
+    body_sha256: string;
+    purposes: ConsentPurpose[];
+    required_purposes: ConsentPurpose[];
+    optional_purposes: ConsentPurpose[];
+}
+
+export interface ApiConsentItem {
+    purpose: ConsentPurpose;
+    required: boolean;
+    granted: boolean;
+    decided_at: string | null;
+    notice_version: string | null;
+}
+
+export interface ApiConsentState {
+    current_notice_version: string;
+    /**
+     * Every required purpose granted against the CURRENT notice version. The
+     * consent screen shows itself whenever this is false, which is what makes
+     * re-consent on a new notice automatic.
+     */
+    up_to_date: boolean;
+    items: ApiConsentItem[];
+}
+
+export interface ApiConsentHistoryItem {
+    id: string;
+    purpose: ConsentPurpose;
+    action: ConsentAction;
+    notice_version: string;
+    language: 'en' | 'ta';
+    source: 'mobile' | 'web' | 'admin' | 'import';
+    recorded_by: { id: string; full_name: string } | null;
+    created_at: string;
+}
+
+/**
+ * A place returned by GET /geocode/search.
+ *
+ * Mirrors AreaResult in features/battery-stations/utils/geocode.ts, which the
+ * backend's parser now produces — the shape is unchanged by the move to a
+ * proxy, only where the parsing happens.
+ */
+export interface GeocodeArea {
+    /** Stable within a result set; used as a list key only. */
+    id: string;
+    /** "Adyar" — what the rider recognises. */
+    name: string;
+    /** "Chennai, Tamil Nadu" — disambiguates same-named localities. */
+    description: string;
+    latitude: number;
+    longitude: number;
+}
+
+// ---------------------------------------------------------------------------
+// DPDPA — data-principal rights
+// (mirrors apps/backend/src/modules/privacy/privacy.types.ts)
+// ---------------------------------------------------------------------------
+
+export type DpRequestType =
+    | 'access_export'
+    | 'correction'
+    | 'erasure'
+    | 'grievance'
+    | 'nominee_update';
+
+export type DpRequestStatus =
+    | 'open'
+    | 'in_progress'
+    | 'awaiting_principal'
+    | 'completed'
+    | 'rejected'
+    | 'withdrawn';
+
+export interface ApiPrivacyRequest {
+    id: string;
+    /** Human-readable, e.g. "DPR-2026-000042" — what the rider quotes to us. */
+    reference: string;
+    type: DpRequestType;
+    status: DpRequestStatus;
+    details: string | null;
+    requested_changes: Record<string, string> | null;
+    sla_due_at: string;
+    /** Erasure only: nothing is destroyed before this. */
+    grace_ends_at: string | null;
+    resolution_notes: string | null;
+    rejection_reason: string | null;
+    completed_at: string | null;
+    created_at: string;
+    updated_at: string | null;
+}
+
+/** Fields a rider cannot self-edit and must therefore ask us to correct. */
+export type CorrectableField =
+    | 'full_name'
+    | 'date_of_birth'
+    | 'aadhaar_details'
+    | 'driving_licence_details'
+    | 'other';
+
+export interface ApiNominee {
+    full_name: string | null;
+    relationship: string | null;
+    phone: string | null;
+    email: string | null;
+    updated_at: string | null;
+}
+
+export interface ApiExportResult {
+    request: ApiPrivacyRequest;
+    url: string;
+    expires_in: number;
 }

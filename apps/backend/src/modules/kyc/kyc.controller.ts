@@ -6,6 +6,7 @@ import { badRequest } from "../../common/AppError";
 import { KycDocType } from "../../types";
 import { UploadedFile } from "./kyc.storage";
 import * as service from "./kyc.service";
+import { logPiiAccess, type PiiAccessReason } from "../../common/piiAccess";
 
 type MulterFiles = Record<string, Express.Multer.File[]> | undefined;
 
@@ -24,7 +25,7 @@ function fileFrom(req: AuthedRequest, field: string): UploadedFile | undefined {
 // --- rider ---------------------------------------------------------------
 
 export async function getMyKycHandler(req: AuthedRequest, res: Response) {
-    res.json(await service.getKycForUser(req.user!.id, true));
+    res.json(await service.getKycForUser(req.user!.id));
 }
 
 export async function uploadMyDocumentHandler(req: AuthedRequest, res: Response) {
@@ -64,15 +65,30 @@ export async function submitMyKycHandler(req: AuthedRequest, res: Response) {
 // --- shared --------------------------------------------------------------
 
 export async function documentUrlHandler(req: AuthedRequest, res: Response) {
-    const { side } = validatedQuery<{ side: "front" | "back" }>(req);
-    res.json(
-        await service.getDocumentSignedUrl(
-            req.params.documentId as string,
-            side,
-            req.user!,
-            isStaff(req),
-        ),
-    );
+    const { side, reason, context_ref } = validatedQuery<{
+        side: "front" | "back";
+        reason?: PiiAccessReason;
+        context_ref?: string;
+    }>(req);
+
+    const documentId = req.params.documentId as string;
+    const result = await service.getDocumentSignedUrl(documentId, side, req.user!, isStaff(req));
+
+    // Logged AFTER the service call, so a refused request is not recorded as
+    // an access that happened. logPiiAccess skips self-access, which is what
+    // makes it safe to call on this shared rider/admin handler.
+    await logPiiAccess({
+        actor: req.user!,
+        targetUserId: result.user_id,
+        resource: "kyc_document_image",
+        resourceId: documentId,
+        fields: [`${result.doc_type}_${side}_image`],
+        reason: reason ?? (isStaff(req) ? "kyc_review" : "rider_self"),
+        contextRef: context_ref,
+        req,
+    });
+
+    res.json({ url: result.url, expires_in: result.expires_in });
 }
 
 // --- admin/staff ---------------------------------------------------------
@@ -82,7 +98,23 @@ export async function listKycHandler(req: AuthedRequest, res: Response) {
 }
 
 export async function getKycDetailHandler(req: AuthedRequest, res: Response) {
-    res.json(await service.getKycDetail(req.params.userId as string));
+    const userId = req.params.userId as string;
+    const detail = await service.getKycDetail(userId);
+
+    // The detail view returns date of birth and full address alongside the
+    // document list — more personal data in one response than anything else
+    // in the console.
+    await logPiiAccess({
+        actor: req.user!,
+        targetUserId: userId,
+        resource: "kyc_detail",
+        resourceId: userId,
+        fields: ["full_name", "date_of_birth", "address", "phone", "email", "documents"],
+        reason: "kyc_review",
+        req,
+    });
+
+    res.json(detail);
 }
 
 export async function verifyDocumentHandler(req: AuthedRequest, res: Response) {

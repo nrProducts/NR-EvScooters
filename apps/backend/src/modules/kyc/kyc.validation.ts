@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PII_ACCESS_REASONS } from "../../common/piiAccess";
 import { KYC_DOC_TYPES, KYC_STATUSES } from "../../types";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
 
@@ -48,6 +49,18 @@ export const rejectBody = z.object({
 
 export const signedUrlQuery = z.object({
     side: z.enum(["front", "back"]).default("front"),
+    /**
+     * Why a staff member is opening this document, and what task it relates
+     * to. Recorded in pii_access_log. Purpose-bound access is what turns an
+     * access log from a list into evidence — an entry that says only "someone
+     * opened an Aadhaar scan" answers nothing.
+     *
+     * Optional and defaulted rather than required: the rider's own path uses
+     * the same handler, and a hard failure here would block a legitimate
+     * review over a missing query param. The admin console always sends it.
+     */
+    reason: z.enum(PII_ACCESS_REASONS as unknown as [string, ...string[]]).optional(),
+    context_ref: z.string().trim().max(120).optional(),
 });
 
 export const kycListQuery = z.object({

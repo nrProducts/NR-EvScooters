@@ -111,17 +111,36 @@ separate `user_documents` lookup, then folded into the main query).
 Multipart fields: `doc_type`, `doc_number`, `expiry_date` (required for
 `driving_license`), file parts `front` and optional `back`.
 
-### Admin KYC — `/kyc` (staff+)
+> **`doc_number` is validated and then discarded.** As of the DPDPA work, only
+> the last four characters are persisted (`user_documents.doc_number_last4`).
+> Aadhaar is checked with a Verhoeff checksum and driving licences against a
+> state-code format; both happen in memory, and the full value never reaches
+> the database. Responses expose `doc_number_masked` ("•••• 0124") and there is
+> no unmasked counterpart to ask for. See
+> `apps/backend/src/modules/kyc/kyc.docnumber.ts` and
+> [docs/dpdpa/README.md](dpdpa/README.md).
+>
+> Uploads are also refused unless the rider currently has
+> `kyc_identity_verification` consent — no lawful basis, no collection.
+
+### Admin KYC — `/kyc` (staff+, and `kyc_reviewer` for anything showing a document)
 
 | Method | Path |
 |---|---|
 | GET | `/kyc` — queue |
-| GET | `/kyc/:userId` — full detail, **unmasked** numbers, history |
-| GET | `/kyc/documents/:documentId/url?side=front` |
-| POST | `/kyc/documents/:documentId/verify` |
-| POST | `/kyc/documents/:documentId/reject` — `{ "reason": "…" }` (≥10 chars) |
-| POST | `/kyc/:userId/approve` |
-| POST | `/kyc/:userId/reject` — `{ "reason": "…" }` |
+| GET | `/kyc/:userId` — full detail, masked numbers, history — **`kyc_reviewer`** |
+| GET | `/kyc/documents/:documentId/url?side=front&reason=` — **`kyc_reviewer`**, logged to `pii_access_log` |
+| POST | `/kyc/documents/:documentId/verify` — **`kyc_reviewer`** |
+| POST | `/kyc/documents/:documentId/reject` — `{ "reason": "…" }` (≥10 chars) — **`kyc_reviewer`** |
+| POST | `/kyc/:userId/approve` — **`kyc_reviewer`** |
+| POST | `/kyc/:userId/reject` — `{ "reason": "…" }` — **`kyc_reviewer`** |
+
+The queue itself stays `requireStaff` — it returns name, phone and status,
+which ops legitimately need. Everything that exposes an identity document
+additionally requires the `kyc_reviewer` capability, which no role implies:
+before this, any admin could open any rider's Aadhaar scan and it left no
+trace. Every document open now writes a `pii_access_log` row carrying the
+reason the reviewer gave, and the rider can read those rows themselves.
 
 **Queue query:** `search`, `status`, `docType`, `submittedFrom`, `submittedTo`,
 `expiringBefore`, `sortBy`, `sortDir`, `page`, `pageSize`.

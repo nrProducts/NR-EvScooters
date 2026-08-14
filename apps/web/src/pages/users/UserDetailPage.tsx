@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { UserConsentCard } from "./UserConsentCard";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { useUser } from "@/hooks/useUsers";
@@ -129,6 +130,8 @@ export default function UserDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <UserConsentCard userId={user.id} />
 
       <p className="text-xs text-muted-foreground">
         Ride history and payment history aren't shown here — the backend doesn't expose an admin rentals or

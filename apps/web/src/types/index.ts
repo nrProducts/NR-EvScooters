@@ -3,13 +3,35 @@
 // ---------------------------------------------------------------------------
 
 /** Full role vocabulary the backend's types.ts defines (apps/backend/src/types/index.ts).
- * Only "rider" and "admin" exist in the DB enum today (per the schema dump) —
- * "staff" / "technician" / "station_manager" are coded for but not yet
- * migrated, so accounts holding them won't exist until that migration ships. */
+ * All five now exist in the DB enum — staff / technician / station_manager were
+ * added by supabase/migrations/20260814100000_dpdpa_enums.sql. */
 export type BackendRoleName = "rider" | "staff" | "technician" | "station_manager" | "admin";
 
 /** What the web console's nav/route-guarding cares about. */
 export type Role = "admin" | "staff";
+
+/**
+ * Orthogonal to role: role says which part of the business someone works in,
+ * capability says whether they may see raw rider personal data. Never implied
+ * by a role — an admin without kyc_reviewer cannot open an Aadhaar scan.
+ * The console uses these to hide controls; the backend enforces them.
+ */
+export type Capability = "kyc_reviewer" | "rights_officer" | "pii_exporter";
+
+export const CAPABILITY_LABELS: Record<Capability, { label: string; description: string }> = {
+  kyc_reviewer: {
+    label: "KYC reviewer",
+    description: "Open identity-document images and the KYC detail view, and verify or reject documents.",
+  },
+  rights_officer: {
+    label: "Rights officer",
+    description: "Work the data-principal request queue (access, correction, erasure, grievance).",
+  },
+  pii_exporter: {
+    label: "PII exporter",
+    description: "Generate a personal-data export on a rider's behalf for an off-app request.",
+  },
+};
 
 export interface StaffUser {
   id: string;
@@ -18,6 +40,8 @@ export interface StaffUser {
   role: Role;
   /** Every backend role the account actually holds (for future fine-grained UI). */
   roles: BackendRoleName[];
+  /** Capabilities granting access to raw personal data. Empty for most staff. */
+  capabilities: Capability[];
   avatarUrl?: string;
   phone?: string;
 }
@@ -65,6 +89,7 @@ export interface AppUser {
 export interface AppUserDocument {
   id: string;
   doc_type: string;
+  /** See KycDocumentDetail.doc_number_masked — masked is the only form. */
   doc_number_masked: string | null;
   verification_status: string;
   rejection_reason: string | null;
@@ -97,7 +122,11 @@ export interface KycQueueItem {
 export interface KycDocumentDetail {
   id: string;
   doc_type: string;
-  doc_number_masked?: string | null;
+  /**
+   * Display-only tail, e.g. "•••• 0124". There is no unmasked counterpart:
+   * the full Aadhaar/DL number is validated at upload and never stored.
+   */
+  doc_number_masked: string | null;
   verification_status: string;
   rejection_reason: string | null;
   expiry_date: string | null;
@@ -535,4 +564,164 @@ export interface PaginatedResult<T> {
   total: number;
   page: number;
   pageSize: number;
+}
+
+// ---------------------------------------------------------------------------
+// DPDPA — consent (mirrors apps/backend/src/modules/consent/consent.types.ts)
+// ---------------------------------------------------------------------------
+
+export type ConsentPurpose =
+  | "kyc_identity_verification"
+  | "service_delivery"
+  | "payments_and_billing"
+  | "safety_and_incident"
+  | "service_communications"
+  | "marketing_communications"
+  | "referral_program"
+  | "location_services";
+
+export type ConsentAction = "granted" | "withdrawn";
+
+/** Human labels for the console. The rider-facing wording lives in the app's i18n module. */
+export const CONSENT_PURPOSE_LABELS: Record<ConsentPurpose, string> = {
+  kyc_identity_verification: "Identity verification",
+  service_delivery: "Service delivery",
+  payments_and_billing: "Payments & billing",
+  safety_and_incident: "Safety & incidents",
+  service_communications: "Service messages",
+  marketing_communications: "Marketing",
+  referral_program: "Referrals",
+  location_services: "Location",
+};
+
+export interface ConsentStateItem {
+  purpose: ConsentPurpose;
+  required: boolean;
+  granted: boolean;
+  decided_at: string | null;
+  notice_version: string | null;
+}
+
+export interface ConsentHistoryItem {
+  id: string;
+  purpose: ConsentPurpose;
+  action: ConsentAction;
+  notice_version: string;
+  language: "en" | "ta";
+  source: "mobile" | "web" | "admin" | "import";
+  /** Set only when a staff member recorded the decision on the rider's behalf. */
+  recorded_by: { id: string; full_name: string } | null;
+  created_at: string;
+}
+
+export interface UserConsentRecord {
+  current_notice_version: string;
+  up_to_date: boolean;
+  items: ConsentStateItem[];
+  history: ConsentHistoryItem[];
+}
+
+// ---------------------------------------------------------------------------
+// DPDPA — PII access log (mirrors apps/backend/src/common/piiAccess.ts)
+// ---------------------------------------------------------------------------
+
+export type PiiAccessReason =
+  | "kyc_review"
+  | "support_ticket"
+  | "fraud_investigation"
+  | "rights_request"
+  | "legal_request"
+  | "rider_self"
+  | "other";
+
+/**
+ * Reasons a staff member can pick when opening a rider's documents.
+ *
+ * "rider_self" is absent on purpose — it is set by the server for a rider
+ * reading their own record, and is not something staff can claim.
+ */
+export const PII_ACCESS_REASON_LABELS: Record<Exclude<PiiAccessReason, "rider_self">, string> = {
+  kyc_review: "Reviewing this rider's KYC",
+  support_ticket: "Working a support ticket",
+  fraud_investigation: "Fraud or misuse investigation",
+  rights_request: "Actioning a data-rights request",
+  legal_request: "Legal or police request",
+  other: "Something else",
+};
+
+export interface PiiAccessEntry {
+  id: string;
+  resource: string;
+  resource_id: string | null;
+  fields: string[] | null;
+  reason: PiiAccessReason;
+  context_ref: string | null;
+  actor_roles: string[];
+  ip: string | null;
+  path: string | null;
+  created_at: string;
+  actor: { id: string; full_name: string } | null;
+  target_user: { id: string; full_name: string } | null;
+}
+
+// ---------------------------------------------------------------------------
+// DPDPA — data-principal rights
+// (mirrors apps/backend/src/modules/privacy/privacy.types.ts)
+// ---------------------------------------------------------------------------
+
+export type DpRequestType =
+  | "access_export"
+  | "correction"
+  | "erasure"
+  | "grievance"
+  | "nominee_update";
+
+export type DpRequestStatus =
+  | "open"
+  | "in_progress"
+  | "awaiting_principal"
+  | "completed"
+  | "rejected"
+  | "withdrawn";
+
+export const DP_REQUEST_TYPE_LABELS: Record<DpRequestType, string> = {
+  access_export: "Copy of data",
+  correction: "Correction",
+  erasure: "Erasure",
+  grievance: "Grievance",
+  nominee_update: "Nominee",
+};
+
+export const DP_REQUEST_STATUS_LABELS: Record<DpRequestStatus, string> = {
+  open: "Received",
+  in_progress: "In progress",
+  awaiting_principal: "Waiting on rider",
+  completed: "Completed",
+  rejected: "Rejected",
+  withdrawn: "Withdrawn by rider",
+};
+
+export interface PrivacyRequest {
+  id: string;
+  /** Human-readable, e.g. "DPR-2026-000042" — what the rider quotes. */
+  reference: string;
+  type: DpRequestType;
+  status: DpRequestStatus;
+  channel: "app" | "email" | "phone" | "walk_in";
+  details: string | null;
+  requested_changes: Record<string, string> | null;
+  sla_due_at: string;
+  /** Erasure only: nothing is destroyed before this. */
+  grace_ends_at: string | null;
+  resolution_notes: string | null;
+  rejection_reason: string | null;
+  ticket_ref: string | null;
+  export_object_path: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+  rider: { id: string; full_name: string; phone: string | null; email: string | null } | null;
+  assigned_to: { id: string; full_name: string } | null;
+  /** Past the published response period and not yet closed. */
+  is_overdue: boolean;
 }

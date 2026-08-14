@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/users";
+import type { Capability } from "@/types";
 
 export function useUsers(filters: api.UserFilters) {
   return useQuery({ queryKey: ["users", filters], queryFn: () => api.fetchUsers(filters) });
@@ -51,5 +52,25 @@ export function useRestoreUser() {
   return useMutation({
     mutationFn: (id: string) => api.restoreUser(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
+
+export function useUserCapabilities(id: string | undefined) {
+  return useQuery({
+    queryKey: ["user-capabilities", id],
+    queryFn: () => api.fetchUserCapabilities(id!),
+    enabled: !!id,
+  });
+}
+
+export function useReplaceCapabilities() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, capabilities }: { id: string; capabilities: Capability[] }) =>
+      api.replaceUserCapabilities(id, capabilities),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ["user-capabilities", id] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+    },
   });
 }

@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { CheckCircle2, XCircle, FileText, ExternalLink, AlertTriangle, RotateCcw, RotateCw, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle2, XCircle, FileText, ExternalLink, AlertTriangle, RotateCcw, RotateCw, UserRound, ShieldAlert, Lock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -20,7 +21,11 @@ import {
 import { useOpenUserPhoto } from "@/hooks/useUsers";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate } from "@/lib/utils";
-import type { KycQueueItem, KycStatus } from "@/types";
+import { PII_ACCESS_REASON_LABELS, type KycQueueItem, type KycStatus, type PiiAccessReason } from "@/types";
+
+/** Staff can never claim "rider_self" — the server sets that one. */
+type StaffAccessReason = Exclude<PiiAccessReason, "rider_self">;
+import { useAuthStore } from "@/store/authStore";
 
 const TABS: { value: KycStatus | "all"; label: string }[] = [
   { value: "pending", label: "Pending" },
@@ -223,29 +228,56 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
   const [openError, setOpenError] = useState<string | null>(null);
   const [rotation, setRotation] = useState(0);
 
-  const viewDocument = (documentId: string, side: "front" | "back", label: string) => {
+  // Whether this staff member may see identity documents at all. The backend
+  // enforces the same thing on every one of these routes — hiding the controls
+  // is so people are not offered actions that will 403, not the control itself.
+  const canReview = useAuthStore((st) => st.user?.capabilities.includes("kyc_reviewer") ?? false);
+
+  // Asked once per opened rider, not once per document: a reviewer working
+  // through one rider's file is doing one task, and re-prompting per click
+  // trains people to click through the prompt without reading it.
+  const [access, setAccess] = useState<{ reason: StaffAccessReason; contextRef: string } | null>(null);
+  const [pendingOpen, setPendingOpen] = useState<null | (() => void)>(null);
+
+  // Reset the captured purpose whenever a different rider is opened.
+  useEffect(() => {
+    setAccess(null);
     setOpenError(null);
-    openDocument.mutate(
-      { documentId, side },
-      {
-        onSuccess: (data) => {
-          setRotation(0);
-          setPreview({ url: data.url, title: `${label} — ${side}` });
+  }, [target?.user_id]);
+
+  /** Runs `open` once a purpose has been captured for this rider. */
+  const withPurpose = (open: () => void) => {
+    if (access) return open();
+    setPendingOpen(() => open);
+  };
+
+  const viewDocument = (documentId: string, side: "front" | "back", label: string) => {
+    withPurpose(() => {
+      setOpenError(null);
+      openDocument.mutate(
+        { documentId, side, reason: access?.reason, contextRef: access?.contextRef || undefined },
+        {
+          onSuccess: (data) => {
+            setRotation(0);
+            setPreview({ url: data.url, title: `${label} — ${side}` });
+          },
+          onError: (err) => setOpenError((err as Error)?.message ?? "Couldn't open that document."),
         },
-        onError: (err) => setOpenError((err as Error)?.message ?? "Couldn't open that document."),
-      },
-    );
+      );
+    });
   };
 
   const viewRiderPhoto = () => {
     if (!target) return;
-    setOpenError(null);
-    openUserPhoto.mutate(target.user_id, {
-      onSuccess: (data) => {
-        setRotation(0);
-        setPreview({ url: data.url, title: "Rider photo" });
-      },
-      onError: (err) => setOpenError((err as Error)?.message ?? "No profile photo has been uploaded yet."),
+    withPurpose(() => {
+      setOpenError(null);
+      openUserPhoto.mutate(target.user_id, {
+        onSuccess: (data) => {
+          setRotation(0);
+          setPreview({ url: data.url, title: "Rider photo" });
+        },
+        onError: (err) => setOpenError((err as Error)?.message ?? "No profile photo has been uploaded yet."),
+      });
     });
   };
 
@@ -257,14 +289,32 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
             <DialogTitle>{target?.full_name ?? "Rider"}'s documents</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={openUserPhoto.isPending}
-              onClick={viewRiderPhoto}
-            >
-              <UserRound className="h-3.5 w-3.5" /> Rider photo
-            </Button>
+            {!canReview && (
+              <div className="flex gap-2 rounded-lg border border-border bg-muted/50 p-3 text-xs">
+                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <p className="text-muted-foreground">
+                  Viewing identity documents requires the <strong>KYC reviewer</strong> capability.
+                  You can see this rider's progress, but not their Aadhaar, driving licence or photo.
+                  An administrator can grant it in Settings &rarr; Capabilities.
+                </p>
+              </div>
+            )}
+            {canReview && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={openUserPhoto.isPending}
+                onClick={viewRiderPhoto}
+              >
+                <UserRound className="h-3.5 w-3.5" /> Rider photo
+              </Button>
+            )}
+            {access && (
+              <p className="text-xs text-muted-foreground">
+                Access recorded as: {PII_ACCESS_REASON_LABELS[access.reason]}
+                {access.contextRef ? ` (${access.contextRef})` : ""}
+              </p>
+            )}
             {openError && (
               <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{openError}</p>
             )}
@@ -279,6 +329,14 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
                     <p className="text-sm font-medium capitalize">{doc.doc_type.replace(/_/g, " ")}</p>
                     <StatusBadge status={doc.verification_status} />
                   </div>
+                  {doc.doc_number_masked && (
+                    <p className="font-mono text-xs text-muted-foreground">
+                      {doc.doc_number_masked}
+                      {/* Only the last four digits are stored. Cross-check
+                          these against the document image; there is no full
+                          number to compare against. */}
+                    </p>
+                  )}
                   {doc.expiry_date && (
                     <p className="text-xs text-muted-foreground">Expires {formatDate(doc.expiry_date)}</p>
                   )}
@@ -286,15 +344,17 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
                     <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">{doc.rejection_reason}</p>
                   )}
                   <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={openDocument.isPending}
-                      onClick={() => viewDocument(doc.id, "front", doc.doc_type.replace(/_/g, " "))}
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" /> Front
-                    </Button>
-                    {doc.has_back_side ? (
+                    {canReview && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={openDocument.isPending}
+                        onClick={() => viewDocument(doc.id, "front", doc.doc_type.replace(/_/g, " "))}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> Front
+                      </Button>
+                    )}
+                    {canReview && (doc.has_back_side ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -305,8 +365,11 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
                       </Button>
                     ) : (
                       <span className="text-xs text-muted-foreground">No back side uploaded</span>
-                    )}
-                    {doc.verification_status === "pending" && (
+                    ))}
+                    {/* Verify and Reject are gated on the same capability: you
+                        cannot responsibly decide on a document you are not
+                        allowed to look at. */}
+                    {canReview && doc.verification_status === "pending" && (
                       <>
                         <Button size="sm" onClick={() => verifyDocument.mutate(doc.id)} disabled={verifyDocument.isPending}>
                           Verify
@@ -328,6 +391,22 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Purpose capture. Asked before the first document of a rider's file is
+          opened, and recorded against every access in that session. Without it
+          the access log can say a scan was opened but not why, which is the
+          difference between evidence and a list. */}
+      <AccessReasonDialog
+        open={!!pendingOpen}
+        onCancel={() => setPendingOpen(null)}
+        onConfirm={(reason, contextRef) => {
+          setAccess({ reason, contextRef });
+          const run = pendingOpen;
+          setPendingOpen(null);
+          // Deferred so the mutation reads the state we just set.
+          if (run) setTimeout(run, 0);
+        }}
+      />
 
       <Dialog open={!!rejectDocId} onOpenChange={(o) => !o && setRejectDocId(null)}>
         <DialogContent>
@@ -412,5 +491,68 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * Captures WHY a staff member is about to open a rider's identity documents.
+ *
+ * A free-text reference is optional but strongly encouraged: "support ticket"
+ * with no ticket number is only marginally better than nothing when someone
+ * is later asked to justify the access.
+ */
+function AccessReasonDialog({
+  open,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  onCancel: () => void;
+  onConfirm: (reason: StaffAccessReason, contextRef: string) => void;
+}) {
+  const [reason, setReason] = useState<StaffAccessReason>("kyc_review");
+  const [contextRef, setContextRef] = useState("");
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4" /> Why are you opening this?
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            You are about to view a rider's identity documents. This is recorded against your
+            name, and the rider can see it in their own privacy screen.
+          </p>
+          <div className="space-y-1.5">
+            <Label>Reason</Label>
+            <Select value={reason} onValueChange={(v) => setReason(v as StaffAccessReason)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(PII_ACCESS_REASON_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Ticket or case reference (optional)</Label>
+            <Input
+              value={contextRef}
+              onChange={(e) => setContextRef(e.target.value)}
+              placeholder="e.g. SUP-1042 or DPR-2026-000031"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+          <Button onClick={() => onConfirm(reason, contextRef.trim())}>
+            Continue and record
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

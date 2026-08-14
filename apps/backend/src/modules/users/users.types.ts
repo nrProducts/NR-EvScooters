@@ -59,6 +59,8 @@ export interface ListUsersFilters {
     accountStatus?: AccountStatus;
     kycStatus?: KycStatus;
     role?: RoleName;
+    /** Any staff-side role. Mutually exclusive with `role`, which wins. */
+    staffOnly?: boolean;
     sortBy: "full_name" | "created_at" | "kyc_status";
     sortDir: "asc" | "desc";
     includeDeleted: boolean;

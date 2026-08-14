@@ -34,7 +34,7 @@ async function riderStats(): Promise<{ total: number; by_kyc_status: Record<KycS
 
     const { data, error } = await supabaseAdmin
         .from("user_roles")
-        .select("users!inner(kyc_status, deleted_at)")
+        .select("users!user_roles_user_id_fkey!inner(kyc_status, deleted_at)")
         .eq("role_id", riderRole.id);
     if (error) throw error;
 

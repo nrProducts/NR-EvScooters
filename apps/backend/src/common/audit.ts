@@ -5,7 +5,7 @@ import { safeAuditPayload } from "./mask";
 export type AuditAction =
     | "user.created" | "user.updated" | "user.soft_deleted" | "user.restored"
     | "user.activated" | "user.deactivated" | "user.suspended"
-    | "user.roles_changed" | "user.photo_uploaded"
+    | "user.roles_changed" | "user.capabilities_changed" | "user.photo_uploaded"
     | "kyc.document_uploaded" | "kyc.document_updated" | "kyc.document_deleted"
     | "kyc.submitted"
     | "kyc.document_verified" | "kyc.document_rejected"
@@ -24,16 +24,28 @@ export type AuditAction =
     | "refund.initiated" | "refund.processed" | "refund.failed"
     | "plan.activated" | "plan.paused" | "plan.resumed" | "plan.due" | "plan.updated"
     | "battery_station.created" | "battery_station.updated" | "battery_station.shown"
-    | "battery_station.hidden" | "battery_station.soft_deleted";
+    | "battery_station.hidden" | "battery_station.soft_deleted"
+    // DPDPA — consent (ss.5-6)
+    | "consent.granted" | "consent.withdrawn" | "consent.notice_published"
+    // DPDPA — data-principal rights (ss.11-14)
+    | "privacy.request_created" | "privacy.request_updated" | "privacy.request_assigned"
+    | "privacy.request_completed" | "privacy.request_rejected" | "privacy.request_cancelled"
+    | "privacy.export_generated" | "privacy.correction_applied" | "privacy.nominee_updated"
+    | "privacy.erasure_requested" | "privacy.erasure_approved"
+    | "privacy.erasure_executed" | "privacy.erasure_cancelled"
+    // DPDPA — retention
+    | "retention.purge_run";
 
 export interface AuditEntry {
     actorId: string | null;
     targetUserId: string | null;
     action: AuditAction;
     entityType:
-        | "user" | "user_document" | "user_role" | "booking" | "vehicle" | "vehicle_maintenance"
+        | "user" | "user_document" | "user_role" | "user_capability"
+        | "booking" | "vehicle" | "vehicle_maintenance"
         | "notification_broadcast" | "invoice" | "rental" | "referral" | "battery_station"
-        | "payment_order" | "payment_transaction" | "webhook_event" | "deposit" | "damage" | "refund" | "plan";
+        | "payment_order" | "payment_transaction" | "webhook_event" | "deposit" | "damage" | "refund" | "plan"
+        | "consent_record" | "consent_notice" | "privacy_request" | "retention_run";
     entityId: string;
     before?: Record<string, unknown> | null;
     after?: Record<string, unknown> | null;

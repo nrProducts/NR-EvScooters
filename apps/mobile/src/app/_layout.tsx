@@ -31,6 +31,8 @@ const RIDER_ROUTES = [
   "home", "my-scooter", "my-plan", "billing", "support", "kyc", "kyc-intro",
   "browse-vehicles", "booking", "notifications", "booking-history",
   "battery-stations",
+  // DPDPA. "privacy" covers privacy/index, notice, requests, [id] and nominee.
+  "consent", "privacy",
 ];
 // Screens reachable while signed OUT (the login surface).
 const AUTH_ROUTES = ["index", "otp-verify", "auth-callback"];
@@ -160,6 +162,19 @@ export default function RootLayout() {
     const needsProfile = !profile.profile_completed;
     if (needsProfile) {
       if (current !== "profile-setup") router.replace("/profile-setup");
+      return;
+    }
+
+    // Notice and consent (DPDPA ss.5-6) come after the profile and before any
+    // identity document is asked for. `consent_up_to_date` is false both when
+    // consent was never given AND when it was given against an older notice
+    // version, so publishing a revised notice re-prompts every rider here with
+    // no extra code. /privacy is exempt so a rider can always re-read the
+    // notice, and mid-flow screens are left alone.
+    if (!profile.consent_up_to_date) {
+      if (current !== "consent" && current !== "privacy") {
+        router.replace("/consent?next=/kyc-intro");
+      }
       return;
     }
 

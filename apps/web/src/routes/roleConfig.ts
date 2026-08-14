@@ -14,6 +14,8 @@ import {
   ScrollText,
   Layers,
   Scale,
+  Eye,
+  FileLock2,
 } from "lucide-react";
 import type { Role } from "@/types";
 
@@ -43,15 +45,52 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Plans", path: "/plans", icon: Layers, roles: ["admin"] },
   { label: "Reconciliation", path: "/reconciliation", icon: Scale, roles: ["admin"] },
   { label: "Notifications", path: "/notifications", icon: Bell, roles: ["admin"] },
+  // Distinct prefixes, so the longest-prefix match in isRouteAllowed keeps
+  // them apart. Do not add a bare "/privacy" entry — it would swallow both.
+  { label: "Privacy Requests", path: "/privacy/requests", icon: FileLock2, roles: ["admin", "staff"] },
+  { label: "PII Access Log", path: "/privacy/access-log", icon: Eye, roles: ["admin"] },
+  { label: "Audit Log", path: "/audit", icon: ScrollText, roles: ["admin"] },
   { label: "Settings", path: "/settings", icon: Settings, roles: ["admin"] },
 ];
+
+/**
+ * Routes that exist in AppRoutes.tsx but deliberately have no sidebar entry —
+ * reached from a link, a detail page or a redirect. They must still declare
+ * who may open them, because isRouteAllowed now denies anything it does not
+ * recognise.
+ *
+ * IMPORTANT: adding a <Route> to AppRoutes.tsx without adding it here or to
+ * NAV_ITEMS will make it 403 for everyone. That is intentional. The previous
+ * behaviour was to allow unknown routes by default, which meant a new page
+ * shipped wide open and nobody found out. A loud failure beats a silent
+ * authorisation hole.
+ */
+const NON_NAV_ROUTE_ROLES: Record<string, Role[]> = {
+  "/damages": ["admin", "staff"],
+  "/refunds": ["admin"],
+  "/403": ["admin", "staff"],
+};
 
 export function navForRole(role: Role) {
   return NAV_ITEMS.filter((item) => item.roles.includes(role));
 }
 
+/** Longest-prefix match, so "/privacy/access-log" cannot be swallowed by "/privacy". */
+function matchByPrefix(entries: [string, Role[]][], path: string): Role[] | undefined {
+  const hits = entries.filter(([p]) => path === p || path.startsWith(p + "/"));
+  if (hits.length === 0) return undefined;
+  return hits.sort((a, b) => b[0].length - a[0].length)[0][1];
+}
+
 export function isRouteAllowed(path: string, role: Role) {
-  const item = NAV_ITEMS.find((n) => path === n.path || path.startsWith(n.path + "/"));
-  if (!item) return true; // routes not in nav (e.g. detail pages) are allowed by default
-  return item.roles.includes(role);
+  const navRoles = matchByPrefix(
+    NAV_ITEMS.map((n) => [n.path, n.roles] as [string, Role[]]),
+    path,
+  );
+  if (navRoles) return navRoles.includes(role);
+
+  const otherRoles = matchByPrefix(Object.entries(NON_NAV_ROUTE_ROLES), path);
+  if (otherRoles) return otherRoles.includes(role);
+
+  return false; // deny by default — a new page must opt in
 }

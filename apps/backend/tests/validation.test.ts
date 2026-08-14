@@ -4,7 +4,6 @@ import {
     selfUpdateUserBody, updateRolesBody, updateStatusBody, updateUserBody,
 } from "../src/modules/users/users.validation";
 import { rejectBody, uploadDocumentBody } from "../src/modules/kyc/kyc.validation";
-import { assertValidAadhaar } from "../src/modules/kyc/kyc.service";
 
 const validUser = {
     full_name: "Asha Menon",
@@ -149,6 +148,10 @@ describe("listUsersQuery", () => {
     });
 });
 
+// Shape only. The Aadhaar checksum and the driving-licence format live in
+// kyc.docnumber.ts and are covered by kyc.docnumber.test.ts — this schema
+// deliberately stays permissive so the error the rider sees comes from the
+// domain check, with a message about their card, not from a regex.
 describe("uploadDocumentBody", () => {
     it("accepts an aadhaar document", () => {
         expect(uploadDocumentBody.parse({ doc_type: "aadhaar", doc_number: "ABCD1234" }).doc_type)
@@ -164,28 +167,6 @@ describe("uploadDocumentBody", () => {
     });
 });
 
-describe("assertValidAadhaar (via kyc.service.uploadDocument doc_type branch)", () => {
-    it("accepts a well-formed 12-digit aadhaar number", () => {
-        expect(() => assertValidAadhaar("234567890123")).not.toThrow();
-    });
-
-    it("accepts a 12-digit aadhaar number with spaces or hyphens", () => {
-        expect(() => assertValidAadhaar("2345 6789 0123")).not.toThrow();
-        expect(() => assertValidAadhaar("2345-6789-0123")).not.toThrow();
-    });
-
-    it("rejects fewer than 12 digits", () => {
-        expect(() => assertValidAadhaar("123456789")).toThrow(/12-digit/);
-    });
-
-    it("rejects more than 12 digits", () => {
-        expect(() => assertValidAadhaar("1234567890123")).toThrow(/12-digit/);
-    });
-
-    it("rejects non-numeric characters", () => {
-        expect(() => assertValidAadhaar("2345ABCD0123")).toThrow(/12-digit/);
-    });
-});
 
 describe("rejectBody", () => {
     it("rejects a missing reason", () => {

@@ -4,9 +4,10 @@ import { env } from "../../config/env";
 import { businessRule, conflict, forbidden, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
-import { maskDocumentNumber } from "../../common/mask";
+import { maskLast4 } from "../../common/mask";
 import {
-    AccountStatus, AuthContext, MANDATORY_KYC_DOC_TYPES, Paginated, RoleName, STAFF_ROLES,
+    AccountStatus, AuthContext, MANDATORY_KYC_DOC_TYPES, Paginated, RoleName,
+    STAFF_ROLES, StaffCapability,
 } from "../../types";
 import { ListUsersFilters, UserDetail, UserListItem, UserProfile } from "./users.types";
 import { normaliseEmail, normalisePhone } from "./users.validation";
@@ -15,6 +16,17 @@ import {
     removePhotoFile, uploadPhotoFile,
 } from "./users.photo.storage";
 import type { UploadedFile } from "../kyc/kyc.storage";
+
+/**
+ * PostgREST embed for a user's roles.
+ *
+ * The `!user_roles_user_id_fkey` disambiguator is required, not stylistic:
+ * user_roles has two foreign keys to users (`user_id` and `granted_by`), so a
+ * bare `user_roles(roles(name))` is ambiguous and PostgREST answers
+ * 300 Multiple Choices instead of choosing. Same applies to
+ * user_capabilities in auth.middleware.ts.
+ */
+const ROLES_EMBED = "user_roles!user_roles_user_id_fkey(roles(name))";
 
 const PROFILE_COLUMNS = `
     id, full_name, email, phone, date_of_birth, gender,
@@ -37,7 +49,7 @@ export async function listUsers(
 
     let query = supabaseAdmin
         .from("users")
-        .select(`${PROFILE_COLUMNS}, user_roles(roles(name))`, { count: "exact" });
+        .select(`${PROFILE_COLUMNS}, ${ROLES_EMBED}`, { count: "exact" });
 
     if (!includeDeleted) query = query.is("deleted_at", null);
     if (filters.accountStatus) query = query.eq("account_status", filters.accountStatus);
@@ -45,20 +57,27 @@ export async function listUsers(
 
     if (filters.search) {
         const term = escapeLike(filters.search);
-        // Search by name/email/phone here; document-number search is resolved
-        // separately below because it lives on user_documents.
-        const idsFromDocs = await userIdsMatchingDocNumber(filters.search);
-        const clauses = [
+        // Name, email and phone only.
+        //
+        // Search by document number was REMOVED with the identity-number
+        // minimisation. Only the last four characters are stored now, so the
+        // feature would have become both less useful and more leaky: a
+        // four-character search returns every rider sharing those digits, and
+        // each hit is a disclosure to whoever typed it. Ops keeps name/phone,
+        // which is what they actually search by.
+        query = query.or([
             `full_name.ilike.%${term}%`,
             `email.ilike.%${term}%`,
             `phone.ilike.%${term}%`,
-        ];
-        if (idsFromDocs.length > 0) clauses.push(`id.in.(${idsFromDocs.join(",")})`);
-        query = query.or(clauses.join(","));
+        ].join(","));
     }
 
     if (filters.role) {
         const ids = await userIdsWithRole(filters.role);
+        if (ids.length === 0) return paginate<UserListItem>([], 0, filters);
+        query = query.in("id", ids);
+    } else if (filters.staffOnly) {
+        const ids = await userIdsWithAnyStaffRole();
         if (ids.length === 0) return paginate<UserListItem>([], 0, filters);
         query = query.in("id", ids);
     }
@@ -97,7 +116,7 @@ export async function listUsers(
 export async function getUserById(id: string, actor: AuthContext): Promise<UserDetail> {
     const { data, error } = await supabaseAdmin
         .from("users")
-        .select(`${PROFILE_COLUMNS}, user_roles(roles(name))`)
+        .select(`${PROFILE_COLUMNS}, ${ROLES_EMBED}`)
         .eq("id", id)
         .maybeSingle();
 
@@ -128,7 +147,7 @@ export async function getUserById(id: string, actor: AuthContext): Promise<UserD
         documents: documents.map((d) => ({
             id: d.id,
             doc_type: d.doc_type,
-            doc_number_masked: maskDocumentNumber(d.doc_number),
+            doc_number_masked: maskLast4(d.doc_number_last4),
             verification_status: d.verification_status,
             rejection_reason: d.rejection_reason,
             expiry_date: d.expiry_date,
@@ -630,6 +649,77 @@ async function setRoles(userId: string, roles: RoleName[], grantedBy: string): P
 }
 
 // ---------------------------------------------------------------------------
+// Capabilities (DPDPA s.8(5) — least privilege over raw personal data)
+// ---------------------------------------------------------------------------
+
+export async function getCapabilities(id: string): Promise<StaffCapability[]> {
+    await requireLiveUser(id);
+    const { data, error } = await supabaseAdmin
+        .from("user_capabilities")
+        .select("capability")
+        .eq("user_id", id);
+    if (error) throw error;
+    return (data ?? []).map((row) => row.capability as StaffCapability);
+}
+
+/**
+ * Replaces a staff member's capability set wholesale.
+ *
+ * Self-modification is blocked for the same reason replaceRoles blocks it: an
+ * admin who can grant themselves kyc_reviewer has not been restricted from
+ * anything. Two people are required, and both halves are in the audit trail.
+ */
+export async function replaceCapabilities(
+    id: string,
+    capabilities: StaffCapability[],
+    actor: AuthContext,
+    req?: Request,
+): Promise<StaffCapability[]> {
+    await requireLiveUser(id);
+
+    if (id === actor.id) {
+        throw forbidden(
+            "You cannot change your own capabilities. Ask another administrator.",
+        );
+    }
+
+    const before = await getCapabilities(id);
+    const wanted = [...new Set(capabilities)];
+
+    const removed = before.filter((c) => !wanted.includes(c));
+    if (removed.length > 0) {
+        const { error } = await supabaseAdmin
+            .from("user_capabilities")
+            .delete()
+            .eq("user_id", id)
+            .in("capability", removed);
+        if (error) throw error;
+    }
+
+    const added = wanted.filter((c) => !before.includes(c));
+    if (added.length > 0) {
+        const { error } = await supabaseAdmin.from("user_capabilities").upsert(
+            added.map((capability) => ({ user_id: id, capability, granted_by: actor.id })),
+            { onConflict: "user_id,capability", ignoreDuplicates: true },
+        );
+        if (error) throw error;
+    }
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: id,
+        action: "user.capabilities_changed",
+        entityType: "user_capability",
+        entityId: id,
+        before: { capabilities: before },
+        after: { capabilities: wanted },
+        req,
+    });
+
+    return wanted;
+}
+
+// ---------------------------------------------------------------------------
 // Shared guards / helpers
 // ---------------------------------------------------------------------------
 
@@ -699,7 +789,7 @@ async function assertNotLastAdmin(userId: string): Promise<void> {
 
     const { data, error } = await supabaseAdmin
         .from("user_roles")
-        .select("user_id, users!inner(account_status, deleted_at)")
+        .select("user_id, users!user_roles_user_id_fkey!inner(account_status, deleted_at)")
         .eq("role_id", adminRole.id)
         .is("users.deleted_at", null)
         .eq("users.account_status", "active");
@@ -737,12 +827,16 @@ async function userIdsWithRole(role: RoleName): Promise<string[]> {
     return (data ?? []).map((r) => (r as { user_id: string }).user_id);
 }
 
-async function userIdsMatchingDocNumber(search: string): Promise<string[]> {
+/**
+ * Every account holding any staff-side role. `role` filters to exactly one,
+ * which was fine when "admin" was the only non-rider role that existed; the
+ * capabilities screen needs the whole staff population in one query.
+ */
+async function userIdsWithAnyStaffRole(): Promise<string[]> {
     const { data, error } = await supabaseAdmin
-        .from("user_documents")
-        .select("user_id")
-        .ilike("doc_number", `%${escapeLike(search)}%`)
-        .limit(200);
+        .from("user_roles")
+        .select("user_id, roles!inner(name)")
+        .in("roles.name", STAFF_ROLES as unknown as string[]);
     if (error) throw error;
     return [...new Set((data ?? []).map((r) => (r as { user_id: string }).user_id))];
 }
@@ -827,7 +921,7 @@ async function documentsForUser(userId: string) {
     const { data, error } = await supabaseAdmin
         .from("user_documents")
         .select(
-            "id, doc_type, doc_number, verification_status, rejection_reason, expiry_date, submitted_at, verified_at",
+            "id, doc_type, doc_number_last4, verification_status, rejection_reason, expiry_date, submitted_at, verified_at",
         )
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
@@ -835,7 +929,7 @@ async function documentsForUser(userId: string) {
     return (data ?? []) as Array<{
         id: string;
         doc_type: string;
-        doc_number: string;
+        doc_number_last4: string | null;
         verification_status: string;
         rejection_reason: string | null;
         expiry_date: string | null;

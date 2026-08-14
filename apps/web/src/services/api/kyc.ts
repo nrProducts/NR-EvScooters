@@ -1,4 +1,5 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
+import type { PiiAccessReason } from "@/types";
 import type { KycDetail, KycQueueItem, KycStatus, PaginatedResult } from "@/types";
 
 export interface KycFilters {
@@ -29,9 +30,25 @@ export async function fetchKycDetail(userId: string): Promise<KycDetail> {
   return apiClient.get<KycDetail>(`/kyc/${userId}`);
 }
 
-/** GET /kyc/documents/:documentId/url?side=front|back — signed URL, previewed in-page. */
-export async function fetchDocumentUrl(documentId: string, side: "front" | "back" = "front") {
-  return apiClient.get<{ url: string }>(`/kyc/documents/${documentId}/url`, { side });
+/**
+ * GET /kyc/documents/:documentId/url?side=front|back — signed URL, previewed in-page.
+ *
+ * `reason` and `contextRef` are recorded in pii_access_log. Opening someone's
+ * Aadhaar scan is the single most sensitive action in this console; an access
+ * record that cannot say WHY is a list, not evidence. The backend requires the
+ * kyc_reviewer capability regardless of what the UI sends.
+ */
+export async function fetchDocumentUrl(
+  documentId: string,
+  side: "front" | "back" = "front",
+  reason?: PiiAccessReason,
+  contextRef?: string,
+) {
+  return apiClient.get<{ url: string }>(`/kyc/documents/${documentId}/url`, {
+    side,
+    reason,
+    context_ref: contextRef,
+  });
 }
 
 /** POST /kyc/documents/:documentId/verify */

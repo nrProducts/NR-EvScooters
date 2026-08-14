@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
 import { requireStaff } from "../../middleware/authorize.middleware";
+import { requireKycReviewer } from "../../middleware/capability.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import { kycUpload } from "./kyc.upload";
@@ -57,38 +58,54 @@ adminKycRouter.get(
     asyncHandler(c.listKycHandler),
 );
 
+// The queue itself stays requireStaff: it returns name, phone and status,
+// which ops legitimately need, and locking it would make the reviewer
+// workflow undiscoverable to the people who are supposed to request access.
+//
+// Everything below exposes the identity documents themselves — the detail
+// view (date of birth, full address, document list) and the images — so it
+// additionally requires the kyc_reviewer capability. Note documentUrlHandler
+// is shared with riderKycRouter; the gate goes on the ADMIN router only,
+// because the rider path already restricts to the document's own owner.
 adminKycRouter.get(
     "/:userId",
+    requireKycReviewer,
     validate({ params: v.userIdParam }),
     asyncHandler(c.getKycDetailHandler),
 );
 
 adminKycRouter.get(
     "/documents/:documentId/url",
+    requireKycReviewer,
     validate({ params: v.documentIdParam, query: v.signedUrlQuery }),
     asyncHandler(c.documentUrlHandler),
 );
 
+// You cannot responsibly decide on a document you are not allowed to see.
 adminKycRouter.post(
     "/documents/:documentId/verify",
+    requireKycReviewer,
     validate({ params: v.documentIdParam }),
     asyncHandler(c.verifyDocumentHandler),
 );
 
 adminKycRouter.post(
     "/documents/:documentId/reject",
+    requireKycReviewer,
     validate({ params: v.documentIdParam, body: v.rejectBody }),
     asyncHandler(c.rejectDocumentHandler),
 );
 
 adminKycRouter.post(
     "/:userId/approve",
+    requireKycReviewer,
     validate({ params: v.userIdParam }),
     asyncHandler(c.approveKycHandler),
 );
 
 adminKycRouter.post(
     "/:userId/reject",
+    requireKycReviewer,
     validate({ params: v.userIdParam, body: v.rejectBody }),
     asyncHandler(c.rejectKycHandler),
 );

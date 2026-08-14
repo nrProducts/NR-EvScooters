@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../config/supabase";
-import { AuthContext, RoleName } from "../types";
+import { AuthContext, RoleName, StaffCapability } from "../types";
 import { unauthenticated, forbidden } from "../common/AppError";
 
 export interface AuthedRequest extends Request {
@@ -35,7 +35,18 @@ export async function requireAuth(req: AuthedRequest, _res: Response, next: Next
 
     const { data: profile, error: profileError } = await supabaseAdmin
         .from("users")
-        .select("id, email, account_status, kyc_status, deleted_at, user_roles(roles(name))")
+        // Two things this select has to get right:
+        //
+        // 1. It must stay a SINGLE STRING LITERAL. PostgREST infers the row
+        //    type from it, and concatenation widens it to `string`, losing that.
+        //
+        // 2. Both embeds MUST name their foreign key explicitly. user_roles and
+        //    user_capabilities each have TWO foreign keys to users (`user_id`
+        //    and `granted_by`), so a bare `user_roles(...)` is ambiguous and
+        //    PostgREST answers 300 Multiple Choices rather than picking one.
+        //    Because this runs in requireAuth, that 300 fails EVERY
+        //    authenticated request — the whole product, both apps.
+        .select("id, email, account_status, kyc_status, deleted_at, user_roles!user_roles_user_id_fkey(roles(name)), user_capabilities!user_capabilities_user_id_fkey(capability)")
         .eq("id", data.user.id)
         .maybeSingle();
 
@@ -59,6 +70,7 @@ export async function requireAuth(req: AuthedRequest, _res: Response, next: Next
         id: profile.id as string,
         email: (profile.email as string | null) ?? undefined,
         roles: extractRoles(profile),
+        capabilities: extractCapabilities(profile),
         accountStatus: profile.account_status,
         kycStatus: profile.kyc_status,
         isDeleted: false,
@@ -79,4 +91,17 @@ function extractRoles(profile: unknown): RoleName[] {
         return Array.isArray(row.roles) ? row.roles.map((r) => r.name) : [row.roles.name];
     });
     return [...new Set(names)];
+}
+
+/**
+ * Capabilities are read from the database on every request rather than from
+ * the JWT's app_capabilities claim. The claim exists for the clients' benefit
+ * (the admin console hides controls it cannot use), but a revoked capability
+ * has to take effect immediately, not whenever the rider's token happens to
+ * refresh — which for a KYC document viewer is the whole point.
+ */
+function extractCapabilities(profile: unknown): StaffCapability[] {
+    const rows = (profile as { user_capabilities?: { capability: StaffCapability }[] })
+        .user_capabilities ?? [];
+    return [...new Set(rows.map((row) => row.capability))];
 }

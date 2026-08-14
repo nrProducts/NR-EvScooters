@@ -96,4 +96,18 @@ router.put(
     asyncHandler(c.updateRolesHandler),
 );
 
+// --- capabilities (DPDPA least privilege over raw personal data) ---------
+router.get(
+    "/:id/capabilities",
+    validate({ params: v.uuidOrMeParam }),
+    asyncHandler(c.getCapabilitiesHandler),
+);
+
+router.put(
+    "/:id/capabilities",
+    requireAdmin,
+    validate({ params: v.uuidParam, body: v.updateCapabilitiesBody }),
+    asyncHandler(c.updateCapabilitiesHandler),
+);
+
 export default router;

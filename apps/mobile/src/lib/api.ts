@@ -7,8 +7,11 @@ import { signInWithGoogleBrowser } from './googleAuth';
 // Re-exported so existing `import { ApiError } from '../lib/api'` keeps working.
 export { ApiError };
 import type {
-    ApiAvailability, ApiBooking, ApiBookingWithPlan, ApiDamage, ApiDeposit, ApiDocument, ApiErrorBody,
+    ApiAvailability, ApiBooking, ApiBookingWithPlan, ApiConsentHistoryItem, ApiConsentNotice,
+    ApiConsentState, ApiDamage, ApiDeposit, ApiDocument, ApiErrorBody,
     ApiInvoice, ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
+    ApiExportResult, ApiNominee, ApiPrivacyRequest, ConsentPurpose, CorrectableField,
+    DpRequestType, GeocodeArea,
     ApiPaymentOrder, ApiReferralSummary, ApiRental, ApiSignedUrl, ApiStation, ApiSupportRequest,
     ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
@@ -37,6 +40,12 @@ interface RequestOptions {
     query?: Record<string, string | number | boolean | undefined>;
     /** Multipart parts. When present, `body` is ignored. */
     form?: FormData;
+    /**
+     * Caller's abort signal, chained to this request's own timeout. Used by
+     * type-ahead callers so a newer keystroke cancels the in-flight request
+     * rather than racing it.
+     */
+    signal?: AbortSignal;
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -57,7 +66,7 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
  * that belongs to the app's core surface.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const { method = 'GET', body, query, form } = options;
+    const { method = 'GET', body, query, form, signal } = options;
 
     const token = await getAccessToken();
     const headers: Record<string, string> = {};
@@ -68,6 +77,13 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    // Chain rather than replace: whichever fires first wins, and the timeout
+    // still applies to a caller who passes a signal they never abort.
+    const onExternalAbort = () => controller.abort();
+    if (signal) {
+        if (signal.aborted) controller.abort();
+        else signal.addEventListener('abort', onExternalAbort);
+    }
 
     let response: Response;
     try {
@@ -79,6 +95,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         });
     } catch (err) {
         clearTimeout(timeout);
+        signal?.removeEventListener('abort', onExternalAbort);
         const aborted = (err as Error)?.name === 'AbortError';
         console.warn('[api] network error', { method, path, aborted, message: (err as Error)?.message });
         throw new ApiError(
@@ -90,6 +107,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         );
     }
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', onExternalAbort);
 
     if (response.status === 401) {
         console.warn('[api] 401', { method, path, hadToken: !!token });
@@ -213,6 +231,72 @@ export const api = {
 
     markAllNotificationsRead: () =>
         request<void>('/users/me/notifications/read-all', { method: 'POST' }),
+
+    // --- geocoding (proxied; see features/battery-stations/api/geocodeService) ---
+    geocodeSearch: (
+        params: { q: string; lat?: number; lng?: number },
+        signal?: AbortSignal,
+    ) => request<{ data: GeocodeArea[] }>('/geocode/search', { query: params, signal }),
+
+    // --- DPDPA consent ----------------------------------------------------
+    consentNotice: (lang: 'en' | 'ta') =>
+        request<ApiConsentNotice>('/consent/notice', { query: { lang } }),
+
+    myConsents: () => request<ApiConsentState>('/users/me/consents'),
+
+    myConsentHistory: () =>
+        request<{ data: ApiConsentHistoryItem[] }>('/users/me/consents/history'),
+
+    /**
+     * The notice version is sent back so the server can reject a submission
+     * made against a notice that was retired while the screen was open — the
+     * rider must never be recorded as consenting to words they did not see.
+     */
+    setConsents: (input: {
+        notice_version: string;
+        language: 'en' | 'ta';
+        device_id?: string;
+        grants: { purpose: ConsentPurpose; granted: boolean }[];
+    }) => request<ApiConsentState>('/users/me/consents', { method: 'POST', body: input }),
+
+    withdrawConsent: (purpose: ConsentPurpose) =>
+        request<ApiConsentState>(`/users/me/consents/${purpose}`, { method: 'DELETE' }),
+
+    // --- DPDPA rights (ss.11-14) ------------------------------------------
+    createPrivacyRequest: (input: {
+        type: DpRequestType;
+        details?: string;
+        requested_changes?: { field: CorrectableField; value: string }[];
+    }) => request<ApiPrivacyRequest>('/users/me/privacy/requests', { method: 'POST', body: input }),
+
+    myPrivacyRequests: (params: { page?: number; pageSize?: number; type?: DpRequestType } = {}) =>
+        request<Paginated<ApiPrivacyRequest>>('/users/me/privacy/requests', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
+
+    privacyRequest: (id: string) =>
+        request<ApiPrivacyRequest>(`/users/me/privacy/requests/${id}`),
+
+    cancelPrivacyRequest: (id: string) =>
+        request<ApiPrivacyRequest>(`/users/me/privacy/requests/${id}/cancel`, { method: 'POST' }),
+
+    /** Generates the bundle and returns a short-lived download link. */
+    requestDataExport: () =>
+        request<ApiExportResult>('/users/me/privacy/export', { method: 'POST' }),
+
+    exportUrl: (requestId: string) =>
+        request<ApiSignedUrl>(`/users/me/privacy/export/${requestId}/url`),
+
+    myNominee: () => request<ApiNominee>('/users/me/privacy/nominee'),
+
+    updateNominee: (input: {
+        full_name: string;
+        relationship: string;
+        phone?: string;
+        email?: string;
+    }) => request<ApiNominee>('/users/me/privacy/nominee', { method: 'PATCH', body: input }),
+
+    deleteNominee: () => request<void>('/users/me/privacy/nominee', { method: 'DELETE' }),
 
     // --- rider KYC -------------------------------------------------------
     myKyc: () => request<ApiKycSummary>('/users/me/kyc'),

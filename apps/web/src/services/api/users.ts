@@ -1,12 +1,13 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
-import type { AccountStatus, AppUser, AppUserDetail, BackendRoleName, KycStatus, PaginatedResult } from "@/types";
+import type { AccountStatus, AppUser, AppUserDetail, BackendRoleName, Capability, KycStatus, PaginatedResult } from "@/types";
 
 export interface UserFilters {
   search?: string;
   kycStatus?: KycStatus | "all";
   accountStatus?: AccountStatus | "all";
-  /** Only "admin" and "rider" have any real accounts today — see types/index.ts. */
   role?: BackendRoleName | "all";
+  /** Any staff-side role at once. Ignored when `role` is set. */
+  staffOnly?: boolean;
   page?: number;
   pageSize?: number;
   sortBy?: "full_name" | "created_at" | "kyc_status";
@@ -15,7 +16,7 @@ export interface UserFilters {
 
 /** GET /users — requireStaff. See apps/backend/src/modules/users/users.routes.ts */
 export async function fetchUsers(filters: UserFilters = {}): Promise<PaginatedResult<AppUser>> {
-  const { search, kycStatus, accountStatus, role, page = 1, pageSize = 8, sortBy, sortDir } = filters;
+  const { search, kycStatus, accountStatus, role, staffOnly, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<AppUser>>("/users", {
     page,
     pageSize,
@@ -23,6 +24,7 @@ export async function fetchUsers(filters: UserFilters = {}): Promise<PaginatedRe
     kycStatus: kycStatus && kycStatus !== "all" ? kycStatus : undefined,
     accountStatus: accountStatus && accountStatus !== "all" ? accountStatus : undefined,
     role: role && role !== "all" ? role : undefined,
+    staffOnly: staffOnly ? "true" : undefined,
     sortBy,
     sortDir,
   });
@@ -56,4 +58,27 @@ export async function deleteUser(id: string) {
 /** POST /users/:id/restore — requireAdmin. */
 export async function restoreUser(id: string) {
   return apiClient.post(`/users/${id}/restore`);
+}
+
+/**
+ * GET /users/:id/capabilities
+ *
+ * Capabilities gate access to raw rider personal data (Aadhaar/DL images, the
+ * rights queue, data exports). Separate from roles on purpose — see
+ * types/index.ts and supabase/migrations/20260814100100_*.sql.
+ */
+export async function fetchUserCapabilities(id: string): Promise<{ capabilities: Capability[] }> {
+  return apiClient.get<{ capabilities: Capability[] }>(`/users/${id}/capabilities`);
+}
+
+/**
+ * PUT /users/:id/capabilities — requireAdmin. Replaces the set wholesale, so
+ * an empty array revokes everything. The backend refuses self-modification:
+ * an admin who can grant themselves kyc_reviewer has not been restricted.
+ */
+export async function replaceUserCapabilities(
+  id: string,
+  capabilities: Capability[],
+): Promise<{ capabilities: Capability[] }> {
+  return apiClient.put<{ capabilities: Capability[] }>(`/users/${id}/capabilities`, { capabilities });
 }

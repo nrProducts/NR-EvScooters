@@ -13,9 +13,11 @@ import { useUiStore } from "@/store/uiStore";
 import { useUsers } from "@/hooks/useUsers";
 import { initials } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { CapabilitiesSection } from "./CapabilitiesSection";
 
 const SECTIONS = [
   { value: "roles", label: "Roles & Staff" },
+  { value: "capabilities", label: "Capabilities" },
   { value: "company", label: "Company" },
   { value: "security", label: "Security" },
   { value: "api-keys", label: "API Keys" },
@@ -25,8 +27,6 @@ const SECTIONS = [
 export default function SettingsPage() {
   const [tab, setTab] = useState<(typeof SECTIONS)[number]["value"]>("roles");
   const { theme, toggleTheme } = useUiStore();
-  // "staff"/"technician"/"station_manager" aren't migrated in the DB enum yet
-  // (see types/index.ts), so role: "admin" is the only real filter to use here.
   const { data: admins, isLoading } = useUsers({ page: 1, pageSize: 50, role: "admin" });
   const adminAccounts = admins?.data ?? [];
 
@@ -77,6 +77,10 @@ export default function SettingsPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="capabilities">
+          <CapabilitiesSection />
         </TabsContent>
 
         <TabsContent value="company">

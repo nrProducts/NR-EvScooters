@@ -3,11 +3,13 @@ import { supabaseAdmin } from "../../config/supabase";
 import { businessRule, conflict, forbidden, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
-import { maskDocumentNumber } from "../../common/mask";
+import { maskLast4 } from "../../common/mask";
 import {
     AuthContext, KycDocType, KycStatus, MANDATORY_KYC_DOC_TYPES, Paginated, VerificationStatus,
 } from "../../types";
 import { kycCompletionPercent } from "../users/users.service";
+import { hasGrantedConsent } from "../consent/consent.service";
+import { assertValidDocNumber, last4 } from "./kyc.docnumber";
 import { notifyAdmins, notifyUser } from "../notifications/notifications.service";
 import {
     assertValidFile, buildStoragePath, createSignedUrl, pathBelongsToUser,
@@ -15,7 +17,7 @@ import {
 } from "./kyc.storage";
 
 const DOC_COLUMNS = `
-    id, user_id, doc_type, doc_number, storage_path, back_storage_path,
+    id, user_id, doc_type, doc_number_last4, storage_path, back_storage_path,
     verification_status, rejection_reason, verified_by, verified_at,
     expiry_date, submitted_at, created_at, updated_at
 `;
@@ -24,7 +26,8 @@ export interface DocumentRow {
     id: string;
     user_id: string;
     doc_type: KycDocType;
-    doc_number: string;
+    /** Only the last four characters are stored — see kyc.docnumber.ts. */
+    doc_number_last4: string | null;
     storage_path: string | null;
     back_storage_path: string | null;
     verification_status: VerificationStatus;
@@ -37,11 +40,17 @@ export interface DocumentRow {
     updated_at: string;
 }
 
-/** Public shape: no storage paths, document number masked unless revealed. */
+/**
+ * Public shape: no storage paths, and no full document number anywhere — the
+ * full value is validated at upload and then discarded, so there is nothing
+ * left to reveal. `doc_number_masked` reuses the field name the admin console
+ * and the mobile app already had on the user-detail shape, which unifies the
+ * two rather than adding a third.
+ */
 export interface DocumentView {
     id: string;
     doc_type: KycDocType;
-    doc_number: string | null;
+    doc_number_masked: string | null;
     verification_status: VerificationStatus;
     rejection_reason: string | null;
     expiry_date: string | null;
@@ -52,11 +61,16 @@ export interface DocumentView {
     created_at: string;
 }
 
-export function toDocumentView(row: DocumentRow, reveal: boolean): DocumentView {
+/**
+ * The `reveal` parameter this used to take is gone. Nothing can be revealed:
+ * the full number is never persisted. Riders and staff see the same masked
+ * tail, which for the rider is fine — they typed it.
+ */
+export function toDocumentView(row: DocumentRow): DocumentView {
     return {
         id: row.id,
         doc_type: row.doc_type,
-        doc_number: reveal ? row.doc_number : maskDocumentNumber(row.doc_number),
+        doc_number_masked: maskLast4(row.doc_number_last4),
         verification_status: row.verification_status,
         rejection_reason: row.rejection_reason,
         expiry_date: row.expiry_date,
@@ -70,16 +84,6 @@ export function toDocumentView(row: DocumentRow, reveal: boolean): DocumentView 
 
 const today = () => new Date().toISOString().slice(0, 10);
 const isExpired = (date: string | null): boolean => !!date && date < today();
-
-/** Aadhaar is always exactly 12 digits; spaces/hyphens are how it's usually printed. */
-export function assertValidAadhaar(docNumber: string): void {
-    const digits = docNumber.replace(/[\s-]/g, "");
-    if (!/^\d{12}$/.test(digits)) {
-        throw businessRule("Enter a valid 12-digit Aadhaar number.", {
-            doc_number: "Must be exactly 12 digits.",
-        });
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Status derivation — mirrors public.compute_kyc_status()
@@ -109,7 +113,13 @@ export function deriveKycStatus(docs: Array<Pick<DocumentRow, "doc_type" | "veri
 // Rider: read own KYC
 // ---------------------------------------------------------------------------
 
-export async function getKycForUser(userId: string, reveal: boolean) {
+/**
+ * The `reveal` parameter this used to take is gone along with the one on
+ * toDocumentView: there is no full document number to reveal, so a caller
+ * passing `true` was asking for something that cannot happen and reading like
+ * it could.
+ */
+export async function getKycForUser(userId: string) {
     const docs = await documentsFor(userId);
     const missing = MANDATORY_KYC_DOC_TYPES.filter(
         (type) => !docs.some((d) => d.doc_type === type && d.verification_status !== "rejected"),
@@ -121,7 +131,7 @@ export async function getKycForUser(userId: string, reveal: boolean) {
         completion_percent: kycCompletionPercent(docs),
         missing_document_types: missing,
         can_submit: missing.length === 0,
-        documents: docs.map((d) => toDocumentView(d, reveal)),
+        documents: docs.map((d) => toDocumentView(d)),
     };
 }
 
@@ -143,6 +153,11 @@ export async function uploadDocument(
     actor: AuthContext,
     req?: Request,
 ): Promise<DocumentView> {
+    // DPDPA s.6: no lawful basis, no collection. This is the server-side half
+    // of the consent screen — without it the mobile gate is decoration that a
+    // direct API call walks straight past.
+    await assertIdentityConsent(userId);
+
     if (input.doc_type === "driving_license") {
         if (!input.expiry_date) {
             throw businessRule("A driving licence must include its expiry date.", {
@@ -155,9 +170,9 @@ export async function uploadDocument(
             });
         }
     }
-    if (input.doc_type === "aadhaar") {
-        assertValidAadhaar(input.doc_number);
-    }
+    // Validated in memory, then discarded. From here on the full number is
+    // out of scope and only last4() survives into the insert below.
+    assertValidDocNumber(input.doc_type, input.doc_number);
 
     // uq_user_documents_active_type covers pending+verified. Check first so the
     // rider gets a clear 409 rather than a raw constraint error, and so an
@@ -185,7 +200,7 @@ export async function uploadDocument(
         .insert({
             user_id: userId,
             doc_type: input.doc_type,
-            doc_number: input.doc_number.trim().toUpperCase(),
+            doc_number_last4: last4(input.doc_number),
             storage_path: frontPath,
             back_storage_path: backPath,
             expiry_date: input.expiry_date ?? null,
@@ -209,11 +224,13 @@ export async function uploadDocument(
         action: "kyc.document_uploaded",
         entityType: "user_document",
         entityId: row.id,
-        after: { doc_type: row.doc_type, doc_number: row.doc_number, expiry_date: row.expiry_date },
+        // doc_number is deliberately absent: audit_logs is retained for
+        // years and there is no version of this number worth putting there.
+        after: { doc_type: row.doc_type, expiry_date: row.expiry_date },
         req,
     });
 
-    return toDocumentView(row, false);
+    return toDocumentView(row);
 }
 
 export async function updateOwnDocument(
@@ -236,8 +253,10 @@ export async function updateOwnDocument(
     const staleObjects: Array<string | null> = [];
 
     if (patch.doc_number) {
-        if (row.doc_type === "aadhaar") assertValidAadhaar(patch.doc_number);
-        next.doc_number = patch.doc_number.trim().toUpperCase();
+        // Same rule as the upload path: checked in memory, only the tail
+        // persisted. See kyc.docnumber.ts.
+        assertValidDocNumber(row.doc_type, patch.doc_number);
+        next.doc_number_last4 = last4(patch.doc_number);
     }
     if (patch.expiry_date) {
         if (row.doc_type === "driving_license" && isExpired(patch.expiry_date)) {
@@ -293,12 +312,12 @@ export async function updateOwnDocument(
         action: "kyc.document_updated",
         entityType: "user_document",
         entityId: documentId,
-        before: { verification_status: row.verification_status, doc_number: row.doc_number },
+        before: { verification_status: row.verification_status },
         after: { verification_status: next.verification_status ?? row.verification_status },
         req,
     });
 
-    return toDocumentView(data as unknown as DocumentRow, false);
+    return toDocumentView(data as unknown as DocumentRow);
 }
 
 export async function deleteOwnDocument(
@@ -387,7 +406,7 @@ export async function submitKyc(userId: string, actor: AuthContext, req?: Reques
 
     // kyc_status is maintained by trg_sync_user_kyc_status, so re-read rather
     // than assuming what it became.
-    return getKycForUser(userId, false);
+    return getKycForUser(userId);
 }
 
 // ---------------------------------------------------------------------------
@@ -490,7 +509,7 @@ export async function getKycDetail(userId: string) {
         rider: data,
         kyc_status: deriveKycStatus(docs),
         completion_percent: kycCompletionPercent(docs),
-        documents: docs.map((d) => toDocumentView(d, true)),
+        documents: docs.map((d) => toDocumentView(d)),
         history,
     };
 }
@@ -504,7 +523,10 @@ export async function getDocumentSignedUrl(
     side: "front" | "back",
     actor: AuthContext,
     isStaffCaller: boolean,
-): Promise<{ url: string; expires_in: number }> {
+    // user_id and doc_type are returned alongside the URL so the controller can
+    // record WHOSE document and WHICH document was opened, without a second
+    // lookup. The controller strips them before responding.
+): Promise<{ url: string; expires_in: number; user_id: string; doc_type: KycDocType }> {
     const row = await requireDocument(documentId);
     if (!isStaffCaller && row.user_id !== actor.id) throw notFound("Document not found.");
 
@@ -517,7 +539,7 @@ export async function getDocumentSignedUrl(
     }
 
     const url = await createSignedUrl(path);
-    return { url, expires_in: 300 };
+    return { url, expires_in: 300, user_id: row.user_id, doc_type: row.doc_type };
 }
 
 // ---------------------------------------------------------------------------
@@ -557,7 +579,7 @@ export async function verifyDocument(
         req,
     });
 
-    return toDocumentView(updated, true);
+    return toDocumentView(updated);
 }
 
 export async function rejectDocument(
@@ -588,7 +610,7 @@ export async function rejectDocument(
         req,
     });
 
-    return toDocumentView(updated, true);
+    return toDocumentView(updated);
 }
 
 // ---------------------------------------------------------------------------
@@ -630,7 +652,7 @@ export async function approveKyc(userId: string, actor: AuthContext, req?: Reque
 
     // No direct write to users.kyc_status: the trigger derives it. This
     // endpoint is the human checkpoint plus the audit record.
-    return getKycForUser(userId, true);
+    return getKycForUser(userId);
 }
 
 export async function rejectKyc(userId: string, reason: string, actor: AuthContext, req?: Request) {
@@ -669,7 +691,7 @@ export async function rejectKyc(userId: string, reason: string, actor: AuthConte
         screen: "kyc",
     });
 
-    return getKycForUser(userId, true);
+    return getKycForUser(userId);
 }
 
 // ---------------------------------------------------------------------------
@@ -722,6 +744,24 @@ async function requireDocument(documentId: string): Promise<DocumentRow> {
     if (error) throw error;
     if (!data) throw notFound("Document not found.");
     return data as unknown as DocumentRow;
+}
+
+/**
+ * Refuses to store an identity document from a rider who has not granted
+ * consent for identity verification, or who has since withdrawn it.
+ *
+ * Checked on every upload rather than once at onboarding: consent is a live
+ * state, not a milestone, and a rider who withdrew last week must not be able
+ * to add a document this week.
+ */
+async function assertIdentityConsent(userId: string): Promise<void> {
+    const granted = await hasGrantedConsent(userId, "kyc_identity_verification");
+    if (!granted) {
+        throw forbidden(
+            "We need your consent to verify your identity before we can accept an ID " +
+            "document. Open Privacy in the app to review and give consent.",
+        );
+    }
 }
 
 async function activeDocumentOfType(userId: string, docType: KycDocType): Promise<DocumentRow | null> {

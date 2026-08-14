@@ -230,11 +230,16 @@ function toApiUser(row: MockUserRow): ApiUser {
     return { ...rest, kyc_status: computeKycStatus(row.id) };
 }
 
-function toApiDocument(row: MockDocumentRow, reveal: boolean): ApiDocument {
+/**
+ * `reveal` is gone from the real API: the full identity number is validated at
+ * upload and never stored, so there is nothing to reveal. The mock keeps only
+ * the masked tail to match.
+ */
+function toApiDocument(row: MockDocumentRow): ApiDocument {
     return {
         id: row.id,
         doc_type: row.doc_type,
-        doc_number: reveal ? row.doc_number : maskDocNumber(row.doc_number),
+        doc_number_masked: maskDocNumber(row.doc_number),
         verification_status: row.verification_status,
         rejection_reason: row.rejection_reason,
         expiry_date: row.expiry_date,
@@ -393,6 +398,12 @@ export class MockUserRepository implements UserRepository {
             has_active_booking: db.bookings.some(
                 (b) => b.user_id === row.id && ACTIVE_BOOKING_STATUSES.includes(b.status),
             ),
+            // The mock db has no consent_records table. Reporting "up to
+            // date" keeps the mock's routing identical to today's, which is
+            // what these fixtures are for — the real consent gate is covered
+            // by the backend's consent.test.ts, not here.
+            consent_up_to_date: true,
+            consent_notice_version: '2026-08-14.1',
         };
     }
 
@@ -516,7 +527,7 @@ function findDocument(documentId: string): MockDocumentRow {
     return doc;
 }
 
-function kycSummaryFor(userId: string, reveal: boolean): ApiKycSummary {
+function kycSummaryFor(userId: string): ApiKycSummary {
     const docs = db.documents.filter((d) => d.user_id === userId);
     const missing = MANDATORY_KYC_DOC_TYPES.filter(
         (type) => !docs.some((d) => d.doc_type === type && d.verification_status !== 'rejected'),
@@ -527,14 +538,14 @@ function kycSummaryFor(userId: string, reveal: boolean): ApiKycSummary {
         completion_percent: completionPercent(userId),
         missing_document_types: missing,
         can_submit: missing.length === 0,
-        documents: docs.map((d) => toApiDocument(d, reveal)),
+        documents: docs.map((d) => toApiDocument(d)),
     };
 }
 
 export class MockKycRepository implements KycRepository {
     async mine(): Promise<ApiKycSummary> {
         await delay(200);
-        return kycSummaryFor(requireSession().id, true);
+        return kycSummaryFor(requireSession().id);
     }
 
     async uploadMine(input: UploadDocumentInput): Promise<ApiDocument> {
@@ -590,7 +601,7 @@ export class MockKycRepository implements KycRepository {
 
         db.documents.push(row);
         audit('kyc.document_uploaded', actor.id, { doc_type: row.doc_type });
-        return toApiDocument(row, false);
+        return toApiDocument(row);
     }
 
     async updateMine(documentId: string, input: UpdateDocumentInput): Promise<ApiDocument> {
@@ -628,7 +639,7 @@ export class MockKycRepository implements KycRepository {
         doc.updated_at = nowIso();
 
         audit('kyc.document_updated', actor.id, { doc_type: doc.doc_type });
-        return toApiDocument(doc, false);
+        return toApiDocument(doc);
     }
 
     async deleteMine(documentId: string): Promise<void> {
@@ -677,7 +688,7 @@ export class MockKycRepository implements KycRepository {
             if (d.verification_status === 'pending' && !d.submitted_at) d.submitted_at = stamp;
         }
         audit('kyc.submitted', actor.id, { document_count: docs.length });
-        return kycSummaryFor(actor.id, true);
+        return kycSummaryFor(actor.id);
     }
 
     /**

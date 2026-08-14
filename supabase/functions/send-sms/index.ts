@@ -126,12 +126,22 @@ Deno.serve(async (req) => {
         await logAttempt(phone, ok);
 
         if (!ok) {
-            console.error("[send-sms] MSG91 rejected the send", { status: res.status, body });
+            // DPDPA: never log the raw MSG91 body. It echoes the recipient
+            // mobile number back on failure, which would put a rider's phone
+            // into the Edge Function log drain — a store we neither control
+            // the retention of nor can purge on an erasure request. Only the
+            // provider's own status/type fields are safe to keep.
+            console.error("[send-sms] MSG91 rejected the send", {
+                status: res.status,
+                msg91_type: (body as { type?: string } | null)?.type ?? null,
+            });
             return json({ error: { message: "Could not deliver the verification code." } }, 502);
         }
         return json({}, 200);
     } catch (err) {
-        console.error("[send-sms] MSG91 request threw", err);
+        // Message only — a thrown Error can carry the request in `cause`, and
+        // the request body contains the mobile number and the OTP.
+        console.error("[send-sms] MSG91 request threw", (err as Error)?.message ?? "unknown");
         await logAttempt(phone, false);
         return json({ error: { message: "SMS delivery failed. Please try again." } }, 502);
     }
