@@ -45,6 +45,12 @@ export function timeAgo(value: string | Date) {
   return `${days}d ago`;
 }
 
+export function greetingForHour(hour: number) {
+  if (hour < 12) return "Good Morning";
+  if (hour < 17) return "Good Afternoon";
+  return "Good Evening";
+}
+
 export function initials(name: string) {
   return name
     .split(" ")

@@ -3,7 +3,8 @@ import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import { isStaff, isAdmin, resolveTargetUserId } from "../../middleware/authorize.middleware";
 import { badRequest, forbidden } from "../../common/AppError";
-import { AccountStatus, ModuleKey, RoleName, StaffCapability } from "../../types";
+import { AccountStatus, RoleName, StaffCapability } from "../../types";
+import { PermissionProfileName } from "../../config/permissionProfiles";
 import { ListUsersFilters } from "./users.types";
 import * as service from "./users.service";
 import * as permissionsService from "./staff-permissions.service";
@@ -136,9 +137,16 @@ export async function getPermissionsHandler(req: AuthedRequest, res: Response) {
 }
 
 export async function updatePermissionsHandler(req: AuthedRequest, res: Response) {
-    const { modules } = req.body as { modules: ModuleKey[] };
+    const { modules } = req.body as { modules: permissionsService.ModulePermission[] };
     res.json({
         modules: await permissionsService.replaceModulePermissions(req.params.id as string, modules, req.user!, req),
+    });
+}
+
+export async function applyPermissionProfileHandler(req: AuthedRequest, res: Response) {
+    const { profile } = req.body as { profile: Exclude<PermissionProfileName, "custom"> };
+    res.json({
+        modules: await permissionsService.applyPermissionProfile(req.params.id as string, profile, req.user!, req),
     });
 }
 

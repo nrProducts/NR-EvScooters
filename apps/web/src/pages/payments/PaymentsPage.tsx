@@ -19,6 +19,8 @@ import { useInvoices, useInvoice, useRefundInvoice } from "@/hooks/usePayments";
 import { useTableSort } from "@/hooks/useTableSort";
 import { ApiError } from "@/services/api/httpClient";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { hasAction } from "@/lib/permissions";
+import { useAuthStore } from "@/store/authStore";
 import type { Invoice, InvoiceStatus, PaymentStatus, PaymentType } from "@/types";
 
 const STATUS_OPTIONS: (InvoiceStatus | "all")[] = ["all", "draft", "issued", "paid", "overdue", "void"];
@@ -30,6 +32,8 @@ const PAYMENT_TYPE_OPTIONS: (PaymentType | "all")[] = [
 ];
 
 export default function PaymentsPage() {
+  const user = useAuthStore((s) => s.user);
+  const canRefund = hasAction(user, "payments", "refund");
   const [searchParams] = useSearchParams();
   const bookingId = searchParams.get("bookingId") ?? undefined;
   const [status, setStatus] = useState<InvoiceStatus | "all">("all");
@@ -76,11 +80,11 @@ export default function PaymentsPage() {
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={() => setDetailId(inv.id)}>
               <Eye className="mr-2 h-4 w-4" /> View details
             </DropdownMenuItem>
-            {inv.payment_status === "succeeded" && (
+            {inv.payment_status === "succeeded" && canRefund && (
               <DropdownMenuItem onClick={() => setRefundTarget(inv)}>
                 <Undo2 className="mr-2 h-4 w-4" /> Refund
               </DropdownMenuItem>
@@ -213,6 +217,7 @@ export default function PaymentsPage() {
           setDetailId(null);
           setRefundTarget(inv);
         }}
+        canRefund={canRefund}
       />
 
       <RefundDialog invoice={refundTarget} onOpenChange={(o) => !o && setRefundTarget(null)} />
@@ -224,10 +229,12 @@ function InvoiceDetailDialog({
   id,
   onOpenChange,
   onRefund,
+  canRefund,
 }: {
   id: string | null;
   onOpenChange: (open: boolean) => void;
   onRefund: (invoice: Invoice) => void;
+  canRefund: boolean;
 }) {
   const { data: invoice, isLoading } = useInvoice(id ?? undefined);
 
@@ -256,7 +263,7 @@ function InvoiceDetailDialog({
         )}
 
         <DialogFooter>
-          {invoice?.payment_status === "succeeded" && (
+          {invoice?.payment_status === "succeeded" && canRefund && (
             <Button variant="outline" onClick={() => onRefund(invoice)}>
               <Undo2 className="h-4 w-4" /> Refund
             </Button>

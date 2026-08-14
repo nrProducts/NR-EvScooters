@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
     ACCOUNT_STATUSES, KYC_STATUSES, MODULE_KEYS, ROLE_NAMES, STAFF_CAPABILITIES,
 } from "../../types";
+import { PERMISSION_PROFILE_NAMES } from "../../config/permissionProfiles";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
 
 export const uuidParam = z.object({ id: z.string().uuid("A valid user id is required.") });
@@ -85,6 +86,12 @@ export const createUserBody = z.object({
     emergency_contact_phone: phoneSchema.optional(),
     role: z.enum(ROLE_NAMES as [string, ...string[]]).default("rider"),
     account_status: z.enum(ACCOUNT_STATUSES as [string, ...string[]]).default("active"),
+    // Staff/admin only — an optional operator-entered identifier, not auto-generated.
+    staff_code: z.string().trim().min(1).max(40).optional(),
+    // Applied right after the role is set, on top of createUser()'s existing
+    // admin-only gate on non-rider roles. Omitted for a rider, or for a staff
+    // account the admin means to build from a blank slate ("Custom").
+    permission_profile: z.enum(PERMISSION_PROFILE_NAMES as unknown as [string, ...string[]]).optional(),
 });
 
 /** Fields an admin/staff member may change on someone else. */
@@ -141,11 +148,27 @@ export const updateRolesBody = z.object({
         .max(ROLE_NAMES.length),
 });
 
-/** Empty array is valid here (unlike roles) — "revoke every module" is a legitimate call. */
+/**
+ * Empty array is valid here (unlike roles) — "revoke every module" is a
+ * legitimate call. Each module's `actions` is validated against
+ * MODULE_ACTIONS in the service layer (isValidModuleAction) rather than
+ * here, since the valid set is per-module, not global — zod would need a
+ * discriminated union per module key to express that, which buys nothing
+ * over a single service-layer check shared with applyPermissionProfile.
+ */
 export const updatePermissionsBody = z.object({
     modules: z
-        .array(z.enum(MODULE_KEYS as [string, ...string[]]))
+        .array(
+            z.object({
+                module_key: z.enum(MODULE_KEYS as [string, ...string[]]),
+                actions: z.array(z.string().trim().min(1).max(40)).max(20),
+            }),
+        )
         .max(MODULE_KEYS.length),
+});
+
+export const applyPermissionProfileBody = z.object({
+    profile: z.enum(PERMISSION_PROFILE_NAMES as unknown as [string, ...string[]]),
 });
 
 /**

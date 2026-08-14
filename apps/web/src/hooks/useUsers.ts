@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/users";
-import type { BackendRoleName, Capability, ModuleKey } from "@/types";
+import type { BackendRoleName, Capability, ModulePermission } from "@/types";
+import type { PermissionProfileName } from "@/config/permissionProfiles";
 
 export function useUsers(filters: api.UserFilters) {
   return useQuery({ queryKey: ["users", filters], queryFn: () => api.fetchUsers(filters) });
@@ -85,6 +86,26 @@ export function useUserPermissions(id: string | undefined) {
   });
 }
 
+export function useApplyPermissionProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, profile }: { id: string; profile: Exclude<PermissionProfileName, "custom"> }) =>
+      api.applyUserPermissionProfile(id, profile),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ["user-permissions", id] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+}
+
+export function useCreateStaffUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: api.CreateStaffInput) => api.createStaffUser(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
+
 export function useReplaceCapabilities() {
   const qc = useQueryClient();
   return useMutation({
@@ -100,7 +121,8 @@ export function useReplaceCapabilities() {
 export function useUpdateUserPermissions() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, modules }: { id: string; modules: ModuleKey[] }) => api.replaceUserPermissions(id, modules),
+    mutationFn: ({ id, modules }: { id: string; modules: ModulePermission[] }) =>
+      api.replaceUserPermissions(id, modules),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ["user-permissions", id] });
       qc.invalidateQueries({ queryKey: ["users"] });

@@ -22,6 +22,7 @@ import PlansPage from "@/pages/plans/PlansPage";
 import ReconciliationPage from "@/pages/reconciliation/ReconciliationPage";
 import NotificationsPage from "@/pages/notifications/NotificationsPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
+import PermissionMatrixPage from "@/pages/settings/PermissionMatrixPage";
 import PiiAccessPage from "@/pages/privacy/PiiAccessPage";
 import RightsQueuePage from "@/pages/privacy/RightsQueuePage";
 import AuditLogPage from "@/pages/audit/AuditLogPage";
@@ -64,6 +65,7 @@ export function AppRoutes() {
         <Route path="/reconciliation" element={<ReconciliationPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings/staff-access/:userId/permissions" element={<PermissionMatrixPage />} />
         <Route path="/privacy/requests" element={<RightsQueuePage />} />
         <Route path="/privacy/access-log" element={<PiiAccessPage />} />
         <Route path="/audit" element={<AuditLogPage />} />

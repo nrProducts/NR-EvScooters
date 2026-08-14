@@ -13,6 +13,8 @@ import {
 } from "@/hooks/useMaintenance";
 import { ApiError } from "@/services/api/httpClient";
 import { cn } from "@/lib/utils";
+import { hasAction } from "@/lib/permissions";
+import { useAuthStore } from "@/store/authStore";
 import type { MaintenanceTicket } from "@/types";
 
 type Choice = "quick_fix" | "standard_temp" | "not_repairable";
@@ -30,6 +32,9 @@ export function TriageDialog({
   ticket: MaintenanceTicket | null;
   onOpenChange: (open: boolean) => void;
 }) {
+  const user = useAuthStore((s) => s.user);
+  const canComplete = hasAction(user, "maintenance", "complete");
+  const canEdit = hasAction(user, "maintenance", "edit");
   const [choice, setChoice] = useState<Choice | null>(null);
   const [readyAt, setReadyAt] = useState("");
   const [scrapReason, setScrapReason] = useState("");
@@ -101,38 +106,48 @@ export function TriageDialog({
           </DialogHeader>
 
           <div className="grid grid-cols-3 gap-2">
+            {canComplete && (
+              <button
+                type="button"
+                onClick={() => handleChoose("quick_fix")}
+                className={cn(
+                  "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-xs transition-smooth",
+                  choice === "quick_fix" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
+                )}
+              >
+                <Clock className="h-5 w-5" />
+                Quick fix
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => handleChoose("quick_fix")}
-              className={cn(
-                "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-xs transition-smooth",
-                choice === "quick_fix" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
-              )}
-            >
-              <Clock className="h-5 w-5" />
-              Quick fix
-            </button>
-            <button
-              type="button"
-              disabled={!ticket?.displaced_rider}
-              title={!ticket?.displaced_rider ? "No rider was displaced by this ticket." : undefined}
+              disabled={!ticket?.displaced_rider || !canEdit}
+              title={
+                !ticket?.displaced_rider
+                  ? "No rider was displaced by this ticket."
+                  : !canEdit
+                    ? "You don't have permission to assign a temporary vehicle."
+                    : undefined
+              }
               onClick={() => handleChoose("standard_temp")}
               className="flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-xs transition-smooth hover:bg-card-hover disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
             >
               <Wrench className="h-5 w-5" />
               Temp vehicle
             </button>
-            <button
-              type="button"
-              onClick={() => handleChoose("not_repairable")}
-              className={cn(
-                "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-xs transition-smooth",
-                choice === "not_repairable" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
-              )}
-            >
-              <Ban className="h-5 w-5" />
-              Not repairable
-            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => handleChoose("not_repairable")}
+                className={cn(
+                  "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-xs transition-smooth",
+                  choice === "not_repairable" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
+                )}
+              >
+                <Ban className="h-5 w-5" />
+                Not repairable
+              </button>
+            )}
           </div>
 
           {choice === "quick_fix" && (

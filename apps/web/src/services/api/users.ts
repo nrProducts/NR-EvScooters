@@ -1,8 +1,9 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
 import type {
-  AccountStatus, AppUser, AppUserDetail, BackendRoleName, Capability, KycStatus, ModuleKey,
+  AccountStatus, AppUser, AppUserDetail, BackendRoleName, Capability, KycStatus, ModulePermission,
   PaginatedResult,
 } from "@/types";
+import type { PermissionProfileName } from "@/config/permissionProfiles";
 
 export interface UserFilters {
   search?: string;
@@ -102,9 +103,9 @@ export async function replaceUserRoles(id: string, roles: BackendRoleName[]): Pr
   return res.roles;
 }
 
-/** GET /users/:id/permissions — requireAdmin. */
-export async function fetchUserPermissions(id: string): Promise<ModuleKey[]> {
-  const res = await apiClient.get<{ modules: ModuleKey[] }>(`/users/${id}/permissions`);
+/** GET /users/:id/permissions — requireAdmin. Module+action grants, not just module presence. */
+export async function fetchUserPermissions(id: string): Promise<ModulePermission[]> {
+  const res = await apiClient.get<{ modules: ModulePermission[] }>(`/users/${id}/permissions`);
   return res.modules;
 }
 
@@ -113,7 +114,44 @@ export async function fetchUserPermissions(id: string): Promise<ModuleKey[]> {
  * for an account currently holding the "staff" role (backend rejects
  * otherwise).
  */
-export async function replaceUserPermissions(id: string, modules: ModuleKey[]): Promise<ModuleKey[]> {
-  const res = await apiClient.put<{ modules: ModuleKey[] }>(`/users/${id}/permissions`, { modules });
+export async function replaceUserPermissions(id: string, modules: ModulePermission[]): Promise<ModulePermission[]> {
+  const res = await apiClient.put<{ modules: ModulePermission[] }>(`/users/${id}/permissions`, { modules });
   return res.modules;
+}
+
+/**
+ * POST /users/:id/permissions/apply-profile — requireAdmin. Resolves a named
+ * preset (Viewer, Operations Staff, ...) server-side and applies it wholesale
+ * — the source of truth for what a profile grants lives in
+ * apps/backend/src/config/permissionProfiles.ts, not in this client.
+ */
+export async function applyUserPermissionProfile(
+  id: string,
+  profile: Exclude<PermissionProfileName, "custom">,
+): Promise<ModulePermission[]> {
+  const res = await apiClient.post<{ modules: ModulePermission[] }>(
+    `/users/${id}/permissions/apply-profile`,
+    { profile },
+  );
+  return res.modules;
+}
+
+export interface CreateStaffInput {
+  full_name: string;
+  email: string;
+  phone: string;
+  staff_code?: string;
+  role: Extract<BackendRoleName, "staff" | "admin">;
+  account_status: AccountStatus;
+  permission_profile?: Exclude<PermissionProfileName, "custom">;
+}
+
+/**
+ * POST /users — requireAdmin. Invites the account via Supabase Auth
+ * (inviteUserByEmail — the staff member sets their own password from the
+ * invite email) and, if a permission profile was chosen, applies it in the
+ * same server-side call. See users.service.ts createUser().
+ */
+export async function createStaffUser(input: CreateStaffInput): Promise<AppUser> {
+  return apiClient.post<AppUser>("/users", input);
 }

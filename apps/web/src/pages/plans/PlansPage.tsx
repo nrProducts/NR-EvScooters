@@ -15,6 +15,8 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { ApiError } from "@/services/api/httpClient";
 import type { PlanInput } from "@/services/api/plans";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { hasAction } from "@/lib/permissions";
+import { useAuthStore } from "@/store/authStore";
 import type { BillingCycle, Plan } from "@/types";
 
 const BILLING_CYCLES: BillingCycle[] = ["daily", "weekly", "monthly", "yearly"];
@@ -43,6 +45,9 @@ function toForm(plan: Plan): PlanInput {
 }
 
 export default function PlansPage() {
+  const user = useAuthStore((s) => s.user);
+  const canCreate = hasAction(user, "plans", "create");
+  const canEdit = hasAction(user, "plans", "edit");
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = usePlans({
     page: 1, pageSize: 100, sortBy: sort.by as "created_at" | "name" | "price", sortDir: sort.dir,
@@ -61,11 +66,14 @@ export default function PlansPage() {
     {
       header: "Actions",
       key: "actions",
-      render: (p) => (
-        <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setEditing(p); }}>
-          <Pencil className="h-4 w-4" />
-        </Button>
-      ),
+      render: (p) =>
+        canEdit ? (
+          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setEditing(p); }}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
     },
   ];
 
@@ -78,9 +86,11 @@ export default function PlansPage() {
             {data?.total ?? 0} plans · price, duration and deposit are configured here, never hardcoded
           </p>
         </div>
-        <Button onClick={() => setCreating(true)}>
-          <Plus className="mr-1.5 h-4 w-4" /> New plan
-        </Button>
+        {canCreate && (
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="mr-1.5 h-4 w-4" /> New plan
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -90,7 +100,7 @@ export default function PlansPage() {
           isLoading={isLoading}
           isError={isError}
           onRetry={() => refetch()}
-          onRowClick={(p) => setEditing(p)}
+          onRowClick={canEdit ? (p) => setEditing(p) : undefined}
           emptyTitle="No plans yet"
           sort={sort}
           onSortChange={onSortChange}

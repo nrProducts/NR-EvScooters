@@ -18,6 +18,8 @@ import {
   BATTERY_STATION_STATUSES, STATION_STATUS_LABEL,
   type BatteryStation, type StationSortBy, type StationStatus, type StationVisibilityFilter,
 } from "@/types/batteryStation";
+import { hasAction } from "@/lib/permissions";
+import { useAuthStore } from "@/store/authStore";
 
 const PAGE_SIZE = 10;
 
@@ -31,6 +33,10 @@ const SORT_OPTIONS: { value: `${StationSortBy}:${"asc" | "desc"}`; label: string
 ];
 
 export default function BatteryStationsPage() {
+  const user = useAuthStore((s) => s.user);
+  const canCreate = hasAction(user, "battery_stations", "create");
+  const canEdit = hasAction(user, "battery_stations", "edit");
+  const canDelete = hasAction(user, "battery_stations", "delete");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StationStatus | "all">("all");
   const [visibility, setVisibility] = useState<StationVisibilityFilter>("all");
@@ -87,9 +93,11 @@ export default function BatteryStationsPage() {
           <Button variant="outline" onClick={refreshAll} disabled={isFetching}>
             <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
           </Button>
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add station
-          </Button>
+          {canCreate && (
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Add station
+            </Button>
+          )}
         </div>
       </div>
 
@@ -158,6 +166,8 @@ export default function BatteryStationsPage() {
           }
           onDelete={setDeleteTarget}
           busyId={updateVisibility.isPending ? updateVisibility.variables?.id : null}
+          canEdit={canEdit}
+          canDelete={canDelete}
         />
 
         {data && <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPageChange={setPage} />}

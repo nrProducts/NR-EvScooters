@@ -20,11 +20,14 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { useVehicles } from "@/hooks/useVehicles";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate, formatDateTime } from "@/lib/utils";
+import { hasAction } from "@/lib/permissions";
+import { useAuthStore } from "@/store/authStore";
 import type { MaintenanceStatus, MaintenanceTicket } from "@/types";
 
 const STATUS_OPTIONS: (MaintenanceStatus | "all")[] = ["all", "reported", "in_progress", "resolved", "cancelled"];
 
 export default function MaintenancePage() {
+  const user = useAuthStore((s) => s.user);
   const [status, setStatus] = useState<MaintenanceStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
@@ -90,11 +93,19 @@ export default function MaintenancePage() {
       header: "Actions",
       key: "actions",
       render: (t) => {
-        // Every item below is gated on status !== "resolved", so a resolved
-        // ticket has nothing to show — render a dash instead of an empty
-        // dropdown (an empty DropdownMenuContent has no content to size
-        // itself against, so it opens mispositioned/invisible).
-        if (t.status === "resolved") {
+        const canEdit = hasAction(user, "maintenance", "edit");
+        const canTriage = canEdit || hasAction(user, "maintenance", "complete");
+        const showTriage = t.status !== "cancelled" && !t.outcome && canTriage;
+        const showStartWork = t.status !== "in_progress" && t.status !== "cancelled" && canEdit;
+        const showResolved = canEdit;
+        const showCancel = t.status !== "cancelled" && canEdit;
+        // Every item below is gated on status !== "resolved" and the current
+        // user's permissions, so a resolved ticket — or a ticket where the
+        // user has none of the relevant actions — has nothing to show;
+        // render a dash instead of an empty dropdown (an empty
+        // DropdownMenuContent has no content to size itself against, so it
+        // opens mispositioned/invisible).
+        if (t.status === "resolved" || !(showTriage || showStartWork || showResolved || showCancel)) {
           return <span className="text-xs text-muted-foreground">—</span>;
         }
         return (
@@ -105,20 +116,22 @@ export default function MaintenancePage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-              {t.status !== "cancelled" && !t.outcome && (
+              {showTriage && (
                 <DropdownMenuItem onClick={() => setTriageTarget(t)}>
                   <ClipboardCheck className="mr-2 h-4 w-4" /> Triage
                 </DropdownMenuItem>
               )}
-              {t.status !== "in_progress" && t.status !== "cancelled" && (
+              {showStartWork && (
                 <DropdownMenuItem onClick={() => handleUpdate(t.id, "in_progress")}>
                   <PlayCircle className="mr-2 h-4 w-4" /> Start work
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onClick={() => handleUpdate(t.id, "resolved")}>
-                <CheckCircle2 className="mr-2 h-4 w-4" /> Mark resolved
-              </DropdownMenuItem>
-              {t.status !== "cancelled" && (
+              {showResolved && (
+                <DropdownMenuItem onClick={() => handleUpdate(t.id, "resolved")}>
+                  <CheckCircle2 className="mr-2 h-4 w-4" /> Mark resolved
+                </DropdownMenuItem>
+              )}
+              {showCancel && (
                 <DropdownMenuItem
                   className="text-destructive"
                   onClick={() => handleUpdate(t.id, "cancelled")}
@@ -140,9 +153,11 @@ export default function MaintenancePage() {
           <h1 className="text-2xl font-semibold tracking-tight">Maintenance</h1>
           <p className="text-sm text-muted-foreground">{data?.total ?? 0} tickets · service requests, inspections and repairs</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4" /> Report issue
-        </Button>
+        {hasAction(user, "maintenance", "create") && (
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" /> Report issue
+          </Button>
+        )}
       </div>
 
       <Card>

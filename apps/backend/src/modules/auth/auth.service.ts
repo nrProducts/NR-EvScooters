@@ -2,9 +2,9 @@ import type { Request } from "express";
 import { supabaseAdmin } from "../../config/supabase";
 import { env } from "../../config/env";
 import { businessRule } from "../../common/AppError";
-import { AccountStatus, AuthContext, ModuleKey, STAFF_ROLES, StaffCapability } from "../../types";
+import { AccountStatus, AuthContext, STAFF_ROLES, StaffCapability } from "../../types";
 import { getUserById } from "../users/users.service";
-import { getModulePermissions } from "../users/staff-permissions.service";
+import { getModulePermissions, ModulePermission } from "../users/staff-permissions.service";
 import type { UserDetail } from "../users/users.types";
 import { generateNumericOtp, sendOtpSms, toMsg91Mobile } from "./msg91";
 
@@ -16,11 +16,11 @@ export interface SessionContext extends UserDetail {
     /** Whether first-time profile creation is still needed. */
     needs_profile: boolean;
     /**
-     * WHICH SECTIONS the caller may open.
-     * null = unrestricted (admin). Array = exact granted module keys (staff).
-     * Empty for rider.
+     * WHICH SECTIONS the caller may open, and which actions inside each.
+     * null = unrestricted (admin). Array = exact granted module+action
+     * pairs (staff). Empty for rider.
      */
-    permissions: ModuleKey[] | null;
+    permissions: ModulePermission[] | null;
     /**
      * WHETHER the caller may see raw personal data, independent of which
      * sections they can open. The admin console uses these to hide controls
@@ -55,6 +55,7 @@ export function deriveSessionFlags(
 export async function getSessionContext(actor: AuthContext): Promise<SessionContext> {
     const detail = await getUserById(actor.id, actor);
     const permissions = await resolveSessionPermissions(actor);
+    touchLastLogin(actor.id);
     return {
         ...detail,
         ...deriveSessionFlags(detail, actor.roles),
@@ -69,10 +70,28 @@ export async function getSessionContext(actor: AuthContext): Promise<SessionCont
  * stay pure/DB-free for its own unit tests — this one necessarily hits the
  * database for staff accounts.
  */
-async function resolveSessionPermissions(actor: AuthContext): Promise<ModuleKey[] | null> {
+async function resolveSessionPermissions(actor: AuthContext): Promise<ModulePermission[] | null> {
     if (actor.roles.includes("admin")) return null;
     if (!actor.roles.some((r) => STAFF_ROLES.includes(r))) return [];
     return getModulePermissions(actor.id);
+}
+
+/**
+ * Best-effort, fire-and-forget: getSessionContext() is the one choke point
+ * both an explicit login and every page-boot "who am I" call (GET
+ * /auth/session) run through, so this is the cheapest place to keep
+ * users.last_login_at honest for the Staff Access screen — not a hot path
+ * (fires once per login/refresh, not polled). Never blocks or throws into
+ * the caller; a missed timestamp write must not fail a login.
+ */
+function touchLastLogin(userId: string): void {
+    void supabaseAdmin
+        .from("users")
+        .update({ last_login_at: new Date().toISOString() })
+        .eq("id", userId)
+        .then(({ error }) => {
+            if (error) console.error("[auth] failed to record last_login_at", { userId, error: error.message });
+        });
 }
 
 /**

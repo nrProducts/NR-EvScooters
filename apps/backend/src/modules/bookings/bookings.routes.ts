@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireKycVerified, requireModule } from "../../middleware/authorize.middleware";
+import { requireAction, requireKycVerified } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./bookings.controller";
@@ -48,28 +48,28 @@ router.post(
 // --- staff pickup/check-in ------------------------------------------------
 router.get(
     "/",
-    requireModule("bookings"),
+    requireAction("bookings", "view"),
     validate({ query: v.pickupQueueQuery }),
     asyncHandler(c.pickupQueueHandler),
 );
 
 router.get(
     "/:id/available-vehicles",
-    requireModule("bookings"),
+    requireAction("bookings", "view"),
     validate({ params: v.bookingIdParam }),
     asyncHandler(c.availableVehiclesHandler),
 );
 
 router.get(
     "/:id",
-    requireModule("bookings"),
+    requireAction("bookings", "view"),
     validate({ params: v.bookingIdParam }),
     asyncHandler(c.getBookingHandler),
 );
 
 router.post(
     "/:id/pickup",
-    requireModule("bookings"),
+    requireAction("bookings", "edit"),
     validate({ params: v.bookingIdParam, body: v.confirmPickupBody }),
     asyncHandler(c.confirmPickupHandler),
 );
@@ -79,7 +79,7 @@ router.post(
 // it themselves. See adminCancelBooking's comment for why this exists.
 router.post(
     "/:id/admin-cancel",
-    requireModule("bookings"),
+    requireAction("bookings", "cancel"),
     validate({ params: v.bookingIdParam, body: v.rejectBookingBody }),
     asyncHandler(c.adminCancelBookingHandler),
 );

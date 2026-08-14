@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireModule } from "../../middleware/authorize.middleware";
+import { requireAction } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./notifications.controller";
@@ -34,16 +34,18 @@ riderNotificationsRouter.post("/read-all", asyncHandler(c.markAllReadHandler));
  * notification log plus composing a new broadcast.
  */
 export const adminNotificationsRouter = Router();
-adminNotificationsRouter.use(requireAuth, requireModule("notifications"));
+adminNotificationsRouter.use(requireAuth);
 
 adminNotificationsRouter.get(
     "/",
+    requireAction("notifications", "view"),
     validate({ query: v.listAdminNotificationsQuery }),
     asyncHandler(c.listAllNotificationsHandler),
 );
 
 adminNotificationsRouter.post(
     "/broadcast",
+    requireAction("notifications", "send"),
     validate({ body: v.broadcastBody }),
     asyncHandler(c.broadcastHandler),
 );

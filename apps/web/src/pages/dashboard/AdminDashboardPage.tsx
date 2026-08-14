@@ -5,13 +5,14 @@ import {
 } from "recharts";
 import {
   Users, ShieldCheck, PackageCheck, Bike, IndianRupee, Wrench, Recycle, Navigation, CalendarClock,
-  CreditCard, Wallet, Plus, Bell, Gauge,
+  CreditCard, Wallet, Plus, Bell,
 } from "lucide-react";
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/common/StatCard";
 import { ChartCard } from "@/components/common/ChartCard";
 import { MotionCard } from "@/components/motion/MotionCard";
+import { FleetStatusCard, VEHICLE_STATUS_LABEL } from "@/components/dashboard/FleetStatusCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
@@ -26,62 +27,19 @@ import { useMaintenanceTickets } from "@/hooks/useMaintenance";
 import { useAuditLogs } from "@/hooks/useAudit";
 import { useNotificationLog } from "@/hooks/useNotifications";
 import { useUiStore } from "@/store/uiStore";
-import { cn, formatCurrency, formatDate, timeAgo } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, greetingForHour, timeAgo } from "@/lib/utils";
 import type { PickupBooking, VehicleStatus } from "@/types";
-
-const VEHICLE_STATUS_LABEL: Record<VehicleStatus, string> = {
-  available: "Available",
-  booked: "Booked",
-  assigned: "Assigned",
-  maintenance: "Maintenance",
-  scrap: "Scrapped",
-};
 
 const VEHICLE_STATUS_COLORS: Record<"light" | "dark", Record<VehicleStatus, string>> = {
   light: { available: "#16A34A", booked: "#3B82F6", assigned: "#22C55E", maintenance: "#F59E0B", scrap: "#94A3B8" },
   dark: { available: "#22C55E", booked: "#3B82F6", assigned: "#10B981", maintenance: "#F59E0B", scrap: "#64748B" },
 };
 
-const FLEET_BAR_COLOR: Record<VehicleStatus, string> = {
-  available: "bg-success",
-  booked: "bg-info",
-  assigned: "bg-primary",
-  maintenance: "bg-warning",
-  scrap: "bg-muted-foreground/50",
-};
-
-function greetingForHour(hour: number) {
-  if (hour < 12) return "Good Morning";
-  if (hour < 17) return "Good Afternoon";
-  return "Good Evening";
-}
-
 function activityTone(action: string): TimelineItem["tone"] {
   if (/approved|verified|resolved|fulfilled|completed/.test(action)) return "success";
   if (/rejected|cancelled|failed|scrap/.test(action)) return "destructive";
   if (/pending|reported/.test(action)) return "warning";
   return "default";
-}
-
-/** Animated horizontal progress bar for the Fleet Status card. */
-function FleetStatusRow({ status, count, total }: { status: VehicleStatus; count: number; total: number }) {
-  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-xs">
-        <span className="font-medium">{VEHICLE_STATUS_LABEL[status]}</span>
-        <span className="text-muted-foreground">{count} · {pct}%</span>
-      </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <motion.div
-          className={cn("h-full rounded-full", FLEET_BAR_COLOR[status])}
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-        />
-      </div>
-    </div>
-  );
 }
 
 export default function AdminDashboardPage() {
@@ -155,26 +113,11 @@ export default function AdminDashboardPage() {
 
       {/* Fleet Status + Quick Actions */}
       <div className="grid gap-3 lg:grid-cols-2">
-        <MotionCard>
-          <CardHeader className="flex-row items-center gap-2 space-y-0 p-4 pb-2">
-            <Gauge className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm">Fleet Status</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 p-4 pt-2">
-            {summaryLoading || !summary ? (
-              <Skeleton className="h-32 w-full" />
-            ) : (
-              (Object.keys(summary.vehicles.by_status) as VehicleStatus[]).map((status) => (
-                <FleetStatusRow
-                  key={status}
-                  status={status}
-                  count={summary.vehicles.by_status[status]}
-                  total={summary.vehicles.total}
-                />
-              ))
-            )}
-          </CardContent>
-        </MotionCard>
+        <FleetStatusCard
+          byStatus={summary?.vehicles.by_status}
+          total={summary?.vehicles.total ?? 0}
+          isLoading={summaryLoading}
+        />
 
         <MotionCard>
           <CardHeader className="p-4 pb-2">

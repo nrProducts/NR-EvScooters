@@ -14,6 +14,8 @@ import { useVehicle } from "@/hooks/useVehicles";
 import { useCompleteRide, useMoveRideToMaintenance } from "@/hooks/useRentals";
 import { ApiError } from "@/services/api/httpClient";
 import { cn, formatDate } from "@/lib/utils";
+import { hasAction } from "@/lib/permissions";
+import { useAuthStore } from "@/store/authStore";
 import type { VehicleMaintenanceRecord, VehicleRentalRecord } from "@/types";
 
 type TimelineNode =
@@ -33,6 +35,7 @@ export function VehicleHistoryDialog({
   vehicleId: string | null;
   onOpenChange: (open: boolean) => void;
 }) {
+  const user = useAuthStore((s) => s.user);
   const { data: vehicle, isLoading, isError, refetch } = useVehicle(vehicleId ?? undefined);
   const [unassignOpen, setUnassignOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -110,7 +113,7 @@ export function VehicleHistoryDialog({
                       <UserX className="h-3.5 w-3.5" /> Unassign
                     </Button>
                   )}
-                  {!current && vehicle.status === "available" && (
+                  {!current && vehicle.status === "available" && hasAction(user, "vehicles", "assign") && (
                     <Button size="sm" onClick={() => setAssignOpen(true)}>
                       <Zap className="h-3.5 w-3.5" /> Assign
                     </Button>

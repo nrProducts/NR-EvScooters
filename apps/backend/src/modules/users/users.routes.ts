@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireAdmin, requireModule } from "../../middleware/authorize.middleware";
+import { requireAdmin, requireAction } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import { photoUpload } from "./users.photo.upload";
@@ -31,13 +31,16 @@ router.post(
 // --- staff/admin --------------------------------------------------------
 router.get(
     "/",
-    requireModule("users"),
+    requireAction("users", "view"),
     validate({ query: v.listUsersQuery }),
     asyncHandler(c.listUsersHandler),
 );
 
 router.post(
     "/",
+    // Stays admin-only regardless of any "users" grant — creating any
+    // account (rider included) is not delegable; see MODULE_ACTIONS in
+    // types/index.ts ("users.create" is marked unavailable for this reason).
     requireAdmin,
     validate({ body: v.createUserBody }),
     asyncHandler(c.createUserHandler),
@@ -51,7 +54,7 @@ router.get(
 
 router.patch(
     "/:id",
-    requireModule("users"),
+    requireAction("users", "edit"),
     validate({ params: v.uuidParam, body: v.updateUserBody }),
     asyncHandler(c.updateUserHandler),
 );
@@ -72,7 +75,7 @@ router.post(
 
 router.patch(
     "/:id/status",
-    requireModule("users"),
+    requireAction("users", "suspend"),
     validate({ params: v.uuidParam, body: v.updateStatusBody }),
     asyncHandler(c.updateStatusHandler),
 );
@@ -109,6 +112,13 @@ router.put(
     requireAdmin,
     validate({ params: v.uuidParam, body: v.updatePermissionsBody }),
     asyncHandler(c.updatePermissionsHandler),
+);
+
+router.post(
+    "/:id/permissions/apply-profile",
+    requireAdmin,
+    validate({ params: v.uuidParam, body: v.applyPermissionProfileBody }),
+    asyncHandler(c.applyPermissionProfileHandler),
 );
 
 // --- capabilities (DPDPA least privilege over raw personal data) ----------

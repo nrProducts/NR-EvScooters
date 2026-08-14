@@ -2,8 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/kyc";
 import type { PiiAccessReason } from "@/types";
 
-export function useKycQueue(filters: api.KycFilters) {
-  return useQuery({ queryKey: ["kyc-queue", filters], queryFn: () => api.fetchKycQueue(filters) });
+export function useKycQueue(filters: api.KycFilters, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["kyc-queue", filters],
+    queryFn: () => api.fetchKycQueue(filters),
+    enabled: options?.enabled ?? true,
+  });
 }
 
 export function useKycDetail(userId: string | undefined) {

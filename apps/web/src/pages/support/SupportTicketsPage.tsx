@@ -15,6 +15,8 @@ import { useSupportQueue, useUpdateSupportTicket } from "@/hooks/useSupport";
 import { useTableSort } from "@/hooks/useTableSort";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDateTime } from "@/lib/utils";
+import { hasAction } from "@/lib/permissions";
+import { useAuthStore } from "@/store/authStore";
 import type { SupportPriority, SupportStatus, SupportTicket } from "@/types";
 
 const TABS: { value: SupportStatus | "all"; label: string }[] = [
@@ -29,6 +31,8 @@ const PRIORITIES: SupportPriority[] = ["low", "medium", "high", "urgent"];
 const STATUSES: SupportStatus[] = ["open", "in_progress", "resolved", "closed"];
 
 export default function SupportTicketsPage() {
+  const user = useAuthStore((s) => s.user);
+  const canReply = hasAction(user, "support", "reply");
   const [tab, setTab] = useState<SupportStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<SupportTicket | null>(null);
@@ -62,11 +66,12 @@ export default function SupportTicketsPage() {
       header: "Actions",
       key: "actions",
       render: (t) => {
-        // Every item below is gated on status !== "closed", so a closed
-        // ticket has nothing to show — render a dash instead of an empty
-        // dropdown (an empty DropdownMenuContent has no content to size
-        // itself against, so it opens mispositioned/invisible).
-        if (t.status === "closed") {
+        // Every item below is gated on status !== "closed" and on the
+        // support.reply action, so a closed ticket — or a user without
+        // reply permission — has nothing to show; render a dash instead of
+        // an empty dropdown (an empty DropdownMenuContent has no content to
+        // size itself against, so it opens mispositioned/invisible).
+        if (t.status === "closed" || !canReply) {
           return <span className="text-xs text-muted-foreground">—</span>;
         }
         return (
@@ -160,6 +165,7 @@ export default function SupportTicketsPage() {
               <Select
                 value={selected.status}
                 onValueChange={(v) => handleStatusChange(selected, v as SupportStatus)}
+                disabled={!canReply}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -181,6 +187,7 @@ export default function SupportTicketsPage() {
                     { onSuccess: (updated) => setSelected(updated) },
                   )
                 }
+                disabled={!canReply}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>

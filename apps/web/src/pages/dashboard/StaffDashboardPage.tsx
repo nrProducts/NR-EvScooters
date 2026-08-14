@@ -1,61 +1,106 @@
-import { CalendarCheck, LifeBuoy, ShieldCheck } from "lucide-react";
+import { CalendarCheck, LifeBuoy, ShieldCheck, Bike, Wrench } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/common/StatCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FleetStatusCard } from "@/components/dashboard/FleetStatusCard";
+import { useAuth } from "@/hooks/useAuth";
 import { usePickupQueue } from "@/hooks/useBookings";
 import { useSupportQueue } from "@/hooks/useSupport";
 import { useKycQueue } from "@/hooks/useKyc";
-import { formatDate } from "@/lib/utils";
+import { useReportsSummary } from "@/hooks/useReports";
+import { hasAction } from "@/lib/permissions";
+import { formatDate, greetingForHour } from "@/lib/utils";
 
 export default function StaffDashboardPage() {
-  const { data: pickups, isLoading: pickupsLoading } = usePickupQueue({ pageSize: 5 });
-  const { data: openTickets, isLoading: ticketsLoading } = useSupportQueue({ status: "open", pageSize: 1 });
-  const { data: kycQueue, isLoading: kycLoading } = useKycQueue({ status: "pending", pageSize: 1 });
+  const { user } = useAuth();
+
+  const canViewBookings = hasAction(user, "bookings", "view");
+  const canViewSupport = hasAction(user, "support", "view");
+  const canViewKyc = hasAction(user, "kyc", "view");
+  const canViewVehicles = hasAction(user, "vehicles", "view");
+  const canViewMaintenance = hasAction(user, "maintenance", "view");
+  const canViewDashboard = hasAction(user, "dashboard", "view");
+
+  const { data: pickups, isLoading: pickupsLoading } = usePickupQueue({ pageSize: 5 }, { enabled: canViewBookings });
+  const { data: openTickets, isLoading: ticketsLoading } = useSupportQueue({ status: "open", pageSize: 1 }, { enabled: canViewSupport });
+  const { data: kycQueue, isLoading: kycLoading } = useKycQueue({ status: "pending", pageSize: 1 }, { enabled: canViewKyc });
+  const { data: summary, isLoading: summaryLoading } = useReportsSummary({ enabled: canViewDashboard });
+
+  const pendingMaintenance = summary
+    ? summary.maintenance.by_status.reported + summary.maintenance.by_status.in_progress
+    : 0;
+
+  const statCards = [
+    canViewBookings && (
+      <StatCard key="pickups" label="Awaiting pickup" value={pickups?.total ?? 0} icon={CalendarCheck} />
+    ),
+    canViewSupport && (
+      <StatCard key="tickets" label="Open support tickets" value={openTickets?.total ?? 0} icon={LifeBuoy} tone="warning" />
+    ),
+    canViewKyc && (
+      <StatCard key="kyc" label="Pending KYC" value={kycQueue?.total ?? 0} icon={ShieldCheck} tone="warning" />
+    ),
+    canViewVehicles && summary && (
+      <StatCard key="available" label="Available vehicles" value={summary.vehicles.by_status.available} icon={Bike} tone="success" />
+    ),
+    canViewMaintenance && (
+      <StatCard key="maintenance" label="Pending maintenance" value={pendingMaintenance} icon={Wrench} tone="destructive" />
+    ),
+  ].filter(Boolean);
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Today's operations</h1>
-        <p className="text-sm text-muted-foreground">Real queues pulled from the backend</p>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {greetingForHour(new Date().getHours())}, {user?.name?.split(" ")[0] ?? "there"} 👋
+        </h1>
+        <p className="text-sm text-muted-foreground">{formatDate(new Date())} · Today's operations</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatCard label="Awaiting pickup" value={pickups?.total ?? 0} icon={CalendarCheck} />
-        <StatCard label="Open support tickets" value={openTickets?.total ?? 0} icon={LifeBuoy} tone="warning" />
-        <StatCard label="Pending KYC" value={kycQueue?.total ?? 0} icon={ShieldCheck} tone="warning" />
-      </div>
+      {statCards.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{statCards}</div>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Next up for vehicle handover</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {pickupsLoading || ticketsLoading || kycLoading ? (
-            <Skeleton className="h-32 w-full" />
-          ) : !pickups || pickups.data.length === 0 ? (
-            <EmptyState title="Nothing awaiting pickup" />
-          ) : (
-            pickups.data.map((b) => (
-              <div key={b.id} className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div>
-                  <p className="text-sm font-medium">{b.rider.full_name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {b.vehicle_model?.name} · {b.station?.name} · {formatDate(b.start_day)}
-                  </p>
+      {canViewVehicles && (
+        <FleetStatusCard
+          byStatus={summary?.vehicles.by_status}
+          total={summary?.vehicles.total ?? 0}
+          isLoading={summaryLoading}
+        />
+      )}
+
+      {canViewBookings && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Next up for vehicle handover</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {pickupsLoading || ticketsLoading || kycLoading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : !pickups || pickups.data.length === 0 ? (
+              <EmptyState title="Nothing awaiting pickup" />
+            ) : (
+              pickups.data.map((b) => (
+                <div key={b.id} className="flex items-center justify-between rounded-lg border border-border p-3">
+                  <div>
+                    <p className="text-sm font-medium">{b.rider.full_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {b.vehicle_model?.name} · {b.station?.name} · {formatDate(b.start_day)}
+                    </p>
+                  </div>
+                  <StatusBadge status={b.status} />
                 </div>
-                <StatusBadge status={b.status} />
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-      <p className="text-xs text-muted-foreground">
-        Maintenance queue and assigned-vehicle counts aren't shown — the backend has no admin-facing maintenance
-        or fleet-assignment endpoint yet.
-      </p>
+      {statCards.length === 0 && !canViewBookings && !canViewVehicles && (
+        <EmptyState title="Nothing to show yet" description="Ask an admin to grant you module access from Settings → Staff Access." />
+      )}
     </div>
   );
 }

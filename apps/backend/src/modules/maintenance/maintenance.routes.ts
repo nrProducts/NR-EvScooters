@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireModule } from "../../middleware/authorize.middleware";
+import { requireAction } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./maintenance.controller";
@@ -19,49 +19,49 @@ router.get("/me/notice", asyncHandler(c.myMaintenanceNoticeHandler));
 
 router.get(
     "/",
-    requireModule("maintenance"),
+    requireAction("maintenance", "view"),
     validate({ query: v.listMaintenanceQuery }),
     asyncHandler(c.listMaintenanceHandler),
 );
 
 router.post(
     "/",
-    requireModule("maintenance"),
+    requireAction("maintenance", "create"),
     validate({ body: v.createMaintenanceBody }),
     asyncHandler(c.createMaintenanceHandler),
 );
 
 router.patch(
     "/:id",
-    requireModule("maintenance"),
+    requireAction("maintenance", "edit"),
     validate({ params: v.uuidParam, body: v.updateMaintenanceBody }),
     asyncHandler(c.updateMaintenanceHandler),
 );
 
 router.post(
     "/:id/quick-fix",
-    requireModule("maintenance"),
+    requireAction("maintenance", "complete"),
     validate({ params: v.uuidParam, body: v.quickFixBody }),
     asyncHandler(c.quickFixHandler),
 );
 
 router.post(
     "/:id/temp-vehicle",
-    requireModule("maintenance"),
+    requireAction("maintenance", "edit"),
     validate({ params: v.uuidParam, body: v.tempVehicleBody }),
     asyncHandler(c.assignTempVehicleHandler),
 );
 
 router.post(
     "/:id/not-repairable",
-    requireModule("maintenance"),
+    requireAction("maintenance", "edit"),
     validate({ params: v.uuidParam, body: v.notRepairableBody }),
     asyncHandler(c.notRepairableHandler),
 );
 
 router.post(
     "/:id/reassign",
-    requireModule("maintenance"),
+    requireAction("maintenance", "edit"),
     validate({ params: v.uuidParam, body: v.reassignBody }),
     asyncHandler(c.reassignHandler),
 );

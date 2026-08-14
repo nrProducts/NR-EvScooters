@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireModule } from "../../middleware/authorize.middleware";
+import { requireAction } from "../../middleware/authorize.middleware";
 import { requireKycReviewer } from "../../middleware/capability.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
@@ -50,7 +50,7 @@ riderKycRouter.post("/submit", asyncHandler(c.submitMyKycHandler));
  * Admin/staff review routes, mounted at /api/v1/kyc.
  */
 export const adminKycRouter = Router();
-adminKycRouter.use(requireAuth, requireModule("kyc"));
+adminKycRouter.use(requireAuth, requireAction("kyc", "view"));
 
 adminKycRouter.get(
     "/",
@@ -58,9 +58,9 @@ adminKycRouter.get(
     asyncHandler(c.listKycHandler),
 );
 
-// TWO GATES, deliberately. requireModule("kyc") above admits anyone granted
-// the KYC section — the queue returns name, phone and status, which ops
-// legitimately need to chase riders for missing documents.
+// TWO GATES, deliberately. requireAction("kyc","view") above admits anyone
+// granted the KYC section — the queue returns name, phone and status, which
+// ops legitimately need to chase riders for missing documents.
 //
 // Everything below exposes the identity documents THEMSELVES — the detail
 // view (date of birth, full address) and the images — so it additionally
@@ -86,8 +86,11 @@ adminKycRouter.get(
 );
 
 // You cannot responsibly decide on a document you are not allowed to see.
+// requireAction("kyc","review") on top of the router-level view-only gate,
+// because deciding on a document is stronger than merely opening the queue.
 adminKycRouter.post(
     "/documents/:documentId/verify",
+    requireAction("kyc", "review"),
     requireKycReviewer,
     validate({ params: v.documentIdParam }),
     asyncHandler(c.verifyDocumentHandler),
@@ -95,6 +98,7 @@ adminKycRouter.post(
 
 adminKycRouter.post(
     "/documents/:documentId/reject",
+    requireAction("kyc", "review"),
     requireKycReviewer,
     validate({ params: v.documentIdParam, body: v.rejectBody }),
     asyncHandler(c.rejectDocumentHandler),
@@ -102,6 +106,7 @@ adminKycRouter.post(
 
 adminKycRouter.post(
     "/:userId/approve",
+    requireAction("kyc", "review"),
     requireKycReviewer,
     validate({ params: v.userIdParam }),
     asyncHandler(c.approveKycHandler),
@@ -109,6 +114,7 @@ adminKycRouter.post(
 
 adminKycRouter.post(
     "/:userId/reject",
+    requireAction("kyc", "review"),
     requireKycReviewer,
     validate({ params: v.userIdParam, body: v.rejectBody }),
     asyncHandler(c.rejectKycHandler),

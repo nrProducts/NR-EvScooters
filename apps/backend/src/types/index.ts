@@ -38,11 +38,147 @@ export type ModuleKey =
     // The data-principal rights queue. No migration needed to add a module —
     // staff_permissions.module_key is deliberately free text (see
     // 20260813100100_staff_role_seed_and_permissions_table.sql).
-    | "privacy";
+    | "privacy"
+    // Added by 20260814101000_staff_permission_actions.sql alongside the
+    // `actions` column — these were previously hard admin-only in
+    // roleConfig.ts with no delegation path at all.
+    | "plans" | "reconciliation" | "pii_access_log" | "audit" | "settings"
+    | "dashboard" | "battery_stations";
 export const MODULE_KEYS: readonly ModuleKey[] = [
     "vehicles", "users", "kyc", "bookings", "maintenance", "support",
     "payments", "notifications", "damages", "refunds", "privacy",
+    "plans", "reconciliation", "pii_access_log", "audit", "settings",
+    "dashboard", "battery_stations",
 ] as const;
+
+export interface ModuleActionDef {
+    /** Stored verbatim in staff_permissions.actions[]. */
+    key: string;
+    /** Console label — where one backend check covers several spec verbs
+     * (e.g. KYC's requireAction("kyc","review") gates verify/approve/reject
+     * alike, because the capability layer — not the module-action layer —
+     * is what actually distinguishes "see the queue" from "act on it"), the
+     * label says so rather than offering separate checkboxes that would
+     * silently move together. */
+    label: string;
+    /** False = no backend route (or, for "settings"/"view_kyc", no UI wired
+     * yet) checks this action at all. The console renders it disabled —
+     * matches the full permission spec visually without implying a
+     * capability that doesn't exist. See requireAction() call sites for
+     * what's actually enforced. */
+    available: boolean;
+}
+
+/**
+ * Every module's grantable verbs, in the shape the permission matrix UI
+ * renders directly — see the `actions` column added by
+ * 20260814101000_staff_permission_actions.sql. Kept here, not per-route,
+ * because it's the one place the matrix UI, the profile config, and the
+ * update-permissions validator all need to agree on what's grantable.
+ */
+export const MODULE_ACTIONS: Record<ModuleKey, readonly ModuleActionDef[]> = {
+    dashboard: [{ key: "view", label: "View", available: true }],
+    vehicles: [
+        { key: "view", label: "View", available: true },
+        { key: "create", label: "Create", available: true },
+        { key: "edit", label: "Edit", available: true },
+        { key: "assign", label: "Assign / Unassign", available: true },
+        { key: "maintenance", label: "Maintenance", available: false }, // lives under the Maintenance module's own actions
+        { key: "delete", label: "Delete", available: true },
+    ],
+    users: [
+        { key: "view", label: "View", available: true },
+        { key: "create", label: "Create", available: false }, // POST /users stays admin-only regardless — creating any account (rider included) isn't delegable
+        { key: "edit", label: "Edit", available: true },
+        { key: "suspend", label: "Suspend / Activate", available: true },
+        { key: "delete", label: "Delete", available: false }, // DELETE /:id stays admin-only
+        { key: "view_kyc", label: "View KYC", available: true }, // UI-only: shows/hides the KYC tab on the user detail page
+    ],
+    kyc: [
+        { key: "view", label: "View", available: true },
+        { key: "review", label: "Review / Approve / Reject", available: true },
+    ],
+    bookings: [
+        { key: "view", label: "View", available: true },
+        { key: "create", label: "Create", available: false }, // riders create their own bookings; no staff-facing route
+        { key: "edit", label: "Edit", available: true },
+        { key: "cancel", label: "Cancel", available: true },
+        { key: "assign_vehicle", label: "Assign Vehicle", available: false }, // folded into the pickup route (bookings.edit); no separate endpoint
+    ],
+    maintenance: [
+        { key: "view", label: "View", available: true },
+        { key: "create", label: "Create", available: true },
+        { key: "edit", label: "Edit", available: true },
+        { key: "complete", label: "Complete", available: true },
+        { key: "delete", label: "Delete", available: false }, // no delete route exists
+    ],
+    support: [
+        { key: "view", label: "View", available: true },
+        { key: "create", label: "Create", available: false }, // rider-initiated only
+        { key: "reply", label: "Reply / Resolve", available: true }, // single PATCH route can't distinguish reply from resolve server-side
+        { key: "resolve", label: "Resolve (see Reply)", available: false },
+        { key: "delete", label: "Delete", available: false }, // no delete route
+    ],
+    payments: [
+        { key: "view", label: "View", available: true },
+        { key: "create", label: "Create", available: false }, // riders create their own payment orders
+        { key: "refund", label: "Refund", available: true },
+        { key: "export", label: "Export", available: false }, // no export endpoint yet
+    ],
+    plans: [
+        { key: "view", label: "View", available: true },
+        { key: "create", label: "Create", available: true },
+        { key: "edit", label: "Edit / Activate / Deactivate", available: true },
+        { key: "delete", label: "Delete", available: false }, // no delete route exists
+    ],
+    reconciliation: [
+        { key: "view", label: "View", available: true }, // reconciliation is read-only computed data today
+        { key: "create", label: "Create", available: false },
+        { key: "approve", label: "Approve", available: false },
+        { key: "export", label: "Export", available: false },
+    ],
+    notifications: [
+        { key: "view", label: "View", available: true },
+        { key: "create", label: "Create", available: false }, // no draft/create route
+        { key: "send", label: "Send", available: true },
+        { key: "delete", label: "Delete", available: false }, // no delete route
+    ],
+    privacy: [
+        { key: "view", label: "View", available: true },
+        { key: "process", label: "Approve / Reject / Process", available: true }, // requireRightsOfficer stays layered on top
+    ],
+    pii_access_log: [
+        { key: "view", label: "View", available: true },
+        { key: "export", label: "Export", available: false },
+    ],
+    audit: [
+        { key: "view", label: "View", available: true },
+        { key: "export", label: "Export", available: false },
+    ],
+    settings: [
+        { key: "view", label: "View", available: true }, // gates the generic Company/Security/API Keys/Branding tabs only — never Staff Access
+        { key: "edit", label: "Edit", available: true },
+    ],
+    battery_stations: [
+        { key: "view", label: "View", available: true },
+        { key: "create", label: "Create", available: true },
+        { key: "edit", label: "Edit", available: true },
+        { key: "delete", label: "Delete", available: true },
+    ],
+    damages: [
+        { key: "view", label: "View", available: true },
+        { key: "resolve", label: "Resolve", available: true },
+    ],
+    refunds: [
+        { key: "view", label: "View", available: true },
+        { key: "create", label: "Process", available: true },
+    ],
+};
+
+/** Every valid `{module, action}` pair — the update-permissions validator's source of truth. */
+export function isValidModuleAction(moduleKey: ModuleKey, action: string): boolean {
+    return MODULE_ACTIONS[moduleKey]?.some((a) => a.key === action) ?? false;
+}
 
 /**
  * Orthogonal to both role and module. Granted per user in

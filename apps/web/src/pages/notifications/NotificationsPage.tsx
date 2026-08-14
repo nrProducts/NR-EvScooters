@@ -13,11 +13,15 @@ import { useNotificationLog, useBroadcastNotification } from "@/hooks/useNotific
 import { useTableSort } from "@/hooks/useTableSort";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate } from "@/lib/utils";
+import { hasAction } from "@/lib/permissions";
+import { useAuthStore } from "@/store/authStore";
 import type { NotificationDeliveryStatus, NotificationLogEntry } from "@/types";
 
 const STATUS_OPTIONS: (NotificationDeliveryStatus | "all")[] = ["all", "sent", "pending", "failed"];
 
 export default function NotificationsPage() {
+  const user = useAuthStore((s) => s.user);
+  const canSendBroadcast = hasAction(user, "notifications", "send");
   const [status, setStatus] = useState<NotificationDeliveryStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [title, setTitle] = useState("");
@@ -47,7 +51,7 @@ export default function NotificationsPage() {
     { header: "Sent", key: "sent_at", sortKey: "created_at", render: (n) => (n.sent_at ? formatDate(n.sent_at) : "—"), hideOnMobile: true },
   ];
 
-  const canSend = title.trim() && body.trim();
+  const canSend = title.trim() && body.trim() && canSendBroadcast;
 
   return (
     <div className="space-y-4 animate-fade-in">

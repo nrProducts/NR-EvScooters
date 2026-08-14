@@ -18,6 +18,7 @@ import {
   FileLock2,
 } from "lucide-react";
 import type { ModuleKey, Role, StaffUser } from "@/types";
+import { hasModule } from "@/lib/permissions";
 
 export interface NavItem {
   label: string;
@@ -56,9 +57,16 @@ export interface NavItem {
  */
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, roles: ["admin", "staff"] },
-  // Admin-only: every write on /admin/battery-stations is requireAdmin, so
-  // showing this to staff would only lead them to a wall of 403s.
-  { label: "Battery Stations", path: "/battery-stations", icon: BatteryCharging, roles: ["admin"] },
+  // Previously hard admin-only ("every write route is requireAdmin, showing
+  // this to staff would just be a wall of 403s") — now delegable like every
+  // other module now that real per-action checks exist server-side.
+  {
+    label: "Battery Stations",
+    path: "/battery-stations",
+    icon: BatteryCharging,
+    roles: ["admin", "staff"],
+    moduleKey: "battery_stations",
+  },
   { label: "Vehicles", path: "/vehicles", icon: Bike, roles: ["admin", "staff"], moduleKey: "vehicles" },
   { label: "Users", path: "/users", icon: Users, roles: ["admin", "staff"], moduleKey: "users" },
   { label: "KYC Queue", path: "/kyc", icon: ShieldCheck, roles: ["admin", "staff"], moduleKey: "kyc" },
@@ -66,8 +74,14 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Maintenance", path: "/maintenance", icon: Wrench, roles: ["admin", "staff"], moduleKey: "maintenance" },
   { label: "Support Tickets", path: "/support", icon: LifeBuoy, roles: ["admin", "staff"], moduleKey: "support" },
   { label: "Payments", path: "/payments", icon: CreditCard, roles: ["admin", "staff"], moduleKey: "payments" },
-  { label: "Plans", path: "/plans", icon: Layers, roles: ["admin"] },
-  { label: "Reconciliation", path: "/reconciliation", icon: Scale, roles: ["admin"] },
+  { label: "Plans", path: "/plans", icon: Layers, roles: ["admin", "staff"], moduleKey: "plans" },
+  {
+    label: "Reconciliation",
+    path: "/reconciliation",
+    icon: Scale,
+    roles: ["admin", "staff"],
+    moduleKey: "reconciliation",
+  },
   {
     label: "Notifications",
     path: "/notifications",
@@ -89,9 +103,19 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["admin", "staff"],
     moduleKey: "privacy",
   },
-  { label: "PII Access Log", path: "/privacy/access-log", icon: Eye, roles: ["admin"] },
-  { label: "Audit Log", path: "/audit", icon: ScrollText, roles: ["admin"] },
-  { label: "Settings", path: "/settings", icon: Settings, roles: ["admin"] },
+  {
+    label: "PII Access Log",
+    path: "/privacy/access-log",
+    icon: Eye,
+    roles: ["admin", "staff"],
+    moduleKey: "pii_access_log",
+  },
+  { label: "Audit Log", path: "/audit", icon: ScrollText, roles: ["admin", "staff"], moduleKey: "audit" },
+  // Delegable for the generic Company/Security/API Keys/Branding tabs only —
+  // SettingsPage.tsx hard-codes the Roles & Staff / Capabilities / Staff
+  // Access tabs to role === "admin" regardless of this grant. See the
+  // carve-out note there.
+  { label: "Settings", path: "/settings", icon: Settings, roles: ["admin", "staff"], moduleKey: "settings" },
 
   // --- routed but not in the sidebar ---------------------------------------
   // The module keys match what the backend already enforces (damages.routes.ts
@@ -99,6 +123,18 @@ export const NAV_ITEMS: NavItem[] = [
   // agree rather than the UI admitting someone to meet a wall of 403s.
   { label: "Damages", path: "/damages", icon: Scale, roles: ["admin", "staff"], moduleKey: "damages", hidden: true },
   { label: "Refunds", path: "/refunds", icon: Scale, roles: ["admin"], moduleKey: "refunds", hidden: true },
+  // The full-page permission matrix — reached from Staff Access / the Users
+  // page, never from the sidebar. Admin-only in practice (StaffAccessSection
+  // only links here for admins), but still needs an entry so
+  // isRouteAllowedForUser doesn't fail-closed-deny it for the admin who does
+  // reach it. hidden:true + longest-prefix match covers the dynamic :userId.
+  {
+    label: "Manage Permissions",
+    path: "/settings/staff-access",
+    icon: Settings,
+    roles: ["admin"],
+    hidden: true,
+  },
   { label: "Forbidden", path: "/403", icon: Scale, roles: ["admin", "staff"], hidden: true },
 ];
 
@@ -110,7 +146,7 @@ function canAccess(item: NavItem, user: AccessUser): boolean {
   if (!item.roles.includes(user.role)) return false;
   if (user.role === "admin") return true; // unconditional, never consults moduleKey
   if (!item.moduleKey) return true; // e.g. Dashboard — no grant needed
-  return user.permissions?.includes(item.moduleKey) ?? false;
+  return hasModule(user, item.moduleKey); // any action granted = section may be opened
 }
 
 export function navForUser(user: AccessUser) {

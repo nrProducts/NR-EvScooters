@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireModule } from "../../middleware/authorize.middleware";
+import { requireAction } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./invoices.controller";
@@ -13,22 +13,25 @@ riderRouter.get("/", validate({ query: v.myInvoicesQuery }), asyncHandler(c.myIn
 
 /** Admin console only, mounted at /api/v1/invoices. */
 const router = Router();
-router.use(requireAuth, requireModule("payments"));
+router.use(requireAuth);
 
 router.get(
     "/",
+    requireAction("payments", "view"),
     validate({ query: v.listInvoicesQuery }),
     asyncHandler(c.listInvoicesHandler),
 );
 
 router.get(
     "/:id",
+    requireAction("payments", "view"),
     validate({ params: v.uuidParam }),
     asyncHandler(c.getInvoiceHandler),
 );
 
 router.post(
     "/:id/refund",
+    requireAction("payments", "refund"),
     validate({ params: v.uuidParam, body: v.refundBody }),
     asyncHandler(c.refundInvoiceHandler),
 );

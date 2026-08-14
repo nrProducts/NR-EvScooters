@@ -11,6 +11,8 @@ import {
 } from "../../types";
 import { ListUsersFilters, UserDetail, UserListItem, UserProfile } from "./users.types";
 import { normaliseEmail, normalisePhone } from "./users.validation";
+import { PermissionProfileName } from "../../config/permissionProfiles";
+import { applyPermissionProfile } from "./staff-permissions.service";
 import {
     assertValidPhoto, buildPhotoPath, createSignedPhotoUrl, photoPathBelongsToUser,
     removePhotoFile, uploadPhotoFile,
@@ -33,7 +35,7 @@ const PROFILE_COLUMNS = `
     address_line_1, address_line_2, city, state, postal_code, country,
     emergency_contact_name, emergency_contact_phone,
     account_status, kyc_status, profile_photo_url, profile_completed,
-    created_at, updated_at, deleted_at
+    created_at, updated_at, deleted_at, staff_code, last_login_at
 `;
 
 // ---------------------------------------------------------------------------
@@ -196,6 +198,8 @@ export interface CreateUserInput {
     emergency_contact_phone?: string;
     role: RoleName;
     account_status: AccountStatus;
+    staff_code?: string;
+    permission_profile?: Exclude<PermissionProfileName, "custom">;
 }
 
 /**
@@ -261,6 +265,7 @@ export async function createUser(
                     ? normalisePhone(input.emergency_contact_phone)
                     : null,
                 account_status: input.account_status,
+                staff_code: input.staff_code ?? null,
                 // An admin-created account arrives with a full profile already —
                 // it should never be routed through the first-login onboarding form.
                 profile_completed: true,
@@ -274,13 +279,26 @@ export async function createUser(
 
         await setRoles(authUserId, [input.role], actor.id);
 
+        // Applied after the role so it can see the freshly-granted "staff"
+        // role (replaceModulePermissions requires it). Inside the same
+        // try/catch as everything else above: if this throws, the outer
+        // catch's compensating deleteUser() still fires, so a profile-apply
+        // failure never leaves a half-provisioned staff account behind.
+        if (input.permission_profile && STAFF_ROLES.includes(input.role)) {
+            await applyPermissionProfile(authUserId, input.permission_profile, actor, req);
+        }
+
         await writeAudit({
             actorId: actor.id,
             targetUserId: authUserId,
             action: "user.created",
             entityType: "user",
             entityId: authUserId,
-            after: { email, phone, role: input.role, account_status: input.account_status },
+            after: {
+                email, phone, role: input.role, account_status: input.account_status,
+                staff_code: input.staff_code ?? null,
+                permission_profile: input.permission_profile ?? null,
+            },
             req,
         });
 

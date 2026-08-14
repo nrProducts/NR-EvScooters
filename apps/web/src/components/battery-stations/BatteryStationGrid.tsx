@@ -41,6 +41,8 @@ export function BatteryStationGrid({
   onToggleVisibility,
   onDelete,
   busyId,
+  canEdit = true,
+  canDelete = true,
 }: {
   stations: BatteryStation[];
   isLoading?: boolean;
@@ -52,6 +54,9 @@ export function BatteryStationGrid({
   onDelete: (station: BatteryStation) => void;
   /** Station currently mid-mutation; its row actions are disabled. */
   busyId?: string | null;
+  /** battery_stations.edit / battery_stations.delete — hide the corresponding row actions when false. */
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const columns: DataTableColumn<BatteryStation>[] = [
     {
@@ -132,26 +137,32 @@ export function BatteryStationGrid({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            <DropdownMenuItem onClick={() => onEdit(s)}>
-              <Pencil className="mr-2 h-4 w-4" /> Edit station
-            </DropdownMenuItem>
+            {canEdit && (
+              <DropdownMenuItem onClick={() => onEdit(s)}>
+                <Pencil className="mr-2 h-4 w-4" /> Edit station
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => onViewOnMap(s)}>
               <MapIcon className="mr-2 h-4 w-4" /> View on map
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onToggleVisibility(s)}>
-              {s.isVisibleOnMobile ? (
-                <>
-                  <EyeOff className="mr-2 h-4 w-4" /> Hide on mobile
-                </>
-              ) : (
-                <>
-                  <Eye className="mr-2 h-4 w-4" /> Show on mobile
-                </>
-              )}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onDelete(s)} className="text-destructive focus:text-destructive">
-              <Trash2 className="mr-2 h-4 w-4" /> Delete station
-            </DropdownMenuItem>
+            {canEdit && (
+              <DropdownMenuItem onClick={() => onToggleVisibility(s)}>
+                {s.isVisibleOnMobile ? (
+                  <>
+                    <EyeOff className="mr-2 h-4 w-4" /> Hide on mobile
+                  </>
+                ) : (
+                  <>
+                    <Eye className="mr-2 h-4 w-4" /> Show on mobile
+                  </>
+                )}
+              </DropdownMenuItem>
+            )}
+            {canDelete && (
+              <DropdownMenuItem onClick={() => onDelete(s)} className="text-destructive focus:text-destructive">
+                <Trash2 className="mr-2 h-4 w-4" /> Delete station
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -165,7 +176,7 @@ export function BatteryStationGrid({
       isLoading={isLoading}
       isError={isError}
       onRetry={onRetry}
-      onRowClick={onEdit}
+      onRowClick={canEdit ? onEdit : undefined}
       emptyTitle="No battery stations match your filters"
       emptyDescription="Clear the search and filters, or add the first station."
     />

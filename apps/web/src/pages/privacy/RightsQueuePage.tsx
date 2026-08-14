@@ -17,6 +17,8 @@ import {
 } from "@/hooks/usePrivacyRequests";
 import { useToastStore } from "@/store/toastStore";
 import { formatDate, formatDateTime } from "@/lib/utils";
+import { hasAction } from "@/lib/permissions";
+import { useAuthStore } from "@/store/authStore";
 import {
   DP_REQUEST_STATUS_LABELS, DP_REQUEST_TYPE_LABELS,
   type DpRequestStatus, type DpRequestType, type PrivacyRequest,
@@ -174,6 +176,13 @@ function RequestDrawer({
   onClose: () => void;
 }) {
   const toast = useToastStore((s) => s.push);
+  const user = useAuthStore((s) => s.user);
+  // "process" governs the ordinary take-on/complete/reject actions. Erasure
+  // approve/execute are requireAdmin on the backend regardless of module
+  // grants (see privacy.routes.ts) — no staff permission can unlock those,
+  // so they're gated on the actual role, not hasAction.
+  const canProcess = hasAction(user, "privacy", "process");
+  const isAdmin = user?.role === "admin";
   const update = useUpdatePrivacyRequest();
   const reject = useRejectPrivacyRequest();
   const approve = useApproveErasure();
@@ -258,54 +267,56 @@ function RequestDrawer({
                 />
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  disabled={update.isPending}
-                  onClick={() =>
-                    void run(
-                      () => update.mutateAsync({
-                        id: request.id,
-                        patch: {
-                          status: "in_progress",
-                          resolution_notes: notes || undefined,
-                          ticket_ref: ticketRef || undefined,
-                        },
-                      }),
-                      "Marked in progress",
-                    )
-                  }
-                >
-                  Take it on
-                </Button>
-
-                {/* Erasure never completes by editing a status — it completes
-                    when the data is actually destroyed. The backend refuses
-                    the shortcut; the UI does not offer it. */}
-                {request.type !== "erasure" && (
+              {canProcess && (
+                <div className="flex flex-wrap gap-2">
                   <Button
-                    disabled={update.isPending || notes.trim().length === 0}
+                    variant="outline"
+                    disabled={update.isPending}
                     onClick={() =>
                       void run(
                         () => update.mutateAsync({
                           id: request.id,
-                          patch: { status: "completed", resolution_notes: notes },
+                          patch: {
+                            status: "in_progress",
+                            resolution_notes: notes || undefined,
+                            ticket_ref: ticketRef || undefined,
+                          },
                         }),
-                        "Request completed",
+                        "Marked in progress",
                       )
                     }
                   >
-                    Complete
+                    Take it on
                   </Button>
-                )}
 
-                <Button variant="outline" className="text-destructive hover:text-destructive"
-                  onClick={() => setRejectOpen(true)}>
-                  Reject
-                </Button>
-              </div>
+                  {/* Erasure never completes by editing a status — it completes
+                      when the data is actually destroyed. The backend refuses
+                      the shortcut; the UI does not offer it. */}
+                  {request.type !== "erasure" && (
+                    <Button
+                      disabled={update.isPending || notes.trim().length === 0}
+                      onClick={() =>
+                        void run(
+                          () => update.mutateAsync({
+                            id: request.id,
+                            patch: { status: "completed", resolution_notes: notes },
+                          }),
+                          "Request completed",
+                        )
+                      }
+                    >
+                      Complete
+                    </Button>
+                  )}
 
-              {request.type === "erasure" && (
+                  <Button variant="outline" className="text-destructive hover:text-destructive"
+                    onClick={() => setRejectOpen(true)}>
+                    Reject
+                  </Button>
+                </div>
+              )}
+
+              {request.type === "erasure" && isAdmin && (
                 <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
                   <div className="flex gap-2">
                     <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />

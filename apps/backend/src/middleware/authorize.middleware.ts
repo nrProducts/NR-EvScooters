@@ -82,6 +82,49 @@ export const requireModule =
     };
 
 /**
+ * Fine-grained sibling of hasModule() — per-user, per-module, per-verb check
+ * against staff_permissions.actions (see 20260814101000_staff_permission_actions.sql).
+ * Admin is unconditional, same as hasModule(); a staff account needs the
+ * module row to exist AND that row's actions array to contain this verb.
+ */
+export const hasAction = async (
+    req: AuthedRequest, moduleKey: ModuleKey, action: string,
+): Promise<boolean> => {
+    if (!req.user) return false;
+    if (req.user.roles.includes("admin")) return true;
+    if (!isStaff(req)) return false;
+
+    const { data, error } = await supabaseAdmin
+        .from("staff_permissions")
+        .select("actions")
+        .eq("user_id", req.user.id)
+        .eq("module_key", moduleKey)
+        .maybeSingle();
+    if (error) throw error;
+
+    return resolveModuleAccess(req.user.roles, !!data?.actions?.includes(action));
+};
+
+/**
+ * Caller must be admin, or staff holding this specific module+action grant.
+ * Use in place of requireModule() wherever a route needs to distinguish
+ * (e.g. view vs edit) rather than just "can this section be opened at all".
+ */
+export const requireAction =
+    (moduleKey: ModuleKey, action: string) =>
+    async (req: AuthedRequest, _res: Response, next: NextFunction) => {
+        if (!req.user) return next(unauthenticated());
+        try {
+            if (!(await hasAction(req, moduleKey, action))) {
+                return next(forbidden(`This action requires the "${moduleKey}.${action}" permission.`));
+            }
+            next();
+        } catch (err) {
+            next(err);
+        }
+    };
+
+/**
  * Not attached to any route yet — scaffolded now so the future booking
  * endpoint (POST /vehicle-models/:id/bookings) is a one-line addition:
  * requireAuth, requireKycVerified, then the handler.

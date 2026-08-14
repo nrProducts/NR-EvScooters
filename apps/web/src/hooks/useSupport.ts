@@ -2,8 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/support";
 import type { SupportPriority, SupportStatus } from "@/types";
 
-export function useSupportQueue(filters: api.SupportFilters) {
-  return useQuery({ queryKey: ["support-queue", filters], queryFn: () => api.fetchSupportQueue(filters) });
+export function useSupportQueue(filters: api.SupportFilters, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["support-queue", filters],
+    queryFn: () => api.fetchSupportQueue(filters),
+    enabled: options?.enabled ?? true,
+  });
 }
 
 export function useSupportTicket(id: string | undefined) {

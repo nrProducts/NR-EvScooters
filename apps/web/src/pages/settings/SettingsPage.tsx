@@ -13,14 +13,27 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { NotConnected } from "@/components/common/NotConnected";
 import { useUiStore } from "@/store/uiStore";
 import { useUsers, useUserPermissions } from "@/hooks/useUsers";
+import { useAuthStore } from "@/store/authStore";
 import { initials } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MODULE_LABELS } from "@/types";
 import type { AppUser } from "@/types";
 import { CapabilitiesSection } from "./CapabilitiesSection";
+import StaffAccessSection from "./StaffAccessSection";
 
+const ADMIN_ONLY_SECTIONS = ["roles", "staff-access", "capabilities"] as const;
+
+/**
+ * "settings" module grant only ever unlocks the generic tabs below —
+ * Roles & Staff / Capabilities / Staff Access stay hard-coded to
+ * role === "admin" regardless of any staff_permissions row, since they are
+ * where staff/permission management itself lives (requirement: only an
+ * Admin may manage Staff permissions — see users.routes.ts, every one of
+ * those endpoints is requireAdmin, not requireModule/requireAction).
+ */
 const SECTIONS = [
   { value: "roles", label: "Roles & Staff" },
+  { value: "staff-access", label: "Staff Access" },
   { value: "capabilities", label: "Capabilities" },
   { value: "company", label: "Company" },
   { value: "security", label: "Security" },
@@ -29,7 +42,11 @@ const SECTIONS = [
 ] as const;
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<(typeof SECTIONS)[number]["value"]>("roles");
+  const role = useAuthStore((s) => s.user?.role);
+  const visibleSections = SECTIONS.filter(
+    (s) => role === "admin" || !ADMIN_ONLY_SECTIONS.includes(s.value as (typeof ADMIN_ONLY_SECTIONS)[number]),
+  );
+  const [tab, setTab] = useState<(typeof SECTIONS)[number]["value"]>(visibleSections[0]?.value ?? "company");
   const { theme, toggleTheme } = useUiStore();
   const { data: admins, isLoading: loadingAdmins } = useUsers({ page: 1, pageSize: 50, role: "admin" });
   const { data: staff, isLoading: loadingStaff } = useUsers({ page: 1, pageSize: 50, role: "staff" });
@@ -45,11 +62,12 @@ export default function SettingsPage() {
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
         <TabsList className="flex-wrap">
-          {SECTIONS.map((s) => (
+          {visibleSections.map((s) => (
             <TabsTrigger key={s.value} value={s.value}>{s.label}</TabsTrigger>
           ))}
         </TabsList>
 
+        {role === "admin" && (
         <TabsContent value="roles" className="space-y-4">
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -57,12 +75,12 @@ export default function SettingsPage() {
                 <CardTitle>Staff accounts</CardTitle>
                 <CardDescription>
                   Each staff account only sees the modules granted below — enforced by the API, not just hidden
-                  from the sidebar. Grant staff access and manage permissions from the Users page.
+                  from the sidebar. Manage staff access and permissions from the Staff Access tab.
                 </CardDescription>
               </div>
               <Button variant="outline" size="sm" asChild>
-                <Link to="/users">
-                  Manage in Users <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                <Link to="/settings" state={{ tab: "staff-access" }}>
+                  Staff Access <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Link>
               </Button>
             </CardHeader>
@@ -71,7 +89,7 @@ export default function SettingsPage() {
                 <p className="text-sm text-muted-foreground">Loading...</p>
               ) : staffAccounts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No staff accounts yet — grant staff access to a user from the Users page.
+                  No staff accounts yet — create staff accounts from the Staff Access tab.
                 </p>
               ) : (
                 staffAccounts.map((r) => <StaffAccountRow key={r.id} user={r} />)
@@ -111,10 +129,19 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+        )}
 
+        {role === "admin" && (
         <TabsContent value="capabilities">
           <CapabilitiesSection />
         </TabsContent>
+        )}
+
+        {role === "admin" && (
+        <TabsContent value="staff-access">
+          <StaffAccessSection />
+        </TabsContent>
+        )}
 
         <TabsContent value="company">
           <Card>
@@ -226,8 +253,8 @@ function StaffAccountRow({ user }: { user: AppUser }) {
           <Badge variant="muted">No modules granted</Badge>
         ) : (
           modules.map((m) => (
-            <Badge key={m} variant="secondary">
-              {MODULE_LABELS[m]}
+            <Badge key={m.module_key} variant="secondary">
+              {MODULE_LABELS[m.module_key]} · {m.actions.length}
             </Badge>
           ))
         )}

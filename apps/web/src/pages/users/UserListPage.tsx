@@ -15,7 +15,6 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
@@ -26,13 +25,12 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import {
-  useUsers, useDeleteUser, useChangeUserStatus, useUpdateUserRoles, useUserPermissions, useUpdateUserPermissions,
+  useUsers, useDeleteUser, useChangeUserStatus, useUpdateUserRoles,
 } from "@/hooks/useUsers";
 import { useTableSort } from "@/hooks/useTableSort";
 import { useAuthStore } from "@/store/authStore";
 import { initials, formatDate } from "@/lib/utils";
-import { MODULE_KEYS, MODULE_LABELS } from "@/types";
-import type { AppUser, BackendRoleName, KycStatus, ModuleKey } from "@/types";
+import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "pending", "partially_verified", "verified", "rejected"];
 
@@ -53,7 +51,6 @@ export default function UserListPage() {
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<AppUser | null>(null);
   const [reason, setReason] = useState("");
-  const [permissionsTarget, setPermissionsTarget] = useState<AppUser | null>(null);
   const [roleError, setRoleError] = useState<string | null>(null);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
@@ -69,14 +66,6 @@ export default function UserListPage() {
   // users.service.ts replaceRoles) — hide the actions rather than let
   // someone click into a guaranteed error.
   const currentUserId = useAuthStore((s) => s.user?.id);
-
-  const grantStaff = (u: AppUser) => {
-    setRoleError(null);
-    updateRoles.mutate(
-      { id: u.id, roles: Array.from(new Set([...u.roles, "staff"])) },
-      { onError: (err) => setRoleError(err instanceof Error ? err.message : "Could not grant staff access.") },
-    );
-  };
 
   const revokeStaff = (u: AppUser) => {
     setRoleError(null);
@@ -168,7 +157,16 @@ export default function UserListPage() {
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          {/*
+            onClick here (not just on the trigger) matters: DropdownMenuContent
+            renders in a portal, but React re-parents portalled content into the
+            React *tree* for event bubbling purposes — a click on any item still
+            bubbles up to this row's onRowClick unless stopped here. Without it,
+            every action in this menu (Manage permissions, Suspend, Revoke,
+            Delete) fires correctly and then gets silently overridden a tick
+            later by the row navigating to the profile page.
+          */}
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={() => navigate(`/users/${u.id}`)}>
               <Eye className="mr-2 h-4 w-4" /> View profile
             </DropdownMenuItem>
@@ -195,7 +193,7 @@ export default function UserListPage() {
               <>
                 {u.roles.includes("staff") ? (
                   <>
-                    <DropdownMenuItem onClick={() => setPermissionsTarget(u)}>
+                    <DropdownMenuItem onClick={() => navigate(`/settings/staff-access/${u.id}/permissions`)}>
                       <KeyRound className="mr-2 h-4 w-4" /> Manage permissions
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => revokeStaff(u)}>
@@ -203,11 +201,9 @@ export default function UserListPage() {
                     </DropdownMenuItem>
                   </>
                 ) : (
-                  !u.roles.includes("admin") && (
-                    <DropdownMenuItem onClick={() => grantStaff(u)}>
-                      <UserCog className="mr-2 h-4 w-4" /> Grant staff access
-                    </DropdownMenuItem>
-                  )
+                  // Do not allow converting a Rider into Staff from here.
+                  // Staff must be created/invited by an Admin from Settings → Staff Access.
+                  null
                 )}
               </>
             )}
@@ -340,82 +336,6 @@ export default function UserListPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <ManagePermissionsDialog
-        user={permissionsTarget}
-        onOpenChange={(o) => !o && setPermissionsTarget(null)}
-      />
     </div>
-  );
-}
-
-/** Which modules a staff account can access — see apps/backend's requireModule() for the actual enforcement. */
-function ManagePermissionsDialog({
-  user,
-  onOpenChange,
-}: {
-  user: AppUser | null;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { data: modules, isLoading } = useUserPermissions(user?.id);
-  const updatePermissions = useUpdateUserPermissions();
-  const [pending, setPending] = useState<ModuleKey[] | null>(null);
-
-  const current = pending ?? modules ?? [];
-
-  const toggle = (key: ModuleKey, checked: boolean) => {
-    const next = checked ? Array.from(new Set([...current, key])) : current.filter((m) => m !== key);
-    setPending(next);
-  };
-
-  return (
-    <Dialog
-      open={!!user}
-      onOpenChange={(o) => {
-        if (!o) setPending(null);
-        onOpenChange(o);
-      }}
-    >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Manage permissions — {user?.full_name}</DialogTitle>
-          <DialogDescription>
-            Which sections of the console this staff account can access. Enforced by the API itself, not just
-            hidden from the sidebar.
-          </DialogDescription>
-        </DialogHeader>
-
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : (
-          <div className="space-y-3">
-            {MODULE_KEYS.map((key) => (
-              <div key={key} className="flex items-center justify-between rounded-lg border border-border p-3">
-                <Label className="cursor-pointer font-normal">{MODULE_LABELS[key]}</Label>
-                <Switch checked={current.includes(key)} onCheckedChange={(checked) => toggle(key, checked)} />
-              </div>
-            ))}
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            disabled={!user || pending === null || updatePermissions.isPending}
-            onClick={() => {
-              if (!user || pending === null) return;
-              updatePermissions.mutate(
-                { id: user.id, modules: pending },
-                { onSuccess: () => onOpenChange(false) },
-              );
-            }}
-          >
-            Save
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

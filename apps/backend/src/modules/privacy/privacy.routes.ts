@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireAdmin, requireModule } from "../../middleware/authorize.middleware";
+import { requireAction, requireAdmin } from "../../middleware/authorize.middleware";
 import { requirePiiExporter, requireRightsOfficer } from "../../middleware/capability.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
@@ -64,14 +64,14 @@ riderPrivacyRouter.delete("/nominee", asyncHandler(c.deleteMyNomineeHandler));
 /**
  * Staff queue, mounted at /api/v1/privacy.
  *
- * TWO GATES. requireModule("privacy") gets you to the door — it is the same
- * per-section grant every other console area uses. The rights_officer
+ * TWO GATES. requireAction("privacy","view") gets you to the door — it is the
+ * same per-section grant every other console area uses. The rights_officer
  * capability gets you in: actioning a rights request means reading the
  * requester's personal data, so it is not something every ops agent granted
  * the section should hold by default.
  */
 export const adminPrivacyRouter = Router();
-adminPrivacyRouter.use(requireAuth, requireModule("privacy"));
+adminPrivacyRouter.use(requireAuth, requireAction("privacy", "view"));
 
 adminPrivacyRouter.get(
     "/requests",
@@ -87,8 +87,13 @@ adminPrivacyRouter.get(
     asyncHandler(c.getRequestHandler),
 );
 
+// requireAction("privacy","process") stacks ON TOP of the router-level
+// view-only gate, alongside (not instead of) requireRightsOfficer — acting on
+// a rights request needs both the stronger module action grant and the
+// capability, neither one substituting for the other.
 adminPrivacyRouter.patch(
     "/requests/:id",
+    requireAction("privacy", "process"),
     requireRightsOfficer,
     validate({ params: v.uuidParam, body: v.updateRequestBody }),
     asyncHandler(c.updateRequestHandler),
@@ -96,6 +101,7 @@ adminPrivacyRouter.patch(
 
 adminPrivacyRouter.post(
     "/requests/:id/reject",
+    requireAction("privacy", "process"),
     requireRightsOfficer,
     validate({ params: v.uuidParam, body: v.rejectRequestBody }),
     asyncHandler(c.rejectRequestHandler),

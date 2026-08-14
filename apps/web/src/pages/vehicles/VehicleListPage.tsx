@@ -24,12 +24,15 @@ import { useCreateMaintenanceTicket } from "@/hooks/useMaintenance";
 import { useTableSort } from "@/hooks/useTableSort";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate } from "@/lib/utils";
+import { hasAction } from "@/lib/permissions";
+import { useAuthStore } from "@/store/authStore";
 import type { Vehicle, VehicleStatus } from "@/types";
 
 const STATUS_OPTIONS: (VehicleStatus | "all")[] = ["all", "available", "booked", "assigned", "maintenance", "scrap"];
 
 export default function VehicleListPage() {
   const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<VehicleStatus | "all">("all");
   const [page, setPage] = useState(1);
@@ -137,17 +140,19 @@ export default function VehicleListPage() {
             <DropdownMenuItem onClick={() => setHistoryTarget(v.id)}>
               <History className="mr-2 h-4 w-4" /> View history
             </DropdownMenuItem>
-            {v.status === "available" && (
+            {v.status === "available" && hasAction(user, "vehicles", "assign") && (
               <DropdownMenuItem onClick={() => setAssignTarget(v)}>
                 <Zap className="mr-2 h-4 w-4" /> Assign to rider
               </DropdownMenuItem>
             )}
-            {v.status !== "maintenance" && v.status !== "scrap" && v.status !== "assigned" && (
+            {v.status !== "maintenance" && v.status !== "scrap" && v.status !== "assigned" &&
+              hasAction(user, "maintenance", "create") && hasAction(user, "vehicles", "edit") && (
               <DropdownMenuItem onClick={() => setMaintenanceTarget(v)}>
                 <Wrench className="mr-2 h-4 w-4" /> Mark in maintenance
               </DropdownMenuItem>
             )}
-            {v.status !== "available" && v.status !== "scrap" && v.status !== "assigned" && (
+            {v.status !== "available" && v.status !== "scrap" && v.status !== "assigned" &&
+              hasAction(user, "vehicles", "edit") && (
               <DropdownMenuItem onClick={() => updateVehicle.mutate({ id: v.id, patch: { status: "available" } })}>
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Mark available
               </DropdownMenuItem>
@@ -165,9 +170,11 @@ export default function VehicleListPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Vehicles</h1>
           <p className="text-sm text-muted-foreground">{data?.total ?? 0} vehicles in the fleet</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4" /> Add vehicle
-        </Button>
+        {hasAction(user, "vehicles", "create") && (
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" /> Add vehicle
+          </Button>
+        )}
       </div>
 
       <Card>

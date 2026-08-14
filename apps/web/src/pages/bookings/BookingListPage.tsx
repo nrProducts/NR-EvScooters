@@ -16,6 +16,8 @@ import type { PickupQueueFilters } from "@/services/api/bookings";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { computeLatePaymentFee } from "@/lib/latePaymentPolicy";
 import { ApiError } from "@/services/api/httpClient";
+import { hasAction } from "@/lib/permissions";
+import { useAuthStore } from "@/store/authStore";
 import type { PickupBooking } from "@/types";
 
 /**
@@ -56,6 +58,7 @@ function filtersForView(view: BookingView): Pick<PickupQueueFilters, "status" | 
 }
 
 export default function BookingListPage() {
+  const user = useAuthStore((s) => s.user);
   const [view, setView] = useState<BookingView>("pending");
   const [page, setPage] = useState(1);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
@@ -131,7 +134,7 @@ export default function BookingListPage() {
       header: "Actions",
       key: "actions",
       render: (b) => {
-        if (b.status === "confirmed") {
+        if (b.status === "confirmed" && hasAction(user, "bookings", "edit")) {
           return (
             <Button
               size="sm"

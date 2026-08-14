@@ -23,6 +23,10 @@ export interface UserProfile {
     created_at: string;
     updated_at: string;
     deleted_at: string | null;
+    /** Optional operator-entered identifier, staff/admin accounts only. */
+    staff_code: string | null;
+    /** Set by auth.service.ts getSessionContext on each login/session resolution. Null until first login. */
+    last_login_at: string | null;
 }
 
 export interface UserListItem extends UserProfile {

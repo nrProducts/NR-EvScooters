@@ -24,10 +24,14 @@ export type Role = "admin" | "staff";
  */
 export type ModuleKey =
   | "vehicles" | "users" | "kyc" | "bookings" | "maintenance" | "support"
-  | "payments" | "notifications" | "damages" | "refunds" | "privacy";
+  | "payments" | "notifications" | "damages" | "refunds" | "privacy"
+  | "plans" | "reconciliation" | "pii_access_log" | "audit" | "settings"
+  | "dashboard" | "battery_stations";
 export const MODULE_KEYS: readonly ModuleKey[] = [
   "vehicles", "users", "kyc", "bookings", "maintenance", "support",
   "payments", "notifications", "damages", "refunds", "privacy",
+  "plans", "reconciliation", "pii_access_log", "audit", "settings",
+  "dashboard", "battery_stations",
 ];
 
 /** Human-readable labels for the module-permission checkboxes in Settings. */
@@ -43,7 +47,134 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   damages: "Damage Review",
   refunds: "Refunds",
   privacy: "Privacy Requests",
+  plans: "Plans",
+  reconciliation: "Reconciliation",
+  pii_access_log: "PII Access Log",
+  audit: "Audit Log",
+  settings: "Settings",
+  dashboard: "Dashboard",
+  battery_stations: "Battery Stations",
 };
+
+/**
+ * Every module's grantable verbs, in the shape the permission matrix UI
+ * renders directly. Mirrors apps/backend/src/types/index.ts MODULE_ACTIONS —
+ * keep both in sync by hand (no shared package in this monorepo). `available:
+ * false` means no backend route enforces it yet (or, for the couple of
+ * UI-only ones like "view_kyc", no route ever will) — the matrix renders
+ * those as disabled rather than omitting them, so the screen matches the
+ * full permission spec even where enforcement doesn't exist behind it yet.
+ */
+export interface ModuleActionDef {
+  key: string;
+  label: string;
+  available: boolean;
+}
+
+export const MODULE_ACTIONS: Record<ModuleKey, readonly ModuleActionDef[]> = {
+  dashboard: [{ key: "view", label: "View", available: true }],
+  vehicles: [
+    { key: "view", label: "View", available: true },
+    { key: "create", label: "Create", available: true },
+    { key: "edit", label: "Edit", available: true },
+    { key: "assign", label: "Assign / Unassign", available: true },
+    { key: "maintenance", label: "Maintenance", available: false },
+    { key: "delete", label: "Delete", available: true },
+  ],
+  users: [
+    { key: "view", label: "View", available: true },
+    { key: "create", label: "Create", available: false },
+    { key: "edit", label: "Edit", available: true },
+    { key: "suspend", label: "Suspend / Activate", available: true },
+    { key: "delete", label: "Delete", available: false },
+    { key: "view_kyc", label: "View KYC", available: true },
+  ],
+  kyc: [
+    { key: "view", label: "View", available: true },
+    { key: "review", label: "Review / Approve / Reject", available: true },
+  ],
+  bookings: [
+    { key: "view", label: "View", available: true },
+    { key: "create", label: "Create", available: false },
+    { key: "edit", label: "Edit", available: true },
+    { key: "cancel", label: "Cancel", available: true },
+    { key: "assign_vehicle", label: "Assign Vehicle", available: false },
+  ],
+  maintenance: [
+    { key: "view", label: "View", available: true },
+    { key: "create", label: "Create", available: true },
+    { key: "edit", label: "Edit", available: true },
+    { key: "complete", label: "Complete", available: true },
+    { key: "delete", label: "Delete", available: false },
+  ],
+  support: [
+    { key: "view", label: "View", available: true },
+    { key: "create", label: "Create", available: false },
+    { key: "reply", label: "Reply / Resolve", available: true },
+    { key: "resolve", label: "Resolve (see Reply)", available: false },
+    { key: "delete", label: "Delete", available: false },
+  ],
+  payments: [
+    { key: "view", label: "View", available: true },
+    { key: "create", label: "Create", available: false },
+    { key: "refund", label: "Refund", available: true },
+    { key: "export", label: "Export", available: false },
+  ],
+  plans: [
+    { key: "view", label: "View", available: true },
+    { key: "create", label: "Create", available: true },
+    { key: "edit", label: "Edit / Activate / Deactivate", available: true },
+    { key: "delete", label: "Delete", available: false },
+  ],
+  reconciliation: [
+    { key: "view", label: "View", available: true },
+    { key: "create", label: "Create", available: false },
+    { key: "approve", label: "Approve", available: false },
+    { key: "export", label: "Export", available: false },
+  ],
+  notifications: [
+    { key: "view", label: "View", available: true },
+    { key: "create", label: "Create", available: false },
+    { key: "send", label: "Send", available: true },
+    { key: "delete", label: "Delete", available: false },
+  ],
+  privacy: [
+    { key: "view", label: "View", available: true },
+    { key: "process", label: "Approve / Reject / Process", available: true },
+  ],
+  pii_access_log: [
+    { key: "view", label: "View", available: true },
+    { key: "export", label: "Export", available: false },
+  ],
+  audit: [
+    { key: "view", label: "View", available: true },
+    { key: "export", label: "Export", available: false },
+  ],
+  settings: [
+    { key: "view", label: "View", available: true },
+    { key: "edit", label: "Edit", available: true },
+  ],
+  battery_stations: [
+    { key: "view", label: "View", available: true },
+    { key: "create", label: "Create", available: true },
+    { key: "edit", label: "Edit", available: true },
+    { key: "delete", label: "Delete", available: true },
+  ],
+  damages: [
+    { key: "view", label: "View", available: true },
+    { key: "resolve", label: "Resolve", available: true },
+  ],
+  refunds: [
+    { key: "view", label: "View", available: true },
+    { key: "create", label: "Process", available: true },
+  ],
+};
+
+/** A single module's granted verbs — what staff_permissions actually stores per row. */
+export interface ModulePermission {
+  module_key: ModuleKey;
+  actions: string[];
+}
 
 /**
  * Orthogonal to both role and module: whether the holder may see raw rider
@@ -75,8 +206,8 @@ export interface StaffUser {
   role: Role;
   /** Every backend role the account actually holds (for future fine-grained UI). */
   roles: BackendRoleName[];
-  /** null = unrestricted (admin). Array = exact granted module keys (staff). */
-  permissions: ModuleKey[] | null;
+  /** null = unrestricted (admin). Array = exact granted module+action pairs (staff). */
+  permissions: ModulePermission[] | null;
   /** Capabilities granting access to raw personal data. Empty for most staff. */
   capabilities: Capability[];
   avatarUrl?: string;
@@ -112,6 +243,8 @@ export interface AppUser {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  staff_code: string | null;
+  last_login_at: string | null;
   roles: BackendRoleName[];
   assigned_vehicle: { id: string; vin: string; model: string; name: string; registration_number: string } | null;
   current_plan: { id: string; name: string; price: number; billing_cycle: string } | null;

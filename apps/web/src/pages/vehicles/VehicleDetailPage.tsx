@@ -22,10 +22,13 @@ import {
 } from "@/hooks/useVehicles";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import { hasAction } from "@/lib/permissions";
+import { useAuthStore } from "@/store/authStore";
 
 export default function VehicleDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
   const { data: vehicle, isLoading, isError, refetch } = useVehicle(id);
   const updateVehicle = useUpdateVehicle();
   const uploadPhoto = useUploadVehiclePhoto();
@@ -58,14 +61,16 @@ export default function VehicleDetailPage() {
           </p>
         </div>
         <StatusBadge status={vehicle.status} />
-        {vehicle.status === "maintenance" && (
+        {vehicle.status === "maintenance" && hasAction(user, "vehicles", "delete") && (
           <Button variant="outline" size="sm" onClick={() => setScrapOpen(true)}>
             <Recycle className="h-4 w-4" /> Scrap
           </Button>
         )}
-        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-          <Pencil className="h-4 w-4" /> Edit
-        </Button>
+        {hasAction(user, "vehicles", "edit") && (
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            <Pencil className="h-4 w-4" /> Edit
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -147,23 +152,25 @@ export default function VehicleDetailPage() {
           <CardTitle className="flex items-center gap-2">
             <Images className="h-4 w-4" /> Photos
           </CardTitle>
-          <div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) uploadPhoto.mutate({ id: vehicle.id, file });
-                e.target.value = "";
-              }}
-            />
-            <Button variant="outline" size="sm" disabled={uploadPhoto.isPending} onClick={() => fileInputRef.current?.click()}>
-              {uploadPhoto.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              Upload photo
-            </Button>
-          </div>
+          {hasAction(user, "vehicles", "edit") && (
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadPhoto.mutate({ id: vehicle.id, file });
+                  e.target.value = "";
+                }}
+              />
+              <Button variant="outline" size="sm" disabled={uploadPhoto.isPending} onClick={() => fileInputRef.current?.click()}>
+                {uploadPhoto.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                Upload photo
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {uploadPhoto.isError && (
@@ -183,14 +190,16 @@ export default function VehicleDetailPage() {
                       Primary
                     </span>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => deletePhoto.mutate({ id: vehicle.id, photoId: p.id })}
-                    className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                    aria-label="Delete photo"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  {hasAction(user, "vehicles", "edit") && (
+                    <button
+                      type="button"
+                      onClick={() => deletePhoto.mutate({ id: vehicle.id, photoId: p.id })}
+                      className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      aria-label="Delete photo"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
