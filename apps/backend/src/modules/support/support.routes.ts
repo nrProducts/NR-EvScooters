@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireStaff } from "../../middleware/authorize.middleware";
+import { requireModule } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./support.controller";
@@ -24,7 +24,7 @@ riderSupportRouter.get(
 
 /** Admin/staff review routes, mounted at /api/v1/support. */
 export const adminSupportRouter = Router();
-adminSupportRouter.use(requireAuth, requireStaff);
+adminSupportRouter.use(requireAuth, requireModule("support"));
 
 adminSupportRouter.get(
     "/",

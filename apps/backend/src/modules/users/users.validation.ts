@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { ACCOUNT_STATUSES, KYC_STATUSES, ROLE_NAMES, STAFF_CAPABILITIES } from "../../types";
+import {
+    ACCOUNT_STATUSES, KYC_STATUSES, MODULE_KEYS, ROLE_NAMES, STAFF_CAPABILITIES,
+} from "../../types";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
 
 export const uuidParam = z.object({ id: z.string().uuid("A valid user id is required.") });
@@ -139,9 +141,18 @@ export const updateRolesBody = z.object({
         .max(ROLE_NAMES.length),
 });
 
+/** Empty array is valid here (unlike roles) — "revoke every module" is a legitimate call. */
+export const updatePermissionsBody = z.object({
+    modules: z
+        .array(z.enum(MODULE_KEYS as [string, ...string[]]))
+        .max(MODULE_KEYS.length),
+});
+
 /**
- * Capabilities are replaced wholesale, so an empty array is the valid way to
- * revoke everything — unlike roles, where a user must keep at least one.
+ * Capabilities are replaced wholesale too, so an empty array is likewise the
+ * valid way to revoke everything — unlike roles, where a user must keep at
+ * least one. Separate from modules on purpose: see the two-layer note in
+ * types/index.ts.
  */
 export const updateCapabilitiesBody = z.object({
     capabilities: z

@@ -5,7 +5,8 @@ import { safeAuditPayload } from "./mask";
 export type AuditAction =
     | "user.created" | "user.updated" | "user.soft_deleted" | "user.restored"
     | "user.activated" | "user.deactivated" | "user.suspended"
-    | "user.roles_changed" | "user.capabilities_changed" | "user.photo_uploaded"
+    | "user.roles_changed" | "user.permissions_changed" | "user.capabilities_changed"
+    | "user.photo_uploaded"
     | "kyc.document_uploaded" | "kyc.document_updated" | "kyc.document_deleted"
     | "kyc.submitted"
     | "kyc.document_verified" | "kyc.document_rejected"
@@ -41,7 +42,7 @@ export interface AuditEntry {
     targetUserId: string | null;
     action: AuditAction;
     entityType:
-        | "user" | "user_document" | "user_role" | "user_capability"
+        | "user" | "user_document" | "user_role" | "user_permission" | "user_capability"
         | "booking" | "vehicle" | "vehicle_maintenance"
         | "notification_broadcast" | "invoice" | "rental" | "referral" | "battery_station"
         | "payment_order" | "payment_transaction" | "webhook_event" | "deposit" | "damage" | "refund" | "plan"

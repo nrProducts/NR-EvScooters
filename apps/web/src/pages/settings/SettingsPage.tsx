@@ -1,18 +1,22 @@
 import { useState } from "react";
-import { Copy, Plus } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Copy, Plus, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { NotConnected } from "@/components/common/NotConnected";
 import { useUiStore } from "@/store/uiStore";
-import { useUsers } from "@/hooks/useUsers";
+import { useUsers, useUserPermissions } from "@/hooks/useUsers";
 import { initials } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { MODULE_LABELS } from "@/types";
+import type { AppUser } from "@/types";
 import { CapabilitiesSection } from "./CapabilitiesSection";
 
 const SECTIONS = [
@@ -27,8 +31,10 @@ const SECTIONS = [
 export default function SettingsPage() {
   const [tab, setTab] = useState<(typeof SECTIONS)[number]["value"]>("roles");
   const { theme, toggleTheme } = useUiStore();
-  const { data: admins, isLoading } = useUsers({ page: 1, pageSize: 50, role: "admin" });
+  const { data: admins, isLoading: loadingAdmins } = useUsers({ page: 1, pageSize: 50, role: "admin" });
+  const { data: staff, isLoading: loadingStaff } = useUsers({ page: 1, pageSize: 50, role: "staff" });
   const adminAccounts = admins?.data ?? [];
+  const staffAccounts = staff?.data ?? [];
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -44,18 +50,45 @@ export default function SettingsPage() {
           ))}
         </TabsList>
 
-        <TabsContent value="roles">
+        <TabsContent value="roles" className="space-y-4">
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle>Staff accounts</CardTitle>
+                <CardDescription>
+                  Each staff account only sees the modules granted below — enforced by the API, not just hidden
+                  from the sidebar. Grant staff access and manage permissions from the Users page.
+                </CardDescription>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/users">
+                  Manage in Users <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {loadingStaff ? (
+                <p className="text-sm text-muted-foreground">Loading...</p>
+              ) : staffAccounts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No staff accounts yet — grant staff access to a user from the Users page.
+                </p>
+              ) : (
+                staffAccounts.map((r) => <StaffAccountRow key={r.id} user={r} />)
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Admin accounts</CardTitle>
               <CardDescription>
-                Pulled live from <code>GET /users</code>, filtered to the <code>admin</code> role. There's no
-                self-serve way to grant roles from here — <code>PUT /users/:id/roles</code> exists on the
-                backend, but building a safe UI for it (only admins should ever grant admin) is left for later.
+                Full, unconditional access to every module — pulled live from <code>GET /users</code>, filtered
+                to the <code>admin</code> role.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {isLoading ? (
+              {loadingAdmins ? (
                 <p className="text-sm text-muted-foreground">Loading...</p>
               ) : adminAccounts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No admin accounts found in the first page of users.</p>
@@ -167,6 +200,38 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+/** Read-only overview row — one per staff account, showing its granted module badges. Editing lives on the Users page. */
+function StaffAccountRow({ user }: { user: AppUser }) {
+  const { data: modules, isLoading } = useUserPermissions(user.id);
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3">
+        <Avatar className="h-8 w-8">
+          <AvatarFallback>{initials(user.full_name || "?")}</AvatarFallback>
+        </Avatar>
+        <div>
+          <p className="text-sm font-medium">{user.full_name || "Unnamed"}</p>
+          <p className="text-xs text-muted-foreground">{user.email ?? user.phone}</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5 sm:justify-end">
+        {isLoading ? (
+          <span className="text-xs text-muted-foreground">Loading...</span>
+        ) : !modules || modules.length === 0 ? (
+          <Badge variant="muted">No modules granted</Badge>
+        ) : (
+          modules.map((m) => (
+            <Badge key={m} variant="secondary">
+              {MODULE_LABELS[m]}
+            </Badge>
+          ))
+        )}
+      </div>
     </div>
   );
 }

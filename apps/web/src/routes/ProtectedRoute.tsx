@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
-import { isRouteAllowed } from "./roleConfig";
+import { isRouteAllowedForUser } from "./roleConfig";
 
 export function ProtectedRoute({ children }: { children: ReactNode }) {
   const user = useAuthStore((s) => s.user);
@@ -11,7 +11,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  if (!isRouteAllowed(location.pathname, user.role)) {
+  if (!isRouteAllowedForUser(location.pathname, user)) {
     return <Navigate to="/403" replace />;
   }
 

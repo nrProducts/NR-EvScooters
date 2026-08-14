@@ -1,7 +1,8 @@
 import { Response, NextFunction } from "express";
 import { AuthedRequest } from "./auth.middleware";
-import { RoleName, STAFF_ROLES } from "../types";
+import { RoleName, STAFF_ROLES, ModuleKey } from "../types";
 import { forbidden, unauthenticated } from "../common/AppError";
+import { supabaseAdmin } from "../config/supabase";
 
 export const hasRole = (req: AuthedRequest, role: RoleName): boolean =>
     req.user?.roles.includes(role) ?? false;
@@ -32,6 +33,53 @@ export const requireAnyRole =
 
 export const requireAdmin = requireRole("admin");
 export const requireStaff = requireAnyRole(...STAFF_ROLES);
+
+/**
+ * Pure decision core for module-level access, split out from hasModule() so
+ * it's unit-testable without a database — same reasoning as
+ * auth.service.ts's deriveSessionFlags(). Admin is always unconditional;
+ * everyone else needs an explicit grant row (hasGrant), and only staff-role
+ * accounts can hold one at all.
+ */
+export const resolveModuleAccess = (
+    roles: readonly RoleName[],
+    hasGrant: boolean,
+): boolean => {
+    if (roles.includes("admin")) return true;
+    if (!roles.some((r) => STAFF_ROLES.includes(r))) return false;
+    return hasGrant;
+};
+
+/** Per-user, per-module grant check — see public.staff_permissions. */
+export const hasModule = async (req: AuthedRequest, moduleKey: ModuleKey): Promise<boolean> => {
+    if (!req.user) return false;
+    if (req.user.roles.includes("admin")) return true;
+    if (!isStaff(req)) return false;
+
+    const { data, error } = await supabaseAdmin
+        .from("staff_permissions")
+        .select("module_key")
+        .eq("user_id", req.user.id)
+        .eq("module_key", moduleKey)
+        .maybeSingle();
+    if (error) throw error;
+
+    return resolveModuleAccess(req.user.roles, !!data);
+};
+
+/** Caller must be admin, or staff with this module explicitly granted. Use after requireAuth. */
+export const requireModule =
+    (moduleKey: ModuleKey) => async (req: AuthedRequest, _res: Response, next: NextFunction) => {
+        if (!req.user) return next(unauthenticated());
+        try {
+            if (!(await hasModule(req, moduleKey))) {
+                return next(forbidden(`This action requires the "${moduleKey}" module permission.`));
+            }
+            next();
+        } catch (err) {
+            next(err);
+        }
+    };
 
 /**
  * Not attached to any route yet — scaffolded now so the future booking

@@ -2,8 +2,9 @@ import type { Request } from "express";
 import { supabaseAdmin } from "../../config/supabase";
 import { env } from "../../config/env";
 import { businessRule } from "../../common/AppError";
-import { AccountStatus, AuthContext, StaffCapability } from "../../types";
+import { AccountStatus, AuthContext, ModuleKey, STAFF_ROLES, StaffCapability } from "../../types";
 import { getUserById } from "../users/users.service";
+import { getModulePermissions } from "../users/staff-permissions.service";
 import type { UserDetail } from "../users/users.types";
 import { generateNumericOtp, sendOtpSms, toMsg91Mobile } from "./msg91";
 
@@ -15,9 +16,16 @@ export interface SessionContext extends UserDetail {
     /** Whether first-time profile creation is still needed. */
     needs_profile: boolean;
     /**
-     * Capabilities granting access to raw personal data. The admin console
-     * uses these to hide controls the caller cannot use — the server enforces
-     * them regardless, so this is UX rather than a control.
+     * WHICH SECTIONS the caller may open.
+     * null = unrestricted (admin). Array = exact granted module keys (staff).
+     * Empty for rider.
+     */
+    permissions: ModuleKey[] | null;
+    /**
+     * WHETHER the caller may see raw personal data, independent of which
+     * sections they can open. The admin console uses these to hide controls
+     * the caller cannot use — the server enforces them regardless, so this is
+     * UX rather than a control. See the two-layer note in types/index.ts.
      */
     capabilities: StaffCapability[];
 }
@@ -46,11 +54,25 @@ export function deriveSessionFlags(
  */
 export async function getSessionContext(actor: AuthContext): Promise<SessionContext> {
     const detail = await getUserById(actor.id, actor);
+    const permissions = await resolveSessionPermissions(actor);
     return {
         ...detail,
         ...deriveSessionFlags(detail, actor.roles),
+        permissions,
+        // Already resolved by requireAuth, so no extra round trip here.
         capabilities: actor.capabilities,
     };
+}
+
+/**
+ * Kept separate from deriveSessionFlags (not folded in) so that function can
+ * stay pure/DB-free for its own unit tests — this one necessarily hits the
+ * database for staff accounts.
+ */
+async function resolveSessionPermissions(actor: AuthContext): Promise<ModuleKey[] | null> {
+    if (actor.roles.includes("admin")) return null;
+    if (!actor.roles.some((r) => STAFF_ROLES.includes(r))) return [];
+    return getModulePermissions(actor.id);
 }
 
 /**

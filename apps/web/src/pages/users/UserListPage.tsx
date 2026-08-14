@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, ShieldCheck, Ban, CheckCircle2, Trash2, MoreHorizontal } from "lucide-react";
+import {
+  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, MoreHorizontal, UserCog, UserMinus, KeyRound,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -13,8 +15,9 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -22,17 +25,21 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { useUsers, useDeleteUser, useChangeUserStatus } from "@/hooks/useUsers";
+import {
+  useUsers, useDeleteUser, useChangeUserStatus, useUpdateUserRoles, useUserPermissions, useUpdateUserPermissions,
+} from "@/hooks/useUsers";
 import { useTableSort } from "@/hooks/useTableSort";
 import { useAuthStore } from "@/store/authStore";
 import { initials, formatDate } from "@/lib/utils";
-import type { AppUser, BackendRoleName, KycStatus } from "@/types";
+import { MODULE_KEYS, MODULE_LABELS } from "@/types";
+import type { AppUser, BackendRoleName, KycStatus, ModuleKey } from "@/types";
 
 const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "pending", "partially_verified", "verified", "rejected"];
 
-/** Only "admin" and "rider" have any real accounts today — see types/index.ts. No "All" tab — Rider is the default and first. */
+/** "staff" joined "rider"/"admin" as a real, grantable role — see supabase/migrations/20260813*. */
 const ROLE_TABS: { value: BackendRoleName; label: string }[] = [
   { value: "rider", label: "Rider" },
+  { value: "staff", label: "Staff" },
   { value: "admin", label: "Admin" },
 ];
 
@@ -46,6 +53,8 @@ export default function UserListPage() {
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<AppUser | null>(null);
   const [reason, setReason] = useState("");
+  const [permissionsTarget, setPermissionsTarget] = useState<AppUser | null>(null);
+  const [roleError, setRoleError] = useState<string | null>(null);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useUsers({
@@ -54,6 +63,28 @@ export default function UserListPage() {
   });
   const deleteUser = useDeleteUser();
   const changeStatus = useChangeUserStatus();
+  const updateRoles = useUpdateUserRoles();
+
+  // Admin can never edit their own roles (backend refuses it outright — see
+  // users.service.ts replaceRoles) — hide the actions rather than let
+  // someone click into a guaranteed error.
+  const currentUserId = useAuthStore((s) => s.user?.id);
+
+  const grantStaff = (u: AppUser) => {
+    setRoleError(null);
+    updateRoles.mutate(
+      { id: u.id, roles: Array.from(new Set([...u.roles, "staff"])) },
+      { onError: (err) => setRoleError(err instanceof Error ? err.message : "Could not grant staff access.") },
+    );
+  };
+
+  const revokeStaff = (u: AppUser) => {
+    setRoleError(null);
+    updateRoles.mutate(
+      { id: u.id, roles: u.roles.filter((r) => r !== "staff") },
+      { onError: (err) => setRoleError(err instanceof Error ? err.message : "Could not revoke staff access.") },
+    );
+  };
 
   const columns: DataTableColumn<AppUser>[] = [
     {
@@ -160,6 +191,26 @@ export default function UserListPage() {
                 <Ban className="mr-2 h-4 w-4" /> Suspend
               </DropdownMenuItem>
             )}
+            {role === "admin" && u.id !== currentUserId && (
+              <>
+                {u.roles.includes("staff") ? (
+                  <>
+                    <DropdownMenuItem onClick={() => setPermissionsTarget(u)}>
+                      <KeyRound className="mr-2 h-4 w-4" /> Manage permissions
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => revokeStaff(u)}>
+                      <UserMinus className="mr-2 h-4 w-4" /> Revoke staff access
+                    </DropdownMenuItem>
+                  </>
+                ) : (
+                  !u.roles.includes("admin") && (
+                    <DropdownMenuItem onClick={() => grantStaff(u)}>
+                      <UserCog className="mr-2 h-4 w-4" /> Grant staff access
+                    </DropdownMenuItem>
+                  )
+                )}
+              </>
+            )}
             {role === "admin" && (
               <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTarget(u)}>
                 <Trash2 className="mr-2 h-4 w-4" /> Delete
@@ -177,6 +228,12 @@ export default function UserListPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
         <p className="text-sm text-muted-foreground">{data?.total ?? 0} registered users</p>
       </div>
+
+      {roleError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {roleError}
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs
@@ -283,6 +340,82 @@ export default function UserListPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ManagePermissionsDialog
+        user={permissionsTarget}
+        onOpenChange={(o) => !o && setPermissionsTarget(null)}
+      />
     </div>
+  );
+}
+
+/** Which modules a staff account can access — see apps/backend's requireModule() for the actual enforcement. */
+function ManagePermissionsDialog({
+  user,
+  onOpenChange,
+}: {
+  user: AppUser | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { data: modules, isLoading } = useUserPermissions(user?.id);
+  const updatePermissions = useUpdateUserPermissions();
+  const [pending, setPending] = useState<ModuleKey[] | null>(null);
+
+  const current = pending ?? modules ?? [];
+
+  const toggle = (key: ModuleKey, checked: boolean) => {
+    const next = checked ? Array.from(new Set([...current, key])) : current.filter((m) => m !== key);
+    setPending(next);
+  };
+
+  return (
+    <Dialog
+      open={!!user}
+      onOpenChange={(o) => {
+        if (!o) setPending(null);
+        onOpenChange(o);
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Manage permissions — {user?.full_name}</DialogTitle>
+          <DialogDescription>
+            Which sections of the console this staff account can access. Enforced by the API itself, not just
+            hidden from the sidebar.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : (
+          <div className="space-y-3">
+            {MODULE_KEYS.map((key) => (
+              <div key={key} className="flex items-center justify-between rounded-lg border border-border p-3">
+                <Label className="cursor-pointer font-normal">{MODULE_LABELS[key]}</Label>
+                <Switch checked={current.includes(key)} onCheckedChange={(checked) => toggle(key, checked)} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!user || pending === null || updatePermissions.isPending}
+            onClick={() => {
+              if (!user || pending === null) return;
+              updatePermissions.mutate(
+                { id: user.id, modules: pending },
+                { onSuccess: () => onOpenChange(false) },
+              );
+            }}
+          >
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

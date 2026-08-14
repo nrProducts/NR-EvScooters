@@ -6,8 +6,46 @@ export const ROLE_NAMES: readonly RoleName[] = [
 export const STAFF_ROLES: readonly RoleName[] = ["staff", "technician", "station_manager", "admin"] as const;
 
 /**
- * Orthogonal to role. Role says which part of the business someone works in;
- * capability says whether they may see raw personal data. Granted per user in
+ * ============================================================================
+ * TWO LAYERS OF STAFF AUTHORISATION. They are not alternatives.
+ * ============================================================================
+ *
+ * ModuleKey answers "which part of the console may this person OPEN?"
+ * StaffCapability answers "may this person see RAW PERSONAL DATA?"
+ *
+ * They compose, coarse gate then fine gate. Reaching the KYC queue needs the
+ * `kyc` module; opening the Aadhaar image inside it additionally needs the
+ * `kyc_reviewer` capability. An ops agent can therefore work the queue —
+ * chasing riders for missing documents — without ever being able to look at
+ * an identity document, which is the whole point of the DPDPA least-privilege
+ * work and is not expressible with modules alone.
+ *
+ * Keep them separate. Folding capabilities into MODULE_KEYS would make
+ * "can open the KYC section" and "can view someone's Aadhaar" the same
+ * permission, which is the state this replaced.
+ */
+
+/**
+ * Modules a staff account can be individually granted access to (see
+ * public.staff_permissions / requireModule() in authorize.middleware.ts).
+ * Admin bypasses this entirely — always unconditional access. Mirrored in
+ * apps/web/src/types/index.ts — keep both lists in sync by hand (no shared
+ * package exists in this monorepo).
+ */
+export type ModuleKey =
+    | "vehicles" | "users" | "kyc" | "bookings" | "maintenance" | "support"
+    | "payments" | "notifications" | "damages" | "refunds"
+    // The data-principal rights queue. No migration needed to add a module —
+    // staff_permissions.module_key is deliberately free text (see
+    // 20260813100100_staff_role_seed_and_permissions_table.sql).
+    | "privacy";
+export const MODULE_KEYS: readonly ModuleKey[] = [
+    "vehicles", "users", "kyc", "bookings", "maintenance", "support",
+    "payments", "notifications", "damages", "refunds", "privacy",
+] as const;
+
+/**
+ * Orthogonal to both role and module. Granted per user in
  * public.user_capabilities, never implied by a role — including admin, which
  * only starts with all three because the migration backfilled existing admins
  * so nobody was locked out on deploy.

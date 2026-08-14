@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireStaff } from "../../middleware/authorize.middleware";
+import { requireModule } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./damages.controller";
@@ -16,7 +16,7 @@ router.use(requireAuth);
 
 router.get(
     "/",
-    requireStaff,
+    requireModule("damages"),
     validate({ query: v.listDamagesQuery }),
     asyncHandler(c.listDamagesHandler),
 );
@@ -39,7 +39,7 @@ router.post(
 
 router.post(
     "/:id/resolve",
-    requireStaff,
+    requireModule("damages"),
     validate({ params: v.damageIdParam, body: v.resolveDisputeBody }),
     asyncHandler(c.resolveDisputeHandler),
 );

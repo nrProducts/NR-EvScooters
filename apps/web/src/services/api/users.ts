@@ -1,5 +1,8 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
-import type { AccountStatus, AppUser, AppUserDetail, BackendRoleName, Capability, KycStatus, PaginatedResult } from "@/types";
+import type {
+  AccountStatus, AppUser, AppUserDetail, BackendRoleName, Capability, KycStatus, ModuleKey,
+  PaginatedResult,
+} from "@/types";
 
 export interface UserFilters {
   search?: string;
@@ -81,4 +84,36 @@ export async function replaceUserCapabilities(
   capabilities: Capability[],
 ): Promise<{ capabilities: Capability[] }> {
   return apiClient.put<{ capabilities: Capability[] }>(`/users/${id}/capabilities`, { capabilities });
+}
+
+/** GET /users/:id/roles */
+export async function fetchUserRoles(id: string): Promise<BackendRoleName[]> {
+  const res = await apiClient.get<{ roles: BackendRoleName[] }>(`/users/${id}/roles`);
+  return res.roles;
+}
+
+/**
+ * PUT /users/:id/roles — requireAdmin. Full-replace. Blocked entirely for
+ * self-edit and for removing the last admin (backend-enforced, surfaced via
+ * the thrown ApiError's message).
+ */
+export async function replaceUserRoles(id: string, roles: BackendRoleName[]): Promise<BackendRoleName[]> {
+  const res = await apiClient.put<{ roles: BackendRoleName[] }>(`/users/${id}/roles`, { roles });
+  return res.roles;
+}
+
+/** GET /users/:id/permissions — requireAdmin. */
+export async function fetchUserPermissions(id: string): Promise<ModuleKey[]> {
+  const res = await apiClient.get<{ modules: ModuleKey[] }>(`/users/${id}/permissions`);
+  return res.modules;
+}
+
+/**
+ * PUT /users/:id/permissions — requireAdmin. Full-replace; only meaningful
+ * for an account currently holding the "staff" role (backend rejects
+ * otherwise).
+ */
+export async function replaceUserPermissions(id: string, modules: ModuleKey[]): Promise<ModuleKey[]> {
+  const res = await apiClient.put<{ modules: ModuleKey[] }>(`/users/${id}/permissions`, { modules });
+  return res.modules;
 }

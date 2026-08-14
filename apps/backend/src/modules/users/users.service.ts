@@ -723,7 +723,8 @@ export async function replaceCapabilities(
 // Shared guards / helpers
 // ---------------------------------------------------------------------------
 
-async function requireLiveUser(id: string): Promise<UserProfile> {
+/** Exported for staff-permissions.service.ts — same "must exist, not deleted" guard. */
+export async function requireLiveUser(id: string): Promise<UserProfile> {
     const { data, error } = await supabaseAdmin
         .from("users")
         .select(PROFILE_COLUMNS)

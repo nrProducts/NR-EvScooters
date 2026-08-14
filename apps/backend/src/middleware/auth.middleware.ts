@@ -46,6 +46,10 @@ export async function requireAuth(req: AuthedRequest, _res: Response, next: Next
         //    PostgREST answers 300 Multiple Choices rather than picking one.
         //    Because this runs in requireAuth, that 300 fails EVERY
         //    authenticated request — the whole product, both apps.
+        //
+        // Both sides of the merge arrived at the user_roles disambiguator
+        // independently, which is a good sign it is the right fix; this keeps
+        // it and adds the same treatment for user_capabilities.
         .select("id, email, account_status, kyc_status, deleted_at, user_roles!user_roles_user_id_fkey(roles(name)), user_capabilities!user_capabilities_user_id_fkey(capability)")
         .eq("id", data.user.id)
         .maybeSingle();

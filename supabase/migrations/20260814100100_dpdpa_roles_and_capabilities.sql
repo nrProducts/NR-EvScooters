@@ -12,6 +12,11 @@
 -- roles: the master list has held only rider + admin since
 -- 20260720100100_identity.sql.
 -- ---------------------------------------------------------------------
+-- 'staff' is also seeded by 20260813100100 (the module-permissions feature).
+-- Both use `on conflict do nothing`, so replaying either is a no-op and
+-- neither depends on the other having run. Kept in both deliberately: making
+-- this migration assume the earlier one seeded 'staff' would couple two
+-- otherwise independent features together for no benefit.
 insert into public.roles (name, description) values
     ('staff',           'Operations agent — bookings, support, fleet'),
     ('technician',      'Maintenance and repair'),

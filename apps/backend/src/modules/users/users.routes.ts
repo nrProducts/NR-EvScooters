@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireAdmin, requireStaff } from "../../middleware/authorize.middleware";
+import { requireAdmin, requireModule } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import { photoUpload } from "./users.photo.upload";
@@ -31,7 +31,7 @@ router.post(
 // --- staff/admin --------------------------------------------------------
 router.get(
     "/",
-    requireStaff,
+    requireModule("users"),
     validate({ query: v.listUsersQuery }),
     asyncHandler(c.listUsersHandler),
 );
@@ -51,7 +51,7 @@ router.get(
 
 router.patch(
     "/:id",
-    requireStaff,
+    requireModule("users"),
     validate({ params: v.uuidParam, body: v.updateUserBody }),
     asyncHandler(c.updateUserHandler),
 );
@@ -72,7 +72,7 @@ router.post(
 
 router.patch(
     "/:id/status",
-    requireStaff,
+    requireModule("users"),
     validate({ params: v.uuidParam, body: v.updateStatusBody }),
     asyncHandler(c.updateStatusHandler),
 );
@@ -96,7 +96,25 @@ router.put(
     asyncHandler(c.updateRolesHandler),
 );
 
-// --- capabilities (DPDPA least privilege over raw personal data) ---------
+// --- module permissions (which console sections a staff account may open) --
+router.get(
+    "/:id/permissions",
+    requireAdmin,
+    validate({ params: v.uuidParam }),
+    asyncHandler(c.getPermissionsHandler),
+);
+
+router.put(
+    "/:id/permissions",
+    requireAdmin,
+    validate({ params: v.uuidParam, body: v.updatePermissionsBody }),
+    asyncHandler(c.updatePermissionsHandler),
+);
+
+// --- capabilities (DPDPA least privilege over raw personal data) ----------
+// Separate from permissions above, and deliberately so — see the two-layer
+// note in src/types/index.ts. GET is self-or-staff (a staff member may check
+// their own), PUT is admin-only and refuses self-modification in the service.
 router.get(
     "/:id/capabilities",
     validate({ params: v.uuidOrMeParam }),

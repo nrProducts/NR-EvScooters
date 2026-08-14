@@ -11,10 +11,45 @@ export type BackendRoleName = "rider" | "staff" | "technician" | "station_manage
 export type Role = "admin" | "staff";
 
 /**
- * Orthogonal to role: role says which part of the business someone works in,
- * capability says whether they may see raw rider personal data. Never implied
- * by a role — an admin without kyc_reviewer cannot open an Aadhaar scan.
- * The console uses these to hide controls; the backend enforces them.
+ * TWO LAYERS OF STAFF AUTHORISATION — see the same note in
+ * apps/backend/src/types/index.ts. ModuleKey = which sections you may OPEN.
+ * Capability = whether you may see RAW PERSONAL DATA inside them. They
+ * compose; neither replaces the other.
+ */
+
+/**
+ * Modules a staff account can be individually granted access to. Mirrors
+ * apps/backend/src/types/index.ts MODULE_KEYS — keep both lists in sync by
+ * hand (no shared package exists in this monorepo).
+ */
+export type ModuleKey =
+  | "vehicles" | "users" | "kyc" | "bookings" | "maintenance" | "support"
+  | "payments" | "notifications" | "damages" | "refunds" | "privacy";
+export const MODULE_KEYS: readonly ModuleKey[] = [
+  "vehicles", "users", "kyc", "bookings", "maintenance", "support",
+  "payments", "notifications", "damages", "refunds", "privacy",
+];
+
+/** Human-readable labels for the module-permission checkboxes in Settings. */
+export const MODULE_LABELS: Record<ModuleKey, string> = {
+  vehicles: "Vehicles",
+  users: "Users",
+  kyc: "KYC Queue",
+  bookings: "Bookings",
+  maintenance: "Maintenance",
+  support: "Support Tickets",
+  payments: "Payments",
+  notifications: "Notifications",
+  damages: "Damage Review",
+  refunds: "Refunds",
+  privacy: "Privacy Requests",
+};
+
+/**
+ * Orthogonal to both role and module: whether the holder may see raw rider
+ * personal data. Never implied by a role or a module — an admin without
+ * kyc_reviewer cannot open an Aadhaar scan. The console uses these to hide
+ * controls; the backend enforces them regardless.
  */
 export type Capability = "kyc_reviewer" | "rights_officer" | "pii_exporter";
 
@@ -40,6 +75,8 @@ export interface StaffUser {
   role: Role;
   /** Every backend role the account actually holds (for future fine-grained UI). */
   roles: BackendRoleName[];
+  /** null = unrestricted (admin). Array = exact granted module keys (staff). */
+  permissions: ModuleKey[] | null;
   /** Capabilities granting access to raw personal data. Empty for most staff. */
   capabilities: Capability[];
   avatarUrl?: string;

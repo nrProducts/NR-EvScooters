@@ -3,9 +3,10 @@ import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import { isStaff, isAdmin, resolveTargetUserId } from "../../middleware/authorize.middleware";
 import { badRequest, forbidden } from "../../common/AppError";
-import { AccountStatus, RoleName, StaffCapability } from "../../types";
+import { AccountStatus, ModuleKey, RoleName, StaffCapability } from "../../types";
 import { ListUsersFilters } from "./users.types";
 import * as service from "./users.service";
+import * as permissionsService from "./staff-permissions.service";
 import { hasActiveBookingForUser } from "../bookings/bookings.service";
 import { getConsentState } from "../consent/consent.service";
 import { logPiiAccess } from "../../common/piiAccess";
@@ -129,6 +130,18 @@ async function safeConsentState(userId: string) {
         return { up_to_date: true, current_notice_version: "" };
     }
 }
+
+export async function getPermissionsHandler(req: AuthedRequest, res: Response) {
+    res.json({ modules: await permissionsService.getModulePermissions(req.params.id as string) });
+}
+
+export async function updatePermissionsHandler(req: AuthedRequest, res: Response) {
+    const { modules } = req.body as { modules: ModuleKey[] };
+    res.json({
+        modules: await permissionsService.replaceModulePermissions(req.params.id as string, modules, req.user!, req),
+    });
+}
+
 
 /** Exposed for the mobile "am I allowed to unlock?" check. */
 export async function meHandler(req: AuthedRequest, res: Response) {

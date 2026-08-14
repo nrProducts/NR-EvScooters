@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireStaff } from "../../middleware/authorize.middleware";
+import { requireModule } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import { damagePhotoUpload } from "../damages/damages.photo.upload";
@@ -8,7 +8,14 @@ import { recordDamageBody, rentalIdParam as damageRentalIdParam } from "../damag
 import * as c from "./rentals.controller";
 import * as v from "./rentals.validation";
 
-/** Mounted at /api/v1/rentals. Rider routes work off req.user.id; admin routes ("Ride Management") are fleet-wide. */
+/**
+ * Mounted at /api/v1/rentals. Rider routes work off req.user.id; admin
+ * routes ("Ride Management") are fleet-wide, gated on the "vehicles"
+ * module — there's no standalone Ride Management nav item today, and every
+ * admin route here is only ever exercised from the Vehicles page's
+ * per-vehicle actions (complete ride, move to maintenance, return
+ * inspection). Revisit if a dedicated Ride Management page ever ships.
+ */
 const router = Router();
 router.use(requireAuth);
 
@@ -30,28 +37,28 @@ router.post(
 
 router.get(
     "/",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ query: v.listRentalsQuery }),
     asyncHandler(c.listRentalsHandler),
 );
 
 router.get(
     "/:id",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ params: v.rentalIdParam }),
     asyncHandler(c.getRentalHandler),
 );
 
 router.post(
     "/:id/complete",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ params: v.rentalIdParam, body: v.completeRideBody }),
     asyncHandler(c.completeRideHandler),
 );
 
 router.post(
     "/:id/maintenance",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ params: v.rentalIdParam, body: v.moveToMaintenanceBody }),
     asyncHandler(c.moveToMaintenanceHandler),
 );
@@ -61,7 +68,7 @@ router.post(
 // late fee); a no-damage return never touches this endpoint at all.
 router.post(
     "/:id/return-inspection",
-    requireStaff,
+    requireModule("vehicles"),
     validate({ params: damageRentalIdParam }),
     damagePhotoUpload,
     validate({ body: recordDamageBody }),

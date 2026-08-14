@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireStaff } from "../../middleware/authorize.middleware";
+import { requireModule } from "../../middleware/authorize.middleware";
 import { requireKycReviewer } from "../../middleware/capability.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
@@ -50,7 +50,7 @@ riderKycRouter.post("/submit", asyncHandler(c.submitMyKycHandler));
  * Admin/staff review routes, mounted at /api/v1/kyc.
  */
 export const adminKycRouter = Router();
-adminKycRouter.use(requireAuth, requireStaff);
+adminKycRouter.use(requireAuth, requireModule("kyc"));
 
 adminKycRouter.get(
     "/",
@@ -58,15 +58,19 @@ adminKycRouter.get(
     asyncHandler(c.listKycHandler),
 );
 
-// The queue itself stays requireStaff: it returns name, phone and status,
-// which ops legitimately need, and locking it would make the reviewer
-// workflow undiscoverable to the people who are supposed to request access.
+// TWO GATES, deliberately. requireModule("kyc") above admits anyone granted
+// the KYC section — the queue returns name, phone and status, which ops
+// legitimately need to chase riders for missing documents.
 //
-// Everything below exposes the identity documents themselves — the detail
-// view (date of birth, full address, document list) and the images — so it
-// additionally requires the kyc_reviewer capability. Note documentUrlHandler
-// is shared with riderKycRouter; the gate goes on the ADMIN router only,
-// because the rider path already restricts to the document's own owner.
+// Everything below exposes the identity documents THEMSELVES — the detail
+// view (date of birth, full address) and the images — so it additionally
+// requires the kyc_reviewer capability, which no role or module implies. An
+// ops agent can therefore work the queue without ever being able to open an
+// Aadhaar scan, which modules alone cannot express.
+//
+// Note documentUrlHandler is shared with riderKycRouter; the capability gate
+// goes on the ADMIN router only, because the rider path already restricts to
+// the document's own owner.
 adminKycRouter.get(
     "/:userId",
     requireKycReviewer,

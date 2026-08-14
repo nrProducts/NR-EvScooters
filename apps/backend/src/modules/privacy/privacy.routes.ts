@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireAdmin, requireStaff } from "../../middleware/authorize.middleware";
+import { requireAdmin, requireModule } from "../../middleware/authorize.middleware";
 import { requirePiiExporter, requireRightsOfficer } from "../../middleware/capability.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
@@ -64,12 +64,14 @@ riderPrivacyRouter.delete("/nominee", asyncHandler(c.deleteMyNomineeHandler));
 /**
  * Staff queue, mounted at /api/v1/privacy.
  *
- * requireStaff gets you to the door; the rights_officer capability gets you
- * in. Actioning a rights request means reading the requester's personal data,
- * so it is not something every ops agent should hold by default.
+ * TWO GATES. requireModule("privacy") gets you to the door — it is the same
+ * per-section grant every other console area uses. The rights_officer
+ * capability gets you in: actioning a rights request means reading the
+ * requester's personal data, so it is not something every ops agent granted
+ * the section should hold by default.
  */
 export const adminPrivacyRouter = Router();
-adminPrivacyRouter.use(requireAuth, requireStaff);
+adminPrivacyRouter.use(requireAuth, requireModule("privacy"));
 
 adminPrivacyRouter.get(
     "/requests",

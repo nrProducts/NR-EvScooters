@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 import { apiClient, ApiError } from "./httpClient";
-import type { BackendRoleName, Capability, Role, StaffUser } from "@/types";
+import type { BackendRoleName, Capability, ModuleKey, Role, StaffUser } from "@/types";
 
 const STAFF_ROLES: BackendRoleName[] = ["staff", "technician", "station_manager", "admin"];
 
@@ -13,6 +13,8 @@ interface SessionResponse {
   roles: BackendRoleName[];
   capabilities?: Capability[];
   is_admin: boolean;
+  /** null = unrestricted (admin). Array = exact granted module keys (staff). */
+  permissions: ModuleKey[] | null;
 }
 
 /** One place to build the client-side user, so login and refresh cannot drift. */
@@ -25,6 +27,7 @@ function toStaffUser(session: SessionResponse, role: Role): StaffUser {
     avatarUrl: session.profile_photo_url ?? undefined,
     role,
     roles: session.roles,
+    permissions: session.permissions,
     capabilities: session.capabilities ?? [],
   };
 }

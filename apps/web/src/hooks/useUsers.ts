@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/users";
-import type { Capability } from "@/types";
+import type { BackendRoleName, Capability, ModuleKey } from "@/types";
 
 export function useUsers(filters: api.UserFilters) {
   return useQuery({ queryKey: ["users", filters], queryFn: () => api.fetchUsers(filters) });
@@ -63,6 +63,28 @@ export function useUserCapabilities(id: string | undefined) {
   });
 }
 
+export function useUpdateUserRoles() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, roles }: { id: string; roles: BackendRoleName[] }) => api.replaceUserRoles(id, roles),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["user", id] });
+      // A role change can also invalidate any previously-granted module
+      // permissions (e.g. demoting away from staff) — refetch to be safe.
+      qc.invalidateQueries({ queryKey: ["user-permissions", id] });
+    },
+  });
+}
+
+export function useUserPermissions(id: string | undefined) {
+  return useQuery({
+    queryKey: ["user-permissions", id],
+    queryFn: () => api.fetchUserPermissions(id!),
+    enabled: !!id,
+  });
+}
+
 export function useReplaceCapabilities() {
   const qc = useQueryClient();
   return useMutation({
@@ -70,6 +92,17 @@ export function useReplaceCapabilities() {
       api.replaceUserCapabilities(id, capabilities),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ["user-capabilities", id] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+}
+
+export function useUpdateUserPermissions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, modules }: { id: string; modules: ModuleKey[] }) => api.replaceUserPermissions(id, modules),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ["user-permissions", id] });
       qc.invalidateQueries({ queryKey: ["users"] });
     },
   });
