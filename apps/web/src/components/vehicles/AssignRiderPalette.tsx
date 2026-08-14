@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Search, CheckCircle2, Loader2, Zap } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useAssignVehicleToUser } from "@/hooks/useVehicles";
 import * as usersApi from "@/services/api/users";
 import { ApiError } from "@/services/api/httpClient";
@@ -25,6 +26,11 @@ export function AssignRiderPalette({
   const [value, setValue] = useState("");
   const [term, setTerm] = useState("");
   const [assignedName, setAssignedName] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<{
+    riderId: string;
+    riderName: string;
+    existingVehicleName: string;
+  } | null>(null);
   const assign = useAssignVehicleToUser();
 
   useEffect(() => {
@@ -37,6 +43,7 @@ export function AssignRiderPalette({
       setValue("");
       setTerm("");
       setAssignedName(null);
+      setConflict(null);
       assign.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -59,6 +66,30 @@ export function AssignRiderPalette({
           setAssignedName(riderName);
           setTimeout(() => onOpenChange(false), 900);
         },
+        onError: (err) => {
+          if (err instanceof ApiError && err.fields?.active_rental_id) {
+            setConflict({
+              riderId,
+              riderName,
+              existingVehicleName: err.fields.existing_vehicle_name || "their current scooter",
+            });
+          }
+        },
+      },
+    );
+  }
+
+  function handleConfirmReassign() {
+    if (!vehicle || !conflict) return;
+    assign.mutate(
+      { id: vehicle.id, userId: conflict.riderId, unassignExisting: true },
+      {
+        onSuccess: () => {
+          setAssignedName(conflict.riderName);
+          setConflict(null);
+          setTimeout(() => onOpenChange(false), 900);
+        },
+        onError: () => setConflict(null),
       },
     );
   }
@@ -153,7 +184,7 @@ export function AssignRiderPalette({
                   })}
               </div>
 
-              {assign.isError && (
+              {assign.isError && !conflict && (
                 <p className="mx-4 mb-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
                   {assign.error instanceof ApiError ? assign.error.message : "Could not assign this vehicle."}
                 </p>
@@ -162,6 +193,20 @@ export function AssignRiderPalette({
           )}
         </AnimatePresence>
       </DialogContent>
+
+      <ConfirmDialog
+        open={!!conflict}
+        onOpenChange={(open) => !open && setConflict(null)}
+        title="Rider already has a scooter assigned"
+        description={
+          conflict
+            ? `${conflict.riderName} already has ${conflict.existingVehicleName} assigned. Unassign it and hand over ${vehicle?.name} instead?`
+            : undefined
+        }
+        confirmLabel="Unassign & Reassign"
+        onConfirm={handleConfirmReassign}
+        loading={assign.isPending}
+      />
     </Dialog>
   );
 }

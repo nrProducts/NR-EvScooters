@@ -52,11 +52,60 @@ export function FleetStatusCard({
   byStatus,
   total,
   isLoading,
+  compact = false,
 }: {
   byStatus: Record<VehicleStatus, number> | undefined;
   total: number;
   isLoading: boolean;
+  compact?: boolean;
 }) {
+  if (compact) {
+    const statuses = byStatus ? (Object.keys(byStatus) as VehicleStatus[]) : [];
+    return (
+      <MotionCard>
+        <CardHeader className="flex-row items-center justify-between gap-2 space-y-0 p-3 pb-1.5">
+          <div className="flex items-center gap-1.5">
+            <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
+            <CardTitle className="text-xs">Fleet Status</CardTitle>
+          </div>
+          <span className="text-[11px] font-semibold text-muted-foreground">{total} total</span>
+        </CardHeader>
+        <CardContent className="space-y-2 p-3 pt-1">
+          {isLoading || !byStatus ? (
+            <Skeleton className="h-20 w-full" />
+          ) : (
+            <>
+              <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
+                {statuses.map((status) => {
+                  const pct = total > 0 ? (byStatus[status] / total) * 100 : 0;
+                  if (pct <= 0) return null;
+                  return (
+                    <motion.div
+                      key={status}
+                      className={cn("h-full", FLEET_BAR_COLOR[status])}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ duration: 0.6, ease: "easeOut" }}
+                    />
+                  );
+                })}
+              </div>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
+                {statuses.map((status) => (
+                  <div key={status} className="flex items-center gap-1.5">
+                    <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", FLEET_BAR_COLOR[status])} />
+                    <span className="truncate text-muted-foreground">{VEHICLE_STATUS_LABEL[status]}</span>
+                    <span className="ml-auto font-medium tabular-nums">{byStatus[status]}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </MotionCard>
+    );
+  }
+
   return (
     <MotionCard>
       <CardHeader className="flex-row items-center gap-2 space-y-0 p-4 pb-2">

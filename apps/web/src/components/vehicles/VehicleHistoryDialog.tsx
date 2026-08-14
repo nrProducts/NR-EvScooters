@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, Loader2, Wrench, UserX, Zap, Bike, CornerDownRight } from "lucide-react";
+import { CheckCircle2, Loader2, Wrench, UserX, Zap, Bike, CornerDownRight, Undo2 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -13,7 +13,7 @@ import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
 import { useVehicle } from "@/hooks/useVehicles";
 import { useCompleteRide, useMoveRideToMaintenance } from "@/hooks/useRentals";
 import { ApiError } from "@/services/api/httpClient";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { VehicleMaintenanceRecord, VehicleRentalRecord } from "@/types";
@@ -92,33 +92,53 @@ export function VehicleHistoryDialog({
           {vehicle && (
             <div className="flex min-h-0 flex-1 flex-col gap-5">
               {/* Trunk root — current status. Stays put; only the timeline below scrolls. */}
-              <div className="flex shrink-0 items-center justify-between gap-2 rounded-2xl border border-primary/30 bg-primary/5 p-3.5">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-                    <Bike className="h-4 w-4" />
+              <div
+                className={cn(
+                  "flex shrink-0 flex-col gap-3 rounded-2xl border p-3.5",
+                  current?.return_requested_at ? "border-warning/40 bg-warning/5" : "border-primary/30 bg-primary/5",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                      <Bike className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">
+                        {current ? current.rider?.full_name ?? "Unknown rider" : "Currently unassigned"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {current ? `Assigned since ${formatDate(current.started_at)}` : "No active rider"}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold">
-                      {current ? current.rider?.full_name ?? "Unknown rider" : "Currently unassigned"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {current ? `Assigned since ${formatDate(current.started_at)}` : "No active rider"}
-                    </p>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <StatusBadge status={vehicle.status} />
+                    {current && (
+                      <Button size="sm" variant="outline" onClick={() => setUnassignOpen(true)}>
+                        <UserX className="h-3.5 w-3.5" /> Unassign
+                      </Button>
+                    )}
+                    {!current && vehicle.status === "available" && hasAction(user, "vehicles", "assign") && (
+                      <Button size="sm" onClick={() => setAssignOpen(true)}>
+                        <Zap className="h-3.5 w-3.5" /> Assign
+                      </Button>
+                    )}
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <StatusBadge status={vehicle.status} />
-                  {current && (
-                    <Button size="sm" variant="outline" onClick={() => setUnassignOpen(true)}>
-                      <UserX className="h-3.5 w-3.5" /> Unassign
-                    </Button>
-                  )}
-                  {!current && vehicle.status === "available" && hasAction(user, "vehicles", "assign") && (
-                    <Button size="sm" onClick={() => setAssignOpen(true)}>
-                      <Zap className="h-3.5 w-3.5" /> Assign
-                    </Button>
-                  )}
-                </div>
+
+                {current?.return_requested_at && (
+                  <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-2.5 text-warning">
+                    <Undo2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <div className="min-w-0 text-xs">
+                      <p className="font-semibold">
+                        Return requested {formatDateTime(current.return_requested_at)}
+                        {current.return_due_at && ` · due by ${formatDateTime(current.return_due_at)}`}
+                      </p>
+                      {current.return_reason && <p className="mt-0.5 text-warning/90">{current.return_reason}</p>}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Branching timeline — its own scroll region once it outgrows the dialog. */}

@@ -10,14 +10,23 @@ const SEGMENTS: { key: keyof BatteryStationSummary; label: string; color: string
 ];
 
 /** Donut + legend for the battery station network's health — real counts from GET /admin/battery-stations/summary. */
-export function StationStatusGauge({ summary, isLoading }: { summary?: BatteryStationSummary; isLoading?: boolean }) {
-  if (isLoading || !summary) return <Skeleton className="h-48 w-full" />;
+export function StationStatusGauge({
+  summary,
+  isLoading,
+  compact = false,
+}: {
+  summary?: BatteryStationSummary;
+  isLoading?: boolean;
+  compact?: boolean;
+}) {
+  const heightClass = compact ? "h-24" : "h-48";
+  if (isLoading || !summary) return <Skeleton className={cn("w-full", heightClass)} />;
 
   const data = SEGMENTS.map((s) => ({ ...s, value: summary[s.key] as number }));
   const hasData = summary.totalStations > 0;
 
   return (
-    <div className="flex h-48 items-center gap-4">
+    <div className={cn("flex items-center", compact ? "gap-3" : "gap-4", heightClass)}>
       <div className="relative h-full flex-1">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
@@ -38,13 +47,13 @@ export function StationStatusGauge({ summary, isLoading }: { summary?: BatterySt
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-xl font-semibold tracking-tight">{summary.totalStations}</span>
-          <span className="text-[11px] text-muted-foreground">Total Stations</span>
+          <span className={cn("font-semibold tracking-tight", compact ? "text-sm" : "text-xl")}>{summary.totalStations}</span>
+          {!compact && <span className="text-[11px] text-muted-foreground">Total Stations</span>}
         </div>
       </div>
-      <div className="flex flex-col gap-2.5">
+      <div className={cn("flex flex-col", compact ? "gap-1.5" : "gap-2.5")}>
         {data.map((d) => (
-          <div key={d.label} className="flex items-center gap-2 text-xs">
+          <div key={d.label} className={cn("flex items-center gap-2", compact ? "text-[11px]" : "text-xs")}>
             <span className={cn("h-2 w-2 rounded-full", d.dot)} />
             <span className="text-muted-foreground">{d.label}</span>
             <span className="ml-auto font-semibold tabular-nums">{d.value}</span>

@@ -129,48 +129,50 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* Fleet Status + Quick Actions */}
-      <div className="grid gap-3 lg:grid-cols-2">
-        <FleetStatusCard
-          byStatus={summary?.vehicles.by_status}
-          total={summary?.vehicles.total ?? 0}
-          isLoading={summaryLoading}
-        />
-
-        <MotionCard>
-          <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-sm">Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-2 p-4 pt-2 sm:grid-cols-3">
-            <Button size="sm" className="justify-start gap-2" onClick={() => navigate("/vehicles?new=1")}>
-              <Plus className="h-4 w-4" /> Add Vehicle
-            </Button>
-            <Button size="sm" variant="outline" className="justify-start gap-2" onClick={() => navigate("/bookings")}>
-              <PackageCheck className="h-4 w-4" /> Assign Vehicle
-            </Button>
-            <Button size="sm" variant="outline" className="justify-start gap-2" onClick={() => navigate("/kyc")}>
-              <ShieldCheck className="h-4 w-4" /> Approve KYC
-            </Button>
-          </CardContent>
-        </MotionCard>
-      </div>
-
-      {/* Station Network */}
-      <div className="grid gap-3 lg:grid-cols-2">
-        <ChartCard title="Station Network" description="Battery swap stations, plotted by status">
-          <StationNetworkMap stations={stations?.data ?? []} isLoading={stationsLoading} />
+      {/* Station Network (wide, left) + Fleet Status / Quick Actions / Battery Stations (compact, right) */}
+      <div className="grid gap-3 lg:grid-cols-3">
+        <ChartCard title="Station Network" description="Battery swap stations, plotted by status" className="lg:col-span-2">
+          <StationNetworkMap stations={stations?.data ?? []} isLoading={stationsLoading} heightClassName="h-[27rem]" />
         </ChartCard>
-        <ChartCard
-          title="Battery Stations"
-          description="Network health at a glance"
-          action={
-            <Button variant="ghost" size="sm" onClick={() => navigate("/battery-stations")}>
-              View all
-            </Button>
-          }
-        >
-          <StationStatusGauge summary={stationSummary} isLoading={stationSummaryLoading} />
-        </ChartCard>
+
+        <div className="flex flex-col gap-3">
+          <FleetStatusCard
+            byStatus={summary?.vehicles.by_status}
+            total={summary?.vehicles.total ?? 0}
+            isLoading={summaryLoading}
+            compact
+          />
+
+          <MotionCard>
+            <CardHeader className="p-3 pb-1.5">
+              <CardTitle className="text-xs">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-1.5 p-3 pt-1">
+              <Button size="sm" className="justify-start gap-2" onClick={() => navigate("/vehicles?new=1")}>
+                <Plus className="h-4 w-4" /> Add Vehicle
+              </Button>
+              <Button size="sm" variant="outline" className="justify-start gap-2" onClick={() => navigate("/bookings")}>
+                <PackageCheck className="h-4 w-4" /> Assign Vehicle
+              </Button>
+              <Button size="sm" variant="outline" className="justify-start gap-2" onClick={() => navigate("/kyc")}>
+                <ShieldCheck className="h-4 w-4" /> Approve KYC
+              </Button>
+            </CardContent>
+          </MotionCard>
+
+          <ChartCard
+            title="Battery Stations"
+            description="Network health at a glance"
+            className="flex-1"
+            action={
+              <Button variant="ghost" size="sm" onClick={() => navigate("/battery-stations")}>
+                View all
+              </Button>
+            }
+          >
+            <StationStatusGauge summary={stationSummary} isLoading={stationSummaryLoading} compact />
+          </ChartCard>
+        </div>
       </div>
 
       {/* Statistics grid, 2 rows */}

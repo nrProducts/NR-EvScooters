@@ -82,7 +82,14 @@ export async function scrapVehicle(id: string, input: ScrapVehicleInput): Promis
   return apiClient.post<Vehicle>(`/vehicles/${id}/scrap`, input);
 }
 
-/** POST /vehicles/:id/assign-to-user — requireStaff. Direct handover, no booking involved. */
-export async function assignVehicleToUser(id: string, userId: string): Promise<Vehicle> {
-  return apiClient.post<Vehicle>(`/vehicles/${id}/assign-to-user`, { user_id: userId });
+/**
+ * POST /vehicles/:id/assign-to-user — requireStaff. Direct handover, no booking involved.
+ * If the rider already holds a different vehicle, the backend 409s (ApiError.fields carries
+ * the existing vehicle's name/id) unless `unassignExisting` is passed to close that rental first.
+ */
+export async function assignVehicleToUser(id: string, userId: string, unassignExisting?: boolean): Promise<Vehicle> {
+  return apiClient.post<Vehicle>(`/vehicles/${id}/assign-to-user`, {
+    user_id: userId,
+    unassign_existing: unassignExisting,
+  });
 }

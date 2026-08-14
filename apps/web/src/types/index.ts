@@ -456,6 +456,11 @@ export interface VehicleRentalRecord {
   started_at: string;
   ended_at: string | null;
   rider: { id: string; full_name: string } | null;
+  /** Rider's post-pickup return request — null until they ask to hand the scooter back. */
+  return_requested_at: string | null;
+  return_reason: string | null;
+  return_feedback: string | null;
+  return_due_at: string | null;
 }
 
 export interface VehicleBookingRecord {

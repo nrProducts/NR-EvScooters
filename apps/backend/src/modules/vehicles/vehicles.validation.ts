@@ -78,4 +78,5 @@ export const scrapVehicleBody = z.object({
 
 export const assignVehicleToUserBody = z.object({
     user_id: z.string().uuid("Pick a rider to assign this vehicle to."),
+    unassign_existing: z.boolean().optional(),
 });

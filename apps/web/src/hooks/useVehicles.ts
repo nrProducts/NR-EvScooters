@@ -64,7 +64,8 @@ export function useScrapVehicle() {
 export function useAssignVehicleToUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, userId }: { id: string; userId: string }) => api.assignVehicleToUser(id, userId),
+    mutationFn: ({ id, userId, unassignExisting }: { id: string; userId: string; unassignExisting?: boolean }) =>
+      api.assignVehicleToUser(id, userId, unassignExisting),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["vehicles"] });
       qc.invalidateQueries({ queryKey: ["vehicle"] });

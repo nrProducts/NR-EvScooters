@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Map as MapLibreMap, Marker as MapLibreMarker } from "maplibre-gl";
 import { Loader2, MapPinOff } from "lucide-react";
 import { CHENNAI_CENTER, DEFAULT_MAP_ZOOM, MAP_STYLE_URL, isMapConfigured } from "@/lib/mapConfig";
+import { cn } from "@/lib/utils";
 import type { BatteryStation, StationStatus } from "@/types/batteryStation";
 
 const STATUS_COLOR: Record<StationStatus, string> = {
@@ -17,7 +18,15 @@ const STATUS_COLOR: Record<StationStatus, string> = {
  * so this shows the real thing the console actually tracks geographically,
  * battery stations, rather than fabricating vehicle positions.
  */
-export function StationNetworkMap({ stations, isLoading }: { stations: BatteryStation[]; isLoading?: boolean }) {
+export function StationNetworkMap({
+  stations,
+  isLoading,
+  heightClassName = "h-48",
+}: {
+  stations: BatteryStation[];
+  isLoading?: boolean;
+  heightClassName?: string;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<MapLibreMarker[]>([]);
@@ -86,7 +95,7 @@ export function StationNetworkMap({ stations, isLoading }: { stations: BatterySt
 
   if (!isMapConfigured() || status === "failed") {
     return (
-      <div className="flex h-48 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-secondary/40 px-6 text-center">
+      <div className={cn("flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-secondary/40 px-6 text-center", heightClassName)}>
         <MapPinOff className="h-6 w-6 text-muted-foreground" />
         <p className="text-sm font-medium">Map unavailable</p>
         <p className="max-w-xs text-xs text-muted-foreground">
@@ -99,7 +108,7 @@ export function StationNetworkMap({ stations, isLoading }: { stations: BatterySt
   }
 
   return (
-    <div className="relative h-48 w-full overflow-hidden rounded-xl border border-border">
+    <div className={cn("relative w-full overflow-hidden rounded-xl border border-border", heightClassName)}>
       <div ref={containerRef} className="h-full w-full" />
       {(status === "loading" || isLoading) && (
         <div className="absolute inset-0 flex items-center justify-center bg-secondary/40">

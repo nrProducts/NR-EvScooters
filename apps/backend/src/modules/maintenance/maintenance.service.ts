@@ -4,7 +4,6 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyAdmins, notifyUser } from "../notifications/notifications.service";
 import { assignVehicleToUser, scrapVehicle } from "../vehicles/vehicles.service";
-import { completeRide } from "../rentals/rentals.service";
 import { resumePlanForBooking } from "../plans/plans.service";
 import { AuthContext, Paginated } from "../../types";
 import {
@@ -532,27 +531,20 @@ export async function updateMaintenanceTicket(
                 // Release from maintenance first (respecting any OTHER still-open
                 // ticket on this vehicle), then hand it back to the same rider —
                 // assignVehicleToUser requires status='available', so this order
-                // is load-bearing.
+                // is load-bearing. The rider still holds an active rental on the
+                // temp vehicle at this point (standard_temp outcome), so
+                // unassignExisting closes it via the same completeRide() path a
+                // normal return goes through, before opening the handback rental.
                 await releaseVehicleIfNoOpenTickets(ticket.vehicle_id, id);
                 const { rentalId } = await assignVehicleToUser(
                     ticket.vehicle_id, ticket.displaced_rider_id, actor, ticket.booking_id ?? undefined,
+                    { unassignExisting: true },
                 );
 
                 // The rider's plan resumes on their own original vehicle,
                 // remaining duration intact.
                 if (ticket.booking_id) {
                     await resumePlanForBooking(ticket.booking_id, id, "original_handback", rentalId, actor);
-                }
-
-                if (ticket.outcome === "standard_temp" && ticket.temp_vehicle_id) {
-                    const { data: tempRental, error: tempRentalError } = await supabaseAdmin
-                        .from("rentals")
-                        .select("id")
-                        .eq("vehicle_id", ticket.temp_vehicle_id)
-                        .eq("status", "active")
-                        .maybeSingle();
-                    if (tempRentalError) throw tempRentalError;
-                    if (tempRental) await completeRide(tempRental.id, {}, actor);
                 }
 
                 await notifyUser(ticket.displaced_rider_id, {

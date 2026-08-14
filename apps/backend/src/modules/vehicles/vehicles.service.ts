@@ -5,6 +5,7 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
 import { adminCancelBooking } from "../bookings/bookings.service";
+import { completeRide } from "../rentals/rentals.service";
 import { Paginated, AuthContext } from "../../types";
 import {
     buildVehiclePhotoPath, createSignedVehiclePhotoUrl, removeVehiclePhotoFile, uploadVehiclePhotoFile,
@@ -187,7 +188,10 @@ async function maintenanceForVehicle(vehicleId: string): Promise<VehicleMaintena
 async function rentalsForVehicle(vehicleId: string): Promise<VehicleRentalRow[]> {
     const { data, error } = await supabaseAdmin
         .from("rentals")
-        .select("id, status, started_at, ended_at, users(id, full_name)")
+        .select(`
+            id, status, started_at, ended_at, users(id, full_name),
+            return_requested_at, return_reason, return_feedback, return_due_at
+        `)
         .eq("vehicle_id", vehicleId)
         .order("started_at", { ascending: false })
         .limit(20);
@@ -195,12 +199,18 @@ async function rentalsForVehicle(vehicleId: string): Promise<VehicleRentalRow[]>
 
     return ((data ?? []) as unknown as Array<{
         id: string; status: string; started_at: string; ended_at: string | null; users: unknown;
+        return_requested_at: string | null; return_reason: string | null;
+        return_feedback: string | null; return_due_at: string | null;
     }>).map((row) => ({
         id: row.id,
         status: row.status,
         started_at: row.started_at,
         ended_at: row.ended_at,
         rider: unwrap<{ id: string; full_name: string }>(row.users),
+        return_requested_at: row.return_requested_at,
+        return_reason: row.return_reason,
+        return_feedback: row.return_feedback,
+        return_due_at: row.return_due_at,
     }));
 }
 
@@ -565,12 +575,20 @@ export interface AssignVehicleToUserResult {
  * one succeed, so at most one 'assigned' rentals row is ever created here.
  * rentals_one_active_per_vehicle_idx / _per_booking_idx (20260811100000)
  * back this up at the database level.
+ *
+ * A rider can only ever have one active rental. If they already hold a
+ * *different* vehicle, this refuses by default (409, `active_rental_id` in
+ * `fields`) rather than silently opening a second concurrent rental and
+ * stranding the old vehicle stuck 'assigned' — pass `unassignExisting: true`
+ * (after the caller has confirmed with staff) to close that old rental via
+ * the same completeRide() a normal return goes through, then proceed.
  */
 export async function assignVehicleToUser(
     vehicleId: string,
     userId: string,
     actor: AuthContext,
     bookingId?: string,
+    options?: { unassignExisting?: boolean },
 ): Promise<AssignVehicleToUserResult> {
     const { data: rider, error: riderError } = await supabaseAdmin
         .from("users")
@@ -581,6 +599,32 @@ export async function assignVehicleToUser(
     if (!rider || rider.deleted_at) throw notFound("Rider not found.");
     if (rider.kyc_status !== "verified") {
         throw businessRule("This rider's KYC must be verified before handing over a vehicle.");
+    }
+
+    const { data: existingRental, error: existingRentalError } = await supabaseAdmin
+        .from("rentals")
+        .select("id, vehicle_id, vehicles(id, name, registration_number)")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .maybeSingle();
+    if (existingRentalError) throw existingRentalError;
+
+    if (existingRental && existingRental.vehicle_id !== vehicleId) {
+        const existingVehicle = (Array.isArray(existingRental.vehicles) ? existingRental.vehicles[0] : existingRental.vehicles) as
+            | { id: string; name: string; registration_number: string }
+            | null;
+        if (!options?.unassignExisting) {
+            throw conflict(
+                `${rider.full_name} already has ${existingVehicle?.name ?? "a scooter"} assigned. Unassign it before handing over a new one.`,
+                {
+                    active_rental_id: String(existingRental.id),
+                    existing_vehicle_id: existingVehicle?.id ?? "",
+                    existing_vehicle_name: existingVehicle?.name ?? "",
+                    existing_vehicle_registration: existingVehicle?.registration_number ?? "",
+                },
+            );
+        }
+        await completeRide(String(existingRental.id), {}, actor);
     }
 
     const { data: claimed, error: claimError } = await supabaseAdmin

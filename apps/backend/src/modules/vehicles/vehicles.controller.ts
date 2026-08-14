@@ -33,8 +33,10 @@ export async function assignVehicleHandler(req: AuthedRequest, res: Response) {
 }
 
 export async function assignVehicleToUserHandler(req: AuthedRequest, res: Response) {
-    const { user_id } = req.body as { user_id: string };
-    const { vehicle } = await service.assignVehicleToUser(req.params.id as string, user_id, req.user!);
+    const { user_id, unassign_existing } = req.body as { user_id: string; unassign_existing?: boolean };
+    const { vehicle } = await service.assignVehicleToUser(req.params.id as string, user_id, req.user!, undefined, {
+        unassignExisting: unassign_existing,
+    });
     res.json(vehicle);
 }
 
