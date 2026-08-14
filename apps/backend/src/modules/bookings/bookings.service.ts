@@ -5,12 +5,12 @@ import { writeAudit } from "../../common/audit";
 import { addDays } from "../../common/dates";
 import { notifyUser } from "../notifications/notifications.service";
 import { hasActiveRentalForUser } from "../users/users.service";
-import { planExpiryFor } from "../rentals/rentals.service";
+import { computeLateReturnPenalty, planExpiryFor } from "../rentals/rentals.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { AuthContext, Paginated } from "../../types";
 import {
-    ACTIVE_BOOKING_STATUSES, AvailableVehicleView, BookingHistoryFilters, BookingRefundStatus,
-    BookingStatus, BookingView, CancelBookingInput, ConfirmPickupInput, CreateBookingInput,
+    ACTIVE_BOOKING_STATUSES, AvailableVehicleView, BookingActiveRental, BookingHistoryFilters,
+    BookingRefundStatus, BookingStatus, BookingView, CancelBookingInput, ConfirmPickupInput, CreateBookingInput,
     PickupBookingView, PickupQueueFilters,
 } from "./bookings.types";
 import {
@@ -28,6 +28,17 @@ const PLAN_BILLING_COLUMNS = `
     current_period_start, next_due_at, plan_paused_at, plan_paused_days_total
 `;
 
+/**
+ * The rental this booking's handover opened (bookings.active_rental_id) —
+ * just enough of rentals' return-request/settlement state (rentals.types.ts's
+ * RentalReturnFields) for the Rental Operations screen to know whether a
+ * return is pending, without a second round trip. `!inner` swapped in by
+ * pickupBookingColumns() below turns this from a left join into a filter.
+ */
+const ACTIVE_RENTAL_COLUMNS = `
+    id, status, started_at, return_requested_at, return_reason, return_feedback, return_due_at, return_approved_at
+`;
+
 const BOOKING_COLUMNS = `
     id, status, start_day, created_at, vehicle_id, referral_discount_amount,
     ${CANCELLATION_COLUMNS},
@@ -35,8 +46,20 @@ const BOOKING_COLUMNS = `
     vehicle_models(id, name),
     stations(id, name, code, lat, lng),
     plans(id, name, billing_cycle, price, duration_days, deposit_amount),
-    vehicles(id, name, registration_number, battery_percentage, status)
+    vehicles(id, name, registration_number, battery_percentage, status),
+    active_rental:rentals!bookings_active_rental_id_fkey(${ACTIVE_RENTAL_COLUMNS})
 `;
+
+type RawActiveRental = {
+    id: string;
+    status: string;
+    started_at: string;
+    return_requested_at: string | null;
+    return_reason: string | null;
+    return_feedback: string | null;
+    return_due_at: string | null;
+    return_approved_at: string | null;
+};
 
 type RawBookingRow = {
     id: string;
@@ -63,11 +86,40 @@ type RawBookingRow = {
     stations: unknown;
     plans: unknown;
     vehicles: unknown;
+    active_rental: unknown;
 };
 
 function unwrap<T>(raw: unknown): T | null {
     const v = Array.isArray(raw) ? raw[0] : raw;
     return (v as T) ?? null;
+}
+
+function toActiveRental(raw: unknown): BookingActiveRental | null {
+    const row = unwrap<RawActiveRental>(raw);
+    if (!row) return null;
+    return {
+        id: row.id,
+        status: row.status,
+        started_at: row.started_at,
+        return_requested_at: row.return_requested_at ?? null,
+        return_reason: row.return_reason ?? null,
+        return_feedback: row.return_feedback ?? null,
+        return_due_at: row.return_due_at ?? null,
+        return_approved_at: row.return_approved_at ?? null,
+    };
+}
+
+/**
+ * Live estimate of the late-return fee that WOULD be settled if this
+ * booking's pending return were approved right now — same helper
+ * completeRide's settlement uses (rentals.service.ts), just not written
+ * anywhere. return_due_at is guaranteed non-null whenever return_requested_at
+ * is (rentals_return_request_chk), so no expires_at fallback is needed here.
+ */
+function toReturnLateFeePreview(activeRental: BookingActiveRental | null): BookingView["return_late_fee_preview"] {
+    if (!activeRental?.return_requested_at) return null;
+    const charge = computeLateReturnPenalty({ returnDueAt: activeRental.return_due_at });
+    return { days_late: charge.daysLate, penalty_amount: charge.penaltyAmount, fee_per_day: charge.feePerDay };
 }
 
 /**
@@ -170,6 +222,7 @@ export function computeCancellationCharge(input: {
 }
 
 export function toBookingView(row: RawBookingRow): BookingView {
+    const activeRental = toActiveRental(row.active_rental);
     return {
         id: row.id,
         status: row.status,
@@ -194,6 +247,8 @@ export function toBookingView(row: RawBookingRow): BookingView {
         next_due_at: row.next_due_at ?? null,
         plan_paused_at: row.plan_paused_at ?? null,
         plan_paused_days_total: row.plan_paused_days_total ?? 0,
+        active_rental: activeRental,
+        return_late_fee_preview: toReturnLateFeePreview(activeRental),
     };
 }
 
@@ -571,16 +626,29 @@ export async function hasActiveBookingForUser(userId: string): Promise<boolean> 
 // Keep in sync with BOOKING_COLUMNS: RawPickupBookingRow extends RawBookingRow,
 // so TypeScript will NOT flag a missing column here — the fields would just
 // silently come back undefined in staff responses.
-const PICKUP_BOOKING_COLUMNS = `
-    id, status, start_day, created_at, vehicle_id, referral_discount_amount,
-    ${CANCELLATION_COLUMNS},
-    ${PLAN_BILLING_COLUMNS},
-    vehicle_models(id, name),
-    stations(id, name, code),
-    plans(id, name, billing_cycle, price, duration_days, deposit_amount),
-    vehicles(id, name, registration_number, battery_percentage, status),
-    users!bookings_user_id_fkey(id, full_name, phone)
-`;
+//
+// active_rental normally embeds as a left join (a pre-pickup booking has
+// none yet); the Return Requests tab needs it as a genuine FILTER instead,
+// which PostgREST only applies to embedded-resource conditions when the
+// embed itself is `!inner` — hence this is a function, not a constant.
+function pickupBookingColumns(opts: { innerActiveRental?: boolean } = {}): string {
+    const activeRentalRel = opts.innerActiveRental
+        ? "rentals!bookings_active_rental_id_fkey!inner"
+        : "rentals!bookings_active_rental_id_fkey";
+    return `
+        id, status, start_day, created_at, vehicle_id, referral_discount_amount,
+        ${CANCELLATION_COLUMNS},
+        ${PLAN_BILLING_COLUMNS},
+        vehicle_models(id, name),
+        stations(id, name, code),
+        plans(id, name, billing_cycle, price, duration_days, deposit_amount),
+        vehicles(id, name, registration_number, battery_percentage, status),
+        users!bookings_user_id_fkey(id, full_name, phone),
+        active_rental:${activeRentalRel}(${ACTIVE_RENTAL_COLUMNS})
+    `;
+}
+
+const PICKUP_BOOKING_COLUMNS = pickupBookingColumns();
 
 type RawPickupBookingRow = RawBookingRow & { users: unknown };
 
@@ -591,22 +659,84 @@ function toPickupBookingView(row: RawPickupBookingRow): PickupBookingView {
     };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Bookings for the admin "Bookings" screen, one row per tab: Pending
+ * Resolves a free-text search into a booking-id allowlist. PostgREST can't
+ * OR-combine conditions across several embedded tables (rider name, vehicle
+ * registration) in one call, so this runs small targeted lookups first and
+ * unions the results — cheap at this admin console's scale, same posture as
+ * the rest of this module (no search indexes/materialized views anywhere
+ * else either). Returns an empty array (not null) when nothing matches, so
+ * the caller can short-circuit instead of hitting the main table.
+ */
+async function resolveSearchBookingIds(search: string): Promise<string[]> {
+    const term = search.trim();
+    if (!term) return [];
+
+    if (UUID_RE.test(term)) {
+        const { data, error } = await supabaseAdmin
+            .from("bookings")
+            .select("id")
+            .or(`id.eq.${term},active_rental_id.eq.${term}`);
+        if (error) throw error;
+        return (data ?? []).map((r) => r.id as string);
+    }
+
+    // Escape ilike's own wildcards so a literal '%' or '_' typed by staff
+    // doesn't act as one.
+    const like = `%${term.replace(/[%_]/g, "\\$&")}%`;
+    const [byName, byPhone, byVehicle] = await Promise.all([
+        supabaseAdmin.from("users").select("id").ilike("full_name", like),
+        supabaseAdmin.from("users").select("id").ilike("phone", like),
+        supabaseAdmin.from("vehicles").select("id").ilike("registration_number", like),
+    ]);
+    if (byName.error) throw byName.error;
+    if (byPhone.error) throw byPhone.error;
+    if (byVehicle.error) throw byVehicle.error;
+
+    // These ids came back from the DB, not typed by the caller, so it's safe
+    // to interpolate them straight into the next .or() below.
+    const userIds = [...(byName.data ?? []), ...(byPhone.data ?? [])].map((r) => r.id as string);
+    const vehicleIds = (byVehicle.data ?? []).map((r) => r.id as string);
+    if (userIds.length === 0 && vehicleIds.length === 0) return [];
+
+    const orParts: string[] = [];
+    if (userIds.length) orParts.push(`user_id.in.(${userIds.join(",")})`);
+    if (vehicleIds.length) orParts.push(`vehicle_id.in.(${vehicleIds.join(",")})`);
+
+    const { data, error } = await supabaseAdmin.from("bookings").select("id").or(orParts.join(","));
+    if (error) throw error;
+    return (data ?? []).map((r) => r.id as string);
+}
+
+/**
+ * Bookings for the admin "Rental Operations" screen, one row per tab: Pending
  * (confirmed), Assigned (fulfilled), Active/Due (fulfilled + planStatus),
- * Completed, Cancelled, Expired, or All (both status and planStatus
- * omitted — no filter is applied server-side, the caller decides the
+ * Return Requests (fulfilled + active_rental.return_requested_at set),
+ * Completed, Cancelled, Expired, or All (status/planStatus/returnRequested
+ * all omitted — no filter is applied server-side, the caller decides the
  * default view).
  */
 export async function listPickupQueue(filters: PickupQueueFilters): Promise<Paginated<PickupBookingView>> {
     const [from, to] = toRange(filters);
+
+    let matchedIds: string[] | null = null;
+    if (filters.search?.trim()) {
+        matchedIds = await resolveSearchBookingIds(filters.search);
+        if (matchedIds.length === 0) return paginate([], 0, filters);
+    }
+
     let query = supabaseAdmin
         .from("bookings")
-        .select(PICKUP_BOOKING_COLUMNS, { count: "exact" });
+        .select(pickupBookingColumns({ innerActiveRental: filters.returnRequested }), { count: "exact" });
 
     if (filters.status) query = query.eq("status", filters.status);
     if (filters.planStatus) query = query.eq("plan_status", filters.planStatus);
     if (filters.stationId) query = query.eq("station_id", filters.stationId);
+    if (filters.returnRequested) query = query.not("active_rental.return_requested_at", "is", null);
+    if (filters.unassigned) query = query.is("vehicle_id", null);
+    if (matchedIds) query = query.in("id", matchedIds);
 
     const { data, error, count } = await query
         .order(filters.sortBy, { ascending: filters.sortDir === "asc" })

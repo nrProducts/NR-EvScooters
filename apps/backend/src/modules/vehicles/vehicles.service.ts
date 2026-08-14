@@ -189,7 +189,7 @@ async function rentalsForVehicle(vehicleId: string): Promise<VehicleRentalRow[]>
     const { data, error } = await supabaseAdmin
         .from("rentals")
         .select(`
-            id, status, started_at, ended_at, users(id, full_name),
+            id, status, started_at, ended_at, users!rentals_user_id_fkey(id, full_name),
             return_requested_at, return_reason, return_feedback, return_due_at
         `)
         .eq("vehicle_id", vehicleId)

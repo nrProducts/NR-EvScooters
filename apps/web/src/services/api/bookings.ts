@@ -7,6 +7,12 @@ export interface PickupQueueFilters {
   status?: BookingStatus;
   /** Further narrows a 'fulfilled' view into Active/Due/Paused. Ignored for any other status. */
   planStatus?: BookingPlanStatus;
+  /** Rental Operations' "Return Requests" tab — only bookings whose active rental has a pending return. */
+  returnRequested?: boolean;
+  /** "Awaiting Assignment" summary count — confirmed bookings with no vehicle allocated yet. */
+  unassigned?: boolean;
+  /** Matches rider name/phone, vehicle registration number, booking id, or rental id. */
+  search?: string;
   page?: number;
   pageSize?: number;
   sortBy?: "created_at" | "start_day" | "next_due_at";
@@ -15,13 +21,19 @@ export interface PickupQueueFilters {
 
 /** GET /bookings — requireStaff. Omit status/planStatus for the "All" tab; pass either for any other stage. */
 export async function fetchBookings(filters: PickupQueueFilters = {}): Promise<PaginatedResult<PickupBooking>> {
-  const { stationId, status, planStatus, page = 1, pageSize = 8, sortBy, sortDir } = filters;
+  const {
+    stationId, status, planStatus, returnRequested, unassigned, search,
+    page = 1, pageSize = 8, sortBy, sortDir,
+  } = filters;
   const res = await apiClient.get<BackendPaginated<PickupBooking>>("/bookings", {
     page,
     pageSize,
     stationId,
     status,
     planStatus,
+    returnRequested,
+    unassigned,
+    search,
     sortBy,
     sortDir,
   });

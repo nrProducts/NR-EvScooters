@@ -12,13 +12,22 @@ export interface AdminRentalRow {
   fare: number | null;
   rider: { id: string; full_name: string; phone: string | null } | null;
   vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
+  return_requested_at: string | null;
+  return_reason: string | null;
+  return_feedback: string | null;
+  return_due_at: string | null;
+  return_approved_at: string | null;
+  return_approved_by: { id: string; full_name: string } | null;
+  days_late: number | null;
+  late_penalty_amount: number | null;
+  late_fee_per_day: number | null;
 }
 
 export interface CompleteRideInput {
   end_battery_pct?: number;
 }
 
-/** POST /rentals/:id/complete — requireStaff. Ends the ride; the DB trigger returns the vehicle to 'available'. */
+/** POST /rentals/:id/complete — requireStaff. Ends the ride; the DB trigger returns the vehicle to 'available'. Also the "Approve Return" action when a return was pending. */
 export async function completeRide(id: string, input: CompleteRideInput = {}): Promise<AdminRentalRow> {
   return apiClient.post<AdminRentalRow>(`/rentals/${id}/complete`, input);
 }
@@ -28,7 +37,16 @@ export interface MoveToMaintenanceInput {
   end_battery_pct?: number;
 }
 
-/** POST /rentals/:id/maintenance — requireStaff. Ends the ride, flips the vehicle to 'maintenance', and opens a ticket. */
+/** POST /rentals/:id/maintenance — requireStaff. Ends the ride, flips the vehicle to 'maintenance', and opens a ticket. Also the "Approve Return" (inspection) action when a return was pending. */
 export async function moveRideToMaintenance(id: string, input: MoveToMaintenanceInput): Promise<AdminRentalRow> {
   return apiClient.post<AdminRentalRow>(`/rentals/${id}/maintenance`, input);
+}
+
+export interface RejectReturnInput {
+  reason: string;
+}
+
+/** POST /rentals/:id/return-reject — requireStaff. Declines a pending return request; the rental stays active. */
+export async function rejectReturn(id: string, input: RejectReturnInput): Promise<AdminRentalRow> {
+  return apiClient.post<AdminRentalRow>(`/rentals/${id}/return-reject`, input);
 }

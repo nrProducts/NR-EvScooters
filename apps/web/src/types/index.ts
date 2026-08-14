@@ -361,6 +361,23 @@ export interface SupportTicket {
 export type BookingStatus = "pending_payment" | "confirmed" | "cancelled" | "expired" | "fulfilled" | "completed";
 export type BookingPlanStatus = "active" | "due" | "paused";
 
+/**
+ * The rental this booking's handover opened (bookings.active_rental_id) —
+ * just enough of the rental's own return-request/settlement state for the
+ * Rental Operations screen to show a pending return without a second
+ * fetch. Null for anything pre-pickup.
+ */
+export interface PickupBookingActiveRental {
+  id: string;
+  status: string;
+  started_at: string;
+  return_requested_at: string | null;
+  return_reason: string | null;
+  return_feedback: string | null;
+  return_due_at: string | null;
+  return_approved_at: string | null;
+}
+
 export interface PickupBooking {
   id: string;
   status: BookingStatus;
@@ -371,10 +388,13 @@ export interface PickupBooking {
   plan: { id: string; name: string; billing_cycle: string; price: number; duration_days: number } | null;
   rider: { id: string; full_name: string; phone: string | null };
   /** The physical unit already reserved by allocate_vehicle_for_booking(), if any. */
-  vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
+  vehicle: { id: string; name: string; registration_number: string; battery_percentage: number; status: VehicleStatus } | null;
   /** Recurring-billing state — set once the booking reaches 'fulfilled', null before and after (see BookingStatus). */
   plan_status: BookingPlanStatus | null;
   next_due_at: string | null;
+  active_rental: PickupBookingActiveRental | null;
+  /** Live estimate of the late-return fee if this booking's pending return were approved right now. Null unless one is pending. */
+  return_late_fee_preview: { days_late: number; penalty_amount: number; fee_per_day: number } | null;
 }
 
 export interface AvailableVehicle {
@@ -723,6 +743,9 @@ export interface AdminRental {
   return_reason: string | null;
   return_feedback: string | null;
   return_due_at: string | null;
+  /** Stamped the moment staff settle a rental that had a pending return request — i.e. approve it. */
+  return_approved_at: string | null;
+  return_approved_by: { id: string; full_name: string } | null;
   days_late: number | null;
   late_penalty_amount: number | null;
   late_fee_per_day: number | null;

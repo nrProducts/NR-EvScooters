@@ -86,6 +86,35 @@ export interface BookingView {
     next_due_at: string | null;
     plan_paused_at: string | null;
     plan_paused_days_total: number;
+
+    /**
+     * The rental this booking's handover opened (bookings.active_rental_id),
+     * carrying just enough of the rental's own return-request/settlement
+     * state (rentals.types.ts's RentalReturnFields) for the Rental
+     * Operations screen to surface a pending return without a second round
+     * trip. Null for anything pre-pickup, and stays populated after
+     * completion (the rental link is never cleared) for return history.
+     */
+    active_rental: BookingActiveRental | null;
+    /**
+     * Live estimate of the late-return fee that WOULD be settled if this
+     * booking's return request were approved right now — not a stored
+     * value, computed the same way completeRide's settlement is (see
+     * computeLateReturnPenalty in rentals.service.ts). Null unless a return
+     * is actually pending.
+     */
+    return_late_fee_preview: { days_late: number; penalty_amount: number; fee_per_day: number } | null;
+}
+
+export interface BookingActiveRental {
+    id: string;
+    status: string;
+    started_at: string;
+    return_requested_at: string | null;
+    return_reason: string | null;
+    return_feedback: string | null;
+    return_due_at: string | null;
+    return_approved_at: string | null;
 }
 
 export interface PickupQueueFilters {
@@ -96,6 +125,12 @@ export interface PickupQueueFilters {
     status?: BookingStatus;
     /** Further narrows a 'fulfilled' view into Active/Due/Paused. Ignored for any other status. */
     planStatus?: "active" | "due" | "paused";
+    /** Rental Operations' "Return Requests" tab — only fulfilled bookings whose active rental has a pending return. */
+    returnRequested?: boolean;
+    /** "Awaiting Assignment" summary count — confirmed bookings with no vehicle allocated yet. */
+    unassigned?: boolean;
+    /** Matches rider name/phone, vehicle registration number, booking id, or rental id. */
+    search?: string;
     sortBy: "created_at" | "start_day" | "next_due_at";
     sortDir: "asc" | "desc";
 }

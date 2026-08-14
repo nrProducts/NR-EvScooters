@@ -29,6 +29,12 @@ export const pickupQueueQuery = z.object({
         .optional(),
     /** Further narrows a 'fulfilled' view into Active/Due/Paused. Ignored for any other status. */
     planStatus: z.enum(["active", "due", "paused"]).optional(),
+    /** Rental Operations' "Return Requests" tab — only bookings whose active rental has a pending return. */
+    returnRequested: z.coerce.boolean().optional(),
+    /** "Awaiting Assignment" summary count — confirmed bookings with no vehicle allocated yet. */
+    unassigned: z.coerce.boolean().optional(),
+    /** Matches rider name/phone, vehicle registration number, booking id, or rental id. */
+    search: z.string().trim().max(200).optional(),
     sortBy: z.enum(["created_at", "start_day", "next_due_at"]).default("created_at"),
     sortDir: z.enum(["asc", "desc"]).default("desc"),
 });

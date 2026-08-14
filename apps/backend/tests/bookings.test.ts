@@ -89,6 +89,8 @@ describe("toBookingView", () => {
             next_due_at: null,
             plan_paused_at: null,
             plan_paused_days_total: 0,
+            active_rental: null,
+            return_late_fee_preview: null,
         });
     });
 

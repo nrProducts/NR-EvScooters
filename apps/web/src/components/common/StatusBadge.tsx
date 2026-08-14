@@ -54,6 +54,7 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   disputed: "destructive",
   paused: "warning",
   due: "warning",
+  return_requested: "warning",
 };
 
 export function StatusBadge({ status }: { status: string }) {

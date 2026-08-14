@@ -44,6 +44,12 @@ export const requestReturnBody = z
         }
     });
 
+/** Staff decline of a pending return request — a reason is mandatory, mirroring rejectBookingBody's convention. */
+export const rejectReturnBody = z.object({
+    reason: z.string().trim().min(3, "Give a reason of at least 3 characters.").max(500),
+});
+
 export type CompleteRideBody = z.infer<typeof completeRideBody>;
 export type MoveToMaintenanceBody = z.infer<typeof moveToMaintenanceBody>;
 export type RequestReturnBody = z.infer<typeof requestReturnBody>;
+export type RejectReturnBody = z.infer<typeof rejectReturnBody>;

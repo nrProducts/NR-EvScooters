@@ -4,7 +4,7 @@ import { validatedQuery } from "../../middleware/validate.middleware";
 import * as service from "./rentals.service";
 import { ListRentalsFilters } from "./rentals.types";
 import {
-    CompleteRideBody, MoveToMaintenanceBody, RentalHistoryQuery, RequestReturnBody,
+    CompleteRideBody, MoveToMaintenanceBody, RejectReturnBody, RentalHistoryQuery, RequestReturnBody,
 } from "./rentals.validation";
 import * as damagesService from "../damages/damages.service";
 import { assertValidDamagePhoto, buildDamagePhotoPath, uploadDamagePhotoFile } from "../damages/damages.photo.storage";
@@ -45,6 +45,11 @@ export async function moveToMaintenanceHandler(req: AuthedRequest, res: Response
         req.body as MoveToMaintenanceBody,
         req.user!,
     );
+    res.json(rental);
+}
+
+export async function rejectReturnHandler(req: AuthedRequest, res: Response) {
+    const rental = await service.rejectReturn(req.params.id as string, req.body as RejectReturnBody, req.user!);
     res.json(rental);
 }
 

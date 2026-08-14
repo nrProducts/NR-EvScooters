@@ -14,6 +14,8 @@ export interface RentalReturnFields {
     return_reason: string | null;
     return_feedback: string | null;
     return_due_at: string | null;
+    /** Stamped by completeRide/moveRideToMaintenance the moment they settle a rental with a pending return request. */
+    return_approved_at: string | null;
     days_late: number | null;
     late_penalty_amount: number | null;
     late_fee_per_day: number | null;
@@ -82,6 +84,12 @@ export interface AdminRentalRow extends RentalReturnFields, RentalPlanPeriodFiel
     fare: number | null;
     rider: { id: string; full_name: string; phone: string | null } | null;
     vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
+    /** Staff member who approved the return (i.e. settled this rental while a return was pending). Admin-only — not on RentalView. */
+    return_approved_by: { id: string; full_name: string } | null;
+}
+
+export interface RejectReturnInput {
+    reason: string;
 }
 
 export interface ListRentalsFilters {

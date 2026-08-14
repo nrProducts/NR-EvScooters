@@ -7,7 +7,7 @@ import { pausePlanForBooking } from "../plans/plans.service";
 import { setDepositRefundEligible } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
 import {
-    AdminRentalRow, CompleteRideInput, ListRentalsFilters, MoveToMaintenanceInput, RentalView,
+    AdminRentalRow, CompleteRideInput, ListRentalsFilters, MoveToMaintenanceInput, RejectReturnInput, RentalView,
     RequestReturnInput,
 } from "./rentals.types";
 import { LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS } from "./returnPolicy.constants";
@@ -17,7 +17,7 @@ import { LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS } from "./returnPolicy.c
  * lists below so the two can't drift.
  */
 const RETURN_COLUMNS = `
-    return_requested_at, return_reason, return_feedback, return_due_at,
+    return_requested_at, return_reason, return_feedback, return_due_at, return_approved_at,
     days_late, late_penalty_amount, late_fee_per_day
 `;
 
@@ -53,8 +53,9 @@ const ADMIN_RENTAL_COLUMNS = `
     id, status, started_at, ended_at, start_battery_pct, end_battery_pct, fare, vehicle_id, booking_id,
     ${RETURN_COLUMNS},
     ${PLAN_PERIOD_COLUMNS},
-    users(id, full_name, phone),
-    vehicles(id, name, registration_number, battery_percentage)
+    users!rentals_user_id_fkey(id, full_name, phone),
+    vehicles(id, name, registration_number, battery_percentage),
+    return_approved_by:users!rentals_return_approved_by_fkey(id, full_name)
 `;
 
 function unwrap<T>(raw: unknown): T | null {
@@ -158,6 +159,7 @@ interface RawReturnFields {
     return_reason: string | null;
     return_feedback: string | null;
     return_due_at: string | null;
+    return_approved_at: string | null;
     days_late: number | null;
     late_penalty_amount: number | string | null;
     late_fee_per_day: number | string | null;
@@ -170,6 +172,7 @@ function toReturnView(row: RawReturnFields) {
         return_reason: row.return_reason ?? null,
         return_feedback: row.return_feedback ?? null,
         return_due_at: row.return_due_at ?? null,
+        return_approved_at: row.return_approved_at ?? null,
         days_late: row.days_late ?? null,
         late_penalty_amount: row.late_penalty_amount == null ? null : Number(row.late_penalty_amount),
         late_fee_per_day: row.late_fee_per_day == null ? null : Number(row.late_fee_per_day),
@@ -243,6 +246,7 @@ interface RawAdminRentalRow extends RawReturnFields, RawPlanPeriodFields {
     booking_id: string | null;
     users: unknown;
     vehicles: unknown;
+    return_approved_by: unknown;
 }
 
 function toAdminRentalRow(row: RawAdminRentalRow): AdminRentalRow {
@@ -259,6 +263,7 @@ function toAdminRentalRow(row: RawAdminRentalRow): AdminRentalRow {
         fare: row.fare === null ? null : Number(row.fare),
         rider: unwrap(row.users),
         vehicle: vehicle ? { ...vehicle, battery_percentage: Number(vehicle.battery_percentage) } : null,
+        return_approved_by: unwrap<{ id: string; full_name: string }>(row.return_approved_by),
         ...toReturnView(row),
         ...toPlanPeriodView(row),
     };
@@ -466,6 +471,23 @@ function settlementPayload(before: RawAdminRentalRow) {
     };
 }
 
+/**
+ * Approval stamp for whichever staff action actually settles a rental
+ * (completeRide/moveRideToMaintenance) — meaningful only when a return
+ * request was pending at that moment. A direct staff force-end with no
+ * return ever requested leaves both fields null; this is not a separate
+ * approval step, it IS the settlement. Exported for direct testing, same as
+ * computeLateReturnPenalty/effectiveDueAt.
+ */
+export function returnApprovalPayload(
+    before: { return_requested_at: string | null },
+    actor: AuthContext,
+    now: Date,
+) {
+    if (!before.return_requested_at) return {};
+    return { return_approved_at: now.toISOString(), return_approved_by: actor.id };
+}
+
 async function requireActiveRental(id: string): Promise<RawAdminRentalRow> {
     const { data, error } = await supabaseAdmin
         .from("rentals")
@@ -503,6 +525,7 @@ export async function completeRide(
             ended_at: endedAt.toISOString(),
             end_battery_pct: input.end_battery_pct ?? null,
             ...settlement,
+            ...returnApprovalPayload(before, actor, endedAt),
         })
         .eq("id", id)
         .select(ADMIN_RENTAL_COLUMNS)
@@ -594,14 +617,16 @@ export async function moveRideToMaintenance(
     // scooter, so skipping this would make "return it broken" a free
     // late-fee bypass and leave days_late null on these rows forever.
     const { payload: settlement, charge } = settlementPayload(before);
+    const endedAt = new Date();
 
     const { error: rentalError } = await supabaseAdmin
         .from("rentals")
         .update({
             status: "completed",
-            ended_at: new Date().toISOString(),
+            ended_at: endedAt.toISOString(),
             end_battery_pct: input.end_battery_pct ?? null,
             ...settlement,
+            ...returnApprovalPayload(before, actor, endedAt),
         })
         .eq("id", id);
     if (rentalError) throw rentalError;
@@ -652,6 +677,63 @@ export async function moveRideToMaintenance(
             had_deadline: charge.hadDeadline,
         },
     });
+
+    return getRentalById(id);
+}
+
+/**
+ * Admin declines a pending return request. Unlike completeRide/
+ * moveRideToMaintenance, this does NOT settle the rental — it stays
+ * 'active' with no return pending, exactly as if the rider had never asked.
+ * The rider is free to submit a new return request afterwards.
+ */
+export async function rejectReturn(
+    id: string,
+    input: RejectReturnInput,
+    actor: AuthContext,
+): Promise<AdminRentalRow> {
+    const before = await requireActiveRental(id);
+    if (!before.return_requested_at) {
+        throw conflict("No return request is pending for this rental.");
+    }
+
+    const { error } = await supabaseAdmin
+        .from("rentals")
+        .update({
+            return_requested_at: null,
+            return_reason: null,
+            return_feedback: null,
+            return_due_at: null,
+        })
+        .eq("id", id)
+        .eq("status", "active")
+        .not("return_requested_at", "is", null);
+    if (error) throw error;
+
+    const riderId = unwrap<{ id: string }>(before.users)?.id ?? null;
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: riderId,
+        action: "rental.return_rejected",
+        entityType: "rental",
+        entityId: id,
+        before: {
+            return_requested_at: before.return_requested_at,
+            return_reason: before.return_reason,
+            return_due_at: before.return_due_at,
+        },
+        after: { return_requested_at: null, reason: input.reason },
+    });
+
+    if (riderId) {
+        await notifyUser(riderId, {
+            template: "rental_return_rejected",
+            title: "Return Request Declined",
+            body: `Our team couldn't accept your return request: ${input.reason}. Your ride is still active — you can request a return again anytime.`,
+            screen: "post-booking-dashboard",
+        });
+    }
 
     return getRentalById(id);
 }

@@ -63,6 +63,18 @@ router.post(
     asyncHandler(c.moveToMaintenanceHandler),
 );
 
+// Staff decline of a pending return request — the counterpart to /:id/complete
+// and /:id/maintenance (which each implicitly APPROVE one, see
+// returnApprovalPayload in rentals.service.ts). Unlike those two, this does
+// not touch vehicle status or booking status at all: the rental simply goes
+// back to being a normal active ride with no return pending.
+router.post(
+    "/:id/return-reject",
+    requireModule("vehicles"),
+    validate({ params: v.rentalIdParam, body: v.rejectReturnBody }),
+    asyncHandler(c.rejectReturnHandler),
+);
+
 // Return-inspection damage entry — a separate action from /:id/complete
 // (which staff still call to close the physical ride out and settle any
 // late fee); a no-damage return never touches this endpoint at all.

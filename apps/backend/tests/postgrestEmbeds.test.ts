@@ -51,6 +51,9 @@ const AMBIGUOUS_PAIRS: ReadonlyArray<{ child: string; parent: string }> = [
     { child: "data_principal_requests", parent: "users" },
     { child: "pii_access_log", parent: "users" },
     { child: "referrals", parent: "users" },
+    // rentals.user_id (rider) + rentals.return_approved_by (staff), added by
+    // 20260814110000_rental_return_approval.sql.
+    { child: "rentals", parent: "users" },
     { child: "staff_permissions", parent: "users" },
     { child: "support_requests", parent: "users" },
     { child: "user_capabilities", parent: "users" },

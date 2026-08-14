@@ -17,7 +17,7 @@ export type AuditAction =
     | "maintenance.created" | "maintenance.updated" | "maintenance.outcome_set"
     | "notification.broadcast"
     | "invoice.refunded"
-    | "rental.completed" | "rental.moved_to_maintenance" | "rental.return_requested"
+    | "rental.completed" | "rental.moved_to_maintenance" | "rental.return_requested" | "rental.return_rejected"
     | "referral.redeemed" | "referral.qualified"
     | "payment.order_created" | "payment.verified" | "payment.failed" | "payment.webhook_received"
     | "deposit.held" | "deposit.refund_initiated" | "deposit.refunded" | "deposit.forfeited"
