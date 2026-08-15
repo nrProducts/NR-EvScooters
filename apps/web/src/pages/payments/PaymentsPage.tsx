@@ -293,8 +293,9 @@ function RefundDialog({ invoice, onOpenChange }: { invoice: Invoice | null; onOp
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground">
-          This marks the invoice as refunded in our records. It does not call out to a payment gateway — no gateway
-          integration is wired up in this codebase yet.
+          This marks the invoice as refunded in our records without a separate gateway call. For a booking
+          cancellation or security-deposit refund that needs to actually move money, use the{" "}
+          <Link to="/refunds" className="underline">Refunds page</Link> instead.
         </p>
 
         <div className="space-y-1.5">

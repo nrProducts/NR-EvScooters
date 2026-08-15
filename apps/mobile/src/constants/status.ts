@@ -106,14 +106,18 @@ export const SUPPORT_STATUS_LABEL: Record<SupportStatus, string> = {
 
 export const REFUND_STATUS_TONE: Record<BookingRefundStatus, Tone> = {
   pending: 'warning',
+  processing: 'warning',
   processed: 'success',
   not_required: 'neutral',
+  failed: 'danger',
 };
 
 export const REFUND_STATUS_LABEL: Record<BookingRefundStatus, string> = {
-  pending: 'Refund Pending',
-  processed: 'Refund Processed',
+  pending: 'Awaiting Approval',
+  processing: 'Refund Initiated',
+  processed: 'Refunded',
   not_required: 'No Refund Due',
+  failed: 'Refund Failed',
 };
 
 export const VEHICLE_STATUS_TONE: Record<VehicleStatus, Tone> = {

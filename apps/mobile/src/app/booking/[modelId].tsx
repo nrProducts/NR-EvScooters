@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Linking, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, MapPin, Bike, Clock, Navigation, Check } from 'lucide-react-native';
+import { ChevronLeft, MapPin, Bike, Clock, Navigation, Check, AlertTriangle } from 'lucide-react-native';
 import { Badge } from '../../components/ui/Badge';
-import { DayPicker } from '../../components/DayPicker';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { useBookingStore } from '../../store/useBookingStore';
 import { vehicleCatalogRepository } from '../../services';
 import { notify, notifyError } from '../../lib/confirm';
 import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
+import { getToday, isValidStartDay } from '../../lib/bookingDays';
 import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
 import type { ApiAvailability, ApiPlan, ApiVehicleModelDetail } from '../../types/api';
@@ -26,9 +26,11 @@ const CYCLE_LABEL: Record<string, string> = {
 };
 
 /**
- * The whole booking choice on one screen: pickup station, day and plan. Plan
- * selection used to be a second screen, which was a route change for what is
- * really just a third field. Continue goes straight to the payment/review step.
+ * The whole booking choice on one screen: pickup station and plan. Pickup is
+ * always immediate (today, right after payment) — there's no date to pick.
+ * Plan selection used to be a second screen, which was a route change for
+ * what is really just one more field. Continue goes straight to the
+ * payment/review step.
  */
 export default function BookingScreen() {
   // This screen renders its own header rather than AppShell's, so nothing
@@ -66,6 +68,9 @@ export default function BookingScreen() {
   useEffect(() => {
     load();
     void loadNearestStation(PLACEHOLDER_LOCATION.lat, PLACEHOLDER_LOCATION.lng);
+    // Pickup is always immediate now — no date picker, so the draft's
+    // start_day is just today, set once up front.
+    setStartDay(getToday());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId]);
 
@@ -103,7 +108,9 @@ export default function BookingScreen() {
   const blockedReason = (): string | null => {
     if (!draft.station) return 'We could not find a pickup station near you. Try again in a moment.';
     if (noneAvailable) return 'No scooters of this model are free at this station right now. Try another day or check back later.';
-    if (!draft.startDay) return 'Choose a pickup day (Monday–Saturday) before continuing.';
+    if (!draft.startDay || !isValidStartDay(draft.startDay)) {
+      return "We're closed today (Sundays). Come back tomorrow to book and pick up your scooter.";
+    }
     if (plans.length === 0) return 'This scooter has no plans on sale right now.';
     if (!draft.plan) return 'Choose a rental plan before continuing.';
     return null;
@@ -211,11 +218,19 @@ export default function BookingScreen() {
             </View>
           </View>
 
-          {/* DAY PICKER */}
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-1">Pickup Day</Text>
-          <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3">Monday – Saturday. Closed Sundays.</Text>
-          <View className="mb-6">
-            <DayPicker value={draft.startDay} onChange={setStartDay} />
+          {/* IMMEDIATE PICKUP WARNING */}
+          <View
+            className="rounded-2xl p-4 border flex-row items-start mb-6"
+            style={{ backgroundColor: COLORS.warning + '14', borderColor: COLORS.warning + '40' }}
+          >
+            <AlertTriangle size={18} color={COLORS.warning} />
+            <View className="ml-2.5 flex-1">
+              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Your plan starts right now</Text>
+              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5 leading-relaxed">
+                There&apos;s no pickup date to choose — once you pay, head straight to the pickup station and
+                collect your scooter today.
+              </Text>
+            </View>
           </View>
 
           {/* PLAN PICKER — was its own screen; it's one more field, not a step. */}

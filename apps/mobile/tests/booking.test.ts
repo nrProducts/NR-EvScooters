@@ -184,8 +184,9 @@ describe('MockBookingRepository.cancel', () => {
 
     const cancelled = await bookings.cancel(created.id);
     expect(cancelled.cancellation_penalty_amount).toBe(0);
-    expect(cancelled.refund_status).toBe('pending');
-    expect(cancelled.refund_amount).toBe(created.plan?.price ?? 0);
+    // Mock mode has no real gateway, so a nonzero refund "completes" instantly.
+    expect(cancelled.refund_status).toBe('processed');
+    expect(cancelled.refund_amount).toBe((created.plan?.price ?? 0) + (created.plan?.deposit_amount ?? 0));
   });
 
   it('charges nothing for a booking cancelled right after it was made, even for tomorrow', async () => {
@@ -196,15 +197,16 @@ describe('MockBookingRepository.cancel', () => {
 
     const cancelled = await bookings.cancel(created.id);
     expect(cancelled.cancellation_penalty_amount).toBe(0);
-    expect(cancelled.refund_amount).toBe(created.plan?.price ?? 0);
+    expect(cancelled.refund_amount).toBe((created.plan?.price ?? 0) + (created.plan?.deposit_amount ?? 0));
   });
 
-  it('keeps back 25% once the grace period has passed and pickup is imminent', async () => {
+  it('keeps back 25% on the rental only once the grace period has passed and pickup is imminent — the deposit is always refunded in full', async () => {
     await asVerifiedRider();
     // startDayIn(1) can land on a Sunday and be pushed to +2 (which is free),
     // so assert against the rule's own verdict rather than a fixed amount.
     const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(1) });
     const price = created.plan?.price ?? 0;
+    const deposit = created.plan?.deposit_amount ?? 0;
 
     // Age the booking past the grace window â€” otherwise a freshly created mock
     // booking is always free and the late path is unreachable.
@@ -213,7 +215,7 @@ describe('MockBookingRepository.cancel', () => {
 
     const cancelled = await bookings.cancel(created.id);
     const charge = computeCancellationCharge({
-      startDay: created.start_day, planPrice: price, createdAt,
+      startDay: created.start_day, planPrice: price, depositAmount: deposit, createdAt,
     });
 
     expect(cancelled.cancellation_penalty_amount).toBe(charge.penaltyAmount);
@@ -252,7 +254,7 @@ describe('MockBookingRepository.cancel', () => {
     const history = await bookings.history({});
     const row = history.data.find((b) => b.id === created.id);
     expect(row?.status).toBe('cancelled');
-    expect(row?.refund_status).toBe('pending');
+    expect(row?.refund_status).toBe('processed');
     expect(row?.cancelled_at).not.toBeNull();
   });
 });

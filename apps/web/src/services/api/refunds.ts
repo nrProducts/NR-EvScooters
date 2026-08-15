@@ -1,8 +1,9 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
-import type { PaginatedResult, Refund, RefundStatus } from "@/types";
+import type { PaginatedResult, Refund, RefundStatus, RefundType } from "@/types";
 
 export interface RefundFilters {
   status?: RefundStatus | "all";
+  refundType?: RefundType | "all";
   bookingId?: string;
   page?: number;
   pageSize?: number;
@@ -12,11 +13,12 @@ export interface RefundFilters {
 
 /** GET /refunds — requireStaff. See apps/backend/src/modules/refunds/refunds.routes.ts */
 export async function fetchRefunds(filters: RefundFilters = {}): Promise<PaginatedResult<Refund>> {
-  const { status, bookingId, page = 1, pageSize = 8, sortBy, sortDir } = filters;
+  const { status, refundType, bookingId, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<Refund>>("/refunds", {
     page,
     pageSize,
     status: status && status !== "all" ? status : undefined,
+    refundType: refundType && refundType !== "all" ? refundType : undefined,
     bookingId,
     sortBy,
     sortDir,

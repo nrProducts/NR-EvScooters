@@ -9,7 +9,7 @@ import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } 
 import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
 import {
-  FREE_CANCELLATION_GRACE_MINUTES, FREE_CANCELLATION_NOTICE_DAYS, LATE_CANCELLATION_PENALTY_RATE,
+  FREE_CANCELLATION_GRACE_MINUTES, LATE_CANCELLATION_PENALTY_RATE,
 } from '../../lib/cancellationPolicy';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -112,8 +112,8 @@ export default function BillingScreen() {
           </View>
           <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">Booking Confirmed</Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium text-center mt-2 leading-relaxed">
-            Payment successful. Your {vehicleModel?.name ?? 'scooter'} is reserved for {startDay ? formatDay(startDay) : ''}.
-            An admin will confirm your booking and assign your scooter shortly — head to your pickup station once you're notified.
+            Payment successful. Your plan starts now — head to {station?.name ?? 'your pickup station'} right away
+            to collect your {vehicleModel?.name ?? 'scooter'}.
           </Text>
           <TouchableOpacity
             onPress={handleDone}
@@ -221,13 +221,15 @@ export default function BillingScreen() {
             {paying ? 'Processing payment…' : creating ? 'Reserving…' : `Pay ₹${totalAmount.toFixed(0)}`}
           </Text>
         </TouchableOpacity>
-        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-3">
+        <Text style={{ color: COLORS.warning }} className="text-[11px] font-bold text-center mt-3">
+          Your plan starts the moment payment succeeds — go straight to the pickup station to collect your scooter.
+        </Text>
+        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-2">
           Your booking is confirmed only after payment succeeds. An admin then confirms the booking and assigns your scooter.
         </Text>
         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-2">
-          Free cancellation within {FREE_CANCELLATION_GRACE_MINUTES} minutes of booking, or any time up to{' '}
-          {FREE_CANCELLATION_NOTICE_DAYS} days before pickup. After that a{' '}
-          {Math.round(LATE_CANCELLATION_PENALTY_RATE * 100)}% fee applies.
+          Free cancellation within {FREE_CANCELLATION_GRACE_MINUTES} minutes of booking. After that a{' '}
+          {Math.round(LATE_CANCELLATION_PENALTY_RATE * 100)}% fee applies, since your plan starts right away.
         </Text>
       </ScrollView>
     </View>

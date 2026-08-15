@@ -362,6 +362,15 @@ export type BookingStatus = "pending_payment" | "confirmed" | "cancelled" | "exp
 export type BookingPlanStatus = "active" | "due" | "paused";
 
 /**
+ * 'pending': legacy value, no longer written. 'processing': a real Razorpay
+ * refund has been submitted and is in flight ("Refund Initiated"). 'processed':
+ * the gateway confirmed it ("Refunded"). 'failed': the gateway call failed,
+ * needs a staff retry. 'not_required': nothing was ever paid, or the refund
+ * works out to zero.
+ */
+export type BookingRefundStatus = "pending" | "processing" | "processed" | "not_required" | "failed";
+
+/**
  * The rental this booking's handover opened (bookings.active_rental_id) —
  * just enough of the rental's own return-request/settlement state for the
  * Rental Operations screen to show a pending return without a second
@@ -395,6 +404,16 @@ export interface PickupBooking {
   active_rental: PickupBookingActiveRental | null;
   /** Live estimate of the late-return fee if this booking's pending return were approved right now. Null unless one is pending. */
   return_late_fee_preview: { days_late: number; penalty_amount: number; fee_per_day: number } | null;
+
+  // --- pre-pickup cancellation (all null unless the rider/staff cancelled) ---
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
+  cancellation_penalty_amount: number | null;
+  refund_amount: number | null;
+  refund_status: BookingRefundStatus | null;
+  refund_initiated_at: string | null;
+  refund_completed_at: string | null;
+  refund_transaction_id: string | null;
 }
 
 export interface AvailableVehicle {
@@ -668,6 +687,20 @@ export interface Damage {
 // ---------------------------------------------------------------------------
 
 export type RefundStatus = "pending" | "processing" | "success" | "failed";
+export type RefundType = "deposit" | "booking_cancellation";
+
+/** Only populated for refund_type='booking_cancellation'. */
+export interface RefundBookingSummary {
+  id: string;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
+  cancellation_penalty_amount: number | null;
+  plan_price_at_cancellation: number | null;
+  vehicle_model_name: string | null;
+  station_name: string | null;
+  rider_name: string | null;
+  rider_phone: string | null;
+}
 
 export interface Refund {
   id: string;
@@ -675,6 +708,7 @@ export interface Refund {
   booking_id: string;
   amount: number;
   status: RefundStatus;
+  refund_type: RefundType;
   gateway_refund_id: string | null;
   source_gateway_payment_id: string | null;
   attempt_count: number;
@@ -683,6 +717,7 @@ export interface Refund {
   initiated_at: string;
   processed_at: string | null;
   created_at: string;
+  booking: RefundBookingSummary | null;
 }
 
 // ---------------------------------------------------------------------------

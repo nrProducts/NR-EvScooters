@@ -16,6 +16,7 @@ import {
   Scale,
   Eye,
   FileLock2,
+  Undo2,
 } from "lucide-react";
 import type { ModuleKey, Role, StaffUser } from "@/types";
 import { hasModule } from "@/lib/permissions";
@@ -80,6 +81,10 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Maintenance", path: "/maintenance", icon: Wrench, roles: ["admin", "staff"], moduleKey: "maintenance" },
   { label: "Support Tickets", path: "/support", icon: LifeBuoy, roles: ["admin", "staff"], moduleKey: "support" },
   { label: "Payments", path: "/payments", icon: CreditCard, roles: ["admin", "staff"], moduleKey: "payments" },
+  // Deposit refunds and (as of the approval-gate change) booking-cancellation
+  // refunds both need staff to actually see and approve them, not just reach
+  // them via the "Refunds" button buried on the Payments page.
+  { label: "Refunds", path: "/refunds", icon: Undo2, roles: ["admin"], moduleKey: "refunds" },
   { label: "Plans", path: "/plans", icon: Layers, roles: ["admin", "staff"], moduleKey: "plans" },
   {
     label: "Reconciliation",
@@ -128,7 +133,6 @@ export const NAV_ITEMS: NavItem[] = [
   // and refunds.routes.ts both use requireModule), so the console and the API
   // agree rather than the UI admitting someone to meet a wall of 403s.
   { label: "Damages", path: "/damages", icon: Scale, roles: ["admin", "staff"], moduleKey: "damages", hidden: true },
-  { label: "Refunds", path: "/refunds", icon: Scale, roles: ["admin"], moduleKey: "refunds", hidden: true },
   // The full-page permission matrix — reached from Staff Access / the Users
   // page, never from the sidebar. Admin-only in practice (StaffAccessSection
   // only links here for admins), but still needs an entry so

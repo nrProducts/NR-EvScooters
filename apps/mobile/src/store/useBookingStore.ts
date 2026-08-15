@@ -8,7 +8,7 @@ interface BookingDraft {
     // .plans directly without a second fetch.
     vehicleModel: ApiVehicleModelDetail | null;
     station: ApiStation | null;
-    startDay: string | null; // YYYY-MM-DD
+    startDay: string | null; // YYYY-MM-DD — always today; pickup is immediate, no date picker
     plan: ApiPlan | null;
 }
 

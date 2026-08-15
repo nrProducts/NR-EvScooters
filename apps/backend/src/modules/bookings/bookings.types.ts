@@ -25,11 +25,17 @@ export interface CreateBookingInput {
 }
 
 /**
- * No payment is ever captured in this phase, so a refund is a recorded request
- * for the future checkout phase rather than a reversal. 'not_required' covers a
- * cancellation whose refund works out to zero.
+ * 'pending': a refund has been requested but a staff member has not yet
+ * approved it ("Awaiting Approval" in the admin UI) — the gateway is never
+ * contacted until POST /refunds/:id/retry is called (doubles as Approve).
+ * 'processing': approved and the gateway call is in flight ("Refund
+ * Initiated" — normally too brief to observe, since processRefund calls the
+ * gateway synchronously). 'processed': the gateway confirmed it ("Refunded").
+ * 'failed': the gateway call failed, needs a staff retry. 'not_required'
+ * covers a cancellation whose refund works out to zero (or nothing was ever
+ * paid).
  */
-export type BookingRefundStatus = "pending" | "processed" | "not_required";
+export type BookingRefundStatus = "pending" | "processing" | "processed" | "not_required" | "failed";
 
 export interface CancelBookingInput {
     reason?: string;
@@ -74,6 +80,9 @@ export interface BookingView {
     cancellation_penalty_amount: number | null;
     refund_amount: number | null;
     refund_status: BookingRefundStatus | null;
+    refund_initiated_at: string | null;
+    refund_completed_at: string | null;
+    refund_transaction_id: string | null;
 
     // --- recurring-billing plan state (all null until confirmPickup activates it) ---
     plan_status: "active" | "due" | "paused" | null;

@@ -49,6 +49,9 @@ interface MockBookingRow {
     cancellation_penalty_amount?: number | null;
     refund_amount?: number | null;
     refund_status?: BookingRefundStatus | null;
+    refund_initiated_at?: string | null;
+    refund_completed_at?: string | null;
+    refund_transaction_id?: string | null;
 }
 
 interface MockRentalRow {
@@ -788,6 +791,9 @@ function toApiBooking(row: MockBookingRow): ApiBooking {
         cancellation_penalty_amount: row.cancellation_penalty_amount ?? null,
         refund_amount: row.refund_amount ?? null,
         refund_status: row.refund_status ?? null,
+        refund_initiated_at: row.refund_initiated_at ?? null,
+        refund_completed_at: row.refund_completed_at ?? null,
+        refund_transaction_id: row.refund_transaction_id ?? null,
     };
 }
 
@@ -927,9 +933,12 @@ export class MockBookingRepository implements BookingRepository {
 
         const model = SEED_VEHICLE_MODELS_DETAIL.find((m) => m.id === row.vehicle_model_id);
         const plan = model?.plans.find((p) => p.id === row.plan_id);
+        // Mock bookings go straight to 'confirmed' on create (no payment
+        // step — see create() above), so they're always "paid" here.
         const charge = computeCancellationCharge({
             startDay: row.start_day,
             planPrice: plan?.price ?? null,
+            depositAmount: plan?.deposit_amount ?? 0,
             createdAt: row.created_at,
         });
 
@@ -939,7 +948,16 @@ export class MockBookingRepository implements BookingRepository {
         row.plan_price_at_cancellation = charge.chargeableAmount;
         row.cancellation_penalty_amount = charge.penaltyAmount;
         row.refund_amount = charge.refundAmount;
-        row.refund_status = charge.refundAmount > 0 ? 'pending' : 'not_required';
+        // No real gateway in mock mode — a refund "completes" instantly,
+        // mirroring the backend's own no-keys-configured mock-refund path.
+        if (charge.refundAmount > 0) {
+            row.refund_status = 'processed';
+            row.refund_initiated_at = nowIso();
+            row.refund_completed_at = nowIso();
+            row.refund_transaction_id = uid('mock_refund');
+        } else {
+            row.refund_status = 'not_required';
+        }
 
         audit('booking.cancelled', actor.id, {
             status: 'cancelled',

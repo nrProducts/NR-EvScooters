@@ -11,6 +11,11 @@
 // Only picks up 'pending' rows — a 'failed' one is retried by
 // failed-refund-retry instead, under its own attempt cap, so a refund that
 // keeps failing doesn't get hammered every 5-10 minutes forever.
+//
+// refund_type='deposit' ONLY — a booking_cancellation refund is deliberately
+// left at 'pending' until a staff member approves it (POST
+// /refunds/:id/retry doubles as Approve for those), so this sweep must never
+// pick one up. See 20260815100000_refund_type_enum.sql.
 // =========================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -46,7 +51,8 @@ Deno.serve(async (_req) => {
     const { data: pending, error } = await admin
         .from("refunds")
         .select("id, deposit_id, booking_id, amount, attempt_count")
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .eq("refund_type", "deposit");
 
     if (error) {
         console.error("[refund-processing] query failed", error);
@@ -114,6 +120,15 @@ Deno.serve(async (_req) => {
                     refunded_at: new Date().toISOString(), refund_id: refund.id,
                 })
                 .eq("id", refund.deposit_id);
+
+            // Keep the Payments screen (apps/web) in sync — it reads
+            // invoices.payment_status directly, not the deposits table.
+            await admin
+                .from("invoices")
+                .update({ payment_status: "refunded" })
+                .eq("booking_id", refund.booking_id)
+                .eq("payment_type", "deposit")
+                .eq("payment_status", "succeeded");
 
             const { data: booking } = await admin.from("bookings").select("user_id").eq("id", refund.booking_id).maybeSingle();
             if (booking) {

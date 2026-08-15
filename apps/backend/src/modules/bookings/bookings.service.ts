@@ -7,6 +7,8 @@ import { notifyUser } from "../notifications/notifications.service";
 import { hasActiveRentalForUser } from "../users/users.service";
 import { computeLateReturnPenalty, planExpiryFor } from "../rentals/rentals.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
+import { getDepositForBookingOrNull } from "../deposits/deposits.service";
+import { initiateCancellationRefund } from "../refunds/refunds.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     ACTIVE_BOOKING_STATUSES, AvailableVehicleView, BookingActiveRental, BookingHistoryFilters,
@@ -19,7 +21,8 @@ import {
 
 const CANCELLATION_COLUMNS = `
     cancelled_at, cancellation_reason, plan_price_at_cancellation,
-    cancellation_penalty_amount, refund_amount, refund_status
+    cancellation_penalty_amount, refund_amount, refund_status,
+    refund_initiated_at, refund_completed_at, refund_transaction_id
 `;
 
 /** Recurring-billing state — see 20260810100300_booking_plan_billing.sql. */
@@ -74,6 +77,9 @@ type RawBookingRow = {
     cancellation_penalty_amount: number | null;
     refund_amount: number | null;
     refund_status: BookingRefundStatus | null;
+    refund_initiated_at: string | null;
+    refund_completed_at: string | null;
+    refund_transaction_id: string | null;
     plan_status: BookingView["plan_status"];
     plan_activated_at: string | null;
     plan_duration_days: number | null;
@@ -160,7 +166,11 @@ export interface CancellationCharge {
     withinGrace: boolean;
     /** plans.price minus any referral discount — what the rider would actually have owed. */
     chargeableAmount: number;
+    /** Penalty on the rental portion only — the deposit is never the rider's "fault" money. */
     penaltyAmount: number;
+    /** The security deposit actually paid (deposits.amount) — always refunded in full pre-pickup, never penalized. */
+    depositRefund: number;
+    /** (chargeableAmount - penaltyAmount) + depositRefund. */
     refundAmount: number;
 }
 
@@ -180,7 +190,10 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
  * would otherwise be charged seconds after it was created.
  *
  * The penalty applies to the NET price (after any referral discount) — charging
- * a fee on an amount the rider was never going to owe would be wrong.
+ * a fee on an amount the rider was never going to owe would be wrong. The
+ * security deposit (if any was actually paid — pass depositAmount only for a
+ * booking that reached 'confirmed') is never subject to this penalty: no
+ * damage is possible before pickup, so it's always refunded in full.
  *
  * Exported so the service and the tests exercise the exact same rule, same
  * reason isValidStartDay is exported. `now` is injectable for deterministic
@@ -190,6 +203,8 @@ export function computeCancellationCharge(input: {
     startDay: string;
     planPrice: number | null;
     discountAmount?: number | null;
+    /** deposits.amount for this booking — omit (or 0) if the booking was never paid. */
+    depositAmount?: number | null;
     /** bookings.created_at — omit only where it genuinely isn't known. */
     createdAt?: string | null;
     now?: Date;
@@ -216,9 +231,10 @@ export function computeCancellationCharge(input: {
     const isLate = !withinGrace && daysUntilPickup < FREE_CANCELLATION_NOTICE_DAYS;
     const chargeableAmount = round2(Math.max(0, (input.planPrice ?? 0) - (input.discountAmount ?? 0)));
     const penaltyAmount = isLate ? round2(chargeableAmount * LATE_CANCELLATION_PENALTY_RATE) : 0;
-    const refundAmount = Math.max(0, round2(chargeableAmount - penaltyAmount));
+    const depositRefund = round2(Math.max(0, input.depositAmount ?? 0));
+    const refundAmount = round2(Math.max(0, chargeableAmount - penaltyAmount) + depositRefund);
 
-    return { daysUntilPickup, isLate, withinGrace, chargeableAmount, penaltyAmount, refundAmount };
+    return { daysUntilPickup, isLate, withinGrace, chargeableAmount, penaltyAmount, depositRefund, refundAmount };
 }
 
 export function toBookingView(row: RawBookingRow): BookingView {
@@ -239,6 +255,9 @@ export function toBookingView(row: RawBookingRow): BookingView {
         cancellation_penalty_amount: row.cancellation_penalty_amount ?? null,
         refund_amount: row.refund_amount ?? null,
         refund_status: row.refund_status ?? null,
+        refund_initiated_at: row.refund_initiated_at ?? null,
+        refund_completed_at: row.refund_completed_at ?? null,
+        refund_transaction_id: row.refund_transaction_id ?? null,
         plan_status: row.plan_status ?? null,
         plan_activated_at: row.plan_activated_at ?? null,
         plan_duration_days: row.plan_duration_days ?? null,
@@ -427,12 +446,44 @@ export async function getMyBookingHistory(
 }
 
 /**
+ * Opens the refund request for a pre-pickup cancellation, right after the
+ * booking row has been flipped to 'cancelled' with refund_status='pending'.
+ * Deliberately does NOT call the gateway here — a cancellation refund needs
+ * staff to review and approve it first (POST /refunds/:id/retry, which
+ * doubles as "approve" for a refund that's never been processed and "retry"
+ * for one that failed). Never throws: a DB hiccup creating the refund row
+ * must not fail the rider's (or staff's) cancel request — worst case the
+ * refund request doesn't appear yet and needs a manual follow-up.
+ */
+async function openCancellationRefund(
+    bookingId: string,
+    depositId: string,
+    amount: number,
+    actor: AuthContext | null,
+): Promise<void> {
+    try {
+        await initiateCancellationRefund(bookingId, depositId, amount, actor);
+    } catch (err) {
+        console.error("[bookings] opening cancellation refund failed", {
+            bookingId,
+            error: err instanceof Error ? err.message : String(err),
+        });
+    }
+}
+
+/**
  * Rider-initiated PRE-PICKUP cancellation. Distinct from rejectBooking (staff,
  * pending_payment only): this accepts 'confirmed' too and is scoped to the
  * caller's own booking. Post-pickup returns are a separate, future policy.
  *
- * No money has been captured (there is no checkout yet), so the refund fields
- * are recorded as a request for the future billing phase, not a reversal.
+ * Cancelling within FREE_CANCELLATION_GRACE_MINUTES of booking is always fee-
+ * free (see computeCancellationCharge). If the booking had actually been paid
+ * for (status 'confirmed'), the eligible amount — rental minus any late fee,
+ * plus the full security deposit — is queued as a refund request
+ * (refund_status='pending'). The actual Razorpay refund only fires once staff
+ * approve it (POST /refunds/:id/retry) — cancellation refunds are never
+ * auto-processed, unlike deposit refunds. A booking still awaiting payment
+ * has nothing to refund: no fee, no refund request.
  */
 export async function cancelMyBooking(
     bookingId: string,
@@ -459,24 +510,39 @@ export async function cancelMyBooking(
         throw conflict("This booking can no longer be cancelled.");
     }
 
+    // Only a 'confirmed' booking was ever actually paid for — a
+    // 'pending_payment' one has nothing to charge a fee against or refund,
+    // no matter what the timing math would otherwise say.
+    const wasPaid = existing.status === "confirmed";
+    const deposit = wasPaid ? await getDepositForBookingOrNull(bookingId) : null;
+
     const charge = computeCancellationCharge({
         startDay: existing.start_day as string,
         planPrice: unwrap<{ price: number }>(existing.plans)?.price ?? null,
         discountAmount: existing.referral_discount_amount as number | null,
+        depositAmount: deposit?.amount ?? 0,
         createdAt: existing.created_at as string,
     });
+
+    const penaltyAmount = wasPaid ? charge.penaltyAmount : 0;
+    const refundAmount = wasPaid ? charge.refundAmount : 0;
+    // 'pending' here means "refund requested, awaiting staff approval" — the
+    // gateway call only fires once an admin approves via POST /refunds/:id/retry.
+    const refundStatus: BookingRefundStatus = refundAmount > 0 ? "pending" : "not_required";
+    const nowIso = new Date().toISOString();
 
     const { data: updated, error } = await supabaseAdmin
         .from("bookings")
         .update({
             status: "cancelled",
-            cancelled_at: new Date().toISOString(),
+            cancelled_at: nowIso,
             cancelled_by: actor.id,
             cancellation_reason: input.reason ?? null,
             plan_price_at_cancellation: charge.chargeableAmount,
-            cancellation_penalty_amount: charge.penaltyAmount,
-            refund_amount: charge.refundAmount,
-            refund_status: charge.refundAmount > 0 ? "pending" : "not_required",
+            cancellation_penalty_amount: penaltyAmount,
+            refund_amount: refundAmount,
+            refund_status: refundStatus,
+            refund_initiated_at: refundStatus === "pending" ? nowIso : null,
             // vehicle_id is deliberately untouched — trg_release_vehicle_on_booking_close
             // (20260727095801) frees the held unit and nulls it as part of this update.
         })
@@ -507,18 +573,25 @@ export async function cancelMyBooking(
             status: "cancelled",
             days_until_pickup: charge.daysUntilPickup,
             chargeable_amount: charge.chargeableAmount,
-            penalty_amount: charge.penaltyAmount,
-            refund_amount: charge.refundAmount,
+            penalty_amount: penaltyAmount,
+            deposit_refund: charge.depositRefund,
+            refund_amount: refundAmount,
             reason: input.reason ?? null,
         },
     });
 
+    if (refundStatus === "pending" && deposit) {
+        await openCancellationRefund(bookingId, deposit.id, refundAmount, actor);
+    }
+
     await notifyUser(actor.id, {
         template: "booking_cancelled",
         title: "Booking Cancelled",
-        body: charge.penaltyAmount > 0
-            ? `Your booking is cancelled. A late-cancellation fee of ₹${charge.penaltyAmount} applies, and a refund request for ₹${charge.refundAmount} has been recorded.`
-            : `Your booking is cancelled with no cancellation fee. A refund request for ₹${charge.refundAmount} has been recorded.`,
+        body: penaltyAmount > 0
+            ? `Your booking is cancelled. A late-cancellation fee of ₹${penaltyAmount} applies. Your refund of ₹${refundAmount} has been requested and will be sent to your original payment method after review.`
+            : refundAmount > 0
+                ? `Your booking is cancelled with no cancellation fee. Your refund of ₹${refundAmount} has been requested and will be sent to your original payment method after review.`
+                : "Your booking is cancelled with no cancellation fee.",
         screen: "booking-history",
     });
 
@@ -533,9 +606,8 @@ export async function cancelMyBooking(
  * so the rider's app kept showing it as a current booking with a cancel
  * option. This closes the booking out properly instead. No late-cancellation
  * penalty applies — the rider isn't the one backing out — and whatever was
- * already captured for the initial rental+deposit payment (nothing, if still
- * 'pending_payment') is recorded as owed back, same "recorded request, not a
- * live reversal" convention cancelMyBooking already uses for refund_amount.
+ * already captured for the initial rental+deposit payment is queued as a
+ * refund request, same as cancelMyBooking, pending staff approval.
  */
 export async function adminCancelBooking(
     bookingId: string,
@@ -553,6 +625,9 @@ export async function adminCancelBooking(
         throw conflict("Only a pending or confirmed booking can be cancelled.");
     }
 
+    const wasPaid = existing.status === "confirmed";
+    const deposit = wasPaid ? await getDepositForBookingOrNull(bookingId) : null;
+
     const { data: paidInvoices, error: invoiceError } = await supabaseAdmin
         .from("invoices")
         .select("amount_due")
@@ -561,17 +636,22 @@ export async function adminCancelBooking(
         .in("payment_type", ["rental", "deposit"]);
     if (invoiceError) throw invoiceError;
     const refundAmount = (paidInvoices ?? []).reduce((sum, inv) => sum + Number(inv.amount_due), 0);
+    // 'pending' here means "refund requested, awaiting staff approval" — the
+    // gateway call only fires once an admin approves via POST /refunds/:id/retry.
+    const refundStatus: BookingRefundStatus = refundAmount > 0 ? "pending" : "not_required";
+    const nowIso = new Date().toISOString();
 
     const { data: updated, error } = await supabaseAdmin
         .from("bookings")
         .update({
             status: "cancelled",
-            cancelled_at: new Date().toISOString(),
+            cancelled_at: nowIso,
             cancelled_by: actor.id,
             cancellation_reason: reason,
             cancellation_penalty_amount: 0,
             refund_amount: refundAmount,
-            refund_status: refundAmount > 0 ? "pending" : "not_required",
+            refund_status: refundStatus,
+            refund_initiated_at: refundStatus === "pending" ? nowIso : null,
             // vehicle_id is deliberately untouched — trg_release_vehicle_on_booking_close
             // (20260727095801) frees the held unit and nulls it as part of this update.
             // If the vehicle was already force-marked available out-of-band, the trigger's
@@ -594,11 +674,15 @@ export async function adminCancelBooking(
         after: { status: "cancelled", reason, refund_amount: refundAmount },
     });
 
+    if (refundStatus === "pending" && deposit) {
+        await openCancellationRefund(bookingId, deposit.id, refundAmount, actor);
+    }
+
     await notifyUser(existing.user_id, {
         template: "booking_cancelled",
         title: "Booking Cancelled",
         body: refundAmount > 0
-            ? `Your booking was cancelled by our team: ${reason}. A refund of ₹${refundAmount} has been recorded.`
+            ? `Your booking was cancelled by our team: ${reason}. Your refund of ₹${refundAmount} has been requested and will be sent to your original payment method after review.`
             : `Your booking was cancelled by our team: ${reason}.`,
         screen: "booking-history",
     });

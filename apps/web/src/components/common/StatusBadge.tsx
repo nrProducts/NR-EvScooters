@@ -55,6 +55,9 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   paused: "warning",
   due: "warning",
   return_requested: "warning",
+  // booking cancellation refund_status (distinct from refunds.status above)
+  processed: "success",
+  not_required: "muted",
 };
 
 export function StatusBadge({ status }: { status: string }) {

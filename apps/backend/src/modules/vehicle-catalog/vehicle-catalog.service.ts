@@ -17,7 +17,7 @@ const DETAIL_COLUMNS = `
     id, name, category, tagline, description, battery_range_km, top_speed_kmph, charging_time_hours,
     motor_power_watts, battery_capacity, features, safety_features, is_featured, image,
     vendors(id, name, description, logo_url),
-    plans(id, name, billing_cycle, price, included_minutes)
+    plans(id, name, billing_cycle, price, included_minutes, duration_days, deposit_amount)
 `;
 
 /**
@@ -57,7 +57,7 @@ function toVendorSummary(raw: unknown): VendorSummary | null {
 export function toPlans(raw: unknown): PlanSummary[] {
     const rows = (Array.isArray(raw) ? raw : []) as Array<{
         id?: string; name?: string; billing_cycle: PlanSummary["billing_cycle"]; price: number;
-        included_minutes: number | null;
+        included_minutes: number | null; duration_days?: number; deposit_amount?: number;
     }>;
     const order: Record<string, number> = { daily: 0, weekly: 1, monthly: 2, yearly: 3 };
     return rows
@@ -67,6 +67,8 @@ export function toPlans(raw: unknown): PlanSummary[] {
             billing_cycle: r.billing_cycle,
             price: Number(r.price),
             included_minutes: r.included_minutes,
+            duration_days: Number(r.duration_days ?? 0),
+            deposit_amount: Number(r.deposit_amount ?? 0),
         }))
         .sort((a, b) => (order[a.billing_cycle] ?? 99) - (order[b.billing_cycle] ?? 99));
 }

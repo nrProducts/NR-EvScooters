@@ -16,6 +16,8 @@ export interface PlanSummary {
     billing_cycle: "daily" | "weekly" | "monthly" | "yearly";
     price: number;
     included_minutes: number | null;
+    duration_days: number;
+    deposit_amount: number;
 }
 
 export interface VehicleModelListItem {

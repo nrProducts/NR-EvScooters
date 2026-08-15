@@ -23,6 +23,7 @@ interface RefundRow {
     booking_id: string;
     amount: number;
     attempt_count: number;
+    refund_type: "deposit" | "booking_cancellation";
 }
 
 function round2(n: number): number {
@@ -42,7 +43,7 @@ Deno.serve(async (_req) => {
 
     const { data: failed, error } = await admin
         .from("refunds")
-        .select("id, deposit_id, booking_id, amount, attempt_count")
+        .select("id, deposit_id, booking_id, amount, attempt_count, refund_type")
         .eq("status", "failed")
         .lt("attempt_count", MAX_ATTEMPTS);
 
@@ -58,17 +59,18 @@ Deno.serve(async (_req) => {
     for (const refund of (failed ?? []) as RefundRow[]) {
         retried++;
 
-        const { data: depositInvoice } = await admin
+        const sourcePaymentType = refund.refund_type === "booking_cancellation" ? "rental" : "deposit";
+        const { data: sourceInvoice } = await admin
             .from("invoices")
             .select("gateway_ref")
             .eq("booking_id", refund.booking_id)
-            .eq("payment_type", "deposit")
+            .eq("payment_type", sourcePaymentType)
             .eq("payment_status", "succeeded")
             .maybeSingle();
-        const sourcePaymentId = depositInvoice?.gateway_ref ?? null;
+        const sourcePaymentId = sourceInvoice?.gateway_ref ?? null;
 
         if (!sourcePaymentId) {
-            await markFailed(admin, refund.id, "No captured deposit payment found to refund against.");
+            await markFailed(admin, refund.id, `No captured ${sourcePaymentType} payment found to refund against.`);
             stillFailed++;
             continue;
         }
@@ -113,11 +115,35 @@ Deno.serve(async (_req) => {
                 })
                 .eq("id", refund.deposit_id);
 
+            // Keep the Payments screen (apps/web) in sync — it reads
+            // invoices.payment_status directly, not the deposits table. A
+            // booking_cancellation refund pays back one combined captured
+            // payment that settled both the rental and deposit invoices.
+            const refundedPaymentTypes = refund.refund_type === "booking_cancellation" ? ["rental", "deposit"] : ["deposit"];
+            await admin
+                .from("invoices")
+                .update({ payment_status: "refunded" })
+                .eq("booking_id", refund.booking_id)
+                .in("payment_type", refundedPaymentTypes)
+                .eq("payment_status", "succeeded");
+
+            if (refund.refund_type === "booking_cancellation") {
+                await admin
+                    .from("bookings")
+                    .update({
+                        refund_status: "processed",
+                        refund_completed_at: new Date().toISOString(),
+                        refund_transaction_id: result.id,
+                    })
+                    .eq("id", refund.booking_id)
+                    .eq("refund_status", "processing");
+            }
+
             const { data: booking } = await admin.from("bookings").select("user_id").eq("id", refund.booking_id).maybeSingle();
             if (booking) {
                 await admin.from("notifications_log").insert({
                     user_id: booking.user_id, channel: "push", template: "refund_completed",
-                    payload: { title: "Refund Completed", body: "Your security deposit refund has been completed.", screen: "billing" },
+                    payload: { title: "Refund Completed", body: "Your refund has been completed.", screen: "billing" },
                     status: "pending",
                 });
             }

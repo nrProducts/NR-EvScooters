@@ -288,7 +288,7 @@ export type VehicleStatus = 'available' | 'booked' | 'assigned' | 'maintenance' 
  * the future checkout phase rather than a reversal. 'not_required' covers a
  * cancellation whose refund works out to zero.
  */
-export type BookingRefundStatus = 'pending' | 'processed' | 'not_required';
+export type BookingRefundStatus = 'pending' | 'processing' | 'processed' | 'not_required' | 'failed';
 
 export interface ApiBooking {
     id: string;
@@ -322,6 +322,9 @@ export interface ApiBooking {
     cancellation_penalty_amount: number | null;
     refund_amount: number | null;
     refund_status: BookingRefundStatus | null;
+    refund_initiated_at: string | null;
+    refund_completed_at: string | null;
+    refund_transaction_id: string | null;
 }
 
 export interface ApiReferralReward {

@@ -37,7 +37,11 @@ export interface CancellationCharge {
   withinGrace: boolean;
   /** Plan price minus any referral discount — what the rider would actually have owed. */
   chargeableAmount: number;
+  /** Penalty on the rental portion only — the deposit is never the rider's "fault" money. */
   penaltyAmount: number;
+  /** The security deposit actually paid — always refunded in full pre-pickup, never penalized. */
+  depositRefund: number;
+  /** (chargeableAmount - penaltyAmount) + depositRefund. */
   refundAmount: number;
 }
 
@@ -50,12 +54,17 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
  *   +2 days or more -> free  |  +1 (tomorrow), today, or past -> penalty
  *
  * The penalty applies to the NET price (after any referral discount) — charging
- * a fee on an amount the rider was never going to owe would be wrong.
+ * a fee on an amount the rider was never going to owe would be wrong. The
+ * security deposit (if any was actually paid — pass depositAmount only for a
+ * 'confirmed' booking) is never subject to this penalty: no damage is
+ * possible before pickup, so it's always refunded in full.
  */
 export function computeCancellationCharge(input: {
   startDay: string;
   planPrice: number | null;
   discountAmount?: number | null;
+  /** The security deposit actually paid — omit (or 0) if the booking was never paid. */
+  depositAmount?: number | null;
   /** bookings.created_at — omit only where it genuinely isn't known. */
   createdAt?: string | null;
   now?: Date;
@@ -80,9 +89,10 @@ export function computeCancellationCharge(input: {
   const isLate = !withinGrace && daysUntilPickup < FREE_CANCELLATION_NOTICE_DAYS;
   const chargeableAmount = round2(Math.max(0, (input.planPrice ?? 0) - (input.discountAmount ?? 0)));
   const penaltyAmount = isLate ? round2(chargeableAmount * LATE_CANCELLATION_PENALTY_RATE) : 0;
-  const refundAmount = Math.max(0, round2(chargeableAmount - penaltyAmount));
+  const depositRefund = round2(Math.max(0, input.depositAmount ?? 0));
+  const refundAmount = round2(Math.max(0, chargeableAmount - penaltyAmount) + depositRefund);
 
-  return { daysUntilPickup, isLate, withinGrace, chargeableAmount, penaltyAmount, refundAmount };
+  return { daysUntilPickup, isLate, withinGrace, chargeableAmount, penaltyAmount, depositRefund, refundAmount };
 }
 
 /** "today" / "tomorrow" / "already past" — for the confirmation dialog copy. */

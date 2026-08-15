@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { PackageCheck, Undo2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -21,7 +23,27 @@ import { computeLatePaymentFee } from "@/lib/latePaymentPolicy";
 import { ApiError } from "@/services/api/httpClient";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
-import type { PickupBooking } from "@/types";
+import type { BookingRefundStatus, PickupBooking } from "@/types";
+
+const REFUND_STATUS_LABEL: Record<BookingRefundStatus, string> = {
+  pending: "Awaiting Approval",
+  processing: "Refund Initiated",
+  processed: "Refunded",
+  not_required: "No Refund Due",
+  failed: "Refund Failed",
+};
+
+const REFUND_STATUS_VARIANT: Record<BookingRefundStatus, "success" | "warning" | "destructive" | "muted"> = {
+  pending: "warning",
+  processing: "warning",
+  processed: "success",
+  not_required: "muted",
+  failed: "destructive",
+};
+
+function RefundStatusBadge({ status }: { status: BookingRefundStatus }) {
+  return <Badge variant={REFUND_STATUS_VARIANT[status]}>{REFUND_STATUS_LABEL[status]}</Badge>;
+}
 
 /**
  * Admin-facing view, one tab per stage of the full rental lifecycle:
@@ -222,7 +244,81 @@ export default function BookingListPage() {
     },
   ];
 
-  const columns = view === "return_requests" ? returnColumns : baseColumns;
+  /** Cancelled tab gets its own column set — cancellation + refund tracking, not pickup/payment-due fields that never apply here. */
+  const cancelledColumns: DataTableColumn<PickupBooking>[] = [
+    { header: "Rider", key: "rider", render: (b) => b.rider.full_name },
+    {
+      header: "Vehicle",
+      key: "vehicle",
+      render: (b) => (
+        <span>
+          {b.vehicle_model?.name ?? "—"}
+          {b.station?.name ? ` · ${b.station.name}` : ""}
+        </span>
+      ),
+      hideOnMobile: true,
+    },
+    {
+      header: "Cancelled",
+      key: "cancelled_at",
+      sortKey: "created_at",
+      render: (b) => (b.cancelled_at ? formatDateTime(b.cancelled_at) : "—"),
+    },
+    {
+      header: "Reason",
+      key: "cancellation_reason",
+      render: (b) => <span className="text-xs text-muted-foreground">{b.cancellation_reason ?? "—"}</span>,
+      hideOnMobile: true,
+    },
+    {
+      header: "Cancellation fee",
+      key: "cancellation_penalty_amount",
+      render: (b) => (b.cancellation_penalty_amount != null ? formatCurrency(b.cancellation_penalty_amount) : "—"),
+    },
+    {
+      header: "Refund amount",
+      key: "refund_amount",
+      render: (b) => (b.refund_amount != null ? formatCurrency(b.refund_amount) : "—"),
+    },
+    {
+      header: "Refund status",
+      key: "refund_status",
+      render: (b) => (b.refund_status ? <RefundStatusBadge status={b.refund_status} /> : "—"),
+    },
+    {
+      header: "Refund initiated",
+      key: "refund_initiated_at",
+      render: (b) => (b.refund_initiated_at ? formatDateTime(b.refund_initiated_at) : "—"),
+      hideOnMobile: true,
+    },
+    {
+      header: "Refund completed",
+      key: "refund_completed_at",
+      render: (b) => (b.refund_completed_at ? formatDateTime(b.refund_completed_at) : "—"),
+      hideOnMobile: true,
+    },
+    {
+      header: "Transaction ID",
+      key: "refund_transaction_id",
+      render: (b) => <span className="font-mono text-xs">{b.refund_transaction_id ?? "—"}</span>,
+      hideOnMobile: true,
+    },
+    {
+      header: "Booking",
+      key: "id",
+      render: (b) => (
+        <Link
+          to={`/payments?bookingId=${b.id}`}
+          className="text-xs underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          View payments
+        </Link>
+      ),
+    },
+  ];
+
+  const columns = view === "return_requests" ? returnColumns : view === "cancelled" ? cancelledColumns : baseColumns;
 
   return (
     <div className="space-y-4 animate-fade-in">

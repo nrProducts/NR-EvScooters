@@ -20,17 +20,20 @@ export function useCancelBooking() {
 
   /** Resolves true only if the booking was actually cancelled. */
   const cancelBooking = async (booking: ApiBooking): Promise<boolean> => {
+    // Only a 'confirmed' booking was actually paid for — nothing to refund
+    // (or charge a fee against) for one still awaiting payment.
+    const wasPaid = booking.status === 'confirmed';
     const charge = computeCancellationCharge({
       startDay: booking.start_day,
       planPrice: booking.plan?.price ?? null,
       discountAmount: booking.referral_discount_amount,
+      depositAmount: wasPaid ? booking.plan?.deposit_amount ?? 0 : 0,
       createdAt: booking.created_at,
     });
 
-    // Payment collection isn't built yet, so every message has to be explicit
-    // that no money has moved — otherwise riders will wait for a transfer.
-    const notChargedNote =
-      "\n\nNothing has been charged yet — payment collection goes live in a later update, and we'll record this refund request against it.";
+    const refundNote = wasPaid && charge.refundAmount > 0
+      ? "\n\nWe'll send this back to your original payment method after a quick review, generally the same day."
+      : '';
 
     const freeReason = charge.withinGrace
       // Worth saying explicitly — otherwise a rider who booked for tomorrow
@@ -38,11 +41,13 @@ export function useCancelBooking() {
       ? `You booked this less than ${FREE_CANCELLATION_GRACE_MINUTES} minutes ago, so there's no cancellation fee.`
       : "You're cancelling more than a day before pickup, so there's no cancellation fee.";
 
-    const message = charge.isLate
-      ? `Your pickup is ${describePickupTiming(charge.daysUntilPickup)}. Cancelling now applies a ${Math.round(
-          LATE_CANCELLATION_PENALTY_RATE * 100,
-        )}% late-cancellation fee of ₹${charge.penaltyAmount} on the ₹${charge.chargeableAmount} plan price, leaving a refund of ₹${charge.refundAmount}.${notChargedNote}`
-      : `${freeReason} We'll record a refund request for ₹${charge.refundAmount}.${notChargedNote}`;
+    const message = !wasPaid
+      ? "This booking hasn't been paid for yet, so there's nothing to charge or refund."
+      : charge.isLate
+        ? `Your pickup is ${describePickupTiming(charge.daysUntilPickup)}. Cancelling now applies a ${Math.round(
+            LATE_CANCELLATION_PENALTY_RATE * 100,
+          )}% late-cancellation fee of ₹${charge.penaltyAmount} on the ₹${charge.chargeableAmount} plan price, leaving a refund of ₹${charge.refundAmount}.${refundNote}`
+        : `${freeReason} You'll be refunded ₹${charge.refundAmount}.${refundNote}`;
 
     const confirmed = await confirmAction({
       title: 'Cancel Booking?',
@@ -61,14 +66,18 @@ export function useCancelBooking() {
       // Without this they all keep showing a booking that no longer exists.
       await useAuthStore.getState().refreshProfile();
 
-      // Report the server's figures, not the local estimate.
+      // Report the server's figures, not the local estimate. A cancellation
+      // refund is never auto-processed — refund_status stays 'pending' until
+      // staff approve it, so the copy here must not claim it's already moving.
       const fee = cancelled.cancellation_penalty_amount ?? 0;
-      notify(
-        'Booking Cancelled',
-        fee > 0
-          ? `A late-cancellation fee of ₹${fee} was applied. Refund request for ₹${cancelled.refund_amount ?? 0} recorded.`
-          : `No cancellation fee applied. Refund request for ₹${cancelled.refund_amount ?? 0} recorded.`,
-      );
+      const refundAmount = cancelled.refund_amount ?? 0;
+      const feeNote = fee > 0 ? `A late-cancellation fee of ₹${fee} was applied. ` : '';
+      const refundNote = refundAmount <= 0
+        ? 'No refund is owed.'
+        : cancelled.refund_status === 'processed'
+          ? `Your refund of ₹${refundAmount} is complete.`
+          : `Your refund of ₹${refundAmount} has been requested — we'll notify you once it's approved and sent.`;
+      notify('Booking Cancelled', `${feeNote}${refundNote}`);
       return true;
     } catch (err) {
       notify('Could not cancel', err instanceof ApiError ? err.message : 'Please try again.');

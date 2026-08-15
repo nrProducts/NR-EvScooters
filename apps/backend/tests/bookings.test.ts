@@ -81,6 +81,9 @@ describe("toBookingView", () => {
             cancellation_penalty_amount: null,
             refund_amount: null,
             refund_status: null,
+            refund_initiated_at: null,
+            refund_completed_at: null,
+            refund_transaction_id: null,
             plan_status: null,
             plan_activated_at: null,
             plan_duration_days: null,
@@ -171,7 +174,10 @@ describe("toBookingView", () => {
             plan_price_at_cancellation: 4000,
             cancellation_penalty_amount: 1000,
             refund_amount: 3000,
-            refund_status: "pending",
+            refund_status: "processed",
+            refund_initiated_at: "2026-08-01T10:00:01.000Z",
+            refund_completed_at: "2026-08-01T10:00:05.000Z",
+            refund_transaction_id: "rfnd_test123",
         });
 
         expect(view.cancelled_at).toBe("2026-08-01T10:00:00.000Z");
@@ -179,7 +185,10 @@ describe("toBookingView", () => {
         expect(view.plan_price_at_cancellation).toBe(4000);
         expect(view.cancellation_penalty_amount).toBe(1000);
         expect(view.refund_amount).toBe(3000);
-        expect(view.refund_status).toBe("pending");
+        expect(view.refund_status).toBe("processed");
+        expect(view.refund_initiated_at).toBe("2026-08-01T10:00:01.000Z");
+        expect(view.refund_completed_at).toBe("2026-08-01T10:00:05.000Z");
+        expect(view.refund_transaction_id).toBe("rfnd_test123");
     });
 
     it("passes through a stamped referral_discount_amount", () => {

@@ -161,4 +161,28 @@ describe("computeCancellationCharge — amounts", () => {
         expect(c.refundAmount).toBeGreaterThanOrEqual(0);
         expect(c.penaltyAmount).toBeGreaterThanOrEqual(0);
     });
+
+    it("refunds the full deposit alongside a fee-free rental refund, within the grace period", () => {
+        const now = new Date();
+        const createdAt = new Date(now.getTime() - 5 * 60_000).toISOString();
+        const c = computeCancellationCharge({
+            startDay: dayOffset(1), planPrice: 799, depositAmount: 2000, createdAt, now,
+        });
+        expect(c.penaltyAmount).toBe(0);
+        expect(c.depositRefund).toBe(2000);
+        expect(c.refundAmount).toBe(2799);
+    });
+
+    it("still refunds the full deposit even when the rental portion is penalized", () => {
+        const c = computeCancellationCharge({ startDay: dayOffset(0), planPrice: 1000, depositAmount: 2000 });
+        expect(c.penaltyAmount).toBe(250);
+        expect(c.depositRefund).toBe(2000);
+        expect(c.refundAmount).toBe(2750);
+    });
+
+    it("treats a missing deposit amount as zero", () => {
+        const c = computeCancellationCharge({ startDay: dayOffset(5), planPrice: 4000 });
+        expect(c.depositRefund).toBe(0);
+        expect(c.refundAmount).toBe(4000);
+    });
 });

@@ -5,8 +5,8 @@ import * as service from "./refunds.service";
 import { InitiateRefundBody, ListRefundsQuery } from "./refunds.validation";
 
 export async function listRefundsHandler(req: AuthedRequest, res: Response) {
-    const { status, bookingId, ...page } = validatedQuery<ListRefundsQuery>(req);
-    res.json(await service.listRefunds({ ...page, status, bookingId }));
+    const { status, refundType, bookingId, ...page } = validatedQuery<ListRefundsQuery>(req);
+    res.json(await service.listRefunds({ ...page, status, refundType, bookingId }));
 }
 
 export async function getRefundHandler(req: AuthedRequest, res: Response) {
@@ -19,6 +19,7 @@ export async function createRefundHandler(req: AuthedRequest, res: Response) {
     res.status(201).json(refund);
 }
 
+/** Also doubles as "Approve" for a refund still at status='pending' — see processRefund's doc comment. */
 export async function retryRefundHandler(req: AuthedRequest, res: Response) {
-    res.json(await service.processRefund(req.params.id as string));
+    res.json(await service.processRefund(req.params.id as string, req.user!));
 }

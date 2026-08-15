@@ -2,8 +2,10 @@
  * Shared start-day rules for the booking flow — mirrors
  * apps/backend/src/modules/bookings/bookings.service.ts's isValidStartDay
  * exactly (Sunday and past dates are not bookable), kept in sync so mock
- * mode and the real API behave identically. Used by DayPicker (which day
- * to render selectable) and MockBookingRepository (which day to accept).
+ * mode and the real API behave identically. Pickup is always immediate
+ * (today), so getToday() is what the booking screen actually uses;
+ * isValidStartDay is what MockBookingRepository validates against, and
+ * getNextDays backs its own tests.
  */
 
 const fmt = (d: Date): string => {
@@ -12,6 +14,11 @@ const fmt = (d: Date): string => {
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
 };
+
+/** Today as YYYY-MM-DD — booking now always starts today (immediate pickup, no date picker). */
+export function getToday(): string {
+    return fmt(new Date());
+}
 
 export function isValidStartDay(dateStr: string): boolean {
     const parsed = new Date(`${dateStr}T00:00:00`);

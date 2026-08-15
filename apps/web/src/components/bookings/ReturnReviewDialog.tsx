@@ -1,13 +1,15 @@
 import { useState, type ReactNode } from "react";
-import { CheckCircle2, Loader2, Wrench, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Wrench, XCircle } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { useCompleteRide, useMoveRideToMaintenance, useRejectReturn } from "@/hooks/useRentals";
+import { useRecordDamage } from "@/hooks/useDamages";
 import { ApiError } from "@/services/api/httpClient";
 import { cn, formatCurrency, formatDateTime } from "@/lib/utils";
 import { computeLatePaymentFee } from "@/lib/latePaymentPolicy";
@@ -36,24 +38,43 @@ export function ReturnReviewDialog({
   const [outcome, setOutcome] = useState<"available" | "maintenance">("available");
   const [maintenanceNotes, setMaintenanceNotes] = useState("");
   const [rejectReason, setRejectReason] = useState("");
+  const [damageAmount, setDamageAmount] = useState("");
+  const [damageDescription, setDamageDescription] = useState("");
+  const [damagePhotos, setDamagePhotos] = useState<File[]>([]);
 
   const completeRide = useCompleteRide();
   const moveToMaintenance = useMoveRideToMaintenance();
   const rejectReturn = useRejectReturn();
+  const recordDamage = useRecordDamage();
 
-  const isPending = completeRide.isPending || moveToMaintenance.isPending || rejectReturn.isPending;
-  const error = completeRide.error ?? moveToMaintenance.error ?? rejectReturn.error;
+  const isPending = completeRide.isPending || moveToMaintenance.isPending || rejectReturn.isPending || recordDamage.isPending;
+  const error = completeRide.error ?? moveToMaintenance.error ?? rejectReturn.error ?? recordDamage.error;
 
   const close = () => {
     onOpenChange(false);
     setOutcome("available");
     setMaintenanceNotes("");
     setRejectReason("");
+    setDamageAmount("");
+    setDamageDescription("");
+    setDamagePhotos([]);
   };
 
   const rental = booking?.active_rental ?? null;
 
-  const handleApprove = () => {
+  const hasDamageEntered = damageAmount.trim().length > 0;
+  const damageAmountValid = hasDamageEntered && Number(damageAmount) > 0;
+  const damageValid = !hasDamageEntered || (damageAmountValid && damageDescription.trim().length >= 3);
+
+  /**
+   * Damage is recorded first (reduces the refundable deposit, and bills the
+   * rider for whatever exceeds it — see computeDamageDeduction in
+   * damages.service.ts) so the return is only marked Available/Maintenance
+   * once the inspection is actually on file. If recording the damage fails,
+   * the return is deliberately left un-approved rather than silently
+   * skipping the deposit adjustment.
+   */
+  const approveOutcome = () => {
     if (!rental) return;
     if (outcome === "available") {
       completeRide.mutate({ id: rental.id }, { onSuccess: close });
@@ -62,6 +83,21 @@ export function ReturnReviewDialog({
         { id: rental.id, input: { description: maintenanceNotes.trim() } },
         { onSuccess: close },
       );
+    }
+  };
+
+  const handleApprove = () => {
+    if (!rental) return;
+    if (hasDamageEntered && damageAmountValid) {
+      recordDamage.mutate(
+        {
+          rentalId: rental.id,
+          input: { amount: Number(damageAmount), description: damageDescription.trim(), photos: damagePhotos },
+        },
+        { onSuccess: approveOutcome },
+      );
+    } else {
+      approveOutcome();
     }
   };
 
@@ -132,6 +168,45 @@ export function ReturnReviewDialog({
 
             {canAct && (
               <div className="space-y-4 border-t border-border pt-4">
+                <div className="space-y-2 rounded-lg border border-border p-3">
+                  <Label className="flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Vehicle inspection — damage (optional)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Leave the amount blank if the vehicle checks out clean. Entering an amount deducts it from the
+                    rider&apos;s deposit refund, and bills them for whatever exceeds the deposit.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Damage amount (₹)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={damageAmount}
+                        onChange={(e) => setDamageAmount(e.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Photos (optional)</Label>
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => setDamagePhotos(Array.from(e.target.files ?? []))}
+                      />
+                    </div>
+                  </div>
+                  {hasDamageEntered && (
+                    <Textarea
+                      value={damageDescription}
+                      onChange={(e) => setDamageDescription(e.target.value)}
+                      placeholder="Describe the damage (at least 3 characters)"
+                      rows={2}
+                    />
+                  )}
+                </div>
+
                 <div className="space-y-2">
                   <Label>Approve return — vehicle goes to</Label>
                   <div className="grid grid-cols-2 gap-2">
@@ -168,10 +243,10 @@ export function ReturnReviewDialog({
                   )}
                   <Button
                     className="w-full"
-                    disabled={isPending || (outcome === "maintenance" && maintenanceNotes.trim().length < 3)}
+                    disabled={isPending || !damageValid || (outcome === "maintenance" && maintenanceNotes.trim().length < 3)}
                     onClick={handleApprove}
                   >
-                    {(completeRide.isPending || moveToMaintenance.isPending) && (
+                    {(completeRide.isPending || moveToMaintenance.isPending || recordDamage.isPending) && (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     )}
                     Approve Return
