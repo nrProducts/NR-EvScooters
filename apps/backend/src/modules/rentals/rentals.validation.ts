@@ -18,13 +18,21 @@ export const listRentalsQuery = z.object({
     status: z.enum(RENTAL_STATUSES as [string, ...string[]]).optional(),
 });
 
+/**
+ * `late_fee_override` lets staff customise the settled late fee instead of
+ * accepting computeLateReturnPenalty's flat per-day amount — e.g. waiving it
+ * (0) for a rider-side extenuating circumstance, or charging more for a
+ * repeat offender. Omitted entirely, the computed amount applies unchanged.
+ */
 export const completeRideBody = z.object({
     end_battery_pct: z.coerce.number().min(0).max(100).optional(),
+    late_fee_override: z.coerce.number().min(0).max(100_000).optional(),
 });
 
 export const moveToMaintenanceBody = z.object({
     description: z.string().trim().min(3, "Describe the issue.").max(1000),
     end_battery_pct: z.coerce.number().min(0).max(100).optional(),
+    late_fee_override: z.coerce.number().min(0).max(100_000).optional(),
 });
 
 /**

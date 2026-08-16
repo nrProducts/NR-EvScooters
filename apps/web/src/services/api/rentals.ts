@@ -25,6 +25,8 @@ export interface AdminRentalRow {
 
 export interface CompleteRideInput {
   end_battery_pct?: number;
+  /** Staff-customised late fee; omit to use the computed amount. */
+  late_fee_override?: number;
 }
 
 /** POST /rentals/:id/complete — requireStaff. Ends the ride; the DB trigger returns the vehicle to 'available'. Also the "Approve Return" action when a return was pending. */
@@ -35,6 +37,8 @@ export async function completeRide(id: string, input: CompleteRideInput = {}): P
 export interface MoveToMaintenanceInput {
   description: string;
   end_battery_pct?: number;
+  /** Staff-customised late fee; omit to use the computed amount. */
+  late_fee_override?: number;
 }
 
 /** POST /rentals/:id/maintenance — requireStaff. Ends the ride, flips the vehicle to 'maintenance', and opens a ticket. Also the "Approve Return" (inspection) action when a return was pending. */

@@ -458,16 +458,23 @@ export async function getRentalById(id: string): Promise<AdminRentalRow> {
  * Settles against effectiveDueAt, not return_due_at alone: a rider who never
  * requested a return but sat on the scooter past their plan's expiry is late
  * too. Before 20260804100000 that case was silently free.
+ *
+ * `overrideAmount` lets staff replace the computed penalty_amount with a
+ * customised figure (waiving it, or charging more) while days_late/feePerDay
+ * stay as the computed factual record — only the amount actually billed
+ * changes. undefined means "use the computed amount" unchanged.
  */
-function settlementPayload(before: RawAdminRentalRow) {
+function settlementPayload(before: RawAdminRentalRow, overrideAmount?: number) {
     const charge = computeLateReturnPenalty({ returnDueAt: effectiveDueAt(before) });
+    const penaltyAmount = overrideAmount ?? charge.penaltyAmount;
     return {
         payload: {
             days_late: charge.daysLate,
-            late_penalty_amount: charge.penaltyAmount,
+            late_penalty_amount: penaltyAmount,
             late_fee_per_day: charge.feePerDay,
         },
-        charge,
+        charge: { ...charge, penaltyAmount },
+        overridden: overrideAmount !== undefined,
     };
 }
 
@@ -515,7 +522,7 @@ export async function completeRide(
     actor: AuthContext,
 ): Promise<AdminRentalRow> {
     const before = await requireActiveRental(id);
-    const { payload: settlement, charge } = settlementPayload(before);
+    const { payload: settlement, charge, overridden } = settlementPayload(before, input.late_fee_override);
     const endedAt = new Date();
 
     const { data, error } = await supabaseAdmin
@@ -584,6 +591,7 @@ export async function completeRide(
             end_battery_pct: rental.end_battery_pct,
             days_late: charge.daysLate,
             late_penalty_amount: charge.penaltyAmount,
+            late_fee_overridden: overridden,
             had_deadline: charge.hadDeadline,
         },
     });
@@ -616,7 +624,7 @@ export async function moveRideToMaintenance(
     // Settled here too: staff still take physical delivery of a damaged
     // scooter, so skipping this would make "return it broken" a free
     // late-fee bypass and leave days_late null on these rows forever.
-    const { payload: settlement, charge } = settlementPayload(before);
+    const { payload: settlement, charge, overridden } = settlementPayload(before, input.late_fee_override);
     const endedAt = new Date();
 
     const { error: rentalError } = await supabaseAdmin
@@ -674,6 +682,7 @@ export async function moveRideToMaintenance(
             description: input.description,
             days_late: charge.daysLate,
             late_penalty_amount: charge.penaltyAmount,
+            late_fee_overridden: overridden,
             had_deadline: charge.hadDeadline,
         },
     });

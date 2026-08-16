@@ -41,6 +41,7 @@ export function ReturnReviewDialog({
   const [damageAmount, setDamageAmount] = useState("");
   const [damageDescription, setDamageDescription] = useState("");
   const [damagePhotos, setDamagePhotos] = useState<File[]>([]);
+  const [lateFeeOverride, setLateFeeOverride] = useState("");
 
   const completeRide = useCompleteRide();
   const moveToMaintenance = useMoveRideToMaintenance();
@@ -58,6 +59,7 @@ export function ReturnReviewDialog({
     setDamageAmount("");
     setDamageDescription("");
     setDamagePhotos([]);
+    setLateFeeOverride("");
   };
 
   const rental = booking?.active_rental ?? null;
@@ -65,6 +67,10 @@ export function ReturnReviewDialog({
   const hasDamageEntered = damageAmount.trim().length > 0;
   const damageAmountValid = hasDamageEntered && Number(damageAmount) > 0;
   const damageValid = !hasDamageEntered || (damageAmountValid && damageDescription.trim().length >= 3);
+
+  const hasLateFeeOverride = lateFeeOverride.trim().length > 0;
+  const lateFeeOverrideValid = !hasLateFeeOverride
+    || (!Number.isNaN(Number(lateFeeOverride)) && Number(lateFeeOverride) >= 0);
 
   /**
    * Damage is recorded first (reduces the refundable deposit, and bills the
@@ -76,11 +82,12 @@ export function ReturnReviewDialog({
    */
   const approveOutcome = () => {
     if (!rental) return;
+    const lateFee = hasLateFeeOverride ? { late_fee_override: Number(lateFeeOverride) } : {};
     if (outcome === "available") {
-      completeRide.mutate({ id: rental.id }, { onSuccess: close });
+      completeRide.mutate({ id: rental.id, input: lateFee }, { onSuccess: close });
     } else {
       moveToMaintenance.mutate(
-        { id: rental.id, input: { description: maintenanceNotes.trim() } },
+        { id: rental.id, input: { description: maintenanceNotes.trim(), ...lateFee } },
         { onSuccess: close },
       );
     }
@@ -207,6 +214,32 @@ export function ReturnReviewDialog({
                   )}
                 </div>
 
+                <div className="space-y-2 rounded-lg border border-border p-3">
+                  <Label className="flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Late fee (optional override)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {booking.return_late_fee_preview
+                      ? `System-computed: ${formatCurrency(booking.return_late_fee_preview.penalty_amount)} (${booking.return_late_fee_preview.days_late} day${booking.return_late_fee_preview.days_late === 1 ? "" : "s"} late).`
+                      : "No late fee was computed for this return."}{" "}
+                    Leave blank to use the computed amount, or enter a custom figure (0 to waive it).
+                  </p>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Late fee amount (₹)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={lateFeeOverride}
+                      onChange={(e) => setLateFeeOverride(e.target.value)}
+                      placeholder={
+                        booking.return_late_fee_preview
+                          ? String(booking.return_late_fee_preview.penalty_amount)
+                          : "0"
+                      }
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Approve return — vehicle goes to</Label>
                   <div className="grid grid-cols-2 gap-2">
@@ -243,7 +276,12 @@ export function ReturnReviewDialog({
                   )}
                   <Button
                     className="w-full"
-                    disabled={isPending || !damageValid || (outcome === "maintenance" && maintenanceNotes.trim().length < 3)}
+                    disabled={
+                      isPending
+                      || !damageValid
+                      || !lateFeeOverrideValid
+                      || (outcome === "maintenance" && maintenanceNotes.trim().length < 3)
+                    }
                     onClick={handleApprove}
                   >
                     {(completeRide.isPending || moveToMaintenance.isPending || recordDamage.isPending) && (

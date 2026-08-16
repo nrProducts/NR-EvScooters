@@ -100,9 +100,13 @@ export interface ListRentalsFilters {
 
 export interface CompleteRideInput {
     end_battery_pct?: number;
+    /** Staff-customised late fee; omitted means "use the computed amount". See rentals.validation.ts. */
+    late_fee_override?: number;
 }
 
 export interface MoveToMaintenanceInput {
     description: string;
     end_battery_pct?: number;
+    /** Staff-customised late fee; omitted means "use the computed amount". See rentals.validation.ts. */
+    late_fee_override?: number;
 }
