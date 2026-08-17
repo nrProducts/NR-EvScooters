@@ -327,7 +327,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
               <TouchableOpacity
                 onPress={() => { setProfileOpen(false); router.push('/kyc'); }}
                 accessibilityRole="button"
-                className="rounded-2xl p-3.5 flex-row items-center justify-between mb-6"
+                className="rounded-2xl p-3.5 flex-row items-center justify-between mb-3"
                 style={{ backgroundColor: COLORS.warning + '14' }}
               >
                 <Text style={{ color: COLORS.warning }} className="text-[11px] font-bold flex-1 mr-2">
@@ -335,9 +335,19 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
                 </Text>
                 <ChevronRight size={16} color={COLORS.warning} />
               </TouchableOpacity>
-            ) : (
-              <View className="mb-6" />
-            )}
+            ) : null}
+
+            <TouchableOpacity
+              onPress={() => { setProfileOpen(false); router.push('/onboarding?replay=1' as any); }}
+              accessibilityRole="button"
+              className="rounded-2xl p-3.5 flex-row items-center justify-between mb-6"
+              style={{ backgroundColor: COLORS.primary + '0F' }}
+            >
+              <Text style={{ color: COLORS.primary }} className="text-[11px] font-bold flex-1 mr-2">
+                How SwapNgo Works
+              </Text>
+              <ChevronRight size={16} color={COLORS.primary} />
+            </TouchableOpacity>
 
             <TouchableOpacity
               onPress={handleLogout}

@@ -7,6 +7,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";
 import { useAuthStore } from "../store/useAuthStore";
+import { useOnboardingStore } from "../store/useOnboardingStore";
 import { userRepository } from "../services";
 import { DialogHost } from "../components/ui/DialogHost";
 import { registerForPushNotificationsAsync } from "../lib/pushNotifications";
@@ -33,6 +34,10 @@ const RIDER_ROUTES = [
   "battery-stations",
   // DPDPA. "privacy" covers privacy/index, notice, requests, [id] and nominee.
   "consent", "privacy",
+  // Replayed from Profile ("How SwapNgo Works") while signed in — see the
+  // !hasSeenOnboarding gate below for the signed-out first-run case, which
+  // doesn't rely on this list at all.
+  "onboarding",
 ];
 // Screens reachable while signed OUT (the login surface).
 const AUTH_ROUTES = ["index", "otp-verify", "auth-callback"];
@@ -90,6 +95,9 @@ export default function RootLayout() {
   const missing = missingEnvVars();
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const initialising = useAuthStore((s) => s.initialising);
+  const onboardingHydrated = useOnboardingStore((s) => s.hydrated);
+  const hasSeenOnboarding = useOnboardingStore((s) => s.hasSeenOnboarding);
+  const hydrateOnboarding = useOnboardingStore((s) => s.hydrate);
   const session = useAuthStore((s) => s.session);
   const profile = useAuthStore((s) => s.profile);
   const hasSeenKycIntro = useAuthStore((s) => s.hasSeenKycIntro);
@@ -109,6 +117,12 @@ export default function RootLayout() {
     const unsubscribe = bootstrap();
     return unsubscribe;
   }, [bootstrap, missing.length]);
+
+  // Device-level flag (survives sign-out), read once at boot alongside the
+  // session — see useOnboardingStore.ts for why this isn't part of useAuthStore.
+  useEffect(() => {
+    void hydrateOnboarding();
+  }, [hydrateOnboarding]);
 
   // Registers a push token once per signed-in account, not on every profile
   // refetch — keyed on the id (not a plain boolean) so switching accounts
@@ -140,11 +154,20 @@ export default function RootLayout() {
   }, [router]);
 
   useEffect(() => {
-    if (initialising) return;
+    if (initialising || !onboardingHydrated) return;
 
     const segs = segments as unknown as string[];
     const current = segs[0] ?? "index";
     const atAuthScreen = segs.length === 0 || AUTH_ROUTES.includes(current);
+
+    // Device has never completed onboarding — takes priority over everything
+    // else, signed in or not, so a brand-new install always sees it first.
+    // Deliberately not folded into AUTH_ROUTES: see the comment on
+    // RIDER_ROUTES's "onboarding" entry for the signed-in replay case.
+    if (!hasSeenOnboarding) {
+      if (current !== "onboarding") router.replace("/onboarding");
+      return;
+    }
 
     if (!session) {
       // Signed out: allow the login surface (phone, OTP), bounce anything else.
@@ -192,7 +215,7 @@ export default function RootLayout() {
     if (atAuthScreen || current === "profile-setup" || !RIDER_ROUTES.includes(current)) {
       router.replace("/home");
     }
-  }, [initialising, session, profile, hasSeenKycIntro, segments, router]);
+  }, [initialising, onboardingHydrated, hasSeenOnboarding, session, profile, hasSeenKycIntro, segments, router]);
 
   if (missing.length > 0) return <MisconfiguredScreen missing={missing} />;
 
@@ -200,7 +223,7 @@ export default function RootLayout() {
   // native splash before this shows the SNG mark alone — Android 12+ clips
   // windowSplashScreenAnimatedIcon to a circle, so the wordmark can only be
   // shown here, once JS owns the screen.
-  if (initialising) {
+  if (initialising || !onboardingHydrated) {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" backgroundColor={COLORS.background} />
