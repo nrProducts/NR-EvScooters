@@ -1,5 +1,5 @@
 import type {
-    ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiInvoice, ApiKycSummary,
+    ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiReferralSummary,
     ApiRental, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, KycDocType,
@@ -108,6 +108,8 @@ export interface BillingRepository {
     createOrderForBooking(bookingId: string): Promise<ApiPaymentOrder>;
     createOrderForInvoice(invoiceId: string): Promise<ApiPaymentOrder>;
     verifyPayment(payload: VerifyPaymentPayload): Promise<void>;
+    /** Opens on the last day of the current plan — pay the upcoming period ahead of the overdue-lock, starting right after the current one ends. */
+    requestEarlyRecharge(bookingId: string): Promise<ApiEarlyRecharge>;
 
     myInvoices(params: HistoryParams & { bookingId?: string }): Promise<Paginated<ApiInvoice>>;
     /** The rider's deposit for a booking, or null before one exists (booking not yet paid). */

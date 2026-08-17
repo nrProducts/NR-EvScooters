@@ -26,12 +26,12 @@ export type ModuleKey =
   | "vehicles" | "users" | "kyc" | "bookings" | "maintenance" | "support"
   | "payments" | "notifications" | "damages" | "refunds" | "privacy"
   | "plans" | "reconciliation" | "pii_access_log" | "audit" | "settings"
-  | "dashboard" | "battery_stations";
+  | "dashboard" | "battery_stations" | "billing";
 export const MODULE_KEYS: readonly ModuleKey[] = [
   "vehicles", "users", "kyc", "bookings", "maintenance", "support",
   "payments", "notifications", "damages", "refunds", "privacy",
   "plans", "reconciliation", "pii_access_log", "audit", "settings",
-  "dashboard", "battery_stations",
+  "dashboard", "battery_stations", "billing",
 ];
 
 /** Human-readable labels for the module-permission checkboxes in Settings. */
@@ -54,6 +54,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   settings: "Settings",
   dashboard: "Dashboard",
   battery_stations: "Battery Stations",
+  billing: "Billing & Charges",
 };
 
 /**
@@ -167,6 +168,11 @@ export const MODULE_ACTIONS: Record<ModuleKey, readonly ModuleActionDef[]> = {
   refunds: [
     { key: "view", label: "View", available: true },
     { key: "create", label: "Process", available: true },
+  ],
+  billing: [
+    { key: "view", label: "View", available: true },
+    { key: "create", label: "Create Charge Rule", available: true },
+    { key: "edit", label: "Edit Charge Rule / Waive Charge", available: true },
   ],
 };
 
@@ -592,6 +598,16 @@ export type PaymentStatus = "pending" | "processing" | "succeeded" | "failed" | 
 export type PaymentMethod = "card" | "wallet" | "upi" | "cash";
 export type PaymentType = "rental" | "deposit" | "damage" | "penalty" | "refund" | "other";
 
+/** A single invoice line — see 20260817100000_billing_charge_engine.sql. Empty on every invoice minted before that migration. */
+export interface InvoiceItem {
+  id: string;
+  item_type: "base_rental" | "charge" | "discount";
+  rider_charge_id: string | null;
+  label: string;
+  amount: number;
+  created_at: string;
+}
+
 export interface Invoice {
   id: string;
   user_id: string;
@@ -609,6 +625,7 @@ export interface Invoice {
   created_at: string;
   updated_at: string | null;
   rider: { id: string; full_name: string; email: string | null } | null;
+  items: InvoiceItem[];
 }
 
 export interface InvoiceDetail extends Invoice {
@@ -718,6 +735,149 @@ export interface Refund {
   processed_at: string | null;
   created_at: string;
   booking: RefundBookingSummary | null;
+}
+
+// ---------------------------------------------------------------------------
+// Billing & Charges (admin) — mirrors apps/backend/src/modules/billing/billing.types.ts
+// ---------------------------------------------------------------------------
+
+export type ChargeCode =
+  | "transaction_fee" | "late_payment_fee" | "late_return_fee" | "damage"
+  | "cleaning" | "cancellation" | "extension" | "other";
+export const CHARGE_CODES: readonly ChargeCode[] = [
+  "transaction_fee", "late_payment_fee", "late_return_fee", "damage",
+  "cleaning", "cancellation", "extension", "other",
+];
+export const CHARGE_CODE_LABELS: Record<ChargeCode, string> = {
+  transaction_fee: "Transaction Fee",
+  late_payment_fee: "Late Payment Fee",
+  late_return_fee: "Late Return Fee",
+  damage: "Damage Charge",
+  cleaning: "Cleaning Charge",
+  cancellation: "Cancellation Charge",
+  extension: "Extension Charge",
+  other: "Other Charge",
+};
+
+export type ChargeAmountType = "fixed" | "percentage";
+export type ChargeFrequencyType = "one_time" | "every_cycle" | "every_n_cycles" | "per_booking" | "per_day";
+export const CHARGE_FREQUENCY_LABELS: Record<ChargeFrequencyType, string> = {
+  one_time: "One time",
+  every_cycle: "Every cycle",
+  every_n_cycles: "Every N cycles",
+  per_booking: "Per booking",
+  per_day: "Per day",
+};
+export type ChargeRuleScope = "global" | "vehicle";
+export type RiderChargeStatus = "pending" | "invoiced" | "paid" | "waived" | "cancelled";
+
+export interface ChargeRule {
+  id: string;
+  charge_code: ChargeCode;
+  charge_name: string;
+  description: string | null;
+  amount_type: ChargeAmountType;
+  amount: number;
+  frequency_type: ChargeFrequencyType;
+  frequency_n: number | null;
+  scope: ChargeRuleScope;
+  vehicle_id: string | null;
+  vehicle: { id: string; name: string; registration_number: string } | null;
+  effective_from: string;
+  effective_to: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RiderChargeBookingSummary {
+  id: string;
+  rider_name: string | null;
+  rider_phone: string | null;
+  vehicle_model_name: string | null;
+}
+
+export interface RiderCharge {
+  id: string;
+  booking_id: string;
+  charge_rule_id: string | null;
+  charge_code: ChargeCode;
+  charge_name: string;
+  amount: number;
+  billing_cycle_number: number | null;
+  status: RiderChargeStatus;
+  waived_amount: number | null;
+  waived_reason: string | null;
+  waived_by: { id: string; full_name: string } | null;
+  waived_at: string | null;
+  invoice_id: string | null;
+  created_at: string;
+  booking: RiderChargeBookingSummary | null;
+}
+
+// ---------------------------------------------------------------------------
+// Discount Rules (admin) — mirrors Charge Rules exactly. See
+// apps/backend/src/modules/billing/billing.types.ts.
+// ---------------------------------------------------------------------------
+
+export type DiscountCode = "loyalty" | "promotional" | "seasonal" | "referral" | "other";
+export const DISCOUNT_CODES: readonly DiscountCode[] = [
+  "loyalty", "promotional", "seasonal", "referral", "other",
+];
+export const DISCOUNT_CODE_LABELS: Record<DiscountCode, string> = {
+  loyalty: "Loyalty Discount",
+  promotional: "Promotional Discount",
+  seasonal: "Seasonal Discount",
+  referral: "Referral Discount",
+  other: "Other Discount",
+};
+
+/** "Duration: N Billing Cycles" (spec) applies to cycles 1..N — distinct from a charge's every_n_cycles (multiples of N). */
+export type DiscountFrequencyType = "one_time" | "every_cycle" | "first_n_cycles";
+export const DISCOUNT_FREQUENCY_LABELS: Record<DiscountFrequencyType, string> = {
+  one_time: "One time",
+  every_cycle: "Every cycle",
+  first_n_cycles: "First N cycles",
+};
+export type RiderDiscountStatus = "pending" | "applied" | "cancelled";
+
+export interface DiscountRule {
+  id: string;
+  discount_code: DiscountCode;
+  discount_name: string;
+  description: string | null;
+  discount_type: ChargeAmountType;
+  value: number;
+  frequency_type: DiscountFrequencyType;
+  frequency_n: number | null;
+  scope: ChargeRuleScope;
+  vehicle_id: string | null;
+  vehicle: { id: string; name: string; registration_number: string } | null;
+  effective_from: string;
+  effective_to: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RiderDiscount {
+  id: string;
+  booking_id: string;
+  discount_rule_id: string | null;
+  discount_code: DiscountCode;
+  discount_name: string;
+  discount_type: ChargeAmountType;
+  amount: number;
+  billing_cycle_number: number | null;
+  status: RiderDiscountStatus;
+  cancel_reason: string | null;
+  cancelled_by: { id: string; full_name: string } | null;
+  cancelled_at: string | null;
+  invoice_id: string | null;
+  created_at: string;
+  booking: RiderChargeBookingSummary | null;
 }
 
 // ---------------------------------------------------------------------------

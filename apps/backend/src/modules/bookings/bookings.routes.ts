@@ -45,6 +45,16 @@ router.post(
     asyncHandler(c.cancelMyBookingHandler),
 );
 
+// Rider-initiated early payment for the upcoming period — opens on the last
+// day of the current one (next_due_at <= today), before the overdue-sweep
+// would otherwise lock the vehicle the following day. Scoped to the
+// caller's own booking inside the service, same as /:id/cancel above.
+router.post(
+    "/me/:id/recharge",
+    validate({ params: v.bookingIdParam }),
+    asyncHandler(c.requestEarlyRechargeHandler),
+);
+
 // --- staff pickup/check-in ------------------------------------------------
 router.get(
     "/",

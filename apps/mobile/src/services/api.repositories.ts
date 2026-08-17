@@ -2,7 +2,7 @@ import { api } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
 import { getSupabase } from '../lib/supabase';
 import type {
-    ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiInvoice, ApiKycSummary,
+    ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiReferralSummary,
     ApiRental, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, ListVehicleModelsParams,
@@ -171,6 +171,9 @@ export class ApiBillingRepository implements BillingRepository {
     }
     async verifyPayment(payload: VerifyPaymentPayload): Promise<void> {
         await api.verifyPayment(payload);
+    }
+    requestEarlyRecharge(bookingId: string): Promise<ApiEarlyRecharge> {
+        return api.requestEarlyRecharge(bookingId);
     }
     myInvoices(params: HistoryParams & { bookingId?: string }): Promise<Paginated<ApiInvoice>> {
         return api.myInvoices(params);

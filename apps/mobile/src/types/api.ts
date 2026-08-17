@@ -396,6 +396,16 @@ export interface ApiBookingWithPlan extends ApiBooking {
 export type InvoicePaymentType = 'rental' | 'deposit' | 'damage' | 'penalty' | 'refund' | 'other';
 export type InvoicePaymentStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'refunded';
 
+/** A single invoice line — see 20260817100000_billing_charge_engine.sql. Empty on every invoice minted before that migration. */
+export interface ApiInvoiceItem {
+    id: string;
+    item_type: 'base_rental' | 'charge' | 'discount';
+    rider_charge_id: string | null;
+    label: string;
+    amount: number;
+    created_at: string;
+}
+
 export interface ApiInvoice {
     id: string;
     payment_type: InvoicePaymentType | null;
@@ -404,6 +414,21 @@ export interface ApiInvoice {
     payment_status: InvoicePaymentStatus;
     paid_at: string | null;
     created_at: string;
+    items: ApiInvoiceItem[];
+}
+
+export interface ApiEarlyRechargeLineItem {
+    itemType: 'base_rental' | 'charge' | 'discount';
+    label: string;
+    amount: number;
+}
+
+/** POST /bookings/me/:id/recharge — the just-generated (or already-pending) upcoming-period invoice, ready to review then pay. Generating it never charges anything by itself. */
+export interface ApiEarlyRecharge {
+    invoiceId: string;
+    amountDue: number;
+    dueDate: string;
+    items: ApiEarlyRechargeLineItem[];
 }
 
 export type DepositStatus = 'pending' | 'held' | 'partially_refunded' | 'refunded' | 'forfeited';

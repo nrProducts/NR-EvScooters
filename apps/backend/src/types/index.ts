@@ -43,12 +43,15 @@ export type ModuleKey =
     // `actions` column — these were previously hard admin-only in
     // roleConfig.ts with no delegation path at all.
     | "plans" | "reconciliation" | "pii_access_log" | "audit" | "settings"
-    | "dashboard" | "battery_stations";
+    | "dashboard" | "battery_stations"
+    // Configurable Billing & Charges engine (charge rules, materialized
+    // rider charges, waivers) — see 20260817100000_billing_charge_engine.sql.
+    | "billing";
 export const MODULE_KEYS: readonly ModuleKey[] = [
     "vehicles", "users", "kyc", "bookings", "maintenance", "support",
     "payments", "notifications", "damages", "refunds", "privacy",
     "plans", "reconciliation", "pii_access_log", "audit", "settings",
-    "dashboard", "battery_stations",
+    "dashboard", "battery_stations", "billing",
 ] as const;
 
 export interface ModuleActionDef {
@@ -172,6 +175,11 @@ export const MODULE_ACTIONS: Record<ModuleKey, readonly ModuleActionDef[]> = {
     refunds: [
         { key: "view", label: "View", available: true },
         { key: "create", label: "Process", available: true },
+    ],
+    billing: [
+        { key: "view", label: "View", available: true },
+        { key: "create", label: "Create Charge Rule", available: true },
+        { key: "edit", label: "Edit Charge Rule / Waive Charge", available: true },
     ],
 };
 

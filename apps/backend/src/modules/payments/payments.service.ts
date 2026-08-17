@@ -536,7 +536,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     if (order.purpose === "booking_initial" && order.booking_id) {
         await applyBookingInitialSuccess(order.booking_id, order.user_id);
     } else if (order.purpose === "weekly_due" && order.booking_id) {
-        await applyWeeklyDueSuccess(order.booking_id);
+        await applyWeeklyDueSuccess(order.booking_id, order.id);
     }
     // 'damage_settlement' / 'other': the invoice update above is sufficient.
 
@@ -591,25 +591,62 @@ async function applyBookingInitialSuccess(bookingId: string, userId: string): Pr
  * to active and rolls the due date forward by exactly one period, anchored
  * to the period that was just paid for (not "today"), so the weekly cadence
  * never drifts even if a rider catches up a day or two late.
+ *
+ * Also fires for an early "Recharge Now" payment (bookings.service.ts's
+ * requestEarlyRecharge), made while plan_status is still 'active' — the
+ * rider paying ahead on the last day of their period rather than waiting for
+ * the sweep to lock them out. 'paused' (vehicle in maintenance) never
+ * qualifies: next_due_at is frozen there and resumePlanForBooking owns
+ * un-freezing it, not a payment.
+ *
+ * orderId cross-checks that the invoice actually paid is for THIS period
+ * (due_date === next_due_at) before advancing anything — both the normal
+ * late-catch-up path and the new early-pay path can now reach this function
+ * while plan_status is something other than a single expected value, so the
+ * old `.eq("plan_status", "due")` guard alone is no longer precise enough.
+ * The final update's `.eq("next_due_at", newPeriodStart)` is what actually
+ * makes this idempotent under a duplicate webhook delivery: once it
+ * succeeds, a second delivery's read sees the ALREADY-advanced next_due_at,
+ * the due_date check no longer matches, and it no-ops.
  */
-async function applyWeeklyDueSuccess(bookingId: string): Promise<void> {
+async function applyWeeklyDueSuccess(bookingId: string, orderId: string): Promise<void> {
     const { data: booking, error } = await supabaseAdmin
         .from("bookings")
-        .select("id, plan_status, next_due_at, plan_duration_days")
+        .select("id, plan_status, next_due_at, plan_duration_days, billing_cycle_number")
         .eq("id", bookingId)
         .maybeSingle();
     if (error) throw error;
     if (!booking || !booking.next_due_at || !booking.plan_duration_days) return;
-    if (booking.plan_status !== "due") return; // Already advanced by a prior delivery.
+    if (booking.plan_status !== "due" && booking.plan_status !== "active") return;
+
+    const { data: paidInvoice } = await supabaseAdmin
+        .from("invoices")
+        .select("due_date")
+        .eq("payment_order_id", orderId)
+        .eq("payment_type", "rental")
+        .maybeSingle();
+    if (!paidInvoice || paidInvoice.due_date !== booking.next_due_at) return;
 
     const newPeriodStart = booking.next_due_at;
     const newNextDueAt = addDays(newPeriodStart, booking.plan_duration_days);
 
-    await supabaseAdmin
+    // Every successful weekly payment advances the rider's own billing-cycle
+    // counter — the Billing & Charges engine's "every N cycles" rules
+    // (transaction_fee etc.) key off this, not the calendar. See
+    // 20260817100000_billing_charge_engine.sql / fn_generate_weekly_invoice.
+    const { data: updated } = await supabaseAdmin
         .from("bookings")
-        .update({ plan_status: "active", current_period_start: newPeriodStart, next_due_at: newNextDueAt })
+        .update({
+            plan_status: "active",
+            current_period_start: newPeriodStart,
+            next_due_at: newNextDueAt,
+            billing_cycle_number: booking.billing_cycle_number + 1,
+        })
         .eq("id", bookingId)
-        .eq("plan_status", "due");
+        .eq("next_due_at", newPeriodStart)
+        .select("id")
+        .maybeSingle();
+    if (!updated) return; // Already advanced by a concurrent/duplicate delivery.
 
     await writeAudit({
         actorId: null, targetUserId: null, action: "plan.updated",

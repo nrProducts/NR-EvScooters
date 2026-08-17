@@ -12,6 +12,14 @@
 // common/audit.ts's writeAudit from Deno) and notifies the rider, following
 // the same "log first, best-effort push" contract as the backend's
 // notifyUser().
+//
+// Invoice creation itself is delegated to fn_generate_weekly_invoice (see
+// 20260817100000_billing_charge_engine.sql) via RPC rather than a plain
+// insert here — that single Postgres function is also called by the Node
+// backend's on-demand path, so it's the one place "what does this rider owe
+// this cycle" (base rental + eligible charge_rules, e.g. the Transaction
+// Fee every N cycles) is computed, and it's idempotent against being
+// re-run.
 // =========================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -24,7 +32,6 @@ interface BookingRow {
     id: string;
     user_id: string;
     next_due_at: string;
-    plans: { price: number } | { price: number }[] | null;
     // Aliased below as `users:users!bookings_user_id_fkey(...)` — bookings has
     // TWO fkeys to users (user_id and cancelled_by), so the embed is ambiguous
     // without naming which one PostgREST should follow.
@@ -46,7 +53,7 @@ Deno.serve(async (_req) => {
 
     const { data: overdue, error } = await admin
         .from("bookings")
-        .select("id, user_id, next_due_at, plans(price), users:users!bookings_user_id_fkey(push_token)")
+        .select("id, user_id, next_due_at, users:users!bookings_user_id_fkey(push_token)")
         .eq("plan_status", "active")
         .lt("next_due_at", todayIso());
 
@@ -76,23 +83,15 @@ Deno.serve(async (_req) => {
         if (!updated) continue;
         flipped++;
 
-        // Full plan price, no referral discount — that's a one-time
-        // first-booking incentive (bookings.referral_discount_amount),
-        // never repeated on renewals.
-        const plan = unwrap<{ price: number }>(row.plans);
-        if (plan) {
-            const { error: invoiceError } = await admin.from("invoices").insert({
-                user_id: row.user_id,
-                booking_id: row.id,
-                payment_type: "rental",
-                status: "issued",
-                amount_due: plan.price,
-                due_date: row.next_due_at,
-                payment_status: "pending",
-            });
-            if (invoiceError) {
-                console.error("[payment-overdue-sweep] invoice insert failed", { bookingId: row.id, error: invoiceError });
-            }
+        // Full plan price (no referral discount — that's a one-time
+        // first-booking incentive, never repeated on renewals) plus whatever
+        // charge_rules are eligible this cycle (e.g. the Transaction Fee
+        // every N cycles) — see fn_generate_weekly_invoice's own comment.
+        // Idempotent: re-running the sweep for this booking/due-date returns
+        // the same invoice id rather than creating a duplicate.
+        const { error: invoiceError } = await admin.rpc("fn_generate_weekly_invoice", { p_booking_id: row.id });
+        if (invoiceError) {
+            console.error("[payment-overdue-sweep] invoice generation failed", { bookingId: row.id, error: invoiceError });
         }
 
         await admin.from("audit_logs").insert({

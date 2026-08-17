@@ -14,7 +14,7 @@ import { billingRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
 import { computeLatePaymentFee } from '../lib/latePaymentPolicy';
 import { ApiError } from '../lib/ApiError';
-import type { ApiInvoice, InvoicePaymentStatus, PlanStatus } from '../types/api';
+import type { ApiEarlyRecharge, ApiInvoice, InvoicePaymentStatus, PlanStatus } from '../types/api';
 
 const CYCLE_LABEL: Record<string, string> = {
   daily: 'Day', weekly: 'Week', monthly: 'Month', yearly: 'Year',
@@ -38,12 +38,43 @@ function formatDate(dateStr: string | null): string {
   return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** YYYY-MM-DD in local time, to compare against next_due_at (a date-only column) the same way the rider reads it on screen. */
+function dateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function todayStr(): string {
+  return dateStr(new Date());
+}
+
+function tomorrowStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return dateStr(d);
+}
+
 export default function BillingScreen() {
   const { bookingId, booking, deposit, damages, invoices, loading, error, reload } = useMyBilling();
   const { refreshing, onRefresh } = useRefresh(() => reload(true));
   const profile = useAuthStore((s) => s.profile);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
+  // Two-step Recharge Now: tapping the teaser fetches the breakdown
+  // (rechargePreview) without charging anything — only Confirm & Pay
+  // actually opens the payment sheet. previewLoading covers step 1,
+  // recharging covers step 2, so the button copy/spinner reflects whichever
+  // is actually in flight.
+  const [rechargePreview, setRechargePreview] = useState<ApiEarlyRecharge | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [recharging, setRecharging] = useState(false);
+  const [rechargeError, setRechargeError] = useState<string | null>(null);
+  // Which Payment History row is expanded to show its line items — only
+  // invoices minted by the Billing & Charges engine (transaction fee etc.)
+  // have any; older/other invoices just show the flat amount as before.
+  const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
 
   // The admin side can change this rider's plan_status (a payment going
   // overdue, a vehicle being released) with no action of the rider's own —
@@ -78,6 +109,17 @@ export default function BillingScreen() {
   const lateFeeFor = (inv: ApiInvoice) => (inv.payment_type === 'rental' ? computeLatePaymentFee(inv.due_date).lateFeeAmount : 0);
   const outstandingTotal = outstandingInvoices.reduce((sum, inv) => sum + inv.amount_due + lateFeeFor(inv), 0);
   const isDue = booking?.plan_status === 'due';
+  // next_due_at is the LAST day the current period is actually usable — the
+  // overdue-sweep only locks the scooter once next_due_at has fully passed.
+  // Recharge opens the day before that too (matches the backend's identical
+  // widened check), so a short plan due tomorrow — e.g. a 1-day plan bought
+  // today — can already be recharged today, not just on its exact due date.
+  // Hidden once an outstanding invoice already exists (a prior recharge
+  // attempt that was cancelled mid-payment) — Outstanding below covers that.
+  const planEndsToday = !!booking?.next_due_at && booking.next_due_at <= todayStr();
+  const canRechargeEarly = booking?.plan_status === 'active'
+    && !!booking?.next_due_at && booking.next_due_at <= tomorrowStr()
+    && outstandingInvoices.length === 0;
 
   const payInvoice = async (invoice: ApiInvoice) => {
     setPayError(null);
@@ -117,6 +159,72 @@ export default function BillingScreen() {
     }
   };
 
+  // Step 1: fetch (or idempotently re-fetch) the upcoming invoice and show
+  // its breakdown. Generating the invoice never charges anything by itself —
+  // only handleConfirmRecharge below does that.
+  const handleStartRecharge = async () => {
+    if (!bookingId) return;
+    setRechargeError(null);
+    setPreviewLoading(true);
+    try {
+      const recharge = await billingRepository.requestEarlyRecharge(bookingId);
+      setRechargePreview(recharge);
+    } catch (err) {
+      if (err instanceof ApiError) setRechargeError(err.message);
+      else setRechargeError('Could not load your recharge details. Please try again.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleCancelRechargePreview = () => {
+    setRechargePreview(null);
+    setRechargeError(null);
+  };
+
+  // Step 2: the rider has seen the breakdown and tapped Confirm — pay the
+  // exact invoice previewed in step 1 (same idempotent invoice id, so
+  // nothing can drift between review and payment).
+  const handleConfirmRecharge = async () => {
+    if (!rechargePreview) return;
+    setRechargeError(null);
+    setRecharging(true);
+    try {
+      const order = await billingRepository.createOrderForInvoice(rechargePreview.invoiceId);
+      // No Razorpay keys configured on the backend yet — the order was
+      // already settled server-side with temp data. Skip Checkout entirely.
+      if (!order.mock) {
+        const verifyPayload = await openRazorpayCheckout({
+          key: order.keyId,
+          amount: Math.round(order.amount * 100),
+          currency: order.currency,
+          order_id: order.gatewayOrderId,
+          name: 'SwapNgo',
+          description: 'Weekly Rental — Recharge',
+          prefill: {
+            email: profile?.email ?? undefined,
+            contact: profile?.phone ?? undefined,
+            name: profile?.full_name,
+          },
+          theme: { color: COLORS.primary },
+        });
+        await billingRepository.verifyPayment(verifyPayload);
+      }
+      setRechargePreview(null);
+      reload();
+    } catch (err) {
+      if (err instanceof PaymentCancelledError || err instanceof PaymentUnavailableError) {
+        setRechargeError(err.message);
+      } else if (err instanceof ApiError) {
+        setRechargeError(err.message);
+      } else {
+        setRechargeError('Recharge failed. Please try again.');
+      }
+    } finally {
+      setRecharging(false);
+    }
+  };
+
   return (
     <AppShell title="Billing">
       {loading ? (
@@ -148,9 +256,8 @@ export default function BillingScreen() {
             </View>
             <Text className="text-white/80 text-xs font-medium mb-4">
               {plan ? `${CYCLE_LABEL[plan.billing_cycle] ?? plan.billing_cycle} rental` : ''}
-              {booking?.next_due_at ? ` · Next due ${formatDate(booking.next_due_at)}` : ''}
             </Text>
-            <Text className="text-white text-3xl font-black">
+            <Text className="text-white text-3xl font-black mb-4">
               ₹{(plan?.price ?? 0).toFixed(0)}{' '}
               {plan ? (
                 <Text className="text-sm font-medium text-white/70">
@@ -158,6 +265,21 @@ export default function BillingScreen() {
                 </Text>
               ) : null}
             </Text>
+            <View
+              className="flex-row items-center justify-between pt-3"
+              style={{ borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+            >
+              <View>
+                <Text className="text-white/60 text-[10px] font-bold uppercase tracking-wider">Started</Text>
+                <Text className="text-white text-xs font-bold mt-0.5">
+                  {formatDate(booking?.current_period_start ?? null)}
+                </Text>
+              </View>
+              <View className="items-end">
+                <Text className="text-white/60 text-[10px] font-bold uppercase tracking-wider">Ends</Text>
+                <Text className="text-white text-xs font-bold mt-0.5">{formatDate(booking?.next_due_at ?? null)}</Text>
+              </View>
+            </View>
           </View>
 
           {/* Vehicle-lock warning — shown whenever the plan is overdue,
@@ -178,6 +300,94 @@ export default function BillingScreen() {
                   A ₹300/day late fee is added for every day the payment stays overdue. Pay now to keep riding and stop the fee from growing.
                 </Text>
               </View>
+            </View>
+          ) : null}
+
+          {/* Recharge Now — pay for the next period before the overdue-sweep
+              would otherwise create it (and lock the scooter) tomorrow. The
+              new period starts the moment the current one ends, never early. */}
+          {canRechargeEarly ? (
+            <View
+              className="rounded-2xl p-4 mb-6"
+              style={{ backgroundColor: COLORS.primary + '0F', borderWidth: 1, borderColor: COLORS.primary + '40' }}
+            >
+              <View className="flex-row items-start mb-3">
+                <Zap size={16} color={COLORS.primary} style={{ marginTop: 1 }} />
+                <View className="flex-1 ml-3">
+                  <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold">
+                    {planEndsToday ? 'Your plan ends today' : 'Your plan ends tomorrow'}
+                  </Text>
+                  <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-1 leading-relaxed">
+                    Recharge now to keep riding without interruption. Your next plan starts the moment this one ends.
+                  </Text>
+                </View>
+              </View>
+              {rechargePreview ? (
+                <>
+                  {/* Review — nothing has been charged yet. Confirm below actually pays. */}
+                  <View className="rounded-xl p-3 mb-3" style={{ backgroundColor: COLORS.card }}>
+                    {rechargePreview.items.map((item, i) => (
+                      <View key={i} className="flex-row items-center justify-between py-1">
+                        <Text
+                          style={{ color: item.itemType === 'discount' ? COLORS.success : COLORS.textPrimary }}
+                          className="text-xs font-medium"
+                        >
+                          {item.label}
+                        </Text>
+                        <Text
+                          style={{ color: item.itemType === 'discount' ? COLORS.success : COLORS.textPrimary }}
+                          className="text-xs font-semibold"
+                        >
+                          {item.itemType === 'discount' ? '-' : ''}₹{item.amount.toFixed(0)}
+                        </Text>
+                      </View>
+                    ))}
+                    <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
+                    <View className="flex-row items-center justify-between">
+                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Total</Text>
+                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
+                        ₹{rechargePreview.amountDue.toFixed(0)}
+                      </Text>
+                    </View>
+                  </View>
+                  <View className="flex-row" style={{ gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={handleCancelRechargePreview}
+                      disabled={recharging}
+                      className="flex-1 py-3 rounded-xl items-center border"
+                      style={{ borderColor: COLORS.border, opacity: recharging ? 0.6 : 1 }}
+                    >
+                      <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleConfirmRecharge}
+                      disabled={recharging}
+                      className="flex-1 py-3 rounded-xl items-center flex-row justify-center"
+                      style={{ backgroundColor: COLORS.primary, opacity: recharging ? 0.6 : 1 }}
+                    >
+                      {recharging ? <ActivityIndicator size="small" color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
+                      <Text className="text-white text-xs font-bold ml-2">
+                        {recharging ? 'Processing…' : `Confirm & Pay ₹${rechargePreview.amountDue.toFixed(0)}`}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <TouchableOpacity
+                  onPress={handleStartRecharge}
+                  disabled={previewLoading}
+                  className="py-3 rounded-xl items-center flex-row justify-center"
+                  style={{ backgroundColor: COLORS.primary, opacity: previewLoading ? 0.6 : 1 }}
+                >
+                  {previewLoading ? <ActivityIndicator size="small" color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
+                  <Text className="text-white text-xs font-bold ml-2">
+                    {previewLoading ? 'Loading…' : 'Review & Recharge'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {rechargeError ? (
+                <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mt-3">{rechargeError}</Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -280,28 +490,49 @@ export default function BillingScreen() {
             <EmptyState icon={Receipt} title="No payments yet" />
           ) : (
             <View className="rounded-2xl border overflow-hidden" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-              {invoices.map((inv, i) => (
-                <View
-                  key={inv.id}
-                  className="p-4 flex-row items-center justify-between"
-                  style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
-                >
-                  <View>
-                    <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">
-                      {PAYMENT_TYPE_LABEL[inv.payment_type ?? 'other']}
-                    </Text>
-                    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                      {formatDate(inv.paid_at ?? inv.due_date)}
-                    </Text>
+              {invoices.map((inv, i) => {
+                const hasItems = inv.items.length > 0;
+                const expanded = expandedInvoiceId === inv.id;
+                return (
+                  <View key={inv.id} style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}>
+                    <TouchableOpacity
+                      className="p-4 flex-row items-center justify-between"
+                      disabled={!hasItems}
+                      onPress={() => setExpandedInvoiceId(expanded ? null : inv.id)}
+                    >
+                      <View>
+                        <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">
+                          {PAYMENT_TYPE_LABEL[inv.payment_type ?? 'other']}
+                        </Text>
+                        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+                          {formatDate(inv.paid_at ?? inv.due_date)}
+                          {hasItems ? (expanded ? '  ▲' : '  ▼') : ''}
+                        </Text>
+                      </View>
+                      <View className="items-end">
+                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">₹{inv.amount_due.toFixed(0)}</Text>
+                        <View className="mt-1">
+                          <Badge label={inv.payment_status} tone={PAYMENT_STATUS_TONE[inv.payment_status]} />
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                    {expanded && hasItems ? (
+                      <View className="px-4 pb-4">
+                        {inv.items.map((item) => (
+                          <View key={item.id} className="flex-row items-center justify-between py-1">
+                            <Text style={{ color: item.item_type === 'discount' ? COLORS.success : COLORS.textSecondary }} className="text-[11px] font-medium">
+                              {item.label}
+                            </Text>
+                            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
+                              {item.item_type === 'discount' ? '-' : ''}₹{item.amount.toFixed(0)}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
-                  <View className="items-end">
-                    <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">₹{inv.amount_due.toFixed(0)}</Text>
-                    <View className="mt-1">
-                      <Badge label={inv.payment_status} tone={PAYMENT_STATUS_TONE[inv.payment_status]} />
-                    </View>
-                  </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
         </ScrollView>

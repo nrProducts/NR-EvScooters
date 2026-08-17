@@ -9,6 +9,7 @@ import { computeLateReturnPenalty, planExpiryFor } from "../rentals/rentals.serv
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { getDepositForBookingOrNull } from "../deposits/deposits.service";
 import { initiateCancellationRefund } from "../refunds/refunds.service";
+import { generateWeeklyInvoice } from "../billing/billing.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     ACTIVE_BOOKING_STATUSES, AvailableVehicleView, BookingActiveRental, BookingHistoryFilters,
@@ -598,6 +599,85 @@ export async function cancelMyBooking(
     return getBookingById(bookingId);
 }
 
+export interface EarlyRechargeLineItem {
+    itemType: "base_rental" | "charge" | "discount";
+    label: string;
+    amount: number;
+}
+
+export interface EarlyRechargeResult {
+    invoiceId: string;
+    amountDue: number;
+    dueDate: string;
+    /** Itemized breakdown (base rental + any charges/discounts) so the rider app can show a review before charging, not just a total. */
+    items: EarlyRechargeLineItem[];
+}
+
+/**
+ * Rider-initiated "Recharge Now" — pays the upcoming period ahead of the
+ * payment-overdue-sweep, which otherwise only creates that invoice (and
+ * locks the vehicle) the day AFTER next_due_at passes unpaid. next_due_at
+ * itself is the LAST day the current period is actually usable (the sweep
+ * only flags overdue once `next_due_at < today`), so this opens the day
+ * BEFORE that too — a rider on a 1-day plan due tomorrow can already
+ * recharge today, not just on the due date itself.
+ *
+ * Reuses fn_generate_weekly_invoice via billing.service.ts's
+ * generateWeeklyInvoice — the exact same idempotent function the cron calls
+ * — so this can never mint a second/duplicate 'rental' invoice for the
+ * period. Paying the returned invoice (through the normal
+ * POST /payments/invoices/:id/order -> verify flow) advances next_due_at
+ * from its CURRENT value via applyWeeklyDueSuccess, so the new period starts
+ * exactly when the old one was scheduled to end (next_due_at itself, e.g.
+ * "tomorrow" for a plan due tomorrow) — never from "now".
+ */
+export async function requestEarlyRecharge(bookingId: string, actor: AuthContext): Promise<EarlyRechargeResult> {
+    const { data: booking, error } = await supabaseAdmin
+        .from("bookings")
+        .select("id, user_id, plan_status, next_due_at")
+        .eq("id", bookingId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!booking || booking.user_id !== actor.id) throw notFound("Booking not found.");
+
+    if (booking.plan_status !== "active") {
+        throw businessRule(
+            booking.plan_status === "due"
+                ? "This plan is already due — pay the outstanding invoice instead."
+                : "This plan can't be recharged right now.",
+        );
+    }
+    if (!booking.next_due_at) throw businessRule("This booking has no billing period to recharge.");
+
+    const today = new Date().toISOString().slice(0, 10);
+    if (booking.next_due_at > addDays(today, 1)) {
+        throw businessRule("Recharge opens the day before your current plan ends.");
+    }
+
+    const { invoiceId } = await generateWeeklyInvoice(bookingId);
+
+    const { data: invoice, error: invoiceError } = await supabaseAdmin
+        .from("invoices")
+        .select("amount_due, due_date, invoice_items(item_type, label, amount)")
+        .eq("id", invoiceId)
+        .single();
+    if (invoiceError) throw invoiceError;
+
+    const rawItems = (invoice.invoice_items ?? []) as unknown as
+        { item_type: EarlyRechargeLineItem["itemType"]; label: string; amount: number | string }[];
+    const items: EarlyRechargeLineItem[] = rawItems.map((item) => ({
+        itemType: item.item_type, label: item.label, amount: Number(item.amount),
+    }));
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: actor.id, action: "plan.updated",
+        entityType: "booking", entityId: bookingId,
+        after: { early_recharge_invoice_id: invoiceId },
+    });
+
+    return { invoiceId, amountDue: Number(invoice.amount_due), dueDate: invoice.due_date as string, items };
+}
+
 /**
  * Staff-initiated cancellation — the fix for a vehicle getting force-released
  * (e.g. the Vehicles admin screen's "Mark available") out from under a
@@ -971,6 +1051,12 @@ export async function confirmPickup(
             deposit_amount_at_booking: plan?.deposit_amount ?? null,
             current_period_start: today,
             next_due_at: nextDueAt,
+            // The rider's first week (already paid for at checkout) IS cycle
+            // 1 — the Billing & Charges engine's "every N cycles" rules
+            // (transaction_fee etc.) count from here, matching the plan's
+            // own period start rather than payment time. See
+            // 20260817100000_billing_charge_engine.sql.
+            billing_cycle_number: 1,
         })
         .eq("id", bookingId)
         .eq("status", "confirmed")

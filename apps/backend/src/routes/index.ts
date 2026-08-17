@@ -20,6 +20,7 @@ import plansRoutes from "../modules/plans/plans.routes";
 import damagesRoutes from "../modules/damages/damages.routes";
 import { adminRouter as adminDepositsRouter, riderRouter as riderDepositsRouter } from "../modules/deposits/deposits.routes";
 import refundsRoutes from "../modules/refunds/refunds.routes";
+import billingRoutes from "../modules/billing/billing.routes";
 import reconciliationRoutes from "../modules/reconciliation/reconciliation.routes";
 import { consentRouter, riderConsentRouter } from "../modules/consent/consent.routes";
 import geocodeRoutes from "../modules/geocode/geocode.routes";
@@ -72,6 +73,7 @@ router.use("/damages", damagesRoutes);
 router.use("/deposits/me", riderDepositsRouter);
 router.use("/deposits", adminDepositsRouter);
 router.use("/refunds", refundsRoutes);
+router.use("/billing", billingRoutes);
 router.use("/reconciliation", reconciliationRoutes);
 
 export default router;

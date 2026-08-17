@@ -250,7 +250,26 @@ function InvoiceDetailDialog({
         ) : (
           <div className="space-y-3 text-sm">
             <Row label="Rider" value={invoice.rider?.full_name ?? "—"} />
-            <Row label="Amount due" value={formatCurrency(invoice.amount_due)} />
+            {invoice.items.length > 0 ? (
+              <div className="space-y-1 rounded-lg border border-border p-3">
+                {invoice.items.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between text-xs">
+                    <span className={item.item_type === "discount" ? "text-success" : "text-muted-foreground"}>
+                      {item.label}
+                    </span>
+                    <span className="font-medium">
+                      {item.item_type === "discount" ? "-" : ""}{formatCurrency(item.amount)}
+                    </span>
+                  </div>
+                ))}
+                <div className="mt-1 flex items-center justify-between border-t border-border pt-1 text-sm font-semibold">
+                  <span>Total</span>
+                  <span>{formatCurrency(invoice.amount_due)}</span>
+                </div>
+              </div>
+            ) : (
+              <Row label="Amount due" value={formatCurrency(invoice.amount_due)} />
+            )}
             <Row label="Invoice status" value={<StatusBadge status={invoice.status} />} />
             <Row label="Payment status" value={<StatusBadge status={invoice.payment_status} />} />
             <Row label="Payment method" value={invoice.payment_method ?? "—"} />

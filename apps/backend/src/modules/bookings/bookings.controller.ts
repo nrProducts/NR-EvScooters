@@ -31,6 +31,10 @@ export async function cancelMyBookingHandler(req: AuthedRequest, res: Response) 
     res.json(await service.cancelMyBooking(req.params.id as string, body, req.user!));
 }
 
+export async function requestEarlyRechargeHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.requestEarlyRecharge(req.params.id as string, req.user!));
+}
+
 export async function pickupQueueHandler(req: AuthedRequest, res: Response) {
     const { stationId, ...page } = validatedQuery<PickupQueueQuery>(req);
     res.json(await service.listPickupQueue({ ...page, stationId }));

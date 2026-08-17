@@ -166,22 +166,11 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
           </>
         )}
 
-        <View className="flex-row mt-3" style={{ gap: 12 }}>
-          {plan ? (
-            <TouchableOpacity
-              onPress={() => router.push('/my-plan')}
-              accessibilityRole="button"
-              className="flex-1 flex-row items-center justify-center rounded-2xl py-3 border"
-              style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
-            >
-              <CreditCard size={14} color={COLORS.textSecondary} />
-              <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2">Manage Plan</Text>
-            </TouchableOpacity>
-          ) : null}
+        <View className="mt-3">
           <TouchableOpacity
             onPress={() => router.push('/support')}
             accessibilityRole="button"
-            className="flex-1 flex-row items-center justify-center rounded-2xl py-3 border"
+            className="flex-row items-center justify-center rounded-2xl py-3 border"
             style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
           >
             <LifeBuoy size={14} color={COLORS.textSecondary} />

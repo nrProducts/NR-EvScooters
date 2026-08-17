@@ -8,7 +8,8 @@ import { InvoiceDetail, InvoiceRow, ListInvoicesFilters } from "./invoices.types
 const LIST_COLUMNS = `
     id, user_id, subscription_id, rental_id, booking_id, payment_type, status, amount_due, due_date,
     payment_status, payment_method, gateway_ref, paid_at, created_at, updated_at,
-    users(id, full_name, email)
+    users(id, full_name, email),
+    invoice_items(id, item_type, rider_charge_id, label, amount, created_at)
 `;
 
 const DETAIL_COLUMNS = `
@@ -20,6 +21,15 @@ const DETAIL_COLUMNS = `
 function unwrap<T>(raw: unknown): T | null {
     const v = Array.isArray(raw) ? raw[0] : raw;
     return (v as T) ?? null;
+}
+
+interface RawInvoiceItem {
+    id: string;
+    item_type: InvoiceRow["items"][number]["item_type"];
+    rider_charge_id: string | null;
+    label: string;
+    amount: number | string;
+    created_at: string;
 }
 
 interface RawInvoiceRow {
@@ -39,6 +49,7 @@ interface RawInvoiceRow {
     created_at: string;
     updated_at: string | null;
     users: unknown;
+    invoice_items: RawInvoiceItem[] | null;
 }
 
 interface RawInvoiceDetailRow extends RawInvoiceRow {
@@ -65,6 +76,7 @@ function toInvoiceRow(row: RawInvoiceRow): InvoiceRow {
         created_at: row.created_at,
         updated_at: row.updated_at,
         rider: unwrap(row.users),
+        items: (row.invoice_items ?? []).map((item) => ({ ...item, amount: Number(item.amount) })),
     };
 }
 

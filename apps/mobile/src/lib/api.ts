@@ -8,7 +8,7 @@ import { signInWithGoogleBrowser } from './googleAuth';
 export { ApiError };
 import type {
     ApiAvailability, ApiBooking, ApiBookingWithPlan, ApiConsentHistoryItem, ApiConsentNotice,
-    ApiConsentState, ApiDamage, ApiDeposit, ApiDocument, ApiErrorBody,
+    ApiConsentState, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiErrorBody,
     ApiInvoice, ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
     ApiExportResult, ApiNominee, ApiPrivacyRequest, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
@@ -372,6 +372,10 @@ export const api = {
         request<Paginated<ApiBooking>>('/bookings/me/history', {
             query: params as Record<string, string | number | boolean | undefined>,
         }),
+
+    /** Opens on the last day of the current plan — generates (or fetches, idempotently) the upcoming period's invoice to pay ahead of the overdue-lock. */
+    requestEarlyRecharge: (bookingId: string) =>
+        request<ApiEarlyRecharge>(`/bookings/me/${bookingId}/recharge`, { method: 'POST' }),
 
     nearestStation: (lat: number, lng: number) =>
         request<ApiStation>('/stations/nearest', { query: { lat, lng } }),

@@ -17,6 +17,7 @@ import {
   Eye,
   FileLock2,
   Undo2,
+  Receipt,
 } from "lucide-react";
 import type { ModuleKey, Role, StaffUser } from "@/types";
 import { hasModule } from "@/lib/permissions";
@@ -85,6 +86,9 @@ export const NAV_ITEMS: NavItem[] = [
   // refunds both need staff to actually see and approve them, not just reach
   // them via the "Refunds" button buried on the Payments page.
   { label: "Refunds", path: "/refunds", icon: Undo2, roles: ["admin"], moduleKey: "refunds" },
+  // Configurable charge rules (transaction fee, etc.) and their materialized
+  // rider charges — see 20260817100000_billing_charge_engine.sql.
+  { label: "Billing & Charges", path: "/billing", icon: Receipt, roles: ["admin"], moduleKey: "billing" },
   { label: "Plans", path: "/plans", icon: Layers, roles: ["admin", "staff"], moduleKey: "plans" },
   {
     label: "Reconciliation",

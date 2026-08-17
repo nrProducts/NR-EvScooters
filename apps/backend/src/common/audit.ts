@@ -26,6 +26,10 @@ export type AuditAction =
     | "plan.activated" | "plan.paused" | "plan.resumed" | "plan.due" | "plan.updated"
     | "battery_station.created" | "battery_station.updated" | "battery_station.shown"
     | "battery_station.hidden" | "battery_station.soft_deleted"
+    // Billing & Charges engine — see 20260817100000_billing_charge_engine.sql
+    | "charge_rule.created" | "charge_rule.updated" | "rider_charge.waived"
+    // Discount Rules engine — see 20260817120000_discount_rules_engine.sql
+    | "discount_rule.created" | "discount_rule.updated" | "rider_discount.cancelled"
     // DPDPA — consent (ss.5-6)
     | "consent.granted" | "consent.withdrawn" | "consent.notice_published"
     // DPDPA — data-principal rights (ss.11-14)
@@ -46,7 +50,8 @@ export interface AuditEntry {
         | "booking" | "vehicle" | "vehicle_maintenance"
         | "notification_broadcast" | "invoice" | "rental" | "referral" | "battery_station"
         | "payment_order" | "payment_transaction" | "webhook_event" | "deposit" | "damage" | "refund" | "plan"
-        | "consent_record" | "consent_notice" | "privacy_request" | "retention_run";
+        | "consent_record" | "consent_notice" | "privacy_request" | "retention_run"
+        | "charge_rule" | "rider_charge" | "discount_rule" | "rider_discount";
     entityId: string;
     before?: Record<string, unknown> | null;
     after?: Record<string, unknown> | null;

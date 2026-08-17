@@ -15,6 +15,16 @@ export const PAYMENT_TYPES: readonly PaymentType[] = [
     "rental", "deposit", "damage", "penalty", "refund", "other",
 ] as const;
 
+/** A single line on an invoice — see 20260817100000_billing_charge_engine.sql. Empty on every invoice minted before that migration. */
+export interface InvoiceItemRow {
+    id: string;
+    item_type: "base_rental" | "charge" | "discount";
+    rider_charge_id: string | null;
+    label: string;
+    amount: number;
+    created_at: string;
+}
+
 export interface InvoiceRow {
     id: string;
     user_id: string;
@@ -32,6 +42,7 @@ export interface InvoiceRow {
     created_at: string;
     updated_at: string | null;
     rider: { id: string; full_name: string; email: string | null } | null;
+    items: InvoiceItemRow[];
 }
 
 export interface InvoiceDetail extends InvoiceRow {
