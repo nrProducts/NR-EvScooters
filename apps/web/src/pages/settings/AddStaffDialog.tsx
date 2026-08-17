@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Copy } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -7,12 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCreateStaffUser } from "@/hooks/useUsers";
+import { useToastStore } from "@/store/toastStore";
 import { PERMISSION_PROFILE_NAMES, PERMISSION_PROFILES } from "@/config/permissionProfiles";
 import type { PermissionProfileName } from "@/config/permissionProfiles";
 import type { AccountStatus } from "@/types";
 
 const EMPTY = {
   full_name: "", email: "", phone: "", staff_code: "",
+  role: "staff" as "staff" | "admin",
   permission_profile: "" as Exclude<PermissionProfileName, "custom"> | "",
   account_status: "active" as AccountStatus,
 };
@@ -20,7 +23,9 @@ const EMPTY = {
 export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<{ email: string; password: string } | null>(null);
   const createStaff = useCreateStaffUser();
+  const push = useToastStore((s) => s.push);
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -29,6 +34,7 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
     if (!o) {
       setForm(EMPTY);
       setError(null);
+      setRevealed(null);
     }
     onOpenChange(o);
   };
@@ -45,90 +51,151 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
         email: form.email.trim(),
         phone: form.phone.trim(),
         staff_code: form.staff_code.trim() || undefined,
-        role: "staff",
+        role: form.role,
         account_status: form.account_status,
-        permission_profile: form.permission_profile || undefined,
+        permission_profile: form.role === "staff" ? form.permission_profile || undefined : undefined,
       },
       {
-        onSuccess: () => close(false),
-        onError: (err) => setError(err instanceof Error ? err.message : "Could not create the staff account."),
+        onSuccess: (data) => {
+          if (data.temporary_password) {
+            setRevealed({ email: form.email.trim(), password: data.temporary_password });
+          } else {
+            close(false);
+          }
+        },
+        onError: (err) => setError(err instanceof Error ? err.message : "Could not create the account."),
       },
     );
+  };
+
+  const copyPassword = async () => {
+    if (!revealed) return;
+    try {
+      await navigator.clipboard.writeText(revealed.password);
+      push({ tone: "success", title: "Copied", message: "Temporary password copied to the clipboard." });
+    } catch {
+      push({ tone: "warning", title: "Copy blocked", message: "Your browser blocked clipboard access." });
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={close}>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add staff</DialogTitle>
-          <DialogDescription>
-            Sends an email invite — the account can't sign in to the admin console until they complete their own
-            password setup, and stays inactive until you set its status to Active.
-          </DialogDescription>
-        </DialogHeader>
+        {revealed ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Account created</DialogTitle>
+              <DialogDescription>
+                Share this temporary password with {revealed.email} through a secure channel. They'll be required to
+                set their own password the first time they sign in.
+              </DialogDescription>
+            </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>Full name</Label>
-              <Input value={form.full_name} onChange={(e) => set("full_name", e.target.value)} placeholder="e.g. Priya Kumar" />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+                <span className="select-all font-mono text-sm">{revealed.password}</span>
+                <Button variant="outline" size="sm" onClick={copyPassword}>
+                  <Copy className="h-4 w-4" /> Copy
+                </Button>
+              </div>
+              <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-warning">
+                This won't be shown again — if it's lost, you'll need to reset the account's password instead.
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Email</Label>
-              <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="priya@swapngo.in" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Phone</Label>
-              <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+91 98765 43210" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Staff ID <span className="text-muted-foreground">(optional)</span></Label>
-              <Input value={form.staff_code} onChange={(e) => set("staff_code", e.target.value)} placeholder="e.g. EMP-014" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Status</Label>
-              <Select value={form.account_status} onValueChange={(v) => set("account_status", v as AccountStatus)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          <div className="space-y-1.5">
-            <Label>Permission profile</Label>
-            <Select
-              value={form.permission_profile}
-              onValueChange={(v) => set("permission_profile", v as Exclude<PermissionProfileName, "custom">)}
-            >
-              <SelectTrigger><SelectValue placeholder="Custom — grant permissions after creating" /></SelectTrigger>
-              <SelectContent>
-                {PERMISSION_PROFILE_NAMES.map((name) => (
-                  <SelectItem key={name} value={name}>{PERMISSION_PROFILES[name].label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Applies a starting set of permissions immediately. Leave blank to grant nothing yet and build a
-              custom set from Staff Access → Edit permissions once the account exists.
-            </p>
-          </div>
-        </div>
+            <DialogFooter>
+              <Button onClick={() => close(false)}>Done</Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>{form.role === "admin" ? "Add admin" : "Add staff"}</DialogTitle>
+              <DialogDescription>
+                Creates the account with a temporary password for you to share with them — it can't sign in to the
+                admin console until you do, and stays inactive until you set its status to Active.
+              </DialogDescription>
+            </DialogHeader>
 
-        {error && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </div>
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Full name</Label>
+                  <Input value={form.full_name} onChange={(e) => set("full_name", e.target.value)} placeholder="e.g. Priya Kumar" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Email</Label>
+                  <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="priya@swapngo.in" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Phone</Label>
+                  <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+91 98765 43210" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Role</Label>
+                  <Select value={form.role} onValueChange={(v) => set("role", v as "staff" | "admin")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="staff">Staff</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {form.role === "admin" && (
+                    <p className="text-xs text-muted-foreground">Full, unconditional access to every module.</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Staff ID <span className="text-muted-foreground">(optional)</span></Label>
+                  <Input value={form.staff_code} onChange={(e) => set("staff_code", e.target.value)} placeholder="e.g. EMP-014" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Status</Label>
+                  <Select value={form.account_status} onValueChange={(v) => set("account_status", v as AccountStatus)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {form.role === "staff" && (
+                <div className="space-y-1.5">
+                  <Label>Permission profile</Label>
+                  <Select
+                    value={form.permission_profile}
+                    onValueChange={(v) => set("permission_profile", v as Exclude<PermissionProfileName, "custom">)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Custom — grant permissions after creating" /></SelectTrigger>
+                    <SelectContent>
+                      {PERMISSION_PROFILE_NAMES.map((name) => (
+                        <SelectItem key={name} value={name}>{PERMISSION_PROFILES[name].label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Applies a starting set of permissions immediately. Leave blank to grant nothing yet and build a
+                    custom set from Staff Access → Edit permissions once the account exists.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {error && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => close(false)}>Cancel</Button>
+              <Button onClick={submit} disabled={createStaff.isPending}>
+                {createStaff.isPending ? "Creating account..." : "Create account"}
+              </Button>
+            </DialogFooter>
+          </>
         )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => close(false)}>Cancel</Button>
-          <Button onClick={submit} disabled={createStaff.isPending}>
-            {createStaff.isPending ? "Sending invite..." : "Send invite"}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

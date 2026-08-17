@@ -1,7 +1,14 @@
-import { Response } from "express";
+import { Request, Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
+import { selfSignUpStaff } from "../users/users.service";
 import * as service from "./auth.service";
-import type { OtpTestBody } from "./auth.validation";
+import type { OtpTestBody, StaffSignupBody } from "./auth.validation";
+
+/** POST /auth/signup — public, no auth. Always lands as an inactive `staff` account; see selfSignUpStaff(). */
+export async function staffSignupHandler(req: Request, res: Response) {
+    const body = req.body as StaffSignupBody;
+    res.status(201).json(await selfSignUpStaff(body, req));
+}
 
 /** GET /auth/session — verified whoami used by the splash + profile screens. */
 export async function sessionHandler(req: AuthedRequest, res: Response) {
@@ -12,6 +19,12 @@ export async function sessionHandler(req: AuthedRequest, res: Response) {
 export async function logoutHandler(req: AuthedRequest, res: Response) {
     console.info("[auth] logout requested", { userId: req.user!.id });
     await service.revokeAllSessions(req.user!.id);
+    res.status(204).send();
+}
+
+/** POST /auth/complete-password-change — clears the temporary-password flag once the caller has set their own. */
+export async function completePasswordChangeHandler(req: AuthedRequest, res: Response) {
+    await service.completePasswordChange(req.user!.id);
     res.status(204).send();
 }
 

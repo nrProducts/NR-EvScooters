@@ -4,7 +4,10 @@ import { DashboardLayout } from "@/layouts/DashboardLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
 
 import LoginPage from "@/pages/auth/LoginPage";
-import AuthCallbackPage from "@/pages/auth/AuthCallbackPage";
+import SignUpPage from "@/pages/auth/SignUpPage";
+import ForgotPasswordPage from "@/pages/auth/ForgotPasswordPage";
+import ResetPasswordPage from "@/pages/auth/ResetPasswordPage";
+import ChangePasswordPage from "@/pages/auth/ChangePasswordPage";
 import DashboardRouter from "@/pages/dashboard/DashboardRouter";
 import BatteryStationsPage from "@/pages/battery-stations/BatteryStationsPage";
 import VehicleListPage from "@/pages/vehicles/VehicleListPage";
@@ -35,7 +38,20 @@ export function AppRoutes() {
     <Routes>
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/auth/callback" element={<AuthCallbackPage />} />
+        <Route path="/signup" element={<SignUpPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        {/* Same centered-card chrome as /login, but gated — a staff member
+            forced to change their admin-issued temp password sees only this
+            form, never the dashboard sidebar. */}
+        <Route
+          path="/change-password"
+          element={
+            <ProtectedRoute>
+              <ChangePasswordPage />
+            </ProtectedRoute>
+          }
+        />
       </Route>
 
       <Route

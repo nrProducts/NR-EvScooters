@@ -49,6 +49,13 @@ const NOT_PERSONAL_DATA = new Set([
     // REDACT_KEYS in common/mask.ts both have to change with it.
     "country",
     "state",
+    // Operator-assigned identifier for staff/admin accounts, not data about
+    // who the person is — same category as `id`.
+    "staff_code",
+    // Security/session metadata, not personal data — same category as
+    // created_at/updated_at.
+    "last_login_at",
+    "must_change_password",
 ]);
 
 describe("anonymise_user covers every personal column the API exposes", () => {

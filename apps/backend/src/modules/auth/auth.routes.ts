@@ -8,13 +8,22 @@ import * as v from "./auth.validation";
 
 const router = Router();
 
-// Everything here needs a verified Supabase token. Login itself (phone OTP /
+// The one public route in this file — must stay before router.use(requireAuth)
+// below. Always creates an inactive `staff` account; see selfSignUpStaff().
+router.post(
+    "/signup",
+    validate({ body: v.staffSignupBody }),
+    asyncHandler(c.staffSignupHandler),
+);
+
+// Everything below needs a verified Supabase token. Login itself (phone OTP /
 // Google) happens directly against Supabase Auth from the client — the API is
 // a resource server, it does not broker the sign-in.
 router.use(requireAuth);
 
 router.get("/session", asyncHandler(c.sessionHandler));
 router.post("/logout", asyncHandler(c.logoutHandler));
+router.post("/complete-password-change", asyncHandler(c.completePasswordChangeHandler));
 
 // Ops diagnostic: prove MSG91 delivery works in this environment.
 router.post(

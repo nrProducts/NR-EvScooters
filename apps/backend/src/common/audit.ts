@@ -3,7 +3,7 @@ import { supabaseAdmin } from "../config/supabase";
 import { safeAuditPayload } from "./mask";
 
 export type AuditAction =
-    | "user.created" | "user.updated" | "user.soft_deleted" | "user.restored"
+    | "user.created" | "user.self_signed_up" | "user.updated" | "user.soft_deleted" | "user.restored"
     | "user.activated" | "user.deactivated" | "user.suspended"
     | "user.roles_changed" | "user.permissions_changed" | "user.capabilities_changed"
     | "user.photo_uploaded"

@@ -147,11 +147,11 @@ export interface CreateStaffInput {
 }
 
 /**
- * POST /users — requireAdmin. Invites the account via Supabase Auth
- * (inviteUserByEmail — the staff member sets their own password from the
- * invite email) and, if a permission profile was chosen, applies it in the
- * same server-side call. See users.service.ts createUser().
+ * POST /users — requireAdmin. Creates the account with a server-generated
+ * temporary password (returned once as `temporary_password` — never sent
+ * again by any other endpoint) and, if a permission profile was chosen,
+ * applies it in the same server-side call. See users.service.ts createUser().
  */
-export async function createStaffUser(input: CreateStaffInput): Promise<AppUser> {
-  return apiClient.post<AppUser>("/users", input);
+export async function createStaffUser(input: CreateStaffInput): Promise<AppUser & { temporary_password?: string }> {
+  return apiClient.post<AppUser & { temporary_password?: string }>("/users", input);
 }

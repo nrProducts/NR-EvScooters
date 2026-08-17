@@ -14,3 +14,18 @@ export const otpTestBody = z.object({
 });
 
 export type OtpTestBody = z.infer<typeof otpTestBody>;
+
+/** Body for the public POST /auth/signup — always lands as staff, see users.service.ts selfSignUpStaff(). */
+export const staffSignupBody = z.object({
+    full_name: z
+        .string()
+        .trim()
+        .min(2, "Enter your full name.")
+        .max(120)
+        .regex(/^[A-Za-z\s'-]+$/, "Use letters only (spaces, apostrophes and hyphens allowed)."),
+    email: z.string().trim().toLowerCase().email("Enter a valid email address."),
+    phone: e164Phone,
+    password: z.string().min(8, "Use at least 8 characters."),
+});
+
+export type StaffSignupBody = z.infer<typeof staffSignupBody>;

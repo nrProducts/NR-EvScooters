@@ -104,6 +104,20 @@ export async function revokeAllSessions(userId: string): Promise<void> {
     if (error && !/session/i.test(error.message)) throw error;
 }
 
+/**
+ * Clears the temporary-password flag once the caller has set their own
+ * password. Called after both the forced first-login change (new staff
+ * account) and the self-service forgot-password reset, so it's cleared
+ * regardless of which path got them there — a no-op if already false.
+ */
+export async function completePasswordChange(userId: string): Promise<void> {
+    const { error } = await supabaseAdmin
+        .from("users")
+        .update({ must_change_password: false })
+        .eq("id", userId);
+    if (error) throw error;
+}
+
 export interface TestSendResult {
     sent: boolean;
     provider_message: string | null;

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../config/supabase";
-import { AuthContext, RoleName, StaffCapability } from "../types";
+import { AuthContext, RoleName, STAFF_ROLES, StaffCapability } from "../types";
 import { unauthenticated, forbidden } from "../common/AppError";
 
 export interface AuthedRequest extends Request {
@@ -70,10 +70,21 @@ export async function requireAuth(req: AuthedRequest, _res: Response, next: Next
         return next(forbidden("This account is suspended."));
     }
 
+    const roles = extractRoles(profile);
+
+    // A self-signed-up or newly-created staff/admin account starts inactive
+    // until an admin activates it (see selfSignUpStaff() / AddStaffDialog).
+    // Riders are never gated on this — they can be inactive for unrelated
+    // reasons and this must not change mobile login behavior.
+    if (profile.account_status === "inactive" && roles.some((r) => STAFF_ROLES.includes(r))) {
+        console.warn("[auth] rejected: staff account inactive", { path: req.originalUrl, userId: profile.id });
+        return next(forbidden("This account is awaiting activation by an administrator."));
+    }
+
     req.user = {
         id: profile.id as string,
         email: (profile.email as string | null) ?? undefined,
-        roles: extractRoles(profile),
+        roles,
         capabilities: extractCapabilities(profile),
         accountStatus: profile.account_status,
         kycStatus: profile.kyc_status,

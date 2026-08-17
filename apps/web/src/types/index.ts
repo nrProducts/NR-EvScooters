@@ -218,6 +218,8 @@ export interface StaffUser {
   capabilities: Capability[];
   avatarUrl?: string;
   phone?: string;
+  /** True for a staff account still on its admin-issued temporary password — ProtectedRoute locks every other page until they set their own. */
+  mustChangePassword: boolean;
 }
 
 // ---------------------------------------------------------------------------

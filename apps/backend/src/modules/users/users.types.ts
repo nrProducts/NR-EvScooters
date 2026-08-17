@@ -27,6 +27,8 @@ export interface UserProfile {
     staff_code: string | null;
     /** Set by auth.service.ts getSessionContext on each login/session resolution. Null until first login. */
     last_login_at: string | null;
+    /** True for a staff/admin account still on its admin-issued temporary password. Never set for riders. */
+    must_change_password: boolean;
 }
 
 export interface UserListItem extends UserProfile {

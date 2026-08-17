@@ -1,4 +1,5 @@
 import type { Request } from "express";
+import { randomInt } from "node:crypto";
 import { supabaseAdmin } from "../../config/supabase";
 import { env } from "../../config/env";
 import { businessRule, conflict, forbidden, notFound } from "../../common/AppError";
@@ -35,7 +36,7 @@ const PROFILE_COLUMNS = `
     address_line_1, address_line_2, city, state, postal_code, country,
     emergency_contact_name, emergency_contact_phone,
     account_status, kyc_status, profile_photo_url, profile_completed,
-    created_at, updated_at, deleted_at, staff_code, last_login_at
+    created_at, updated_at, deleted_at, staff_code, last_login_at, must_change_password
 `;
 
 // ---------------------------------------------------------------------------
@@ -202,6 +203,32 @@ export interface CreateUserInput {
     permission_profile?: Exclude<PermissionProfileName, "custom">;
 }
 
+const TEMP_PASSWORD_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+const TEMP_PASSWORD_LOWER = "abcdefghjkmnpqrstuvwxyz";
+const TEMP_PASSWORD_DIGITS = "23456789";
+const TEMP_PASSWORD_ALL = TEMP_PASSWORD_UPPER + TEMP_PASSWORD_LOWER + TEMP_PASSWORD_DIGITS;
+const TEMP_PASSWORD_LENGTH = 12;
+
+/**
+ * One-time password for an admin-created staff/admin account (see createUser
+ * below). Excludes visually-ambiguous characters (0/O, 1/l/I) since it's read
+ * off a screen and retyped by hand on first login. Guarantees at least one
+ * upper/lower/digit rather than leaving the mix to chance, then shuffles with
+ * the same CSPRNG used to pick each character.
+ */
+function generateTempPassword(): string {
+    const pick = (chars: string) => chars[randomInt(chars.length)];
+    const chars = [pick(TEMP_PASSWORD_UPPER), pick(TEMP_PASSWORD_LOWER), pick(TEMP_PASSWORD_DIGITS)];
+    for (let i = chars.length; i < TEMP_PASSWORD_LENGTH; i++) {
+        chars.push(pick(TEMP_PASSWORD_ALL));
+    }
+    for (let i = chars.length - 1; i > 0; i--) {
+        const j = randomInt(i + 1);
+        [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    return chars.join("");
+}
+
 /**
  * Creates the Auth user, then the profile, then the role.
  *
@@ -210,12 +237,18 @@ export interface CreateUserInput {
  * again and the original error surfaces. Note that 008_integrity_fixes adds an
  * AFTER INSERT trigger on auth.users which already creates a bare profile row,
  * so the profile write is an UPDATE-by-id rather than an INSERT.
+ *
+ * Riders self-provision via mobile phone-OTP, so this admin path is a rare
+ * edge case for them and keeps the original email-invite-link flow. Staff and
+ * admin accounts have no mobile app to complete an invite link from, so they
+ * get a temporary password instead, returned once as `temporary_password` for
+ * the caller to reveal to the admin — never stored, never returned again.
  */
 export async function createUser(
     input: CreateUserInput,
     actor: AuthContext,
     req?: Request,
-): Promise<UserDetail> {
+): Promise<UserDetail & { temporary_password?: string }> {
     const email = normaliseEmail(input.email);
     const phone = normalisePhone(input.phone);
 
@@ -226,13 +259,22 @@ export async function createUser(
         throw forbidden("Only an administrator may create staff or admin accounts.");
     }
 
-    const { data: created, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-        email,
-        {
+    const isStaffAccount = input.role !== "rider";
+    const temporaryPassword = isStaffAccount ? generateTempPassword() : undefined;
+
+    const { data: created, error: authError } = isStaffAccount
+        ? await supabaseAdmin.auth.admin.createUser({
+            email,
+            phone,
+            password: temporaryPassword,
+            email_confirm: true,
+            phone_confirm: true,
+            user_metadata: { full_name: input.full_name },
+        })
+        : await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
             data: { full_name: input.full_name },
             ...(env.inviteRedirectUrl ? { redirectTo: env.inviteRedirectUrl } : {}),
-        },
-    );
+        });
 
     if (authError || !created?.user) {
         if (isDuplicateAuthUser(authError)) {
@@ -269,6 +311,7 @@ export async function createUser(
                 // An admin-created account arrives with a full profile already —
                 // it should never be routed through the first-login onboarding form.
                 profile_completed: true,
+                must_change_password: isStaffAccount,
             })
             .eq("id", authUserId)
             .select("id")
@@ -302,12 +345,103 @@ export async function createUser(
             req,
         });
 
-        return getUserById(authUserId, actor);
+        const detail = await getUserById(authUserId, actor);
+        return temporaryPassword ? { ...detail, temporary_password: temporaryPassword } : detail;
     } catch (err) {
         // Compensating action: never leave an orphan Auth user behind.
         const { error: cleanupError } = await supabaseAdmin.auth.admin.deleteUser(authUserId);
         if (cleanupError) {
             console.error("[users.create] orphaned auth user — manual cleanup required", {
+                authUserId,
+                cleanupError: cleanupError.message,
+            });
+        }
+        throw err;
+    }
+}
+
+export interface SelfSignUpInput {
+    full_name: string;
+    email: string;
+    phone: string;
+    password: string;
+}
+
+/**
+ * Public counterpart to createUser() — no actor, no admin gate, called from
+ * an unauthenticated POST /auth/signup. Always lands as `staff` with zero
+ * module permissions (resolveModuleAccess blocks everything without an
+ * explicit grant) and `account_status: "inactive"`, so an admin must
+ * deliberately activate the account before it can even log in (see the
+ * STAFF_ROLES + inactive check in auth.middleware.ts's requireAuth). The
+ * caller chooses their own password, so there's no temp password and no
+ * forced must_change_password — unlike admin-created staff accounts.
+ */
+export async function selfSignUpStaff(input: SelfSignUpInput, req?: Request): Promise<{ full_name: string; email: string }> {
+    const email = normaliseEmail(input.email);
+    const phone = normalisePhone(input.phone);
+
+    await assertEmailAndPhoneFree(email, phone);
+
+    const { data: created, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        phone,
+        password: input.password,
+        email_confirm: true,
+        phone_confirm: true,
+        user_metadata: { full_name: input.full_name },
+    });
+
+    if (authError || !created?.user) {
+        if (isDuplicateAuthUser(authError)) {
+            throw conflict("This email is already registered.", {
+                email: "This email is already registered.",
+            });
+        }
+        throw authError ?? new Error("Auth user creation returned no user");
+    }
+
+    const authUserId = created.user.id;
+
+    try {
+        const { data: profile, error: profileError } = await supabaseAdmin
+            .from("users")
+            .update({
+                full_name: input.full_name,
+                email,
+                phone,
+                account_status: "inactive",
+                status_reason: "Self-registered — awaiting admin approval",
+                status_changed_at: new Date().toISOString(),
+                profile_completed: true,
+                must_change_password: false,
+            })
+            .eq("id", authUserId)
+            .select("id")
+            .maybeSingle();
+
+        if (profileError) throw profileError;
+        if (!profile) throw new Error("Profile row was not provisioned for the new auth user");
+
+        // Overwrites the trigger's auto-granted "rider" role — see
+        // handle_new_auth_user() in 20260720100600_auth.sql.
+        await setRoles(authUserId, ["staff"], null);
+
+        await writeAudit({
+            actorId: authUserId,
+            targetUserId: authUserId,
+            action: "user.self_signed_up",
+            entityType: "user",
+            entityId: authUserId,
+            after: { email, phone, role: "staff", account_status: "inactive" },
+            req,
+        });
+
+        return { full_name: input.full_name, email };
+    } catch (err) {
+        const { error: cleanupError } = await supabaseAdmin.auth.admin.deleteUser(authUserId);
+        if (cleanupError) {
+            console.error("[users.selfSignUp] orphaned auth user — manual cleanup required", {
                 authUserId,
                 cleanupError: cleanupError.message,
             });
@@ -641,7 +775,7 @@ export async function replaceRoles(
     return roles;
 }
 
-async function setRoles(userId: string, roles: RoleName[], grantedBy: string): Promise<void> {
+async function setRoles(userId: string, roles: RoleName[], grantedBy: string | null): Promise<void> {
     const { data: roleRows, error: roleError } = await supabaseAdmin
         .from("roles")
         .select("id, name")

@@ -179,6 +179,10 @@ export default function UserListPage() {
               <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Reactivate
               </DropdownMenuItem>
+            ) : u.account_status === "inactive" ? (
+              <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
+                <CheckCircle2 className="mr-2 h-4 w-4" /> Activate account
+              </DropdownMenuItem>
             ) : (
               <DropdownMenuItem
                 onClick={() => {

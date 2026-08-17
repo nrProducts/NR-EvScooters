@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, KeyRound, UserMinus, Ban, CheckCircle2, RefreshCw, UserPlus, MoreHorizontal } from "lucide-react";
+import { Eye, KeyRound, UserMinus, Ban, CheckCircle2, RefreshCw, UserPlus, MoreHorizontal, Shield } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
@@ -21,6 +22,7 @@ export default function StaffAccessSection() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [addOpen, setAddOpen] = useState(false);
+  const [promoteTarget, setPromoteTarget] = useState<AppUser | null>(null);
 
   const { data, isLoading, isError, refetch } = useUsers({ role: "staff", page, pageSize: 12 });
   const changeStatus = useChangeUserStatus();
@@ -71,6 +73,10 @@ export default function StaffAccessSection() {
             <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
               <CheckCircle2 className="mr-2 h-4 w-4" /> Restore access
             </DropdownMenuItem>
+          ) : u.account_status === "inactive" ? (
+            <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
+              <CheckCircle2 className="mr-2 h-4 w-4" /> Activate account
+            </DropdownMenuItem>
           ) : (
             <DropdownMenuItem
               onClick={() => changeStatus.mutate({ id: u.id, action: "suspend", reason: "Suspended by admin" })}
@@ -80,6 +86,9 @@ export default function StaffAccessSection() {
           )}
           <DropdownMenuItem onClick={() => resetPermissions(u)}>
             <RefreshCw className="mr-2 h-4 w-4" /> Reset permissions
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setPromoteTarget(u)}>
+            <Shield className="mr-2 h-4 w-4" /> Promote to admin
           </DropdownMenuItem>
           <DropdownMenuItem className="text-destructive" onClick={() => revokeStaff(u)}>
             <UserMinus className="mr-2 h-4 w-4" /> Revoke staff access
@@ -110,6 +119,23 @@ export default function StaffAccessSection() {
       </Card>
 
       <AddStaffDialog open={addOpen} onOpenChange={setAddOpen} />
+
+      <ConfirmDialog
+        open={!!promoteTarget}
+        onOpenChange={(o) => !o && setPromoteTarget(null)}
+        title={`Promote ${promoteTarget?.full_name || "this account"} to admin?`}
+        description="Grants full, unconditional access to every module — this replaces their staff role and permissions, not adds to them."
+        confirmLabel="Promote to admin"
+        loading={updateRoles.isPending}
+        onConfirm={() => {
+          if (promoteTarget) {
+            updateRoles.mutate(
+              { id: promoteTarget.id, roles: ["admin"] },
+              { onSuccess: () => setPromoteTarget(null) },
+            );
+          }
+        }}
+      />
     </div>
   );
 }

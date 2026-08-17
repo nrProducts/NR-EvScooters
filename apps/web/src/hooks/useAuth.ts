@@ -8,18 +8,15 @@ export function useAuth() {
   const navigate = useNavigate();
 
   const loginMutation = useMutation({
-    mutationFn: ({ email, password }: { email: string; password: string }) =>
-      authApi.login(email, password),
+    mutationFn: ({ identifier, password }: { identifier: string; password: string }) =>
+      authApi.login(identifier, password),
     onSuccess: (data) => {
       setUser(data);
-      navigate("/dashboard", { replace: true });
+      // Belt-and-suspenders alongside ProtectedRoute's own gate: an
+      // instant redirect here beats waiting for a route-guard bounce off
+      // /dashboard for an account still on its admin-issued temp password.
+      navigate(data.mustChangePassword ? "/change-password" : "/dashboard", { replace: true });
     },
-  });
-
-  const googleLoginMutation = useMutation({
-    mutationFn: () => authApi.loginWithGoogle(),
-    // No onSuccess navigation here — this call only redirects to Google;
-    // the actual session/role resolution happens on /auth/callback.
   });
 
   const signOut = () => {
@@ -28,5 +25,5 @@ export function useAuth() {
     void authApi.logout();
   };
 
-  return { user, isAuthenticated: !!user, login: loginMutation, loginWithGoogle: googleLoginMutation, signOut };
+  return { user, isAuthenticated: !!user, login: loginMutation, signOut };
 }
