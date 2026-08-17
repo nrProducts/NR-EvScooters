@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  Bike, Calendar, CalendarClock, CreditCard, Hash, LifeBuoy, MapPin, PackageCheck, Wrench,
+  Bike, Calendar, CalendarClock, CreditCard, Hash, LifeBuoy, MapPin, PackageCheck, RefreshCw, Wrench,
 } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
@@ -23,7 +23,7 @@ import {
   VEHICLE_STATUS_TONE, formatDate,
 } from '../constants/status';
 import { describeExpiry, rentalDayNumber } from '../lib/rentalTiming';
-import { canReturnYet } from '../lib/returnPolicy';
+import { canReturnYet, canRenewEarly } from '../lib/returnPolicy';
 import { useCurrentRideOrBooking } from '../hooks/useCurrentRideOrBooking';
 import { useMaintenanceHistory, type MaintenanceStatusFilter } from '../hooks/useMaintenanceHistory';
 import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
@@ -66,6 +66,12 @@ export default function MyScooterScreen() {
   // regardless; disabling here just avoids letting a rider into the return
   // form only to be rejected at submit.
   const canReturn = state.kind === 'rental' ? canReturnYet(state.rental.next_due_at) : true;
+  // Same "due today or tomorrow" window Billing's Recharge Now teaser uses —
+  // offered here too so a rider whose plan is ending isn't forced to the
+  // Billing tab just to see that renewing is an option.
+  const canRenew = state.kind === 'rental'
+    ? canRenewEarly(state.rental.plan_status, state.rental.next_due_at)
+    : false;
 
   const renderHero = (title: string, badge: React.ReactNode) => (
     <View
@@ -228,6 +234,19 @@ export default function MyScooterScreen() {
                 <ReturnStatusCard rental={state.rental} />
               ) : (
                 <>
+                  {canRenew && (
+                    <TouchableOpacity
+                      onPress={() => router.push('/billing')}
+                      accessibilityRole="button"
+                      className="flex-row items-center justify-center rounded-xl py-3 mt-3"
+                      style={{ backgroundColor: COLORS.primary }}
+                    >
+                      <RefreshCw size={15} color="#FFF" />
+                      <Text className="text-white text-xs font-bold ml-2">
+                        Renew Plan
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     onPress={() => setShowReturn(true)}
                     disabled={!canReturn}

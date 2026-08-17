@@ -262,6 +262,10 @@ export interface AppUser {
    * rider has no live booking at all.
    */
   payment_status: "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
+  /** When the current plan/rental period began (bookings.plan_activated_at). Null before pickup or with no live booking. */
+  plan_started_at: string | null;
+  /** Last usable day of the current billing period / next renewal date (bookings.next_due_at). <= today means due today or overdue. */
+  next_due_at: string | null;
 }
 
 export interface AppUserDocument {

@@ -21,12 +21,16 @@ export interface AdminRentalRow {
   days_late: number | null;
   late_penalty_amount: number | null;
   late_fee_per_day: number | null;
+  inspected_at: string | null;
+  inspected_by: { id: string; full_name: string } | null;
 }
 
 export interface CompleteRideInput {
   end_battery_pct?: number;
   /** Staff-customised late fee; omit to use the computed amount. */
   late_fee_override?: number;
+  /** Confirms a clean inspection when no damage was recorded — required whenever the booking has a held deposit and inspected_at isn't already stamped. */
+  inspected?: boolean;
 }
 
 /** POST /rentals/:id/complete — requireStaff. Ends the ride; the DB trigger returns the vehicle to 'available'. Also the "Approve Return" action when a return was pending. */
@@ -39,6 +43,8 @@ export interface MoveToMaintenanceInput {
   end_battery_pct?: number;
   /** Staff-customised late fee; omit to use the computed amount. */
   late_fee_override?: number;
+  /** Confirms a clean inspection when no damage was recorded — required whenever the booking has a held deposit and inspected_at isn't already stamped. */
+  inspected?: boolean;
 }
 
 /** POST /rentals/:id/maintenance — requireStaff. Ends the ride, flips the vehicle to 'maintenance', and opens a ticket. Also the "Approve Return" (inspection) action when a return was pending. */

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, Wrench, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Plus, ShieldCheck, Trash2, Wrench, XCircle } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -10,12 +10,21 @@ import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { useCompleteRide, useMoveRideToMaintenance, useRejectReturn } from "@/hooks/useRentals";
 import { useRecordDamage } from "@/hooks/useDamages";
+import { useDepositForBooking } from "@/hooks/useDeposits";
 import { ApiError } from "@/services/api/httpClient";
 import { cn, formatCurrency, formatDateTime } from "@/lib/utils";
 import { computeLatePaymentFee } from "@/lib/latePaymentPolicy";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { PickupBooking } from "@/types";
+
+interface DamageItem {
+  amount: string;
+  description: string;
+  photos: File[];
+}
+
+const EMPTY_DAMAGE_ITEM: DamageItem = { amount: "", description: "", photos: [] };
 
 /**
  * Staff review of a rider's post-pickup return request. Approve reuses the
@@ -24,6 +33,11 @@ import type { PickupBooking } from "@/types";
  * that needs inspection should never pass through "Available" even
  * transiently between two separate admin actions. Reject clears the request
  * and leaves the rental exactly as it was, active with nothing pending.
+ *
+ * Deposit Refund & Damage Deduction Phase 1: the backend now refuses to
+ * settle a return with a held deposit until an inspection is on file — so
+ * this dialog always requires either at least one damage item, or an
+ * explicit "no damage found" confirmation, before Approve is enabled.
  */
 export function ReturnReviewDialog({
   booking,
@@ -38,11 +52,11 @@ export function ReturnReviewDialog({
   const [outcome, setOutcome] = useState<"available" | "maintenance">("available");
   const [maintenanceNotes, setMaintenanceNotes] = useState("");
   const [rejectReason, setRejectReason] = useState("");
-  const [damageAmount, setDamageAmount] = useState("");
-  const [damageDescription, setDamageDescription] = useState("");
-  const [damagePhotos, setDamagePhotos] = useState<File[]>([]);
+  const [damageItems, setDamageItems] = useState<DamageItem[]>([]);
+  const [inspectedClean, setInspectedClean] = useState(false);
   const [lateFeeOverride, setLateFeeOverride] = useState("");
 
+  const deposit = useDepositForBooking(booking?.id);
   const completeRide = useCompleteRide();
   const moveToMaintenance = useMoveRideToMaintenance();
   const rejectReturn = useRejectReturn();
@@ -56,55 +70,71 @@ export function ReturnReviewDialog({
     setOutcome("available");
     setMaintenanceNotes("");
     setRejectReason("");
-    setDamageAmount("");
-    setDamageDescription("");
-    setDamagePhotos([]);
+    setDamageItems([]);
+    setInspectedClean(false);
     setLateFeeOverride("");
   };
 
   const rental = booking?.active_rental ?? null;
 
-  const hasDamageEntered = damageAmount.trim().length > 0;
-  const damageAmountValid = hasDamageEntered && Number(damageAmount) > 0;
-  const damageValid = !hasDamageEntered || (damageAmountValid && damageDescription.trim().length >= 3);
+  const itemValid = (item: DamageItem) => Number(item.amount) > 0 && item.description.trim().length >= 3;
+  const validDamageItems = damageItems.filter(itemValid);
+  const hasDamageItems = damageItems.length > 0;
+  // Every entered row must be valid before Approve unlocks — a half-filled
+  // row silently dropped would understate what the rider is actually billed.
+  const damageValid = hasDamageItems ? damageItems.every(itemValid) : true;
+  const hasInspection = inspectedClean || validDamageItems.length > 0;
 
   const hasLateFeeOverride = lateFeeOverride.trim().length > 0;
   const lateFeeOverrideValid = !hasLateFeeOverride
     || (!Number.isNaN(Number(lateFeeOverride)) && Number(lateFeeOverride) >= 0);
 
+  const addDamageItem = () => {
+    setInspectedClean(false);
+    setDamageItems((items) => [...items, { ...EMPTY_DAMAGE_ITEM }]);
+  };
+  const removeDamageItem = (index: number) => {
+    setDamageItems((items) => items.filter((_, i) => i !== index));
+  };
+  const updateDamageItem = (index: number, patch: Partial<DamageItem>) => {
+    setDamageItems((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  };
+
   /**
-   * Damage is recorded first (reduces the refundable deposit, and bills the
-   * rider for whatever exceeds it — see computeDamageDeduction in
-   * damages.service.ts) so the return is only marked Available/Maintenance
-   * once the inspection is actually on file. If recording the damage fails,
-   * the return is deliberately left un-approved rather than silently
-   * skipping the deposit adjustment.
+   * Every damage item is recorded first (reduces the refundable deposit, and
+   * bills the rider for whatever exceeds it — see computeDamageDeduction in
+   * damages.service.ts), one at a time so a failure partway through leaves
+   * the return correctly un-approved rather than silently skipping the rest.
+   * `inspected: true` tells the backend a physical inspection happened even
+   * when zero damage was found — required whenever the booking has a held
+   * deposit (see assertInspected in rentals.service.ts); harmless otherwise.
    */
   const approveOutcome = () => {
     if (!rental) return;
     const lateFee = hasLateFeeOverride ? { late_fee_override: Number(lateFeeOverride) } : {};
     if (outcome === "available") {
-      completeRide.mutate({ id: rental.id, input: lateFee }, { onSuccess: close });
+      completeRide.mutate({ id: rental.id, input: { ...lateFee, inspected: true } }, { onSuccess: close });
     } else {
       moveToMaintenance.mutate(
-        { id: rental.id, input: { description: maintenanceNotes.trim(), ...lateFee } },
+        { id: rental.id, input: { description: maintenanceNotes.trim(), ...lateFee, inspected: true } },
         { onSuccess: close },
       );
     }
   };
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     if (!rental) return;
-    if (hasDamageEntered && damageAmountValid) {
-      recordDamage.mutate(
-        {
+    try {
+      for (const item of validDamageItems) {
+        await recordDamage.mutateAsync({
           rentalId: rental.id,
-          input: { amount: Number(damageAmount), description: damageDescription.trim(), photos: damagePhotos },
-        },
-        { onSuccess: approveOutcome },
-      );
-    } else {
+          input: { amount: Number(item.amount), description: item.description.trim(), photos: item.photos },
+        });
+      }
       approveOutcome();
+    } catch {
+      // Mutation error state (recordDamage.error) already surfaces below —
+      // stop here rather than approving on top of a failed damage record.
     }
   };
 
@@ -146,6 +176,19 @@ export function ReturnReviewDialog({
               />
             </div>
 
+            {deposit.data && (
+              <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold text-muted-foreground">Security deposit</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">{formatCurrency(deposit.data.amount)}</span>
+                  <StatusBadge status={deposit.data.status} />
+                </div>
+              </div>
+            )}
+
             {(booking.return_late_fee_preview || paymentDue?.isLate) && (
               <div className="space-y-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
                 <p className="text-xs font-semibold text-warning">Applicable charges</p>
@@ -175,42 +218,73 @@ export function ReturnReviewDialog({
 
             {canAct && (
               <div className="space-y-4 border-t border-border pt-4">
-                <div className="space-y-2 rounded-lg border border-border p-3">
+                <div className="space-y-3 rounded-lg border border-border p-3">
                   <Label className="flex items-center gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Vehicle inspection — damage (optional)
+                    <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Vehicle inspection
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Leave the amount blank if the vehicle checks out clean. Entering an amount deducts it from the
-                    rider&apos;s deposit refund, and bills them for whatever exceeds the deposit.
+                    A physical inspection is required before this return can be approved. Add one row per item of
+                    damage — each deducts from the rider&apos;s deposit refund and bills them for whatever exceeds
+                    it — or confirm the vehicle checked out clean.
                   </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Damage amount (₹)</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={damageAmount}
-                        onChange={(e) => setDamageAmount(e.target.value)}
-                        placeholder="0"
+
+                  {damageItems.map((item, index) => (
+                    <div key={index} className="space-y-2 rounded-lg border border-border p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground">Damage item {index + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeDamageItem(index)}
+                          className="text-muted-foreground hover:text-destructive"
+                          aria-label="Remove damage item"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Amount (₹)</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={item.amount}
+                            onChange={(e) => updateDamageItem(index, { amount: e.target.value })}
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Photos (optional)</Label>
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(e) => updateDamageItem(index, { photos: Array.from(e.target.files ?? []) })}
+                          />
+                        </div>
+                      </div>
+                      <Textarea
+                        value={item.description}
+                        onChange={(e) => updateDamageItem(index, { description: e.target.value })}
+                        placeholder="Describe the damage (at least 3 characters), e.g. Side panel scratch"
+                        rows={2}
                       />
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Photos (optional)</Label>
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={(e) => setDamagePhotos(Array.from(e.target.files ?? []))}
+                  ))}
+
+                  <Button type="button" variant="outline" size="sm" onClick={addDamageItem}>
+                    <Plus className="h-3.5 w-3.5" /> Add damage item
+                  </Button>
+
+                  {!hasDamageItems && (
+                    <label className="flex items-center gap-2 pt-1 text-xs">
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 accent-primary"
+                        checked={inspectedClean}
+                        onChange={(e) => setInspectedClean(e.target.checked)}
                       />
-                    </div>
-                  </div>
-                  {hasDamageEntered && (
-                    <Textarea
-                      value={damageDescription}
-                      onChange={(e) => setDamageDescription(e.target.value)}
-                      placeholder="Describe the damage (at least 3 characters)"
-                      rows={2}
-                    />
+                      I have physically inspected this vehicle — no damage found
+                    </label>
                   )}
                 </div>
 
@@ -279,10 +353,11 @@ export function ReturnReviewDialog({
                     disabled={
                       isPending
                       || !damageValid
+                      || !hasInspection
                       || !lateFeeOverrideValid
                       || (outcome === "maintenance" && maintenanceNotes.trim().length < 3)
                     }
-                    onClick={handleApprove}
+                    onClick={() => void handleApprove()}
                   >
                     {(completeRide.isPending || moveToMaintenance.isPending || recordDamage.isPending) && (
                       <Loader2 className="h-4 w-4 animate-spin" />

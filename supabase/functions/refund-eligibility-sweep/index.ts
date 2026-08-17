@@ -5,10 +5,15 @@
 // period with no open dispute, and creates a pending `refunds` row for
 // each — mirrors apps/backend/src/modules/refunds/refunds.service.ts's
 // initiateRefund() exactly (same idempotency guard: reuse an existing
-// non-terminal-failed refund rather than minting a duplicate). Does NOT
-// call the payment gateway itself — refund-processing does that, on its
-// own separate schedule, so a slow/failing gateway call never blocks this
-// sweep from discovering newly-eligible deposits.
+// non-terminal-failed refund rather than minting a duplicate).
+//
+// Deposit Refund & Damage Deduction Phase 1: this sweep does NOT call the
+// payment gateway, and nothing else does either anymore — the
+// refund-processing cron that used to auto-pick up these 'pending' rows
+// every 7 minutes has been retired. A 'pending' row created here is now the
+// TERMINAL automatic state: it sits there until a staff member reviews the
+// settlement and explicitly approves it via POST /refunds/:id/retry (same
+// admin-approval gate a booking_cancellation refund has always required).
 // =========================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";

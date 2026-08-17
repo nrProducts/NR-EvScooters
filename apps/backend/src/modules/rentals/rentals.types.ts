@@ -86,6 +86,9 @@ export interface AdminRentalRow extends RentalReturnFields, RentalPlanPeriodFiel
     vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
     /** Staff member who approved the return (i.e. settled this rental while a return was pending). Admin-only — not on RentalView. */
     return_approved_by: { id: string; full_name: string } | null;
+    /** Set by recordDamage (automatically) or a `inspected: true` completeRide/moveToMaintenance call — see assertInspected(). Gates deposit-refund eligibility on a genuine physical inspection. */
+    inspected_at: string | null;
+    inspected_by: { id: string; full_name: string } | null;
 }
 
 export interface RejectReturnInput {
@@ -102,6 +105,8 @@ export interface CompleteRideInput {
     end_battery_pct?: number;
     /** Staff-customised late fee; omitted means "use the computed amount". See rentals.validation.ts. */
     late_fee_override?: number;
+    /** Confirms a clean physical inspection when no damage was recorded. See assertInspected() — required whenever a held deposit exists and inspected_at isn't already stamped. */
+    inspected?: boolean;
 }
 
 export interface MoveToMaintenanceInput {
@@ -109,4 +114,6 @@ export interface MoveToMaintenanceInput {
     end_battery_pct?: number;
     /** Staff-customised late fee; omitted means "use the computed amount". See rentals.validation.ts. */
     late_fee_override?: number;
+    /** Confirms a clean physical inspection when no damage was recorded. See assertInspected() — required whenever a held deposit exists and inspected_at isn't already stamped. */
+    inspected?: boolean;
 }

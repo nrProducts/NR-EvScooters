@@ -8,11 +8,13 @@ import { ErrorState } from '../components/ui/ErrorState';
 import { Badge } from '../components/ui/Badge';
 import { pullToRefresh, useRefresh } from '../components/ui/PullToRefresh';
 import { COLORS } from '../constants/theme';
+import { DEPOSIT_STATUS_LABEL, DEPOSIT_STATUS_TONE } from '../constants/status';
 import { useMyBilling } from '../hooks/useMyBilling';
 import { useAuthStore } from '../store/useAuthStore';
 import { billingRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
 import { computeLatePaymentFee } from '../lib/latePaymentPolicy';
+import { canRenewEarly } from '../lib/returnPolicy';
 import { ApiError } from '../lib/ApiError';
 import type { ApiEarlyRecharge, ApiInvoice, InvoicePaymentStatus, PlanStatus } from '../types/api';
 
@@ -50,15 +52,15 @@ function todayStr(): string {
   return dateStr(new Date());
 }
 
-function tomorrowStr(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return dateStr(d);
-}
-
 export default function BillingScreen() {
   const { bookingId, booking, deposit, damages, invoices, loading, error, reload } = useMyBilling();
   const { refreshing, onRefresh } = useRefresh(() => reload(true));
+  // Excludes disputed damages, mirroring refundableAmountForBooking on the
+  // backend — a disputed deduction is on hold, not final, so it shouldn't
+  // read as part of the settled breakdown yet.
+  const settledDamages = damages.filter((d) => d.status !== 'disputed');
+  const totalDeduction = settledDamages.reduce((sum, d) => sum + d.deposit_deduction, 0);
+  const totalAdditionalDue = settledDamages.reduce((sum, d) => sum + d.outstanding_amount, 0);
   const profile = useAuthStore((s) => s.profile);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
@@ -117,8 +119,7 @@ export default function BillingScreen() {
   // Hidden once an outstanding invoice already exists (a prior recharge
   // attempt that was cancelled mid-payment) — Outstanding below covers that.
   const planEndsToday = !!booking?.next_due_at && booking.next_due_at <= todayStr();
-  const canRechargeEarly = booking?.plan_status === 'active'
-    && !!booking?.next_due_at && booking.next_due_at <= tomorrowStr()
+  const canRechargeEarly = canRenewEarly(booking?.plan_status ?? null, booking?.next_due_at ?? null)
     && outstandingInvoices.length === 0;
 
   const payInvoice = async (invoice: ApiInvoice) => {
@@ -438,23 +439,63 @@ export default function BillingScreen() {
 
           {/* Security deposit */}
           <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Security Deposit</Text>
-          <View className="rounded-2xl p-4 border mb-6 flex-row items-center justify-between" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-            <View className="flex-row items-center">
-              <ShieldCheck size={16} color={COLORS.primary} />
-              <View className="ml-3">
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">₹{(deposit?.amount ?? 0).toFixed(0)}</Text>
-                {deposit?.status === 'refunded' && deposit.refunded_at ? (
-                  <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                    Refunded {formatDate(deposit.refunded_at)}
-                  </Text>
-                ) : deposit?.status === 'held' && deposit.refund_eligible_at ? (
-                  <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                    Refund eligible from {formatDate(deposit.refund_eligible_at)}
-                  </Text>
-                ) : null}
+          <View className="rounded-2xl border mb-6 overflow-hidden" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+            <View className="p-4 flex-row items-center justify-between">
+              <View className="flex-row items-center">
+                <ShieldCheck size={16} color={COLORS.primary} />
+                <View className="ml-3">
+                  <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">₹{(deposit?.amount ?? 0).toFixed(0)}</Text>
+                  {deposit?.status === 'refunded' && deposit.refunded_at ? (
+                    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+                      Refunded {formatDate(deposit.refunded_at)}
+                    </Text>
+                  ) : deposit?.status === 'partially_refunded' && deposit.refunded_at ? (
+                    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+                      Partially refunded {formatDate(deposit.refunded_at)}
+                    </Text>
+                  ) : deposit?.status === 'forfeited' ? (
+                    <Text style={{ color: COLORS.danger }} className="text-[11px] font-medium mt-0.5">
+                      Fully consumed by damage deductions
+                    </Text>
+                  ) : deposit?.status === 'held' && deposit.refund_eligible_at ? (
+                    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+                      Refund eligible from {formatDate(deposit.refund_eligible_at)}
+                    </Text>
+                  ) : null}
+                </View>
               </View>
+              {deposit ? <Badge label={DEPOSIT_STATUS_LABEL[deposit.status]} tone={DEPOSIT_STATUS_TONE[deposit.status]} /> : null}
             </View>
-            {deposit ? <Badge label={deposit.status.replace('_', ' ')} tone={deposit.status === 'refunded' ? 'success' : 'neutral'} /> : null}
+
+            {/* Settlement breakdown — only once there's something to explain (a damage deduction on file). */}
+            {deposit && settledDamages.length > 0 && (
+              <View className="px-4 pb-4 pt-1" style={{ borderTopWidth: 1, borderColor: COLORS.border }}>
+                {settledDamages.map((d) => (
+                  <View key={d.id} className="flex-row items-center justify-between py-1.5">
+                    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium flex-1 mr-2">
+                      {d.description}
+                    </Text>
+                    <Text style={{ color: COLORS.danger }} className="text-[11px] font-semibold">
+                      -₹{d.deposit_deduction.toFixed(0)}
+                    </Text>
+                  </View>
+                ))}
+                <View className="h-px my-1.5" style={{ backgroundColor: COLORS.border }} />
+                {totalAdditionalDue > 0 ? (
+                  <View className="flex-row items-center justify-between py-1">
+                    <Text style={{ color: COLORS.danger }} className="text-xs font-bold">Additional Amount Due</Text>
+                    <Text style={{ color: COLORS.danger }} className="text-sm font-black">₹{totalAdditionalDue.toFixed(0)}</Text>
+                  </View>
+                ) : (
+                  <View className="flex-row items-center justify-between py-1">
+                    <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">Net Refund</Text>
+                    <Text style={{ color: COLORS.primary }} className="text-sm font-black">
+                      ₹{Math.max(0, (deposit.amount - totalDeduction)).toFixed(0)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
 
           {/* Damage charges */}

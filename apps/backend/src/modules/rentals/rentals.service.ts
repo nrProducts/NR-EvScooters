@@ -4,7 +4,7 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
 import { pausePlanForBooking } from "../plans/plans.service";
-import { setDepositRefundEligible } from "../deposits/deposits.service";
+import { getDepositForBookingOrNull, setDepositRefundEligible } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     AdminRentalRow, CompleteRideInput, ListRentalsFilters, MoveToMaintenanceInput, RejectReturnInput, RentalView,
@@ -55,7 +55,8 @@ const ADMIN_RENTAL_COLUMNS = `
     ${PLAN_PERIOD_COLUMNS},
     users!rentals_user_id_fkey(id, full_name, phone),
     vehicles(id, name, registration_number, battery_percentage),
-    return_approved_by:users!rentals_return_approved_by_fkey(id, full_name)
+    return_approved_by:users!rentals_return_approved_by_fkey(id, full_name),
+    inspected_at, inspected_by:users!rentals_inspected_by_fkey(id, full_name)
 `;
 
 function unwrap<T>(raw: unknown): T | null {
@@ -247,6 +248,8 @@ interface RawAdminRentalRow extends RawReturnFields, RawPlanPeriodFields {
     users: unknown;
     vehicles: unknown;
     return_approved_by: unknown;
+    inspected_at: string | null;
+    inspected_by: unknown;
 }
 
 function toAdminRentalRow(row: RawAdminRentalRow): AdminRentalRow {
@@ -264,6 +267,8 @@ function toAdminRentalRow(row: RawAdminRentalRow): AdminRentalRow {
         rider: unwrap(row.users),
         vehicle: vehicle ? { ...vehicle, battery_percentage: Number(vehicle.battery_percentage) } : null,
         return_approved_by: unwrap<{ id: string; full_name: string }>(row.return_approved_by),
+        inspected_at: row.inspected_at,
+        inspected_by: unwrap<{ id: string; full_name: string }>(row.inspected_by),
         ...toReturnView(row),
         ...toPlanPeriodView(row),
     };
@@ -495,6 +500,40 @@ export function returnApprovalPayload(
     return { return_approved_at: now.toISOString(), return_approved_by: actor.id };
 }
 
+/**
+ * Deposit Refund & Damage Deduction Phase 1: a return can no longer settle
+ * with a held deposit still un-inspected. A no-op when there's nothing at
+ * stake (no deposit, already forfeited/refunded, or already stamped —
+ * recordDamage stamps this the moment a damage item is entered, see
+ * damages.service.ts) so this never blocks a booking with no deposit at all.
+ */
+async function assertInspected(before: RawAdminRentalRow, input: { inspected?: boolean }): Promise<void> {
+    if (before.inspected_at || !before.booking_id) return;
+    const deposit = await getDepositForBookingOrNull(before.booking_id);
+    if (!deposit || deposit.amount <= 0 || deposit.status !== "held") return;
+    if (!input.inspected) {
+        throw businessRule(
+            "Record the vehicle inspection — damage found, or confirm none — before completing this return.",
+        );
+    }
+}
+
+/**
+ * Companion to returnApprovalPayload — stamps who/when confirmed a clean
+ * inspection. Left empty when recordDamage already stamped it (before.inspected_at
+ * set) so a damage-bearing return's stamp always credits whoever actually
+ * inspected the vehicle, not whoever happened to click "Complete" after.
+ */
+function inspectionStampPayload(
+    before: RawAdminRentalRow,
+    input: { inspected?: boolean },
+    actor: AuthContext,
+    now: Date,
+) {
+    if (before.inspected_at || !input.inspected) return {};
+    return { inspected_at: now.toISOString(), inspected_by: actor.id };
+}
+
 async function requireActiveRental(id: string): Promise<RawAdminRentalRow> {
     const { data, error } = await supabaseAdmin
         .from("rentals")
@@ -522,6 +561,7 @@ export async function completeRide(
     actor: AuthContext,
 ): Promise<AdminRentalRow> {
     const before = await requireActiveRental(id);
+    await assertInspected(before, input);
     const { payload: settlement, charge, overridden } = settlementPayload(before, input.late_fee_override);
     const endedAt = new Date();
 
@@ -533,6 +573,7 @@ export async function completeRide(
             end_battery_pct: input.end_battery_pct ?? null,
             ...settlement,
             ...returnApprovalPayload(before, actor, endedAt),
+            ...inspectionStampPayload(before, input, actor, endedAt),
         })
         .eq("id", id)
         .select(ADMIN_RENTAL_COLUMNS)
@@ -593,6 +634,8 @@ export async function completeRide(
             late_penalty_amount: charge.penaltyAmount,
             late_fee_overridden: overridden,
             had_deadline: charge.hadDeadline,
+            inspected_at: rental.inspected_at,
+            inspected_by: rental.inspected_by?.id ?? null,
         },
     });
 
@@ -621,6 +664,9 @@ export async function moveRideToMaintenance(
     actor: AuthContext,
 ): Promise<AdminRentalRow> {
     const before = await requireActiveRental(id);
+    // Same inspection gate as completeRide — a vehicle routed to maintenance
+    // still needs its deposit settlement recorded, damage or not.
+    await assertInspected(before, input);
     // Settled here too: staff still take physical delivery of a damaged
     // scooter, so skipping this would make "return it broken" a free
     // late-fee bypass and leave days_late null on these rows forever.
@@ -635,6 +681,7 @@ export async function moveRideToMaintenance(
             end_battery_pct: input.end_battery_pct ?? null,
             ...settlement,
             ...returnApprovalPayload(before, actor, endedAt),
+            ...inspectionStampPayload(before, input, actor, endedAt),
         })
         .eq("id", id);
     if (rentalError) throw rentalError;
@@ -684,6 +731,8 @@ export async function moveRideToMaintenance(
             late_penalty_amount: charge.penaltyAmount,
             late_fee_overridden: overridden,
             had_deadline: charge.hadDeadline,
+            inspected_at: before.inspected_at ?? (input.inspected ? endedAt.toISOString() : null),
+            inspected_by: before.inspected_at ? unwrap<{ id: string }>(before.inspected_by)?.id ?? null : (input.inspected ? actor.id : null),
         },
     });
 

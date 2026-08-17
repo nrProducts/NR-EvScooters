@@ -26,12 +26,36 @@ export async function fetchRefunds(filters: RefundFilters = {}): Promise<Paginat
   return toPaginatedResult(res);
 }
 
-/** POST /refunds — creates (or reuses) the pending refund and drives it through the gateway synchronously. */
+/** POST /refunds — creates (or reuses) the pending refund. Never auto-processes it — see retryRefund. */
 export async function createRefund(depositId: string): Promise<Refund> {
   return apiClient.post<Refund>("/refunds", { deposit_id: depositId });
 }
 
-/** POST /refunds/:id/retry — re-attempts a failed refund. */
+export interface RefundSettlementLine {
+  id: string;
+  description: string;
+  amount: number;
+  deposit_deduction: number;
+  outstanding_amount: number;
+  created_at: string;
+}
+
+export interface RefundSettlement {
+  refund: Refund;
+  depositAmount: number;
+  lines: RefundSettlementLine[];
+  totalDeduction: number;
+  netRefund: number;
+  /** Sum of every line's outstanding_amount — billed separately because deductions exceeded the deposit. */
+  additionalAmountDue: number;
+}
+
+/** GET /refunds/:id/settlement — full breakdown for the approval screen (deposit refunds only; not meaningful for a booking_cancellation refund). */
+export async function fetchRefundSettlement(id: string): Promise<RefundSettlement> {
+  return apiClient.get<RefundSettlement>(`/refunds/${id}/settlement`);
+}
+
+/** POST /refunds/:id/retry — approves a pending refund (either refund_type) or re-attempts a failed one. */
 export async function retryRefund(id: string): Promise<Refund> {
   return apiClient.post<Refund>(`/refunds/${id}/retry`);
 }

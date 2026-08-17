@@ -37,6 +37,7 @@ export function DataTable<T extends { id: string }>({
   renderExpandedRow,
   sort,
   onSortChange,
+  rowClassName,
 }: {
   columns: DataTableColumn<T>[];
   data: T[];
@@ -54,6 +55,8 @@ export function DataTable<T extends { id: string }>({
   sort?: DataTableSort;
   /** Called with a column's `sortKey` when its header is clicked. Toggling asc/desc is the caller's responsibility. */
   onSortChange?: (sortKey: string) => void;
+  /** Optional per-row conditional classes (e.g. highlighting), applied to both the desktop row and the mobile stacked card. */
+  rowClassName?: (row: T) => string | undefined;
 }) {
   if (isLoading) return <LoadingSkeletonRows cols={columns.length} />;
   if (isError) return <ErrorState onRetry={onRetry} />;
@@ -103,7 +106,11 @@ export function DataTable<T extends { id: string }>({
             {data.map((row) => (
               <Fragment key={row.id}>
                 <tr
-                  className={cn("transition-smooth hover:bg-card-hover", onRowClick && "cursor-pointer")}
+                  className={cn(
+                    "transition-smooth hover:bg-card-hover",
+                    onRowClick && "cursor-pointer",
+                    rowClassName?.(row),
+                  )}
                   onClick={() => onRowClick?.(row)}
                 >
                   {columns.map((col) => (
@@ -130,7 +137,11 @@ export function DataTable<T extends { id: string }>({
         {data.map((row) => (
           <div key={row.id}>
             <div
-              className={cn("space-y-2 px-4 py-4 transition-smooth", onRowClick && "cursor-pointer active:bg-card-hover")}
+              className={cn(
+                "space-y-2 px-4 py-4 transition-smooth",
+                onRowClick && "cursor-pointer active:bg-card-hover",
+                rowClassName?.(row),
+              )}
               onClick={() => onRowClick?.(row)}
             >
               {columns

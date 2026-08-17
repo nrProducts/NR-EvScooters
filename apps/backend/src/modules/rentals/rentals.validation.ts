@@ -27,12 +27,17 @@ export const listRentalsQuery = z.object({
 export const completeRideBody = z.object({
     end_battery_pct: z.coerce.number().min(0).max(100).optional(),
     late_fee_override: z.coerce.number().min(0).max(100_000).optional(),
+    // Confirms a clean physical inspection when no damage was recorded —
+    // required whenever a held deposit exists and inspected_at isn't already
+    // stamped by recordDamage. See assertInspected() in rentals.service.ts.
+    inspected: z.boolean().optional(),
 });
 
 export const moveToMaintenanceBody = z.object({
     description: z.string().trim().min(3, "Describe the issue.").max(1000),
     end_battery_pct: z.coerce.number().min(0).max(100).optional(),
     late_fee_override: z.coerce.number().min(0).max(100_000).optional(),
+    inspected: z.boolean().optional(),
 });
 
 /**

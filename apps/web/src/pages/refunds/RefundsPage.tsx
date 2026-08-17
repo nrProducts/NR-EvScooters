@@ -10,7 +10,7 @@ import {
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { useRefunds, useRetryRefund } from "@/hooks/useRefunds";
+import { useRefunds, useRefundSettlement, useRetryRefund } from "@/hooks/useRefunds";
 import { useTableSort } from "@/hooks/useTableSort";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { ApiError } from "@/services/api/httpClient";
@@ -114,7 +114,7 @@ export default function RefundsPage() {
       header: "Actions",
       key: "actions",
       render: (r) => {
-        if (r.status === "pending" && r.refund_type === "booking_cancellation") {
+        if (r.status === "pending") {
           return (
             <Button
               size="sm"
@@ -221,23 +221,60 @@ function ApproveRefundDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const retry = useRetryRefund();
+  const isDeposit = refund?.refund_type === "deposit";
+  const settlement = useRefundSettlement(isDeposit ? refund?.id : undefined);
 
   return (
     <Dialog open={!!refund} onOpenChange={(o) => !o && onOpenChange(false)}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Approve refund of {refund ? formatCurrency(refund.amount) : ""}?</DialogTitle>
-          <DialogDescription>
-            {refund?.booking?.rider_name ?? "This rider"} — booking cancelled
-            {refund?.booking?.cancelled_at ? ` on ${formatDate(refund.booking.cancelled_at)}` : ""}
-            {refund?.booking?.cancellation_reason ? `: ${refund.booking.cancellation_reason}` : ""}
-          </DialogDescription>
+          {!isDeposit && (
+            <DialogDescription>
+              {refund?.booking?.rider_name ?? "This rider"} — booking cancelled
+              {refund?.booking?.cancelled_at ? ` on ${formatDate(refund.booking.cancelled_at)}` : ""}
+              {refund?.booking?.cancellation_reason ? `: ${refund.booking.cancellation_reason}` : ""}
+            </DialogDescription>
+          )}
         </DialogHeader>
 
-        <p className="text-sm text-muted-foreground">
-          This sends {refund ? formatCurrency(refund.amount) : "the refund"} to the rider&apos;s original payment
-          method via Razorpay right away. This can&apos;t be undone.
-        </p>
+        {isDeposit ? (
+          settlement.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading settlement…</p>
+          ) : settlement.data ? (
+            <div className="space-y-2 rounded-lg border border-border p-3 text-sm">
+              <Row label="Security deposit" value={formatCurrency(settlement.data.depositAmount)} />
+              {settlement.data.lines.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No damage recorded — full deposit refundable.</p>
+              ) : (
+                settlement.data.lines.map((line) => (
+                  <Row
+                    key={line.id}
+                    label={line.description}
+                    value={`-${formatCurrency(line.deposit_deduction)}`}
+                    muted
+                  />
+                ))
+              )}
+              <div className="h-px bg-border" />
+              <Row label="Total deduction" value={formatCurrency(settlement.data.totalDeduction)} />
+              <Row label="Net Refund" value={formatCurrency(settlement.data.netRefund)} strong />
+              {settlement.data.additionalAmountDue > 0 && (
+                <p className="rounded-md bg-warning/10 px-2 py-1.5 text-xs text-warning">
+                  Additional Amount Due: {formatCurrency(settlement.data.additionalAmountDue)} — deductions exceeded
+                  the deposit; billed separately.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-destructive">Couldn&apos;t load the settlement breakdown.</p>
+          )
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            This sends {refund ? formatCurrency(refund.amount) : "the refund"} to the rider&apos;s original payment
+            method via Razorpay right away. This can&apos;t be undone.
+          </p>
+        )}
 
         {retry.isError && (
           <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -245,10 +282,19 @@ function ApproveRefundDialog({
           </p>
         )}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
+        <DialogFooter className="sm:justify-between">
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            {isDeposit && refund && (
+              <Button variant="outline" asChild>
+                <Link to={`/damages?bookingId=${refund.booking_id}`} onClick={() => onOpenChange(false)}>
+                  Edit Charges
+                </Link>
+              </Button>
+            )}
+          </div>
           <Button
             disabled={retry.isPending}
             onClick={() => {
@@ -257,10 +303,21 @@ function ApproveRefundDialog({
               }
             }}
           >
-            {retry.isPending ? "Approving..." : "Approve & Refund"}
+            {retry.isPending ? "Approving..." : "Approve & Process Refund"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function Row({ label, value, muted, strong }: { label: string; value: string; muted?: boolean; strong?: boolean }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className={muted ? "text-xs text-muted-foreground" : "text-sm"}>{label}</span>
+      <span className={strong ? "text-sm font-bold" : muted ? "text-xs text-muted-foreground" : "text-sm font-medium"}>
+        {value}
+      </span>
+    </div>
   );
 }

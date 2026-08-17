@@ -1,5 +1,5 @@
 import type {
-  BillingCycle, BookingRefundStatus, BookingStatus, KycStatus, KycDocType, MaintenanceStatus,
+  BillingCycle, BookingRefundStatus, BookingStatus, DepositStatus, KycStatus, KycDocType, MaintenanceStatus,
   RentalStatus, SupportStatus, VerificationStatus, VehicleStatus,
 } from '../types/api';
 
@@ -118,6 +118,22 @@ export const REFUND_STATUS_LABEL: Record<BookingRefundStatus, string> = {
   processed: 'Refunded',
   not_required: 'No Refund Due',
   failed: 'Refund Failed',
+};
+
+export const DEPOSIT_STATUS_TONE: Record<DepositStatus, Tone> = {
+  pending: 'neutral',
+  held: 'primary',
+  partially_refunded: 'warning',
+  refunded: 'success',
+  forfeited: 'danger',
+};
+
+export const DEPOSIT_STATUS_LABEL: Record<DepositStatus, string> = {
+  pending: 'Pending',
+  held: 'Held',
+  partially_refunded: 'Partially Refunded',
+  refunded: 'Refunded',
+  forfeited: 'Forfeited',
 };
 
 export const VEHICLE_STATUS_TONE: Record<VehicleStatus, Tone> = {

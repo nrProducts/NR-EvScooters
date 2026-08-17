@@ -13,13 +13,24 @@ export async function getRefundHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getRefundById(req.params.id as string));
 }
 
+/**
+ * Creates (or reuses) the pending refund row only — never auto-processes it.
+ * Deposit Refund & Damage Deduction Phase 1: every refund, deposit or
+ * cancellation, now waits at status='pending' until an admin explicitly
+ * approves it via retryRefundHandler below.
+ */
 export async function createRefundHandler(req: AuthedRequest, res: Response) {
     const body = req.body as InitiateRefundBody;
-    const refund = await service.refundDeposit(body.deposit_id, req.user!);
+    const refund = await service.initiateRefund(body.deposit_id, req.user!);
     res.status(201).json(refund);
 }
 
-/** Also doubles as "Approve" for a refund still at status='pending' — see processRefund's doc comment. */
+/** Full settlement breakdown for the admin approval screen — see refunds.service.ts's getRefundSettlement. */
+export async function getRefundSettlementHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.getRefundSettlement(req.params.id as string));
+}
+
+/** Doubles as "Approve & Process Refund" for a refund still at status='pending' (either refund_type) — see processRefund's doc comment. */
 export async function retryRefundHandler(req: AuthedRequest, res: Response) {
     res.json(await service.processRefund(req.params.id as string, req.user!));
 }

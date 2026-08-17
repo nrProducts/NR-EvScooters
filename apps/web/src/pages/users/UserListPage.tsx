@@ -67,6 +67,16 @@ export default function UserListPage() {
   // someone click into a guaranteed error.
   const currentUserId = useAuthStore((s) => s.user?.id);
 
+  // next_due_at is the LAST usable day of the current billing period — a
+  // value <= today means due today or already overdue, regardless of
+  // whether the overdue-sweep cron has flipped payment_status to 'due' yet
+  // (it only runs the day after). 'paused'/pre-pickup bookings are excluded:
+  // nothing is actively due on those.
+  const isDueOrOverdue = (u: AppUser) =>
+    !!u.next_due_at
+    && u.next_due_at <= new Date().toISOString().slice(0, 10)
+    && (u.payment_status === "active" || u.payment_status === "due");
+
   const revokeStaff = (u: AppUser) => {
     setRoleError(null);
     updateRoles.mutate(
@@ -144,6 +154,18 @@ export default function UserListPage() {
       header: "Payment",
       key: "payment_status",
       render: (u) => (u.payment_status ? <StatusBadge status={u.payment_status} /> : "—"),
+      hideOnMobile: true,
+    },
+    {
+      header: "Plan Started",
+      key: "plan_started_at",
+      render: (u) => (u.plan_started_at ? formatDate(u.plan_started_at) : "—"),
+      hideOnMobile: true,
+    },
+    {
+      header: "Plan Ends",
+      key: "next_due_at",
+      render: (u) => (u.next_due_at ? formatDate(u.next_due_at) : "—"),
       hideOnMobile: true,
     },
     { header: "Joined", key: "created_at", sortKey: "created_at", render: (u) => formatDate(u.created_at), hideOnMobile: true },
@@ -292,6 +314,7 @@ export default function UserListPage() {
           emptyTitle="No users match your filters"
           sort={sort}
           onSortChange={onSortChange}
+          rowClassName={(u) => (isDueOrOverdue(u) ? "bg-destructive/10 hover:bg-destructive/15" : undefined)}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}

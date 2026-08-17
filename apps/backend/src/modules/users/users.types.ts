@@ -42,6 +42,16 @@ export interface UserListItem extends UserProfile {
      * rider has no live booking at all.
      */
     payment_status: "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
+    /** bookings.plan_activated_at — when the current plan/rental period began. Null before pickup or with no live booking. */
+    plan_started_at: string | null;
+    /**
+     * bookings.next_due_at — the LAST usable day of the current billing
+     * period (also the next renewal/due date). Null before pickup or with no
+     * live booking. A value <= today means the rider is due today or overdue,
+     * regardless of whether payment_status has been flipped to 'due' yet by
+     * the overdue-sweep cron (which only runs the day after).
+     */
+    next_due_at: string | null;
 }
 
 export interface UserDetail extends UserListItem {

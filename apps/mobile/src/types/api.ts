@@ -441,6 +441,10 @@ export interface ApiDeposit {
     held_at: string | null;
     refund_eligible_at: string | null;
     refunded_at: string | null;
+    forfeited_at: string | null;
+    refund_id: string | null;
+    /** Deposit minus non-disputed damage deductions — the deposit's own amount when not yet `held`. */
+    refundable_amount: number;
 }
 
 export type DamageStatus = 'recorded' | 'disputed' | 'resolved';

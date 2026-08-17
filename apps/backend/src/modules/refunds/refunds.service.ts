@@ -6,7 +6,7 @@ import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
-import { refundableAmountForBooking } from "../deposits/deposits.service";
+import { getDepositForBooking, refundableAmountForBooking } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
 import { ListRefundsFilters, RefundBookingSummary, RefundRow, RefundType } from "./refunds.types";
 
@@ -414,11 +414,57 @@ export async function getRefundById(id: string): Promise<RefundRow> {
     return toRefundRow(data as unknown as RawRefundRow);
 }
 
-/** Admin "Refund" action — creates (or reuses) the pending row, then drives it through the gateway synchronously. */
-export async function refundDeposit(depositId: string, actor: AuthContext): Promise<RefundRow> {
-    const refund = await initiateRefund(depositId, actor);
-    if (refund.status === "pending" || refund.status === "failed") {
-        return processRefund(refund.id, actor);
-    }
-    return refund;
+export interface RefundSettlementLine {
+    id: string;
+    description: string;
+    amount: number;
+    deposit_deduction: number;
+    outstanding_amount: number;
+    created_at: string;
+}
+
+export interface RefundSettlement {
+    refund: RefundRow;
+    depositAmount: number;
+    lines: RefundSettlementLine[];
+    totalDeduction: number;
+    netRefund: number;
+    /** Sum of every line's outstanding_amount — what's billed separately because deductions exceeded the deposit. */
+    additionalAmountDue: number;
+}
+
+/**
+ * Full breakdown for the admin approval screen — deposit amount, every
+ * non-disputed damage line with its own reason/amount, and the computed
+ * totals, so "Approve & Process Refund" is never a blind click. Deposit
+ * Refund & Damage Deduction Phase 1.
+ */
+export async function getRefundSettlement(refundId: string): Promise<RefundSettlement> {
+    const refund = await getRefundById(refundId);
+    const deposit = await getDepositForBooking(refund.booking_id);
+
+    const { data, error } = await supabaseAdmin
+        .from("damages")
+        .select("id, description, amount, deposit_deduction, outstanding_amount, created_at")
+        .eq("booking_id", refund.booking_id)
+        .neq("status", "disputed");
+    if (error) throw error;
+
+    const lines = (data ?? []).map((row) => ({
+        id: row.id as string,
+        description: row.description as string,
+        amount: Number(row.amount),
+        deposit_deduction: Number(row.deposit_deduction),
+        outstanding_amount: Number(row.outstanding_amount),
+        created_at: row.created_at as string,
+    }));
+
+    return {
+        refund,
+        depositAmount: deposit.amount,
+        lines,
+        totalDeduction: round2(lines.reduce((sum, l) => sum + l.deposit_deduction, 0)),
+        netRefund: refund.amount,
+        additionalAmountDue: round2(lines.reduce((sum, l) => sum + l.outstanding_amount, 0)),
+    };
 }

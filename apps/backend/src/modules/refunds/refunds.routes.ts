@@ -13,6 +13,7 @@ router.use(requireAuth, requireModule("refunds"));
 router.get("/", validate({ query: v.listRefundsQuery }), asyncHandler(c.listRefundsHandler));
 router.post("/", validate({ body: v.initiateRefundBody }), asyncHandler(c.createRefundHandler));
 router.get("/:id", validate({ params: v.refundIdParam }), asyncHandler(c.getRefundHandler));
+router.get("/:id/settlement", validate({ params: v.refundIdParam }), asyncHandler(c.getRefundSettlementHandler));
 router.post("/:id/retry", validate({ params: v.refundIdParam }), asyncHandler(c.retryRefundHandler));
 
 export default router;

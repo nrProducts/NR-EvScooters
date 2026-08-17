@@ -5,6 +5,14 @@ export function useRefunds(filters: api.RefundFilters) {
   return useQuery({ queryKey: ["refunds", filters], queryFn: () => api.fetchRefunds(filters) });
 }
 
+export function useRefundSettlement(id: string | undefined) {
+  return useQuery({
+    queryKey: ["refund-settlement", id],
+    queryFn: () => api.fetchRefundSettlement(id!),
+    enabled: !!id,
+  });
+}
+
 export function useCreateRefund() {
   const qc = useQueryClient();
   return useMutation({

@@ -4,7 +4,7 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { env } from "../../config/env";
 import { notifyUser } from "../notifications/notifications.service";
-import { recomputeDepositStatusForBooking } from "../deposits/deposits.service";
+import { getDepositForBookingOrNull, recomputeDepositStatusForBooking } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
 import { createSignedDamagePhotoUrl } from "./damages.photo.storage";
 import { DamageRow, DisputeDamageInput, ListDamagesFilters, RecordDamageInput, ResolveDisputeInput } from "./damages.types";
@@ -114,13 +114,24 @@ export async function recordDamage(
 ): Promise<DamageRow> {
     const { data: rental, error: rentalError } = await supabaseAdmin
         .from("rentals")
-        .select("id, booking_id")
+        .select("id, booking_id, inspected_at")
         .eq("id", rentalId)
         .maybeSingle();
     if (rentalError) throw rentalError;
     if (!rental) throw notFound("Rental not found.");
     if (!rental.booking_id) {
         throw businessRule("This rental has no booking/deposit on file — damage can't be settled against a deposit here.");
+    }
+
+    // A damage-bearing inspection stamps the rental automatically — the
+    // return-review flow (rentals.service.ts's assertInspected) only asks
+    // staff to explicitly confirm a CLEAN inspection; recording actual damage
+    // already proves one happened.
+    if (!rental.inspected_at) {
+        await supabaseAdmin
+            .from("rentals")
+            .update({ inspected_at: new Date().toISOString(), inspected_by: actor.id })
+            .eq("id", rentalId);
     }
 
     const { userId, depositAmount } = await requireBookingAndDeposit(rental.booking_id);
@@ -242,6 +253,16 @@ export async function disputeDamage(id: string, input: DisputeDamageInput, actor
 export async function resolveDispute(id: string, input: ResolveDisputeInput, actor: AuthContext): Promise<DamageRow> {
     const damage = await requireDamage(id);
     if (damage.status !== "disputed") throw conflict("This damage record has no open dispute.");
+
+    // Business rule: never modify a settlement that's already paid out —
+    // record a fresh damage as an adjustment instead (recordDamage remains
+    // open; only editing a dispute after the fact is blocked here).
+    const existingDeposit = await getDepositForBookingOrNull(damage.booking_id);
+    if (existingDeposit?.status === "refunded" || existingDeposit?.status === "partially_refunded") {
+        throw businessRule(
+            "This booking's deposit has already been refunded — record a new damage as an adjustment instead of editing this dispute.",
+        );
+    }
 
     const { userId, depositAmount } = await requireBookingAndDeposit(damage.booking_id);
     const finalAmount = input.resolved_amount ?? Number(damage.amount);

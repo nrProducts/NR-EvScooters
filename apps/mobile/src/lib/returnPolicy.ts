@@ -35,6 +35,34 @@ export function canReturnYet(nextDueAt: string | null, now: Date = new Date()): 
   return todayIso >= nextDueAt;
 }
 
+/** YYYY-MM-DD in local time, to compare against next_due_at (a date-only column) the same way the rider reads it on screen. */
+function dateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Whether "Renew Plan"/"Recharge Now" should be offered before the current
+ * period is actually over — next_due_at is the LAST usable day of the
+ * period, so this opens the window a day early (today OR tomorrow) rather
+ * than waiting for the overdue-sweep to lock the scooter first. Mirrors
+ * canRechargeEarly in billing.tsx (single source of truth, both screens
+ * import this rather than keeping their own copy) and requestEarlyRecharge's
+ * gate in apps/backend/src/modules/bookings/bookings.service.ts.
+ */
+export function canRenewEarly(
+  planStatus: 'active' | 'due' | 'paused' | null,
+  nextDueAt: string | null,
+  now: Date = new Date(),
+): boolean {
+  if (planStatus !== 'active' || !nextDueAt) return false;
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return nextDueAt <= dateStr(tomorrow);
+}
+
 /** Safety cap so an abandoned rental can't show an absurd running total. */
 export const MAX_LATE_PENALTY_DAYS = 30;
 
