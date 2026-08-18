@@ -29,6 +29,8 @@ export const pickupQueueQuery = z.object({
         .optional(),
     /** Further narrows a 'fulfilled' view into Active/Due/Paused. Ignored for any other status. */
     planStatus: z.enum(["active", "due", "paused"]).optional(),
+    /** Rental Operations' "Scheduled Renewals" tab — fulfilled bookings that have paid ahead. */
+    renewalStatus: z.enum(["scheduled"]).optional(),
     /** Rental Operations' "Return Requests" tab — only bookings whose active rental has a pending return. */
     returnRequested: z.coerce.boolean().optional(),
     /** "Awaiting Assignment" summary count — confirmed bookings with no vehicle allocated yet. */
@@ -51,6 +53,12 @@ export const confirmPickupBody = z.object({
 export const rejectBookingBody = z.object({
     reason: z.string().trim().min(3, "Give a reason of at least 3 characters.").max(500),
 });
+
+/** null clears the override, reverting this booking to the global plan_renewal_settings amount. */
+export const lateFeeOverrideBody = z.object({
+    late_fee_override: z.number().min(0).max(100000).nullable(),
+});
+export type LateFeeOverrideBody = z.infer<typeof lateFeeOverrideBody>;
 
 /** Reason is optional here — unlike a staff reject, a rider owes no explanation. */
 export const cancelBookingBody = z.object({

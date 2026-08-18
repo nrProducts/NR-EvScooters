@@ -9,7 +9,10 @@ import {
     ListNotificationsFilters, NotificationRow, NotifyInput,
 } from "./notifications.types";
 
-const ROW_COLUMNS = "id, user_id, channel, template, payload, status, sent_at, read_at, created_at";
+const ROW_COLUMNS = `
+    id, user_id, channel, template, payload, status, sent_at, read_at, created_at,
+    notification_type, reference_type, reference_id, booking_id, vehicle_id, rider_id
+`;
 const ADMIN_ROW_COLUMNS = `${ROW_COLUMNS}, users(id, full_name)`;
 
 function unwrap<T>(raw: unknown): T | null {
@@ -18,35 +21,16 @@ function unwrap<T>(raw: unknown): T | null {
 }
 
 /**
- * The one function every module calls to notify a rider. Persists first —
- * the log row is the source of truth — then best-effort attempts push
- * delivery. Never throws: a notification failure must not roll back the
- * business action that triggered it (same contract as writeAudit).
+ * Given an already-inserted notifications_log row, best-effort attempts push
+ * delivery and updates its status. Split out of notifyUser so notify()
+ * (notify.service.ts) can reuse the exact same delivery logic for
+ * admin/staff-scoped rows instead of a second, diverging copy. Never throws
+ * — same contract as writeAudit; a delivery failure must not roll back the
+ * business action that triggered it.
  */
-export async function notifyUser(userId: string, input: NotifyInput): Promise<void> {
-    const payload = { title: input.title, body: input.body, screen: input.screen };
-
-    const { data: row, error: insertError } = await supabaseAdmin
-        .from("notifications_log")
-        .insert({
-            user_id: userId,
-            channel: "push",
-            template: input.template,
-            payload,
-            status: "pending",
-        })
-        .select("id")
-        .single();
-
-    if (insertError || !row) {
-        console.error("[notifications] failed to record notification", {
-            userId,
-            template: input.template,
-            error: insertError?.message,
-        });
-        return;
-    }
-
+export async function deliverPush(
+    rowId: string, userId: string, input: Pick<NotifyInput, "title" | "body" | "screen" | "template">,
+): Promise<void> {
     const { data: user, error: userError } = await supabaseAdmin
         .from("users")
         .select("push_token")
@@ -60,15 +44,55 @@ export async function notifyUser(userId: string, input: NotifyInput): Promise<vo
         await supabaseAdmin
             .from("notifications_log")
             .update({ status: "sent", sent_at: new Date().toISOString() })
-            .eq("id", row.id);
+            .eq("id", rowId);
     } catch (err) {
         console.error("[notifications] push delivery failed", {
             userId,
             template: input.template,
             error: err instanceof Error ? err.message : err,
         });
-        await supabaseAdmin.from("notifications_log").update({ status: "failed" }).eq("id", row.id);
+        await supabaseAdmin.from("notifications_log").update({ status: "failed" }).eq("id", rowId);
     }
+}
+
+/**
+ * The one function every module calls to notify a rider. Persists first —
+ * the log row is the source of truth — then best-effort attempts push
+ * delivery via deliverPush. Never throws: a notification failure must not
+ * roll back the business action that triggered it (same contract as
+ * writeAudit).
+ */
+export async function notifyUser(userId: string, input: NotifyInput): Promise<void> {
+    const payload = { title: input.title, body: input.body, screen: input.screen };
+
+    const { data: row, error: insertError } = await supabaseAdmin
+        .from("notifications_log")
+        .insert({
+            user_id: userId,
+            channel: "push",
+            template: input.template,
+            payload,
+            status: "pending",
+            notification_type: input.notification_type ?? null,
+            reference_type: input.reference_type ?? null,
+            reference_id: input.reference_id ?? null,
+            booking_id: input.booking_id ?? null,
+            vehicle_id: input.vehicle_id ?? null,
+            rider_id: input.rider_id ?? null,
+        })
+        .select("id")
+        .single();
+
+    if (insertError || !row) {
+        console.error("[notifications] failed to record notification", {
+            userId,
+            template: input.template,
+            error: insertError?.message,
+        });
+        return;
+    }
+
+    await deliverPush(row.id, userId, input);
 }
 
 export async function listMyNotifications(
@@ -79,6 +103,9 @@ export async function listMyNotifications(
     const { data, error, count } = await supabaseAdmin
         .from("notifications_log")
         .select(ROW_COLUMNS, { count: "exact" })
+        // channel='email' rows are delivery-status tracking only (see
+        // notify.service.ts's two-row design) — never surfaced in an inbox.
+        .eq("channel", "push")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .range(from, to);
@@ -91,6 +118,7 @@ export async function unreadCount(userId: string): Promise<{ count: number }> {
     const { count, error } = await supabaseAdmin
         .from("notifications_log")
         .select("id", { count: "exact", head: true })
+        .eq("channel", "push")
         .eq("user_id", userId)
         .is("read_at", null);
 

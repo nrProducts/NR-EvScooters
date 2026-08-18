@@ -25,3 +25,12 @@ export function useConfirmPickup() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pickup-queue"] }),
   });
 }
+
+export function useSetLateFeeOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bookingId, lateFeeOverride }: { bookingId: string; lateFeeOverride: number | null }) =>
+      api.setLateFeeOverride(bookingId, lateFeeOverride),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pickup-queue"] }),
+  });
+}

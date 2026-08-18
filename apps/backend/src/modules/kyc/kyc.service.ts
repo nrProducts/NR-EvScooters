@@ -10,7 +10,8 @@ import {
 import { kycCompletionPercent } from "../users/users.service";
 import { hasGrantedConsent } from "../consent/consent.service";
 import { assertValidDocNumber, last4 } from "./kyc.docnumber";
-import { notifyAdmins, notifyUser } from "../notifications/notifications.service";
+import { notifyUser } from "../notifications/notifications.service";
+import { notify } from "../notifications/notify.service";
 import {
     assertValidFile, buildStoragePath, createSignedUrl, pathBelongsToUser,
     removeKycFiles, UploadedFile, uploadKycFile,
@@ -396,12 +397,15 @@ export async function submitKyc(userId: string, actor: AuthContext, req?: Reques
         req,
     });
 
-    const { data: rider } = await supabaseAdmin.from("users").select("full_name").eq("id", userId).maybeSingle();
-    await notifyAdmins({
+    await notify({
+        notificationType: "kyc",
+        referenceType: "user",
+        referenceId: userId,
         template: "kyc_review_needed",
         title: "KYC Review Needed",
-        body: rider?.full_name ? `${rider.full_name} submitted documents for review.` : "A rider submitted documents for review.",
-        screen: "kyc",
+        bodyFallback: "{rider} submitted documents for review.",
+        screen: "/kyc",
+        riderId: userId,
     });
 
     // kyc_status is maintained by trg_sync_user_kyc_status, so re-read rather

@@ -15,7 +15,7 @@ export type AuditAction =
     | "booking.cancelled" | "booking.payment_completed"
     | "vehicle.created" | "vehicle.updated" | "vehicle.scrapped" | "vehicle.assigned"
     | "maintenance.created" | "maintenance.updated" | "maintenance.outcome_set"
-    | "notification.broadcast"
+    | "notification.broadcast" | "notification_setting.updated"
     | "invoice.refunded"
     | "rental.completed" | "rental.moved_to_maintenance" | "rental.return_requested" | "rental.return_rejected"
     | "referral.redeemed" | "referral.qualified"
@@ -23,7 +23,10 @@ export type AuditAction =
     | "deposit.held" | "deposit.refund_initiated" | "deposit.refunded" | "deposit.forfeited"
     | "damage.created" | "damage.disputed" | "damage.resolved"
     | "refund.initiated" | "refund.processed" | "refund.failed"
-    | "plan.activated" | "plan.paused" | "plan.resumed" | "plan.due" | "plan.updated"
+    | "plan.activated" | "plan.paused" | "plan.resumed" | "plan.due" | "plan.updated" | "plan.renewed"
+    | "plan_renewal_settings.updated"
+    // Return & Settlement Overhaul — see 20260820100000_return_settlements.sql.
+    | "settlement.created" | "settlement.refund_issued" | "settlement.due_created" | "settlement.completed"
     | "battery_station.created" | "battery_station.updated" | "battery_station.shown"
     | "battery_station.hidden" | "battery_station.soft_deleted"
     // Billing & Charges engine — see 20260817100000_billing_charge_engine.sql
@@ -51,7 +54,8 @@ export interface AuditEntry {
         | "notification_broadcast" | "invoice" | "rental" | "referral" | "battery_station"
         | "payment_order" | "payment_transaction" | "webhook_event" | "deposit" | "damage" | "refund" | "plan"
         | "consent_record" | "consent_notice" | "privacy_request" | "retention_run"
-        | "charge_rule" | "rider_charge" | "discount_rule" | "rider_discount";
+        | "charge_rule" | "rider_charge" | "discount_rule" | "rider_discount"
+        | "notification_setting" | "plan_renewal_settings" | "settlement";
     entityId: string;
     before?: Record<string, unknown> | null;
     after?: Record<string, unknown> | null;

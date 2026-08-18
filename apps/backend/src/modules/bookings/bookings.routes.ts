@@ -94,4 +94,13 @@ router.post(
     asyncHandler(c.adminCancelBookingHandler),
 );
 
+// Admin per-rider override for the late renewal fee — wins over the global
+// plan_renewal_settings amount whenever this booking's renewal is late.
+router.patch(
+    "/:id/late-fee-override",
+    requireAction("bookings", "edit"),
+    validate({ params: v.bookingIdParam, body: v.lateFeeOverrideBody }),
+    asyncHandler(c.setLateFeeOverrideHandler),
+);
+
 export default router;

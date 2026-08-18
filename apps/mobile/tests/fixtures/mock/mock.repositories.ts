@@ -5,7 +5,7 @@ import { planExpiryFor, returnDeadlineFor } from '../../../src/lib/returnPolicy'
 import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
     ApiAvailability, ApiBooking, ApiDocument, ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiReferralSummary, ApiRental, ApiSignedUrl,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl,
     ApiStation, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, BookingRefundStatus, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
     KycStatus, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
@@ -832,6 +832,9 @@ function toApiRental(row: MockRentalRow): ApiRental {
         // means the return-gate fails open, same as a real rental with no plan.
         plan_status: null,
         next_due_at: null,
+        current_period_start: null,
+        renewal_status: null,
+        scheduled_start_date: null,
         return_requested_at: row.return_requested_at ?? null,
         return_reason: row.return_reason ?? null,
         return_feedback: row.return_feedback ?? null,
@@ -1085,6 +1088,13 @@ export class MockRentalRepository implements RentalRepository {
         audit('rental.return_requested', actor.id, { return_reason: payload.reason, rating: payload.rating });
 
         return toApiRental(row);
+    }
+
+    // Mock mode doesn't simulate the return-settlement flow — no return in
+    // this fixture set is ever approved with a computed settlement.
+    async settlement(): Promise<ApiReturnSettlement | null> {
+        await delay(100);
+        return null;
     }
 }
 

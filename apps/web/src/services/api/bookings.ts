@@ -7,6 +7,8 @@ export interface PickupQueueFilters {
   status?: BookingStatus;
   /** Further narrows a 'fulfilled' view into Active/Due/Paused. Ignored for any other status. */
   planStatus?: BookingPlanStatus;
+  /** Rental Operations' "Scheduled Renewals" tab — fulfilled bookings that have paid ahead and are waiting to activate. */
+  renewalStatus?: "scheduled";
   /** Rental Operations' "Return Requests" tab — only bookings whose active rental has a pending return. */
   returnRequested?: boolean;
   /** "Awaiting Assignment" summary count — confirmed bookings with no vehicle allocated yet. */
@@ -22,7 +24,7 @@ export interface PickupQueueFilters {
 /** GET /bookings — requireStaff. Omit status/planStatus for the "All" tab; pass either for any other stage. */
 export async function fetchBookings(filters: PickupQueueFilters = {}): Promise<PaginatedResult<PickupBooking>> {
   const {
-    stationId, status, planStatus, returnRequested, unassigned, search,
+    stationId, status, planStatus, renewalStatus, returnRequested, unassigned, search,
     page = 1, pageSize = 8, sortBy, sortDir,
   } = filters;
   const res = await apiClient.get<BackendPaginated<PickupBooking>>("/bookings", {
@@ -31,6 +33,7 @@ export async function fetchBookings(filters: PickupQueueFilters = {}): Promise<P
     stationId,
     status,
     planStatus,
+    renewalStatus,
     returnRequested,
     unassigned,
     search,
@@ -38,6 +41,11 @@ export async function fetchBookings(filters: PickupQueueFilters = {}): Promise<P
     sortDir,
   });
   return toPaginatedResult(res);
+}
+
+/** PATCH /bookings/:id/late-fee-override — requireStaff (edit action). Pass null to clear the override and fall back to the global setting. */
+export async function setLateFeeOverride(bookingId: string, lateFeeOverride: number | null): Promise<void> {
+  await apiClient.patch(`/bookings/${bookingId}/late-fee-override`, { late_fee_override: lateFeeOverride });
 }
 
 /** GET /bookings/:id/available-vehicles — vehicles free to hand over at this booking's station, for manual override. */

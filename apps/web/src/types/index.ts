@@ -26,12 +26,12 @@ export type ModuleKey =
   | "vehicles" | "users" | "kyc" | "bookings" | "maintenance" | "support"
   | "payments" | "notifications" | "damages" | "refunds" | "privacy"
   | "plans" | "reconciliation" | "pii_access_log" | "audit" | "settings"
-  | "dashboard" | "battery_stations" | "billing";
+  | "dashboard" | "battery_stations" | "billing" | "returns";
 export const MODULE_KEYS: readonly ModuleKey[] = [
   "vehicles", "users", "kyc", "bookings", "maintenance", "support",
   "payments", "notifications", "damages", "refunds", "privacy",
   "plans", "reconciliation", "pii_access_log", "audit", "settings",
-  "dashboard", "battery_stations", "billing",
+  "dashboard", "battery_stations", "billing", "returns",
 ];
 
 /** Human-readable labels for the module-permission checkboxes in Settings. */
@@ -55,6 +55,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   dashboard: "Dashboard",
   battery_stations: "Battery Stations",
   billing: "Billing & Charges",
+  returns: "Returns",
 };
 
 /**
@@ -173,6 +174,10 @@ export const MODULE_ACTIONS: Record<ModuleKey, readonly ModuleActionDef[]> = {
     { key: "view", label: "View", available: true },
     { key: "create", label: "Create Charge Rule", available: true },
     { key: "edit", label: "Edit Charge Rule / Waive Charge", available: true },
+  ],
+  returns: [
+    { key: "view", label: "View", available: true },
+    { key: "approve", label: "Approve Return / Settlement", available: true },
   ],
 };
 
@@ -413,6 +418,11 @@ export interface PickupBooking {
   /** Recurring-billing state — set once the booking reaches 'fulfilled', null before and after (see BookingStatus). */
   plan_status: BookingPlanStatus | null;
   next_due_at: string | null;
+  /** 'scheduled' once an on-time/early renewal has been paid but not yet activated. */
+  renewal_status: "none" | "scheduled";
+  scheduled_start_date: string | null;
+  /** Admin-set per-booking override for the late renewal fee — wins over the global plan_renewal_settings amount. */
+  late_fee_override: number | null;
   active_rental: PickupBookingActiveRental | null;
   /** Live estimate of the late-return fee if this booking's pending return were approved right now. Null unless one is pending. */
   return_late_fee_preview: { days_late: number; penalty_amount: number; fee_per_day: number } | null;
@@ -596,6 +606,61 @@ export interface BroadcastResult {
 }
 
 // ---------------------------------------------------------------------------
+// Notification Manager — mirrors apps/backend/src/modules/notification-settings
+// and notifications/notify.service.ts's NotifyContext.
+// ---------------------------------------------------------------------------
+
+export type NotificationType =
+  "booking" | "kyc" | "return" | "cancellation" | "refund" | "damage" | "maintenance";
+
+export const NOTIFICATION_TYPES: readonly NotificationType[] =
+  ["booking", "kyc", "return", "cancellation", "refund", "damage", "maintenance"] as const;
+
+export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
+  booking: "Vehicle Booking",
+  kyc: "KYC Verification",
+  return: "Vehicle Return",
+  cancellation: "Cancellation",
+  refund: "Refund",
+  damage: "Damage Report",
+  maintenance: "Maintenance",
+};
+
+export interface NotificationRecipient {
+  user_id: string;
+  full_name: string;
+}
+
+export interface NotificationSetting {
+  id: string;
+  notification_type: NotificationType;
+  enabled: boolean;
+  send_email: boolean;
+  send_in_app: boolean;
+  recipients: NotificationRecipient[];
+  updated_at: string | null;
+}
+
+/** A row in the personal (rider/staff/admin) notification inbox — GET /users/me/notifications. */
+export interface MyNotification {
+  id: string;
+  user_id: string;
+  channel: NotificationChannel;
+  template: string;
+  payload: { title: string; body: string; screen?: string } | null;
+  status: NotificationDeliveryStatus;
+  sent_at: string | null;
+  read_at: string | null;
+  created_at: string;
+  notification_type: NotificationType | null;
+  reference_type: string | null;
+  reference_id: string | null;
+  booking_id: string | null;
+  vehicle_id: string | null;
+  rider_id: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Invoices / payments (admin) — mirrors apps/backend/src/modules/invoices/invoices.types.ts
 // ---------------------------------------------------------------------------
 
@@ -710,7 +775,7 @@ export interface Damage {
 // ---------------------------------------------------------------------------
 
 export type RefundStatus = "pending" | "processing" | "success" | "failed";
-export type RefundType = "deposit" | "booking_cancellation";
+export type RefundType = "deposit" | "booking_cancellation" | "return_settlement";
 
 /** Only populated for refund_type='booking_cancellation'. */
 export interface RefundBookingSummary {
@@ -741,6 +806,50 @@ export interface Refund {
   processed_at: string | null;
   created_at: string;
   booking: RefundBookingSummary | null;
+}
+
+// ---------------------------------------------------------------------------
+// Return & Settlement (admin) — mirrors apps/backend/src/modules/returns/returns.types.ts
+// ---------------------------------------------------------------------------
+
+export type ReturnSettlementStatus =
+  | "pending_refund" | "refund_processing" | "refund_completed"
+  | "no_refund_required" | "amount_due" | "settlement_completed";
+
+export interface OtherCharge {
+  label: string;
+  amount: number;
+}
+
+export interface ReturnSettlement {
+  id: string;
+  rental_id: string;
+  booking_id: string;
+  user_id: string;
+  vehicle_id: string;
+  deposit_amount: number;
+  late_fee_amount: number;
+  damage_fee_amount: number;
+  other_charges: OtherCharge[];
+  other_charges_amount: number;
+  total_charges: number;
+  net_settlement: number;
+  refund_amount: number;
+  due_amount: number;
+  status: ReturnSettlementStatus;
+  refund_id: string | null;
+  due_invoice_id: string | null;
+  processed_by: { id: string; full_name: string } | null;
+  created_at: string;
+  processed_at: string | null;
+}
+
+export interface ReturnDetail {
+  rental: AdminRental;
+  deposit: Deposit | null;
+  damages: Damage[];
+  latePreview: { daysLate: number; penaltyAmount: number; feePerDay: number };
+  settlement: ReturnSettlement | null;
 }
 
 // ---------------------------------------------------------------------------

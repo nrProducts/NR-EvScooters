@@ -25,6 +25,9 @@ import reconciliationRoutes from "../modules/reconciliation/reconciliation.route
 import { consentRouter, riderConsentRouter } from "../modules/consent/consent.routes";
 import geocodeRoutes from "../modules/geocode/geocode.routes";
 import { adminPrivacyRouter, riderPrivacyRouter } from "../modules/privacy/privacy.routes";
+import notificationSettingsRoutes from "../modules/notification-settings/notification-settings.routes";
+import planRenewalSettingsRoutes from "../modules/plan-renewal-settings/plan-renewal-settings.routes";
+import returnsRoutes from "../modules/returns/returns.routes";
 
 const router = Router();
 
@@ -73,6 +76,9 @@ router.use("/damages", damagesRoutes);
 router.use("/deposits/me", riderDepositsRouter);
 router.use("/deposits", adminDepositsRouter);
 router.use("/refunds", refundsRoutes);
+router.use("/notification-settings", notificationSettingsRoutes);
+router.use("/plan-renewal-settings", planRenewalSettingsRoutes);
+router.use("/returns", returnsRoutes);
 router.use("/billing", billingRoutes);
 router.use("/reconciliation", reconciliationRoutes);
 

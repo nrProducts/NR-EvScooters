@@ -381,6 +381,7 @@ export interface VerifyPaymentPayload {
 // ---------------------------------------------------------------------------
 
 export type PlanStatus = 'active' | 'due' | 'paused';
+export type RenewalStatus = 'none' | 'scheduled';
 
 export interface ApiBookingWithPlan extends ApiBooking {
     plan_status: PlanStatus | null;
@@ -391,6 +392,10 @@ export interface ApiBookingWithPlan extends ApiBooking {
     next_due_at: string | null;
     plan_paused_at: string | null;
     plan_paused_days_total: number;
+    /** 'scheduled' once an on-time/early renewal has been paid but not yet activated — see returnPolicy.ts's getRenewalEligibility. */
+    renewal_status: RenewalStatus;
+    scheduled_start_date: string | null;
+    scheduled_duration_days: number | null;
 }
 
 export type InvoicePaymentType = 'rental' | 'deposit' | 'damage' | 'penalty' | 'refund' | 'other';
@@ -429,6 +434,13 @@ export interface ApiEarlyRecharge {
     amountDue: number;
     dueDate: string;
     items: ApiEarlyRechargeLineItem[];
+    /** True once next_due_at has already passed — lateFee applies and paying activates the new period immediately. */
+    isLate: boolean;
+    lateFee: number;
+    /** amountDue + lateFee — what actually gets charged. */
+    total: number;
+    /** When the renewed period will actually start: today if late, next_due_at (unchanged) if on-time/early. */
+    scheduledStartDate: string;
 }
 
 export type DepositStatus = 'pending' | 'held' | 'partially_refunded' | 'refunded' | 'forfeited';
@@ -506,6 +518,10 @@ export interface ApiRental {
     // rental with no plan.
     plan_status: PlanStatus | null;
     next_due_at: string | null;
+    current_period_start: string | null;
+    /** 'scheduled' once an on-time/early renewal has been paid but not yet activated. */
+    renewal_status: RenewalStatus | null;
+    scheduled_start_date: string | null;
 
     // --- post-pickup return request (null until the rider asks to return) ---
     // The rental stays 'active' while a return is pending; only staff
@@ -517,6 +533,40 @@ export interface ApiRental {
     days_late: number | null;
     late_penalty_amount: number | null;
     late_fee_per_day: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Return & Settlement — mirrors apps/backend/src/modules/returns/returns.types.ts
+// ---------------------------------------------------------------------------
+
+export type ReturnSettlementStatus =
+    | 'pending_refund' | 'refund_processing' | 'refund_completed'
+    | 'no_refund_required' | 'amount_due' | 'settlement_completed';
+
+export interface ApiOtherCharge {
+    label: string;
+    amount: number;
+}
+
+export interface ApiReturnSettlement {
+    id: string;
+    rental_id: string;
+    booking_id: string;
+    vehicle_id: string;
+    deposit_amount: number;
+    late_fee_amount: number;
+    damage_fee_amount: number;
+    other_charges: ApiOtherCharge[];
+    other_charges_amount: number;
+    total_charges: number;
+    net_settlement: number;
+    refund_amount: number;
+    due_amount: number;
+    status: ReturnSettlementStatus;
+    refund_id: string | null;
+    due_invoice_id: string | null;
+    created_at: string;
+    processed_at: string | null;
 }
 
 export interface ReturnRequestPayload {

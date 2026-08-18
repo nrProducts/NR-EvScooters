@@ -43,24 +43,36 @@ function dateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+export interface RenewalEligibility {
+  /** Whether "Renew Plan" should be offered at all right now. */
+  canRenew: boolean;
+  /** True once next_due_at has already passed — a late renewal fee applies and paying activates the new period immediately (server-computed; not estimated here). */
+  isLate: boolean;
+  /** True once an earlier renewal has already been paid and is waiting to activate — nothing more to do until then. */
+  alreadyScheduled: boolean;
+}
+
 /**
- * Whether "Renew Plan"/"Recharge Now" should be offered before the current
- * period is actually over — next_due_at is the LAST usable day of the
- * period, so this opens the window a day early (today OR tomorrow) rather
- * than waiting for the overdue-sweep to lock the scooter first. Mirrors
- * canRechargeEarly in billing.tsx (single source of truth, both screens
- * import this rather than keeping their own copy) and requestEarlyRecharge's
- * gate in apps/backend/src/modules/bookings/bookings.service.ts.
+ * Whether "Renew Plan" should be offered, any time before or after
+ * next_due_at (no more "day before" window — a rider can renew as early as
+ * they like, or late with a fee). Mirrors requestEarlyRecharge's gate in
+ * apps/backend/src/modules/bookings/bookings.service.ts: allowed whenever
+ * plan_status is 'active' or 'due' and no renewal is already scheduled.
+ * Single source of truth — my-scooter.tsx, billing.tsx and home.tsx all
+ * import this rather than keeping their own copy.
  */
-export function canRenewEarly(
+export function getRenewalEligibility(
   planStatus: 'active' | 'due' | 'paused' | null,
   nextDueAt: string | null,
+  renewalStatus: 'none' | 'scheduled' | null,
   now: Date = new Date(),
-): boolean {
-  if (planStatus !== 'active' || !nextDueAt) return false;
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return nextDueAt <= dateStr(tomorrow);
+): RenewalEligibility {
+  const alreadyScheduled = renewalStatus === 'scheduled';
+  const canRenew = !alreadyScheduled
+    && (planStatus === 'active' || planStatus === 'due')
+    && !!nextDueAt;
+  const isLate = !!nextDueAt && dateStr(now) > nextDueAt;
+  return { canRenew, isLate, alreadyScheduled };
 }
 
 /** Safety cap so an abandoned rental can't show an absurd running total. */

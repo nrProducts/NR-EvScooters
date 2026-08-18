@@ -6,6 +6,7 @@ import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
+import { notify } from "../notifications/notify.service";
 import { getDepositForBooking, refundableAmountForBooking } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
 import { ListRefundsFilters, RefundBookingSummary, RefundRow, RefundType } from "./refunds.types";
@@ -141,6 +142,20 @@ export async function initiateRefund(depositId: string, actor: AuthContext | nul
         });
     }
 
+    await notify({
+        notificationType: "refund",
+        referenceType: "refund",
+        referenceId: refund.id,
+        template: "refund_needs_approval",
+        title: "Refund Needs Approval",
+        bodyFallback: `A ₹${amount} deposit refund for {rider} ({vehicle}) is awaiting approval.`,
+        screen: "/refunds",
+        bookingId: deposit.booking_id,
+        riderId: bookingUserId ?? undefined,
+        riderNameOverride: refund.booking?.rider_name ?? undefined,
+        vehicleNameOverride: refund.booking?.vehicle_model_name ?? undefined,
+    });
+
     return refund;
 }
 
@@ -177,6 +192,21 @@ export async function initiateCancellationRefund(
     await writeAudit({
         actorId: actor?.id ?? null, targetUserId: null, action: "refund.initiated",
         entityType: "refund", entityId: refund.id, after: { booking_id: bookingId, amount, refund_type: "booking_cancellation" },
+    });
+
+    const bookingUserId = await getBookingUserId(bookingId);
+    await notify({
+        notificationType: "refund",
+        referenceType: "refund",
+        referenceId: refund.id,
+        template: "refund_needs_approval",
+        title: "Refund Needs Approval",
+        bodyFallback: `A ₹${amount} cancellation refund for {rider} ({vehicle}) is awaiting approval.`,
+        screen: "/refunds",
+        bookingId,
+        riderId: bookingUserId ?? undefined,
+        riderNameOverride: refund.booking?.rider_name ?? undefined,
+        vehicleNameOverride: refund.booking?.vehicle_model_name ?? undefined,
     });
 
     return refund;

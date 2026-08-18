@@ -92,6 +92,10 @@ describe("toBookingView", () => {
             next_due_at: null,
             plan_paused_at: null,
             plan_paused_days_total: 0,
+            renewal_status: "none",
+            scheduled_start_date: null,
+            scheduled_duration_days: null,
+            late_fee_override: null,
             active_rental: null,
             return_late_fee_preview: null,
         });

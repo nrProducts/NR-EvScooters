@@ -46,12 +46,14 @@ export type ModuleKey =
     | "dashboard" | "battery_stations"
     // Configurable Billing & Charges engine (charge rules, materialized
     // rider charges, waivers) — see 20260817100000_billing_charge_engine.sql.
-    | "billing";
+    | "billing"
+    // Return review + settlement — see 20260820100000_return_settlements.sql.
+    | "returns";
 export const MODULE_KEYS: readonly ModuleKey[] = [
     "vehicles", "users", "kyc", "bookings", "maintenance", "support",
     "payments", "notifications", "damages", "refunds", "privacy",
     "plans", "reconciliation", "pii_access_log", "audit", "settings",
-    "dashboard", "battery_stations", "billing",
+    "dashboard", "battery_stations", "billing", "returns",
 ] as const;
 
 export interface ModuleActionDef {
@@ -181,6 +183,10 @@ export const MODULE_ACTIONS: Record<ModuleKey, readonly ModuleActionDef[]> = {
         { key: "create", label: "Create Charge Rule", available: true },
         { key: "edit", label: "Edit Charge Rule / Waive Charge", available: true },
     ],
+    returns: [
+        { key: "view", label: "View", available: true },
+        { key: "approve", label: "Approve Return / Settlement", available: true },
+    ],
 };
 
 /** Every valid `{module, action}` pair — the update-permissions validator's source of truth. */
@@ -222,6 +228,12 @@ export const NOTIFICATION_CHANNELS: readonly NotificationChannel[] = ["sms", "pu
 
 export type NotificationStatus = "sent" | "failed" | "pending";
 export const NOTIFICATION_STATUSES: readonly NotificationStatus[] = ["sent", "failed", "pending"] as const;
+
+/** The 7 admin/staff-configurable event categories — see notification_settings. */
+export type NotificationType =
+    "booking" | "kyc" | "return" | "cancellation" | "refund" | "damage" | "maintenance";
+export const NOTIFICATION_TYPES: readonly NotificationType[] =
+    ["booking", "kyc", "return", "cancellation", "refund", "damage", "maintenance"] as const;
 
 export interface Paginated<T> {
     data: T[];

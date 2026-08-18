@@ -3,6 +3,7 @@ import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
+import { notify } from "../notifications/notify.service";
 import { pausePlanForBooking } from "../plans/plans.service";
 import { getDepositForBookingOrNull, setDepositRefundEligible } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
@@ -38,7 +39,7 @@ const RENTAL_COLUMNS = `
     ${PLAN_PERIOD_COLUMNS},
     vehicles(id, name, registration_number, battery_percentage, next_service_due_date),
     bookings!rentals_booking_id_fkey(
-        plan_status, next_due_at,
+        plan_status, next_due_at, current_period_start, renewal_status, scheduled_start_date,
         plans(id, name, billing_cycle, price),
         stations(id, name, code)
     )
@@ -211,6 +212,9 @@ function toRentalView(row: RawRentalRow): RentalView {
     const booking = unwrap<{
         plans: unknown; stations: unknown;
         plan_status: RentalView["plan_status"]; next_due_at: string | null;
+        current_period_start: string | null;
+        renewal_status: RentalView["renewal_status"];
+        scheduled_start_date: string | null;
     }>(row.bookings);
     const vehicle = unwrap<NonNullable<RentalView["vehicle"]>>(row.vehicles);
     return {
@@ -230,6 +234,9 @@ function toRentalView(row: RawRentalRow): RentalView {
         station: booking ? unwrap(booking.stations) : null,
         plan_status: booking?.plan_status ?? null,
         next_due_at: booking?.next_due_at ?? null,
+        current_period_start: booking?.current_period_start ?? null,
+        renewal_status: booking?.renewal_status ?? null,
+        scheduled_start_date: booking?.scheduled_start_date ?? null,
         ...toReturnView(row),
         ...toPlanPeriodView(row),
     };
@@ -310,7 +317,7 @@ export async function requestReturn(
 ): Promise<RentalView> {
     const { data: existing, error: fetchError } = await supabaseAdmin
         .from("rentals")
-        .select("id, user_id, status, return_requested_at, expires_at, bookings!rentals_booking_id_fkey(next_due_at)")
+        .select("id, user_id, status, return_requested_at, expires_at, vehicle_id, booking_id, bookings!rentals_booking_id_fkey(next_due_at)")
         .eq("id", rentalId)
         .maybeSingle();
 
@@ -400,6 +407,19 @@ export async function requestReturn(
         title: "Return Requested",
         body: `Hand your scooter in by ${dueAt.toLocaleDateString()} 11:59 PM. Our team will confirm the handover. A late fee of ₹${LATE_RETURN_FEE_PER_DAY} per day applies after that.`,
         screen: "post-booking-dashboard",
+    });
+
+    await notify({
+        notificationType: "return",
+        referenceType: "rental",
+        referenceId: rentalId,
+        template: "rental_return_requested",
+        title: "Return Requested",
+        bodyFallback: "{rider} requested a return for {vehicle}.",
+        screen: "/bookings",
+        riderId: actor.id,
+        vehicleId: existing.vehicle_id ?? undefined,
+        bookingId: existing.booking_id ?? undefined,
     });
 
     return getMyCurrentRental(actor.id);
@@ -734,6 +754,22 @@ export async function moveRideToMaintenance(
             inspected_at: before.inspected_at ?? (input.inspected ? endedAt.toISOString() : null),
             inspected_by: before.inspected_at ? unwrap<{ id: string }>(before.inspected_by)?.id ?? null : (input.inspected ? actor.id : null),
         },
+    });
+
+    const vehicle = unwrap<{ name: string; registration_number: string }>(before.vehicles);
+    await notify({
+        notificationType: "maintenance",
+        referenceType: "vehicle_maintenance",
+        referenceId: ticket.id as string,
+        template: "maintenance_ticket_created",
+        title: "Maintenance Ticket Opened",
+        bodyFallback: "{vehicle} was moved to maintenance after a return.",
+        screen: "/maintenance",
+        riderId: riderId ?? undefined,
+        vehicleId: before.vehicle_id,
+        bookingId: before.booking_id ?? undefined,
+        vehicleNameOverride: vehicle ? `${vehicle.name} (${vehicle.registration_number})` : undefined,
+        excludeUserId: actor.id,
     });
 
     return getRentalById(id);

@@ -10,6 +10,7 @@ import * as damagesService from "../damages/damages.service";
 import { assertValidDamagePhoto, buildDamagePhotoPath, uploadDamagePhotoFile } from "../damages/damages.photo.storage";
 import { RecordDamageBody } from "../damages/damages.validation";
 import type { UploadedFile } from "../kyc/kyc.storage";
+import { getMySettlement } from "../returns/returns.service";
 
 export async function myCurrentRentalHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getMyCurrentRental(req.user!.id));
@@ -18,6 +19,10 @@ export async function myCurrentRentalHandler(req: AuthedRequest, res: Response) 
 export async function myRentalHistoryHandler(req: AuthedRequest, res: Response) {
     const page = validatedQuery<RentalHistoryQuery>(req);
     res.json(await service.getMyRentalHistory(req.user!.id, page));
+}
+
+export async function mySettlementHandler(req: AuthedRequest, res: Response) {
+    res.json(await getMySettlement(req.user!.id));
 }
 
 export async function requestReturnHandler(req: AuthedRequest, res: Response) {

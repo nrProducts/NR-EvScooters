@@ -62,6 +62,12 @@ export interface RentalView extends RentalReturnFields, RentalPlanPeriodFields {
      */
     plan_status: "active" | "due" | "paused" | null;
     next_due_at: string | null;
+    /** Start of the booking's current billing period (bookings.current_period_start) — paired with next_due_at to show the full current-plan window. */
+    current_period_start: string | null;
+    /** 'scheduled' once an on-time/early renewal has been paid but not yet activated. */
+    renewal_status: "none" | "scheduled" | null;
+    /** When the scheduled renewal will activate. Null unless renewal_status is 'scheduled'. */
+    scheduled_start_date: string | null;
 }
 
 export interface RequestReturnInput {

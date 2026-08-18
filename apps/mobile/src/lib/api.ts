@@ -12,7 +12,7 @@ import type {
     ApiInvoice, ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
     ApiExportResult, ApiNominee, ApiPrivacyRequest, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
-    ApiPaymentOrder, ApiReferralSummary, ApiRental, ApiSignedUrl, ApiStation, ApiSupportRequest,
+    ApiPaymentOrder, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
     ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
     ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
@@ -422,6 +422,8 @@ export const api = {
         request<Paginated<ApiRental>>('/rentals/me/history', {
             query: params as Record<string, string | number | boolean | undefined>,
         }),
+
+    myRentalSettlement: () => request<ApiReturnSettlement | null>('/rentals/me/settlement'),
 
     // --- maintenance ---------------------------------------------------
     maintenanceHistory: (params: MaintenanceHistoryParams = {}) =>

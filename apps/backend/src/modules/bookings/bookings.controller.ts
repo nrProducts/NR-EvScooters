@@ -3,8 +3,8 @@ import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import * as service from "./bookings.service";
 import {
-    BookingHistoryQuery, CancelBookingBody, ConfirmPickupBody, CreateBookingBody, PickupQueueQuery,
-    RejectBookingBody,
+    BookingHistoryQuery, CancelBookingBody, ConfirmPickupBody, CreateBookingBody, LateFeeOverrideBody,
+    PickupQueueQuery, RejectBookingBody,
 } from "./bookings.validation";
 
 export async function createBookingHandler(req: AuthedRequest, res: Response) {
@@ -33,6 +33,11 @@ export async function cancelMyBookingHandler(req: AuthedRequest, res: Response) 
 
 export async function requestEarlyRechargeHandler(req: AuthedRequest, res: Response) {
     res.json(await service.requestEarlyRecharge(req.params.id as string, req.user!));
+}
+
+export async function setLateFeeOverrideHandler(req: AuthedRequest, res: Response) {
+    const body = req.body as LateFeeOverrideBody;
+    res.json(await service.setLateFeeOverride(req.params.id as string, body.late_fee_override, req.user!));
 }
 
 export async function pickupQueueHandler(req: AuthedRequest, res: Response) {

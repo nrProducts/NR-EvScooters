@@ -1,7 +1,7 @@
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiReferralSummary,
-    ApiRental, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
+    ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, KycDocType,
     ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
     UpdateUserPayload, VerifyPaymentPayload,
@@ -128,6 +128,8 @@ export interface RentalRepository {
      * active until staff confirm the physical handover.
      */
     requestReturn(rentalId: string, payload: ReturnRequestPayload): Promise<ApiRental>;
+    /** The rider's most recent return settlement, or null if none exists. Powers the Home/My Scooter settlement card. */
+    settlement(): Promise<ApiReturnSettlement | null>;
 }
 
 export interface MaintenanceRepository {

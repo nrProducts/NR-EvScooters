@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, PlusCircle } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,7 @@ import {
   useCancelRiderDiscount, useChargeRules, useCreateChargeRule, useCreateDiscountRule, useDiscountRules,
   useRiderCharges, useRiderDiscounts, useUpdateChargeRule, useUpdateDiscountRule, useWaiveRiderCharge,
 } from "@/hooks/useBilling";
+import { usePlanRenewalSettings, useUpdatePlanRenewalSettings } from "@/hooks/usePlanRenewalSettings";
 import { useVehicles } from "@/hooks/useVehicles";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { ApiError } from "@/services/api/httpClient";
@@ -49,6 +50,8 @@ export default function BillingPage() {
         </p>
       </div>
 
+      <LateRenewalFeeCard />
+
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="rules">Charge Rules</TabsTrigger>
@@ -63,6 +66,83 @@ export default function BillingPage() {
       {tab === "discountRules" && <DiscountRulesTab />}
       {tab === "discounts" && <DiscountsTab />}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Late Renewal Fee — a single global setting (enable/disable + flat amount),
+// applied whenever a rider pays their weekly plan invoice after next_due_at
+// has already passed. Per-booking overrides are set from the Bookings list.
+// ---------------------------------------------------------------------------
+
+function LateRenewalFeeCard() {
+  const { data: settings, isLoading } = usePlanRenewalSettings();
+  const updateSettings = useUpdatePlanRenewalSettings();
+
+  const [enabled, setEnabled] = useState(false);
+  const [amount, setAmount] = useState("0");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!settings) return;
+    setEnabled(settings.late_fee_enabled);
+    setAmount(String(settings.late_fee_amount));
+  }, [settings]);
+
+  if (isLoading || !settings) {
+    return <Card className="p-4"><p className="text-sm text-muted-foreground">Loading late renewal fee settings…</p></Card>;
+  }
+
+  const parsedAmount = Number(amount);
+  const dirty = enabled !== settings.late_fee_enabled || parsedAmount !== settings.late_fee_amount;
+  const invalid = Number.isNaN(parsedAmount) || parsedAmount < 0;
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <div>
+          <CardTitle className="text-base">Late Renewal Fee</CardTitle>
+          <CardDescription>
+            Charged when a rider renews their plan after it has already ended — replaces the old flat per-day fee.
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+          <div>
+            <Label className="text-sm font-normal">Enable late renewal fee</Label>
+            <p className="text-xs text-muted-foreground">When off, a late renewal costs nothing extra.</p>
+          </div>
+          <Switch checked={enabled} onCheckedChange={(v) => { setError(null); setEnabled(v); }} />
+        </div>
+        <div className="flex items-end gap-3">
+          <div className="space-y-1.5">
+            <Label>Fee amount (₹)</Label>
+            <Input
+              type="number"
+              min={0}
+              value={amount}
+              onChange={(e) => { setError(null); setAmount(e.target.value); }}
+              className="w-40"
+              disabled={!enabled}
+            />
+          </div>
+          <Button
+            disabled={!dirty || invalid || updateSettings.isPending}
+            onClick={() => {
+              updateSettings.mutate(
+                { late_fee_enabled: enabled, late_fee_amount: parsedAmount },
+                { onError: (err) => setError(err instanceof Error ? err.message : "Could not save.") },
+              );
+            }}
+          >
+            {updateSettings.isPending ? "Saving..." : "Save"}
+          </Button>
+        </div>
+        {invalid && <p className="text-xs text-destructive">Enter a valid, non-negative amount.</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </CardContent>
+    </Card>
   );
 }
 

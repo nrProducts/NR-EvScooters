@@ -1,4 +1,4 @@
-import { NotificationChannel, NotificationStatus } from "../../types";
+import { NotificationChannel, NotificationStatus, NotificationType } from "../../types";
 
 export interface NotificationPayload {
     title: string;
@@ -16,6 +16,13 @@ export interface NotificationRow {
     sent_at: string | null;
     read_at: string | null;
     created_at: string;
+    /** Admin/staff notification reference columns — null on older/rider-only rows. See notify.service.ts. */
+    notification_type: NotificationType | null;
+    reference_type: string | null;
+    reference_id: string | null;
+    booking_id: string | null;
+    vehicle_id: string | null;
+    rider_id: string | null;
 }
 
 export interface NotifyInput {
@@ -23,6 +30,13 @@ export interface NotifyInput {
     title: string;
     body: string;
     screen?: string;
+    /** Set by notify.service.ts's notify() for admin/staff-scoped rows; left undefined by the ~9 existing rider-facing notifyUser() call sites. */
+    notification_type?: NotificationType;
+    reference_type?: string;
+    reference_id?: string;
+    booking_id?: string;
+    vehicle_id?: string;
+    rider_id?: string;
 }
 
 export interface ListNotificationsFilters {

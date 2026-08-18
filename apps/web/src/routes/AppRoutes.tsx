@@ -16,6 +16,8 @@ import UserListPage from "@/pages/users/UserListPage";
 import UserDetailPage from "@/pages/users/UserDetailPage";
 import KycQueuePage from "@/pages/kyc/KycQueuePage";
 import BookingListPage from "@/pages/bookings/BookingListPage";
+import ReturnsListPage from "@/pages/returns/ReturnsListPage";
+import ReturnDetailPage from "@/pages/returns/ReturnDetailPage";
 import MaintenancePage from "@/pages/maintenance/MaintenancePage";
 import SupportTicketsPage from "@/pages/support/SupportTicketsPage";
 import PaymentsPage from "@/pages/payments/PaymentsPage";
@@ -27,6 +29,7 @@ import ReconciliationPage from "@/pages/reconciliation/ReconciliationPage";
 import NotificationsPage from "@/pages/notifications/NotificationsPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
 import PermissionMatrixPage from "@/pages/settings/PermissionMatrixPage";
+import NotificationManagerPage from "@/pages/settings/NotificationManagerPage";
 import PiiAccessPage from "@/pages/privacy/PiiAccessPage";
 import RightsQueuePage from "@/pages/privacy/RightsQueuePage";
 import AuditLogPage from "@/pages/audit/AuditLogPage";
@@ -72,6 +75,8 @@ export function AppRoutes() {
 
         <Route path="/kyc" element={<KycQueuePage />} />
         <Route path="/bookings" element={<BookingListPage />} />
+        <Route path="/returns" element={<ReturnsListPage />} />
+        <Route path="/returns/:rentalId" element={<ReturnDetailPage />} />
         <Route path="/maintenance" element={<MaintenancePage />} />
         <Route path="/support" element={<SupportTicketsPage />} />
 
@@ -84,6 +89,7 @@ export function AppRoutes() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/staff-access/:userId/permissions" element={<PermissionMatrixPage />} />
+        <Route path="/settings/notification-manager" element={<NotificationManagerPage />} />
         <Route path="/privacy/requests" element={<RightsQueuePage />} />
         <Route path="/privacy/access-log" element={<PiiAccessPage />} />
         <Route path="/audit" element={<AuditLogPage />} />

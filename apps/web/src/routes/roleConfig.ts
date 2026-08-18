@@ -17,6 +17,7 @@ import {
   Eye,
   FileLock2,
   Undo2,
+  PackageCheck,
   Receipt,
 } from "lucide-react";
 import type { ModuleKey, Role, StaffUser } from "@/types";
@@ -76,6 +77,9 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["admin", "staff"],
     moduleKey: "bookings",
   },
+  // Return review + settlement — a dedicated page (not a popup) covering
+  // the full return-processing workflow, deposit/late-fee/damage settlement.
+  { label: "Returns", path: "/returns", icon: PackageCheck, roles: ["admin", "staff"], moduleKey: "returns" },
   { label: "Vehicles", path: "/vehicles", icon: Bike, roles: ["admin", "staff"], moduleKey: "vehicles" },
   { label: "Users", path: "/users", icon: Users, roles: ["admin", "staff"], moduleKey: "users" },
   { label: "KYC Queue", path: "/kyc", icon: ShieldCheck, roles: ["admin", "staff"], moduleKey: "kyc" },
@@ -145,6 +149,16 @@ export const NAV_ITEMS: NavItem[] = [
   {
     label: "Manage Permissions",
     path: "/settings/staff-access",
+    icon: Settings,
+    roles: ["admin"],
+    hidden: true,
+  },
+  // Admin-only, reached via a link from the Settings page — never in the
+  // sidebar. Mirrors "Manage Permissions" above: only Admin may configure who
+  // gets notified for which event.
+  {
+    label: "Notification Manager",
+    path: "/settings/notification-manager",
     icon: Settings,
     roles: ["admin"],
     hidden: true,

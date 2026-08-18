@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { PackageCheck, Undo2 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,12 +14,12 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { RentalOperationsSummaryCards } from "@/components/bookings/RentalOperationsSummaryCards";
-import { ReturnReviewDialog } from "@/components/bookings/ReturnReviewDialog";
-import { usePickupQueue, useAvailableVehicles, useConfirmPickup } from "@/hooks/useBookings";
+import { usePickupQueue, useAvailableVehicles, useConfirmPickup, useSetLateFeeOverride } from "@/hooks/useBookings";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useTableSort } from "@/hooks/useTableSort";
 import type { PickupQueueFilters } from "@/services/api/bookings";
 import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
-import { computeLatePaymentFee } from "@/lib/latePaymentPolicy";
 import { ApiError } from "@/services/api/httpClient";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
@@ -56,7 +56,8 @@ function RefundStatusBadge({ status }: { status: BookingRefundStatus }) {
  * status type.
  */
 type RentalOpsView =
-  | "pending" | "assigned" | "active" | "return_requests" | "due" | "completed" | "cancelled" | "expired" | "all";
+  | "pending" | "assigned" | "active" | "return_requests" | "due" | "scheduled_renewals"
+  | "completed" | "cancelled" | "expired" | "all";
 
 const VIEW_TABS: { value: RentalOpsView; label: string }[] = [
   { value: "pending", label: "Pending Bookings" },
@@ -64,6 +65,10 @@ const VIEW_TABS: { value: RentalOpsView; label: string }[] = [
   { value: "active", label: "Active" },
   { value: "return_requests", label: "Return Requests" },
   { value: "due", label: "Due" },
+  // Upcoming/scheduled renewals — a rider already paid ahead, current plan
+  // stays active until scheduled_start_date, kept separate from Active so
+  // staff can see who's already renewed vs. who hasn't.
+  { value: "scheduled_renewals", label: "Scheduled Renewals" },
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
   { value: "all", label: "All" },
@@ -74,13 +79,14 @@ const VIEW_TABS: { value: RentalOpsView; label: string }[] = [
 
 function filtersForView(
   view: RentalOpsView,
-): Pick<PickupQueueFilters, "status" | "planStatus" | "returnRequested"> {
+): Pick<PickupQueueFilters, "status" | "planStatus" | "renewalStatus" | "returnRequested"> {
   switch (view) {
     case "pending": return { status: "confirmed" };
     case "assigned": return { status: "fulfilled" };
     case "active": return { status: "fulfilled", planStatus: "active" };
     case "return_requests": return { status: "fulfilled", returnRequested: true };
     case "due": return { status: "fulfilled", planStatus: "due" };
+    case "scheduled_renewals": return { status: "fulfilled", renewalStatus: "scheduled" };
     case "completed": return { status: "completed" };
     case "cancelled": return { status: "cancelled" };
     case "expired": return { status: "expired" };
@@ -89,13 +95,17 @@ function filtersForView(
 }
 
 export default function BookingListPage() {
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const [view, setView] = useState<RentalOpsView>("pending");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
-  const [returnTarget, setReturnTarget] = useState<PickupBooking | null>(null);
+  const [lateFeeTarget, setLateFeeTarget] = useState<PickupBooking | null>(null);
+  const [lateFeeInput, setLateFeeInput] = useState("");
+  const [lateFeeError, setLateFeeError] = useState<string | null>(null);
+  const setLateFeeOverride = useSetLateFeeOverride();
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = usePickupQueue({
@@ -151,17 +161,34 @@ export default function BookingListPage() {
           // Active (paid up) or paused (clock frozen) — just the date, no warning.
           return <span className="text-muted-foreground">{formatDate(b.next_due_at)}</span>;
         }
-        // Same estimate the rider's own app shows them — see latePaymentPolicy.ts.
-        const { daysLate, lateFeeAmount } = computeLatePaymentFee(b.next_due_at);
+        const daysLate = Math.max(0, Math.round((Date.now() - new Date(`${b.next_due_at}T00:00:00`).getTime()) / 86_400_000));
         return (
           <div className="text-destructive">
             <p className="font-medium">Due {formatDate(b.next_due_at)}</p>
             <p className="text-xs">
-              {daysLate} day{daysLate === 1 ? "" : "s"} overdue · {formatCurrency(lateFeeAmount)} late fee
+              {daysLate} day{daysLate === 1 ? "" : "s"} overdue
+              {b.late_fee_override != null ? ` · ${formatCurrency(b.late_fee_override)} fee override` : " · late fee applies"}
             </p>
           </div>
         );
       },
+      hideOnMobile: true,
+    },
+    {
+      header: "Renewal",
+      key: "renewal",
+      render: (b) => (
+        b.renewal_status === "scheduled"
+          ? (
+            <div>
+              <Badge variant="success">Scheduled</Badge>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Starts {b.scheduled_start_date ? formatDate(b.scheduled_start_date) : "—"}
+              </p>
+            </div>
+          )
+          : <span className="text-muted-foreground">—</span>
+      ),
       hideOnMobile: true,
     },
     { header: "Created", key: "created_at", sortKey: "created_at", render: (b) => formatDate(b.created_at), hideOnMobile: true },
@@ -179,6 +206,21 @@ export default function BookingListPage() {
               }}
             >
               <PackageCheck className="h-3.5 w-3.5" /> Confirm pickup
+            </Button>
+          );
+        }
+        if (b.status === "fulfilled" && hasAction(user, "bookings", "edit")) {
+          return (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setLateFeeTarget(b);
+                setLateFeeInput(b.late_fee_override != null ? String(b.late_fee_override) : "");
+                setLateFeeError(null);
+              }}
+            >
+              Late fee override
             </Button>
           );
         }
@@ -237,7 +279,7 @@ export default function BookingListPage() {
       header: "Actions",
       key: "actions",
       render: (b) => (
-        <Button size="sm" variant="outline" onClick={() => setReturnTarget(b)}>
+        <Button size="sm" variant="outline" onClick={() => b.active_rental && navigate(`/returns/${b.active_rental.id}`)}>
           <Undo2 className="h-3.5 w-3.5" /> Review Return
         </Button>
       ),
@@ -440,7 +482,58 @@ export default function BookingListPage() {
         </DialogContent>
       </Dialog>
 
-      <ReturnReviewDialog booking={returnTarget} onOpenChange={(o) => !o && setReturnTarget(null)} />
+
+      {/* Late fee override — per-booking, wins over the global setting on billing/BillingPage whenever this rider renews late. */}
+      <Dialog open={!!lateFeeTarget} onOpenChange={(o) => !o && setLateFeeTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Late renewal fee override</DialogTitle>
+            <DialogDescription>
+              {lateFeeTarget?.rider.full_name} — leave blank to use the global late renewal fee instead.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-1.5">
+            <Label>Override amount (₹)</Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="Use global setting"
+              value={lateFeeInput}
+              onChange={(e) => { setLateFeeError(null); setLateFeeInput(e.target.value); }}
+            />
+          </div>
+
+          {lateFeeError && <p className="text-xs text-destructive">{lateFeeError}</p>}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLateFeeTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={setLateFeeOverride.isPending}
+              onClick={() => {
+                if (!lateFeeTarget) return;
+                const trimmed = lateFeeInput.trim();
+                const parsed = trimmed === "" ? null : Number(trimmed);
+                if (parsed != null && (Number.isNaN(parsed) || parsed < 0)) {
+                  setLateFeeError("Enter a valid, non-negative amount, or leave it blank.");
+                  return;
+                }
+                setLateFeeOverride.mutate(
+                  { bookingId: lateFeeTarget.id, lateFeeOverride: parsed },
+                  {
+                    onSuccess: () => setLateFeeTarget(null),
+                    onError: (err) => setLateFeeError(err instanceof Error ? err.message : "Could not save."),
+                  },
+                );
+              }}
+            >
+              {setLateFeeOverride.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

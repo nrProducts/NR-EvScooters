@@ -5,9 +5,10 @@ import { getRazorpay } from "../../config/razorpay";
 import { env } from "../../config/env";
 import { badRequest, businessRule, conflict, notFound } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
-import { addDays, wholeDaysBetween } from "../../common/dates";
-import { LATE_PAYMENT_FEE_PER_DAY } from "./billing.constants";
+import { addDays } from "../../common/dates";
+import { computeLateRenewalFee } from "./renewalFee";
 import { notifyUser } from "../notifications/notifications.service";
+import { notify } from "../notifications/notify.service";
 import { applyRefundWebhookResult } from "../refunds/refunds.service";
 import { AuthContext } from "../../types";
 import { CreateOrderResult, PaymentPurpose, VerifyPaymentInput } from "./payments.types";
@@ -159,13 +160,14 @@ export async function createOrderForInvoice(invoiceId: string, actor: AuthContex
 
     const purpose: PaymentPurpose = invoice.payment_type === "damage" ? "damage_settlement" : "weekly_due";
 
-    // Late fee only applies to a weekly-due rental renewal, computed fresh
-    // from due_date every time — never stored, so it naturally compounds the
-    // longer the rider waits, with no separate daily job needed to bump it.
-    const daysLate = invoice.payment_type === "rental"
-        ? Math.max(0, wholeDaysBetween(new Date(`${invoice.due_date}T00:00:00Z`), new Date()))
-        : 0;
-    const lateFee = round2(daysLate * LATE_PAYMENT_FEE_PER_DAY);
+    // Late fee only applies to a weekly-due rental renewal — a single
+    // admin-configurable amount (or per-booking override), computed fresh
+    // every time so a toggled/changed setting takes effect immediately. See
+    // renewalFee.ts, the one place this and requestEarlyRecharge's preview
+    // both compute it, so they can never disagree.
+    const { lateFee } = invoice.payment_type === "rental"
+        ? await computeLateRenewalFee(invoice.booking_id!, invoice.due_date)
+        : { lateFee: 0 };
     const amount = round2(Number(invoice.amount_due) + lateFee);
 
     if (invoice.payment_order_id) {
@@ -213,7 +215,7 @@ export async function createOrderForInvoice(invoiceId: string, actor: AuthContex
     await writeAudit({
         actorId: actor.id, targetUserId: actor.id, action: "payment.order_created",
         entityType: "payment_order", entityId: order.id,
-        after: { invoice_id: invoiceId, purpose, amount, days_late: daysLate, late_fee: lateFee },
+        after: { invoice_id: invoiceId, purpose, amount, late_fee: lateFee },
     });
 
     if (!configured) {
@@ -537,13 +539,46 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
         await applyBookingInitialSuccess(order.booking_id, order.user_id);
     } else if (order.purpose === "weekly_due" && order.booking_id) {
         await applyWeeklyDueSuccess(order.booking_id, order.id);
+    } else if (order.purpose === "damage_settlement") {
+        // The Return & Settlement Overhaul's combined "amount due" invoice is
+        // a normal 'damage'-type invoice under the hood — this is the one
+        // place that closes the loop back to return_settlements once it's
+        // actually paid. The rental/booking/vehicle already closed at
+        // approval time (returns.service.ts); only the FINANCIAL settlement
+        // was waiting on this payment.
+        const { data: paidInvoice } = await supabaseAdmin
+            .from("invoices").select("id").eq("payment_order_id", order.id).maybeSingle();
+        if (paidInvoice) {
+            await supabaseAdmin
+                .from("return_settlements")
+                .update({ status: "settlement_completed", processed_at: new Date().toISOString() })
+                .eq("due_invoice_id", paidInvoice.id)
+                .eq("status", "amount_due");
+        }
     }
-    // 'damage_settlement' / 'other': the invoice update above is sufficient.
+    // 'other': the invoice update above is sufficient.
 
     await notifyUser(order.user_id, {
         template: "payment_success", title: "Payment Successful",
         body: "Payment successful. Your rental is active.", screen: "payments",
     });
+
+    if (order.purpose === "booking_initial" && order.booking_id) {
+        const { data: booking } = await supabaseAdmin
+            .from("bookings").select("vehicle_id").eq("id", order.booking_id).maybeSingle();
+        await notify({
+            notificationType: "booking",
+            referenceType: "booking",
+            referenceId: order.booking_id,
+            template: "booking_created",
+            title: "New Booking Confirmed",
+            bodyFallback: "{rider} confirmed a booking for {vehicle}.",
+            screen: "/bookings",
+            riderId: order.user_id,
+            vehicleId: booking?.vehicle_id ?? undefined,
+            bookingId: order.booking_id,
+        });
+    }
 }
 
 async function applyBookingInitialSuccess(bookingId: string, userId: string): Promise<void> {
@@ -587,27 +622,30 @@ async function applyBookingInitialSuccess(bookingId: string, userId: string): Pr
 
 /**
  * A booking's plan starts DUE (not active) once its current period lapses
- * unpaid — see the payment-overdue-sweep job. Paying that invoice returns it
- * to active and rolls the due date forward by exactly one period, anchored
- * to the period that was just paid for (not "today"), so the weekly cadence
- * never drifts even if a rider catches up a day or two late.
- *
- * Also fires for an early "Recharge Now" payment (bookings.service.ts's
- * requestEarlyRecharge), made while plan_status is still 'active' — the
- * rider paying ahead on the last day of their period rather than waiting for
- * the sweep to lock them out. 'paused' (vehicle in maintenance) never
- * qualifies: next_due_at is frozen there and resumePlanForBooking owns
+ * unpaid — see the payment-overdue-sweep job, which also mints the invoice
+ * this pays. Also fires for an early/on-time "Recharge Now" payment
+ * (bookings.service.ts's requestEarlyRecharge), made any time before the
+ * period ends, not just on its last day. 'paused' (vehicle in maintenance)
+ * never qualifies: next_due_at is frozen there and resumePlanForBooking owns
  * un-freezing it, not a payment.
  *
+ * Two-phase, "pay now, activate later": paying does NOT immediately roll the
+ * plan forward unless the rider is already late.
+ *   - Paid on/before next_due_at: the current period is left completely
+ *     untouched — only renewal_status/scheduled_start_date/
+ *     scheduled_duration_days are written. The payment-overdue-sweep job is
+ *     what actually activates it, once next_due_at (now the scheduled
+ *     activation date) arrives — see that file for the other half of this.
+ *   - Paid after next_due_at (late): there's no future period to protect
+ *     since the old one already lapsed, so this rolls forward immediately,
+ *     exactly as before this feature.
+ *
  * orderId cross-checks that the invoice actually paid is for THIS period
- * (due_date === next_due_at) before advancing anything — both the normal
- * late-catch-up path and the new early-pay path can now reach this function
- * while plan_status is something other than a single expected value, so the
- * old `.eq("plan_status", "due")` guard alone is no longer precise enough.
- * The final update's `.eq("next_due_at", newPeriodStart)` is what actually
- * makes this idempotent under a duplicate webhook delivery: once it
- * succeeds, a second delivery's read sees the ALREADY-advanced next_due_at,
- * the due_date check no longer matches, and it no-ops.
+ * (due_date === next_due_at) before doing anything — both branches can reach
+ * this function while plan_status is something other than a single expected
+ * value, so a plain `.eq("plan_status", ...)` guard alone isn't precise
+ * enough. Each branch's own final `.eq(...)` guard is what makes it
+ * idempotent under a duplicate webhook delivery.
  */
 async function applyWeeklyDueSuccess(bookingId: string, orderId: string): Promise<void> {
     const { data: booking, error } = await supabaseAdmin
@@ -621,12 +659,40 @@ async function applyWeeklyDueSuccess(bookingId: string, orderId: string): Promis
 
     const { data: paidInvoice } = await supabaseAdmin
         .from("invoices")
-        .select("due_date")
+        .select("id, due_date")
         .eq("payment_order_id", orderId)
         .eq("payment_type", "rental")
         .maybeSingle();
     if (!paidInvoice || paidInvoice.due_date !== booking.next_due_at) return;
 
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (today <= paidInvoice.due_date) {
+        // On-time — schedule, don't activate. A duplicate delivery's read
+        // sees renewal_status already 'scheduled' and no-ops.
+        const { data: updated } = await supabaseAdmin
+            .from("bookings")
+            .update({
+                renewal_status: "scheduled",
+                scheduled_start_date: paidInvoice.due_date,
+                scheduled_duration_days: booking.plan_duration_days,
+                renewal_invoice_id: paidInvoice.id,
+            })
+            .eq("id", bookingId)
+            .eq("renewal_status", "none")
+            .select("id")
+            .maybeSingle();
+        if (!updated) return;
+
+        await writeAudit({
+            actorId: null, targetUserId: null, action: "plan.updated",
+            entityType: "booking", entityId: bookingId,
+            after: { renewal_status: "scheduled", scheduled_start_date: paidInvoice.due_date },
+        });
+        return;
+    }
+
+    // Late — nothing left to protect, roll forward immediately.
     const newPeriodStart = booking.next_due_at;
     const newNextDueAt = addDays(newPeriodStart, booking.plan_duration_days);
 
@@ -641,6 +707,14 @@ async function applyWeeklyDueSuccess(bookingId: string, orderId: string): Promis
             current_period_start: newPeriodStart,
             next_due_at: newNextDueAt,
             billing_cycle_number: booking.billing_cycle_number + 1,
+            // Defensive — a late payment should never leave a stale
+            // scheduled row behind (shouldn't be possible to reach this
+            // branch with one set, since the on-time branch above already
+            // returned once renewal_status flipped, but belt-and-braces).
+            renewal_status: "none",
+            scheduled_start_date: null,
+            scheduled_duration_days: null,
+            renewal_invoice_id: null,
         })
         .eq("id", bookingId)
         .eq("next_due_at", newPeriodStart)

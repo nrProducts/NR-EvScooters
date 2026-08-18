@@ -1,5 +1,6 @@
-import { Menu, Bell, Sun, Moon, LogOut, Settings as SettingsIcon } from "lucide-react";
+import { Menu, Sun, Moon, LogOut, Settings as SettingsIcon } from "lucide-react";
 import { GlobalSearch } from "@/components/common/GlobalSearch";
+import { NotificationBell } from "@/components/common/NotificationBell";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -44,9 +45,7 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
           {theme === "light" ? <Moon className="h-[18px] w-[18px]" /> : <Sun className="h-[18px] w-[18px]" />}
         </Button>
 
-        <Button variant="ghost" size="icon" onClick={() => navigate("/notifications")} aria-label="Notifications">
-          <Bell className="h-[18px] w-[18px]" />
-        </Button>
+        <NotificationBell />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

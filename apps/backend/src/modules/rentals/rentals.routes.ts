@@ -25,6 +25,9 @@ router.get(
     validate({ query: v.rentalHistoryQuery }),
     asyncHandler(c.myRentalHistoryHandler),
 );
+// The rider's most recent return settlement (if any) — powers the Home
+// "Scooter Returned Successfully" / "Amount Due" card. See returns.service.ts.
+router.get("/me/settlement", asyncHandler(c.mySettlementHandler));
 
 // Rider-initiated post-pickup return REQUEST. Scoped to the caller's own
 // rental inside the service, so no requireStaff. Does not end the ride —

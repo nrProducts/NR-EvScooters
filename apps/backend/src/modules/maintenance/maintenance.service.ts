@@ -2,7 +2,8 @@ import { supabaseAdmin } from "../../config/supabase";
 import { businessRule, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
-import { notifyAdmins, notifyUser } from "../notifications/notifications.service";
+import { notifyUser } from "../notifications/notifications.service";
+import { notify } from "../notifications/notify.service";
 import { assignVehicleToUser, scrapVehicle } from "../vehicles/vehicles.service";
 import { resumePlanForBooking } from "../plans/plans.service";
 import { AuthContext, Paginated } from "../../types";
@@ -268,17 +269,18 @@ export async function createMaintenanceTicket(
         after: { vehicle_id: input.vehicle_id, status: ticket.status },
     });
 
-    await notifyAdmins(
-        {
-            template: "maintenance_review_needed",
-            title: "Maintenance Ticket Reported",
-            body: ticket.vehicle
-                ? `${ticket.vehicle.name} (${ticket.vehicle.registration_number}) needs triage: ${input.description}`
-                : `A vehicle needs triage: ${input.description}`,
-            screen: "maintenance",
-        },
-        actor.id,
-    );
+    await notify({
+        notificationType: "maintenance",
+        referenceType: "vehicle_maintenance",
+        referenceId: ticket.id,
+        template: "maintenance_review_needed",
+        title: "Maintenance Ticket Reported",
+        bodyFallback: `{vehicle} needs triage: ${input.description}`,
+        screen: "/maintenance",
+        vehicleId: input.vehicle_id,
+        vehicleNameOverride: ticket.vehicle ? `${ticket.vehicle.name} (${ticket.vehicle.registration_number})` : undefined,
+        excludeUserId: actor.id,
+    });
 
     return ticket;
 }

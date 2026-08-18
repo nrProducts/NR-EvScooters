@@ -231,7 +231,7 @@ export async function resumePlanForBooking(
 ): Promise<void> {
     const { data: booking, error } = await supabaseAdmin
         .from("bookings")
-        .select("id, user_id, plan_status, plan_paused_at, next_due_at, plan_paused_days_total")
+        .select("id, user_id, plan_status, plan_paused_at, next_due_at, plan_paused_days_total, renewal_status, scheduled_start_date")
         .eq("id", bookingId)
         .maybeSingle();
     if (error) throw error;
@@ -251,6 +251,15 @@ export async function resumePlanForBooking(
         nextDueAt: booking.next_due_at, pausedAt, resumedAt,
     });
 
+    // A scheduled renewal's scheduled_start_date was frozen at the
+    // pre-pause next_due_at — if it isn't shifted by the same paused-day
+    // count applied to next_due_at above, it would go stale (no longer
+    // matching the now-shifted period end) and the activation sweep could
+    // fire either too early or overlapping the still-running paused period.
+    const scheduledStartShift = booking.renewal_status === "scheduled" && booking.scheduled_start_date
+        ? { scheduled_start_date: addDays(booking.scheduled_start_date, daysPaused) }
+        : {};
+
     const { data: updated, error: updateError } = await supabaseAdmin
         .from("bookings")
         .update({
@@ -259,6 +268,7 @@ export async function resumePlanForBooking(
             plan_paused_at: null,
             plan_paused_days_total: (booking.plan_paused_days_total ?? 0) + daysPaused,
             active_rental_id: newRentalId,
+            ...scheduledStartShift,
         })
         .eq("id", bookingId)
         .eq("plan_status", "paused")

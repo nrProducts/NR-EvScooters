@@ -13,8 +13,7 @@ import { useMyBilling } from '../hooks/useMyBilling';
 import { useAuthStore } from '../store/useAuthStore';
 import { billingRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
-import { computeLatePaymentFee } from '../lib/latePaymentPolicy';
-import { canRenewEarly } from '../lib/returnPolicy';
+import { getRenewalEligibility } from '../lib/returnPolicy';
 import { ApiError } from '../lib/ApiError';
 import type { ApiEarlyRecharge, ApiInvoice, InvoicePaymentStatus, PlanStatus } from '../types/api';
 
@@ -104,23 +103,19 @@ export default function BillingScreen() {
 
   const plan = booking?.plan;
   const outstandingInvoices = invoices.filter((inv) => inv.payment_status === 'pending' || inv.payment_status === 'failed');
-  // Late fee only accrues on a weekly-due 'rental' renewal — mirrors the
-  // backend's createOrderForInvoice exactly (see latePaymentPolicy.ts); the
-  // server always recomputes authoritatively when the order is created, this
-  // is just what's shown before tapping Pay.
-  const lateFeeFor = (inv: ApiInvoice) => (inv.payment_type === 'rental' ? computeLatePaymentFee(inv.due_date).lateFeeAmount : 0);
-  const outstandingTotal = outstandingInvoices.reduce((sum, inv) => sum + inv.amount_due + lateFeeFor(inv), 0);
+  // A late fee may apply to a weekly-due 'rental' invoice — it's now a flat,
+  // admin-configurable (and possibly per-booking-overridden) amount, not a
+  // per-day multiplier the client can estimate. The server always recomputes
+  // authoritatively when the order is created; the exact figure only shows
+  // up once the rider actually starts paying (payInvoice/handleStartRecharge).
+  const outstandingTotal = outstandingInvoices.reduce((sum, inv) => sum + inv.amount_due, 0);
   const isDue = booking?.plan_status === 'due';
-  // next_due_at is the LAST day the current period is actually usable — the
-  // overdue-sweep only locks the scooter once next_due_at has fully passed.
-  // Recharge opens the day before that too (matches the backend's identical
-  // widened check), so a short plan due tomorrow — e.g. a 1-day plan bought
-  // today — can already be recharged today, not just on its exact due date.
+  const renewalStatus = booking?.renewal_status ?? null;
+  const renewalEligibility = getRenewalEligibility(booking?.plan_status ?? null, booking?.next_due_at ?? null, renewalStatus);
   // Hidden once an outstanding invoice already exists (a prior recharge
   // attempt that was cancelled mid-payment) — Outstanding below covers that.
+  const canRechargeEarly = renewalEligibility.canRenew && outstandingInvoices.length === 0;
   const planEndsToday = !!booking?.next_due_at && booking.next_due_at <= todayStr();
-  const canRechargeEarly = canRenewEarly(booking?.plan_status ?? null, booking?.next_due_at ?? null)
-    && outstandingInvoices.length === 0;
 
   const payInvoice = async (invoice: ApiInvoice) => {
     setPayError(null);
@@ -298,15 +293,36 @@ export default function BillingScreen() {
                   Your scooter won't start until this is paid
                 </Text>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-1 leading-relaxed">
-                  A ₹300/day late fee is added for every day the payment stays overdue. Pay now to keep riding and stop the fee from growing.
+                  A late fee may apply. Renew now to keep riding and see the exact amount before you pay.
                 </Text>
               </View>
             </View>
           ) : null}
 
-          {/* Recharge Now — pay for the next period before the overdue-sweep
-              would otherwise create it (and lock the scooter) tomorrow. The
-              new period starts the moment the current one ends, never early. */}
+          {/* Renewal already paid and scheduled — the current plan stays
+              active exactly as-is; nothing more to do until it activates. */}
+          {renewalStatus === 'scheduled' ? (
+            <View
+              className="rounded-2xl p-4 mb-6 flex-row items-start"
+              style={{ backgroundColor: COLORS.success + '14', borderWidth: 1, borderColor: COLORS.success + '55' }}
+            >
+              <Zap size={16} color={COLORS.success} style={{ marginTop: 1 }} />
+              <View className="flex-1 ml-3">
+                <Text style={{ color: COLORS.success }} className="text-xs font-extrabold">
+                  Renewal scheduled — starts {formatDate(booking?.scheduled_start_date ?? null)}
+                </Text>
+                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-1 leading-relaxed">
+                  Your current plan stays active until then — no action needed.
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {/* Renew Plan — pay for the next period any time before or after
+              it's due. Paid on time, the current plan stays active exactly as
+              it is; the new period only starts once this one actually ends
+              (see the scheduled-renewal state above). Paid late, a fee
+              applies and the new period starts right away. */}
           {canRechargeEarly ? (
             <View
               className="rounded-2xl p-4 mb-6"
@@ -316,10 +332,14 @@ export default function BillingScreen() {
                 <Zap size={16} color={COLORS.primary} style={{ marginTop: 1 }} />
                 <View className="flex-1 ml-3">
                   <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold">
-                    {planEndsToday ? 'Your plan ends today' : 'Your plan ends tomorrow'}
+                    {renewalEligibility.isLate
+                      ? 'Your plan has expired'
+                      : planEndsToday ? 'Your plan ends today' : `Plan ends ${formatDate(booking?.next_due_at ?? null)}`}
                   </Text>
                   <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-1 leading-relaxed">
-                    Recharge now to keep riding without interruption. Your next plan starts the moment this one ends.
+                    {renewalEligibility.isLate
+                      ? 'Renew now — a late fee applies, shown below before you pay.'
+                      : 'Renew now to keep riding without interruption. Your next plan starts the moment this one ends.'}
                   </Text>
                 </View>
               </View>
@@ -345,9 +365,24 @@ export default function BillingScreen() {
                     ))}
                     <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
                     <View className="flex-row items-center justify-between">
-                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Total</Text>
-                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
+                      <Text style={{ color: COLORS.textPrimary }} className="text-xs font-medium">Renewal amount</Text>
+                      <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold">
                         ₹{rechargePreview.amountDue.toFixed(0)}
+                      </Text>
+                    </View>
+                    {rechargePreview.isLate ? (
+                      <View className="flex-row items-center justify-between mt-1">
+                        <Text style={{ color: COLORS.danger }} className="text-xs font-medium">Late fee</Text>
+                        <Text style={{ color: COLORS.danger }} className="text-xs font-semibold">
+                          ₹{rechargePreview.lateFee.toFixed(0)}
+                        </Text>
+                      </View>
+                    ) : null}
+                    <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
+                    <View className="flex-row items-center justify-between">
+                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Total payable</Text>
+                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
+                        ₹{rechargePreview.total.toFixed(0)}
                       </Text>
                     </View>
                   </View>
@@ -368,7 +403,7 @@ export default function BillingScreen() {
                     >
                       {recharging ? <ActivityIndicator size="small" color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                       <Text className="text-white text-xs font-bold ml-2">
-                        {recharging ? 'Processing…' : `Confirm & Pay ₹${rechargePreview.amountDue.toFixed(0)}`}
+                        {recharging ? 'Processing…' : `Confirm & Pay ₹${rechargePreview.total.toFixed(0)}`}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -382,7 +417,7 @@ export default function BillingScreen() {
                 >
                   {previewLoading ? <ActivityIndicator size="small" color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                   <Text className="text-white text-xs font-bold ml-2">
-                    {previewLoading ? 'Loading…' : 'Review & Recharge'}
+                    {previewLoading ? 'Loading…' : 'Review & Renew'}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -401,35 +436,30 @@ export default function BillingScreen() {
                   <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">Amount due</Text>
                   <Text style={{ color: COLORS.danger }} className="text-lg font-black">₹{outstandingTotal.toFixed(0)}</Text>
                 </View>
-                {outstandingInvoices.map((inv) => {
-                  const lateFee = lateFeeFor(inv);
-                  const totalForInvoice = inv.amount_due + lateFee;
-                  return (
-                    <View key={inv.id}>
-                      {lateFee > 0 ? (
-                        <Text style={{ color: COLORS.danger }} className="text-[11px] font-semibold mb-1.5">
-                          Includes ₹{lateFee.toFixed(0)} late fee ({computeLatePaymentFee(inv.due_date).daysLate} day
-                          {computeLatePaymentFee(inv.due_date).daysLate === 1 ? '' : 's'} overdue)
-                        </Text>
-                      ) : null}
-                      <TouchableOpacity
-                        onPress={() => payInvoice(inv)}
-                        disabled={payingInvoiceId === inv.id}
-                        className="py-3 rounded-xl items-center flex-row justify-center mt-1"
-                        style={{ backgroundColor: COLORS.primary, opacity: payingInvoiceId === inv.id ? 0.6 : 1 }}
-                      >
-                        {payingInvoiceId === inv.id ? (
-                          <ActivityIndicator size="small" color="#FFF" />
-                        ) : (
-                          <CreditCard size={14} color="#FFF" />
-                        )}
-                        <Text className="text-white text-xs font-bold ml-2">
-                          Pay {PAYMENT_TYPE_LABEL[inv.payment_type ?? 'other']} — ₹{totalForInvoice.toFixed(0)}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })}
+                {outstandingInvoices.map((inv) => (
+                  <View key={inv.id}>
+                    {inv.payment_type === 'rental' ? (
+                      <Text style={{ color: COLORS.danger }} className="text-[11px] font-semibold mb-1.5">
+                        A late fee may apply — shown when you tap Pay, before anything is charged.
+                      </Text>
+                    ) : null}
+                    <TouchableOpacity
+                      onPress={() => payInvoice(inv)}
+                      disabled={payingInvoiceId === inv.id}
+                      className="py-3 rounded-xl items-center flex-row justify-center mt-1"
+                      style={{ backgroundColor: COLORS.primary, opacity: payingInvoiceId === inv.id ? 0.6 : 1 }}
+                    >
+                      {payingInvoiceId === inv.id ? (
+                        <ActivityIndicator size="small" color="#FFF" />
+                      ) : (
+                        <CreditCard size={14} color="#FFF" />
+                      )}
+                      <Text className="text-white text-xs font-bold ml-2">
+                        Pay {PAYMENT_TYPE_LABEL[inv.payment_type ?? 'other']} — ₹{inv.amount_due.toFixed(0)}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
                 {payError ? (
                   <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mt-3">{payError}</Text>
                 ) : null}

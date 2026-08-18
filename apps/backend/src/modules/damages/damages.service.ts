@@ -4,6 +4,7 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { env } from "../../config/env";
 import { notifyUser } from "../notifications/notifications.service";
+import { notify } from "../notifications/notify.service";
 import { getDepositForBookingOrNull, recomputeDepositStatusForBooking } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
 import { createSignedDamagePhotoUrl } from "./damages.photo.storage";
@@ -111,10 +112,11 @@ export async function recordDamage(
     input: RecordDamageInput,
     photoPaths: string[],
     actor: AuthContext,
+    opts?: { skipInvoice?: boolean },
 ): Promise<DamageRow> {
     const { data: rental, error: rentalError } = await supabaseAdmin
         .from("rentals")
-        .select("id, booking_id, inspected_at")
+        .select("id, booking_id, vehicle_id, inspected_at")
         .eq("id", rentalId)
         .maybeSingle();
     if (rentalError) throw rentalError;
@@ -155,7 +157,10 @@ export async function recordDamage(
     if (error) throw error;
     const damage = await toDamageRow(data as unknown as RawDamageRow);
 
-    if (outstandingAmount > 0) {
+    // The return-settlement flow (returns.service.ts) records damage items
+    // without a per-item invoice — it bills ONE combined amount for the
+    // whole return (late fee + all damages + other charges) instead.
+    if (outstandingAmount > 0 && !opts?.skipInvoice) {
         const today = new Date().toISOString().slice(0, 10);
         const { error: invoiceError } = await supabaseAdmin.from("invoices").insert({
             user_id: userId,
@@ -185,6 +190,20 @@ export async function recordDamage(
             ? `A damage charge of ₹${input.amount} has been recorded. ₹${outstandingAmount} is due after your deposit deduction.`
             : `A damage charge of ₹${input.amount} has been added to your account.`,
         screen: "my-plan",
+    });
+
+    await notify({
+        notificationType: "damage",
+        referenceType: "damage",
+        referenceId: damage.id,
+        template: "damage_added",
+        title: "Damage Reported",
+        bodyFallback: `A ₹${input.amount} damage charge was recorded for {rider} on {vehicle}.`,
+        screen: "/damages",
+        riderId: userId,
+        vehicleId: rental.vehicle_id ?? undefined,
+        bookingId: rental.booking_id,
+        excludeUserId: actor.id,
     });
 
     return damage;

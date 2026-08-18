@@ -95,6 +95,13 @@ export interface BookingView {
     next_due_at: string | null;
     plan_paused_at: string | null;
     plan_paused_days_total: number;
+    /** 'scheduled' once an on-time/early renewal has been paid but not yet activated — see payments.service.ts's applyWeeklyDueSuccess. */
+    renewal_status: "none" | "scheduled";
+    /** When the scheduled renewal will activate (the payment-overdue-sweep does this once next_due_at arrives). Null unless renewal_status is 'scheduled'. */
+    scheduled_start_date: string | null;
+    scheduled_duration_days: number | null;
+    /** Admin-set per-booking override for the late renewal fee — wins over the global plan_renewal_settings amount when a renewal is late. */
+    late_fee_override: number | null;
 
     /**
      * The rental this booking's handover opened (bookings.active_rental_id),
@@ -134,6 +141,8 @@ export interface PickupQueueFilters {
     status?: BookingStatus;
     /** Further narrows a 'fulfilled' view into Active/Due/Paused. Ignored for any other status. */
     planStatus?: "active" | "due" | "paused";
+    /** Rental Operations' "Scheduled Renewals" tab — fulfilled bookings that have paid ahead and are waiting to activate. */
+    renewalStatus?: "scheduled";
     /** Rental Operations' "Return Requests" tab — only fulfilled bookings whose active rental has a pending return. */
     returnRequested?: boolean;
     /** "Awaiting Assignment" summary count — confirmed bookings with no vehicle allocated yet. */

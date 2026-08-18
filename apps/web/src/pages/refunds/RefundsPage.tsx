@@ -17,10 +17,11 @@ import { ApiError } from "@/services/api/httpClient";
 import type { Refund, RefundStatus, RefundType } from "@/types";
 
 const STATUS_OPTIONS: (RefundStatus | "all")[] = ["all", "pending", "processing", "success", "failed"];
-const REFUND_TYPE_OPTIONS: (RefundType | "all")[] = ["all", "deposit", "booking_cancellation"];
+const REFUND_TYPE_OPTIONS: (RefundType | "all")[] = ["all", "deposit", "booking_cancellation", "return_settlement"];
 const REFUND_TYPE_LABEL: Record<RefundType, string> = {
   deposit: "Deposit",
   booking_cancellation: "Booking Cancellation",
+  return_settlement: "Return Settlement",
 };
 
 export default function RefundsPage() {
@@ -149,9 +150,14 @@ export default function RefundsPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Refund Queue</h1>
-        <p className="text-sm text-muted-foreground">{data?.total ?? 0} refunds — security deposits and cancelled bookings</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Refund Queue</h1>
+          <p className="text-sm text-muted-foreground">{data?.total ?? 0} refunds — security deposits and cancelled bookings</p>
+        </div>
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/returns">Returns &amp; Settlements</Link>
+        </Button>
       </div>
 
       <Card>

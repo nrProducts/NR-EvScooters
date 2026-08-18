@@ -83,4 +83,14 @@ export const env = {
     damageDisputeWindowHours: intFromEnv("DAMAGE_DISPUTE_WINDOW_HOURS", 72),
     /** Days after vehicle return before a held deposit becomes refund-eligible. */
     depositRefundEligibilityDays: intFromEnv("DEPOSIT_REFUND_ELIGIBILITY_DAYS", 15),
+
+    // --- Email (transactional notifications) ------------------------------
+    // Deliberately optional/empty-default, never `required(...)`: the app
+    // must still boot in dev with no key configured. Anything that actually
+    // needs it throws a clear error at call time — see config/resend.ts.
+    emailProvider: process.env.EMAIL_PROVIDER ?? "resend",
+    resendApiKey: process.env.RESEND_API_KEY ?? "",
+    emailFrom: process.env.EMAIL_FROM ?? "",
+    /** Base URL of the admin console, for email CTA links. */
+    adminAppUrl: process.env.ADMIN_APP_URL ?? "",
 };

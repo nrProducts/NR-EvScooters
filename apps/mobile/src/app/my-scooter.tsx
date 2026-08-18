@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import {
   Bike, Calendar, CalendarClock, CreditCard, Hash, LifeBuoy, MapPin, PackageCheck, RefreshCw, Wrench,
 } from 'lucide-react-native';
@@ -23,10 +23,14 @@ import {
   VEHICLE_STATUS_TONE, formatDate,
 } from '../constants/status';
 import { describeExpiry, rentalDayNumber } from '../lib/rentalTiming';
-import { canReturnYet, canRenewEarly } from '../lib/returnPolicy';
+import { canReturnYet, getRenewalEligibility } from '../lib/returnPolicy';
 import { useCurrentRideOrBooking } from '../hooks/useCurrentRideOrBooking';
 import { useMaintenanceHistory, type MaintenanceStatusFilter } from '../hooks/useMaintenanceHistory';
 import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
+import { useAuthStore } from '../store/useAuthStore';
+import { rentalRepository } from '../services';
+import { SettlementCard, shouldShowSettlement } from '../components/SettlementCard';
+import type { ApiReturnSettlement } from '../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
@@ -48,6 +52,31 @@ export default function MyScooterScreen() {
   // the last rows. Same treatment as Home.
   const insets = useSafeAreaInsets();
 
+  // Without this, a rider sitting on this screen when admin approves their
+  // return keeps seeing the stale pre-return rental (Renew/Return buttons
+  // included) — useCurrentRideOrBooking only re-derives state when
+  // profile.has_active_rental actually CHANGES in the store, and nothing
+  // here was ever refreshing that flag. Mirrors home.tsx's identical fix.
+  const refreshProfile = useAuthStore((s) => s.refreshProfile);
+  useFocusEffect(
+    useCallback(() => {
+      void refreshProfile();
+    }, [refreshProfile]),
+  );
+
+  // Same settlement card Home shows — fetched here too so a rider who lands
+  // straight on My Scooter after a return still sees it, not just an empty state.
+  const [settlement, setSettlement] = useState<ApiReturnSettlement | null>(null);
+  const loadSettlement = () => {
+    void rentalRepository.settlement().then(setSettlement).catch(() => {
+      // Non-critical: the rest of the screen renders fine without it.
+    });
+  };
+  useEffect(() => {
+    if (state.kind === 'none') loadSettlement();
+    else setSettlement(null);
+  }, [state.kind]);
+
   // Catalog artwork, reused from the same zustand singleton Home populates —
   // the rental payload carries no image of its own. Loading here covers a
   // direct navigation that never passed through Home.
@@ -66,11 +95,11 @@ export default function MyScooterScreen() {
   // regardless; disabling here just avoids letting a rider into the return
   // form only to be rejected at submit.
   const canReturn = state.kind === 'rental' ? canReturnYet(state.rental.next_due_at) : true;
-  // Same "due today or tomorrow" window Billing's Recharge Now teaser uses —
-  // offered here too so a rider whose plan is ending isn't forced to the
-  // Billing tab just to see that renewing is an option.
+  // Renewal is offered any time before or after next_due_at (no more
+  // "day before" window) — offered here too so a rider whose plan is ending
+  // isn't forced to the Billing tab just to see that renewing is an option.
   const canRenew = state.kind === 'rental'
-    ? canRenewEarly(state.rental.plan_status, state.rental.next_due_at)
+    ? getRenewalEligibility(state.rental.plan_status, state.rental.next_due_at, state.rental.renewal_status).canRenew
     : false;
 
   const renderHero = (title: string, badge: React.ReactNode) => (
@@ -329,11 +358,16 @@ export default function MyScooterScreen() {
               ) : null}
             </>
           ) : (
-            <EmptyState
-              icon={Bike}
-              title="No active rental"
-              subtitle="Book a scooter to see it here — once picked up, its details will show up on this screen."
-            />
+            <>
+              {shouldShowSettlement(settlement) ? (
+                <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
+              ) : null}
+              <EmptyState
+                icon={Bike}
+                title="No active rental"
+                subtitle="Book a scooter to see it here — once picked up, its details will show up on this screen."
+              />
+            </>
           )}
         </ScrollView>
       )}

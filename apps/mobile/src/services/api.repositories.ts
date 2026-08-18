@@ -4,7 +4,7 @@ import { getSupabase } from '../lib/supabase';
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiReferralSummary,
-    ApiRental, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
+    ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, ListVehicleModelsParams,
     MaintenanceHistoryParams, Paginated, ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
 } from '../types/api';
@@ -208,6 +208,9 @@ export class ApiRentalRepository implements RentalRepository {
     }
     requestReturn(rentalId: string, payload: ReturnRequestPayload): Promise<ApiRental> {
         return api.requestRentalReturn(rentalId, payload);
+    }
+    settlement(): Promise<ApiReturnSettlement | null> {
+        return api.myRentalSettlement();
     }
 }
 

@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, Zap } from 'lucide-react-native';
+import {
+  ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, Zap, RefreshCw, Undo2,
+} from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { KycBanner } from '../components/KycBanner';
 import { MaintenanceNoticeBanner } from '../components/MaintenanceNoticeBanner';
@@ -17,16 +19,121 @@ import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
 import { bookingRepository, maintenanceRepository, rentalRepository } from '../services';
 import { useCancelBooking } from '../hooks/useCancelBooking';
 import { ReturnScooterModal } from '../components/ReturnScooterModal';
+import { canReturnYet, getRenewalEligibility } from '../lib/returnPolicy';
 import { buildMapsUrl, buildWebMapsUrl } from '../lib/maps';
 import { notifyError } from '../lib/confirm';
 import { COLORS } from '../constants/theme';
 import { VEHICLE_STATUS_LABEL, VEHICLE_STATUS_TONE } from '../constants/status';
-import type { ApiBooking, ApiMaintenanceNotice, ApiRental } from '../types/api';
+import type { ApiBooking, ApiMaintenanceNotice, ApiRental, ApiReturnSettlement } from '../types/api';
+import { SettlementCard, shouldShowSettlement } from '../components/SettlementCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function formatDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function daysRemaining(nextDueAt: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(`${nextDueAt}T00:00:00`);
+  return Math.round((due.getTime() - today.getTime()) / 86_400_000);
+}
+
+/**
+ * Current-plan status + Renew/Return actions, right on Home so a rider never
+ * has to go looking for them. Mirrors the states billing.tsx shows in more
+ * detail — this is the "at a glance, act in one tap" summary of the same
+ * getRenewalEligibility/canReturnYet rules.
+ */
+function PlanStatusCard({
+  rental, onRenew, onReturn,
+}: {
+  rental: ApiRental;
+  onRenew: () => void;
+  onReturn: () => void;
+}) {
+  const eligibility = getRenewalEligibility(rental.plan_status, rental.next_due_at, rental.renewal_status);
+  const canReturn = canReturnYet(rental.next_due_at);
+
+  if (rental.renewal_status === 'scheduled') {
+    return (
+      <View
+        className="rounded-2xl p-4 mb-4 flex-row items-center"
+        style={{ backgroundColor: COLORS.success + '14', borderWidth: 1, borderColor: COLORS.success + '55' }}
+      >
+        <RefreshCw size={16} color={COLORS.success} />
+        <View className="flex-1 ml-3">
+          <Text style={{ color: COLORS.success }} className="text-xs font-extrabold">
+            Renewal scheduled{rental.scheduled_start_date ? ` — starts ${formatDay(rental.scheduled_start_date)}` : ''}
+          </Text>
+          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+            Your current plan stays active until then.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!eligibility.canRenew && !canReturn) return null;
+
+  const remaining = rental.next_due_at ? daysRemaining(rental.next_due_at) : null;
+
+  return (
+    <View
+      className="rounded-2xl p-4 mb-4"
+      style={{
+        backgroundColor: (eligibility.isLate ? COLORS.danger : COLORS.primary) + '14',
+        borderWidth: 1,
+        borderColor: (eligibility.isLate ? COLORS.danger : COLORS.primary) + '55',
+      }}
+    >
+      <View className="flex-row items-center mb-1">
+        <Zap size={16} color={eligibility.isLate ? COLORS.danger : COLORS.primary} />
+        <Text
+          style={{ color: eligibility.isLate ? COLORS.danger : COLORS.textPrimary }}
+          className="text-xs font-extrabold ml-2"
+        >
+          {eligibility.isLate
+            ? 'Plan Expired — Renew Now'
+            : remaining === 0
+              ? 'Your plan ends today'
+              : rental.next_due_at
+                ? `Plan ends ${formatDay(rental.next_due_at)}${remaining != null && remaining > 0 ? ` · ${remaining} day${remaining === 1 ? '' : 's'} left` : ''}`
+                : 'Your plan'}
+        </Text>
+      </View>
+      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mb-3">
+        {eligibility.isLate
+          ? 'A late fee applies — shown before you pay.'
+          : 'Renew any time before your plan ends — your current plan stays active until then.'}
+      </Text>
+      <View className="flex-row" style={{ gap: 8 }}>
+        {eligibility.canRenew ? (
+          <TouchableOpacity
+            onPress={onRenew}
+            accessibilityRole="button"
+            className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center"
+            style={{ backgroundColor: eligibility.isLate ? COLORS.danger : COLORS.primary }}
+          >
+            <RefreshCw size={13} color="#FFF" />
+            <Text className="text-white text-xs font-bold ml-2">Renew Plan</Text>
+          </TouchableOpacity>
+        ) : null}
+        {canReturn ? (
+          <TouchableOpacity
+            onPress={onReturn}
+            accessibilityRole="button"
+            className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center border"
+            style={{ borderColor: COLORS.border }}
+          >
+            <Undo2 size={13} color={COLORS.textPrimary} />
+            <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2">Return Scooter</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  );
 }
 
 /**
@@ -43,6 +150,7 @@ export default function HomeScreen() {
   } = useVehicleCatalogStore();
   const [pendingBooking, setPendingBooking] = useState<ApiBooking | null>(null);
   const [activeRental, setActiveRental] = useState<ApiRental | null>(null);
+  const [settlement, setSettlement] = useState<ApiReturnSettlement | null>(null);
   // Without this, a rider with has_active_rental sees the booking card flash
   // in the shared slot before rentalRepository.mine() resolves.
   const [rentalLoading, setRentalLoading] = useState(false);
@@ -117,6 +225,21 @@ export default function HomeScreen() {
 
   useEffect(loadRental, [profile?.has_active_rental]);
 
+  // Only relevant once there's no active rental to show instead (a return
+  // just happened, or one is still being paid off) — fetched alongside the
+  // rental so the settlement card and the rental card never show together.
+  const loadSettlement = () => {
+    if (profile?.has_active_rental) {
+      setSettlement(null);
+      return;
+    }
+    void rentalRepository.settlement().then(setSettlement).catch(() => {
+      // Non-critical: the rest of Home renders fine without the settlement.
+    });
+  };
+
+  useEffect(loadSettlement, [profile?.has_active_rental]);
+
   const handleCancelBooking = async () => {
     if (!pendingBooking) return;
     const cancelled = await cancelBooking(pendingBooking);
@@ -137,6 +260,7 @@ export default function HomeScreen() {
         }),
       ]);
       loadRental();
+      loadSettlement();
     } finally {
       setRefreshing(false);
     }
@@ -257,24 +381,14 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {activeRental && activeRental.plan_status === 'due' ? (
-          <TouchableOpacity
-            onPress={() => router.push('/billing')}
-            accessibilityRole="button"
-            className="rounded-2xl p-4 mb-4 flex-row items-center"
-            style={{ backgroundColor: COLORS.danger + '14', borderWidth: 1, borderColor: COLORS.danger + '55' }}
-          >
-            <Zap size={16} color={COLORS.danger} />
-            <View className="flex-1 ml-3">
-              <Text style={{ color: COLORS.danger }} className="text-xs font-extrabold">
-                Your scooter won't start — payment overdue
-              </Text>
-              <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                ₹300/day late fee is accruing. Tap to pay now.
-              </Text>
-            </View>
-            <ChevronRight size={16} color={COLORS.danger} />
-          </TouchableOpacity>
+        {activeRental ? (
+          <PlanStatusCard
+            rental={activeRental}
+            onRenew={() => router.push('/billing')}
+            onReturn={() => setShowReturn(true)}
+          />
+        ) : shouldShowSettlement(settlement) ? (
+          <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
         ) : null}
 
         {/* One slot, two audiences: discovery for a rider who can still book,

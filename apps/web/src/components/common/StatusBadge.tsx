@@ -58,6 +58,13 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   // booking cancellation refund_status (distinct from refunds.status above)
   processed: "success",
   not_required: "muted",
+  // return_settlements.status
+  pending_refund: "warning",
+  refund_processing: "info",
+  refund_completed: "success",
+  no_refund_required: "muted",
+  amount_due: "destructive",
+  settlement_completed: "success",
 };
 
 export function StatusBadge({ status }: { status: string }) {

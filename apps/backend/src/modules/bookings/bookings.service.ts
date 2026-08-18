@@ -4,12 +4,14 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { addDays } from "../../common/dates";
 import { notifyUser } from "../notifications/notifications.service";
+import { notify } from "../notifications/notify.service";
 import { hasActiveRentalForUser } from "../users/users.service";
 import { computeLateReturnPenalty, planExpiryFor } from "../rentals/rentals.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { getDepositForBookingOrNull } from "../deposits/deposits.service";
 import { initiateCancellationRefund } from "../refunds/refunds.service";
 import { generateWeeklyInvoice } from "../billing/billing.service";
+import { computeLateRenewalFee } from "../payments/renewalFee";
 import { AuthContext, Paginated } from "../../types";
 import {
     ACTIVE_BOOKING_STATUSES, AvailableVehicleView, BookingActiveRental, BookingHistoryFilters,
@@ -26,10 +28,16 @@ const CANCELLATION_COLUMNS = `
     refund_initiated_at, refund_completed_at, refund_transaction_id
 `;
 
-/** Recurring-billing state — see 20260810100300_booking_plan_billing.sql. */
+/**
+ * Recurring-billing state — see 20260810100300_booking_plan_billing.sql,
+ * widened by 20260819100000_plan_renewal_scheduling.sql for the two-phase
+ * "pay now, activate later" renewal design (renewal_status/scheduled_*) and
+ * the per-booking late-fee override.
+ */
 const PLAN_BILLING_COLUMNS = `
     plan_status, plan_activated_at, plan_duration_days, deposit_amount_at_booking,
-    current_period_start, next_due_at, plan_paused_at, plan_paused_days_total
+    current_period_start, next_due_at, plan_paused_at, plan_paused_days_total,
+    renewal_status, scheduled_start_date, scheduled_duration_days, late_fee_override
 `;
 
 /**
@@ -89,6 +97,10 @@ type RawBookingRow = {
     next_due_at: string | null;
     plan_paused_at: string | null;
     plan_paused_days_total: number;
+    renewal_status: BookingView["renewal_status"];
+    scheduled_start_date: string | null;
+    scheduled_duration_days: number | null;
+    late_fee_override: number | string | null;
     vehicle_models: unknown;
     stations: unknown;
     plans: unknown;
@@ -267,6 +279,10 @@ export function toBookingView(row: RawBookingRow): BookingView {
         next_due_at: row.next_due_at ?? null,
         plan_paused_at: row.plan_paused_at ?? null,
         plan_paused_days_total: row.plan_paused_days_total ?? 0,
+        renewal_status: row.renewal_status ?? "none",
+        scheduled_start_date: row.scheduled_start_date ?? null,
+        scheduled_duration_days: row.scheduled_duration_days ?? null,
+        late_fee_override: row.late_fee_override == null ? null : Number(row.late_fee_override),
         active_rental: activeRental,
         return_late_fee_preview: toReturnLateFeePreview(activeRental),
     };
@@ -596,6 +612,19 @@ export async function cancelMyBooking(
         screen: "booking-history",
     });
 
+    await notify({
+        notificationType: "cancellation",
+        referenceType: "booking",
+        referenceId: bookingId,
+        template: "booking_cancelled",
+        title: "Booking Cancelled",
+        bodyFallback: "{rider} cancelled their booking for {vehicle}.",
+        screen: "/bookings",
+        riderId: actor.id,
+        vehicleId: existing.vehicle_id ?? undefined,
+        bookingId,
+    });
+
     return getBookingById(bookingId);
 }
 
@@ -611,48 +640,46 @@ export interface EarlyRechargeResult {
     dueDate: string;
     /** Itemized breakdown (base rental + any charges/discounts) so the rider app can show a review before charging, not just a total. */
     items: EarlyRechargeLineItem[];
+    /** True once next_due_at has already passed — a late renewal fee applies and paying activates the new period immediately. */
+    isLate: boolean;
+    lateFee: number;
+    /** amountDue + lateFee — what the rider actually pays. */
+    total: number;
+    /** When the renewed period will actually start. Today for a late renewal; next_due_at (unchanged) for an on-time one — see notify comment on applyWeeklyDueSuccess. */
+    scheduledStartDate: string;
 }
 
 /**
- * Rider-initiated "Recharge Now" — pays the upcoming period ahead of the
- * payment-overdue-sweep, which otherwise only creates that invoice (and
- * locks the vehicle) the day AFTER next_due_at passes unpaid. next_due_at
- * itself is the LAST day the current period is actually usable (the sweep
- * only flags overdue once `next_due_at < today`), so this opens the day
- * BEFORE that too — a rider on a 1-day plan due tomorrow can already
- * recharge today, not just on the due date itself.
+ * Rider-initiated "Renew Plan" — mints (or reuses) the invoice for the
+ * upcoming period any time before or after next_due_at, not just the day
+ * before it. Paying doesn't activate the new period itself — that's
+ * payments.service.ts's applyWeeklyDueSuccess, which schedules it (on-time)
+ * or rolls forward immediately (late); see that function's doc comment for
+ * the full two-phase design this is one half of.
  *
  * Reuses fn_generate_weekly_invoice via billing.service.ts's
- * generateWeeklyInvoice — the exact same idempotent function the cron calls
- * — so this can never mint a second/duplicate 'rental' invoice for the
- * period. Paying the returned invoice (through the normal
- * POST /payments/invoices/:id/order -> verify flow) advances next_due_at
- * from its CURRENT value via applyWeeklyDueSuccess, so the new period starts
- * exactly when the old one was scheduled to end (next_due_at itself, e.g.
- * "tomorrow" for a plan due tomorrow) — never from "now".
+ * generateWeeklyInvoice — the exact same idempotent function the
+ * payment-overdue-sweep cron calls — so this can never mint a
+ * second/duplicate 'rental' invoice for the period.
  */
 export async function requestEarlyRecharge(bookingId: string, actor: AuthContext): Promise<EarlyRechargeResult> {
     const { data: booking, error } = await supabaseAdmin
         .from("bookings")
-        .select("id, user_id, plan_status, next_due_at")
+        .select("id, user_id, plan_status, next_due_at, renewal_status, scheduled_start_date")
         .eq("id", bookingId)
         .maybeSingle();
     if (error) throw error;
     if (!booking || booking.user_id !== actor.id) throw notFound("Booking not found.");
 
-    if (booking.plan_status !== "active") {
+    if (booking.plan_status !== "active" && booking.plan_status !== "due") {
+        throw businessRule("This plan can't be renewed right now.");
+    }
+    if (booking.renewal_status === "scheduled") {
         throw businessRule(
-            booking.plan_status === "due"
-                ? "This plan is already due — pay the outstanding invoice instead."
-                : "This plan can't be recharged right now.",
+            `Your renewal is already scheduled to start on ${booking.scheduled_start_date}.`,
         );
     }
-    if (!booking.next_due_at) throw businessRule("This booking has no billing period to recharge.");
-
-    const today = new Date().toISOString().slice(0, 10);
-    if (booking.next_due_at > addDays(today, 1)) {
-        throw businessRule("Recharge opens the day before your current plan ends.");
-    }
+    if (!booking.next_due_at) throw businessRule("This booking has no billing period to renew.");
 
     const { invoiceId } = await generateWeeklyInvoice(bookingId);
 
@@ -669,13 +696,52 @@ export async function requestEarlyRecharge(bookingId: string, actor: AuthContext
         itemType: item.item_type, label: item.label, amount: Number(item.amount),
     }));
 
+    const { isLate, lateFee } = await computeLateRenewalFee(bookingId, invoice.due_date as string);
+    const amountDue = Number(invoice.amount_due);
+    const today = new Date().toISOString().slice(0, 10);
+
     await writeAudit({
         actorId: actor.id, targetUserId: actor.id, action: "plan.updated",
         entityType: "booking", entityId: bookingId,
         after: { early_recharge_invoice_id: invoiceId },
     });
 
-    return { invoiceId, amountDue: Number(invoice.amount_due), dueDate: invoice.due_date as string, items };
+    return {
+        invoiceId,
+        amountDue,
+        dueDate: invoice.due_date as string,
+        items,
+        isLate,
+        lateFee,
+        total: round2(amountDue + lateFee),
+        scheduledStartDate: isLate ? today : (invoice.due_date as string),
+    };
+}
+
+/**
+ * Admin per-booking override for the late renewal fee — wins over the global
+ * plan_renewal_settings amount whenever computeLateRenewalFee runs for this
+ * booking. Pass null to clear it and fall back to the global setting.
+ */
+export async function setLateFeeOverride(
+    bookingId: string, lateFeeOverride: number | null, actor: AuthContext,
+): Promise<BookingView> {
+    const { data: updated, error } = await supabaseAdmin
+        .from("bookings")
+        .update({ late_fee_override: lateFeeOverride })
+        .eq("id", bookingId)
+        .select("id")
+        .maybeSingle();
+    if (error) throw error;
+    if (!updated) throw notFound("Booking not found.");
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: null, action: "plan.updated",
+        entityType: "booking", entityId: bookingId,
+        after: { late_fee_override: lateFeeOverride },
+    });
+
+    return getBookingById(bookingId);
 }
 
 /**
@@ -897,6 +963,7 @@ export async function listPickupQueue(filters: PickupQueueFilters): Promise<Pagi
 
     if (filters.status) query = query.eq("status", filters.status);
     if (filters.planStatus) query = query.eq("plan_status", filters.planStatus);
+    if (filters.renewalStatus) query = query.eq("renewal_status", filters.renewalStatus);
     if (filters.stationId) query = query.eq("station_id", filters.stationId);
     if (filters.returnRequested) query = query.not("active_rental.return_requested_at", "is", null);
     if (filters.unassigned) query = query.is("vehicle_id", null);
