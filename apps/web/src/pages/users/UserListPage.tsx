@@ -314,7 +314,7 @@ export default function UserListPage() {
           emptyTitle="No users match your filters"
           sort={sort}
           onSortChange={onSortChange}
-          rowClassName={(u) => (isDueOrOverdue(u) ? "bg-destructive/10 hover:bg-destructive/15" : undefined)}
+          rowClassName={(u) => (isDueOrOverdue(u) ? "border-l-4 border-l-destructive" : undefined)}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}

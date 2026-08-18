@@ -106,15 +106,14 @@ export function DataTable<T extends { id: string }>({
             {data.map((row) => (
               <Fragment key={row.id}>
                 <tr
-                  className={cn(
-                    "transition-smooth hover:bg-card-hover",
-                    onRowClick && "cursor-pointer",
-                    rowClassName?.(row),
-                  )}
+                  className={cn("transition-smooth hover:bg-card-hover", onRowClick && "cursor-pointer")}
                   onClick={() => onRowClick?.(row)}
                 >
-                  {columns.map((col) => (
-                    <td key={col.key} className={cn("px-4 py-3 align-middle", col.className)}>
+                  {columns.map((col, i) => (
+                    <td
+                      key={col.key}
+                      className={cn("px-4 py-3 align-middle", col.className, i === 0 && rowClassName?.(row))}
+                    >
                       {col.render(row)}
                     </td>
                   ))}
