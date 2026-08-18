@@ -643,6 +643,10 @@ export interface EarlyRechargeResult {
     /** True once next_due_at has already passed — a late renewal fee applies and paying activates the new period immediately. */
     isLate: boolean;
     lateFee: number;
+    /** Whole days past next_due_at — lateFee = daysLate * feePerDay. 0 when not late. */
+    daysLate: number;
+    /** The configured per-day rate (override or global) — 0 when not late or the fee is disabled. */
+    feePerDay: number;
     /** amountDue + lateFee — what the rider actually pays. */
     total: number;
     /** When the renewed period will actually start. Today for a late renewal; next_due_at (unchanged) for an on-time one — see notify comment on applyWeeklyDueSuccess. */
@@ -696,7 +700,7 @@ export async function requestEarlyRecharge(bookingId: string, actor: AuthContext
         itemType: item.item_type, label: item.label, amount: Number(item.amount),
     }));
 
-    const { isLate, lateFee } = await computeLateRenewalFee(bookingId, invoice.due_date as string);
+    const { isLate, lateFee, daysLate, feePerDay } = await computeLateRenewalFee(bookingId, invoice.due_date as string);
     const amountDue = Number(invoice.amount_due);
     const today = new Date().toISOString().slice(0, 10);
 
@@ -713,6 +717,8 @@ export async function requestEarlyRecharge(bookingId: string, actor: AuthContext
         items,
         isLate,
         lateFee,
+        daysLate,
+        feePerDay,
         total: round2(amountDue + lateFee),
         scheduledStartDate: isLate ? today : (invoice.due_date as string),
     };

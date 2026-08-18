@@ -420,6 +420,10 @@ export interface ApiInvoice {
     paid_at: string | null;
     created_at: string;
     items: ApiInvoiceItem[];
+    /** Only ever set on GET /invoices/me for an overdue 'rental' invoice — see the backend's InvoiceRow.late_fee doc comment. */
+    late_fee?: number;
+    days_late?: number;
+    total_due?: number;
 }
 
 export interface ApiEarlyRechargeLineItem {
@@ -437,6 +441,9 @@ export interface ApiEarlyRecharge {
     /** True once next_due_at has already passed — lateFee applies and paying activates the new period immediately. */
     isLate: boolean;
     lateFee: number;
+    /** Whole days past next_due_at — lateFee = daysLate * feePerDay. */
+    daysLate: number;
+    feePerDay: number;
     /** amountDue + lateFee — what actually gets charged. */
     total: number;
     /** When the renewed period will actually start: today if late, next_due_at (unchanged) if on-time/early. */

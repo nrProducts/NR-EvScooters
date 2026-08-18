@@ -70,9 +70,12 @@ export default function BillingPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Late Renewal Fee — a single global setting (enable/disable + flat amount),
-// applied whenever a rider pays their weekly plan invoice after next_due_at
-// has already passed. Per-booking overrides are set from the Bookings list.
+// Late Renewal Fee — a single global setting (enable/disable + a PER-DAY
+// rate), applied whenever a rider pays their weekly plan invoice after
+// next_due_at has already passed — the charge is this rate × whole days
+// late, computed fresh every time so it keeps growing the longer a rider
+// waits. Per-booking overrides (also a per-day rate) are set from the
+// Bookings list.
 // ---------------------------------------------------------------------------
 
 function LateRenewalFeeCard() {
@@ -103,7 +106,7 @@ function LateRenewalFeeCard() {
         <div>
           <CardTitle className="text-base">Late Renewal Fee</CardTitle>
           <CardDescription>
-            Charged when a rider renews their plan after it has already ended — replaces the old flat per-day fee.
+            Charged per day when a rider renews their plan after it has already ended — total = days late × rate below.
           </CardDescription>
         </div>
       </CardHeader>
@@ -117,7 +120,7 @@ function LateRenewalFeeCard() {
         </div>
         <div className="flex items-end gap-3">
           <div className="space-y-1.5">
-            <Label>Fee amount (₹)</Label>
+            <Label>Fee amount (₹ per day)</Label>
             <Input
               type="number"
               min={0}

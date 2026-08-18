@@ -51,6 +51,20 @@ function todayStr(): string {
   return dateStr(new Date());
 }
 
+/** One line item on a bill card — label left, amount right. */
+function BillLine({ label, amount, danger }: { label: string; amount: number; danger?: boolean }) {
+  return (
+    <View className="flex-row items-center justify-between py-1">
+      <Text style={{ color: danger ? COLORS.danger : COLORS.textSecondary }} className="text-xs font-medium flex-1 pr-3">
+        {label}
+      </Text>
+      <Text style={{ color: danger ? COLORS.danger : COLORS.textPrimary }} className="text-xs font-semibold">
+        ₹{amount.toFixed(0)}
+      </Text>
+    </View>
+  );
+}
+
 export default function BillingScreen() {
   const { bookingId, booking, deposit, damages, invoices, loading, error, reload } = useMyBilling();
   const { refreshing, onRefresh } = useRefresh(() => reload(true));
@@ -103,12 +117,11 @@ export default function BillingScreen() {
 
   const plan = booking?.plan;
   const outstandingInvoices = invoices.filter((inv) => inv.payment_status === 'pending' || inv.payment_status === 'failed');
-  // A late fee may apply to a weekly-due 'rental' invoice — it's now a flat,
-  // admin-configurable (and possibly per-booking-overridden) amount, not a
-  // per-day multiplier the client can estimate. The server always recomputes
-  // authoritatively when the order is created; the exact figure only shows
-  // up once the rider actually starts paying (payInvoice/handleStartRecharge).
-  const outstandingTotal = outstandingInvoices.reduce((sum, inv) => sum + inv.amount_due, 0);
+  // GET /invoices/me already attaches the live-computed late fee (days late ×
+  // the admin-configured per-day rate) to any overdue 'rental' invoice — see
+  // total_due on ApiInvoice. Falls back to amount_due for anything else
+  // (deposit/damage/penalty invoices never carry a late fee).
+  const outstandingTotal = outstandingInvoices.reduce((sum, inv) => sum + (inv.total_due ?? inv.amount_due), 0);
   const isDue = booking?.plan_status === 'due';
   const renewalStatus = booking?.renewal_status ?? null;
   const renewalEligibility = getRenewalEligibility(booking?.plan_status ?? null, booking?.next_due_at ?? null, renewalStatus);
@@ -372,7 +385,9 @@ export default function BillingScreen() {
                     </View>
                     {rechargePreview.isLate ? (
                       <View className="flex-row items-center justify-between mt-1">
-                        <Text style={{ color: COLORS.danger }} className="text-xs font-medium">Late fee</Text>
+                        <Text style={{ color: COLORS.danger }} className="text-xs font-medium">
+                          Late fee ({rechargePreview.daysLate} day{rechargePreview.daysLate === 1 ? '' : 's'} × ₹{rechargePreview.feePerDay.toFixed(0)})
+                        </Text>
                         <Text style={{ color: COLORS.danger }} className="text-xs font-semibold">
                           ₹{rechargePreview.lateFee.toFixed(0)}
                         </Text>
@@ -427,26 +442,64 @@ export default function BillingScreen() {
             </View>
           ) : null}
 
-          {/* Outstanding payment */}
+          {/* Outstanding payment — one itemized bill per invoice, receipt-style. */}
           {outstandingInvoices.length > 0 && (
             <>
-              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Outstanding</Text>
-              <View className="rounded-2xl p-4 border mb-6" style={{ backgroundColor: COLORS.card, borderColor: COLORS.danger }}>
-                <View className="flex-row items-center justify-between mb-3">
-                  <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">Amount due</Text>
-                  <Text style={{ color: COLORS.danger }} className="text-lg font-black">₹{outstandingTotal.toFixed(0)}</Text>
-                </View>
-                {outstandingInvoices.map((inv) => (
-                  <View key={inv.id}>
-                    {inv.payment_type === 'rental' ? (
-                      <Text style={{ color: COLORS.danger }} className="text-[11px] font-semibold mb-1.5">
-                        A late fee may apply — shown when you tap Pay, before anything is charged.
+              <View className="flex-row items-center justify-between mb-3">
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Outstanding</Text>
+                {outstandingInvoices.length > 1 ? (
+                  <Text style={{ color: COLORS.danger }} className="text-xs font-bold">
+                    ₹{outstandingTotal.toFixed(0)} total
+                  </Text>
+                ) : null}
+              </View>
+
+              {outstandingInvoices.map((inv) => {
+                const perDay = inv.late_fee && inv.days_late ? inv.late_fee / inv.days_late : 0;
+                const total = inv.total_due ?? inv.amount_due;
+                return (
+                  <View
+                    key={inv.id}
+                    className="rounded-2xl border mb-4 overflow-hidden"
+                    style={{ backgroundColor: COLORS.card, borderColor: COLORS.danger + '55' }}
+                  >
+                    {/* Bill header strip */}
+                    <View
+                      className="flex-row items-center justify-between px-4 py-3"
+                      style={{ backgroundColor: COLORS.danger + '14' }}
+                    >
+                      <View className="flex-row items-center">
+                        <Receipt size={13} color={COLORS.danger} />
+                        <Text style={{ color: COLORS.danger }} className="text-xs font-extrabold ml-2">
+                          {PAYMENT_TYPE_LABEL[inv.payment_type ?? 'other']}
+                        </Text>
+                      </View>
+                      <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-semibold">
+                        Due {formatDate(inv.due_date)}
                       </Text>
-                    ) : null}
+                    </View>
+
+                    {/* Itemized lines */}
+                    <View className="px-4 pt-3 pb-1">
+                      <BillLine label="Rental plan amount" amount={inv.amount_due} />
+                      {inv.late_fee ? (
+                        <BillLine
+                          label={`Late fee (${inv.days_late} day${inv.days_late === 1 ? '' : 's'} × ₹${perDay.toFixed(0)}/day)`}
+                          amount={inv.late_fee}
+                          danger
+                        />
+                      ) : null}
+                      <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
+                      <View className="flex-row items-center justify-between pb-2">
+                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Total</Text>
+                        <Text style={{ color: COLORS.danger }} className="text-lg font-black">₹{total.toFixed(0)}</Text>
+                      </View>
+                    </View>
+
                     <TouchableOpacity
                       onPress={() => payInvoice(inv)}
                       disabled={payingInvoiceId === inv.id}
-                      className="py-3 rounded-xl items-center flex-row justify-center mt-1"
+                      className="mx-4 mb-4 py-3 rounded-xl items-center flex-row justify-center"
                       style={{ backgroundColor: COLORS.primary, opacity: payingInvoiceId === inv.id ? 0.6 : 1 }}
                     >
                       {payingInvoiceId === inv.id ? (
@@ -455,15 +508,15 @@ export default function BillingScreen() {
                         <CreditCard size={14} color="#FFF" />
                       )}
                       <Text className="text-white text-xs font-bold ml-2">
-                        Pay {PAYMENT_TYPE_LABEL[inv.payment_type ?? 'other']} — ₹{inv.amount_due.toFixed(0)}
+                        {payingInvoiceId === inv.id ? 'Processing…' : `Pay ₹${total.toFixed(0)}`}
                       </Text>
                     </TouchableOpacity>
                   </View>
-                ))}
-                {payError ? (
-                  <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mt-3">{payError}</Text>
-                ) : null}
-              </View>
+                );
+              })}
+              {payError ? (
+                <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mb-3">{payError}</Text>
+              ) : null}
             </>
           )}
 

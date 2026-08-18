@@ -43,6 +43,17 @@ export interface InvoiceRow {
     updated_at: string | null;
     rider: { id: string; full_name: string; email: string | null } | null;
     items: InvoiceItemRow[];
+    /**
+     * Live-computed late renewal fee for an overdue 'rental' invoice — only
+     * ever populated on the rider's own GET /invoices/me (see myInvoicesHandler),
+     * never on the admin listing, since it costs an extra lookup per invoice
+     * and only the rider's Outstanding card needs it shown before they pay.
+     * Undefined (not 0) when not applicable, so callers can tell "not late"
+     * apart from "not computed here".
+     */
+    late_fee?: number;
+    days_late?: number;
+    total_due?: number;
 }
 
 export interface InvoiceDetail extends InvoiceRow {

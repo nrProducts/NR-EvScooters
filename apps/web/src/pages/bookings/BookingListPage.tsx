@@ -167,7 +167,7 @@ export default function BookingListPage() {
             <p className="font-medium">Due {formatDate(b.next_due_at)}</p>
             <p className="text-xs">
               {daysLate} day{daysLate === 1 ? "" : "s"} overdue
-              {b.late_fee_override != null ? ` · ${formatCurrency(b.late_fee_override)} fee override` : " · late fee applies"}
+              {b.late_fee_override != null ? ` · ${formatCurrency(b.late_fee_override)}/day override` : " · late fee applies"}
             </p>
           </div>
         );
@@ -489,12 +489,12 @@ export default function BookingListPage() {
           <DialogHeader>
             <DialogTitle>Late renewal fee override</DialogTitle>
             <DialogDescription>
-              {lateFeeTarget?.rider.full_name} — leave blank to use the global late renewal fee instead.
+              {lateFeeTarget?.rider.full_name} — a per-day rate; leave blank to use the global rate instead.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-1.5">
-            <Label>Override amount (₹)</Label>
+            <Label>Override rate (₹ per day)</Label>
             <Input
               type="number"
               min={0}
