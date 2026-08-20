@@ -304,14 +304,14 @@ export const api = {
     uploadMyDocument: async (input: {
         doc_type: KycDocType;
         doc_number: string;
-        expiry_date?: string;
+        expires_on?: string;
         front: LocalFile;
         back?: LocalFile;
     }) => {
         const form = new FormData();
         form.append('doc_type', input.doc_type);
         form.append('doc_number', input.doc_number);
-        if (input.expiry_date) form.append('expiry_date', input.expiry_date);
+        if (input.expires_on) form.append('expires_on', input.expires_on);
         await appendFile(form, 'front', input.front);
         if (input.back) await appendFile(form, 'back', input.back);
         return request<ApiDocument>('/users/me/kyc/documents', { method: 'POST', form });
@@ -319,11 +319,11 @@ export const api = {
 
     updateMyDocument: async (
         documentId: string,
-        input: { doc_number?: string; expiry_date?: string; front?: LocalFile; back?: LocalFile },
+        input: { doc_number?: string; expires_on?: string; front?: LocalFile; back?: LocalFile },
     ) => {
         const form = new FormData();
         if (input.doc_number) form.append('doc_number', input.doc_number);
-        if (input.expiry_date) form.append('expiry_date', input.expiry_date);
+        if (input.expires_on) form.append('expires_on', input.expires_on);
         if (input.front) await appendFile(form, 'front', input.front);
         if (input.back) await appendFile(form, 'back', input.back);
         return request<ApiDocument>(`/users/me/kyc/documents/${documentId}`, { method: 'PATCH', form });

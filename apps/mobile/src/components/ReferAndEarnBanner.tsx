@@ -8,6 +8,20 @@ import type { ApiReferralSummary } from '../types/api';
 /**
  * Promotional Refer & Earn card, self-contained fetch on mount — same
  * standalone pattern as KycBanner, additive to the rest of Home.
+ *
+ * ── NOT MOUNTED. Do not re-add without a schema first. ───────────────────
+ *
+ * Referrals are not part of the current database. `referrals`,
+ * `referral_rewards` and `users.referral_code` have no successor, and
+ * apps/backend/src/modules/referrals/referrals.service.ts is a documented
+ * stub that rejects every call — so `referralRepository.mine()` always
+ * throws, the catch below swallows it, and this renders null every time.
+ *
+ * Kept rather than deleted for the same reason the backend stub is kept: it
+ * is the specification of what the feature did, and referrals are out of
+ * scope for this migration rather than cancelled. Removed from home.tsx
+ * because a component that cannot render should not also be issuing a doomed
+ * request on every mount. See docs/final-system-audit (finding M5).
  */
 export const ReferAndEarnBanner: React.FC = () => {
   const [summary, setSummary] = useState<ApiReferralSummary | null>(null);

@@ -126,7 +126,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
 // --- selectors -----------------------------------------------------------
 export const useIsAuthed = () => useAuthStore((s) => !!s.session);
-export const useRoles = (): RoleName[] => useAuthStore((s) => s.profile?.roles ?? []);
+/** One role now — `users.role`. Was an array off `user_roles`. */
+export const useRole = (): RoleName | null => useAuthStore((s) => s.profile?.role ?? null);
 export const useCanRent = () => useAuthStore((s) => s.profile?.can_rent ?? false);
 /** pending_payment counts as active, same as confirmed. */
 export const useHasActiveBooking = () => useAuthStore((s) => s.profile?.has_active_booking ?? false);

@@ -57,19 +57,22 @@ export interface RenewalEligibility {
  * next_due_at (no more "day before" window — a rider can renew as early as
  * they like, or late with a fee). Mirrors requestEarlyRecharge's gate in
  * apps/backend/src/modules/bookings/bookings.service.ts: allowed whenever
- * plan_status is 'active' or 'due' and no renewal is already scheduled.
+ * plan_status is 'active' or 'past_due' and no renewal is already scheduled.
+ *
+ * `due` is `past_due` — the same state, read off `subscriptions.status` now
+ * rather than the departed `bookings.plan_status`.
  * Single source of truth — my-scooter.tsx, billing.tsx and home.tsx all
  * import this rather than keeping their own copy.
  */
 export function getRenewalEligibility(
-  planStatus: 'active' | 'due' | 'paused' | null,
+  planStatus: 'active' | 'past_due' | 'paused' | null,
   nextDueAt: string | null,
   renewalStatus: 'none' | 'scheduled' | null,
   now: Date = new Date(),
 ): RenewalEligibility {
   const alreadyScheduled = renewalStatus === 'scheduled';
   const canRenew = !alreadyScheduled
-    && (planStatus === 'active' || planStatus === 'due')
+    && (planStatus === 'active' || planStatus === 'past_due')
     && !!nextDueAt;
   const isLate = !!nextDueAt && dateStr(now) > nextDueAt;
   return { canRenew, isLate, alreadyScheduled };

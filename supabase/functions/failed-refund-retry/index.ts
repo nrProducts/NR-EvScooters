@@ -1,54 +1,93 @@
 // =========================================================================
 // failed-refund-retry  —  hourly pg_cron job
 //
-// Retries refunds.status='failed' rows under a capped attempt count, so a
-// transient gateway failure recovers on its own instead of sitting stuck
-// forever waiting on an admin's manual "Retry" click. Same gateway-call
-// logic as refund-processing (duplicated on purpose — this function can't
-// import that one; Edge Functions each deploy standalone), just scoped to
-// 'failed' + attempt_count < cap instead of 'pending'.
+// Retries `failed` refunds under a capped attempt count, so a transient
+// gateway failure recovers on its own instead of waiting on an admin's
+// manual "Retry" click. Same gateway logic as processRefund() in
+// apps/backend/src/modules/refunds/refunds.service.ts, scoped to
+// status='failed' + attempt_count < cap.
+//
+// ── What the new schema changed ──────────────────────────────────────────
+//
+// The old version had to GO LOOKING for something to refund against —
+// `invoices.gateway_ref`, filtered by a `payment_type` guessed from the
+// refund's own type — and gave up if it guessed wrong. That whole search is
+// gone: `refunds.payment_transaction_id` is NOT NULL, so the refund already
+// names the captured payment it reverses, chosen when someone actually knew
+// which money was coming back.
+//
+// Three mirror columns went with it, and nothing writes them any more:
+//
+//   deposits.refund_id             the refund names its own chain
+//   bookings.refund_status         cancellation state lives on the refund
+//   invoices.payment_status        derived by v_invoice_balances
+//
+// `partially_refunded` is not a deposit status any more either. A partial
+// return leaves the deposit `held`, which is the truthful description — it
+// genuinely still holds a balance — so release is conditional on the refund
+// covering everything that was refundable.
 // =========================================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
+import { notifyUser } from "../_shared/notify.ts";
+import { writeAudit } from "../_shared/audit.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SOURCE = "failed-refund-retry";
+
 const RAZORPAY_KEY_ID = Deno.env.get("RAZORPAY_KEY_ID") ?? "";
 const RAZORPAY_KEY_SECRET = Deno.env.get("RAZORPAY_KEY_SECRET") ?? "";
 const MAX_ATTEMPTS = Number.parseInt(Deno.env.get("FAILED_REFUND_MAX_ATTEMPTS") ?? "5", 10);
 
 interface RefundRow {
     id: string;
-    deposit_id: string;
-    booking_id: string;
+    user_id: string;
+    payment_transaction_id: string;
     amount: number;
     attempt_count: number;
-    refund_type: "deposit" | "booking_cancellation";
+    reason: string;
+    payment_transactions:
+        | { gateway_payment_id: string | null; payment_orders: unknown }
+        | Array<{ gateway_payment_id: string | null; payment_orders: unknown }>
+        | null;
 }
 
-function round2(n: number): number {
-    return Math.round(n * 100) / 100;
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+function unwrap<T>(raw: unknown): T | null {
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    return (v as T) ?? null;
 }
 
-async function markFailed(admin: ReturnType<typeof createClient>, refundId: string, reason: string): Promise<void> {
-    await admin.from("refunds").update({ status: "failed", failure_reason: reason }).eq("id", refundId).neq("status", "success");
+async function markFailed(admin: Admin, refundId: string, reason: string): Promise<void> {
+    await admin
+        .from("refunds")
+        .update({ status: "failed", failure_reason: reason })
+        .eq("id", refundId)
+        .neq("status", "succeeded");
 }
 
 Deno.serve(async (_req) => {
-    if (!SUPABASE_URL || !SERVICE_ROLE) return json({ error: "Function not configured." }, 500);
-    if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) return json({ error: "Payment gateway not configured." }, 500);
+    if (!isConfigured()) return notConfigured();
+    if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+        return json({ error: "Payment gateway not configured." }, 500);
+    }
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { autoRefreshToken: false, persistSession: false } });
+    const admin = adminClient();
     const authHeader = "Basic " + btoa(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`);
 
+    // The chain the refund already carries: which capture, and which
+    // subscription that capture belonged to.
     const { data: failed, error } = await admin
         .from("refunds")
-        .select("id, deposit_id, booking_id, amount, attempt_count, refund_type")
+        .select(
+            "id, user_id, payment_transaction_id, amount, attempt_count, reason, "
+            + "payment_transactions(gateway_payment_id, payment_orders(invoices(subscription_id)))",
+        )
         .eq("status", "failed")
         .lt("attempt_count", MAX_ATTEMPTS);
 
     if (error) {
-        console.error("[failed-refund-retry] query failed", error);
+        console.error(`[${SOURCE}] query failed`, error);
         return json({ error: "Query failed." }, 500);
     }
 
@@ -56,108 +95,109 @@ Deno.serve(async (_req) => {
     let succeeded = 0;
     let stillFailed = 0;
 
-    for (const refund of (failed ?? []) as RefundRow[]) {
+    for (const refund of (failed ?? []) as unknown as RefundRow[]) {
         retried++;
 
-        const sourcePaymentType = refund.refund_type === "booking_cancellation" ? "rental" : "deposit";
-        const { data: sourceInvoice } = await admin
-            .from("invoices")
-            .select("gateway_ref")
-            .eq("booking_id", refund.booking_id)
-            .eq("payment_type", sourcePaymentType)
-            .eq("payment_status", "succeeded")
-            .maybeSingle();
-        const sourcePaymentId = sourceInvoice?.gateway_ref ?? null;
-
+        const txn = unwrap<{ gateway_payment_id: string | null; payment_orders: unknown }>(
+            refund.payment_transactions,
+        );
+        const sourcePaymentId = txn?.gateway_payment_id ?? null;
         if (!sourcePaymentId) {
-            await markFailed(admin, refund.id, `No captured ${sourcePaymentType} payment found to refund against.`);
+            await markFailed(
+                admin,
+                refund.id,
+                "The payment this refund reverses has no gateway reference.",
+            );
             stillFailed++;
             continue;
         }
 
+        const order = unwrap<{ invoices: unknown }>(txn?.payment_orders);
+        const invoice = unwrap<{ subscription_id: string }>(order?.invoices);
+        const subscriptionId = invoice?.subscription_id ?? null;
+
         await admin
             .from("refunds")
             .update({
-                status: "processing", last_attempted_at: new Date().toISOString(),
-                attempt_count: refund.attempt_count + 1, source_gateway_payment_id: sourcePaymentId,
+                status: "processing",
+                last_attempted_at: new Date().toISOString(),
+                attempt_count: refund.attempt_count + 1,
             })
             .eq("id", refund.id);
 
         try {
-            const res = await fetch(`https://api.razorpay.com/v1/payments/${sourcePaymentId}/refund`, {
-                method: "POST",
-                headers: { "content-type": "application/json", authorization: authHeader },
-                body: JSON.stringify({
-                    amount: Math.round(refund.amount * 100),
-                    notes: { deposit_id: refund.deposit_id, refund_id: refund.id },
-                }),
-            });
+            const res = await fetch(
+                `https://api.razorpay.com/v1/payments/${sourcePaymentId}/refund`,
+                {
+                    method: "POST",
+                    headers: { "content-type": "application/json", authorization: authHeader },
+                    body: JSON.stringify({
+                        amount: Math.round(Number(refund.amount) * 100),
+                        notes: { refund_id: refund.id, reason: refund.reason },
+                    }),
+                },
+            );
             const result = await res.json().catch(() => null);
 
             if (!res.ok || !result?.id) {
-                await markFailed(admin, refund.id, result?.error?.description ?? `Gateway returned ${res.status}.`);
+                await markFailed(
+                    admin,
+                    refund.id,
+                    result?.error?.description ?? `Gateway returned ${res.status}.`,
+                );
                 stillFailed++;
                 continue;
             }
 
             await admin
                 .from("refunds")
-                .update({ status: "success", gateway_refund_id: result.id, processed_at: new Date().toISOString() })
+                .update({
+                    status: "succeeded",
+                    gateway_refund_id: result.id,
+                    completed_at: new Date().toISOString(),
+                })
                 .eq("id", refund.id);
 
-            const { data: deposit } = await admin.from("deposits").select("amount").eq("id", refund.deposit_id).maybeSingle();
-            const fully = deposit ? round2(refund.amount) >= round2(Number(deposit.amount)) : true;
-            await admin
-                .from("deposits")
-                .update({
-                    status: fully ? "refunded" : "partially_refunded",
-                    refunded_at: new Date().toISOString(), refund_id: refund.id,
-                })
-                .eq("id", refund.deposit_id);
-
-            // Keep the Payments screen (apps/web) in sync — it reads
-            // invoices.payment_status directly, not the deposits table. A
-            // booking_cancellation refund pays back one combined captured
-            // payment that settled both the rental and deposit invoices.
-            const refundedPaymentTypes = refund.refund_type === "booking_cancellation" ? ["rental", "deposit"] : ["deposit"];
-            await admin
-                .from("invoices")
-                .update({ payment_status: "refunded" })
-                .eq("booking_id", refund.booking_id)
-                .in("payment_type", refundedPaymentTypes)
-                .eq("payment_status", "succeeded");
-
-            if (refund.refund_type === "booking_cancellation") {
-                await admin
-                    .from("bookings")
-                    .update({
-                        refund_status: "processed",
-                        refund_completed_at: new Date().toISOString(),
-                        refund_transaction_id: result.id,
-                    })
-                    .eq("id", refund.booking_id)
-                    .eq("refund_status", "processing");
+            if (subscriptionId) {
+                await releaseDepositIfFullyRefunded(admin, subscriptionId, Number(refund.amount));
             }
 
-            const { data: booking } = await admin.from("bookings").select("user_id").eq("id", refund.booking_id).maybeSingle();
-            if (booking) {
-                await admin.from("notifications_log").insert({
-                    user_id: booking.user_id, channel: "push", template: "refund_completed",
-                    payload: { title: "Refund Completed", body: "Your refund has been completed.", screen: "billing" },
-                    status: "pending",
-                });
-            }
+            await writeAudit(admin, {
+                targetUserId: refund.user_id,
+                action: "refund.processed",
+                entityType: "refund",
+                entityId: refund.id,
+                after: { gateway_refund_id: result.id, retried: true },
+                source: SOURCE,
+            });
 
-            await admin.from("audit_logs").insert({
-                actor_id: null, target_user_id: booking?.user_id ?? null, action: "refund.processed",
-                entity_type: "refund", entity_id: refund.id,
-                after_data: { gateway_refund_id: result.id, retried: true }, request_context: { source: "failed-refund-retry" },
+            await notifyUser(admin, refund.user_id, {
+                typeCode: "refund_completed",
+                subjectType: "refund",
+                subjectId: refund.id,
+                title: "Refund Completed",
+                body: refund.reason === "booking_cancellation"
+                    ? `Your refund of ₹${Number(refund.amount)} for the cancelled booking has been completed.`
+                    : "Your security deposit refund has been completed.",
+                screen: refund.reason === "booking_cancellation" ? "booking-history" : "my-plan",
             });
 
             succeeded++;
         } catch (err) {
-            console.error("[failed-refund-retry] gateway call threw", { refundId: refund.id, err });
-            await markFailed(admin, refund.id, err instanceof Error ? err.message : "Network error calling the payment gateway.");
+            console.error(`[${SOURCE}] gateway call threw`, { refundId: refund.id, err });
+            await markFailed(
+                admin,
+                refund.id,
+                err instanceof Error ? err.message : "Network error calling the payment gateway.",
+            );
+            await writeAudit(admin, {
+                targetUserId: refund.user_id,
+                action: "refund.failed",
+                entityType: "refund",
+                entityId: refund.id,
+                after: { retried: true },
+                source: SOURCE,
+            });
             stillFailed++;
         }
     }
@@ -165,6 +205,51 @@ Deno.serve(async (_req) => {
     return json({ retried, succeeded, stillFailed }, 200);
 });
 
-function json(body: unknown, status: number): Response {
-    return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+/**
+ * Releases the deposit once its money has actually gone back.
+ *
+ * "Fully" means against what was REFUNDABLE, not against the face value:
+ * assessed damage has already come off, so a deposit reduced by a ₹300
+ * damage is fully settled by a refund of the remainder.
+ */
+async function releaseDepositIfFullyRefunded(
+    admin: Admin,
+    subscriptionId: string,
+    refundAmount: number,
+): Promise<void> {
+    const { data: deposit } = await admin
+        .from("deposits")
+        .select("id, amount, status")
+        .eq("subscription_id", subscriptionId)
+        .maybeSingle();
+    if (!deposit || deposit.status !== "held") return;
+
+    const { data: rentals } = await admin
+        .from("rentals")
+        .select("id")
+        .eq("subscription_id", subscriptionId);
+    const rentalIds = (rentals ?? []).map((r: { id: string }) => r.id);
+
+    let damage = 0;
+    if (rentalIds.length > 0) {
+        const { data: damages, error } = await admin
+            .from("damages")
+            .select("assessed_amount, incidents!inner(rental_id)")
+            .in("incidents.rental_id", rentalIds)
+            .neq("status", "disputed");
+        if (error) return; // Unknown damage must not release a deposit.
+        damage = (damages ?? []).reduce(
+            (sum: number, d: { assessed_amount: number }) => sum + Number(d.assessed_amount),
+            0,
+        );
+    }
+
+    const refundable = Math.max(0, round2(Number(deposit.amount) - damage));
+    if (round2(refundAmount) < refundable) return;
+
+    await admin
+        .from("deposits")
+        .update({ status: "released", released_at: new Date().toISOString() })
+        .eq("id", deposit.id)
+        .eq("status", "held");
 }

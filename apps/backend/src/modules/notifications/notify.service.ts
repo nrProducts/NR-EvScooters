@@ -1,17 +1,51 @@
 import { supabaseAdmin } from "../../config/supabase";
 import { env } from "../../config/env";
 import { isEmailConfigured, getResend } from "../../config/resend";
-import { NotificationType } from "../../types";
+import { EmittedNotificationCode } from "../../types";
 import { getRecipients } from "../notification-settings/notification-settings.service";
 import { EligibleRecipient } from "../notification-settings/notification-settings.types";
 import { deliverPush } from "./notifications.service";
 import { renderNotificationEmail } from "./email-template";
 
+/**
+ * Staff/admin notification fan-out.
+ *
+ * The three-table split changes the shape of this module in one important
+ * way: **the event is recorded once**, and each recipient gets a message
+ * pointing at it. Before, "a KYC document needs review" was re-inserted into
+ * `notifications_log` for every recipient and again for every channel, so
+ * five ops staff produced ten rows that were only related by having the same
+ * `reference_id`.
+ *
+ * Each channel then gets its own `notification_deliveries` row with its own
+ * status — so an email that sends and a push that fails no longer overwrite
+ * each other's outcome, which the single `status` column could not avoid.
+ */
+
 export interface NotifyContext {
-    notificationType: NotificationType;
+    /**
+     * A `notification_types.code`. THE code — not a category.
+     *
+     * This field and a second `template` field used to coexist, and every
+     * call site filled them with different values: `notificationType: "kyc"`
+     * next to `template: "kyc_review_needed"`. Only the first reached
+     * `notification_type_code`, and none of the seven categories ever passed
+     * — `booking`, `cancellation`, `damage`, `kyc`, `maintenance`, `refund`,
+     * `return` — is a row in `notification_types`.
+     *
+     * The result was not an error. `getRecipients` looked the category up,
+     * found nothing, and returned zero recipients; `notify()` then returned at
+     * the empty-recipients guard BEFORE attempting any insert. So every staff
+     * and admin notification in the system was silently discarded, with no
+     * log line and no foreign-key violation to notice — while the Notification
+     * Manager went on showing a healthy catalogue with subscribers attached.
+     *
+     * One field now, and it is the one the FK points at. See
+     * docs/final-system-audit (finding C5).
+     */
+    notificationType: EmittedNotificationCode;
     referenceType: string;
     referenceId: string;
-    template: string;
     title: string;
     bodyFallback: string;
     /** Web admin route the email CTA and in-app row should point at, e.g. '/kyc'. */
@@ -19,19 +53,16 @@ export interface NotifyContext {
     riderId?: string;
     vehicleId?: string;
     bookingId?: string;
-    /** Skip the lookup when the caller already has the name in scope (e.g. refunds' joined booking). */
+    /** Skip the lookup when the caller already has the name in scope. */
     riderNameOverride?: string;
     vehicleNameOverride?: string;
-    /** The staff/admin who caused the event themselves — never notify them of their own action. */
+    /** The staff/admin who caused the event — never notify them of their own action. */
     excludeUserId?: string;
 }
 
 /**
  * The single entry point every business module calls once its DB write has
- * already succeeded. Resolves the configured recipients for this event type,
- * enriches the message with rider/vehicle names (once, not per-recipient),
- * then delivers in-app and/or email per recipient — each independently
- * best-effort, never throwing into the caller's business logic.
+ * succeeded. Never throws into the caller's business logic.
  */
 export async function notify(ctx: NotifyContext): Promise<void> {
     const resolution = await getRecipients(ctx.notificationType);
@@ -44,9 +75,69 @@ export async function notify(ctx: NotifyContext): Promise<void> {
     ]);
     const body = enrichBody(ctx.bodyFallback, riderName, vehicleName);
 
+    const eventId = await recordEvent(ctx);
+    if (!eventId) return;
+
     await Promise.all(
-        recipients.map((recipient) => deliverToRecipient(recipient, ctx, resolution, body)),
+        recipients.map((recipient) => deliverToRecipient(recipient, ctx, resolution, body, eventId)),
     );
+}
+
+/**
+ * Records the event itself, once.
+ *
+ * Idempotent on (type, subject): a retried business action that re-notifies
+ * reuses the existing event rather than creating a second one, which is what
+ * the old per-row 23505 check was approximating one recipient at a time.
+ */
+async function recordEvent(ctx: NotifyContext): Promise<string | null> {
+    const { data: existing, error: readError } = await supabaseAdmin
+        .from("notification_events")
+        .select("id")
+        .eq("notification_type_code", ctx.notificationType)
+        .eq("subject_type", ctx.referenceType)
+        .eq("subject_id", ctx.referenceId)
+        .maybeSingle();
+    if (readError) {
+        console.error("[notify] could not read notification event", { error: readError.message });
+        return null;
+    }
+    if (existing) return existing.id;
+
+    const { data, error } = await supabaseAdmin
+        .from("notification_events")
+        .insert({
+            notification_type_code: ctx.notificationType,
+            subject_type: ctx.referenceType,
+            subject_id: ctx.referenceId,
+            // The three denormalised id columns became this bag — which ids
+            // matter depends on the event, so a fixed set of columns was
+            // always going to be both too many and too few.
+            payload: {
+                booking_id: ctx.bookingId ?? null,
+                vehicle_id: ctx.vehicleId ?? null,
+                rider_id: ctx.riderId ?? null,
+                screen: ctx.screen ?? null,
+            },
+        })
+        .select("id")
+        .maybeSingle();
+
+    if (error) {
+        if ((error as { code?: string }).code === "23505") {
+            const { data: raced } = await supabaseAdmin
+                .from("notification_events")
+                .select("id")
+                .eq("notification_type_code", ctx.notificationType)
+                .eq("subject_type", ctx.referenceType)
+                .eq("subject_id", ctx.referenceId)
+                .maybeSingle();
+            return raced?.id ?? null;
+        }
+        console.error("[notify] could not record notification event", { error: error.message });
+        return null;
+    }
+    return data?.id ?? null;
 }
 
 async function deliverToRecipient(
@@ -54,86 +145,117 @@ async function deliverToRecipient(
     ctx: NotifyContext,
     resolution: { sendEmail: boolean; sendInApp: boolean },
     body: string,
+    eventId: string,
 ): Promise<void> {
+    // One message per recipient, regardless of how many channels carry it.
+    const messageId = await ensureMessage(eventId, recipient.id, ctx, body);
+    if (!messageId) return;
+
     if (resolution.sendInApp) {
         try {
-            await deliverInApp(recipient.id, ctx, body);
+            await deliverInApp(messageId, recipient.id, ctx, body);
         } catch (err) {
             console.error("[notify] in-app delivery failed", {
-                userId: recipient.id, notificationType: ctx.notificationType, error: err instanceof Error ? err.message : err,
+                userId: recipient.id, notificationType: ctx.notificationType,
+                error: err instanceof Error ? err.message : err,
             });
         }
     }
     if (resolution.sendEmail && recipient.email) {
         try {
-            await sendEmail(recipient as { id: string; email: string }, ctx, body);
+            await sendEmail(messageId, recipient as { id: string; email: string }, ctx, body);
         } catch (err) {
             console.error("[notify] email delivery failed", {
-                userId: recipient.id, notificationType: ctx.notificationType, error: err instanceof Error ? err.message : err,
+                userId: recipient.id, notificationType: ctx.notificationType,
+                error: err instanceof Error ? err.message : err,
             });
         }
     }
 }
 
-async function deliverInApp(userId: string, ctx: NotifyContext, body: string): Promise<void> {
-    const { data: row, error } = await supabaseAdmin
-        .from("notifications_log")
+/** The recipient's copy. Unique on (event, user), so a retry reuses it. */
+async function ensureMessage(
+    eventId: string,
+    userId: string,
+    ctx: NotifyContext,
+    body: string,
+): Promise<string | null> {
+    const { data, error } = await supabaseAdmin
+        .from("notification_messages")
         .insert({
+            notification_event_id: eventId,
+            notification_type_code: ctx.notificationType,
             user_id: userId,
-            channel: "push",
-            template: ctx.template,
-            payload: { title: ctx.title, body, screen: ctx.screen },
-            status: "pending",
-            notification_type: ctx.notificationType,
-            reference_type: ctx.referenceType,
-            reference_id: ctx.referenceId,
-            booking_id: ctx.bookingId ?? null,
-            vehicle_id: ctx.vehicleId ?? null,
-            rider_id: ctx.riderId ?? null,
+            title: ctx.title,
+            body,
         })
         .select("id")
-        .single();
+        .maybeSingle();
 
-    // 23505 = duplicate for this (recipient, type, reference, channel) — already delivered, skip silently.
     if (error) {
-        if (error.code === "23505") return;
+        if ((error as { code?: string }).code === "23505") {
+            const { data: existing } = await supabaseAdmin
+                .from("notification_messages")
+                .select("id")
+                .eq("notification_event_id", eventId)
+                .eq("user_id", userId)
+                .maybeSingle();
+            return existing?.id ?? null;
+        }
+        console.error("[notify] could not create message", { userId, error: error.message });
+        return null;
+    }
+    return data?.id ?? null;
+}
+
+async function deliverInApp(
+    messageId: string,
+    userId: string,
+    ctx: NotifyContext,
+    body: string,
+): Promise<void> {
+    const { data, error } = await supabaseAdmin
+        .from("notification_deliveries")
+        .insert({
+            notification_message_id: messageId,
+            channel: "push",
+            status: "pending",
+        })
+        .select("id")
+        .maybeSingle();
+    if (error) {
+        if ((error as { code?: string }).code === "23505") return; // Already attempted.
         throw error;
     }
-    if (!row) return;
+    if (!data) return;
 
-    await deliverPush(row.id, userId, { title: ctx.title, body, screen: ctx.screen, template: ctx.template });
+    await deliverPush(data.id, userId, {
+        title: ctx.title, body, screen: ctx.screen, template: ctx.notificationType,
+    });
 }
 
 async function sendEmail(
+    messageId: string,
     recipient: { id: string; email: string },
     ctx: NotifyContext,
     body: string,
 ): Promise<void> {
-    const { data: row, error } = await supabaseAdmin
-        .from("notifications_log")
+    const { data, error } = await supabaseAdmin
+        .from("notification_deliveries")
         .insert({
-            user_id: recipient.id,
+            notification_message_id: messageId,
             channel: "email",
-            template: ctx.template,
-            payload: { title: ctx.title, body },
             status: "pending",
-            notification_type: ctx.notificationType,
-            reference_type: ctx.referenceType,
-            reference_id: ctx.referenceId,
-            booking_id: ctx.bookingId ?? null,
-            vehicle_id: ctx.vehicleId ?? null,
-            rider_id: ctx.riderId ?? null,
-            email: recipient.email,
+            provider: "resend",
         })
         .select("id")
-        .single();
-
+        .maybeSingle();
     if (error) {
-        if (error.code === "23505") return; // already delivered for this reference
+        if ((error as { code?: string }).code === "23505") return;
         throw error;
     }
-    if (!row) return;
-    if (!isEmailConfigured()) return; // stays 'pending' — same posture as a push with no token yet
+    if (!data) return;
+    if (!isEmailConfigured()) return; // Stays 'pending' — same posture as a push with no token.
 
     try {
         const html = renderNotificationEmail({
@@ -143,18 +265,34 @@ async function sendEmail(
             ctaLabel: "Review",
             ctaUrl: `${env.adminAppUrl}${ctx.screen ?? ""}`,
         });
-        await getResend().emails.send({ from: env.emailFrom, to: recipient.email, subject: ctx.title, html });
-        await supabaseAdmin.from("notifications_log").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", row.id);
+        const sent = await getResend().emails.send({
+            from: env.emailFrom, to: recipient.email, subject: ctx.title, html,
+        });
+        await supabaseAdmin
+            .from("notification_deliveries")
+            .update({
+                status: "sent",
+                sent_at: new Date().toISOString(),
+                // The provider's own id, which the old schema had nowhere to
+                // put — so a bounce could not be traced back to its row.
+                provider_ref: sent.data?.id ?? null,
+            })
+            .eq("id", data.id);
     } catch (err) {
-        console.error("[notify] email send failed", { userId: recipient.id, error: err instanceof Error ? err.message : err });
-        await supabaseAdmin.from("notifications_log").update({ status: "failed" }).eq("id", row.id);
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[notify] email send failed", { userId: recipient.id, error: message });
+        await supabaseAdmin
+            .from("notification_deliveries")
+            .update({ status: "failed", error: message })
+            .eq("id", data.id);
     }
 }
 
 async function resolveRiderName(ctx: NotifyContext): Promise<string | null> {
     if (ctx.riderNameOverride) return ctx.riderNameOverride;
     if (!ctx.riderId) return null;
-    const { data } = await supabaseAdmin.from("users").select("full_name").eq("id", ctx.riderId).maybeSingle();
+    const { data } = await supabaseAdmin
+        .from("users").select("full_name").eq("id", ctx.riderId).maybeSingle();
     return data?.full_name ?? null;
 }
 
@@ -162,9 +300,13 @@ async function resolveVehicleName(ctx: NotifyContext): Promise<string | null> {
     if (ctx.vehicleNameOverride) return ctx.vehicleNameOverride;
     if (!ctx.vehicleId) return null;
     const { data } = await supabaseAdmin
-        .from("vehicles").select("name, registration_number").eq("id", ctx.vehicleId).maybeSingle();
+        .from("vehicles")
+        .select("display_name, registration_number, vehicle_models(name)")
+        .eq("id", ctx.vehicleId)
+        .maybeSingle();
     if (!data) return null;
-    return `${data.name} (${data.registration_number})`;
+    const model = Array.isArray(data.vehicle_models) ? data.vehicle_models[0] : data.vehicle_models;
+    return `${data.display_name ?? model?.name ?? ""} (${data.registration_number})`.trim();
 }
 
 function enrichBody(fallback: string, riderName: string | null, vehicleName: string | null): string {

@@ -59,17 +59,20 @@ export async function logPiiAccess(entry: PiiAccessEntry): Promise<void> {
     // to review a document. The log is evidence; it is not the workflow.
     try {
         const { error } = await supabaseAdmin.from("pii_access_log").insert({
-            actor_id: entry.actor.id,
-            actor_roles: entry.actor.roles,
+            actor_user_id: entry.actor.id,
+            // Scalar now, not an array. The snapshot exists so the log still
+            // says what the actor WAS at the time even after their role
+            // changes — that survives the collapse to one role intact.
+            actor_role_snapshot: entry.actor.role,
             target_user_id: entry.targetUserId,
             resource: entry.resource,
             resource_id: entry.resourceId ?? null,
             fields: entry.fields ?? null,
             reason: entry.reason ?? "other",
             context_ref: entry.contextRef ?? null,
-            ip: entry.req?.ip ?? null,
+            ip_address: entry.req?.ip ?? null,
             user_agent: entry.req?.get("user-agent") ?? null,
-            path: entry.req?.originalUrl ?? null,
+            request_path: entry.req?.originalUrl ?? null,
         });
 
         if (error) throw new Error(error.message);

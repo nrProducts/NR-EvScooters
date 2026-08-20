@@ -11,8 +11,14 @@ export async function listDepositsHandler(req: AuthedRequest, res: Response) {
     res.json(await service.listDeposits({ ...page, status, refundEligible }));
 }
 
+/**
+ * Still addressed by booking id — that is what the console has — but the
+ * deposit hangs off the subscription now, so the service hops through it.
+ */
 export async function getDepositForBookingHandler(req: AuthedRequest, res: Response) {
-    res.json(await service.getDepositForBooking(req.params.bookingId as string));
+    const deposit = await service.getDepositForBookingOrNull(req.params.bookingId as string);
+    if (!deposit) throw notFound("No deposit found for this booking.");
+    res.json(deposit);
 }
 
 /** Rider's own deposit — scoped by ownership of the booking, not staff-only. */
@@ -25,5 +31,7 @@ export async function myDepositForBookingHandler(req: AuthedRequest, res: Respon
         .maybeSingle();
     if (error) throw error;
     if (!booking || booking.user_id !== req.user!.id) throw notFound("Booking not found.");
-    res.json(await service.getDepositForBooking(bookingId));
+    const deposit = await service.getDepositForBookingOrNull(bookingId);
+    if (!deposit) throw notFound("No deposit found for this booking.");
+    res.json(deposit);
 }

@@ -28,7 +28,8 @@ export const pickupQueueQuery = z.object({
         .enum(["pending_payment", "confirmed", "cancelled", "expired", "fulfilled", "completed"])
         .optional(),
     /** Further narrows a 'fulfilled' view into Active/Due/Paused. Ignored for any other status. */
-    planStatus: z.enum(["active", "due", "paused"]).optional(),
+    // `due` is `past_due` on subscriptions.status.
+    planStatus: z.enum(["active", "past_due", "paused"]).optional(),
     /** Rental Operations' "Scheduled Renewals" tab — fulfilled bookings that have paid ahead. */
     renewalStatus: z.enum(["scheduled"]).optional(),
     /** Rental Operations' "Return Requests" tab — only bookings whose active rental has a pending return. */
@@ -37,7 +38,9 @@ export const pickupQueueQuery = z.object({
     unassigned: z.coerce.boolean().optional(),
     /** Matches rider name/phone, vehicle registration number, booking id, or rental id. */
     search: z.string().trim().max(200).optional(),
-    sortBy: z.enum(["created_at", "start_day", "next_due_at"]).default("created_at"),
+    // `next_due_at` is gone as a sort key: it lives on the subscription's
+    // current period now, and PostgREST cannot order a parent by a grandchild.
+    sortBy: z.enum(["created_at", "requested_start_on"]).default("created_at"),
     sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 

@@ -33,12 +33,12 @@ const STEP_TITLES = ['Photo', 'Emergency Contact', 'Aadhaar', 'Licence', 'Review
 
 interface DraftDoc {
   doc_number: string;
-  expiry_date: string;
+  expires_on: string;
   front: LocalFile | null;
   back: LocalFile | null;
 }
 
-const EMPTY_DRAFT: DraftDoc = { doc_number: '', expiry_date: '', front: null, back: null };
+const EMPTY_DRAFT: DraftDoc = { doc_number: '', expires_on: '', front: null, back: null };
 
 export default function KycScreen() {
   // AppShell insets its drawer sheet but not screen content, so each screen
@@ -99,10 +99,10 @@ export default function KycScreen() {
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const docOf = (type: KycDocType): ApiDocument | undefined =>
-    kyc?.documents.find((d) => d.doc_type === type);
+    kyc?.documents.find((d) => d.document_type === type);
 
   const aadhaarDoc = docOf('aadhaar');
-  const dlDoc = docOf('driving_license');
+  const dlDoc = docOf('driving_licence');
 
   const locked = kyc?.kyc_status === 'verified';
 
@@ -122,11 +122,11 @@ export default function KycScreen() {
       notify('Front image required', 'Add a photo or PDF of the front of the document.');
       return;
     }
-    if (type === 'driving_license' && !draft.expiry_date.trim()) {
+    if (type === 'driving_licence' && !draft.expires_on.trim()) {
       notify('Expiry date required', 'A driving licence must include its expiry date.');
       return;
     }
-    if (draft.expiry_date && !/^\d{4}-\d{2}-\d{2}$/.test(draft.expiry_date.trim())) {
+    if (draft.expires_on && !/^\d{4}-\d{2}-\d{2}$/.test(draft.expires_on.trim())) {
       notify('Invalid date', 'Use the format YYYY-MM-DD.');
       return;
     }
@@ -140,7 +140,7 @@ export default function KycScreen() {
       {
         doc_type: type,
         doc_number: draft.doc_number.trim(),
-        expiry_date: draft.expiry_date.trim() || undefined,
+        expires_on: draft.expires_on.trim() || undefined,
         front: draft.front!,
         back: draft.back ?? undefined,
       },
@@ -160,7 +160,7 @@ export default function KycScreen() {
   const removeDoc = async (doc: ApiDocument) => {
     const confirmed = await confirmAction({
       title: 'Remove document',
-      message: `Remove your ${DOC_TYPE_LABEL[doc.doc_type]}?`,
+      message: `Remove your ${DOC_TYPE_LABEL[doc.document_type]}?`,
       confirmLabel: 'Remove',
       destructive: true,
     });
@@ -317,12 +317,12 @@ export default function KycScreen() {
 
             {step === 3 ? (
               <DocumentStep
-                type="driving_license"
+                type="driving_licence"
                 doc={dlDoc}
                 draft={dlDraft}
                 setDraft={setDlDraft}
-                uploading={uploading === 'driving_license'}
-                onUpload={() => void upload('driving_license', dlDraft, dlDoc)}
+                uploading={uploading === 'driving_licence'}
+                onUpload={() => void upload('driving_licence', dlDraft, dlDoc)}
                 onRemove={() => dlDoc && void removeDoc(dlDoc)}
                 onPreview={(side) => dlDoc && void openPreview(dlDoc, side)}
                 onBack={() => goToStep(2)}
@@ -745,7 +745,7 @@ const DocumentStep: React.FC<DocumentStepProps> = ({
             required
             value={draft.doc_number}
             onChangeText={(t) => setDraft((d) => ({ ...d, doc_number: t.toUpperCase() }))}
-            placeholder={type === 'driving_license' ? 'e.g. TN0120110012345' : 'e.g. 2345 6789 0123'}
+            placeholder={type === 'driving_licence' ? 'e.g. TN0120110012345' : 'e.g. 2345 6789 0123'}
             keyboardType={type === 'aadhaar' ? 'number-pad' : 'default'}
             autoCapitalize="characters"
             hint={type === 'aadhaar' ? 'Manual entry today — OCR auto-fill is planned for a future release.' : undefined}
@@ -755,8 +755,8 @@ const DocumentStep: React.FC<DocumentStepProps> = ({
             <DatePickerField
               label="Expiry Date"
               required
-              value={draft.expiry_date}
-              onChangeText={(t) => setDraft((d) => ({ ...d, expiry_date: t }))}
+              value={draft.expires_on}
+              onChangeText={(t) => setDraft((d) => ({ ...d, expires_on: t }))}
               hint="An expired licence cannot be verified."
               minYear={new Date().getFullYear()}
               maxYear={new Date().getFullYear() + 20}
@@ -897,11 +897,11 @@ const DocSummaryRow: React.FC<{ doc: ApiDocument; onPreview: () => void }> = ({ 
     </View>
     <View className="flex-1">
       <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-extrabold">
-        {DOC_TYPE_LABEL[doc.doc_type]}
+        {DOC_TYPE_LABEL[doc.document_type]}
       </Text>
       <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-medium mt-0.5">
         {doc.doc_number_masked ?? '—'}
-        {doc.expiry_date ? ` • expires ${formatDate(doc.expiry_date)}` : ''}
+        {doc.expires_on ? ` • expires ${formatDate(doc.expires_on)}` : ''}
       </Text>
       {doc.is_expired ? (
         <Text style={{ color: COLORS.danger }} className="text-[10px] font-bold mt-0.5">

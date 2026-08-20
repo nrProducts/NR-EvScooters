@@ -58,7 +58,7 @@ export default function PiiAccessPage() {
       render: (row) => (
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{row.actor?.full_name ?? "Deleted account"}</p>
-          <p className="truncate text-xs text-muted-foreground">{row.actor_roles.join(", ") || "—"}</p>
+          <p className="truncate text-xs text-muted-foreground">{row.actor_role || "—"}</p>
         </div>
       ),
     },

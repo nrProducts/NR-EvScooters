@@ -154,8 +154,11 @@ export function AssignVehicleToRiderPalette({
                       >
                         <span className="min-w-0">
                           <span className="block truncate font-medium">{v.name}</span>
+                          {/* Charge level is gone with the battery column — the plate
+                              is the identifier that actually distinguishes two
+                              otherwise identical scooters on this list. */}
                           <span className="block truncate text-xs text-muted-foreground">
-                            {v.registration_number} · {v.battery_percentage}% battery
+                            {v.registration_number} · {v.model}
                           </span>
                         </span>
                         {pendingThis ? (

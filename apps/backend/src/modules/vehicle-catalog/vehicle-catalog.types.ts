@@ -15,6 +15,7 @@ export interface PlanSummary {
     name: string;
     billing_cycle: "daily" | "weekly" | "monthly" | "yearly";
     price: number;
+    /** No column backs this any more; always null. See toPlans(). */
     included_minutes: number | null;
     duration_days: number;
     deposit_amount: number;
@@ -30,7 +31,13 @@ export interface VehicleModelListItem {
     charging_time_hours: number | null;
     is_featured: boolean;
     vendor: VendorSummary | null;
-    /** vehicle_models.image — a directly-fetchable public URL, or null. */
+    /**
+     * The primary `vehicle_model_media.storage_path`, or null.
+     *
+     * Named `image_url` for the clients' sake but it is a PATH now, not a URL:
+     * `vehicle_models.image` was replaced by an ordered media table holding
+     * private storage paths. Bytes need a signed URL.
+     */
     image_url: string | null;
     starting_price: number | null;
     /** Fleet-wide, computed per model — how many units are free right now. */

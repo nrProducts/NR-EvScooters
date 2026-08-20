@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ERASED_USER_COLUMNS, RETAINED_TABLES } from "../src/modules/privacy/privacy.erasure";
+import {
+    ERASED_CHILD_TABLES, ERASED_USER_COLUMNS, RETAINED_TABLES,
+} from "../src/modules/privacy/privacy.erasure";
 
-const MIGRATIONS = join(__dirname, "../../../supabase/migrations");
-const RETENTION_SQL = readFileSync(join(MIGRATIONS, "20260814100500_dpdpa_retention.sql"), "utf8");
+const MIGRATIONS = join(__dirname, "../../../supabase/v2/migrations");
+const RETENTION_SQL = readFileSync(
+    join(MIGRATIONS, "20260819102600_operational_functions.sql"), "utf8",
+);
 const USERS_SERVICE = readFileSync(
     join(__dirname, "../src/modules/users/users.service.ts"), "utf8",
 );
-const RIGHTS_SQL = readFileSync(
-    join(MIGRATIONS, "20260814100300_dpdpa_rights_requests.sql"), "utf8",
+const COMPLIANCE_SQL = readFileSync(
+    join(MIGRATIONS, "20260819101800_compliance.sql"), "utf8",
 );
 
 /** The anonymise_user() body, isolated from the rest of the migration. */
@@ -19,16 +23,26 @@ const ANONYMISE_FN = RETENTION_SQL.slice(
 
 /**
  * Columns on `users` the API actually reads back to a caller. Parsed from
- * PROFILE_COLUMNS rather than hardcoded, so adding a column to that select
+ * PROFILE_SELECT rather than hardcoded, so adding a column to that select
  * — which is what makes it reachable by a rider or a staff member — is what
  * this suite notices.
+ *
+ * The select embeds child tables now, so the parenthesised embed bodies are
+ * stripped first: `rider_profiles(kyc_status)` contributes the embed, not a
+ * column named `kyc_status`. Those tables have their own erasure treatment,
+ * asserted separately below.
  */
 function profileColumns(): string[] {
+    const start = USERS_SERVICE.indexOf("const PROFILE_SELECT = `");
     const block = USERS_SERVICE.slice(
-        USERS_SERVICE.indexOf("const PROFILE_COLUMNS = `") + 25,
-        USERS_SERVICE.indexOf("`;", USERS_SERVICE.indexOf("const PROFILE_COLUMNS = `")),
+        start + "const PROFILE_SELECT = `".length,
+        USERS_SERVICE.indexOf("`;", start),
     );
-    return block.split(",").map((c) => c.trim()).filter(Boolean);
+    return block
+        .replace(/[a-z_]+\([^)]*\)/g, "")
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean);
 }
 
 /** Columns that are identifiers or state, not personal data about the rider. */
@@ -49,6 +63,9 @@ const NOT_PERSONAL_DATA = new Set([
     // REDACT_KEYS in common/mask.ts both have to change with it.
     "country",
     "state",
+    // The role is account state, not data about who the person is.
+    "role",
+    "status",
     // Operator-assigned identifier for staff/admin accounts, not data about
     // who the person is — same category as `id`.
     "staff_code",
@@ -77,9 +94,20 @@ describe("anonymise_user covers every personal column the API exposes", () => {
         ).toEqual([]);
     });
 
-    it("erases every nominee column, which is a third party's data", () => {
-        for (const col of ["nominee_full_name", "nominee_relationship", "nominee_phone", "nominee_email"]) {
-            expect(ERASED_USER_COLUMNS as readonly string[]).toContain(col);
+    // The nominee is no longer four columns on the rider — it is a row in
+    // `user_related_persons`, alongside the emergency contact. Both are third
+    // parties who never dealt with us directly, so the rider's erasure has to
+    // take them with it: a DELETE, not four nulls.
+    it("deletes the nominee and emergency contact, which are third parties' data", () => {
+        expect(Object.keys(ERASED_CHILD_TABLES)).toContain("user_related_persons");
+        expect(ANONYMISE_FN)
+            .toMatch(/delete\s+from\s+public\.user_related_persons\s+where\s+user_id/i);
+    });
+
+    it("empties every table in ERASED_CHILD_TABLES", () => {
+        for (const table of Object.keys(ERASED_CHILD_TABLES)) {
+            expect(ANONYMISE_FN, `anonymise_user() never clears ${table}`)
+                .toMatch(new RegExp(`delete\\s+from\\s+public\\.${table}\\b`, "i"));
         }
     });
 
@@ -121,16 +149,22 @@ describe("anonymise_user leaves statutorily retained data alone", () => {
         }
     });
 
-    it("does delete the identity documents, which are not retained", () => {
-        expect(ANONYMISE_FN).toMatch(/delete\s+from\s+public\.user_documents/i);
+    // `kyc_documents` rows are KEPT and scrubbed, not deleted — the images
+    // are removed from storage by the caller, and the row survives so the
+    // verification history remains auditable without the identity in it.
+    it("destroys the identity numbers rather than leaving them encrypted", () => {
+        for (const col of [
+            "document_number_encrypted", "document_number_hmac",
+            "document_number_last4", "encryption_key_version",
+        ]) {
+            expect(ANONYMISE_FN, `anonymise_user() never clears kyc_documents.${col}`)
+                .toMatch(new RegExp(`\\b${col}\\s*=\\s*null`));
+        }
     });
 
-    it("clears otp attempts, which are keyed by phone and not by user id", () => {
-        expect(ANONYMISE_FN).toMatch(/delete\s+from\s+public\.auth_otp_attempts/i);
-        // The phone has to be captured before step 1 nulls it, or this deletes
-        // nothing at all.
-        expect(ANONYMISE_FN.indexOf("select phone into v_phone"))
-            .toBeLessThan(ANONYMISE_FN.indexOf("update public.users"));
+    it("clears the pointers to the document images", () => {
+        expect(ANONYMISE_FN).toMatch(/front_storage_path\s*=\s*''/);
+        expect(ANONYMISE_FN).toMatch(/back_storage_path\s*=\s*null/);
     });
 });
 
@@ -139,9 +173,10 @@ describe("erasure request row survives the account", () => {
     // Cascading it away with the account would destroy exactly the record
     // needed to show the erasure was legitimate.
     it("references users with on delete restrict, not cascade", () => {
-        const fk = RIGHTS_SQL.slice(
-            RIGHTS_SQL.indexOf("user_id            uuid not null references"),
-        ).split("\n")[0];
+        const table = COMPLIANCE_SQL.slice(
+            COMPLIANCE_SQL.indexOf("create table public.data_principal_requests"),
+        );
+        const fk = table.slice(table.indexOf("user_id")).split("\n")[0];
         expect(fk).toContain("on delete restrict");
     });
 });
@@ -150,6 +185,21 @@ describe("RETAINED_TABLES documents a reason for every entry", () => {
     it("has a non-empty justification per table", () => {
         for (const [table, reason] of Object.entries(RETAINED_TABLES)) {
             expect(reason.length, `${table} has no stated reason`).toBeGreaterThan(10);
+        }
+    });
+});
+
+describe("ERASED_CHILD_TABLES documents what each holds", () => {
+    it("has a non-empty description per table", () => {
+        for (const [table, held] of Object.entries(ERASED_CHILD_TABLES)) {
+            expect(held.length, `${table} does not say what it holds`).toBeGreaterThan(10);
+        }
+    });
+
+    // A table cannot be both emptied and retained.
+    it("does not overlap RETAINED_TABLES", () => {
+        for (const table of Object.keys(ERASED_CHILD_TABLES)) {
+            expect(Object.keys(RETAINED_TABLES)).not.toContain(table);
         }
     });
 });

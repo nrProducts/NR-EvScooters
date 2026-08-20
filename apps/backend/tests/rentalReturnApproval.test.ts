@@ -19,6 +19,7 @@ class QueryStub {
 
     select = (...args: unknown[]) => this.record("select", args);
     eq = (...args: unknown[]) => this.record("eq", args);
+    in = (...args: unknown[]) => this.record("in", args);
     not = (...args: unknown[]) => this.record("not", args);
     update = (...args: unknown[]) => this.record("update", args);
     maybeSingle = (...args: unknown[]) => this.record("maybeSingle", args);
@@ -43,45 +44,49 @@ vi.mock("../src/modules/notifications/notifications.service", () => ({
     notifyUser: (...args: unknown[]) => notifyUser(...args),
 }));
 
-const { rejectReturn, returnApprovalPayload } = await import("../src/modules/rentals/rentals.service");
+const { rejectReturn } = await import("../src/modules/rentals/rentals.service");
 import type { AuthContext } from "../src/types";
 
 const STAFF: AuthContext = {
     id: "aaaaaaaa-0000-0000-0000-000000000000",
-    roles: ["staff"],
-    capabilities: [],
-    accountStatus: "active",
+    role: "staff",
+    permissions: new Set(["returns.approve"]),
+    status: "active",
     kycStatus: "not_submitted",
     isDeleted: false,
 };
 const RENTAL_ID = "11111111-1111-4111-8111-111111111111";
 const RIDER_ID = "22222222-2222-4222-8222-222222222222";
 
+/**
+ * The return workflow is a ROW now, not eight columns on the rental.
+ *
+ * `rental_returns` has its own status — requested → inspected → approved /
+ * rejected — which is what makes rejecting and re-requesting expressible. The
+ * old shape simulated a rejection by nulling four columns back out, leaving
+ * no trace that a return had ever been asked for and refused.
+ */
 const baseRentalRow = {
     id: RENTAL_ID,
     status: "active",
-    started_at: "2026-08-01T00:00:00.000Z",
-    ended_at: null,
-    start_battery_pct: null,
-    end_battery_pct: null,
-    fare: null,
-    vehicle_id: "33333333-3333-4333-8333-333333333333",
-    booking_id: null,
-    return_requested_at: null,
-    return_reason: null,
-    return_feedback: null,
-    return_due_at: null,
-    return_approved_at: null,
-    days_late: null,
-    late_penalty_amount: null,
-    late_fee_per_day: null,
-    plan_id: null,
-    plan_duration_days: null,
-    plan_price_at_pickup: null,
-    expires_at: null,
+    picked_up_at: "2026-08-01T00:00:00.000Z",
+    returned_at: null,
+    due_back_at: null,
+    end_reason: null,
+    subscription_id: null,
     users: { id: RIDER_ID, full_name: "Rider", phone: null },
-    vehicles: { id: "33333333-3333-4333-8333-333333333333", name: "Scooter", registration_number: "TN01AB1234", battery_percentage: 80 },
-    return_approved_by: null,
+    // No `rental_returns` row: nothing has been requested.
+    rental_returns: [],
+};
+
+/** A pending return, in the shape the embed returns it. */
+const pendingReturn = {
+    id: "44444444-4444-4444-8444-444444444444",
+    status: "requested",
+    requested_at: "2026-08-10T10:00:00.000Z",
+    requested_reason: "no_longer_needed",
+    rider_notes: null,
+    due_back_at: "2026-08-10T18:29:59.999Z",
 };
 
 beforeEach(() => {
@@ -92,7 +97,7 @@ beforeEach(() => {
 
 describe("rejectReturn", () => {
     it("refuses when no return request is pending", async () => {
-        queryStub.result = { data: { ...baseRentalRow, return_requested_at: null }, error: null };
+        queryStub.result = { data: { ...baseRentalRow, rental_returns: [] }, error: null };
 
         await expect(rejectReturn(RENTAL_ID, { reason: "Not applicable" }, STAFF)).rejects.toThrow(
             "No return request is pending for this rental.",
@@ -103,14 +108,12 @@ describe("rejectReturn", () => {
         expect(notifyUser).not.toHaveBeenCalled();
     });
 
-    it("clears the return request, keeps the rental active, and notifies the rider with the reason", async () => {
+    // The rejection is RECORDED rather than erased, which is the substantive
+    // change: the row stays, marked `rejected` with a reason and an author, and
+    // a fresh request creates a new row beside it.
+    it("records the rejection, keeps the rental active, and notifies the rider with the reason", async () => {
         queryStub.result = {
-            data: {
-                ...baseRentalRow,
-                return_requested_at: "2026-08-10T10:00:00.000Z",
-                return_reason: "no_longer_needed",
-                return_due_at: "2026-08-10T18:29:59.999Z",
-            },
+            data: { ...baseRentalRow, rental_returns: [pendingReturn] },
             error: null,
         };
 
@@ -118,19 +121,25 @@ describe("rejectReturn", () => {
         expect(result.id).toBe(RENTAL_ID);
 
         const updateCall = queryStub.calls.find(([name]) => name === "update");
-        expect(updateCall?.[1][0]).toEqual({
-            return_requested_at: null,
-            return_reason: null,
-            return_feedback: null,
-            return_due_at: null,
+        expect(updateCall?.[1][0]).toMatchObject({
+            status: "rejected",
+            rejected_by_user_id: STAFF.id,
+            rejection_reason: "Battery swap still in progress",
         });
+        expect((updateCall?.[1][0] as { rejected_at: string }).rejected_at).toBeTruthy();
+
+        // Guarded on the states a rejection can act on, so a return that was
+        // approved between the read and the write is not un-approved.
+        const inCall = queryStub.calls.find(([name]) => name === "in");
+        expect(inCall?.[1]).toEqual(["status", ["requested", "inspected"]]);
 
         expect(writeAudit).toHaveBeenCalledOnce();
         expect(writeAudit.mock.calls[0][0]).toMatchObject({
             action: "rental.return_rejected",
+            entityType: "rental_return",
             entityId: RENTAL_ID,
             targetUserId: RIDER_ID,
-            after: { return_requested_at: null, reason: "Battery swap still in progress" },
+            after: { status: "rejected", reason: "Battery swap still in progress" },
         });
 
         expect(notifyUser).toHaveBeenCalledOnce();
@@ -140,17 +149,14 @@ describe("rejectReturn", () => {
     });
 });
 
-describe("returnApprovalPayload", () => {
-    const now = new Date("2026-08-12T09:00:00.000Z");
-
-    it("stamps approval when a return was pending — this IS the approval, not a separate step", () => {
-        expect(returnApprovalPayload({ return_requested_at: "2026-08-11T00:00:00.000Z" }, STAFF, now)).toEqual({
-            return_approved_at: now.toISOString(),
-            return_approved_by: STAFF.id,
-        });
-    });
-
-    it("stamps nothing for a direct staff close with no return ever requested", () => {
-        expect(returnApprovalPayload({ return_requested_at: null }, STAFF, now)).toEqual({});
-    });
-});
+/*
+ * `returnApprovalPayload` is gone.
+ *
+ * It existed to decide which of two columns to stamp onto the RENTAL when a
+ * ride was closed: `return_approved_at`/`return_approved_by` if a return had
+ * been requested, nothing if a staff member was simply closing a ride. Both
+ * columns are fields on the `rental_returns` row now, and approving a return
+ * is an update to that row rather than a side effect of closing the rental —
+ * so there is no longer a payload to compute, and no way for the two to
+ * disagree about whether an approval happened.
+ */

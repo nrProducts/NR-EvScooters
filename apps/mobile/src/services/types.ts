@@ -36,14 +36,14 @@ export interface NotificationRepository {
 export interface UploadDocumentInput {
     doc_type: KycDocType;
     doc_number: string;
-    expiry_date?: string;
+    expires_on?: string;
     front: LocalFile;
     back?: LocalFile;
 }
 
 export interface UpdateDocumentInput {
     doc_number?: string;
-    expiry_date?: string;
+    expires_on?: string;
     front?: LocalFile;
     back?: LocalFile;
 }

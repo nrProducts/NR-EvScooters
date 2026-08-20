@@ -4,66 +4,89 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
-import { pausePlanForBooking } from "../plans/plans.service";
-import { getDepositForBookingOrNull, setDepositRefundEligible } from "../deposits/deposits.service";
+import { pauseSubscription } from "../subscriptions/subscriptions.service";
+import { getDepositForSubscriptionOrNull, setDepositRefundEligible } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     AdminRentalRow, CompleteRideInput, ListRentalsFilters, MoveToMaintenanceInput, RejectReturnInput, RentalView,
     RequestReturnInput,
 } from "./rentals.types";
 import { LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS } from "./returnPolicy.constants";
+import { businessToday } from "../../common/dates";
 
 /**
- * Post-pickup return request + late-fee settlement. Shared by both column
- * lists below so the two can't drift.
+ * Rentals.
+ *
+ * Three structural changes, each of which removes a workaround rather than
+ * just renaming something:
+ *
+ *   **No `vehicle_id`.** A rental can change vehicle mid-term, so the vehicle
+ *   is a `rental_vehicle_assignments` row and `v_rental_current_vehicle`
+ *   resolves the open one. This is why maintenance no longer has to close a
+ *   rental and open another one for a temp swap.
+ *
+ *   **No return columns.** The eight `return_*` fields are a `rental_returns`
+ *   row with its own status. Rejecting a return used to mean nulling four
+ *   columns back out, which lost the fact that a return had ever been asked
+ *   for; it is a `rejected` row now.
+ *
+ *   **No plan snapshot.** `plan_id`, `plan_price_at_pickup` and `expires_at`
+ *   were frozen at pickup. The subscription holds the agreement and the
+ *   current period holds the dates, so a renewal actually moves the deadline
+ *   instead of leaving `expires_at` describing week one forever.
+ *
+ * The API shape is preserved — Stage 10 changes the clients, not this stage —
+ * so the flattening happens here.
  */
-const RETURN_COLUMNS = `
-    return_requested_at, return_reason, return_feedback, return_due_at, return_approved_at,
-    days_late, late_penalty_amount, late_fee_per_day
-`;
 
-/** The plan snapshot frozen at pickup (20260804100000). */
-const PLAN_PERIOD_COLUMNS = `
-    plan_id, plan_duration_days, plan_price_at_pickup, expires_at
-`;
-
-/**
- * ⚠️ Every field on RentalView must appear in this string. TypeScript CANNOT
- * check it — the select is an untyped template string and the result is
- * double-cast (`data as unknown as RawRentalRow`), so a field added to the
- * interface but omitted here compiles clean and silently returns undefined.
- */
-const RENTAL_COLUMNS = `
-    id, status, started_at, ended_at, booking_id,
-    ${RETURN_COLUMNS},
-    ${PLAN_PERIOD_COLUMNS},
-    vehicles(id, name, registration_number, battery_percentage, next_service_due_date),
-    bookings!rentals_booking_id_fkey(
-        plan_status, next_due_at, current_period_start, renewal_status, scheduled_start_date,
-        plans(id, name, billing_cycle, price),
-        stations(id, name, code)
+/** The return workflow, embedded from its own table. */
+const RETURN_EMBED = `
+    rental_returns(
+        requested_at, requested_reason, rider_notes, due_back_at, status,
+        approved_at, inspected_at,
+        approved_by:users!approved_by_user_id(id, full_name),
+        inspected_by:users!inspected_by_user_id(id, full_name)
     )
 `;
 
-/**
- * Same warning as RENTAL_COLUMNS — and with higher stakes: requireActiveRental
- * reads through this, so omitting return_due_at or expires_at here would make
- * every late-return penalty silently compute as zero.
- */
+/** The settlement, once staff have taken delivery. */
+const SETTLEMENT_EMBED = "rental_settlements(late_fee_amount, settled_at)";
+
+/** The agreement this rental is under. */
+const SUBSCRIPTION_EMBED = `
+    subscriptions(
+        id, booking_id, status, plan_price_snapshot, duration_days_snapshot,
+        plans(id, name, billing_period),
+        bookings(hubs(id, name, code))
+    )
+`;
+
+/** The vehicle currently in the rider's hands. */
+const ASSIGNMENT_EMBED = `
+    rental_vehicle_assignments(
+        vehicle_id, released_at,
+        vehicles(id, display_name, registration_number, vehicle_models(name))
+    )
+`;
+
+const RENTAL_COLUMNS = `
+    id, status, picked_up_at, returned_at, due_back_at, subscription_id,
+    ${RETURN_EMBED}, ${SETTLEMENT_EMBED}, ${SUBSCRIPTION_EMBED}, ${ASSIGNMENT_EMBED}
+`;
+
 const ADMIN_RENTAL_COLUMNS = `
-    id, status, started_at, ended_at, start_battery_pct, end_battery_pct, fare, vehicle_id, booking_id,
-    ${RETURN_COLUMNS},
-    ${PLAN_PERIOD_COLUMNS},
-    users!rentals_user_id_fkey(id, full_name, phone),
-    vehicles(id, name, registration_number, battery_percentage),
-    return_approved_by:users!rentals_return_approved_by_fkey(id, full_name),
-    inspected_at, inspected_by:users!rentals_inspected_by_fkey(id, full_name)
+    ${RENTAL_COLUMNS},
+    users(id, full_name, phone)
 `;
 
 function unwrap<T>(raw: unknown): T | null {
     const v = Array.isArray(raw) ? raw[0] : raw;
     return (v as T) ?? null;
 }
+
+// ---------------------------------------------------------------------------
+// Pure rules — unchanged, exported for the tests
+// ---------------------------------------------------------------------------
 
 /** End of the calendar day `at` falls on, in server-local time. */
 export function returnDeadlineFor(at: Date): Date {
@@ -74,8 +97,11 @@ export function returnDeadlineFor(at: Date): Date {
 
 /**
  * When a plan bought on `startedAt` runs out. Day 1 is the pickup day, so a
- * 30-day plan runs through the end of day 30 — not day 31. Mirrors the
- * backfill arithmetic in 20260804100000_plan_period_and_rental_expiry.sql.
+ * 30-day plan runs through the end of day 30 — not day 31.
+ *
+ * Retained because the tests exercise it and the arithmetic is still correct,
+ * but nothing in the service calls it now: the period's `ends_on` is the
+ * authority on when a plan runs out, and the database computes it.
  */
 export function planExpiryFor(startedAt: Date, durationDays: number): Date {
     const expires = new Date(startedAt);
@@ -84,10 +110,12 @@ export function planExpiryFor(startedAt: Date, durationDays: number): Date {
 }
 
 /**
- * The rider's real deadline. The plan's own expiry is the default; an early
- * return request overrides it with the (necessarily earlier) request-day
- * deadline. requestReturn clamps to expires_at when writing return_due_at, so
- * this can never move a deadline later than the plan allowed.
+ * The rider's real deadline: `COALESCE(rental_returns.due_back_at, rentals.due_back_at)`.
+ *
+ * Same rule as before, different sources. An early return request overrides
+ * the rental's own deadline with the (necessarily earlier) request-day one;
+ * requestReturn clamps when writing it, so this can never move a deadline
+ * later than the plan allowed.
  */
 export function effectiveDueAt(row: { return_due_at: string | null; expires_at: string | null }): string | null {
     return row.return_due_at ?? row.expires_at;
@@ -99,27 +127,18 @@ export interface LateReturnCharge {
     isLate: boolean;
     feePerDay: number;
     penaltyAmount: number;
-    /** false when the rental had no deadline at all — neither a return request nor a plan expiry. */
+    /** false when the rental had no deadline at all. */
     hadDeadline: boolean;
 }
 
 /**
  * Flat fee per whole calendar day past the deadline. Compares CALENDAR DAYS,
  * not elapsed hours: handing over at 23:59 on the due day is 0 days late,
- * 00:30 the next morning is 1. That is deliberate under a per-day fee ("you
- * kept it into another day") and is what the rider-facing warning states.
+ * 00:30 the next morning is 1. That is deliberate under a per-day fee and is
+ * what the rider-facing warning states.
  *
- * Callers pass effectiveDueAt(rental), so this now settles plan overrun as
- * well as a missed return request — the same fee either way, deliberately.
- *
- * A null/unparseable due date means the rental had NO deadline: no return
- * request and no plan to expire (a rental created outside the pickup flow, or
- * one predating 20260804100000 with no booking to backfill from). Those must
- * NOT be retro-penalised, so this fails open with a zero charge.
- *
- * Exported so the service and the tests exercise the same rule, same reason
- * computeCancellationCharge is exported from bookings.service.ts. `now` is
- * injectable for deterministic tests.
+ * A null/unparseable due date means the rental had NO deadline, and those must
+ * not be retro-penalised, so this fails open with a zero charge.
  */
 export function computeLateReturnPenalty(input: {
     returnDueAt: string | null;
@@ -155,131 +174,221 @@ export function computeLateReturnPenalty(input: {
     };
 }
 
-/** The return-request/settlement columns, shared by both raw row shapes. */
-interface RawReturnFields {
-    return_requested_at: string | null;
-    return_reason: string | null;
-    return_feedback: string | null;
-    return_due_at: string | null;
-    return_approved_at: string | null;
-    days_late: number | null;
-    late_penalty_amount: number | string | null;
-    late_fee_per_day: number | string | null;
-}
+// ---------------------------------------------------------------------------
+// Row shapes
+// ---------------------------------------------------------------------------
 
-/** Postgres returns `numeric` as a string, hence the coercion (cf. `fare`). */
-function toReturnView(row: RawReturnFields) {
-    return {
-        return_requested_at: row.return_requested_at ?? null,
-        return_reason: row.return_reason ?? null,
-        return_feedback: row.return_feedback ?? null,
-        return_due_at: row.return_due_at ?? null,
-        return_approved_at: row.return_approved_at ?? null,
-        days_late: row.days_late ?? null,
-        late_penalty_amount: row.late_penalty_amount == null ? null : Number(row.late_penalty_amount),
-        late_fee_per_day: row.late_fee_per_day == null ? null : Number(row.late_fee_per_day),
-    };
-}
-
-/** The pickup-time plan snapshot, shared by both raw row shapes. */
-interface RawPlanPeriodFields {
-    plan_id: string | null;
-    plan_duration_days: number | null;
-    plan_price_at_pickup: number | string | null;
-    expires_at: string | null;
-}
-
-function toPlanPeriodView(row: RawPlanPeriodFields) {
-    return {
-        plan_id: row.plan_id ?? null,
-        plan_duration_days: row.plan_duration_days ?? null,
-        plan_price_at_pickup: row.plan_price_at_pickup == null ? null : Number(row.plan_price_at_pickup),
-        expires_at: row.expires_at ?? null,
-    };
-}
-
-interface RawRentalRow extends RawReturnFields, RawPlanPeriodFields {
+interface RawRentalRow {
     id: string;
     status: RentalView["status"];
-    started_at: string;
-    ended_at: string | null;
-    booking_id: string | null;
-    vehicles: unknown;
-    bookings: unknown;
+    picked_up_at: string;
+    returned_at: string | null;
+    due_back_at: string;
+    subscription_id: string;
+    rental_returns: unknown;
+    rental_settlements: unknown;
+    subscriptions: unknown;
+    rental_vehicle_assignments: unknown;
+    users?: unknown;
 }
 
-function toRentalView(row: RawRentalRow): RentalView {
-    const booking = unwrap<{
-        plans: unknown; stations: unknown;
-        plan_status: RentalView["plan_status"]; next_due_at: string | null;
-        current_period_start: string | null;
-        renewal_status: RentalView["renewal_status"];
-        scheduled_start_date: string | null;
-    }>(row.bookings);
-    const vehicle = unwrap<NonNullable<RentalView["vehicle"]>>(row.vehicles);
-    return {
-        id: row.id,
-        status: row.status,
-        started_at: row.started_at,
-        ended_at: row.ended_at,
-        booking_id: row.booking_id,
-        vehicle: vehicle
-            ? {
-                ...vehicle,
-                battery_percentage: Number(vehicle.battery_percentage),
-                next_service_due_date: vehicle.next_service_due_date ?? null,
-            }
-            : null,
-        plan: booking ? unwrap(booking.plans) : null,
-        station: booking ? unwrap(booking.stations) : null,
-        plan_status: booking?.plan_status ?? null,
-        next_due_at: booking?.next_due_at ?? null,
-        current_period_start: booking?.current_period_start ?? null,
-        renewal_status: booking?.renewal_status ?? null,
-        scheduled_start_date: booking?.scheduled_start_date ?? null,
-        ...toReturnView(row),
-        ...toPlanPeriodView(row),
-    };
-}
-
-interface RawAdminRentalRow extends RawReturnFields, RawPlanPeriodFields {
-    id: string;
-    status: RentalView["status"];
-    started_at: string;
-    ended_at: string | null;
-    start_battery_pct: number | string | null;
-    end_battery_pct: number | string | null;
-    fare: number | string | null;
-    vehicle_id: string;
-    booking_id: string | null;
-    users: unknown;
-    vehicles: unknown;
-    return_approved_by: unknown;
+interface RawReturn {
+    requested_at: string | null;
+    requested_reason: string | null;
+    rider_notes: string | null;
+    due_back_at: string | null;
+    status: string;
+    approved_at: string | null;
     inspected_at: string | null;
+    approved_by: unknown;
     inspected_by: unknown;
 }
 
-function toAdminRentalRow(row: RawAdminRentalRow): AdminRentalRow {
-    const vehicle = unwrap<{ id: string; name: string; registration_number: string; battery_percentage: number }>(
-        row.vehicles,
-    );
+/**
+ * The OPEN return, if any.
+ *
+ * A rental can accumulate several `rental_returns` rows over its life — asked
+ * for, rejected, asked for again — so "is a return pending" is the presence of
+ * one that is neither rejected nor already approved, not the presence of any
+ * row at all. That distinction is what the old nulled-out columns could not make.
+ */
+function openReturn(raw: unknown): RawReturn | null {
+    const rows = (Array.isArray(raw) ? raw : raw ? [raw] : []) as RawReturn[];
+    return rows.find((r) => r.status === "requested" || r.status === "inspected") ?? null;
+}
+
+/** The most recent return of any status — what history should show. */
+function latestReturn(raw: unknown): RawReturn | null {
+    const rows = (Array.isArray(raw) ? raw : raw ? [raw] : []) as RawReturn[];
+    if (rows.length === 0) return null;
+    return [...rows].sort((a, b) => (b.requested_at ?? "").localeCompare(a.requested_at ?? ""))[0];
+}
+
+function currentVehicle(raw: unknown): { id: string; name: string; registration_number: string } | null {
+    const rows = (Array.isArray(raw) ? raw : raw ? [raw] : []) as Array<{
+        vehicle_id: string; released_at: string | null; vehicles: unknown;
+    }>;
+    const open = rows.find((a) => !a.released_at) ?? rows[0];
+    if (!open) return null;
+    const v = unwrap<{
+        id: string; display_name: string | null; registration_number: string; vehicle_models: unknown;
+    }>(open.vehicles);
+    if (!v) return null;
+    return {
+        id: v.id,
+        name: v.display_name ?? unwrap<{ name: string }>(v.vehicle_models)?.name ?? "",
+        registration_number: v.registration_number,
+    };
+}
+
+interface SubscriptionSlice {
+    id: string;
+    booking_id: string;
+    status: string;
+    plan_price_snapshot: number | string;
+    duration_days_snapshot: number;
+    plans: unknown;
+    bookings: unknown;
+}
+
+/**
+ * The current and scheduled period dates for a batch of subscriptions.
+ *
+ * Separate from the main select because a period is a grandchild of the
+ * rental; embedding it would not let us pick the `current` one, and doing it
+ * per row would be an N+1 on the admin list.
+ */
+async function periodsFor(subscriptionIds: string[]): Promise<Map<string, {
+    currentStart: string | null; nextDue: string | null; scheduledStart: string | null;
+}>> {
+    const map = new Map<string, {
+        currentStart: string | null; nextDue: string | null; scheduledStart: string | null;
+    }>();
+    if (subscriptionIds.length === 0) return map;
+
+    const { data, error } = await supabaseAdmin
+        .from("subscription_periods")
+        .select("subscription_id, status, starts_on, due_on")
+        .in("subscription_id", subscriptionIds)
+        .in("status", ["current", "scheduled"]);
+    if (error) throw error;
+
+    for (const row of data ?? []) {
+        const entry = map.get(row.subscription_id)
+            ?? { currentStart: null, nextDue: null, scheduledStart: null };
+        if (row.status === "current") {
+            entry.currentStart = row.starts_on;
+            entry.nextDue = row.due_on;
+        } else {
+            entry.scheduledStart = row.starts_on;
+        }
+        map.set(row.subscription_id, entry);
+    }
+    return map;
+}
+
+type PeriodInfo = { currentStart: string | null; nextDue: string | null; scheduledStart: string | null };
+
+function toReturnFields(row: RawRentalRow) {
+    const ret = latestReturn(row.rental_returns);
+    const settlement = unwrap<{ late_fee_amount: number | string; settled_at: string }>(row.rental_settlements);
+    const lateFee = settlement ? Number(settlement.late_fee_amount) : null;
+
+    return {
+        return_requested_at: ret?.requested_at ?? null,
+        return_reason: ret?.requested_reason ?? null,
+        return_feedback: ret?.rider_notes ?? null,
+        return_due_at: ret?.due_back_at ?? row.due_back_at,
+        return_approved_at: ret?.approved_at ?? null,
+        // days_late is not stored — the settlement records the money, and the
+        // day count is that money divided by the rate. Recomputing it keeps
+        // one source of truth rather than two that can disagree.
+        days_late: lateFee === null ? null : Math.round(lateFee / LATE_RETURN_FEE_PER_DAY),
+        late_penalty_amount: lateFee,
+        late_fee_per_day: lateFee === null ? null : LATE_RETURN_FEE_PER_DAY,
+    };
+}
+
+function toPlanFields(subscription: SubscriptionSlice | null, row: RawRentalRow) {
+    const plan = subscription ? unwrap<{ id: string; name: string; billing_period: string }>(subscription.plans) : null;
+    return {
+        plan_id: plan?.id ?? null,
+        plan_duration_days: subscription?.duration_days_snapshot ?? null,
+        plan_price_at_pickup: subscription ? Number(subscription.plan_price_snapshot) : null,
+        expires_at: row.due_back_at,
+    };
+}
+
+function narrowPlanStatus(status: string | undefined): RentalView["plan_status"] {
+    return status === "active" || status === "past_due" || status === "paused" ? status : null;
+}
+
+function toRentalView(row: RawRentalRow, periods: Map<string, PeriodInfo>): RentalView {
+    const subscription = unwrap<SubscriptionSlice>(row.subscriptions);
+    const plan = subscription ? unwrap<{ id: string; name: string; billing_period: string }>(subscription.plans) : null;
+    const booking = subscription ? unwrap<{ hubs: unknown }>(subscription.bookings) : null;
+    const period = subscription ? periods.get(subscription.id) : undefined;
+
     return {
         id: row.id,
         status: row.status,
-        started_at: row.started_at,
-        ended_at: row.ended_at,
-        start_battery_pct: row.start_battery_pct === null ? null : Number(row.start_battery_pct),
-        end_battery_pct: row.end_battery_pct === null ? null : Number(row.end_battery_pct),
-        fare: row.fare === null ? null : Number(row.fare),
-        rider: unwrap(row.users),
-        vehicle: vehicle ? { ...vehicle, battery_percentage: Number(vehicle.battery_percentage) } : null,
-        return_approved_by: unwrap<{ id: string; full_name: string }>(row.return_approved_by),
-        inspected_at: row.inspected_at,
-        inspected_by: unwrap<{ id: string; full_name: string }>(row.inspected_by),
-        ...toReturnView(row),
-        ...toPlanPeriodView(row),
+        started_at: row.picked_up_at,
+        ended_at: row.returned_at,
+        booking_id: subscription?.booking_id ?? null,
+        vehicle: currentVehicle(row.rental_vehicle_assignments),
+        station: booking ? unwrap(booking.hubs) : null,
+        plan: plan
+            ? {
+                id: plan.id,
+                name: plan.name,
+                billing_cycle: plan.billing_period,
+                price: Number(subscription!.plan_price_snapshot),
+            }
+            : null,
+        plan_status: narrowPlanStatus(subscription?.status),
+        next_due_at: period?.nextDue ?? null,
+        current_period_start: period?.currentStart ?? null,
+        renewal_status: period?.scheduledStart ? "scheduled" : "none",
+        scheduled_start_date: period?.scheduledStart ?? null,
+        ...toReturnFields(row),
+        ...toPlanFields(subscription, row),
     };
 }
+
+function toAdminRentalRow(row: RawRentalRow, periods: Map<string, PeriodInfo>): AdminRentalRow {
+    const subscription = unwrap<SubscriptionSlice>(row.subscriptions);
+    const ret = latestReturn(row.rental_returns);
+
+    return {
+        id: row.id,
+        status: row.status,
+        started_at: row.picked_up_at,
+        ended_at: row.returned_at,
+        // No columns back these — see the note on AdminRentalRow.
+        start_battery_pct: null,
+        end_battery_pct: null,
+        fare: null,
+        rider: unwrap(row.users),
+        vehicle: currentVehicle(row.rental_vehicle_assignments),
+        return_approved_by: ret ? unwrap<{ id: string; full_name: string }>(ret.approved_by) : null,
+        inspected_at: ret?.inspected_at ?? null,
+        inspected_by: ret ? unwrap<{ id: string; full_name: string }>(ret.inspected_by) : null,
+        ...toReturnFields(row),
+        ...toPlanFields(subscription, row),
+    };
+}
+
+/** Reads rows and their period dates together. */
+async function withPeriods(rows: RawRentalRow[]): Promise<Map<string, PeriodInfo>> {
+    const ids = rows
+        .map((r) => unwrap<SubscriptionSlice>(r.subscriptions)?.id)
+        .filter((id): id is string => !!id);
+    return periodsFor([...new Set(ids)]);
+}
+
+// ---------------------------------------------------------------------------
+// Rider
+// ---------------------------------------------------------------------------
 
 /** The rider's own currently-active rental — what post-booking-dashboard renders. */
 export async function getMyCurrentRental(userId: string): Promise<RentalView> {
@@ -288,27 +397,27 @@ export async function getMyCurrentRental(userId: string): Promise<RentalView> {
         .select(RENTAL_COLUMNS)
         .eq("user_id", userId)
         .eq("status", "active")
-        .order("started_at", { ascending: false })
+        .order("picked_up_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
     if (error) throw error;
     if (!data) throw notFound("No active rental found.");
 
-    return toRentalView(data as unknown as RawRentalRow);
+    const row = data as unknown as RawRentalRow;
+    return toRentalView(row, await withPeriods([row]));
 }
 
 /**
  * Rider asks to hand the scooter back. This deliberately does NOT end the
- * rental — status stays 'active' and only the return_* columns are written.
+ * rental — it opens a `rental_returns` row and leaves the rental `active`.
  *
- * Two reasons, both load-bearing:
- *   1. trg_sync_vehicle_status (20260727095801) fires on ANY departure from
- *      'active' and flips the held vehicle 'assigned' -> 'available'. Ending
- *      the rental here would put a scooter the rider still physically holds
- *      back into the bookable pool.
+ * Two reasons, both load-bearing and both unchanged by the migration:
+ *   1. Ending the rental would release the vehicle assignment, and
+ *      `recompute_vehicle_status()` would put a scooter the rider still
+ *      physically holds back into the bookable pool.
  *   2. Lateness can only be measured at the moment of physical handover, so
- *      the ride must stay open until staff confirm it via completeRide.
+ *      the ride must stay open until staff confirm it.
  */
 export async function requestReturn(
     rentalId: string,
@@ -317,7 +426,12 @@ export async function requestReturn(
 ): Promise<RentalView> {
     const { data: existing, error: fetchError } = await supabaseAdmin
         .from("rentals")
-        .select("id, user_id, status, return_requested_at, expires_at, vehicle_id, booking_id, bookings!rentals_booking_id_fkey(next_due_at)")
+        .select(`
+            id, user_id, status, due_back_at, subscription_id,
+            rental_returns(status),
+            rental_vehicle_assignments(vehicle_id, released_at),
+            subscriptions(id, booking_id)
+        `)
         .eq("id", rentalId)
         .maybeSingle();
 
@@ -325,61 +439,57 @@ export async function requestReturn(
     // 404 rather than 403 for someone else's rental: a 403 would confirm the
     // id exists, letting a caller probe for other riders' rental ids.
     if (!existing || existing.user_id !== actor.id) throw notFound("Rental not found.");
-
     if (existing.status !== "active") throw conflict("This rental is no longer active.");
-    if (existing.return_requested_at) {
+
+    if (openReturn(existing.rental_returns)) {
         throw conflict("You've already requested a return for this scooter.");
     }
 
     // Riders can't back out mid-period — only once the current committed
-    // week is up. Anchored to bookings.next_due_at (rolls forward every
-    // renewal), not rentals.expires_at (frozen at pickup as the FIRST
-    // period's end, so it'd stop meaning anything by week 2). No plan at
-    // all (next_due_at null) fails open — nothing to gate against.
-    const booking = unwrap<{ next_due_at: string | null }>(existing.bookings);
-    const todayIso = new Date().toISOString().slice(0, 10);
-    if (booking?.next_due_at && todayIso < booking.next_due_at) {
+    // period is up. Anchored to the period's due date, which rolls forward on
+    // every renewal. No period at all fails open — nothing to gate against.
+    const subscription = unwrap<{ id: string; booking_id: string }>(existing.subscriptions);
+    const period = subscription ? (await periodsFor([subscription.id])).get(subscription.id) : undefined;
+    const todayIso = businessToday();
+    if (period?.nextDue && todayIso < period.nextDue) {
         throw businessRule(
-            `You can return your scooter once your current plan period ends on ${booking.next_due_at}.`,
+            `You can return your scooter once your current plan period ends on ${period.nextDue}.`,
         );
     }
 
     const now = new Date();
-    // Clamped to the plan's expiry: a rider already 5 days past expires_at
-    // would otherwise request a return and get a deadline of TODAY, wiping
-    // out the overrun they've already accrued.
-    const expiresAt = existing.expires_at ? new Date(existing.expires_at) : null;
+    // Clamped to the rental's own deadline: a rider already days past it would
+    // otherwise request a return and get a deadline of TODAY, wiping out the
+    // overrun they have already accrued.
+    const rentalDue = new Date(existing.due_back_at);
     const requestDeadline = returnDeadlineFor(now);
-    const dueAt = expiresAt && expiresAt < requestDeadline ? expiresAt : requestDeadline;
+    const dueAt = !Number.isNaN(rentalDue.getTime()) && rentalDue < requestDeadline
+        ? rentalDue
+        : requestDeadline;
 
-    const { data: updated, error } = await supabaseAdmin
-        .from("rentals")
-        .update({
-            return_requested_at: now.toISOString(),
-            return_reason: input.reason,
-            return_feedback: input.feedback ?? null,
-            return_due_at: dueAt.toISOString(),
-            // `status` is deliberately absent so trg_sync_vehicle_status does
-            // NOT fire and the vehicle stays 'assigned'. Do not add it here.
-        })
-        .eq("id", rentalId)
-        .eq("user_id", actor.id)
-        // Optimistic-concurrency guard: if staff closed the ride, or a
-        // double-tap raced us, this matches zero rows instead of overwriting.
-        .eq("status", "active")
-        .is("return_requested_at", null)
-        .select("id")
-        .maybeSingle();
-
-    if (error) throw error;
-    if (!updated) throw conflict("This rental can no longer be returned here.");
+    const { error } = await supabaseAdmin.from("rental_returns").insert({
+        rental_id: rentalId,
+        requested_at: now.toISOString(),
+        requested_reason: input.reason,
+        rider_notes: input.feedback ?? null,
+        due_back_at: dueAt.toISOString(),
+        status: "requested",
+    });
+    if (error) {
+        // A unique index on one open return per rental is what makes a
+        // double-tap safe; translate it rather than surfacing 23505.
+        if ((error as { code?: string }).code === "23505") {
+            throw conflict("You've already requested a return for this scooter.");
+        }
+        throw error;
+    }
 
     // Best-effort: a feedback write must never roll back an accepted return
-    // request. upsert handles the UNIQUE(rental_id) constraint on re-submit.
+    // request. `rental_feedback` is keyed by rental_id, so a re-submit updates.
     const { error: feedbackError } = await supabaseAdmin
         .from("rental_feedback")
         .upsert(
-            { rental_id: rentalId, user_id: actor.id, rating: input.rating, comment: input.feedback ?? null },
+            { rental_id: rentalId, rating: input.rating, comment: input.feedback ?? null },
             { onConflict: "rental_id" },
         );
     if (feedbackError) {
@@ -392,12 +502,11 @@ export async function requestReturn(
         actorId: actor.id,
         targetUserId: actor.id,
         action: "rental.return_requested",
-        entityType: "rental",
+        entityType: "rental_return",
         entityId: rentalId,
-        before: { status: "active", return_requested_at: null },
         after: {
             return_reason: input.reason,
-            return_due_at: dueAt.toISOString(),
+            due_back_at: dueAt.toISOString(),
             rating: input.rating,
         },
     });
@@ -409,23 +518,26 @@ export async function requestReturn(
         screen: "post-booking-dashboard",
     });
 
+    const assignments = (Array.isArray(existing.rental_vehicle_assignments)
+        ? existing.rental_vehicle_assignments
+        : []) as Array<{ vehicle_id: string; released_at: string | null }>;
+
     await notify({
-        notificationType: "return",
+        notificationType: "rental_return_requested",
         referenceType: "rental",
         referenceId: rentalId,
-        template: "rental_return_requested",
         title: "Return Requested",
         bodyFallback: "{rider} requested a return for {vehicle}.",
         screen: "/bookings",
         riderId: actor.id,
-        vehicleId: existing.vehicle_id ?? undefined,
-        bookingId: existing.booking_id ?? undefined,
+        vehicleId: assignments.find((a) => !a.released_at)?.vehicle_id,
+        bookingId: subscription?.booking_id,
     });
 
     return getMyCurrentRental(actor.id);
 }
 
-/** All of the rider's own rentals, most recent first — what the Booking History screen renders. */
+/** All of the rider's own rentals, most recent first. */
 export async function getMyRentalHistory(
     userId: string,
     filters: { page: number; pageSize: number },
@@ -435,18 +547,17 @@ export async function getMyRentalHistory(
         .from("rentals")
         .select(RENTAL_COLUMNS, { count: "exact" })
         .eq("user_id", userId)
-        .order("started_at", { ascending: false })
+        .order("picked_up_at", { ascending: false })
         .range(from, to);
 
     if (error) throw error;
-    const items = ((data ?? []) as unknown as RawRentalRow[]).map(toRentalView);
-    return paginate(items, count ?? 0, filters);
+    const rows = (data ?? []) as unknown as RawRentalRow[];
+    const periods = await withPeriods(rows);
+    return paginate(rows.map((r) => toRentalView(r, periods)), count ?? 0, filters);
 }
 
 // ---------------------------------------------------------------------------
-// Admin — "Ride Management". Distance/current-location aren't tracked
-// anywhere in the schema (no odometer/GPS columns) — same "not wired up yet,
-// pending a 3rd-party telemetry integration" caveat as vehicle battery %.
+// Admin — "Ride Management"
 // ---------------------------------------------------------------------------
 
 export async function listRentals(filters: ListRentalsFilters): Promise<Paginated<AdminRentalRow>> {
@@ -455,12 +566,14 @@ export async function listRentals(filters: ListRentalsFilters): Promise<Paginate
     if (filters.status) query = query.eq("status", filters.status);
 
     const [from, to] = toRange(filters);
-    query = query.order("started_at", { ascending: false }).range(from, to);
+    query = query.order("picked_up_at", { ascending: false }).range(from, to);
 
     const { data, error, count } = await query;
     if (error) throw error;
 
-    return paginate(((data ?? []) as unknown as RawAdminRentalRow[]).map(toAdminRentalRow), count ?? 0, filters);
+    const rows = (data ?? []) as unknown as RawRentalRow[];
+    const periods = await withPeriods(rows);
+    return paginate(rows.map((r) => toAdminRentalRow(r, periods)), count ?? 0, filters);
 }
 
 export async function getRentalById(id: string): Promise<AdminRentalRow> {
@@ -471,65 +584,34 @@ export async function getRentalById(id: string): Promise<AdminRentalRow> {
         .maybeSingle();
     if (error) throw error;
     if (!data) throw notFound("Rental not found.");
-    return toAdminRentalRow(data as unknown as RawAdminRentalRow);
+    const row = data as unknown as RawRentalRow;
+    return toAdminRentalRow(row, await withPeriods([row]));
+}
+
+async function requireActiveRental(id: string): Promise<RawRentalRow> {
+    const { data, error } = await supabaseAdmin
+        .from("rentals")
+        .select(ADMIN_RENTAL_COLUMNS)
+        .eq("id", id)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw notFound("Rental not found.");
+    const row = data as unknown as RawRentalRow;
+    if (row.status !== "active") throw businessRule("This ride is not active.");
+    return row;
 }
 
 /**
- * Late-fee settlement written when staff take physical delivery. Shared by
- * completeRide and moveRideToMaintenance so the two can't drift — otherwise
- * "return it damaged" would be a free late-fee bypass, and those rows would
- * keep days_late null forever.
- *
- * Settles against effectiveDueAt, not return_due_at alone: a rider who never
- * requested a return but sat on the scooter past their plan's expiry is late
- * too. Before 20260804100000 that case was silently free.
- *
- * `overrideAmount` lets staff replace the computed penalty_amount with a
- * customised figure (waiving it, or charging more) while days_late/feePerDay
- * stay as the computed factual record — only the amount actually billed
- * changes. undefined means "use the computed amount" unchanged.
+ * A return can no longer settle with a held deposit still un-inspected. A
+ * no-op when there is nothing at stake (no deposit, already forfeited or
+ * released, or already inspected — recordDamage stamps that the moment a
+ * damage item is entered).
  */
-function settlementPayload(before: RawAdminRentalRow, overrideAmount?: number) {
-    const charge = computeLateReturnPenalty({ returnDueAt: effectiveDueAt(before) });
-    const penaltyAmount = overrideAmount ?? charge.penaltyAmount;
-    return {
-        payload: {
-            days_late: charge.daysLate,
-            late_penalty_amount: penaltyAmount,
-            late_fee_per_day: charge.feePerDay,
-        },
-        charge: { ...charge, penaltyAmount },
-        overridden: overrideAmount !== undefined,
-    };
-}
+async function assertInspected(before: RawRentalRow, input: { inspected?: boolean }): Promise<void> {
+    const ret = latestReturn(before.rental_returns);
+    if (ret?.inspected_at) return;
 
-/**
- * Approval stamp for whichever staff action actually settles a rental
- * (completeRide/moveRideToMaintenance) — meaningful only when a return
- * request was pending at that moment. A direct staff force-end with no
- * return ever requested leaves both fields null; this is not a separate
- * approval step, it IS the settlement. Exported for direct testing, same as
- * computeLateReturnPenalty/effectiveDueAt.
- */
-export function returnApprovalPayload(
-    before: { return_requested_at: string | null },
-    actor: AuthContext,
-    now: Date,
-) {
-    if (!before.return_requested_at) return {};
-    return { return_approved_at: now.toISOString(), return_approved_by: actor.id };
-}
-
-/**
- * Deposit Refund & Damage Deduction Phase 1: a return can no longer settle
- * with a held deposit still un-inspected. A no-op when there's nothing at
- * stake (no deposit, already forfeited/refunded, or already stamped —
- * recordDamage stamps this the moment a damage item is entered, see
- * damages.service.ts) so this never blocks a booking with no deposit at all.
- */
-async function assertInspected(before: RawAdminRentalRow, input: { inspected?: boolean }): Promise<void> {
-    if (before.inspected_at || !before.booking_id) return;
-    const deposit = await getDepositForBookingOrNull(before.booking_id);
+    const deposit = await getDepositForSubscriptionOrNull(before.subscription_id);
     if (!deposit || deposit.amount <= 0 || deposit.status !== "held") return;
     if (!input.inspected) {
         throw businessRule(
@@ -539,42 +621,109 @@ async function assertInspected(before: RawAdminRentalRow, input: { inspected?: b
 }
 
 /**
- * Companion to returnApprovalPayload — stamps who/when confirmed a clean
- * inspection. Left empty when recordDamage already stamped it (before.inspected_at
- * set) so a damage-bearing return's stamp always credits whoever actually
- * inspected the vehicle, not whoever happened to click "Complete" after.
+ * Closes the open return and writes the settlement.
+ *
+ * Shared by completeRide and moveRideToMaintenance so the two can't drift —
+ * otherwise "return it damaged" would be a free late-fee bypass.
+ *
+ * The settlement row is where the money now lives, and the database checks its
+ * arithmetic: `net_amount` must equal the deposit less the charges, and
+ * `outcome` must agree with the sign. That is a real gain over the old
+ * `days_late`/`late_penalty_amount` columns on the rental, which nothing
+ * validated against the deposit at all.
  */
-function inspectionStampPayload(
-    before: RawAdminRentalRow,
-    input: { inspected?: boolean },
+async function settleReturn(
+    before: RawRentalRow,
+    input: { late_fee_override?: number; inspected?: boolean; other_charges_amount?: number },
     actor: AuthContext,
-    now: Date,
-) {
-    if (before.inspected_at || !input.inspected) return {};
-    return { inspected_at: now.toISOString(), inspected_by: actor.id };
-}
+    settledAt: Date,
+): Promise<{ charge: LateReturnCharge; overridden: boolean }> {
+    const ret = openReturn(before.rental_returns);
+    const dueAt = effectiveDueAt({
+        return_due_at: ret?.due_back_at ?? null,
+        expires_at: before.due_back_at,
+    });
+    const charge = computeLateReturnPenalty({ returnDueAt: dueAt });
+    const lateFee = input.late_fee_override ?? charge.penaltyAmount;
 
-async function requireActiveRental(id: string): Promise<RawAdminRentalRow> {
-    const { data, error } = await supabaseAdmin
-        .from("rentals")
-        .select(ADMIN_RENTAL_COLUMNS)
-        .eq("id", id)
-        .maybeSingle();
-    if (error) throw error;
-    if (!data) throw notFound("Rental not found.");
-    const row = data as unknown as RawAdminRentalRow;
-    if (row.status !== "active") throw businessRule("This ride is not active.");
-    return row;
+    if (ret) {
+        const { error } = await supabaseAdmin
+            .from("rental_returns")
+            .update({
+                status: "approved",
+                approved_at: settledAt.toISOString(),
+                approved_by_user_id: actor.id,
+                ...(ret.inspected_at || !input.inspected
+                    ? {}
+                    : { inspected_at: settledAt.toISOString(), inspected_by_user_id: actor.id }),
+            })
+            .eq("rental_id", before.id)
+            .in("status", ["requested", "inspected"]);
+        if (error) throw error;
+    }
+
+    // Damage is summed from the incidents raised against this rental, not
+    // passed in: whichever path settles the return — a plain completeRide or
+    // the full review in returns.service.ts — must produce the same figure.
+    // Disputed damage is excluded; it is not yet a charge anyone owes.
+    const { data: damageRows, error: damageError } = await supabaseAdmin
+        .from("damages")
+        .select("assessed_amount, status, incidents!inner(rental_id)")
+        .eq("incidents.rental_id", before.id)
+        .neq("status", "disputed");
+    if (damageError) throw damageError;
+    const damageAmount = Math.round(
+        (damageRows ?? []).reduce((sum, d) => sum + Number(d.assessed_amount), 0) * 100,
+    ) / 100;
+
+    const otherCharges = input.other_charges_amount ?? 0;
+
+    const deposit = await getDepositForSubscriptionOrNull(before.subscription_id);
+    const depositAmount = deposit?.amount ?? 0;
+    const totalCharges = Math.round((lateFee + damageAmount + otherCharges) * 100) / 100;
+    const netAmount = Math.round((depositAmount - totalCharges) * 100) / 100;
+
+    const { error: settlementError } = await supabaseAdmin.from("rental_settlements").insert({
+        rental_id: before.id,
+        settled_at: settledAt.toISOString(),
+        settled_by_user_id: actor.id,
+        deposit_amount_snapshot: depositAmount,
+        late_fee_amount: lateFee,
+        damage_amount: damageAmount,
+        other_charges_amount: otherCharges,
+        total_charges_amount: totalCharges,
+        net_amount: netAmount,
+        outcome: netAmount > 0 ? "refund_due" : netAmount < 0 ? "amount_due" : "balanced",
+    });
+    if (settlementError && (settlementError as { code?: string }).code !== "23505") {
+        throw settlementError;
+    }
+
+    return { charge: { ...charge, penaltyAmount: lateFee }, overridden: input.late_fee_override !== undefined };
 }
 
 /**
- * Normal ride end. trg_sync_vehicle_status_fn (20260727095801) also returns
- * the vehicle 'assigned' -> 'available', but only when the vehicle is still
- * exactly 'assigned' at that instant — if it drifted to some other status in
- * the meantime (e.g. a direct staff status override), that trigger silently
- * no-ops and strands the vehicle. Set it explicitly here too, the same way
- * moveRideToMaintenance already does, so completing a ride is never a no-op.
+ * Releases the vehicle a rental holds.
+ *
+ * Closing the assignment is the whole action: the trigger on that table calls
+ * `recompute_vehicle_status()`, which is what returns the scooter to the pool.
+ * The old code wrote `vehicles.status` directly here, with a comment about the
+ * sync trigger silently no-opping if the status had drifted — a problem that
+ * cannot arise now, because status is derived rather than asserted.
  */
+async function releaseAssignment(rentalId: string, releasedAt: Date): Promise<string | null> {
+    const { data, error } = await supabaseAdmin
+        .from("rental_vehicle_assignments")
+        .update({ released_at: releasedAt.toISOString() })
+        .eq("rental_id", rentalId)
+        .is("released_at", null)
+        .select("vehicle_id")
+        .maybeSingle();
+    if (error) throw error;
+    return data?.vehicle_id ?? null;
+}
+
+/** Normal ride end. */
 export async function completeRide(
     id: string,
     input: CompleteRideInput,
@@ -582,85 +731,60 @@ export async function completeRide(
 ): Promise<AdminRentalRow> {
     const before = await requireActiveRental(id);
     await assertInspected(before, input);
-    const { payload: settlement, charge, overridden } = settlementPayload(before, input.late_fee_override);
-    const endedAt = new Date();
 
-    const { data, error } = await supabaseAdmin
+    const endedAt = new Date();
+    const { charge, overridden } = await settleReturn(before, input, actor, endedAt);
+
+    const { error } = await supabaseAdmin
         .from("rentals")
-        .update({
-            status: "completed",
-            ended_at: endedAt.toISOString(),
-            end_battery_pct: input.end_battery_pct ?? null,
-            ...settlement,
-            ...returnApprovalPayload(before, actor, endedAt),
-            ...inspectionStampPayload(before, input, actor, endedAt),
-        })
+        .update({ status: "completed", returned_at: endedAt.toISOString() })
         .eq("id", id)
-        .select(ADMIN_RENTAL_COLUMNS)
-        .single();
+        .eq("status", "active");
     if (error) throw error;
 
-    const { error: vehicleError } = await supabaseAdmin
-        .from("vehicles")
-        .update({ status: "available" })
-        .eq("id", before.vehicle_id);
-    if (vehicleError) throw vehicleError;
+    await releaseAssignment(id, endedAt);
 
-    // Start the deposit's 15-day refund-eligibility clock, and close the
-    // booking out to 'completed' — but only for a GENUINE final return, not
-    // the temp-vehicle rental closure updateMaintenanceTicket triggers
-    // mid-maintenance (maintenance.service.ts). By the time that closure
-    // calls completeRide, resumePlanForBooking has already moved
-    // bookings.active_rental_id to the NEW (original/handback) rental, so
-    // this rental no longer being the booking's active one is exactly the
-    // signal that distinguishes the two cases.
+    const subscription = unwrap<SubscriptionSlice>(before.subscriptions);
+
+    // Start the deposit's refund-eligibility clock and end the subscription —
+    // but only for a GENUINE final return, not the temp-vehicle closure that
+    // maintenance used to trigger mid-repair.
     //
-    // plan_status is cleared to null alongside the status flip so the
-    // payment-overdue-sweep cron (which only ever acts on plan_status='active')
-    // can never fire a bogus weekly-due invoice against a booking whose
-    // rider has already returned the vehicle for good. next_due_at and the
-    // rest of the plan snapshot are left as-is — historical record, not
-    // something a completed booking needs cleared.
-    if (before.booking_id) {
-        const { data: booking } = await supabaseAdmin
-            .from("bookings")
-            .select("active_rental_id")
-            .eq("id", before.booking_id)
-            .maybeSingle();
-        if (booking && booking.active_rental_id === id) {
-            await setDepositRefundEligible(before.booking_id, endedAt);
-            await supabaseAdmin
-                .from("bookings")
-                .update({ status: "completed", plan_status: null })
-                .eq("id", before.booking_id)
-                .eq("status", "fulfilled");
-        }
+    // That check used to be "is this still the booking's active rental?".
+    // It is no longer needed at all: a maintenance swap keeps the same rental
+    // and just moves its assignment, so completeRide is only ever reached by a
+    // real return. The whole active_rental_id dance existed to work around
+    // rentals being recreated on every handover.
+    if (subscription) {
+        await setDepositRefundEligible(subscription.id, endedAt);
+        const { error: subError } = await supabaseAdmin
+            .from("subscriptions")
+            .update({ status: "ended", ended_at: endedAt.toISOString() })
+            .eq("id", subscription.id)
+            .in("status", ["active", "past_due", "paused"]);
+        if (subError) throw subError;
     }
 
-    const rental = toAdminRentalRow(data as unknown as RawAdminRentalRow);
-    const riderId = unwrap<{ id: string }>(before.users)?.id ?? null;
+    const rider = unwrap<{ id: string }>(before.users);
 
     await writeAudit({
         actorId: actor.id,
-        targetUserId: riderId,
+        targetUserId: rider?.id ?? null,
         action: "rental.completed",
         entityType: "rental",
         entityId: id,
         before: { status: "active" },
         after: {
             status: "completed",
-            end_battery_pct: rental.end_battery_pct,
             days_late: charge.daysLate,
             late_penalty_amount: charge.penaltyAmount,
             late_fee_overridden: overridden,
             had_deadline: charge.hadDeadline,
-            inspected_at: rental.inspected_at,
-            inspected_by: rental.inspected_by?.id ?? null,
         },
     });
 
-    if (riderId) {
-        await notifyUser(riderId, {
+    if (rider) {
+        await notifyUser(rider.id, {
             template: "rental_completed",
             title: "Ride Completed",
             body: charge.penaltyAmount > 0
@@ -670,13 +794,16 @@ export async function completeRide(
         });
     }
 
-    return rental;
+    return getRentalById(id);
 }
 
 /**
- * Ends the ride like completeRide, but overrides the vehicle's post-trigger
- * 'available' state to 'maintenance' and opens a vehicle_maintenance ticket —
- * for a vehicle returned with a reported issue, not fit to hand to the next rider.
+ * Ends the ride like completeRide, but opens a maintenance ticket — for a
+ * vehicle returned with a reported issue, not fit to hand to the next rider.
+ *
+ * The vehicle reaches `maintenance` because the open ticket exists, not
+ * because this writes a status. That is the same derivation
+ * `recompute_vehicle_status()` applies everywhere else.
  */
 export async function moveRideToMaintenance(
     id: string,
@@ -687,40 +814,28 @@ export async function moveRideToMaintenance(
     // Same inspection gate as completeRide — a vehicle routed to maintenance
     // still needs its deposit settlement recorded, damage or not.
     await assertInspected(before, input);
-    // Settled here too: staff still take physical delivery of a damaged
-    // scooter, so skipping this would make "return it broken" a free
-    // late-fee bypass and leave days_late null on these rows forever.
-    const { payload: settlement, charge, overridden } = settlementPayload(before, input.late_fee_override);
+
     const endedAt = new Date();
+    const { charge, overridden } = await settleReturn(before, input, actor, endedAt);
 
     const { error: rentalError } = await supabaseAdmin
         .from("rentals")
-        .update({
-            status: "completed",
-            ended_at: endedAt.toISOString(),
-            end_battery_pct: input.end_battery_pct ?? null,
-            ...settlement,
-            ...returnApprovalPayload(before, actor, endedAt),
-            ...inspectionStampPayload(before, input, actor, endedAt),
-        })
-        .eq("id", id);
+        .update({ status: "completed", returned_at: endedAt.toISOString() })
+        .eq("id", id)
+        .eq("status", "active");
     if (rentalError) throw rentalError;
 
-    const { error: vehicleError } = await supabaseAdmin
-        .from("vehicles")
-        .update({ status: "maintenance" })
-        .eq("id", before.vehicle_id);
-    if (vehicleError) throw vehicleError;
+    const vehicleId = await releaseAssignment(id, endedAt);
+    if (!vehicleId) throw businessRule("This rental has no vehicle attached to send for maintenance.");
 
-    const riderId = unwrap<{ id: string }>(before.users)?.id ?? null;
+    const rider = unwrap<{ id: string; full_name: string }>(before.users);
+    const subscription = unwrap<SubscriptionSlice>(before.subscriptions);
 
     const { data: ticket, error: ticketError } = await supabaseAdmin
-        .from("vehicle_maintenance")
+        .from("maintenance_tickets")
         .insert({
-            vehicle_id: before.vehicle_id,
-            reported_by: actor.id,
-            displaced_rider_id: riderId,
-            booking_id: before.booking_id,
+            vehicle_id: vehicleId,
+            reported_by_user_id: actor.id,
             description: input.description,
             status: "reported",
         })
@@ -728,46 +843,41 @@ export async function moveRideToMaintenance(
         .single();
     if (ticketError) throw ticketError;
 
-    // Pause the rider's recurring-billing plan (if this ride belongs to one)
-    // — they must not lose rental days or be charged while the vehicle they
-    // were assigned is unavailable. A no-op for a rental with no booking_id
-    // (e.g. a walk-in assignment) or whose plan isn't active.
-    if (before.booking_id) {
-        await pausePlanForBooking(before.booking_id, ticket.id as string, actor);
+    // Pause the rider's billing — they must not lose days or be charged while
+    // the vehicle they were assigned is unavailable.
+    if (subscription) {
+        await pauseSubscription(subscription.id, ticket.id, actor);
     }
 
     await writeAudit({
         actorId: actor.id,
-        targetUserId: riderId,
+        targetUserId: rider?.id ?? null,
         action: "rental.moved_to_maintenance",
         entityType: "rental",
         entityId: id,
         before: { status: "active" },
         after: {
             status: "completed",
-            vehicle_status: "maintenance",
+            maintenance_ticket_id: ticket.id,
             description: input.description,
             days_late: charge.daysLate,
             late_penalty_amount: charge.penaltyAmount,
             late_fee_overridden: overridden,
             had_deadline: charge.hadDeadline,
-            inspected_at: before.inspected_at ?? (input.inspected ? endedAt.toISOString() : null),
-            inspected_by: before.inspected_at ? unwrap<{ id: string }>(before.inspected_by)?.id ?? null : (input.inspected ? actor.id : null),
         },
     });
 
-    const vehicle = unwrap<{ name: string; registration_number: string }>(before.vehicles);
+    const vehicle = currentVehicle(before.rental_vehicle_assignments);
     await notify({
-        notificationType: "maintenance",
-        referenceType: "vehicle_maintenance",
-        referenceId: ticket.id as string,
-        template: "maintenance_ticket_created",
+        notificationType: "maintenance_ticket_created",
+        referenceType: "maintenance_ticket",
+        referenceId: ticket.id,
         title: "Maintenance Ticket Opened",
         bodyFallback: "{vehicle} was moved to maintenance after a return.",
         screen: "/maintenance",
-        riderId: riderId ?? undefined,
-        vehicleId: before.vehicle_id,
-        bookingId: before.booking_id ?? undefined,
+        riderId: rider?.id,
+        vehicleId,
+        bookingId: subscription?.booking_id,
         vehicleNameOverride: vehicle ? `${vehicle.name} (${vehicle.registration_number})` : undefined,
         excludeUserId: actor.id,
     });
@@ -776,10 +886,13 @@ export async function moveRideToMaintenance(
 }
 
 /**
- * Admin declines a pending return request. Unlike completeRide/
- * moveRideToMaintenance, this does NOT settle the rental — it stays
- * 'active' with no return pending, exactly as if the rider had never asked.
- * The rider is free to submit a new return request afterwards.
+ * Admin declines a pending return request. Does NOT settle the rental — it
+ * stays `active`, and the rider is free to request a return again.
+ *
+ * The rejection is now RECORDED rather than erased. The old version nulled the
+ * four `return_*` columns back out, which left no trace that a return had been
+ * asked for and refused; this marks the row `rejected` with a reason, and a
+ * fresh request creates a new row alongside it.
  */
 export async function rejectReturn(
     id: string,
@@ -787,41 +900,39 @@ export async function rejectReturn(
     actor: AuthContext,
 ): Promise<AdminRentalRow> {
     const before = await requireActiveRental(id);
-    if (!before.return_requested_at) {
-        throw conflict("No return request is pending for this rental.");
-    }
+    const pending = openReturn(before.rental_returns);
+    if (!pending) throw conflict("No return request is pending for this rental.");
 
     const { error } = await supabaseAdmin
-        .from("rentals")
+        .from("rental_returns")
         .update({
-            return_requested_at: null,
-            return_reason: null,
-            return_feedback: null,
-            return_due_at: null,
+            status: "rejected",
+            rejected_at: new Date().toISOString(),
+            rejected_by_user_id: actor.id,
+            rejection_reason: input.reason,
         })
-        .eq("id", id)
-        .eq("status", "active")
-        .not("return_requested_at", "is", null);
+        .eq("rental_id", id)
+        .in("status", ["requested", "inspected"]);
     if (error) throw error;
 
-    const riderId = unwrap<{ id: string }>(before.users)?.id ?? null;
+    const rider = unwrap<{ id: string }>(before.users);
 
     await writeAudit({
         actorId: actor.id,
-        targetUserId: riderId,
+        targetUserId: rider?.id ?? null,
         action: "rental.return_rejected",
-        entityType: "rental",
+        entityType: "rental_return",
         entityId: id,
         before: {
-            return_requested_at: before.return_requested_at,
-            return_reason: before.return_reason,
-            return_due_at: before.return_due_at,
+            requested_at: pending.requested_at,
+            requested_reason: pending.requested_reason,
+            due_back_at: pending.due_back_at,
         },
-        after: { return_requested_at: null, reason: input.reason },
+        after: { status: "rejected", reason: input.reason },
     });
 
-    if (riderId) {
-        await notifyUser(riderId, {
+    if (rider) {
+        await notifyUser(rider.id, {
             template: "rental_return_rejected",
             title: "Return Request Declined",
             body: `Our team couldn't accept your return request: ${input.reason}. Your ride is still active — you can request a return again anytime.`,

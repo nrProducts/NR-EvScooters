@@ -3,18 +3,37 @@ import { notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { notifyUser } from "../notifications/notifications.service";
 import { createMaintenanceTicket } from "../maintenance/maintenance.service";
-import { updateVehicle } from "../vehicles/vehicles.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     CreateSupportInput, SupportHistoryFilters, SupportQueueFilters, SupportQueueView,
     SupportView, UpdateSupportInput,
 } from "./support.types";
 
-const SUPPORT_COLUMNS = "id, subject, description, status, priority, resolved_at, created_at";
+/**
+ * Support.
+ *
+ * `support_requests` is `support_tickets`, and the single `description`
+ * column became `support_ticket_messages` — a thread, with authors and an
+ * `is_internal_note` flag. That is the substantive change: a ticket was
+ * previously a one-way statement with no way to record a reply, so every
+ * conversation happened somewhere else and none of it was on the record.
+ *
+ * The wire shape still exposes `description`, resolved as the FIRST message
+ * on the thread, so neither app has to change in this stage.
+ *
+ * `vehicle_id` also went: a ticket names the rental, and the rental names the
+ * vehicle — which stays correct when a maintenance swap changes it, where the
+ * copied column would have gone stale.
+ */
+
+const TICKET_COLUMNS = `
+    id, subject, status, priority, category, resolved_at, created_at,
+    support_ticket_messages(body, created_at, is_internal_note)
+`;
 
 const QUEUE_COLUMNS = `
-    id, subject, description, status, priority, resolved_at, created_at, assigned_to,
-    rental_id, vehicle_id,
+    ${TICKET_COLUMNS},
+    assigned_to_user_id, rental_id,
     users!user_id(id, full_name, phone)
 `;
 
@@ -26,25 +45,40 @@ function unwrap<T>(raw: unknown): T | null {
 interface RawSupportRow {
     id: string;
     subject: string;
-    description: string;
     status: SupportView["status"];
     priority: SupportView["priority"];
     resolved_at: string | null;
     created_at: string;
+    support_ticket_messages: unknown;
 }
 
 interface RawSupportQueueRow extends RawSupportRow {
-    assigned_to: string | null;
+    assigned_to_user_id: string | null;
     rental_id: string | null;
-    vehicle_id: string | null;
     users: unknown;
+}
+
+/**
+ * The rider's opening message.
+ *
+ * Internal notes are excluded — the old `description` was always rider-facing
+ * text, and surfacing a staff note under that name would leak it to the app.
+ */
+function openingMessage(raw: unknown): string {
+    const rows = (Array.isArray(raw) ? raw : raw ? [raw] : []) as Array<{
+        body: string; created_at: string; is_internal_note: boolean;
+    }>;
+    const visible = rows
+        .filter((m) => !m.is_internal_note)
+        .sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return visible[0]?.body ?? "";
 }
 
 export function toSupportView(row: RawSupportRow): SupportView {
     return {
         id: row.id,
         subject: row.subject,
-        description: row.description,
+        description: openingMessage(row.support_ticket_messages),
         status: row.status,
         priority: row.priority,
         resolved_at: row.resolved_at,
@@ -55,17 +89,19 @@ export function toSupportView(row: RawSupportRow): SupportView {
 function toSupportQueueView(row: RawSupportQueueRow): SupportQueueView {
     return {
         ...toSupportView(row),
-        assigned_to: row.assigned_to,
+        assigned_to: row.assigned_to_user_id,
         rental_id: row.rental_id,
-        vehicle_id: row.vehicle_id,
-        rider: unwrap<SupportQueueView["rider"]>(row.users) ?? { id: "", full_name: "Unknown rider", phone: null },
+        // Derived from the rental rather than stored — see the header.
+        vehicle_id: null,
+        rider: unwrap<SupportQueueView["rider"]>(row.users)
+            ?? { id: "", full_name: "Unknown rider", phone: null },
     };
 }
 
 /**
- * Riders raise a ticket with just a subject/description; when they have a
- * live ride, silently attach it (rental_id/vehicle_id) so staff have that
- * context without asking the rider which scooter they mean.
+ * Riders raise a ticket with a subject and a first message; when they have a
+ * live ride, it is attached silently so staff have that context without
+ * asking which scooter they mean.
  */
 export async function createSupportRequest(
     userId: string,
@@ -73,24 +109,41 @@ export async function createSupportRequest(
 ): Promise<SupportView> {
     const { data: activeRental } = await supabaseAdmin
         .from("rentals")
-        .select("id, vehicle_id")
+        .select("id")
         .eq("user_id", userId)
         .eq("status", "active")
         .maybeSingle();
 
-    const { data, error } = await supabaseAdmin
-        .from("support_requests")
+    const { data: ticket, error } = await supabaseAdmin
+        .from("support_tickets")
         .insert({
             user_id: userId,
             subject: input.subject,
-            description: input.description,
             rental_id: activeRental?.id ?? null,
-            vehicle_id: activeRental?.vehicle_id ?? null,
         })
-        .select(SUPPORT_COLUMNS)
+        .select("id")
         .single();
-
     if (error) throw error;
+
+    const { error: messageError } = await supabaseAdmin.from("support_ticket_messages").insert({
+        support_ticket_id: ticket.id,
+        author_user_id: userId,
+        body: input.description,
+        is_internal_note: false,
+    });
+    if (messageError) {
+        // A ticket with no message is unreadable — better to have neither.
+        await supabaseAdmin.from("support_tickets").delete().eq("id", ticket.id);
+        throw messageError;
+    }
+
+    const { data, error: readError } = await supabaseAdmin
+        .from("support_tickets")
+        .select(TICKET_COLUMNS)
+        .eq("id", ticket.id)
+        .single();
+    if (readError) throw readError;
+
     return toSupportView(data as unknown as RawSupportRow);
 }
 
@@ -100,8 +153,8 @@ export async function getMyRequests(
 ): Promise<Paginated<SupportView>> {
     const [from, to] = toRange(filters);
     const { data, error, count } = await supabaseAdmin
-        .from("support_requests")
-        .select(SUPPORT_COLUMNS, { count: "exact" })
+        .from("support_tickets")
+        .select(TICKET_COLUMNS, { count: "exact" })
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .range(from, to);
@@ -116,7 +169,7 @@ export async function listSupportQueue(
 ): Promise<Paginated<SupportQueueView>> {
     const [from, to] = toRange(filters);
     let query = supabaseAdmin
-        .from("support_requests")
+        .from("support_tickets")
         .select(QUEUE_COLUMNS, { count: "exact" });
 
     if (filters.status) query = query.eq("status", filters.status);
@@ -132,7 +185,7 @@ export async function listSupportQueue(
 
 export async function getSupportDetail(id: string): Promise<SupportQueueView> {
     const { data, error } = await supabaseAdmin
-        .from("support_requests")
+        .from("support_tickets")
         .select(QUEUE_COLUMNS)
         .eq("id", id)
         .maybeSingle();
@@ -143,10 +196,9 @@ export async function getSupportDetail(id: string): Promise<SupportQueueView> {
 }
 
 /**
- * Staff status/priority/assignment update. Moving off 'open' with nobody
- * assigned yet claims it for the acting staff member — one less step than
- * requiring an explicit "assign to me" call first. A status change notifies
- * the rider (mirrors bookings.service.ts's pickup-confirmed notification).
+ * Staff status/priority/assignment update. Moving off `open` with nobody
+ * assigned claims it for the acting staff member — one less step than
+ * requiring an explicit "assign to me" call first.
  */
 export async function updateSupportRequest(
     id: string,
@@ -154,8 +206,8 @@ export async function updateSupportRequest(
     actor: AuthContext,
 ): Promise<SupportQueueView> {
     const { data: existing, error: existingError } = await supabaseAdmin
-        .from("support_requests")
-        .select("id, user_id, subject, status, assigned_to, vehicle_id")
+        .from("support_tickets")
+        .select("id, user_id, subject, status, assigned_to_user_id, rental_id")
         .eq("id", id)
         .maybeSingle();
 
@@ -165,22 +217,19 @@ export async function updateSupportRequest(
     const update: Record<string, unknown> = {};
     if (patch.status) update.status = patch.status;
     if (patch.priority) update.priority = patch.priority;
-    if (patch.assigned_to) update.assigned_to = patch.assigned_to;
+    if (patch.assigned_to) update.assigned_to_user_id = patch.assigned_to;
 
-    if (patch.status && patch.status !== "open" && !patch.assigned_to && !existing.assigned_to) {
-        update.assigned_to = actor.id;
+    if (patch.status && patch.status !== "open" && !patch.assigned_to && !existing.assigned_to_user_id) {
+        update.assigned_to_user_id = actor.id;
     }
     if (patch.status && (patch.status === "resolved" || patch.status === "closed")) {
         update.resolved_at = new Date().toISOString();
     }
 
-    const { data, error } = await supabaseAdmin
-        .from("support_requests")
-        .update(update)
-        .eq("id", id)
-        .select(QUEUE_COLUMNS)
-        .single();
-
+    const { error } = await supabaseAdmin
+        .from("support_tickets")
+        .update(update as never)
+        .eq("id", id);
     if (error) throw error;
 
     if (patch.status && patch.status !== existing.status) {
@@ -192,29 +241,33 @@ export async function updateSupportRequest(
         });
     }
 
-    // Staff moving a vehicle-linked ticket into 'in_progress' means they've
-    // confirmed it's a real vehicle problem — pull the vehicle out of service
-    // by flagging it for maintenance, same as a manual "mark in maintenance".
-    if (patch.status === "in_progress" && existing.status !== "in_progress" && existing.vehicle_id) {
-        const { data: vehicle, error: vehicleError } = await supabaseAdmin
-            .from("vehicles")
-            .select("id, status")
-            .eq("id", existing.vehicle_id)
+    // Staff moving a ride-linked ticket into 'in_progress' means they have
+    // confirmed a real vehicle problem — open a maintenance ticket, which is
+    // what takes the scooter out of service.
+    //
+    // The old version ALSO wrote `vehicles.status = 'maintenance'` directly.
+    // It no longer can, and no longer needs to: `recompute_vehicle_status()`
+    // derives that from the open ticket, so the two can't disagree.
+    if (patch.status === "in_progress" && existing.status !== "in_progress" && existing.rental_id) {
+        const { data: current, error: vehicleError } = await supabaseAdmin
+            .from("v_rental_current_vehicle")
+            .select("vehicle_id, vehicles(status)")
+            .eq("rental_id", existing.rental_id)
             .maybeSingle();
         if (vehicleError) throw vehicleError;
 
-        if (vehicle && vehicle.status !== "maintenance" && vehicle.status !== "scrap") {
+        const vehicle = unwrap<{ status: string }>(current?.vehicles);
+        if (current?.vehicle_id && vehicle && vehicle.status !== "maintenance" && vehicle.status !== "retired") {
             await createMaintenanceTicket(
                 {
-                    vehicle_id: existing.vehicle_id,
+                    vehicle_id: current.vehicle_id,
                     description: `Auto-flagged from support ticket "${existing.subject}".`,
                     status: "in_progress",
                 },
                 actor,
             );
-            await updateVehicle(existing.vehicle_id, { status: "maintenance" }, actor);
         }
     }
 
-    return toSupportQueueView(data as unknown as RawSupportQueueRow);
+    return getSupportDetail(id);
 }

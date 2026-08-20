@@ -7,37 +7,126 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { maskLast4 } from "../../common/mask";
 import {
-    AccountStatus, AuthContext, MANDATORY_KYC_DOC_TYPES, Paginated, RoleName,
-    STAFF_ROLES, StaffCapability,
+    AuthContext, MANDATORY_KYC_DOC_TYPES, Paginated, STAFF_ROLES, UserRole,
+    UserStatus, isStaffRole,
 } from "../../types";
 import { ListUsersFilters, UserDetail, UserListItem, UserProfile } from "./users.types";
 import { normaliseEmail, normalisePhone } from "./users.validation";
-import { PermissionProfileName } from "../../config/permissionProfiles";
 import { applyPermissionProfile } from "./staff-permissions.service";
 import {
     assertValidPhoto, buildPhotoPath, createSignedPhotoUrl, photoPathBelongsToUser,
     removePhotoFile, uploadPhotoFile,
 } from "./users.photo.storage";
 import type { UploadedFile } from "../kyc/kyc.storage";
+import { businessToday } from "../../common/dates";
 
 /**
- * PostgREST embed for a user's roles.
+ * A user is five tables now.
  *
- * The `!user_roles_user_id_fkey` disambiguator is required, not stylistic:
- * user_roles has two foreign keys to users (`user_id` and `granted_by`), so a
- * bare `user_roles(roles(name))` is ambiguous and PostgREST answers
- * 300 Multiple Choices instead of choosing. Same applies to
- * user_capabilities in auth.middleware.ts.
+ * `users` keeps identity and account state; the address moved to
+ * `user_addresses`, the emergency contact to `user_related_persons`, the
+ * rider's KYC state to `rider_profiles`, the staff code and
+ * must-change-password flag to `staff_profiles`, and the push token to
+ * `user_devices`.
+ *
+ * PostgREST embeds all of them in one request, so the read path is still one
+ * round trip. The write path is not: there is no multi-table upsert, so
+ * createUser/updateUser fan out and then compensate on failure — see the
+ * try/catch in createUser().
+ *
+ * The child embeds need no `!fkey` disambiguator, unlike the old
+ * `user_roles`/`user_capabilities` ones: each has exactly one foreign key back
+ * to `users`, because `granted_by` no longer lives on them.
  */
-const ROLES_EMBED = "user_roles!user_roles_user_id_fkey(roles(name))";
-
-const PROFILE_COLUMNS = `
-    id, full_name, email, phone, date_of_birth, gender,
-    address_line_1, address_line_2, city, state, postal_code, country,
-    emergency_contact_name, emergency_contact_phone,
-    account_status, kyc_status, profile_photo_url, profile_completed,
-    created_at, updated_at, deleted_at, staff_code, last_login_at, must_change_password
+const PROFILE_SELECT = `
+    id, full_name, email, phone, date_of_birth, gender, role, status,
+    photo_storage_path, created_at, updated_at, deleted_at,
+    rider_profiles(kyc_status, onboarding_completed_at),
+    staff_profiles(staff_code, must_change_password),
+    user_addresses(line_1, line_2, city, state, postal_code, country, is_primary),
+    user_related_persons(person_role, full_name, phone)
 `;
+
+/** The embedded shape `PROFILE_SELECT` returns, before flattening. */
+interface RawUserRow {
+    id: string;
+    full_name: string;
+    email: string | null;
+    phone: string | null;
+    date_of_birth: string | null;
+    gender: string | null;
+    role: UserRole;
+    status: UserStatus;
+    photo_storage_path: string | null;
+    created_at: string;
+    updated_at: string | null;
+    deleted_at: string | null;
+    rider_profiles: unknown;
+    staff_profiles: unknown;
+    user_addresses: unknown;
+    user_related_persons: unknown;
+}
+
+/** PostgREST gives a 1:1 embed as an object or a one-element array. */
+function one<T>(value: unknown): T | null {
+    if (!value) return null;
+    return (Array.isArray(value) ? (value[0] ?? null) : value) as T | null;
+}
+
+function many<T>(value: unknown): T[] {
+    if (!value) return [];
+    return (Array.isArray(value) ? value : [value]) as T[];
+}
+
+/**
+ * Collapses the five tables back into the flat shape both apps already read.
+ *
+ * The address chosen is the one flagged `is_primary`, falling back to whatever
+ * exists — a user with only a billing address should still see it rather than
+ * a blank form.
+ */
+function toProfile(row: RawUserRow): UserProfile {
+    const rider = one<{ kyc_status: UserProfile["kyc_status"]; onboarding_completed_at: string | null }>(
+        row.rider_profiles,
+    );
+    const staff = one<{ staff_code: string | null; must_change_password: boolean }>(row.staff_profiles);
+
+    const addresses = many<{
+        line_1: string; line_2: string | null; city: string; state: string;
+        postal_code: string; country: string; is_primary: boolean;
+    }>(row.user_addresses);
+    const address = addresses.find((a) => a.is_primary) ?? addresses[0] ?? null;
+
+    const emergency = many<{ person_role: string; full_name: string; phone: string | null }>(
+        row.user_related_persons,
+    ).find((p) => p.person_role === "emergency_contact") ?? null;
+
+    return {
+        id: row.id,
+        full_name: row.full_name,
+        email: row.email,
+        phone: row.phone,
+        date_of_birth: row.date_of_birth,
+        gender: row.gender,
+        address_line_1: address?.line_1 ?? null,
+        address_line_2: address?.line_2 ?? null,
+        city: address?.city ?? null,
+        state: address?.state ?? null,
+        postal_code: address?.postal_code ?? null,
+        country: address?.country ?? null,
+        emergency_contact_name: emergency?.full_name ?? null,
+        emergency_contact_phone: emergency?.phone ?? null,
+        account_status: row.status,
+        kyc_status: rider?.kyc_status ?? "not_submitted",
+        profile_photo_url: row.photo_storage_path,
+        profile_completed: !!rider?.onboarding_completed_at,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        deleted_at: row.deleted_at,
+        staff_code: staff?.staff_code ?? null,
+        must_change_password: staff?.must_change_password ?? false,
+    };
+}
 
 // ---------------------------------------------------------------------------
 // List
@@ -48,26 +137,34 @@ export async function listUsers(
     actor: AuthContext,
 ): Promise<Paginated<UserListItem>> {
     // includeDeleted is admin-only; staff silently never see deleted rows.
-    const includeDeleted = filters.includeDeleted && actor.roles.includes("admin");
+    const includeDeleted = filters.includeDeleted && actor.role === "admin";
 
-    let query = supabaseAdmin
-        .from("users")
-        .select(`${PROFILE_COLUMNS}, ${ROLES_EMBED}`, { count: "exact" });
+    // kyc_status lives on the child table now, so filtering by it means
+    // filtering the embed. `!inner` is what makes the embed restrict the
+    // parent rather than just null it out — without it every staff account
+    // (which has no rider profile) would come back too. The select string is
+    // chosen up front rather than the query being rebuilt mid-function, so
+    // there is only ever one builder and one inferred row type.
+    const select = filters.kycStatus
+        ? PROFILE_SELECT.replace("rider_profiles(", "rider_profiles!inner(")
+        : PROFILE_SELECT;
+
+    let query = supabaseAdmin.from("users").select(select, { count: "exact" });
 
     if (!includeDeleted) query = query.is("deleted_at", null);
-    if (filters.accountStatus) query = query.eq("account_status", filters.accountStatus);
-    if (filters.kycStatus) query = query.eq("kyc_status", filters.kycStatus);
+    if (filters.accountStatus) query = query.eq("status", filters.accountStatus);
+    if (filters.kycStatus) query = query.eq("rider_profiles.kyc_status", filters.kycStatus);
 
     if (filters.search) {
         const term = escapeLike(filters.search);
         // Name, email and phone only.
         //
         // Search by document number was REMOVED with the identity-number
-        // minimisation. Only the last four characters are stored now, so the
-        // feature would have become both less useful and more leaky: a
-        // four-character search returns every rider sharing those digits, and
-        // each hit is a disclosure to whoever typed it. Ops keeps name/phone,
-        // which is what they actually search by.
+        // minimisation, and stays removed even though the new schema keeps
+        // the number encrypted: a blind-index lookup only matches the WHOLE
+        // number, so it is not a search box, and the last-4 column would
+        // return every rider sharing those digits — a disclosure to whoever
+        // typed it. Ops searches by name and phone in practice.
         query = query.or([
             `full_name.ilike.%${term}%`,
             `email.ilike.%${term}%`,
@@ -75,23 +172,20 @@ export async function listUsers(
         ].join(","));
     }
 
-    if (filters.role) {
-        const ids = await userIdsWithRole(filters.role);
-        if (ids.length === 0) return paginate<UserListItem>([], 0, filters);
-        query = query.in("id", ids);
-    } else if (filters.staffOnly) {
-        const ids = await userIdsWithAnyStaffRole();
-        if (ids.length === 0) return paginate<UserListItem>([], 0, filters);
-        query = query.in("id", ids);
-    }
+    // Role is a plain column now — no id lookup, no `in` list, no second query.
+    if (filters.role) query = query.eq("role", filters.role);
+    else if (filters.staffOnly) query = query.in("role", [...STAFF_ROLES]);
 
     const [from, to] = toRange(filters);
-    query = query.order(filters.sortBy, { ascending: filters.sortDir === "asc" }).range(from, to);
+    // Sorting by kyc_status has to name the embedded table; the other two
+    // are ordinary columns on `users`.
+    const sortColumn = filters.sortBy === "kyc_status" ? "rider_profiles(kyc_status)" : filters.sortBy;
+    query = query.order(sortColumn, { ascending: filters.sortDir === "asc" }).range(from, to);
 
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const rows = (data ?? []) as unknown as Array<UserProfile & { user_roles?: unknown }>;
+    const rows = (data ?? []) as unknown as RawUserRow[];
     const userIds = rows.map((r) => r.id);
     const [vehicles, plans] = await Promise.all([
         activeVehicleByUser(userIds),
@@ -101,8 +195,8 @@ export async function listUsers(
     const items: UserListItem[] = rows.map((row) => {
         const planInfo = plans.get(row.id);
         return {
-            ...stripJoins(row),
-            roles: flattenRoles(row),
+            ...toProfile(row),
+            role: row.role,
             assigned_vehicle: vehicles.get(row.id) ?? null,
             current_plan: planInfo?.plan ?? null,
             payment_status: planInfo?.payment_status ?? null,
@@ -121,43 +215,46 @@ export async function listUsers(
 export async function getUserById(id: string, actor: AuthContext): Promise<UserDetail> {
     const { data, error } = await supabaseAdmin
         .from("users")
-        .select(`${PROFILE_COLUMNS}, ${ROLES_EMBED}`)
+        .select(PROFILE_SELECT)
         .eq("id", id)
         .maybeSingle();
 
     if (error) throw error;
     if (!data) throw notFound("User not found.");
 
-    const row = data as unknown as UserProfile & { user_roles?: unknown };
+    const row = data as unknown as RawUserRow;
 
     // Deleted profiles are visible to admins only.
-    if (row.deleted_at && !actor.roles.includes("admin")) throw notFound("User not found.");
+    if (row.deleted_at && actor.role !== "admin") throw notFound("User not found.");
 
-    const [vehicles, plans, documents] = await Promise.all([
+    const [vehicles, plans, documents, lastLoginAt] = await Promise.all([
         activeVehicleByUser([id]),
         currentPlanByUser([id]),
         documentsForUser(id),
+        lastLoginFor(id),
     ]);
     const planInfo = plans.get(id);
 
     return {
-        ...stripJoins(row),
-        roles: flattenRoles(row),
+        ...toProfile(row),
+        role: row.role,
         assigned_vehicle: vehicles.get(id) ?? null,
         current_plan: planInfo?.plan ?? null,
         payment_status: planInfo?.payment_status ?? null,
         plan_started_at: planInfo?.plan_started_at ?? null,
         next_due_at: planInfo?.next_due_at ?? null,
+        last_login_at: lastLoginAt,
         kyc_completion_percent: kycCompletionPercent(documents),
         // Storage paths are never included — see §2 "Do not expose confidential
         // storage paths". Bytes are reached only via POST /kyc signed-url flows.
+        // The one place the column names become the wire names.
         documents: documents.map((d) => ({
             id: d.id,
-            doc_type: d.doc_type,
-            doc_number_masked: maskLast4(d.doc_number_last4),
+            doc_type: d.document_type,
+            doc_number_masked: maskLast4(d.document_number_last4),
             verification_status: d.verification_status,
             rejection_reason: d.rejection_reason,
-            expiry_date: d.expiry_date,
+            expires_on: d.expires_on,
             submitted_at: d.submitted_at,
             verified_at: d.verified_at,
         })),
@@ -169,15 +266,15 @@ export async function getUserById(id: string, actor: AuthContext): Promise<UserD
  * Mirrors public.compute_kyc_status() — keep both in step.
  */
 export function kycCompletionPercent(
-    docs: Array<{ doc_type: string; verification_status: string; expiry_date: string | null }>,
+    docs: Array<{ document_type: string; verification_status: string; expires_on: string | null }>,
 ): number {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessToday();
     const verified = MANDATORY_KYC_DOC_TYPES.filter((type) =>
         docs.some(
             (d) =>
-                d.doc_type === type &&
+                d.document_type === type &&
                 d.verification_status === "verified" &&
-                (!d.expiry_date || d.expiry_date >= today),
+                (!d.expires_on || d.expires_on >= today),
         ),
     ).length;
     return Math.round((verified / MANDATORY_KYC_DOC_TYPES.length) * 100);
@@ -201,10 +298,11 @@ export interface CreateUserInput {
     country?: string;
     emergency_contact_name?: string;
     emergency_contact_phone?: string;
-    role: RoleName;
-    account_status: AccountStatus;
+    role: UserRole;
+    account_status: UserStatus;
     staff_code?: string;
-    permission_profile?: Exclude<PermissionProfileName, "custom">;
+    /** A `permission_profiles.code` — validated against the table, not a union. */
+    permission_profile?: string;
 }
 
 const TEMP_PASSWORD_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -234,13 +332,20 @@ function generateTempPassword(): string {
 }
 
 /**
- * Creates the Auth user, then the profile, then the role.
+ * Creates the Auth user, then the profile and its child rows.
  *
  * Supabase gives us no cross-service transaction, so this uses a compensating
  * action: if any step after Auth creation fails, the Auth user is deleted
- * again and the original error surfaces. Note that 008_integrity_fixes adds an
- * AFTER INSERT trigger on auth.users which already creates a bare profile row,
- * so the profile write is an UPDATE-by-id rather than an INSERT.
+ * again and the original error surfaces. Deleting the auth user cascades to
+ * `public.users` and from there to every child row, so one compensating call
+ * still covers the whole fan-out.
+ *
+ * `handle_new_auth_user` creates the bare `users` row AND the matching
+ * profile row for the role — a `rider_profiles` row by default. Migration 30
+ * fixed the case this used to miss: a staff or admin account now gets a
+ * `staff_profiles` row instead. That is why the role goes in the update below
+ * rather than being set afterwards: a deferred constraint trigger checks that
+ * the role and the profile agree at commit.
  *
  * Riders self-provision via mobile phone-OTP, so this admin path is a rare
  * edge case for them and keeps the original email-invite-link flow. Staff and
@@ -259,7 +364,7 @@ export async function createUser(
     await assertEmailAndPhoneFree(email, phone);
 
     // Only an admin may mint a non-rider account.
-    if (input.role !== "rider" && !actor.roles.includes("admin")) {
+    if (input.role !== "rider" && actor.role !== "admin") {
         throw forbidden("Only an administrator may create staff or admin accounts.");
     }
 
@@ -273,10 +378,13 @@ export async function createUser(
             password: temporaryPassword,
             email_confirm: true,
             phone_confirm: true,
-            user_metadata: { full_name: input.full_name },
+            // The access-token hook and handle_new_auth_user both read this,
+            // so the profile row is created with the right shape first time
+            // rather than being corrected a moment later.
+            user_metadata: { full_name: input.full_name, role: input.role },
         })
         : await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-            data: { full_name: input.full_name },
+            data: { full_name: input.full_name, role: "rider" },
             ...(env.inviteRedirectUrl ? { redirectTo: env.inviteRedirectUrl } : {}),
         });
 
@@ -300,22 +408,8 @@ export async function createUser(
                 phone,
                 date_of_birth: input.date_of_birth ?? null,
                 gender: input.gender ?? null,
-                address_line_1: input.address_line_1 ?? null,
-                address_line_2: input.address_line_2 ?? null,
-                city: input.city ?? null,
-                state: input.state ?? null,
-                postal_code: input.postal_code ?? null,
-                country: input.country ?? null,
-                emergency_contact_name: input.emergency_contact_name ?? null,
-                emergency_contact_phone: input.emergency_contact_phone
-                    ? normalisePhone(input.emergency_contact_phone)
-                    : null,
-                account_status: input.account_status,
-                staff_code: input.staff_code ?? null,
-                // An admin-created account arrives with a full profile already —
-                // it should never be routed through the first-login onboarding form.
-                profile_completed: true,
-                must_change_password: isStaffAccount,
+                role: input.role,
+                status: input.account_status,
             })
             .eq("id", authUserId)
             .select("id")
@@ -324,14 +418,25 @@ export async function createUser(
         if (profileError) throw profileError;
         if (!profile) throw new Error("Profile row was not provisioned for the new auth user");
 
-        await setRoles(authUserId, [input.role], actor.id);
+        await writeAddress(authUserId, input);
+        await writeEmergencyContact(
+            authUserId,
+            input.emergency_contact_name,
+            input.emergency_contact_phone,
+        );
+        await ensureRoleProfile(authUserId, input.role, {
+            staffCode: input.staff_code,
+            mustChangePassword: isStaffAccount,
+            // An admin-created account arrives with a full profile already —
+            // it should never be routed through first-login onboarding.
+            onboardingCompleted: true,
+        });
 
-        // Applied after the role so it can see the freshly-granted "staff"
-        // role (replaceModulePermissions requires it). Inside the same
-        // try/catch as everything else above: if this throws, the outer
-        // catch's compensating deleteUser() still fires, so a profile-apply
+        // Applied after the role is set so replaceModulePermissions can see
+        // it. Inside the same try/catch as everything above: if this throws,
+        // the compensating deleteUser() still fires, so a profile-apply
         // failure never leaves a half-provisioned staff account behind.
-        if (input.permission_profile && STAFF_ROLES.includes(input.role)) {
+        if (input.permission_profile && isStaffRole(input.role)) {
             await applyPermissionProfile(authUserId, input.permission_profile, actor, req);
         }
 
@@ -374,14 +479,17 @@ export interface SelfSignUpInput {
 /**
  * Public counterpart to createUser() — no actor, no admin gate, called from
  * an unauthenticated POST /auth/signup. Always lands as `staff` with zero
- * module permissions (resolveModuleAccess blocks everything without an
- * explicit grant) and `account_status: "inactive"`, so an admin must
- * deliberately activate the account before it can even log in (see the
- * STAFF_ROLES + inactive check in auth.middleware.ts's requireAuth). The
- * caller chooses their own password, so there's no temp password and no
- * forced must_change_password — unlike admin-created staff accounts.
+ * permissions (resolveAccess blocks everything without an explicit grant) and
+ * `status: "inactive"`, so an admin must deliberately activate the account
+ * before it can even log in (see the staff-role + inactive check in
+ * auth.middleware.ts's requireAuth). The caller chooses their own password,
+ * so there's no temp password and no forced must_change_password — unlike
+ * admin-created staff accounts.
  */
-export async function selfSignUpStaff(input: SelfSignUpInput, req?: Request): Promise<{ full_name: string; email: string }> {
+export async function selfSignUpStaff(
+    input: SelfSignUpInput,
+    req?: Request,
+): Promise<{ full_name: string; email: string }> {
     const email = normaliseEmail(input.email);
     const phone = normalisePhone(input.phone);
 
@@ -393,7 +501,7 @@ export async function selfSignUpStaff(input: SelfSignUpInput, req?: Request): Pr
         password: input.password,
         email_confirm: true,
         phone_confirm: true,
-        user_metadata: { full_name: input.full_name },
+        user_metadata: { full_name: input.full_name, role: "staff" },
     });
 
     if (authError || !created?.user) {
@@ -414,11 +522,10 @@ export async function selfSignUpStaff(input: SelfSignUpInput, req?: Request): Pr
                 full_name: input.full_name,
                 email,
                 phone,
-                account_status: "inactive",
+                role: "staff",
+                status: "inactive",
                 status_reason: "Self-registered — awaiting admin approval",
                 status_changed_at: new Date().toISOString(),
-                profile_completed: true,
-                must_change_password: false,
             })
             .eq("id", authUserId)
             .select("id")
@@ -427,9 +534,10 @@ export async function selfSignUpStaff(input: SelfSignUpInput, req?: Request): Pr
         if (profileError) throw profileError;
         if (!profile) throw new Error("Profile row was not provisioned for the new auth user");
 
-        // Overwrites the trigger's auto-granted "rider" role — see
-        // handle_new_auth_user() in 20260720100600_auth.sql.
-        await setRoles(authUserId, ["staff"], null);
+        await ensureRoleProfile(authUserId, "staff", {
+            mustChangePassword: false,
+            onboardingCompleted: true,
+        });
 
         await writeAudit({
             actorId: authUserId,
@@ -458,6 +566,12 @@ export async function selfSignUpStaff(input: SelfSignUpInput, req?: Request): Pr
 // Update
 // ---------------------------------------------------------------------------
 
+/** Fields the flat patch can carry that no longer live on `users`. */
+const ADDRESS_FIELDS = [
+    "address_line_1", "address_line_2", "city", "state", "postal_code", "country",
+] as const;
+const CONTACT_FIELDS = ["emergency_contact_name", "emergency_contact_phone"] as const;
+
 export async function updateUser(
     id: string,
     patch: Record<string, unknown>,
@@ -466,35 +580,78 @@ export async function updateUser(
 ): Promise<UserDetail> {
     const before = await requireLiveUser(id);
 
-    const next: Record<string, unknown> = { ...patch };
-    // Any successful profile write — self-service or staff-edited — means the
-    // rider is past the first-login onboarding form; this is a one-way flip.
-    next.profile_completed = true;
-    if (typeof next.email === "string") next.email = normaliseEmail(next.email);
-    if (typeof next.phone === "string") next.phone = normalisePhone(next.phone);
-    if (typeof next.emergency_contact_phone === "string") {
-        next.emergency_contact_phone = normalisePhone(next.emergency_contact_phone);
+    const incoming: Record<string, unknown> = { ...patch };
+    if (typeof incoming.email === "string") incoming.email = normaliseEmail(incoming.email);
+    if (typeof incoming.phone === "string") incoming.phone = normalisePhone(incoming.phone);
+    if (typeof incoming.emergency_contact_phone === "string") {
+        incoming.emergency_contact_phone = normalisePhone(incoming.emergency_contact_phone);
     }
 
     await assertEmailAndPhoneFree(
-        typeof next.email === "string" ? next.email : undefined,
-        typeof next.phone === "string" ? next.phone : undefined,
+        typeof incoming.email === "string" ? incoming.email : undefined,
+        typeof incoming.phone === "string" ? incoming.phone : undefined,
         id,
     );
 
     // Changing the login email means changing it in Auth too, or the two
     // drift apart and the rider can no longer sign in with the address shown.
-    if (typeof next.email === "string" && next.email !== before.email) {
+    if (typeof incoming.email === "string" && incoming.email !== before.email) {
         const { error } = await supabaseAdmin.auth.admin.updateUserById(id, {
-            email: next.email as string,
+            email: incoming.email as string,
         });
         if (error) throw conflict("This email is already registered.", {
             email: "This email is already registered.",
         });
     }
 
-    const { error } = await supabaseAdmin.from("users").update(next).eq("id", id);
-    if (error) throw mapPostgresError(error);
+    // Split the flat patch back across the tables it now spans.
+    const touchesAddress = ADDRESS_FIELDS.some((f) => f in incoming);
+    const touchesContact = CONTACT_FIELDS.some((f) => f in incoming);
+    const ownColumns = Object.fromEntries(
+        Object.entries(incoming).filter(
+            ([k]) =>
+                !(ADDRESS_FIELDS as readonly string[]).includes(k) &&
+                !(CONTACT_FIELDS as readonly string[]).includes(k),
+        ),
+    );
+
+    if (Object.keys(ownColumns).length > 0) {
+        // The patch is validated by zod (users.validation.ts) but arrives here
+        // as an open record, which the generated Update type — deliberately
+        // closed, so a stray key is caught — will not accept. The cast is the
+        // seam between the two; the zod schema is `.strict()`, so an unknown
+        // key never reaches this line.
+        const { error } = await supabaseAdmin
+            .from("users")
+            .update(ownColumns as never)
+            .eq("id", id);
+        if (error) throw mapPostgresError(error);
+    }
+
+    if (touchesAddress) {
+        // A partial address patch is merged onto what is already stored — the
+        // rider editing only their postcode must not blank the street.
+        await writeAddress(id, {
+            address_line_1: (incoming.address_line_1 as string) ?? before.address_line_1 ?? undefined,
+            address_line_2: (incoming.address_line_2 as string) ?? before.address_line_2 ?? undefined,
+            city: (incoming.city as string) ?? before.city ?? undefined,
+            state: (incoming.state as string) ?? before.state ?? undefined,
+            postal_code: (incoming.postal_code as string) ?? before.postal_code ?? undefined,
+            country: (incoming.country as string) ?? before.country ?? undefined,
+        });
+    }
+
+    if (touchesContact) {
+        await writeEmergencyContact(
+            id,
+            (incoming.emergency_contact_name as string) ?? before.emergency_contact_name ?? undefined,
+            (incoming.emergency_contact_phone as string) ?? before.emergency_contact_phone ?? undefined,
+        );
+    }
+
+    // Any successful profile write — self-service or staff-edited — means the
+    // rider is past the first-login onboarding form; this is a one-way flip.
+    await markOnboardingComplete(id);
 
     await writeAudit({
         actorId: actor.id,
@@ -502,12 +659,159 @@ export async function updateUser(
         action: "user.updated",
         entityType: "user",
         entityId: id,
-        before: pick(before, Object.keys(next)),
-        after: next,
+        before: pick(before, Object.keys(incoming)),
+        after: incoming,
         req,
     });
 
     return getUserById(id, actor);
+}
+
+// ---------------------------------------------------------------------------
+// Child-table writers
+// ---------------------------------------------------------------------------
+
+/**
+ * Upserts the user's primary address.
+ *
+ * `user_addresses` requires line_1, city, state, postal_code and country, so a
+ * patch that names none of them writes nothing rather than inserting a row of
+ * empty strings that would fail the check constraints anyway.
+ */
+async function writeAddress(
+    userId: string,
+    input: {
+        address_line_1?: string; address_line_2?: string; city?: string;
+        state?: string; postal_code?: string; country?: string;
+    },
+): Promise<void> {
+    if (!input.address_line_1 || !input.city || !input.state || !input.postal_code) return;
+
+    const { data: existing, error: readError } = await supabaseAdmin
+        .from("user_addresses")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("is_primary", true)
+        .maybeSingle();
+    if (readError) throw readError;
+
+    const row = {
+        user_id: userId,
+        address_type: "home" as const,
+        is_primary: true,
+        line_1: input.address_line_1,
+        line_2: input.address_line_2 ?? null,
+        city: input.city,
+        state: input.state,
+        postal_code: input.postal_code,
+        country: input.country ?? "India",
+    };
+
+    const { error } = existing
+        ? await supabaseAdmin.from("user_addresses").update(row).eq("id", existing.id)
+        : await supabaseAdmin.from("user_addresses").insert(row);
+    if (error) throw mapPostgresError(error);
+}
+
+/**
+ * Upserts the `emergency_contact` related person.
+ *
+ * A name with no phone is still worth storing — ops calls the rider back and
+ * asks — so only an entirely empty pair is treated as "nothing to write".
+ */
+async function writeEmergencyContact(
+    userId: string,
+    name?: string,
+    phone?: string,
+): Promise<void> {
+    if (!name) return;
+
+    const { data: existing, error: readError } = await supabaseAdmin
+        .from("user_related_persons")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("person_role", "emergency_contact")
+        .maybeSingle();
+    if (readError) throw readError;
+
+    const row = {
+        user_id: userId,
+        person_role: "emergency_contact" as const,
+        full_name: name,
+        phone: phone ? normalisePhone(phone) : null,
+    };
+
+    const { error } = existing
+        ? await supabaseAdmin.from("user_related_persons").update(row).eq("id", existing.id)
+        : await supabaseAdmin.from("user_related_persons").insert(row);
+    if (error) throw mapPostgresError(error);
+}
+
+/**
+ * Makes the role-specific profile row match the role, and stamps the
+ * onboarding/staff fields onto it.
+ *
+ * `handle_new_auth_user` already created one of these; this exists for the
+ * case where the role in `user_metadata` was not what the caller ultimately
+ * asked for, and for setting fields the trigger has no way to know. The
+ * deferred constraint trigger added in migration 30 enforces the pairing at
+ * commit, so a mismatch here surfaces as an error rather than a silent
+ * inconsistency.
+ */
+async function ensureRoleProfile(
+    userId: string,
+    role: UserRole,
+    opts: { staffCode?: string; mustChangePassword?: boolean; onboardingCompleted?: boolean },
+): Promise<void> {
+    if (role === "rider") {
+        const { error: dropError } = await supabaseAdmin
+            .from("staff_profiles")
+            .delete()
+            .eq("user_id", userId);
+        if (dropError) throw dropError;
+
+        const { error } = await supabaseAdmin.from("rider_profiles").upsert(
+            {
+                user_id: userId,
+                ...(opts.onboardingCompleted
+                    ? { onboarding_completed_at: new Date().toISOString() }
+                    : {}),
+            },
+            { onConflict: "user_id" },
+        );
+        if (error) throw error;
+        return;
+    }
+
+    const { error: dropError } = await supabaseAdmin
+        .from("rider_profiles")
+        .delete()
+        .eq("user_id", userId);
+    if (dropError) throw dropError;
+
+    const { error } = await supabaseAdmin.from("staff_profiles").upsert(
+        {
+            user_id: userId,
+            // staff_code is NOT NULL. When the admin did not supply one, derive
+            // a stable placeholder from the id rather than rejecting the
+            // creation — operators fill these in later, and blocking account
+            // creation on a cosmetic code is not a trade worth making.
+            staff_code: opts.staffCode ?? `STAFF-${userId.slice(0, 8).toUpperCase()}`,
+            must_change_password: opts.mustChangePassword ?? false,
+        },
+        { onConflict: "user_id" },
+    );
+    if (error) throw mapPostgresError(error);
+}
+
+/** One-way flip of `rider_profiles.onboarding_completed_at`. No-op for staff. */
+async function markOnboardingComplete(userId: string): Promise<void> {
+    const { error } = await supabaseAdmin
+        .from("rider_profiles")
+        .update({ onboarding_completed_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .is("onboarding_completed_at", null);
+    if (error) throw error;
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +820,7 @@ export async function updateUser(
 
 /**
  * Uploads to the private profile-photos bucket and stores the storage path
- * (not a URL — the bucket is private) on users.profile_photo_url. Bytes are
+ * (not a URL — the bucket is private) on users.photo_storage_path. Bytes are
  * only ever read back through a signed URL, same pattern as KYC documents.
  */
 export async function uploadMyPhoto(
@@ -533,7 +837,7 @@ export async function uploadMyPhoto(
 
     const { error } = await supabaseAdmin
         .from("users")
-        .update({ profile_photo_url: path })
+        .update({ photo_storage_path: path })
         .eq("id", userId);
 
     if (error) {
@@ -559,15 +863,38 @@ export async function uploadMyPhoto(
 }
 
 /**
- * Overwrites any previous token — a rider is assumed to have at most one
- * "current" device for push purposes; a stale token just fails silently on
- * next send.
+ * Registers the handset's push token.
+ *
+ * This used to overwrite a single `users.push_token` column. `user_devices` is
+ * a real table with a platform and a revocation timestamp, so the same token
+ * arriving again just refreshes `last_seen_at`, and a rider with a phone and a
+ * tablet keeps both — the send path fans out over live rows instead of
+ * silently reaching whichever device logged in last.
  */
-export async function registerPushToken(userId: string, token: string): Promise<void> {
-    const { error } = await supabaseAdmin
-        .from("users")
-        .update({ push_token: token })
-        .eq("id", userId);
+export async function registerPushToken(
+    userId: string,
+    token: string,
+    platform: "ios" | "android" = "android",
+): Promise<void> {
+    const { data: existing, error: readError } = await supabaseAdmin
+        .from("user_devices")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("push_token", token)
+        .maybeSingle();
+    if (readError) throw readError;
+
+    const { error } = existing
+        ? await supabaseAdmin
+            .from("user_devices")
+            .update({ last_seen_at: new Date().toISOString(), revoked_at: null })
+            .eq("id", existing.id)
+        : await supabaseAdmin.from("user_devices").insert({
+            user_id: userId,
+            push_token: token,
+            platform,
+            last_seen_at: new Date().toISOString(),
+        });
 
     if (error) throw error;
 }
@@ -602,7 +929,7 @@ export async function softDeleteUser(id: string, actor: AuthContext, req?: Reque
         .from("users")
         .update({
             deleted_at: new Date().toISOString(),
-            account_status: "inactive",
+            status: "inactive",
             status_reason: "Account deleted by administrator",
             status_changed_at: new Date().toISOString(),
         })
@@ -647,7 +974,7 @@ export async function restoreUser(id: string, actor: AuthContext, req?: Request)
         .from("users")
         .update({
             deleted_at: null,
-            account_status: "inactive", // restored, but an admin must re-activate deliberately
+            status: "inactive", // restored, but an admin must re-activate deliberately
             status_reason: "Restored by administrator; awaiting activation",
             status_changed_at: new Date().toISOString(),
         })
@@ -672,7 +999,7 @@ export async function restoreUser(id: string, actor: AuthContext, req?: Request)
 // Account status
 // ---------------------------------------------------------------------------
 
-const STATUS_FOR_ACTION: Record<string, AccountStatus> = {
+const STATUS_FOR_ACTION: Record<string, UserStatus> = {
     activate: "active",
     deactivate: "inactive",
     suspend: "suspended",
@@ -701,7 +1028,7 @@ export async function changeAccountStatus(
     const { error } = await supabaseAdmin
         .from("users")
         .update({
-            account_status: nextStatus,
+            status: nextStatus,
             status_reason: reason ?? null,
             status_changed_at: new Date().toISOString(),
         })
@@ -728,42 +1055,88 @@ export async function changeAccountStatus(
 }
 
 // ---------------------------------------------------------------------------
-// Roles
+// Role
 // ---------------------------------------------------------------------------
 
-export async function getRoles(id: string): Promise<RoleName[]> {
-    await requireLiveUser(id);
+/**
+ * A user has exactly one role now.
+ *
+ * `getRoles`/`replaceRoles` are gone with `user_roles`. The array shape was
+ * always a fiction in practice — nothing in the product ever gave anyone two
+ * roles — and the new schema makes that explicit with a single column.
+ */
+export async function getRole(id: string): Promise<UserRole> {
+    const row = await requireLiveUser(id);
     const { data, error } = await supabaseAdmin
-        .from("user_roles")
-        .select("roles(name)")
-        .eq("user_id", id);
+        .from("users")
+        .select("role")
+        .eq("id", row.id)
+        .single();
     if (error) throw error;
-    return flattenRoles({ user_roles: data });
+    return data.role;
 }
 
-export async function replaceRoles(
+export async function changeRole(
     id: string,
-    roles: RoleName[],
+    role: UserRole,
     actor: AuthContext,
     req?: Request,
-): Promise<RoleName[]> {
+): Promise<UserRole> {
     await requireLiveUser(id);
-    const before = await getRoles(id);
+    const before = await getRole(id);
 
     // Privilege escalation guard: an admin cannot use this endpoint to change
-    // their own role set at all — removing the last admin and self-promotion
-    // are both blocked by the same rule.
+    // their own role at all — demoting the last admin and self-promotion are
+    // both blocked by the same rule.
     if (id === actor.id) {
-        throw forbidden("You cannot change your own roles. Ask another administrator.");
+        throw forbidden("You cannot change your own role. Ask another administrator.");
     }
 
-    if (roles.length === 0) throw businessRule("A user must keep at least one role.");
+    if (before === role) return role;
+    if (before === "admin") await assertNotLastAdmin(id);
 
-    if (before.includes("admin") && !roles.includes("admin")) {
-        await assertNotLastAdmin(id);
+    const { error } = await supabaseAdmin.from("users").update({ role }).eq("id", id);
+    if (error) throw mapPostgresError(error);
+
+    // The profile tables must follow the role — the deferred constraint
+    // trigger rejects the transaction otherwise.
+    await ensureRoleProfile(id, role, {});
+
+    // A demoted staff member keeps no grants. Deleting them here rather than
+    // leaving them dormant means a re-promotion starts from nothing, which is
+    // the safe direction for the mistake to fall in.
+    if (role === "rider") {
+        const { error: revokeError } = await supabaseAdmin
+            .from("user_permission_overrides")
+            .delete()
+            .eq("user_id", id);
+        if (revokeError) throw revokeError;
     }
 
-    await setRoles(id, roles, actor.id);
+    // Force re-authentication so the JWT's `user_role` claim cannot outlive
+    // the change.
+    //
+    // The REST API is unaffected either way — auth.middleware re-reads
+    // `users.role` from the database on every request, deliberately. But RLS
+    // does not: `current_role_name()` reads the claim the access-token hook
+    // stamped at MINT time, so a demoted admin would keep passing
+    // `is_admin()` for the remainder of their token's lifetime. That is not
+    // hypothetical reach — it is the admin console's two realtime channels
+    // and its one direct PostgREST read, where RLS is the only control there
+    // is.
+    //
+    // Best-effort: the role change itself has committed and is the important
+    // part, so a failure here is logged rather than thrown. The exposure it
+    // leaves is bounded by the token lifetime.
+    // See docs/final-system-audit (finding M9).
+    try {
+        await supabaseAdmin.auth.admin.signOut(id, "global");
+    } catch (err) {
+        console.error("[users] could not revoke sessions after role change", {
+            userId: id, from: before, to: role,
+            error: err instanceof Error ? err.message : String(err),
+        });
+    }
 
     await writeAudit({
         actorId: actor.id,
@@ -771,108 +1144,12 @@ export async function replaceRoles(
         action: "user.roles_changed",
         entityType: "user_role",
         entityId: id,
-        before: { roles: before },
-        after: { roles },
+        before: { role: before },
+        after: { role },
         req,
     });
 
-    return roles;
-}
-
-async function setRoles(userId: string, roles: RoleName[], grantedBy: string | null): Promise<void> {
-    const { data: roleRows, error: roleError } = await supabaseAdmin
-        .from("roles")
-        .select("id, name")
-        .in("name", roles);
-    if (roleError) throw roleError;
-
-    const found = (roleRows ?? []) as Array<{ id: number; name: RoleName }>;
-    const missing = roles.filter((r) => !found.some((row) => row.name === r));
-    if (missing.length > 0) throw businessRule(`Unknown role(s): ${missing.join(", ")}.`);
-
-    const { error: deleteError } = await supabaseAdmin
-        .from("user_roles")
-        .delete()
-        .eq("user_id", userId)
-        .not("role_id", "in", `(${found.map((r) => r.id).join(",")})`);
-    if (deleteError) throw deleteError;
-
-    const { error: insertError } = await supabaseAdmin.from("user_roles").upsert(
-        found.map((r) => ({ user_id: userId, role_id: r.id, granted_by: grantedBy })),
-        { onConflict: "user_id,role_id", ignoreDuplicates: true },
-    );
-    if (insertError) throw insertError;
-}
-
-// ---------------------------------------------------------------------------
-// Capabilities (DPDPA s.8(5) — least privilege over raw personal data)
-// ---------------------------------------------------------------------------
-
-export async function getCapabilities(id: string): Promise<StaffCapability[]> {
-    await requireLiveUser(id);
-    const { data, error } = await supabaseAdmin
-        .from("user_capabilities")
-        .select("capability")
-        .eq("user_id", id);
-    if (error) throw error;
-    return (data ?? []).map((row) => row.capability as StaffCapability);
-}
-
-/**
- * Replaces a staff member's capability set wholesale.
- *
- * Self-modification is blocked for the same reason replaceRoles blocks it: an
- * admin who can grant themselves kyc_reviewer has not been restricted from
- * anything. Two people are required, and both halves are in the audit trail.
- */
-export async function replaceCapabilities(
-    id: string,
-    capabilities: StaffCapability[],
-    actor: AuthContext,
-    req?: Request,
-): Promise<StaffCapability[]> {
-    await requireLiveUser(id);
-
-    if (id === actor.id) {
-        throw forbidden(
-            "You cannot change your own capabilities. Ask another administrator.",
-        );
-    }
-
-    const before = await getCapabilities(id);
-    const wanted = [...new Set(capabilities)];
-
-    const removed = before.filter((c) => !wanted.includes(c));
-    if (removed.length > 0) {
-        const { error } = await supabaseAdmin
-            .from("user_capabilities")
-            .delete()
-            .eq("user_id", id)
-            .in("capability", removed);
-        if (error) throw error;
-    }
-
-    const added = wanted.filter((c) => !before.includes(c));
-    if (added.length > 0) {
-        const { error } = await supabaseAdmin.from("user_capabilities").upsert(
-            added.map((capability) => ({ user_id: id, capability, granted_by: actor.id })),
-            { onConflict: "user_id,capability", ignoreDuplicates: true },
-        );
-        if (error) throw error;
-    }
-
-    await writeAudit({
-        actorId: actor.id,
-        targetUserId: id,
-        action: "user.capabilities_changed",
-        entityType: "user_capability",
-        entityId: id,
-        before: { capabilities: before },
-        after: { capabilities: wanted },
-        req,
-    });
-
-    return wanted;
+    return role;
 }
 
 // ---------------------------------------------------------------------------
@@ -883,12 +1160,12 @@ export async function replaceCapabilities(
 export async function requireLiveUser(id: string): Promise<UserProfile> {
     const { data, error } = await supabaseAdmin
         .from("users")
-        .select(PROFILE_COLUMNS)
+        .select(PROFILE_SELECT)
         .eq("id", id)
         .maybeSingle();
     if (error) throw error;
     if (!data) throw notFound("User not found.");
-    const row = data as unknown as UserProfile;
+    const row = toProfile(data as unknown as RawUserRow);
     if (row.deleted_at) throw businessRule("This account is deleted. Restore it first.");
     return row;
 }
@@ -935,26 +1212,24 @@ async function assertEmailAndPhoneFree(
     await Promise.all(checks);
 }
 
-/** Refuses to remove the system's last route back in. */
+/**
+ * Refuses to remove the system's last route back in.
+ *
+ * One query now, against a column, where it used to be two against
+ * `roles` + `user_roles`.
+ */
 async function assertNotLastAdmin(userId: string): Promise<void> {
-    const { data: adminRole, error: roleError } = await supabaseAdmin
-        .from("roles")
-        .select("id")
-        .eq("name", "admin")
-        .single();
-    if (roleError) throw roleError;
-
     const { data, error } = await supabaseAdmin
-        .from("user_roles")
-        .select("user_id, users!user_roles_user_id_fkey!inner(account_status, deleted_at)")
-        .eq("role_id", adminRole.id)
-        .is("users.deleted_at", null)
-        .eq("users.account_status", "active");
+        .from("users")
+        .select("id")
+        .eq("role", "admin")
+        .eq("status", "active")
+        .is("deleted_at", null);
     if (error) throw error;
 
-    const activeAdmins = (data ?? []) as Array<{ user_id: string }>;
+    const activeAdmins = data ?? [];
     const isOnlyAdmin =
-        activeAdmins.length <= 1 && activeAdmins.some((row) => row.user_id === userId);
+        activeAdmins.length <= 1 && activeAdmins.some((row) => row.id === userId);
 
     if (isOnlyAdmin) {
         throw businessRule("This is the last active administrator. Promote another admin first.");
@@ -963,41 +1238,42 @@ async function assertNotLastAdmin(userId: string): Promise<void> {
 
 /**
  * Ends live rentals so a deleted/suspended rider does not keep a scooter.
- * trg_sync_vehicle_status (008) returns the vehicle to 'available'.
+ *
+ * The vehicle is released by closing its assignment row — `rentals.vehicle_id`
+ * is gone, and `recompute_vehicle_status()` (fired by the assignment trigger)
+ * is what returns the scooter to `available`.
  */
 async function endActiveRentals(userId: string, reason: string): Promise<void> {
-    const { error } = await supabaseAdmin
-        .from("rentals")
-        .update({ status: "force_ended", ended_at: new Date().toISOString() })
-        .eq("user_id", userId)
-        .eq("status", "active");
-    if (error) throw error;
-    console.info("[users] ended active rentals", { userId, reason });
-}
+    const now = new Date().toISOString();
 
-async function userIdsWithRole(role: RoleName): Promise<string[]> {
-    const { data, error } = await supabaseAdmin
-        .from("user_roles")
-        .select("user_id, roles!inner(name)")
-        .eq("roles.name", role);
+    const { data: ended, error } = await supabaseAdmin
+        .from("rentals")
+        .update({ status: "force_ended", returned_at: now, end_reason: reason })
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .select("id");
     if (error) throw error;
-    return (data ?? []).map((r) => (r as { user_id: string }).user_id);
+
+    const rentalIds = (ended ?? []).map((r) => r.id);
+    if (rentalIds.length === 0) return;
+
+    const { error: releaseError } = await supabaseAdmin
+        .from("rental_vehicle_assignments")
+        .update({ released_at: now })
+        .in("rental_id", rentalIds)
+        .is("released_at", null);
+    if (releaseError) throw releaseError;
+
+    console.info("[users] ended active rentals", { userId, reason, count: rentalIds.length });
 }
 
 /**
- * Every account holding any staff-side role. `role` filters to exactly one,
- * which was fine when "admin" was the only non-rider role that existed; the
- * capabilities screen needs the whole staff population in one query.
+ * The scooter each rider currently holds.
+ *
+ * `rentals.vehicle_id` no longer exists — a rental's vehicle can change
+ * mid-term (breakdown swap, replacement), so the assignment is its own table
+ * and `v_rental_current_vehicle` is the view that picks the open row.
  */
-async function userIdsWithAnyStaffRole(): Promise<string[]> {
-    const { data, error } = await supabaseAdmin
-        .from("user_roles")
-        .select("user_id, roles!inner(name)")
-        .in("roles.name", STAFF_ROLES as unknown as string[]);
-    if (error) throw error;
-    return [...new Set((data ?? []).map((r) => (r as { user_id: string }).user_id))];
-}
-
 async function activeVehicleByUser(
     userIds: string[],
 ): Promise<Map<string, { id: string; vin: string; model: string; name: string; registration_number: string }>> {
@@ -1005,64 +1281,124 @@ async function activeVehicleByUser(
     if (userIds.length === 0) return map;
 
     const { data, error } = await supabaseAdmin
-        .from("rentals")
-        .select("user_id, vehicles(id, vin, model, name, registration_number)")
-        .in("user_id", userIds)
-        .eq("status", "active");
+        .from("v_rental_current_vehicle")
+        .select("user_id, vehicles(id, vin, registration_number, display_name, vehicle_models(name))")
+        .in("user_id", userIds);
     if (error) throw error;
 
-    for (const row of (data ?? []) as Array<{ user_id: string; vehicles: unknown }>) {
-        const v = Array.isArray(row.vehicles) ? row.vehicles[0] : row.vehicles;
-        if (v) map.set(row.user_id, v as { id: string; vin: string; model: string; name: string; registration_number: string });
+    for (const row of data ?? []) {
+        if (!row.user_id) continue;
+        const v = one<{
+            id: string; vin: string; registration_number: string; display_name: string | null;
+            vehicle_models: unknown;
+        }>(row.vehicles);
+        if (!v) continue;
+        const modelName = one<{ name: string }>(v.vehicle_models)?.name ?? "";
+        map.set(row.user_id, {
+            id: v.id,
+            vin: v.vin,
+            registration_number: v.registration_number,
+            model: modelName,
+            name: v.display_name ?? modelName,
+        });
     }
     return map;
 }
 
 /**
- * "subscriptions" is dead — nothing in the app has written to that table
- * since the recurring-billing engine moved plan state onto bookings
- * (plan_id/plan_status/next_due_at). This reads the rider's current live
- * booking instead — same source, same derivation, as
- * vehicles.service.ts's paymentStatusesForVehicles: bookings.status before
- * pickup (pending_payment/confirmed), bookings.plan_status once fulfilled.
+ * The rider's current commercial state.
+ *
+ * Plan state used to be twelve columns on `bookings`. It is a `subscriptions`
+ * row now, with the period dates in `subscription_periods` — so this reads the
+ * live subscription and, only when there isn't one, falls back to the booking
+ * that is still waiting to become one.
  */
 async function currentPlanByUser(userIds: string[]): Promise<Map<string, {
     plan: { id: string; name: string; price: number; billing_cycle: string } | null;
-    payment_status: "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
+    payment_status: UserListItem["payment_status"];
     plan_started_at: string | null;
     next_due_at: string | null;
 }>> {
-    const map = new Map<string, {
+    type Entry = {
         plan: { id: string; name: string; price: number; billing_cycle: string } | null;
-        payment_status: "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
+        payment_status: UserListItem["payment_status"];
         plan_started_at: string | null;
         next_due_at: string | null;
-    }>();
+    };
+    const map = new Map<string, Entry>();
     if (userIds.length === 0) return map;
 
-    const { data, error } = await supabaseAdmin
-        .from("bookings")
-        .select("user_id, status, plan_status, created_at, plan_activated_at, next_due_at, plans(id, name, price, billing_cycle)")
-        .in("user_id", userIds)
-        .in("status", ["pending_payment", "confirmed", "fulfilled"])
-        .order("created_at", { ascending: false });
-    if (error) throw error;
+    const [subsRes, periodsRes] = await Promise.all([
+        supabaseAdmin
+            .from("subscriptions")
+            .select("id, user_id, status, started_on, plan_price_snapshot, billing_period_snapshot, plans(id, name)")
+            .in("user_id", userIds)
+            .in("status", ["active", "paused", "past_due"])
+            .order("started_on", { ascending: false }),
+        supabaseAdmin
+            .from("v_subscription_current_period")
+            .select("user_id, subscription_id, due_on")
+            .in("user_id", userIds),
+    ]);
+    if (subsRes.error) throw subsRes.error;
+    if (periodsRes.error) throw periodsRes.error;
 
-    for (const row of (data ?? []) as Array<{
-        user_id: string; status: string; plan_status: string | null; plans: unknown;
-        plan_activated_at: string | null; next_due_at: string | null;
-    }>) {
+    const dueBySubscription = new Map<string, string | null>(
+        (periodsRes.data ?? [])
+            .filter((p) => p.subscription_id)
+            .map((p) => [p.subscription_id as string, p.due_on] as const),
+    );
+
+    for (const row of subsRes.data ?? []) {
         if (map.has(row.user_id)) continue; // newest first — first hit per user wins
-        const p = Array.isArray(row.plans) ? row.plans[0] : row.plans;
-        const plan = p as { id: string; name: string; price: number | string; billing_cycle: string } | null;
+        const plan = one<{ id: string; name: string }>(row.plans);
         map.set(row.user_id, {
-            plan: plan ? { id: plan.id, name: plan.name, price: Number(plan.price), billing_cycle: plan.billing_cycle } : null,
-            payment_status: (row.status === "fulfilled" ? row.plan_status : row.status) as
-                "pending_payment" | "confirmed" | "active" | "due" | "paused" | null,
-            plan_started_at: row.plan_activated_at,
-            next_due_at: row.next_due_at,
+            plan: plan
+                ? {
+                    id: plan.id,
+                    name: plan.name,
+                    // The snapshot, not plans.price_amount: what the rider
+                    // actually pays is what was agreed when they subscribed.
+                    price: Number(row.plan_price_snapshot),
+                    billing_cycle: row.billing_period_snapshot,
+                }
+                : null,
+            payment_status: row.status as Entry["payment_status"],
+            plan_started_at: row.started_on,
+            next_due_at: dueBySubscription.get(row.id) ?? null,
         });
     }
+
+    // Riders who have booked but not yet paid/picked up have no subscription.
+    const withoutSubscription = userIds.filter((id) => !map.has(id));
+    if (withoutSubscription.length === 0) return map;
+
+    const { data: bookings, error: bookingError } = await supabaseAdmin
+        .from("bookings")
+        .select("user_id, status, created_at, plans(id, name, price_amount, billing_period)")
+        .in("user_id", withoutSubscription)
+        .in("status", ["pending_payment", "confirmed"])
+        .order("created_at", { ascending: false });
+    if (bookingError) throw bookingError;
+
+    for (const row of bookings ?? []) {
+        if (map.has(row.user_id)) continue;
+        const plan = one<{ id: string; name: string; price_amount: number; billing_period: string }>(row.plans);
+        map.set(row.user_id, {
+            plan: plan
+                ? {
+                    id: plan.id,
+                    name: plan.name,
+                    price: Number(plan.price_amount),
+                    billing_cycle: plan.billing_period,
+                }
+                : null,
+            payment_status: row.status as Entry["payment_status"],
+            plan_started_at: null,
+            next_due_at: null,
+        });
+    }
+
     return map;
 }
 
@@ -1081,41 +1417,41 @@ export async function hasActiveRentalForUser(userId: string): Promise<boolean> {
     return (count ?? 0) > 0;
 }
 
+/** Last successful sign-in, from Auth. See the note on UserDetail. */
+async function lastLoginFor(userId: string): Promise<string | null> {
+    const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (error) {
+        // Never fail a profile read over a nice-to-have timestamp.
+        console.warn("[users] could not read last sign-in", { userId, error: error.message });
+        return null;
+    }
+    return data.user?.last_sign_in_at ?? null;
+}
+
 async function documentsForUser(userId: string) {
     const { data, error } = await supabaseAdmin
-        .from("user_documents")
+        .from("kyc_documents")
         .select(
-            "id, doc_type, doc_number_last4, verification_status, rejection_reason, expiry_date, submitted_at, verified_at",
+            "id, document_type, document_number_last4, verification_status, rejection_reason, expires_on, submitted_at, verified_at",
         )
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
     if (error) throw error;
-    return (data ?? []) as Array<{
-        id: string;
-        doc_type: string;
-        doc_number_last4: string | null;
-        verification_status: string;
-        rejection_reason: string | null;
-        expiry_date: string | null;
-        submitted_at: string | null;
-        verified_at: string | null;
-    }>;
-}
 
-type RoleJoin = { roles: { name: RoleName } | { name: RoleName }[] | null };
-
-function flattenRoles(row: unknown): RoleName[] {
-    const rows = ((row as { user_roles?: RoleJoin[] | null }).user_roles ?? []) as RoleJoin[];
-    const names = rows.flatMap((r) => {
-        if (!r.roles) return [];
-        return Array.isArray(r.roles) ? r.roles.map((x) => x.name) : [r.roles.name];
-    });
-    return [...new Set(names)];
-}
-
-function stripJoins(row: UserProfile & { user_roles?: unknown }): UserProfile {
-    const { user_roles: _ignored, ...profile } = row;
-    return profile;
+    // Deliberately NOT renamed here. The API's `doc_type` rename is
+    // applied once, where the response is assembled, so everything in between
+    // — kycCompletionPercent above all — speaks the column names and cannot be
+    // fed a shape it does not recognise.
+    return (data ?? []).map((d) => ({
+        id: d.id,
+        document_type: d.document_type as string,
+        document_number_last4: d.document_number_last4,
+        verification_status: d.verification_status as string,
+        rejection_reason: d.rejection_reason,
+        expires_on: d.expires_on,
+        submitted_at: d.submitted_at,
+        verified_at: d.verified_at,
+    }));
 }
 
 function pick<T extends object>(source: T, keys: string[]): Record<string, unknown> {
@@ -1147,6 +1483,11 @@ function mapPostgresError(error: { code?: string; message?: string }): Error {
         if (error.message?.includes("phone")) {
             return conflict("This phone number is already registered.", {
                 phone: "This phone number is already registered.",
+            });
+        }
+        if (error.message?.includes("staff_code")) {
+            return conflict("That staff code is already in use.", {
+                staff_code: "That staff code is already in use.",
             });
         }
         return conflict("That value is already in use.");

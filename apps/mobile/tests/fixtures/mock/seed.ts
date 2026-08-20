@@ -29,7 +29,8 @@ export interface MockUserRow {
     created_at: string;
     updated_at: string;
     deleted_at: string | null;
-    roles: RoleName[];
+    /** One value now — `users.role`. Was an array off `user_roles`. */
+    role: RoleName;
     assigned_vehicle: ApiUser['assigned_vehicle'];
     current_plan: ApiUser['current_plan'];
 }
@@ -46,7 +47,7 @@ export interface MockDocumentRow {
     rejection_reason: string | null;
     verified_by: string | null;
     verified_at: string | null;
-    expiry_date: string | null;
+    expires_on: string | null;
     submitted_at: string | null;
     created_at: string;
     updated_at: string;
@@ -110,7 +111,7 @@ export const SEED_USERS: MockUserRow[] = [
         created_at: monthsAgo(26),
         updated_at: monthsAgo(1),
         deleted_at: null,
-        roles: ['admin'],
+        role: 'admin',
         assigned_vehicle: null,
         current_plan: null,
     },
@@ -130,7 +131,7 @@ export const SEED_USERS: MockUserRow[] = [
         created_at: monthsAgo(24),
         updated_at: monthsAgo(3),
         deleted_at: null,
-        roles: ['admin'],
+        role: 'admin',
         assigned_vehicle: null,
         current_plan: null,
     },
@@ -150,7 +151,7 @@ export const SEED_USERS: MockUserRow[] = [
         created_at: monthsAgo(14),
         updated_at: monthsAgo(2),
         deleted_at: null,
-        roles: ['staff'],
+        role: 'staff',
         assigned_vehicle: null,
         current_plan: null,
     },
@@ -170,7 +171,7 @@ export const SEED_USERS: MockUserRow[] = [
         created_at: monthsAgo(9),
         updated_at: monthsAgo(1),
         deleted_at: null,
-        roles: ['rider'],
+        role: 'rider',
         assigned_vehicle: { id: 'v-001', vin: 'NRV000123456789', model: 'NR One' },
         current_plan: { id: 'p-monthly', name: 'Commuter Monthly', status: 'active' },
     },
@@ -190,7 +191,7 @@ export const SEED_USERS: MockUserRow[] = [
         created_at: monthsAgo(4),
         updated_at: monthsAgo(1),
         deleted_at: null,
-        roles: ['rider'],
+        role: 'rider',
         assigned_vehicle: null,
         current_plan: { id: 'p-weekly', name: 'Weekly Saver', status: 'active' },
     },
@@ -210,7 +211,7 @@ export const SEED_USERS: MockUserRow[] = [
         created_at: monthsAgo(3),
         updated_at: monthsAgo(1),
         deleted_at: null,
-        roles: ['rider'],
+        role: 'rider',
         assigned_vehicle: null,
         current_plan: null,
     },
@@ -230,7 +231,7 @@ export const SEED_USERS: MockUserRow[] = [
         created_at: monthsAgo(11),
         updated_at: monthsAgo(1),
         deleted_at: null,
-        roles: ['rider'],
+        role: 'rider',
         assigned_vehicle: null,
         current_plan: null,
     },
@@ -250,7 +251,7 @@ export const SEED_USERS: MockUserRow[] = [
         created_at: monthsAgo(7),
         updated_at: monthsAgo(2),
         deleted_at: null,
-        roles: ['rider'],
+        role: 'rider',
         assigned_vehicle: null,
         current_plan: null,
     },
@@ -270,7 +271,7 @@ export const SEED_USERS: MockUserRow[] = [
         created_at: monthsAgo(6),
         updated_at: monthsAgo(1),
         deleted_at: null,
-        roles: ['rider'],
+        role: 'rider',
         assigned_vehicle: { id: 'v-004', vin: 'NRV000987654321', model: 'NR Cargo' },
         current_plan: { id: 'p-monthly', name: 'Commuter Monthly', status: 'active' },
     },
@@ -291,7 +292,7 @@ export const SEED_USERS: MockUserRow[] = [
         updated_at: monthsAgo(5),
         // Soft-deleted: only visible to an admin with "Show deleted" on.
         deleted_at: monthsAgo(5),
-        roles: ['rider'],
+        role: 'rider',
         assigned_vehicle: null,
         current_plan: null,
     },
@@ -304,15 +305,15 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
         doc_number: 'ABCD12345678', front_uri: PLACEHOLDER_IMAGE, back_uri: PLACEHOLDER_IMAGE,
         verification_status: 'verified', rejection_reason: null,
         verified_by: 'u-staff-001', verified_at: monthsAgo(8),
-        expiry_date: null, submitted_at: monthsAgo(9),
+        expires_on: null, submitted_at: monthsAgo(9),
         created_at: monthsAgo(9), updated_at: monthsAgo(8),
     },
     {
-        id: 'd-002', user_id: 'u-rider-001', doc_type: 'driving_license',
+        id: 'd-002', user_id: 'u-rider-001', doc_type: 'driving_licence',
         doc_number: 'KL0120110012345', front_uri: PLACEHOLDER_IMAGE, back_uri: null,
         verification_status: 'verified', rejection_reason: null,
         verified_by: 'u-staff-001', verified_at: monthsAgo(8),
-        expiry_date: daysFromNow(900), submitted_at: monthsAgo(9),
+        expires_on: daysFromNow(900), submitted_at: monthsAgo(9),
         created_at: monthsAgo(9), updated_at: monthsAgo(8),
     },
     // Rahul â€” both pending: the queue's happy path.
@@ -321,15 +322,15 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
         doc_number: 'EFGH87654321', front_uri: PLACEHOLDER_IMAGE, back_uri: PLACEHOLDER_IMAGE,
         verification_status: 'pending', rejection_reason: null,
         verified_by: null, verified_at: null,
-        expiry_date: null, submitted_at: monthsAgo(1),
+        expires_on: null, submitted_at: monthsAgo(1),
         created_at: monthsAgo(1), updated_at: monthsAgo(1),
     },
     {
-        id: 'd-004', user_id: 'u-rider-002', doc_type: 'driving_license',
+        id: 'd-004', user_id: 'u-rider-002', doc_type: 'driving_licence',
         doc_number: 'KL0720190067890', front_uri: PLACEHOLDER_IMAGE, back_uri: null,
         verification_status: 'pending', rejection_reason: null,
         verified_by: null, verified_at: null,
-        expiry_date: daysFromNow(400), submitted_at: monthsAgo(1),
+        expires_on: daysFromNow(400), submitted_at: monthsAgo(1),
         created_at: monthsAgo(1), updated_at: monthsAgo(1),
     },
     // Fatima â€” one verified, one pending: partially_verified.
@@ -338,15 +339,15 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
         doc_number: 'IJKL11223344', front_uri: PLACEHOLDER_IMAGE, back_uri: null,
         verification_status: 'verified', rejection_reason: null,
         verified_by: 'u-staff-001', verified_at: monthsAgo(2),
-        expiry_date: null, submitted_at: monthsAgo(3),
+        expires_on: null, submitted_at: monthsAgo(3),
         created_at: monthsAgo(3), updated_at: monthsAgo(2),
     },
     {
-        id: 'd-006', user_id: 'u-rider-003', doc_type: 'driving_license',
+        id: 'd-006', user_id: 'u-rider-003', doc_type: 'driving_licence',
         doc_number: 'KL1120200011223', front_uri: PLACEHOLDER_IMAGE, back_uri: null,
         verification_status: 'pending', rejection_reason: null,
         verified_by: null, verified_at: null,
-        expiry_date: daysFromNow(600), submitted_at: monthsAgo(1),
+        expires_on: daysFromNow(600), submitted_at: monthsAgo(1),
         created_at: monthsAgo(1), updated_at: monthsAgo(1),
     },
     // Deepak â€” rejected, so the resubmit path has something to fix.
@@ -356,7 +357,7 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
         verification_status: 'rejected',
         rejection_reason: 'The photo is too blurred to read the ID number. Please retake it in good light.',
         verified_by: 'u-staff-001', verified_at: monthsAgo(2),
-        expiry_date: null, submitted_at: monthsAgo(3),
+        expires_on: null, submitted_at: monthsAgo(3),
         created_at: monthsAgo(3), updated_at: monthsAgo(2),
     },
     // Arjun â€” verified ID but an EXPIRED licence: drops him out of 'verified'.
@@ -365,15 +366,15 @@ export const SEED_DOCUMENTS: MockDocumentRow[] = [
         doc_number: 'QRST99887766', front_uri: PLACEHOLDER_IMAGE, back_uri: null,
         verification_status: 'verified', rejection_reason: null,
         verified_by: 'u-admin-001', verified_at: monthsAgo(5),
-        expiry_date: null, submitted_at: monthsAgo(6),
+        expires_on: null, submitted_at: monthsAgo(6),
         created_at: monthsAgo(6), updated_at: monthsAgo(5),
     },
     {
-        id: 'd-009', user_id: 'u-rider-006', doc_type: 'driving_license',
+        id: 'd-009', user_id: 'u-rider-006', doc_type: 'driving_licence',
         doc_number: 'KL0520150054321', front_uri: PLACEHOLDER_IMAGE, back_uri: null,
         verification_status: 'verified', rejection_reason: null,
         verified_by: 'u-admin-001', verified_at: monthsAgo(5),
-        expiry_date: daysFromNow(-30), submitted_at: monthsAgo(6),
+        expires_on: daysFromNow(-30), submitted_at: monthsAgo(6),
         created_at: monthsAgo(6), updated_at: monthsAgo(5),
     },
 ];

@@ -9,14 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCreateStaffUser } from "@/hooks/useUsers";
 import { useToastStore } from "@/store/toastStore";
-import { PERMISSION_PROFILE_NAMES, PERMISSION_PROFILES } from "@/config/permissionProfiles";
-import type { PermissionProfileName } from "@/config/permissionProfiles";
-import type { AccountStatus } from "@/types";
+import { usePermissionCatalog } from "@/hooks/usePermissionCatalog";
+import type { AccountStatus, PermissionProfileName } from "@/types";
 
 const EMPTY = {
   full_name: "", email: "", phone: "", staff_code: "",
   role: "staff" as "staff" | "admin",
-  permission_profile: "" as Exclude<PermissionProfileName, "custom"> | "",
+  permission_profile: "" as PermissionProfileName,
   account_status: "active" as AccountStatus,
 };
 
@@ -25,6 +24,10 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<{ email: string; password: string } | null>(null);
   const createStaff = useCreateStaffUser();
+  // Profiles are `permission_profiles` rows now, so the list is fetched
+  // rather than imported. An empty catalogue simply offers no preset, which
+  // is the same as the "grant nothing yet" default.
+  const { data: catalog } = usePermissionCatalog();
   const push = useToastStore((s) => s.push);
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
@@ -165,12 +168,12 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
                   <Label>Permission profile</Label>
                   <Select
                     value={form.permission_profile}
-                    onValueChange={(v) => set("permission_profile", v as Exclude<PermissionProfileName, "custom">)}
+                    onValueChange={(v) => set("permission_profile", v)}
                   >
                     <SelectTrigger><SelectValue placeholder="Custom — grant permissions after creating" /></SelectTrigger>
                     <SelectContent>
-                      {PERMISSION_PROFILE_NAMES.map((name) => (
-                        <SelectItem key={name} value={name}>{PERMISSION_PROFILES[name].label}</SelectItem>
+                      {(catalog?.profiles ?? []).map((profile) => (
+                        <SelectItem key={profile.code} value={profile.code}>{profile.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

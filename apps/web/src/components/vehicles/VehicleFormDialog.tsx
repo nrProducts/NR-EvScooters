@@ -7,52 +7,56 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
-import type { Vehicle, VehicleStatus } from "@/types";
+import { useVehicleModelOptions } from "@/hooks/useVehicleModelOptions";
+import type { Vehicle } from "@/types";
 import type { VehicleFormInput } from "@/services/api/vehicles";
 import { ApiError } from "@/services/api/httpClient";
 
-// 'booked'/'assigned' are system-managed by the booking/rental flow
-// (allocate_vehicle_for_booking, pickup, ride completion) — an admin
-// manually sets only these three from this form.
-const VEHICLE_STATUSES: VehicleStatus[] = ["available", "maintenance", "scrap"];
+/*
+ * What this form no longer asks for, and why.
+ *
+ * STATUS. `recompute_vehicle_status()` derives it from the vehicle's open
+ * maintenance ticket, its rental assignment and its booking hold, and a
+ * trigger keeps it current. A value typed here would be overwritten, so
+ * offering the field would be offering a control that does nothing. Putting a
+ * scooter into maintenance is opening a maintenance ticket; retiring one is
+ * the Scrap action on the detail page.
+ *
+ * MANUFACTURER and MODEL. Properties of the MODEL, which is a row now — so
+ * the form picks one rather than re-typing its name onto every unit.
+ *
+ * BATTERY NUMBER and CHARGE. A battery is swapped at a station; modelling it
+ * as a permanent property of one scooter, enforced by a UNIQUE column, said
+ * otherwise.
+ *
+ * SERVICE DATES. The maintenance history is the record of what was serviced
+ * and when.
+ *
+ * INSURANCE. A `vehicle_documents` row, alongside registration, PUC, fitness
+ * and permit — managed where the other documents are.
+ */
 
 const emptyForm: VehicleFormInput = {
   name: "",
   registration_number: "",
-  battery_number: "",
-  manufacturer: "",
-  model: "",
   vin: "",
-  battery_percentage: 100,
-  status: "available",
-  last_service_date: "",
-  next_service_due_date: "",
+  vehicle_model_id: "",
   color: "",
   qr_code: "",
   imei: "",
   purchase_date: "",
-  insurance_number: "",
-  insurance_expiry: "",
 };
 
 function toForm(vehicle: Vehicle): VehicleFormInput {
   return {
     name: vehicle.name,
     registration_number: vehicle.registration_number,
-    battery_number: vehicle.battery_number,
-    manufacturer: vehicle.manufacturer,
-    model: vehicle.model,
     vin: vehicle.vin,
-    battery_percentage: vehicle.battery_percentage,
-    status: vehicle.status,
-    last_service_date: vehicle.last_service_date ?? "",
-    next_service_due_date: vehicle.next_service_due_date ?? "",
+    vehicle_model_id: vehicle.vehicle_model_id,
     color: vehicle.color ?? "",
     qr_code: vehicle.qr_code ?? "",
     imei: vehicle.imei ?? "",
     purchase_date: vehicle.purchase_date ?? "",
-    insurance_number: vehicle.insurance_number ?? "",
-    insurance_expiry: vehicle.insurance_expiry ?? "",
   };
 }
 
@@ -70,9 +74,10 @@ export function VehicleFormDialog({
   vehicle?: Vehicle;
   onSubmit: (input: VehicleFormInput) => void;
   isPending: boolean;
-  error: unknown;
+  error?: unknown;
 }) {
   const [form, setForm] = useState<VehicleFormInput>(vehicle ? toForm(vehicle) : emptyForm);
+  const { data: models = [] } = useVehicleModelOptions();
 
   useEffect(() => {
     if (open) setForm(vehicle ? toForm(vehicle) : emptyForm);
@@ -81,25 +86,20 @@ export function VehicleFormDialog({
   const set = <K extends keyof VehicleFormInput>(key: K, value: VehicleFormInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  // The display name is optional — a vehicle can just be its plate.
   const canSubmit =
-    form.name.trim() &&
     form.registration_number.trim() &&
-    form.battery_number.trim() &&
-    form.manufacturer.trim() &&
-    form.model.trim() &&
-    form.vin.trim();
+    form.vin.trim() &&
+    form.vehicle_model_id;
 
   const handleSubmit = () => {
     onSubmit({
       ...form,
-      last_service_date: form.last_service_date || undefined,
-      next_service_due_date: form.next_service_due_date || undefined,
+      name: form.name?.trim() || undefined,
       color: form.color || undefined,
       qr_code: form.qr_code || undefined,
       imei: form.imei || undefined,
       purchase_date: form.purchase_date || undefined,
-      insurance_number: form.insurance_number || undefined,
-      insurance_expiry: form.insurance_expiry || undefined,
     });
   };
 
@@ -111,28 +111,29 @@ export function VehicleFormDialog({
         </DialogHeader>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Display name">
-            <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Scooter #14" />
+          <Field label="Display name (optional)">
+            <Input
+              value={form.name ?? ""}
+              onChange={(e) => set("name", e.target.value)}
+              placeholder="Scooter #14"
+            />
           </Field>
-          <Field label="Status">
-            <Select value={form.status} onValueChange={(v) => set("status", v as VehicleStatus)}>
+          <Field label="Model">
+            {/* Fixed at creation: a scooter does not become a different model. */}
+            <Select
+              value={form.vehicle_model_id}
+              onValueChange={(v) => set("vehicle_model_id", v)}
+              disabled={!!vehicle}
+            >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="Choose a model..." />
               </SelectTrigger>
               <SelectContent>
-                {VEHICLE_STATUSES.map((s) => (
-                  <SelectItem key={s} value={s} className="capitalize">
-                    {s.replace(/_/g, " ")}
-                  </SelectItem>
+                {models.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          </Field>
-          <Field label="Manufacturer">
-            <Input value={form.manufacturer} onChange={(e) => set("manufacturer", e.target.value)} placeholder="Motovolt" />
-          </Field>
-          <Field label="Model">
-            <Input value={form.model} onChange={(e) => set("model", e.target.value)} placeholder="MVS7" />
           </Field>
           <Field label="Registration number">
             <Input
@@ -143,32 +144,6 @@ export function VehicleFormDialog({
           </Field>
           <Field label="VIN">
             <Input value={form.vin} onChange={(e) => set("vin", e.target.value)} placeholder="VIN12345" />
-          </Field>
-          <Field label="Battery number">
-            <Input value={form.battery_number} onChange={(e) => set("battery_number", e.target.value)} placeholder="BAT-0042" />
-          </Field>
-          <Field label="Battery % (manual, for now)">
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              value={form.battery_percentage ?? ""}
-              onChange={(e) => set("battery_percentage", e.target.value === "" ? undefined : Number(e.target.value))}
-            />
-          </Field>
-          <Field label="Last service date">
-            <Input
-              type="date"
-              value={form.last_service_date ?? ""}
-              onChange={(e) => set("last_service_date", e.target.value)}
-            />
-          </Field>
-          <Field label="Next service due">
-            <Input
-              type="date"
-              value={form.next_service_due_date ?? ""}
-              onChange={(e) => set("next_service_due_date", e.target.value)}
-            />
           </Field>
           <Field label="Color">
             <Input value={form.color ?? ""} onChange={(e) => set("color", e.target.value)} placeholder="Matte Black" />
@@ -181,20 +156,6 @@ export function VehicleFormDialog({
           </Field>
           <Field label="Purchase date">
             <Input type="date" value={form.purchase_date ?? ""} onChange={(e) => set("purchase_date", e.target.value)} />
-          </Field>
-          <Field label="Insurance number">
-            <Input
-              value={form.insurance_number ?? ""}
-              onChange={(e) => set("insurance_number", e.target.value)}
-              placeholder="POL-2026-0042"
-            />
-          </Field>
-          <Field label="Insurance expiry">
-            <Input
-              type="date"
-              value={form.insurance_expiry ?? ""}
-              onChange={(e) => set("insurance_expiry", e.target.value)}
-            />
           </Field>
         </div>
 

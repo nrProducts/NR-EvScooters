@@ -39,39 +39,63 @@ export const EXPORT_URL_TTL_SECONDS = 300;
 
 /**
  * Mirrors the seeded rows in
- * supabase/migrations/20260814100500_dpdpa_retention.sql.
+ * supabase/v2/migrations/20260819102400_realtime_and_seed.sql, plus the
+ * `data_exports` row added by migration 31.
  *
  * Duplicated on purpose: the database is the source of truth at run time (ops
  * can change a period without a deploy), and retention.test.ts asserts these
  * two agree, so a change in one that is not made in the other fails the build
  * rather than drifting silently.
+ *
+ * The categories were re-cut with the schema, not merely renamed:
+ *
+ *   `notification_payloads` + `notification_rows` became
+ *   `notification_bodies` + `notification_events`, because the message and
+ *   the event are separate tables now and outlive each other by different
+ *   periods.
+ *
+ *   `otp_attempts` is `auth_otp_attempts` and has NO TABLE — OTP rate
+ *   limiting is Supabase Auth's, not ours. The row survives so the schedule
+ *   stays complete, and the job's handler says so out loud rather than
+ *   reporting a clean purge of nothing.
+ *
+ *   `kyc_former_customer` is gone. Its period was an explicit placeholder
+ *   nobody had signed off, and a policy row for a period that does not exist
+ *   invites someone to implement it.
+ *
+ * `never` is `retain` — the same meaning, in the vocabulary the seed uses.
  */
 export interface RetentionPolicySeed {
     category: string;
     retainDays: number;
-    action: "delete" | "anonymise" | "redact" | "never";
+    action: "delete" | "anonymise" | "redact" | "retain";
 }
 
 export const RETENTION_POLICIES: readonly RetentionPolicySeed[] = [
-    { category: "otp_attempts", retainDays: 90, action: "delete" },
-    { category: "notification_payloads", retainDays: 90, action: "redact" },
-    { category: "notification_rows", retainDays: 365, action: "delete" },
-    { category: "pii_access_log", retainDays: 1095, action: "delete" },
-    { category: "audit_logs_operational", retainDays: 730, action: "delete" },
-    { category: "audit_logs_financial", retainDays: 2920, action: "delete" },
-    { category: "consent_records", retainDays: 2920, action: "delete" },
+    // NO TABLE BACKS THIS ONE — see the header. It is the only place in the
+    // repository outside a comment where an old-schema table name still
+    // appears, so it reads like a missed rename to anyone grepping for one.
+    // It is not: OTP rate limiting is Supabase Auth's, the row exists so the
+    // published schedule is complete, and data-retention-purge/index.ts
+    // reports it as "no table" rather than as a clean purge of nothing.
+    { category: "auth_otp_attempts", retainDays: 30, action: "delete" },
+    { category: "notification_bodies", retainDays: 180, action: "redact" },
+    { category: "notification_events", retainDays: 365, action: "delete" },
+    { category: "audit_logs_general", retainDays: 730, action: "delete" },
+    { category: "pii_access_log", retainDays: 730, action: "delete" },
+    { category: "inactive_riders", retainDays: 1095, action: "anonymise" },
     { category: "kyc_abandoned", retainDays: 90, action: "delete" },
-    { category: "kyc_former_customer", retainDays: 2920, action: "delete" },
-    { category: "inactive_accounts", retainDays: 1095, action: "anonymise" },
     { category: "data_exports", retainDays: 30, action: "delete" },
-    // Never purged by the job. Present so the schedule is complete and so
-    // nobody adds a purge for it by accident.
-    { category: "financial_records", retainDays: 2920, action: "never" },
+    // Retained, never purged by the job. Present so the schedule is complete
+    // and so nobody adds a purge for one by accident.
+    { category: "audit_logs_financial", retainDays: 2920, action: "retain" },
+    { category: "consent_records", retainDays: 2920, action: "retain" },
+    { category: "financial_records", retainDays: 2920, action: "retain" },
 ] as const;
 
 /** Categories the purge job must never delete from, whatever the config says. */
 export const NEVER_PURGED = RETENTION_POLICIES
-    .filter((p) => p.action === "never")
+    .filter((p) => p.action === "retain")
     .map((p) => p.category);
 
 export function slaDueAt(type: DpRequestType, from: Date = new Date()): string {

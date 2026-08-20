@@ -4,11 +4,11 @@ import type { ApiDocument } from '../src/types/api';
 
 const doc = (overrides: Partial<ApiDocument>): ApiDocument => ({
   id: 'doc-1',
-  doc_type: 'aadhaar',
+  document_type: 'aadhaar',
   doc_number_masked: '•••• 9012',
   verification_status: 'pending',
   rejection_reason: null,
-  expiry_date: null,
+  expires_on: null,
   is_expired: false,
   submitted_at: '2026-07-01T00:00:00Z',
   verified_at: null,
@@ -58,19 +58,19 @@ describe('computeInitialKycStep', () => {
   });
 
   it('returns step 2 when the Aadhaar on file was rejected, not just missing', () => {
-    const documents = [doc({ doc_type: 'aadhaar', verification_status: 'rejected' })];
+    const documents = [doc({ document_type: 'aadhaar', verification_status: 'rejected' })];
     expect(computeInitialKycStep(PROFILE_PHOTO_AND_CONTACT, { documents })).toBe(2);
   });
 
   it('returns step 3 when Aadhaar is on file but licence is missing', () => {
-    const documents = [doc({ doc_type: 'aadhaar', verification_status: 'pending' })];
+    const documents = [doc({ document_type: 'aadhaar', verification_status: 'pending' })];
     expect(computeInitialKycStep(PROFILE_PHOTO_AND_CONTACT, { documents })).toBe(3);
   });
 
   it('returns step 4 when everything is on file', () => {
     const documents = [
-      doc({ doc_type: 'aadhaar', verification_status: 'verified' }),
-      doc({ doc_type: 'driving_license', verification_status: 'pending', id: 'doc-2' }),
+      doc({ document_type: 'aadhaar', verification_status: 'verified' }),
+      doc({ document_type: 'driving_licence', verification_status: 'pending', id: 'doc-2' }),
     ];
     expect(computeInitialKycStep(PROFILE_PHOTO_AND_CONTACT, { documents })).toBe(4);
   });

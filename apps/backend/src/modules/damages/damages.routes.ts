@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireModule } from "../../middleware/authorize.middleware";
+import { requireAction } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./damages.controller";
@@ -10,13 +10,17 @@ import * as v from "./damages.validation";
  * Mounted at /api/v1/damages. List/resolve are staff-only; get/dispute are
  * shared but ownership-checked in the service for a non-staff caller (see
  * getDamageForActor) — a rider must only ever see their own booking's damage.
+ *
+ * Staff routes carry a specific action rather than the coarse
+ * requireModule("damages"): reading the damage queue and deciding whether a
+ * rider is charged for one are different authorities.
  */
 const router = Router();
 router.use(requireAuth);
 
 router.get(
     "/",
-    requireModule("damages"),
+    requireAction("damages", "view"),
     validate({ query: v.listDamagesQuery }),
     asyncHandler(c.listDamagesHandler),
 );
@@ -37,9 +41,12 @@ router.post(
     asyncHandler(c.disputeDamageHandler),
 );
 
+// Resolving a dispute decides whether the rider is charged for the damage —
+// `damages.edit`, not `damages.view`. Under the previous coarse
+// requireModule("damages") gate, a read-only grant carried this authority.
 router.post(
     "/:id/resolve",
-    requireModule("damages"),
+    requireAction("damages", "edit"),
     validate({ params: v.damageIdParam, body: v.resolveDisputeBody }),
     asyncHandler(c.resolveDisputeHandler),
 );

@@ -2,7 +2,7 @@ import type { Request } from "express";
 import { supabaseAdmin } from "../../config/supabase";
 import { env } from "../../config/env";
 import { businessRule } from "../../common/AppError";
-import { AccountStatus, AuthContext, STAFF_ROLES, StaffCapability } from "../../types";
+import { AuthContext, PermissionKey, UserStatus, isStaffRole } from "../../types";
 import { getUserById } from "../users/users.service";
 import { getModulePermissions, ModulePermission } from "../users/staff-permissions.service";
 import type { UserDetail } from "../users/users.types";
@@ -22,12 +22,15 @@ export interface SessionContext extends UserDetail {
      */
     permissions: ModulePermission[] | null;
     /**
-     * WHETHER the caller may see raw personal data, independent of which
-     * sections they can open. The admin console uses these to hide controls
-     * the caller cannot use — the server enforces them regardless, so this is
-     * UX rather than a control. See the two-layer note in types/index.ts.
+     * The same grants, flattened to `"<module>.<action>"` keys.
+     *
+     * This field is where the old `capabilities` array went. Seeing a raw
+     * Aadhaar number is no longer a separate kind of thing from opening the
+     * KYC queue — it is `kyc.reveal_number` sitting next to `kyc.view` — so
+     * the console reads one list to decide what to render. The server
+     * enforces every one of them regardless; this is UX, not a control.
      */
-    capabilities: StaffCapability[];
+    permission_keys: PermissionKey[];
 }
 
 /**
@@ -36,32 +39,31 @@ export interface SessionContext extends UserDetail {
  */
 export function deriveSessionFlags(
     detail: Pick<UserDetail, "full_name" | "kyc_status" | "account_status">,
-    roles: AuthContext["roles"],
+    role: AuthContext["role"],
 ): { can_rent: boolean; is_admin: boolean; needs_profile: boolean } {
     return {
-        is_admin: roles.includes("admin"),
+        is_admin: role === "admin",
         can_rent:
             detail.kyc_status === "verified" &&
-            (detail.account_status as AccountStatus) === "active",
+            (detail.account_status as UserStatus) === "active",
         needs_profile: !detail.full_name || detail.full_name.trim().length === 0,
     };
 }
 
 /**
  * The "who am I" payload the mobile splash and profile screens read after a
- * token is verified. Roles/flags always come from the DB record, never from
- * anything the client sent.
+ * token is verified. Role and flags always come from the DB record, never
+ * from anything the client sent.
  */
 export async function getSessionContext(actor: AuthContext): Promise<SessionContext> {
     const detail = await getUserById(actor.id, actor);
     const permissions = await resolveSessionPermissions(actor);
-    touchLastLogin(actor.id);
     return {
         ...detail,
-        ...deriveSessionFlags(detail, actor.roles),
+        ...deriveSessionFlags(detail, actor.role),
         permissions,
         // Already resolved by requireAuth, so no extra round trip here.
-        capabilities: actor.capabilities,
+        permission_keys: [...actor.permissions],
     };
 }
 
@@ -71,28 +73,20 @@ export async function getSessionContext(actor: AuthContext): Promise<SessionCont
  * database for staff accounts.
  */
 async function resolveSessionPermissions(actor: AuthContext): Promise<ModulePermission[] | null> {
-    if (actor.roles.includes("admin")) return null;
-    if (!actor.roles.some((r) => STAFF_ROLES.includes(r))) return [];
+    if (actor.role === "admin") return null;
+    if (!isStaffRole(actor.role)) return [];
     return getModulePermissions(actor.id);
 }
 
-/**
- * Best-effort, fire-and-forget: getSessionContext() is the one choke point
- * both an explicit login and every page-boot "who am I" call (GET
- * /auth/session) run through, so this is the cheapest place to keep
- * users.last_login_at honest for the Staff Access screen — not a hot path
- * (fires once per login/refresh, not polled). Never blocks or throws into
- * the caller; a missed timestamp write must not fail a login.
+/*
+ * touchLastLogin() lived here.
+ *
+ * It wrote `users.last_login_at` on every session resolution. The new schema
+ * has no such column, and adding one would mean a write on every page boot to
+ * shadow `auth.users.last_sign_in_at`, which Supabase already maintains
+ * accurately. The Staff Access screen reads it through users.service.ts's
+ * lastLoginFor() instead.
  */
-function touchLastLogin(userId: string): void {
-    void supabaseAdmin
-        .from("users")
-        .update({ last_login_at: new Date().toISOString() })
-        .eq("id", userId)
-        .then(({ error }) => {
-            if (error) console.error("[auth] failed to record last_login_at", { userId, error: error.message });
-        });
-}
 
 /**
  * Global sign-out: revokes every refresh token for the user server-side, so a
@@ -111,10 +105,13 @@ export async function revokeAllSessions(userId: string): Promise<void> {
  * regardless of which path got them there — a no-op if already false.
  */
 export async function completePasswordChange(userId: string): Promise<void> {
+    // The flag moved to staff_profiles with the identity split. A rider has no
+    // row there and never had the flag, so an update matching nothing is the
+    // correct no-op rather than an error.
     const { error } = await supabaseAdmin
-        .from("users")
+        .from("staff_profiles")
         .update({ must_change_password: false })
-        .eq("id", userId);
+        .eq("user_id", userId);
     if (error) throw error;
 }
 
@@ -148,18 +145,10 @@ export async function sendTestOtp(phone: string, req?: Request): Promise<TestSen
         { phone, otp },
     );
 
-    // Best-effort record for the audit/rate-limit table.
-    void supabaseAdmin
-        .from("auth_otp_attempts")
-        .insert({
-            phone: toMsg91Mobile(phone),
-            purpose: "admin_test",
-            succeeded: result.ok,
-            ip: req?.ip ?? null,
-        })
-        .then(({ error }) => {
-            if (error) console.error("[auth] failed to log otp attempt", error.message);
-        });
+    // The `auth_otp_attempts` table this used to log to does not exist in the
+    // new schema — it was a rate-limit ledger for an OTP path that Supabase's
+    // own hook now owns. This diagnostic sends one SMS on an admin's explicit
+    // request, so there is nothing to rate-limit and nothing worth a row.
 
     if (!result.ok) {
         throw businessRule(

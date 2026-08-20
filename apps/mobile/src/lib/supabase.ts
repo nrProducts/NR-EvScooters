@@ -2,6 +2,7 @@ import 'react-native-url-polyfill/auto';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../types/database.types';
 import { ENV } from '../constants/env';
 
 /**
@@ -65,7 +66,7 @@ let client: SupabaseClient | null = null;
 export function getSupabase(): SupabaseClient {
     if (client) return client;
 
-    client = createClient(ENV.supabaseUrl, ENV.supabaseAnonKey, {
+    client = createClient<Database>(ENV.supabaseUrl, ENV.supabaseAnonKey, {
         auth: {
             storage: Platform.OS === 'web' ? undefined : LargeSecureStore,
             autoRefreshToken: true,

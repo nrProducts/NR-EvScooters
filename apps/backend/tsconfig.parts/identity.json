@@ -1,0 +1,16 @@
+{
+    "extends": "./_shared.json",
+    "include": [
+        "../src/modules/users",
+        "../src/modules/permissions",
+        "../src/modules/auth",
+        "../src/modules/kyc",
+        "../src/modules/consent",
+        "../src/modules/privacy",
+        "../src/modules/audit",
+        "../src/common",
+        "../src/config",
+        "../src/middleware",
+        "../src/types"
+    ]
+}

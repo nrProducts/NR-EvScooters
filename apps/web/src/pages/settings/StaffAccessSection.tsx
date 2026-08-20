@@ -11,11 +11,12 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
-  useUsers, useUserPermissions, useChangeUserStatus, useUpdateUserRoles, useUpdateUserPermissions,
+  useUsers, useUserPermissions, useChangeUserStatus, useChangeUserRole, useUpdateUserPermissions,
 } from "@/hooks/useUsers";
 import { initials, formatDate } from "@/lib/utils";
 import type { AppUser } from "@/types";
-import { PERMISSION_PROFILES, matchProfileName } from "@/config/permissionProfiles";
+import { matchProfileName, usePermissionCatalog } from "@/hooks/usePermissionCatalog";
+import { CUSTOM_PROFILE } from "@/types";
 import AddStaffDialog from "./AddStaffDialog";
 
 export default function StaffAccessSection() {
@@ -26,11 +27,13 @@ export default function StaffAccessSection() {
 
   const { data, isLoading, isError, refetch } = useUsers({ role: "staff", page, pageSize: 12 });
   const changeStatus = useChangeUserStatus();
-  const updateRoles = useUpdateUserRoles();
+  const changeRole = useChangeUserRole();
   const updatePermissions = useUpdateUserPermissions();
 
+  // Revoking staff access is a demotion to `rider` now, not the removal of
+  // one entry from a role array — `users.role` holds exactly one value.
   const revokeStaff = (u: AppUser) => {
-    updateRoles.mutate({ id: u.id, roles: u.roles.filter((r) => r !== "staff") });
+    changeRole.mutate({ id: u.id, role: "rider" });
   };
 
   const resetPermissions = (u: AppUser) => {
@@ -126,11 +129,11 @@ export default function StaffAccessSection() {
         title={`Promote ${promoteTarget?.full_name || "this account"} to admin?`}
         description="Grants full, unconditional access to every module — this replaces their staff role and permissions, not adds to them."
         confirmLabel="Promote to admin"
-        loading={updateRoles.isPending}
+        loading={changeRole.isPending}
         onConfirm={() => {
           if (promoteTarget) {
-            updateRoles.mutate(
-              { id: promoteTarget.id, roles: ["admin"] },
+            changeRole.mutate(
+              { id: promoteTarget.id, role: "admin" },
               { onSuccess: () => setPromoteTarget(null) },
             );
           }
@@ -142,10 +145,14 @@ export default function StaffAccessSection() {
 
 function ProfileBadge({ user }: { user: AppUser }) {
   const { data: modules, isLoading } = useUserPermissions(user.id);
-  if (isLoading) return <span className="text-xs text-muted-foreground">Loading...</span>;
-  const profile = matchProfileName(modules ?? []);
-  if (profile === "custom") return <Badge variant="outline">Custom</Badge>;
-  return <Badge variant="secondary">{PERMISSION_PROFILES[profile].label}</Badge>;
+  const { data: catalog } = usePermissionCatalog();
+  if (isLoading || !catalog) return <span className="text-xs text-muted-foreground">Loading...</span>;
+
+  const code = matchProfileName(catalog, modules ?? []);
+  if (code === CUSTOM_PROFILE) return <Badge variant="outline">Custom</Badge>;
+
+  const profile = catalog.profiles.find((p) => p.code === code);
+  return <Badge variant="secondary">{profile?.label ?? code}</Badge>;
 }
 
 function PermissionsCount({ user }: { user: AppUser }) {

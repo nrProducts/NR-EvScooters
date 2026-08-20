@@ -1,5 +1,18 @@
-import { AccountStatus, KycStatus, RoleName } from "../../types";
+import { KycStatus, UserRole, UserStatus } from "../../types";
 
+/**
+ * The API's flat view of a user.
+ *
+ * The table underneath is no longer flat. `public.users` now holds only
+ * identity and account state; the address, the emergency contact, the rider's
+ * KYC state, the staff member's code and the push token each live in their own
+ * child table (`user_addresses`, `user_related_persons`, `rider_profiles`,
+ * `staff_profiles`, `user_devices`).
+ *
+ * This shape is kept flat anyway. Both apps read it, and reshaping the wire
+ * format is a frontend rewrite that the database change does not require. The
+ * flattening happens in users.service.ts, in one place, on the way out.
+ */
 export interface UserProfile {
     id: string;
     full_name: string;
@@ -7,54 +20,88 @@ export interface UserProfile {
     phone: string | null;
     date_of_birth: string | null;
     gender: string | null;
+
+    // --- user_addresses, the row marked is_primary ---------------------------
     address_line_1: string | null;
     address_line_2: string | null;
     city: string | null;
     state: string | null;
     postal_code: string | null;
     country: string | null;
+
+    // --- user_related_persons, person_role = 'emergency_contact' -------------
     emergency_contact_name: string | null;
     emergency_contact_phone: string | null;
-    account_status: AccountStatus;
+
+    /** `users.status`. Was `account_status`. */
+    account_status: UserStatus;
+    /** `rider_profiles.kyc_status`; `not_submitted` for staff and admin. */
     kyc_status: KycStatus;
+    /** `users.photo_storage_path` — a private-bucket path, never a URL. */
     profile_photo_url: string | null;
-    /** Has the rider completed the initial onboarding profile form (spec Step 1)? */
+    /** Derived from `rider_profiles.onboarding_completed_at` being set. */
     profile_completed: boolean;
+
     created_at: string;
-    updated_at: string;
+    updated_at: string | null;
     deleted_at: string | null;
-    /** Optional operator-entered identifier, staff/admin accounts only. */
+
+    /** `staff_profiles.staff_code`. Null for riders, who have no staff profile. */
     staff_code: string | null;
-    /** Set by auth.service.ts getSessionContext on each login/session resolution. Null until first login. */
-    last_login_at: string | null;
-    /** True for a staff/admin account still on its admin-issued temporary password. Never set for riders. */
+    /** `staff_profiles.must_change_password`. False for riders. */
     must_change_password: boolean;
 }
 
 export interface UserListItem extends UserProfile {
-    roles: RoleName[];
-    assigned_vehicle: { id: string; vin: string; model: string; name: string; registration_number: string } | null;
+    /** One value now — `users.role`. Was an array off `user_roles`. */
+    role: UserRole;
+    assigned_vehicle: {
+        id: string;
+        vin: string;
+        registration_number: string;
+        /** `vehicle_models.name`. `vehicles.model` as a text column is gone. */
+        model: string;
+        /** `vehicles.display_name`, falling back to the model name. */
+        name: string;
+    } | null;
     current_plan: { id: string; name: string; price: number; billing_cycle: string } | null;
     /**
-     * bookings.status before pickup (pending_payment/confirmed), or
-     * bookings.plan_status (active/due/paused) once fulfilled — same
-     * derivation as vehicles.service.ts's VehiclePaymentStatus. Null when the
-     * rider has no live booking at all.
+     * Before pickup this is the booking's own status (pending_payment /
+     * confirmed); afterwards it is the subscription's (active / past_due /
+     * paused). Null when the rider has no live booking or subscription.
+     *
+     * `due` was renamed `past_due` with the subscription split — it is the
+     * same state, on `subscriptions.status` rather than `bookings.plan_status`.
      */
-    payment_status: "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
-    /** bookings.plan_activated_at — when the current plan/rental period began. Null before pickup or with no live booking. */
+    payment_status:
+        | "pending_payment"
+        | "confirmed"
+        | "active"
+        | "past_due"
+        | "paused"
+        | null;
+    /** `subscriptions.started_on`. Null before pickup or with no subscription. */
     plan_started_at: string | null;
     /**
-     * bookings.next_due_at — the LAST usable day of the current billing
-     * period (also the next renewal/due date). Null before pickup or with no
-     * live booking. A value <= today means the rider is due today or overdue,
-     * regardless of whether payment_status has been flipped to 'due' yet by
-     * the overdue-sweep cron (which only runs the day after).
+     * `v_subscription_current_period.due_on` — the LAST usable day of the
+     * current billing period, and the next renewal date. Null with no live
+     * subscription. A value <= today means the rider is due today or overdue,
+     * whether or not the overdue sweep has flipped the status yet.
      */
     next_due_at: string | null;
 }
 
 export interface UserDetail extends UserListItem {
+    /**
+     * Last successful sign-in, read from Supabase Auth rather than a column.
+     *
+     * There is no `users.last_login_at` in the new schema, and adding one
+     * would mean writing to the users table on every session resolution to
+     * duplicate a value `auth.users.last_sign_in_at` already keeps accurately.
+     * It costs one admin lookup, so it is on the detail response only — the
+     * list would need one per row.
+     */
+    last_login_at: string | null;
     kyc_completion_percent: number;
     documents: Array<{
         id: string;
@@ -62,7 +109,7 @@ export interface UserDetail extends UserListItem {
         doc_number_masked: string | null;
         verification_status: string;
         rejection_reason: string | null;
-        expiry_date: string | null;
+        expires_on: string | null;
         submitted_at: string | null;
         verified_at: string | null;
     }>;
@@ -72,9 +119,9 @@ export interface ListUsersFilters {
     page: number;
     pageSize: number;
     search?: string;
-    accountStatus?: AccountStatus;
+    accountStatus?: UserStatus;
     kycStatus?: KycStatus;
-    role?: RoleName;
+    role?: UserRole;
     /** Any staff-side role. Mutually exclusive with `role`, which wins. */
     staffOnly?: boolean;
     sortBy: "full_name" | "created_at" | "kyc_status";

@@ -1,0 +1,17 @@
+{
+    "extends": "./_shared.json",
+    "include": [
+        "../src/modules/payments",
+        "../src/modules/invoices",
+        "../src/modules/billing",
+        "../src/modules/deposits",
+        "../src/modules/refunds",
+        "../src/modules/reconciliation",
+        "../src/modules/plan-renewal-settings",
+        "../src/modules/referrals",
+        "../src/common",
+        "../src/config",
+        "../src/middleware",
+        "../src/types"
+    ]
+}

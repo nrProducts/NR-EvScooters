@@ -2,96 +2,86 @@
 // failed-payment-retry  —  hourly pg_cron job
 //
 // Razorpay orders can't be silently re-charged from the server — the rider
-// has to go through Checkout again. This just re-surfaces a "please pay"
-// notification for any booking still stuck in 'pending_payment' with a
-// failed payment_orders row, so a rider who backed out of checkout doesn't
-// just quietly lose their reservation to booking-payment-expiry-sweep
-// without ever being nudged. Sends at most once per hour per booking (the
-// job's own cadence), not once per failed order.
+// has to go through Checkout again. This re-surfaces a "please pay" nudge
+// for any booking still in 'pending_payment' with a recent failed order, so
+// a rider who backed out of checkout doesn't quietly lose their reservation
+// to booking-payment-expiry-sweep without ever being told. At most one
+// reminder per booking per run.
+//
+// ── What the new schema changed ──────────────────────────────────────────
+//
+// `payment_orders` lost `booking_id`: it has `invoice_id`, and one order
+// pays exactly one invoice. Getting from a failed order back to the booking
+// it was for is now the chain the money follows —
+// order → invoice → subscription → booking — which is also the chain that
+// makes the booking's own status trustworthy, since the subscription is
+// created at checkout rather than at capture.
+//
+// The push token moved to `user_devices`, so there is no `users.push_token`
+// read here at all; _shared/notify.ts fans out to every live device.
 // =========================================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { adminClient, isConfigured, json, notConfigured } from "../_shared/client.ts";
+import { notifyUser } from "../_shared/notify.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+const SOURCE = "failed-payment-retry";
 
 interface FailedOrderRow {
-    booking_id: string | null;
+    id: string;
     user_id: string;
+    invoices:
+        | { subscriptions: unknown }
+        | Array<{ subscriptions: unknown }>
+        | null;
+}
+
+function unwrap<T>(raw: unknown): T | null {
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    return (v as T) ?? null;
 }
 
 Deno.serve(async (_req) => {
-    if (!SUPABASE_URL || !SERVICE_ROLE) return json({ error: "Function not configured." }, 500);
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { autoRefreshToken: false, persistSession: false } });
+    if (!isConfigured()) return notConfigured();
+    const admin = adminClient();
 
     const oneHourAgo = new Date(Date.now() - 60 * 60_000).toISOString();
 
     const { data: failedOrders, error } = await admin
         .from("payment_orders")
-        .select("booking_id, user_id")
+        .select("id, user_id, invoices!inner(subscriptions!inner(bookings!inner(id, status)))")
         .eq("status", "failed")
         .gte("updated_at", oneHourAgo);
 
     if (error) {
-        console.error("[failed-payment-retry] query failed", error);
+        console.error(`[${SOURCE}] query failed`, error);
         return json({ error: "Query failed." }, 500);
     }
 
-    // One reminder per booking, even if it has several failed order attempts.
+    // One reminder per booking, however many failed attempts it collected.
     const seen = new Set<string>();
-    let sent = 0;
     let logged = 0;
+    let sent = 0;
 
-    for (const row of (failedOrders ?? []) as FailedOrderRow[]) {
-        if (!row.booking_id || seen.has(row.booking_id)) continue;
+    for (const row of (failedOrders ?? []) as unknown as FailedOrderRow[]) {
+        const invoice = unwrap<{ subscriptions: unknown }>(row.invoices);
+        const subscription = unwrap<{ bookings: unknown }>(invoice?.subscriptions);
+        const booking = unwrap<{ id: string; status: string }>(subscription?.bookings);
 
-        const { data: booking } = await admin
-            .from("bookings")
-            .select("id, status")
-            .eq("id", row.booking_id)
-            .maybeSingle();
         if (!booking || booking.status !== "pending_payment") continue;
-        seen.add(row.booking_id);
+        if (seen.has(booking.id)) continue;
+        seen.add(booking.id);
 
-        const title = "Payment Failed";
-        const body = "Your payment didn't go through. Please try again to keep your reservation.";
-        const { data: inserted } = await admin
-            .from("notifications_log")
-            .insert({
-                user_id: row.user_id, channel: "push", template: "payment_failed_retry",
-                payload: { title, body, screen: "booking/billing" }, status: "pending",
-            })
-            .select("id")
-            .single();
-        if (!inserted) continue;
-        logged++;
-
-        const { data: user } = await admin.from("users").select("push_token").eq("id", row.user_id).maybeSingle();
-        if (!user?.push_token) continue;
-
-        try {
-            const res = await fetch(EXPO_PUSH_URL, {
-                method: "POST",
-                headers: { "content-type": "application/json", accept: "application/json" },
-                body: JSON.stringify({ to: user.push_token, title, body, sound: "default", data: { screen: "booking/billing" } }),
-            });
-            const result = await res.json().catch(() => null);
-            const ok = res.ok && result?.data?.status !== "error";
-            await admin
-                .from("notifications_log")
-                .update({ status: ok ? "sent" : "failed", sent_at: ok ? new Date().toISOString() : null })
-                .eq("id", inserted.id);
-            if (ok) sent++;
-        } catch (err) {
-            console.error("[failed-payment-retry] push send threw", { bookingId: row.booking_id, err });
-            await admin.from("notifications_log").update({ status: "failed" }).eq("id", inserted.id);
-        }
+        const result = await notifyUser(admin, row.user_id, {
+            typeCode: "payment_failed",
+            subjectType: "booking",
+            subjectId: booking.id,
+            title: "Payment Failed",
+            body: "Your payment didn't go through. Please try again to keep your reservation.",
+            screen: "booking/billing",
+        });
+        if (result.logged) logged++;
+        if (result.sent) sent++;
     }
 
     return json({ candidates: failedOrders?.length ?? 0, logged, sent }, 200);
 });
-
-function json(body: unknown, status: number): Response {
-    return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-}

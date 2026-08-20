@@ -25,7 +25,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import {
-  useUsers, useDeleteUser, useChangeUserStatus, useUpdateUserRoles,
+  useUsers, useDeleteUser, useChangeUserStatus, useChangeUserRole,
 } from "@/hooks/useUsers";
 import { useTableSort } from "@/hooks/useTableSort";
 import { useAuthStore } from "@/store/authStore";
@@ -60,27 +60,28 @@ export default function UserListPage() {
   });
   const deleteUser = useDeleteUser();
   const changeStatus = useChangeUserStatus();
-  const updateRoles = useUpdateUserRoles();
+  const changeRole = useChangeUserRole();
 
   // Admin can never edit their own roles (backend refuses it outright — see
   // users.service.ts replaceRoles) — hide the actions rather than let
   // someone click into a guaranteed error.
   const currentUserId = useAuthStore((s) => s.user?.id);
 
-  // next_due_at is the LAST usable day of the current billing period — a
-  // value <= today means due today or already overdue, regardless of
-  // whether the overdue-sweep cron has flipped payment_status to 'due' yet
-  // (it only runs the day after). 'paused'/pre-pickup bookings are excluded:
-  // nothing is actively due on those.
+  // next_due_at is the current period's due_on — a value <= today means due
+  // today or already overdue, regardless of whether the overdue sweep has
+  // flipped the subscription to 'past_due' yet (it only runs the day after).
+  // 'paused'/pre-pickup states are excluded: nothing is actively due on those.
   const isDueOrOverdue = (u: AppUser) =>
     !!u.next_due_at
     && u.next_due_at <= new Date().toISOString().slice(0, 10)
-    && (u.payment_status === "active" || u.payment_status === "due");
+    && (u.payment_status === "active" || u.payment_status === "past_due");
 
+  // A demotion to `rider`, not the removal of one entry from a role array:
+  // `users.role` holds exactly one value.
   const revokeStaff = (u: AppUser) => {
     setRoleError(null);
-    updateRoles.mutate(
-      { id: u.id, roles: u.roles.filter((r) => r !== "staff") },
+    changeRole.mutate(
+      { id: u.id, role: "rider" },
       { onError: (err) => setRoleError(err instanceof Error ? err.message : "Could not revoke staff access.") },
     );
   };
@@ -106,11 +107,7 @@ export default function UserListPage() {
     {
       header: "Role",
       key: "role",
-      render: (u) => (
-        <div className="flex flex-wrap gap-1">
-          {u.roles.length === 0 ? "—" : u.roles.map((r) => <StatusBadge key={r} status={r} />)}
-        </div>
-      ),
+      render: (u) => <StatusBadge status={u.role} />,
     },
     { header: "Account", key: "account", render: (u) => <StatusBadge status={u.account_status} /> },
     { header: "KYC", key: "kyc", sortKey: "kyc_status", render: (u) => <StatusBadge status={u.kyc_status} /> },
@@ -217,7 +214,7 @@ export default function UserListPage() {
             )}
             {role === "admin" && u.id !== currentUserId && (
               <>
-                {u.roles.includes("staff") ? (
+                {u.role === "staff" ? (
                   <>
                     <DropdownMenuItem onClick={() => navigate(`/settings/staff-access/${u.id}/permissions`)}>
                       <KeyRound className="mr-2 h-4 w-4" /> Manage permissions

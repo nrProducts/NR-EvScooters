@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
 
-const billingCycleSchema = z.enum(["daily", "weekly", "monthly", "yearly"]);
+// Three values, matching the `billing_period` enum. "yearly" was never
+// storable and is now rejected rather than silently failing at the insert.
+const billingCycleSchema = z.enum(["daily", "weekly", "monthly"]);
 
 export const planIdParam = z.object({ id: z.string().uuid("A valid plan id is required.") });
 
@@ -10,7 +12,7 @@ export const listPlansQuery = z.object({
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     vehicleModelId: z.string().uuid().optional(),
     active: z.coerce.boolean().optional(),
-    sortBy: z.enum(["created_at", "name", "price"]).default("created_at"),
+    sortBy: z.enum(["created_at", "name", "price_amount"]).default("created_at"),
     sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 

@@ -1,20 +1,33 @@
 import { supabase } from "@/lib/supabaseClient";
 import { apiClient, ApiError } from "./httpClient";
-import type { BackendRoleName, Capability, ModulePermission, Role, StaffUser } from "@/types";
+import type {
+  BackendRoleName, ModulePermission, PermissionKey, Role, StaffUser,
+} from "@/types";
 
-const STAFF_ROLES: BackendRoleName[] = ["staff", "technician", "station_manager", "admin"];
-
+/**
+ * GET /auth/session.
+ *
+ * `roles: BackendRoleName[]` became `role`, because `users.role` is one
+ * column now — the `roles`/`user_roles` join is gone, and with it the two
+ * role names (`technician`, `station_manager`) that had no distinct grants
+ * behind them.
+ *
+ * `capabilities` is gone too. `kyc_reviewer`, `rights_officer` and
+ * `pii_exporter` are ordinary permissions now, so they arrive inside
+ * `permission_keys` alongside everything else rather than on their own axis.
+ */
 interface SessionResponse {
   id: string;
   full_name: string;
   email: string | null;
   phone: string | null;
   profile_photo_url: string | null;
-  roles: BackendRoleName[];
-  capabilities?: Capability[];
+  role: BackendRoleName;
   is_admin: boolean;
   /** null = unrestricted (admin). Array = exact granted module+action pairs (staff). */
   permissions: ModulePermission[] | null;
+  /** The same grants flattened to `"<module>.<action>"`. Empty for admin. */
+  permission_keys: PermissionKey[];
   /** True for a staff account still on its admin-issued temporary password — gates every route to /change-password until cleared. */
   must_change_password: boolean;
 }
@@ -28,16 +41,23 @@ function toStaffUser(session: SessionResponse, role: Role): StaffUser {
     phone: session.phone ?? undefined,
     avatarUrl: session.profile_photo_url ?? undefined,
     role,
-    roles: session.roles,
+    backendRole: session.role,
     permissions: session.permissions,
-    capabilities: session.capabilities ?? [],
+    permissionKeys: session.permission_keys ?? [],
     mustChangePassword: session.must_change_password,
   };
 }
 
-function resolveRole(roles: BackendRoleName[]): Role | null {
-  if (roles.includes("admin")) return "admin";
-  if (roles.some((r) => STAFF_ROLES.includes(r))) return "staff";
+/**
+ * Narrows the backend role to what the console's nav and route guards use.
+ *
+ * Very nearly a pass-through now: `rider` is the only value that cannot open
+ * the console, and the "does this account hold any of four staff-ish roles?"
+ * scan is gone with the roles it scanned.
+ */
+function resolveRole(role: BackendRoleName): Role | null {
+  if (role === "admin") return "admin";
+  if (role === "staff") return "staff";
   return null;
 }
 
@@ -57,7 +77,7 @@ export async function resolveStaffSession(): Promise<StaffUser> {
     throw err;
   }
 
-  const role = resolveRole(session.roles);
+  const role = resolveRole(session.role);
   if (!role) {
     await supabase.auth.signOut();
     throw new ApiError(
@@ -102,7 +122,7 @@ export async function fetchCurrentSession(): Promise<StaffUser | null> {
 
   try {
     const session = await apiClient.get<SessionResponse>("/auth/session");
-    const role = resolveRole(session.roles);
+    const role = resolveRole(session.role);
     if (!role) return null;
     return toStaffUser(session, role);
   } catch {

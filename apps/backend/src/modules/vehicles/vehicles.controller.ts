@@ -1,9 +1,7 @@
 import { Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
-import { badRequest } from "../../common/AppError";
 import * as service from "./vehicles.service";
-import { assertValidVehiclePhoto } from "./vehicles.photo.storage";
 import { CreateVehicleInput, ListVehiclesFilters, ScrapVehicleInput, UpdateVehicleInput } from "./vehicles.types";
 
 export async function listVehiclesHandler(req: AuthedRequest, res: Response) {
@@ -40,31 +38,16 @@ export async function assignVehicleToUserHandler(req: AuthedRequest, res: Respon
     res.json(vehicle);
 }
 
-export async function uploadVehiclePhotoHandler(req: AuthedRequest, res: Response) {
-    const file = req.file;
-    if (!file) throw badRequest("A photo is required.", { photo: "Attach a photo." });
-
-    const mime = assertValidVehiclePhoto({
-        buffer: file.buffer,
-        mimetype: file.mimetype,
-        size: file.size,
-        originalname: file.originalname,
-    });
-    const isPrimary = req.body?.is_primary === "true" || req.body?.is_primary === true;
-
-    const photo = await service.uploadVehiclePhoto(
-        req.params.id as string,
-        { buffer: file.buffer, mimetype: file.mimetype, size: file.size, originalname: file.originalname },
-        mime,
-        isPrimary,
-    );
-    res.status(201).json(photo);
-}
-
-export async function deleteVehiclePhotoHandler(req: AuthedRequest, res: Response) {
-    await service.deleteVehiclePhoto(req.params.id as string, req.params.photoId as string);
-    res.status(204).send();
-}
+/*
+ * uploadVehiclePhotoHandler / deleteVehiclePhotoHandler lived here.
+ *
+ * `vehicle_photos` is not in the new schema. The audit found the table held
+ * zero rows and duplicated `vehicle_models.image`
+ * (docs/database-audit/05-initial-problems.md), so model imagery is
+ * `vehicle_model_media` and a photo of one unit's damage belongs to its
+ * incident. There is nowhere left for a per-unit photo, so the endpoints are
+ * gone rather than writing to a table that does not exist.
+ */
 
 export async function scrapVehicleHandler(req: AuthedRequest, res: Response) {
     const vehicle = await service.scrapVehicle(req.params.id as string, req.body as ScrapVehicleInput, req.user!);

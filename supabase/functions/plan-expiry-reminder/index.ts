@@ -1,142 +1,143 @@
 // =========================================================================
 // plan-expiry-reminder  —  daily pg_cron job  →  Expo push
 //
-// Finds active rentals whose plan expires in 2 days and warns the rider that
-// a late fee starts after that. Runs once/day against a rental's fixed
-// expires_at, so a given rental only ever matches "2 days out" exactly once —
-// no separate already-reminded tracking needed, same argument as
-// pickup-reminder.
+// Warns a rider two days before their rental is due back that a late fee
+// starts after that. Runs once a day against a rental's fixed due date, so
+// each rental matches "two days out" exactly once.
 //
 // Riders who have ALREADY requested a return are skipped: their deadline has
-// moved to return_due_at and ReturnStatusCard is already telling them about
-// it, so this would be a duplicate nag.
+// moved and the app is already showing them the new one, so this would be a
+// duplicate nag.
 //
-// Mirrors the "log first, best-effort send" contract of
-// apps/backend/src/modules/notifications/notifications.service.ts's
-// notifyUser(), re-implemented here in Deno because this function can't
-// import the backend's TS modules — same reason send-sms re-implements
-// apps/backend/src/modules/auth/msg91.ts's logic instead of importing it.
+// ── What the new schema changed ──────────────────────────────────────────
+//
+// `rentals.expires_at` (a timestamp) is `due_back_at`, and the return
+// request is no longer a `return_requested_at` column — it is a row in
+// `rental_returns`. "Has this rider asked to return?" is therefore an
+// absence-of-row check, and it covers the whole workflow rather than one
+// moment in it: requested, inspected and approved are all states where the
+// rider is already dealing with the return.
+//
+// A return that was REJECTED does not count. The rider is back on the
+// original deadline in that case, which is exactly when this warning matters
+// most.
+//
+// The scooter is reached through v_rental_current_vehicle, because
+// `rentals.vehicle_id` is gone — a rental can run through several scooters
+// (a temp swap, a replacement), and the view resolves which one is current.
+//
+// The day window is anchored to business_today() rather than the Deno
+// clock's local midnight, which was UTC and therefore 5½ hours adrift.
 // =========================================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
+import { addDays, businessToday } from "../_shared/dates.ts";
+import { notifyUser } from "../_shared/notify.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+const SOURCE = "plan-expiry-reminder";
 
 /**
  * Mirrors LATE_RETURN_FEE_PER_DAY in
- * apps/backend/src/modules/rentals/returnPolicy.constants.ts. Duplicated for
- * the same reason as the notifyUser logic above — keep the two in step.
+ * apps/backend/src/modules/rentals/returnPolicy.constants.ts. Duplicated
+ * because Deno cannot import the backend's modules — keep the two in step.
  */
 const LATE_RETURN_FEE_PER_DAY = 100;
 
-/** How far ahead of expiry to warn. */
+/** How far ahead of the due date to warn. */
 const WARN_DAYS_BEFORE = 2;
 
 interface RentalRow {
     id: string;
     user_id: string;
-    expires_at: string;
-    vehicles: { name: string } | { name: string }[] | null;
-    users: { push_token: string | null } | { push_token: string | null }[] | null;
-}
-
-function unwrap<T>(raw: unknown): T | null {
-    const v = Array.isArray(raw) ? raw[0] : raw;
-    return (v as T) ?? null;
-}
-
-/** [start, end) covering the whole calendar day WARN_DAYS_BEFORE days out. */
-function targetDayRange(): { start: string; end: string } {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() + WARN_DAYS_BEFORE);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-    return { start: start.toISOString(), end: end.toISOString() };
+    due_back_at: string;
 }
 
 Deno.serve(async (_req) => {
-    if (!SUPABASE_URL || !SERVICE_ROLE) {
-        return json({ error: "Function not configured." }, 500);
-    }
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
-        auth: { autoRefreshToken: false, persistSession: false },
-    });
+    if (!isConfigured()) return notConfigured();
+    const admin = adminClient();
 
-    const { start, end } = targetDayRange();
+    let target: string;
+    try {
+        target = addDays(await businessToday(admin), WARN_DAYS_BEFORE);
+    } catch (err) {
+        console.error(`[${SOURCE}] could not read business_today()`, err);
+        return json({ error: "Could not resolve the business date." }, 500);
+    }
+
+    // due_back_at is a timestamp, so the target DAY is a half-open range.
     const { data: rentals, error } = await admin
         .from("rentals")
-        .select("id, user_id, expires_at, vehicles(name), users(push_token)")
+        .select("id, user_id, due_back_at")
         .eq("status", "active")
-        .is("return_requested_at", null)
-        .gte("expires_at", start)
-        .lt("expires_at", end);
+        .gte("due_back_at", `${target}T00:00:00Z`)
+        .lt("due_back_at", `${addDays(target, 1)}T00:00:00Z`);
 
     if (error) {
-        console.error("[plan-expiry-reminder] failed to query rentals", error);
+        console.error(`[${SOURCE}] failed to query rentals`, error);
         return json({ error: "Query failed." }, 500);
     }
 
-    let sent = 0;
     let logged = 0;
+    let sent = 0;
+    let skippedReturning = 0;
 
-    for (const row of (rentals ?? []) as unknown as RentalRow[]) {
-        const vehicle = unwrap<{ name: string }>(row.vehicles);
-        const user = unwrap<{ push_token: string | null }>(row.users);
-
-        const title = "Your Plan Ends Soon";
-        const body = `Your plan for ${vehicle?.name ?? "your scooter"} ends in ${WARN_DAYS_BEFORE} days. `
-            + `Return it by then or a ₹${LATE_RETURN_FEE_PER_DAY}/day late fee applies.`;
-
-        const { data: inserted, error: insertError } = await admin
-            .from("notifications_log")
-            .insert({
-                user_id: row.user_id,
-                channel: "push",
-                template: "plan_expiry_reminder",
-                payload: { title, body, screen: "home" },
-                status: "pending",
-            })
-            .select("id")
-            .single();
-
-        if (insertError || !inserted) {
-            console.error("[plan-expiry-reminder] failed to log notification", { rentalId: row.id, error: insertError });
+    for (const row of (rentals ?? []) as RentalRow[]) {
+        if (await hasOpenReturn(admin, row.id)) {
+            skippedReturning++;
             continue;
         }
-        logged++;
 
-        if (!user?.push_token) continue;
+        const vehicleName = await currentVehicleName(admin, row.id);
 
-        try {
-            const res = await fetch(EXPO_PUSH_URL, {
-                method: "POST",
-                headers: { "content-type": "application/json", accept: "application/json" },
-                body: JSON.stringify({ to: user.push_token, title, body, sound: "default", data: { screen: "home" } }),
-            });
-            const result = await res.json().catch(() => null);
-            const ok = res.ok && result?.data?.status !== "error";
-
-            await admin
-                .from("notifications_log")
-                .update({ status: ok ? "sent" : "failed", sent_at: ok ? new Date().toISOString() : null })
-                .eq("id", inserted.id);
-
-            if (ok) sent++;
-        } catch (err) {
-            console.error("[plan-expiry-reminder] push send threw", { rentalId: row.id, err });
-            await admin.from("notifications_log").update({ status: "failed" }).eq("id", inserted.id);
-        }
+        const result = await notifyUser(admin, row.user_id, {
+            typeCode: "plan_expiring",
+            subjectType: "rental",
+            subjectId: row.id,
+            title: "Your Plan Ends Soon",
+            body: `Your plan for ${vehicleName ?? "your scooter"} ends in ${WARN_DAYS_BEFORE} days. `
+                + `Return it by then or a ₹${LATE_RETURN_FEE_PER_DAY}/day late fee applies.`,
+            screen: "home",
+            payload: { due_back_at: row.due_back_at },
+        });
+        if (result.logged) logged++;
+        if (result.sent) sent++;
     }
 
-    return json({ rentals: rentals?.length ?? 0, logged, sent }, 200);
+    return json({ rentals: rentals?.length ?? 0, logged, sent, skippedReturning }, 200);
 });
 
-function json(body: unknown, status: number): Response {
-    return new Response(JSON.stringify(body), {
-        status,
-        headers: { "content-type": "application/json" },
-    });
+/** A return already in flight — requested, inspected or approved, but not rejected. */
+async function hasOpenReturn(admin: Admin, rentalId: string): Promise<boolean> {
+    const { data, error } = await admin
+        .from("rental_returns")
+        .select("id")
+        .eq("rental_id", rentalId)
+        .in("status", ["requested", "inspected", "approved"])
+        .limit(1);
+    if (error) {
+        console.error(`[${SOURCE}] return lookup failed`, { rentalId, error: error.message });
+        // Err towards silence: a duplicate nag is worse than a missed one.
+        return true;
+    }
+    return (data ?? []).length > 0;
+}
+
+async function currentVehicleName(admin: Admin, rentalId: string): Promise<string | null> {
+    const { data: current } = await admin
+        .from("v_rental_current_vehicle")
+        .select("vehicle_id")
+        .eq("rental_id", rentalId)
+        .maybeSingle();
+    if (!current?.vehicle_id) return null;
+
+    const { data: vehicle } = await admin
+        .from("vehicles")
+        .select("display_name, vehicle_models(name)")
+        .eq("id", current.vehicle_id)
+        .maybeSingle();
+    if (!vehicle) return null;
+
+    const raw = (vehicle as { vehicle_models: unknown }).vehicle_models;
+    const model = (Array.isArray(raw) ? raw[0] : raw) as { name: string } | null;
+    return (vehicle as { display_name: string | null }).display_name ?? model?.name ?? null;
 }

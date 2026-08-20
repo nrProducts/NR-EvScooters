@@ -45,7 +45,7 @@ export default function UserDetailPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{user.full_name || "Unnamed user"}</h1>
           <p className="text-sm text-muted-foreground">Joined {formatDate(user.created_at)}</p>
         </div>
-        {user.roles.map((r) => <StatusBadge key={r} status={r} />)}
+        <StatusBadge status={user.role} />
         <StatusBadge status={user.account_status} />
         <StatusBadge status={user.kyc_status} />
       </div>
@@ -98,7 +98,7 @@ export default function UserDetailPage() {
             />
             <Row label="Payment status" value={user.payment_status ? <StatusBadge status={user.payment_status} /> : "—"} />
             <Row label="KYC completion" value={`${user.kyc_completion_percent}%`} />
-            <Row label="Roles" value={user.roles.join(", ") || "—"} />
+            <Row label="Role" value={user.role} />
           </CardContent>
         </Card>
       </div>
@@ -120,7 +120,7 @@ export default function UserDetailPage() {
                     <p className="font-medium capitalize">{doc.doc_type.replace(/_/g, " ")}</p>
                     <p className="text-xs text-muted-foreground">
                       {doc.doc_number_masked ?? "—"}
-                      {doc.expiry_date ? ` · expires ${formatDate(doc.expiry_date)}` : ""}
+                      {doc.expires_on ? ` · expires ${formatDate(doc.expires_on)}` : ""}
                     </p>
                   </div>
                   <StatusBadge status={doc.verification_status} />

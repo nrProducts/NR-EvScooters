@@ -1,29 +1,35 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
 import type {
-  Invoice, InvoiceDetail, InvoiceStatus, PaginatedResult, PaymentStatus, PaymentType,
+  Invoice, InvoiceDetail, InvoicePaymentState, InvoicePurpose, InvoiceStatus, PaginatedResult,
 } from "@/types";
 
 export interface InvoiceFilters {
   status?: InvoiceStatus | "all";
-  paymentStatus?: PaymentStatus | "all";
-  paymentType?: PaymentType | "all";
+  /** Derived server-side from the allocations. Was `paymentStatus`. */
+  paymentState?: InvoicePaymentState | "all";
+  /** Was `paymentType`. */
+  purpose?: InvoicePurpose | "all";
   bookingId?: string;
+  userId?: string;
   page?: number;
   pageSize?: number;
-  sortBy?: "created_at" | "amount_due" | "due_date";
+  sortBy?: "created_at" | "total_amount" | "due_on";
   sortDir?: "asc" | "desc";
 }
 
 /** GET /invoices — requireStaff. See apps/backend/src/modules/invoices/invoices.routes.ts */
 export async function fetchInvoices(filters: InvoiceFilters = {}): Promise<PaginatedResult<Invoice>> {
-  const { status, paymentStatus, paymentType, bookingId, page = 1, pageSize = 8, sortBy, sortDir } = filters;
+  const {
+    status, paymentState, purpose, bookingId, userId, page = 1, pageSize = 8, sortBy, sortDir,
+  } = filters;
   const res = await apiClient.get<BackendPaginated<Invoice>>("/invoices", {
     page,
     pageSize,
     status: status && status !== "all" ? status : undefined,
-    paymentStatus: paymentStatus && paymentStatus !== "all" ? paymentStatus : undefined,
-    paymentType: paymentType && paymentType !== "all" ? paymentType : undefined,
+    paymentState: paymentState && paymentState !== "all" ? paymentState : undefined,
+    purpose: purpose && purpose !== "all" ? purpose : undefined,
     bookingId,
+    userId,
     sortBy,
     sortDir,
   });

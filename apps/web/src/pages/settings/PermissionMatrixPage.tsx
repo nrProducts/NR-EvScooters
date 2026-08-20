@@ -10,10 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/common/ErrorState";
 import { useUser, useUserPermissions, useUpdateUserPermissions } from "@/hooks/useUsers";
-import { MODULE_KEYS, MODULE_LABELS, MODULE_ACTIONS } from "@/types";
-import type { ModuleKey, ModulePermission } from "@/types";
-import { PERMISSION_PROFILE_NAMES, PERMISSION_PROFILES, matchProfileName } from "@/config/permissionProfiles";
-import type { PermissionProfileName } from "@/config/permissionProfiles";
+import {
+  matchProfileName, permissionsForModule, profileToModules, usePermissionCatalog,
+} from "@/hooks/usePermissionCatalog";
+import { CUSTOM_PROFILE } from "@/types";
+import type { ModuleKey, ModulePermission, PermissionProfileName } from "@/types";
 
 export default function PermissionMatrixPage() {
   const { userId } = useParams<{ userId: string }>();
@@ -21,6 +22,9 @@ export default function PermissionMatrixPage() {
 
   const { data: user, isLoading: userLoading, isError: userError } = useUser(userId);
   const { data: saved, isLoading: permsLoading } = useUserPermissions(userId);
+  // Modules, actions and profiles all come from the server now — the three
+  // hard-coded tables this screen used to render from are gone.
+  const { data: catalog, isLoading: catalogLoading, isError: catalogError } = usePermissionCatalog();
   const updatePermissions = useUpdateUserPermissions();
 
   const [pending, setPending] = useState<ModulePermission[] | null>(null);
@@ -33,7 +37,7 @@ export default function PermissionMatrixPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saved]);
 
-  if (userLoading || permsLoading || pending === null) {
+  if (userLoading || permsLoading || catalogLoading || pending === null || !catalog) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-64" />
@@ -42,6 +46,7 @@ export default function PermissionMatrixPage() {
     );
   }
   if (userError || !user) return <ErrorState message="Staff account not found." />;
+  if (catalogError) return <ErrorState message="Could not load the permission catalogue." />;
 
   const actionsFor = (moduleKey: ModuleKey): string[] =>
     pending.find((m) => m.module_key === moduleKey)?.actions ?? [];
@@ -61,18 +66,17 @@ export default function PermissionMatrixPage() {
     });
   };
 
-  const applyProfile = (profile: Exclude<PermissionProfileName, "custom">) => {
+  const applyProfile = (profile: PermissionProfileName) => {
     setSaveError(null);
-    const preset = PERMISSION_PROFILES[profile];
-    setPending(
-      Object.entries(preset.modules).map(([module_key, actions]) => ({
-        module_key: module_key as ModuleKey,
-        actions: [...(actions ?? [])],
-      })),
-    );
+    setPending(profileToModules(catalog, profile));
   };
 
-  const currentProfile = matchProfileName(pending);
+  const currentProfile = matchProfileName(catalog, pending);
+  const currentProfileLabel =
+    catalog.profiles.find((p) => p.code === currentProfile)?.label ?? "Custom";
+  // Inactive modules stay out: a module switched off by migration has no
+  // console section to open, so granting inside it would be a dead checkbox.
+  const modules = catalog.modules.filter((m) => m.isActive);
   const totalGranted = pending.reduce((sum, m) => sum + m.actions.length, 0);
   const dirty = JSON.stringify([...pending].sort((a, b) => a.module_key.localeCompare(b.module_key))) !==
     JSON.stringify([...(saved ?? [])].sort((a, b) => a.module_key.localeCompare(b.module_key)));
@@ -100,14 +104,14 @@ export default function PermissionMatrixPage() {
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant={currentProfile === "custom" ? "outline" : "secondary"}>
-              {currentProfile === "custom" ? "Custom" : PERMISSION_PROFILES[currentProfile].label}
+            <Badge variant={currentProfile === CUSTOM_PROFILE ? "outline" : "secondary"}>
+              {currentProfileLabel}
             </Badge>
-            <Select onValueChange={(v) => applyProfile(v as Exclude<PermissionProfileName, "custom">)}>
+            <Select onValueChange={applyProfile}>
               <SelectTrigger className="w-48"><SelectValue placeholder="Apply a profile..." /></SelectTrigger>
               <SelectContent>
-                {PERMISSION_PROFILE_NAMES.map((name) => (
-                  <SelectItem key={name} value={name}>{PERMISSION_PROFILES[name].label}</SelectItem>
+                {catalog.profiles.map((profile) => (
+                  <SelectItem key={profile.code} value={profile.code}>{profile.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -116,31 +120,35 @@ export default function PermissionMatrixPage() {
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {MODULE_KEYS.map((moduleKey) => {
-          const granted = actionsFor(moduleKey);
+        {modules.map((module) => {
+          const granted = actionsFor(module.key);
           return (
-            <Card key={moduleKey}>
+            <Card key={module.key}>
               <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm">{MODULE_LABELS[moduleKey]}</CardTitle>
+                <CardTitle className="text-sm">{module.label}</CardTitle>
                 {granted.length > 0 && <Badge variant="success">{granted.length} on</Badge>}
               </CardHeader>
               <CardContent className="space-y-2">
-                {MODULE_ACTIONS[moduleKey].map((action) => (
+                {permissionsForModule(catalog, module.key).map((permission) => (
                   <div
-                    key={action.key}
+                    key={permission.id}
                     className="flex items-center justify-between gap-3 rounded-lg border border-border p-2.5"
-                    title={action.available ? undefined : "No console action wired up to this permission yet."}
+                    title={
+                      permission.isEnforced
+                        ? permission.description ?? undefined
+                        : "No route enforces this permission yet."
+                    }
                   >
                     <Label
-                      className={`cursor-pointer text-sm font-normal ${action.available ? "" : "text-muted-foreground"}`}
+                      className={`cursor-pointer text-sm font-normal ${permission.isEnforced ? "" : "text-muted-foreground"}`}
                     >
-                      {action.label}
-                      {!action.available && <Info className="ml-1 inline h-3 w-3 align-text-top" />}
+                      {permission.label}
+                      {!permission.isEnforced && <Info className="ml-1 inline h-3 w-3 align-text-top" />}
                     </Label>
                     <Switch
-                      checked={granted.includes(action.key)}
-                      disabled={!action.available}
-                      onCheckedChange={(checked) => toggle(moduleKey, action.key, checked)}
+                      checked={granted.includes(permission.action)}
+                      disabled={!permission.isEnforced}
+                      onCheckedChange={(checked) => toggle(module.key, permission.action, checked)}
                     />
                   </div>
                 ))}

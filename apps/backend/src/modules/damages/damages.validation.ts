@@ -26,8 +26,9 @@ export const listDamagesQuery = z.object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     bookingId: z.string().uuid().optional(),
-    status: z.enum(["recorded", "disputed", "resolved"]).optional(),
-    sortBy: z.enum(["created_at", "amount"]).default("created_at"),
+    // `damage_status`: `recorded` is `assessed`; `settled` and `waived` are new.
+    status: z.enum(["assessed", "disputed", "settled", "waived"]).optional(),
+    sortBy: z.enum(["created_at", "assessed_amount"]).default("created_at"),
     sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 

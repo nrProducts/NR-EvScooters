@@ -16,59 +16,50 @@ export const listVehiclesQuery = z.object({
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     search: z.string().trim().min(1).max(100).optional(),
     status: statusEnum.optional(),
-    sortBy: z.enum(["created_at", "name", "battery_percentage", "next_service_due_date"]).default("created_at"),
+    // `name` is `display_name`; battery charge and service dates are no
+    // longer columns, so they cannot be sorted on.
+    sortBy: z.enum(["created_at", "display_name", "registration_number"]).default("created_at"),
     sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 
+/**
+ * `manufacturer`, `model`, `battery_number`, `battery_percentage` and the two
+ * service dates are gone: they describe the MODEL, not the unit, and the model
+ * is now a foreign key. Insurance moved to `vehicle_documents` alongside
+ * registration and PUC, which is where it always belonged — it expires, and a
+ * pair of columns could not express a renewal history.
+ *
+ * `status` is not accepted at all. `recompute_vehicle_status()` derives it, so
+ * a supplied value would be silently overwritten; rejecting it says so.
+ */
 export const createVehicleBody = z.object({
-    name: z.string().trim().min(1, "Enter a display name for the vehicle.").max(120),
+    name: z.string().trim().min(1).max(120).optional(),
     registration_number: z.string().trim().min(1, "Enter the registration number.").max(40),
-    battery_number: z.string().trim().min(1, "Enter the battery number.").max(60),
-    manufacturer: z.string().trim().min(1, "Enter the manufacturer.").max(120),
-    model: z.string().trim().min(1, "Enter the model.").max(120),
     vin: z.string().trim().min(1, "Enter the VIN.").max(60),
-    battery_percentage: z.coerce.number().min(0).max(100).optional(),
-    status: statusEnum.optional(),
-    last_service_date: dateSchema.optional(),
-    next_service_due_date: dateSchema.optional(),
+    vehicle_model_id: z.string().uuid("Pick the model this vehicle is."),
+    hub_id: z.string().uuid("Pick the hub this vehicle belongs to.").optional(),
     color: z.string().trim().max(60).optional(),
     qr_code: z.string().trim().max(120).optional(),
     imei: z.string().trim().max(40).optional(),
     purchase_date: dateSchema.optional(),
-    insurance_number: z.string().trim().max(80).optional(),
-    insurance_expiry: dateSchema.optional(),
-});
+}).strict();
 
 export const updateVehicleBody = z
     .object({
-        name: z.string().trim().min(1).max(120).optional(),
+        name: z.string().trim().min(1).max(120).nullable().optional(),
         registration_number: z.string().trim().min(1).max(40).optional(),
-        battery_number: z.string().trim().min(1).max(60).optional(),
-        manufacturer: z.string().trim().min(1).max(120).optional(),
-        model: z.string().trim().min(1).max(120).optional(),
         vin: z.string().trim().min(1).max(60).optional(),
-        battery_percentage: z.coerce.number().min(0).max(100).optional(),
-        status: statusEnum.optional(),
-        last_service_date: dateSchema.nullable().optional(),
-        next_service_due_date: dateSchema.nullable().optional(),
+        hub_id: z.string().uuid().nullable().optional(),
         color: z.string().trim().max(60).nullable().optional(),
         qr_code: z.string().trim().max(120).nullable().optional(),
         imei: z.string().trim().max(40).nullable().optional(),
         purchase_date: dateSchema.nullable().optional(),
-        insurance_number: z.string().trim().max(80).nullable().optional(),
-        insurance_expiry: dateSchema.nullable().optional(),
     })
     .strict()
     .refine((v) => Object.keys(v).length > 0, "Provide at least one field to update.");
 
-export const uploadVehiclePhotoBody = z.object({
-    is_primary: z.coerce.boolean().optional(),
-});
-
-export const photoIdParam = z.object({
-    id: z.string().uuid("A valid vehicle id is required."),
-    photoId: z.string().uuid("A valid photo id is required."),
-});
+// uploadVehiclePhotoBody / photoIdParam are gone with the vehicle_photos
+// table — see the note in vehicles.controller.ts.
 
 export const scrapVehicleBody = z.object({
     reason: z.string().trim().min(3, "Give a reason of at least 3 characters.").max(500),

@@ -1,21 +1,29 @@
 import { Response, NextFunction } from "express";
 import { AuthedRequest } from "./auth.middleware";
-import { RoleName, STAFF_ROLES, ModuleKey } from "../types";
+import {
+    ModuleKey,
+    PermissionAction,
+    STAFF_ROLES,
+    UserRole,
+    hasModuleAccess,
+    hasPermission,
+    isStaffRole,
+} from "../types";
 import { forbidden, unauthenticated } from "../common/AppError";
-import { supabaseAdmin } from "../config/supabase";
 
-export const hasRole = (req: AuthedRequest, role: RoleName): boolean =>
-    req.user?.roles.includes(role) ?? false;
+export const hasRole = (req: AuthedRequest, role: UserRole): boolean =>
+    req.user?.role === role;
 
-export const hasAnyRole = (req: AuthedRequest, roles: readonly RoleName[]): boolean =>
-    req.user?.roles.some((r) => roles.includes(r)) ?? false;
+export const hasAnyRole = (req: AuthedRequest, roles: readonly UserRole[]): boolean =>
+    req.user ? roles.includes(req.user.role) : false;
 
 export const isAdmin = (req: AuthedRequest): boolean => hasRole(req, "admin");
-export const isStaff = (req: AuthedRequest): boolean => hasAnyRole(req, STAFF_ROLES);
+export const isStaff = (req: AuthedRequest): boolean =>
+    req.user ? isStaffRole(req.user.role) : false;
 
 /** Caller must hold exactly this role. Use after requireAuth. */
 export const requireRole =
-    (role: RoleName) => (req: AuthedRequest, _res: Response, next: NextFunction) => {
+    (role: UserRole) => (req: AuthedRequest, _res: Response, next: NextFunction) => {
         if (!req.user) return next(unauthenticated());
         if (!hasRole(req, role)) return next(forbidden(`This action requires the ${role} role.`));
         next();
@@ -23,7 +31,7 @@ export const requireRole =
 
 /** Caller must hold at least one of these roles. */
 export const requireAnyRole =
-    (...roles: RoleName[]) => (req: AuthedRequest, _res: Response, next: NextFunction) => {
+    (...roles: UserRole[]) => (req: AuthedRequest, _res: Response, next: NextFunction) => {
         if (!req.user) return next(unauthenticated());
         if (!hasAnyRole(req, roles)) {
             return next(forbidden(`This action requires one of: ${roles.join(", ")}.`));
@@ -35,39 +43,39 @@ export const requireAdmin = requireRole("admin");
 export const requireStaff = requireAnyRole(...STAFF_ROLES);
 
 /**
- * Pure decision core for module-level access, split out from hasModule() so
- * it's unit-testable without a database — same reasoning as
- * auth.service.ts's deriveSessionFlags(). Admin is always unconditional;
- * everyone else needs an explicit grant row (hasGrant), and only staff-role
- * accounts can hold one at all.
+ * Pure decision core, split out so it is unit-testable without a database —
+ * same reasoning as auth.service.ts's deriveSessionFlags().
+ *
+ * The admin short-circuit is kept even though `v_user_effective_permissions`
+ * already expands admins to the whole catalogue. Belt and braces: an admin
+ * must never be locked out of the console by a permission row that someone
+ * forgot to seed.
  */
-export const resolveModuleAccess = (
-    roles: readonly RoleName[],
-    hasGrant: boolean,
-): boolean => {
-    if (roles.includes("admin")) return true;
-    if (!roles.some((r) => STAFF_ROLES.includes(r))) return false;
+export const resolveAccess = (role: UserRole, hasGrant: boolean): boolean => {
+    if (role === "admin") return true;
+    if (!isStaffRole(role)) return false;
     return hasGrant;
 };
 
-/** Per-user, per-module grant check — see public.staff_permissions. */
-export const hasModule = async (req: AuthedRequest, moduleKey: ModuleKey): Promise<boolean> => {
+/**
+ * Coarse gate: does the caller hold *any* permission within the module?
+ *
+ * No longer touches the database. Permissions come from the set requireAuth
+ * resolved for this request, so what used to be one query per guarded route —
+ * several per page load in the console — is now a prefix scan over a Set.
+ *
+ * Still async: the signature is awaited from dozens of call sites, and the
+ * cost of keeping the promise is nil next to the churn of changing them all.
+ */
+export const hasModule = async (
+    req: AuthedRequest,
+    moduleKey: ModuleKey,
+): Promise<boolean> => {
     if (!req.user) return false;
-    if (req.user.roles.includes("admin")) return true;
-    if (!isStaff(req)) return false;
-
-    const { data, error } = await supabaseAdmin
-        .from("staff_permissions")
-        .select("module_key")
-        .eq("user_id", req.user.id)
-        .eq("module_key", moduleKey)
-        .maybeSingle();
-    if (error) throw error;
-
-    return resolveModuleAccess(req.user.roles, !!data);
+    return resolveAccess(req.user.role, hasModuleAccess(req.user, moduleKey));
 };
 
-/** Caller must be admin, or staff with this module explicitly granted. Use after requireAuth. */
+/** Caller must be admin, or hold some permission in this module. Use after requireAuth. */
 export const requireModule =
     (moduleKey: ModuleKey) => async (req: AuthedRequest, _res: Response, next: NextFunction) => {
         if (!req.user) return next(unauthenticated());
@@ -82,36 +90,29 @@ export const requireModule =
     };
 
 /**
- * Fine-grained sibling of hasModule() — per-user, per-module, per-verb check
- * against staff_permissions.actions (see 20260814101000_staff_permission_actions.sql).
- * Admin is unconditional, same as hasModule(); a staff account needs the
- * module row to exist AND that row's actions array to contain this verb.
+ * Fine gate: the specific `<module>.<action>` grant.
+ *
+ * This is now the *only* authorisation primitive below role. What used to be
+ * a separate capability layer — `kyc_reviewer`, `rights_officer`,
+ * `pii_exporter` in their own table with their own middleware — are ordinary
+ * permissions here: `kyc.reveal_number`, `privacy.process`, `privacy.export`.
  */
 export const hasAction = async (
-    req: AuthedRequest, moduleKey: ModuleKey, action: string,
+    req: AuthedRequest,
+    moduleKey: ModuleKey,
+    action: PermissionAction,
 ): Promise<boolean> => {
     if (!req.user) return false;
-    if (req.user.roles.includes("admin")) return true;
-    if (!isStaff(req)) return false;
-
-    const { data, error } = await supabaseAdmin
-        .from("staff_permissions")
-        .select("actions")
-        .eq("user_id", req.user.id)
-        .eq("module_key", moduleKey)
-        .maybeSingle();
-    if (error) throw error;
-
-    return resolveModuleAccess(req.user.roles, !!data?.actions?.includes(action));
+    return resolveAccess(req.user.role, hasPermission(req.user, moduleKey, action));
 };
 
 /**
- * Caller must be admin, or staff holding this specific module+action grant.
- * Use in place of requireModule() wherever a route needs to distinguish
- * (e.g. view vs edit) rather than just "can this section be opened at all".
+ * Caller must be admin, or hold this specific module+action grant. Use in
+ * place of requireModule() wherever a route needs to distinguish (e.g. view
+ * vs edit) rather than just "can this section be opened at all".
  */
 export const requireAction =
-    (moduleKey: ModuleKey, action: string) =>
+    (moduleKey: ModuleKey, action: PermissionAction) =>
     async (req: AuthedRequest, _res: Response, next: NextFunction) => {
         if (!req.user) return next(unauthenticated());
         try {

@@ -3,8 +3,7 @@ import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import { isStaff, isAdmin, resolveTargetUserId } from "../../middleware/authorize.middleware";
 import { badRequest, forbidden } from "../../common/AppError";
-import { AccountStatus, RoleName, StaffCapability } from "../../types";
-import { PermissionProfileName } from "../../config/permissionProfiles";
+import { UserRole, UserStatus } from "../../types";
 import { ListUsersFilters } from "./users.types";
 import * as service from "./users.service";
 import * as permissionsService from "./staff-permissions.service";
@@ -75,32 +74,25 @@ export async function updateStatusHandler(req: AuthedRequest, res: Response) {
     res.json(await service.changeAccountStatus(req.params.id as string, action, reason, req.user!, req));
 }
 
+/**
+ * A user has one role now, but the response still carries a one-element
+ * `roles` array. Both clients read `roles[]`, and reshaping the wire format
+ * is frontend work the schema change does not require — Stage 10 collapses it.
+ */
 export async function getRolesHandler(req: AuthedRequest, res: Response) {
     const id = resolveTargetUserId(req);
     if (id !== req.user!.id && !isStaff(req)) throw forbidden("You may only view your own roles.");
-    res.json({ roles: await service.getRoles(id) });
+    const role = await service.getRole(id);
+    res.json({ role, roles: [role] });
 }
 
 export async function updateRolesHandler(req: AuthedRequest, res: Response) {
-    const { roles } = req.body as { roles: RoleName[] };
-    res.json({ roles: await service.replaceRoles(req.params.id as string, roles, req.user!, req) });
-}
-
-export async function getCapabilitiesHandler(req: AuthedRequest, res: Response) {
-    const id = resolveTargetUserId(req);
-    if (id !== req.user!.id && !isStaff(req)) {
-        throw forbidden("You may only view your own capabilities.");
-    }
-    res.json({ capabilities: await service.getCapabilities(id) });
-}
-
-export async function updateCapabilitiesHandler(req: AuthedRequest, res: Response) {
-    const { capabilities } = req.body as { capabilities: StaffCapability[] };
-    res.json({
-        capabilities: await service.replaceCapabilities(
-            req.params.id as string, capabilities, req.user!, req,
-        ),
-    });
+    // Accepts either shape: `{ role }` or the legacy `{ roles: [one] }`.
+    const body = req.body as { role?: UserRole; roles?: UserRole[] };
+    const role = body.role ?? body.roles?.[0];
+    if (!role) throw badRequest("A role is required.");
+    const next = await service.changeRole(req.params.id as string, role, req.user!, req);
+    res.json({ role: next, roles: [next] });
 }
 
 /**
@@ -144,7 +136,7 @@ export async function updatePermissionsHandler(req: AuthedRequest, res: Response
 }
 
 export async function applyPermissionProfileHandler(req: AuthedRequest, res: Response) {
-    const { profile } = req.body as { profile: Exclude<PermissionProfileName, "custom"> };
+    const { profile } = req.body as { profile: string };
     res.json({
         modules: await permissionsService.applyPermissionProfile(req.params.id as string, profile, req.user!, req),
     });
@@ -161,7 +153,7 @@ export async function meHandler(req: AuthedRequest, res: Response) {
     ]);
     res.json({
         ...detail,
-        can_rent: detail.kyc_status === "verified" && (detail.account_status as AccountStatus) === "active",
+        can_rent: detail.kyc_status === "verified" && (detail.account_status as UserStatus) === "active",
         is_admin: isAdmin(req),
         has_active_rental: hasActiveRental,
         has_active_booking: hasActiveBooking,

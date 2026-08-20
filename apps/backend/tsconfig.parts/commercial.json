@@ -1,0 +1,14 @@
+{
+    "extends": "./_shared.json",
+    "include": [
+        "../src/modules/bookings",
+        "../src/modules/rentals",
+        "../src/modules/returns",
+        "../src/modules/damages",
+        "../src/modules/subscriptions",
+        "../src/common",
+        "../src/config",
+        "../src/middleware",
+        "../src/types"
+    ]
+}

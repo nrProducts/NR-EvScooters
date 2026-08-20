@@ -4,72 +4,133 @@ import { paginate, toRange } from "../../common/pagination";
 import { env } from "../../config/env";
 import { Paginated } from "../../types";
 import { DepositRow, ListDepositsFilters } from "./deposits.types";
+import { businessToday } from "../../common/dates";
+
+/**
+ * Security deposits.
+ *
+ * The deposit hangs off the SUBSCRIPTION now, not the booking — it is taken
+ * when payment creates the agreement, and it survives every renewal, so
+ * pinning it to the reservation was always slightly wrong.
+ *
+ * `refund_id` is gone too. A refund names the payment it reverses
+ * (`payment_transaction_id`), and pointing back from the deposit as well made
+ * two places responsible for the same link.
+ */
 
 const DEPOSIT_COLUMNS = `
-    id, booking_id, amount, status, held_at, refund_eligible_at, refunded_at, forfeited_at, refund_id, created_at
+    id, subscription_id, amount, status, held_at, refund_eligible_on,
+    released_at, forfeited_at, forfeit_reason, created_at
 `;
 
 interface RawDepositRow {
     id: string;
-    booking_id: string;
+    subscription_id: string;
     amount: number | string;
     status: DepositRow["status"];
     held_at: string | null;
-    refund_eligible_at: string | null;
-    refunded_at: string | null;
+    refund_eligible_on: string | null;
+    released_at: string | null;
     forfeited_at: string | null;
-    refund_id: string | null;
+    forfeit_reason: string | null;
     created_at: string;
 }
 
-/** Sum of deposit_deduction across this booking's non-disputed damages — the actually-refundable portion of the held deposit. */
-export async function refundableAmountForBooking(bookingId: string, depositAmount: number): Promise<number> {
+/**
+ * Non-disputed damage assessed against this subscription's rentals.
+ *
+ * `damages.deposit_deduction` is gone, so this sums `assessed_amount` — the
+ * full assessed charge — reached through `incidents.rental_id`. The two were
+ * almost always equal; where they were not, the deduction column was a
+ * hand-maintained opinion about how much of the damage the deposit should
+ * cover, which is exactly what the settlement arithmetic now decides.
+ */
+export async function refundableAmountForSubscription(
+    subscriptionId: string,
+    depositAmount: number,
+): Promise<number> {
+    const { data: rentals, error: rentalsError } = await supabaseAdmin
+        .from("rentals")
+        .select("id")
+        .eq("subscription_id", subscriptionId);
+    if (rentalsError) throw rentalsError;
+
+    const rentalIds = (rentals ?? []).map((r) => r.id);
+    if (rentalIds.length === 0) return Math.max(0, depositAmount);
+
     const { data, error } = await supabaseAdmin
         .from("damages")
-        .select("deposit_deduction")
-        .eq("booking_id", bookingId)
+        .select("assessed_amount, incidents!inner(rental_id)")
+        .in("incidents.rental_id", rentalIds)
         .neq("status", "disputed");
     if (error) throw error;
 
-    const totalDeduction = (data ?? []).reduce((sum, row) => sum + Number(row.deposit_deduction), 0);
-    return Math.max(0, Math.round((depositAmount - totalDeduction) * 100) / 100);
+    const totalDamage = (data ?? []).reduce((sum, row) => sum + Number(row.assessed_amount), 0);
+    return Math.max(0, Math.round((depositAmount - totalDamage) * 100) / 100);
 }
 
 async function toDepositRow(row: RawDepositRow): Promise<DepositRow> {
     const amount = Number(row.amount);
     return {
-        ...row,
+        id: row.id,
+        subscription_id: row.subscription_id,
         amount,
-        refundable_amount: row.status === "held" ? await refundableAmountForBooking(row.booking_id, amount) : amount,
+        status: row.status,
+        held_at: row.held_at,
+        refund_eligible_at: row.refund_eligible_on,
+        refunded_at: row.released_at,
+        forfeited_at: row.forfeited_at,
+        forfeit_reason: row.forfeit_reason,
+        refundable_amount: row.status === "held"
+            ? await refundableAmountForSubscription(row.subscription_id, amount)
+            : amount,
+        created_at: row.created_at,
     };
 }
 
-export async function getDepositForBooking(bookingId: string): Promise<DepositRow> {
-    const { data, error } = await supabaseAdmin
-        .from("deposits")
-        .select(DEPOSIT_COLUMNS)
-        .eq("booking_id", bookingId)
-        .maybeSingle();
-    if (error) throw error;
-    if (!data) throw notFound("No deposit found for this booking.");
-    return toDepositRow(data as unknown as RawDepositRow);
+export async function getDepositForSubscription(subscriptionId: string): Promise<DepositRow> {
+    const deposit = await getDepositForSubscriptionOrNull(subscriptionId);
+    if (!deposit) throw notFound("No deposit found for this subscription.");
+    return deposit;
 }
 
-export async function getDepositForBookingOrNull(bookingId: string): Promise<DepositRow | null> {
+export async function getDepositForSubscriptionOrNull(
+    subscriptionId: string,
+): Promise<DepositRow | null> {
     const { data, error } = await supabaseAdmin
         .from("deposits")
         .select(DEPOSIT_COLUMNS)
-        .eq("booking_id", bookingId)
+        .eq("subscription_id", subscriptionId)
         .maybeSingle();
     if (error) throw error;
     return data ? toDepositRow(data as unknown as RawDepositRow) : null;
+}
+
+/**
+ * Convenience for the callers that still hold a booking id (the admin console
+ * addresses everything by booking). One hop through `subscriptions`.
+ */
+export async function getDepositForBookingOrNull(bookingId: string): Promise<DepositRow | null> {
+    const { data, error } = await supabaseAdmin
+        .from("subscriptions")
+        .select("id")
+        .eq("booking_id", bookingId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return getDepositForSubscriptionOrNull(data.id);
 }
 
 export async function listDeposits(filters: ListDepositsFilters): Promise<Paginated<DepositRow>> {
     let query = supabaseAdmin.from("deposits").select(DEPOSIT_COLUMNS, { count: "exact" });
     if (filters.status) query = query.eq("status", filters.status);
     if (filters.refundEligible) {
-        query = query.eq("status", "held").lte("refund_eligible_at", new Date().toISOString());
+        // `refund_eligible_on` is a DATE, so this compares against today's
+        // date rather than an instant — a deposit becomes eligible at the
+        // start of its eligible day, not at the same clock time it was set.
+        query = query
+            .eq("status", "held")
+            .lte("refund_eligible_on", businessToday());
     }
 
     const [from, to] = toRange(filters);
@@ -82,45 +143,54 @@ export async function listDeposits(filters: ListDepositsFilters): Promise<Pagina
 }
 
 /**
- * Fully consumed by damage deductions — nothing left to refund. Called after
- * a damage record is written/resolved; a no-op once the deposit has already
- * moved past 'held' (refunded/partially_refunded are terminal here, and a
- * dispute in flight must not flip status early).
+ * Fully consumed by damage — nothing left to refund. Called after a damage
+ * record is written or resolved; a no-op once the deposit has moved past
+ * `held`, so a dispute in flight cannot flip the status early.
  */
-export async function recomputeDepositStatusForBooking(bookingId: string): Promise<void> {
+export async function recomputeDepositStatusForSubscription(subscriptionId: string): Promise<void> {
     const { data: deposit, error } = await supabaseAdmin
         .from("deposits")
         .select("id, amount, status")
-        .eq("booking_id", bookingId)
+        .eq("subscription_id", subscriptionId)
         .maybeSingle();
     if (error) throw error;
     if (!deposit || deposit.status !== "held") return;
 
-    const remaining = await refundableAmountForBooking(bookingId, Number(deposit.amount));
+    const remaining = await refundableAmountForSubscription(subscriptionId, Number(deposit.amount));
     if (remaining <= 0) {
         await supabaseAdmin
             .from("deposits")
-            .update({ status: "forfeited", forfeited_at: new Date().toISOString() })
+            .update({
+                status: "forfeited",
+                forfeited_at: new Date().toISOString(),
+                forfeit_reason: "Fully consumed by assessed damage.",
+            })
             .eq("id", deposit.id)
             .eq("status", "held");
     }
 }
 
 /**
- * Starts the 15-day refund-eligibility clock. Called from rentals.service.ts's
- * completeRide, but ONLY for a genuine final return — see that call site's
- * comment for how it distinguishes a real return from a maintenance-internal
- * temp-vehicle rental closure. A no-op if the deposit was already forfeited
- * (nothing to refund) or this booking never had a deposit at all.
+ * Starts the refund-eligibility clock.
+ *
+ * Called from completeRide for a genuine final return. That used to need a
+ * careful check to avoid firing on a maintenance-internal rental closure; it
+ * no longer does, because a maintenance swap keeps the same rental.
+ *
+ * A no-op if the deposit was already forfeited or the clock is already
+ * running.
  */
-export async function setDepositRefundEligible(bookingId: string, returnedAt: Date): Promise<void> {
+export async function setDepositRefundEligible(
+    subscriptionId: string,
+    returnedAt: Date,
+): Promise<void> {
     const eligible = new Date(returnedAt);
     eligible.setDate(eligible.getDate() + env.depositRefundEligibilityDays);
 
     await supabaseAdmin
         .from("deposits")
-        .update({ refund_eligible_at: eligible.toISOString() })
-        .eq("booking_id", bookingId)
+        .update({ refund_eligible_on: businessToday(eligible) })
+        .eq("subscription_id", subscriptionId)
         .eq("status", "held")
-        .is("refund_eligible_at", null);
+        .is("refund_eligible_on", null);
 }

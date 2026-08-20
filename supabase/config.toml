@@ -293,7 +293,7 @@ enabled = false
 # is generated once (supabase secrets) and shared with the function.
 [auth.hook.send_sms]
 enabled = false
-# uri = "https://jeerugpvchfjlgssfoeb.functions.supabase.co/send-sms"
+# uri = "https://cndqvdskrcmivqflbttl.functions.supabase.co/send-sms"
 # secrets = "env(SEND_SMS_HOOK_SECRET)"
 
 # Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.

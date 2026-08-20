@@ -6,13 +6,18 @@ import { removeExportObjects } from "./privacy.export";
 /**
  * Personal-data columns on `users` that erasure must clear.
  *
+ * Much shorter than it was, because most of what it listed is no longer a
+ * column. The address, the emergency contact and the nominee moved to
+ * `user_addresses` and `user_related_persons`, and the push token to
+ * `user_devices` — so erasing them is deleting ROWS, which is what
+ * ERASED_CHILD_TABLES below covers. `referral_code` has no successor at all.
+ *
  * This list is duplicated from public.anonymise_user() on purpose. The SQL
  * function is what actually runs; this constant exists so
  * privacy.erasure.test.ts can assert that every personal column the API reads
- * (PROFILE_COLUMNS in users.service.ts, plus the nominee fields) appears
- * here. A future `ALTER TABLE users ADD COLUMN` then fails the suite until
- * someone decides that column's erasure fate — which is exactly the decision
- * that otherwise gets forgotten.
+ * appears here. A future `ALTER TABLE users ADD COLUMN` then fails the suite
+ * until someone decides that column's erasure fate — which is exactly the
+ * decision that otherwise gets forgotten.
  */
 export const ERASED_USER_COLUMNS = [
     "full_name",
@@ -20,21 +25,26 @@ export const ERASED_USER_COLUMNS = [
     "email",
     "date_of_birth",
     "gender",
-    "address_line_1",
-    "address_line_2",
-    "city",
-    "state",
-    "postal_code",
-    "emergency_contact_name",
-    "emergency_contact_phone",
-    "nominee_full_name",
-    "nominee_relationship",
-    "nominee_phone",
-    "nominee_email",
-    "profile_photo_url",
-    "push_token",
-    "referral_code",
+    "photo_storage_path",
 ] as const;
+
+/**
+ * Child tables erasure must EMPTY for the user, and what each holds.
+ *
+ * The decomposition turned a row of nulls into a set of deletes, and that is
+ * the stronger outcome: a nulled `nominee_full_name` still said a nominee had
+ * once been named, where a deleted `user_related_persons` row says nothing.
+ *
+ * `user_related_persons` matters most. A nominee and an emergency contact are
+ * THIRD PARTIES who never dealt with us directly — their data is here only
+ * because the rider supplied it, so the rider's erasure has to take it with
+ * them.
+ */
+export const ERASED_CHILD_TABLES: Readonly<Record<string, string>> = {
+    user_addresses: "The rider's postal address",
+    user_related_persons: "The nominee and emergency contact — third parties' data",
+    user_devices: "Push tokens, which identify a physical handset",
+};
 
 /**
  * Tables erasure must NOT touch, and why.
@@ -72,33 +82,33 @@ interface StoragePaths {
 async function gatherStoragePaths(userId: string): Promise<StoragePaths> {
     const [{ data: docs, error: docsError }, { data: user, error: userError }] = await Promise.all([
         supabaseAdmin
-            .from("user_documents")
-            .select("storage_path, back_storage_path")
+            .from("kyc_documents")
+            .select("front_storage_path, back_storage_path")
             .eq("user_id", userId),
-        supabaseAdmin.from("users").select("profile_photo_url").eq("id", userId).maybeSingle(),
+        supabaseAdmin.from("users").select("photo_storage_path").eq("id", userId).maybeSingle(),
     ]);
     if (docsError) throw docsError;
     if (userError) throw userError;
 
     const kyc = (docs ?? []).flatMap((d) =>
-        [d.storage_path, d.back_storage_path].filter((p): p is string => !!p),
+        [d.front_storage_path, d.back_storage_path].filter((p): p is string => !!p),
     );
 
-    const photo = (user as { profile_photo_url: string | null } | null)?.profile_photo_url;
+    const photo = (user as { photo_storage_path: string | null } | null)?.photo_storage_path;
 
     // Anything previously generated for an access request is itself a
     // complete copy of the rider's data and must go with the rest.
     const { data: exports } = await supabaseAdmin
         .from("data_principal_requests")
-        .select("export_object_path")
+        .select("export_storage_path")
         .eq("user_id", userId)
-        .not("export_object_path", "is", null);
+        .not("export_storage_path", "is", null);
 
     return {
         kyc,
         photos: photo ? [photo] : [],
         exports: (exports ?? [])
-            .map((r) => (r as { export_object_path: string | null }).export_object_path)
+            .map((r) => (r as { export_storage_path: string | null }).export_storage_path)
             .filter((p): p is string => !!p),
     };
 }
@@ -129,10 +139,13 @@ export async function assertErasable(userId: string): Promise<void> {
         .from("invoices")
         .select("id")
         .eq("user_id", userId)
-        // invoice_status is draft/issued/paid/overdue/void. Outstanding means
-        // billed and unpaid: 'issued' or 'overdue'. A draft is not yet a
-        // demand and a void invoice was withdrawn.
-        .in("status", ["issued", "overdue"])
+        // invoice_status is draft/issued/void — payment state lives on the
+        // payment rows now, not on the invoice, so there is no 'paid' or
+        // 'overdue' here. Outstanding means issued and not settled; a draft is
+        // not yet a demand and a void invoice was withdrawn. Whether an issued
+        // invoice has actually been paid is v_invoice_balances' answer, which
+        // is the next thing this check should consult.
+        .in("status", ["issued"])
         .limit(1);
     if (invoiceError) throw invoiceError;
     if (invoices && invoices.length > 0) {
@@ -166,7 +179,10 @@ export async function eraseUser(userId: string, requestId: string | null): Promi
 
     const { error: rpcError } = await supabaseAdmin.rpc("anonymise_user", {
         p_user_id: userId,
-        p_request_id: requestId,
+        // The SQL parameter is a plain `uuid` and accepts null — the retention
+        // sweep erases without a request behind it. The generated Args type
+        // has no way to express that, hence the cast.
+        p_request_id: requestId as string,
     });
     if (rpcError) throw rpcError;
 

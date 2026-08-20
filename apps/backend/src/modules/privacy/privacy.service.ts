@@ -2,9 +2,11 @@ import type { Request } from "express";
 import { supabaseAdmin } from "../../config/supabase";
 import { businessRule, conflict, forbidden, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
+import { businessToday } from "../../common/dates";
 import { writeAudit } from "../../common/audit";
 import { logPiiAccess } from "../../common/piiAccess";
 import type { AuthContext, Paginated } from "../../types";
+import type { Database } from "../../types/database.types";
 import {
     buildExportBundle, createExportSignedUrl, storeExportBundle,
 } from "./privacy.export";
@@ -20,22 +22,46 @@ import type {
     CreateRequestBody, ExecuteErasureBody, UpdateNomineeBody, UpdateRequestBody,
 } from "./privacy.validation";
 
+// `type:request_type` and `assignee:...assigned_to_user_id_fkey` are aliases,
+// not renames: the column and the foreign key are what the schema calls them,
+// while the wire shape both apps already read stays `type` and `assigned_to`.
 const RIDER_COLUMNS = `
-    id, reference, type, status, details, requested_changes, sla_due_at,
+    id, reference, type:request_type, status, details, requested_changes, sla_due_at,
     grace_ends_at, resolution_notes, rejection_reason, completed_at,
     created_at, updated_at
 `;
 
 const ADMIN_COLUMNS = `
-    ${RIDER_COLUMNS}, channel, ticket_ref, export_object_path,
+    ${RIDER_COLUMNS}, channel, export_storage_path,
     rider:users!data_principal_requests_user_id_fkey(id, full_name, phone, email),
-    assignee:users!data_principal_requests_assigned_to_fkey(id, full_name)
+    assignee:users!data_principal_requests_assigned_to_user_id_fkey(id, full_name)
 `;
 
 /** Statuses from which a request can still change. */
 const OPEN_STATUSES: DpRequestStatus[] = ["open", "in_progress", "awaiting_principal"];
 
 const isClosed = (status: DpRequestStatus): boolean => !OPEN_STATUSES.includes(status);
+
+/**
+ * `data_principal_requests.reference` is `not null unique` with no default and
+ * no trigger behind it, so the backend has to mint it. Date plus eight random
+ * base32 characters: readable enough for a rider to quote over the phone, and
+ * wide enough (~10^12) that a collision is not a practical concern. The unique
+ * index is still the authority — a 23505 on insert is handled by the caller.
+ */
+const REF_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+function newReference(now: Date): string {
+    // The business day, not the UTC one: a rider who files a request at
+    // 01:00 IST quotes this reference back, and it must carry the date they
+    // and the console both think they filed it on.
+    const day = businessToday(now).replace(/-/g, "");
+    let suffix = "";
+    for (let i = 0; i < 8; i += 1) {
+        suffix += REF_ALPHABET[Math.floor(Math.random() * REF_ALPHABET.length)];
+    }
+    return `DPR-${day}-${suffix}`;
+}
 
 // ---------------------------------------------------------------------------
 // Rider: create and read
@@ -68,7 +94,8 @@ export async function createRequest(
         .from("data_principal_requests")
         .insert({
             user_id: userId,
-            type: input.type,
+            reference: newReference(now),
+            request_type: input.type,
             details: input.details ?? null,
             requested_changes: input.requested_changes
                 ? Object.fromEntries(input.requested_changes.map((c) => [c.field, c.value]))
@@ -113,7 +140,7 @@ export async function listMyRequests(
         .select(RIDER_COLUMNS, { count: "exact" })
         .eq("user_id", userId);
 
-    if (filters.type) query = query.eq("type", filters.type);
+    if (filters.type) query = query.eq("request_type", filters.type);
 
     const [from, to] = toRange(filters);
     const { data, error, count } = await query
@@ -201,7 +228,8 @@ export async function generateExport(
         .from("data_principal_requests")
         .insert({
             user_id: userId,
-            type: "access_export",
+            reference: newReference(now),
+            request_type: "access_export",
             status: "in_progress",
             sla_due_at: slaDueAt("access_export", now),
             channel: "app",
@@ -220,7 +248,7 @@ export async function generateExport(
         .update({
             status: "completed",
             completed_at: new Date().toISOString(),
-            export_object_path: stored.path,
+            export_storage_path: stored.path,
             resolution_notes:
                 "A copy of your data was generated and made available for download. " +
                 "The file is deleted from our servers after 30 days.",
@@ -268,12 +296,12 @@ export async function getExportUrl(
     const request = await getMyRequest(userId, requestId);
     const { data, error } = await supabaseAdmin
         .from("data_principal_requests")
-        .select("export_object_path")
+        .select("export_storage_path")
         .eq("id", request.id)
         .single();
     if (error) throw error;
 
-    const path = (data as { export_object_path: string | null }).export_object_path;
+    const path = (data as { export_storage_path: string | null }).export_storage_path;
     if (!path) {
         throw notFound(
             "This request has no download. It may have expired — exports are deleted " +
@@ -290,7 +318,7 @@ async function assertExportNotRateLimited(userId: string): Promise<void> {
         .from("data_principal_requests")
         .select("id, created_at")
         .eq("user_id", userId)
-        .eq("type", "access_export")
+        .eq("request_type", "access_export")
         .gte("created_at", since)
         .limit(1);
     if (error) throw error;
@@ -311,20 +339,25 @@ async function assertExportNotRateLimited(userId: string): Promise<void> {
 
 export async function getNominee(userId: string): Promise<NomineeView> {
     const { data, error } = await supabaseAdmin
-        .from("users")
-        .select("nominee_full_name, nominee_relationship, nominee_phone, nominee_email, nominee_updated_at")
-        .eq("id", userId)
+        .from("user_related_persons")
+        .select("full_name, relationship, phone, email, updated_at")
+        .eq("user_id", userId)
+        .eq("person_role", "nominee")
         .maybeSingle();
     if (error) throw error;
-    if (!data) throw notFound("User not found.");
 
-    const row = data as Record<string, string | null>;
+    // Absent is not an error: most riders have not named a nominee, and the
+    // five `users.nominee_*` columns this replaces were null on all of them.
+    if (!data) {
+        return { full_name: null, relationship: null, phone: null, email: null, updated_at: null };
+    }
+
     return {
-        full_name: row.nominee_full_name,
-        relationship: row.nominee_relationship,
-        phone: row.nominee_phone,
-        email: row.nominee_email,
-        updated_at: row.nominee_updated_at,
+        full_name: data.full_name,
+        relationship: data.relationship,
+        phone: data.phone,
+        email: data.email,
+        updated_at: data.updated_at,
     };
 }
 
@@ -333,16 +366,33 @@ export async function updateNominee(
     input: UpdateNomineeBody,
     req?: Request,
 ): Promise<NomineeView> {
-    const { error } = await supabaseAdmin
-        .from("users")
-        .update({
-            nominee_full_name: input.full_name,
-            nominee_relationship: input.relationship,
-            nominee_phone: input.phone ?? null,
-            nominee_email: input.email ?? null,
-            nominee_updated_at: new Date().toISOString(),
-        })
-        .eq("id", userId);
+    // A nominee is a PERSON, not five columns on the rider — which is also
+    // why an emergency contact and a nominee are now the same table with
+    // different `person_role`s, instead of one being columns and one a row.
+    //
+    // There is no unique index on (user_id, person_role), so this cannot be an
+    // upsert with an onConflict target — read first, then update or insert,
+    // the same shape `users.service.ts` uses for the emergency contact.
+    const { data: existing, error: readError } = await supabaseAdmin
+        .from("user_related_persons")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("person_role", "nominee")
+        .maybeSingle();
+    if (readError) throw readError;
+
+    const row = {
+        user_id: userId,
+        person_role: "nominee" as const,
+        full_name: input.full_name,
+        relationship: input.relationship,
+        phone: input.phone ?? null,
+        email: input.email ?? null,
+    };
+
+    const { error } = existing
+        ? await supabaseAdmin.from("user_related_persons").update(row).eq("id", existing.id)
+        : await supabaseAdmin.from("user_related_persons").insert(row);
     if (error) throw error;
 
     await writeAudit({
@@ -361,16 +411,13 @@ export async function updateNominee(
 }
 
 export async function clearNominee(userId: string, req?: Request): Promise<void> {
+    // Deleted, not blanked: the row IS the nominee, so removing them is a
+    // delete rather than five nulls.
     const { error } = await supabaseAdmin
-        .from("users")
-        .update({
-            nominee_full_name: null,
-            nominee_relationship: null,
-            nominee_phone: null,
-            nominee_email: null,
-            nominee_updated_at: null,
-        })
-        .eq("id", userId);
+        .from("user_related_persons")
+        .delete()
+        .eq("user_id", userId)
+        .eq("person_role", "nominee");
     if (error) throw error;
 
     await writeAudit({
@@ -395,9 +442,9 @@ export async function listRequests(
         .from("data_principal_requests")
         .select(ADMIN_COLUMNS, { count: "exact" });
 
-    if (filters.type) query = query.eq("type", filters.type);
+    if (filters.type) query = query.eq("request_type", filters.type);
     if (filters.status) query = query.eq("status", filters.status);
-    if (filters.assignedTo) query = query.eq("assigned_to", filters.assignedTo);
+    if (filters.assignedTo) query = query.eq("assigned_to_user_id", filters.assignedTo);
     if (filters.overdueOnly) {
         query = query.lt("sla_due_at", new Date().toISOString()).in("status", OPEN_STATUSES);
     }
@@ -451,7 +498,13 @@ export async function updateRequest(
         );
     }
 
-    const patch: Record<string, unknown> = { ...input };
+    // Built field by field rather than spread: the request body speaks the wire
+    // name `assigned_to`, the column is `assigned_to_user_id`, and a spread
+    // would send the wire name straight to PostgREST.
+    const patch: Database["public"]["Tables"]["data_principal_requests"]["Update"] = {};
+    if (input.status !== undefined) patch.status = input.status;
+    if (input.assigned_to !== undefined) patch.assigned_to_user_id = input.assigned_to;
+    if (input.resolution_notes !== undefined) patch.resolution_notes = input.resolution_notes;
     if (input.status === "completed") patch.completed_at = new Date().toISOString();
 
     const { error } = await supabaseAdmin
@@ -537,7 +590,7 @@ export async function approveErasure(
     const grace = graceEndsAt();
     const { error } = await supabaseAdmin
         .from("data_principal_requests")
-        .update({ status: "in_progress", grace_ends_at: grace, assigned_to: actor.id })
+        .update({ status: "in_progress", grace_ends_at: grace, assigned_to_user_id: actor.id })
         .eq("id", id);
     if (error) throw error;
 
@@ -641,7 +694,7 @@ async function findOpenErasure(userId: string): Promise<{ reference: string } | 
         .from("data_principal_requests")
         .select("reference")
         .eq("user_id", userId)
-        .eq("type", "erasure")
+        .eq("request_type", "erasure")
         .in("status", OPEN_STATUSES)
         .maybeSingle();
     if (error) throw error;
@@ -670,8 +723,7 @@ function toAdminView(row: Record<string, unknown>): PrivacyRequestAdminView {
         created_at: row.created_at as string,
         updated_at: (row.updated_at as string | null) ?? null,
         channel: row.channel as PrivacyRequestAdminView["channel"],
-        ticket_ref: (row.ticket_ref as string | null) ?? null,
-        export_object_path: (row.export_object_path as string | null) ?? null,
+        export_storage_path: (row.export_storage_path as string | null) ?? null,
         rider: unwrap(row.rider),
         assigned_to: unwrap(row.assignee),
         is_overdue: !isClosed(status) && new Date(row.sla_due_at as string) < new Date(),

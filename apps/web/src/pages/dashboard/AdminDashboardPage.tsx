@@ -41,8 +41,8 @@ const NOTIFICATION_DOT: Record<string, string> = {
 };
 
 const VEHICLE_STATUS_COLORS: Record<"light" | "dark", Record<VehicleStatus, string>> = {
-  light: { available: "#16A34A", booked: "#3B82F6", assigned: "#22C55E", maintenance: "#F59E0B", scrap: "#94A3B8" },
-  dark: { available: "#22C55E", booked: "#3B82F6", assigned: "#10B981", maintenance: "#F59E0B", scrap: "#64748B" },
+  light: { available: "#16A34A", reserved: "#3B82F6", assigned: "#22C55E", maintenance: "#F59E0B", retired: "#94A3B8" },
+  dark: { available: "#22C55E", reserved: "#3B82F6", assigned: "#10B981", maintenance: "#F59E0B", retired: "#64748B" },
 };
 
 /** "2026-03" -> "Mar" — short enough to fit a quarter-width chart's x-axis. */
@@ -53,7 +53,10 @@ function monthLabel(month: string): string {
 
 function activityTone(action: string): TimelineItem["tone"] {
   if (/approved|verified|resolved|fulfilled|completed/.test(action)) return "success";
-  if (/rejected|cancelled|failed|scrap/.test(action)) return "destructive";
+  // `scrap` matches the `vehicle.scrapped` AUDIT ACTION, which kept its name
+  // — only the vehicle STATUS was renamed to `retired`. Both are listed so a
+  // rename on either side does not quietly stop colouring these rows.
+  if (/rejected|cancelled|failed|scrap|retired/.test(action)) return "destructive";
   if (/pending|reported/.test(action)) return "warning";
   return "default";
 }
@@ -184,11 +187,11 @@ export default function AdminDashboardPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <StatCard label="Total Vehicles" value={summary.vehicles.total} icon={Bike} />
           <StatCard label="Available Vehicles" value={summary.vehicles.by_status.available} icon={Bike} tone="success" />
-          <StatCard label="Booked Vehicles" value={summary.vehicles.by_status.booked} icon={CalendarClock} tone="info" />
+          <StatCard label="Reserved Vehicles" value={summary.vehicles.by_status.reserved} icon={CalendarClock} tone="info" />
           <StatCard label="Assigned Vehicles" value={summary.vehicles.by_status.assigned} icon={Navigation} />
           <StatCard label="Active Rentals" value={summary.rides.active_count} icon={Navigation} tone="success" />
           <StatCard label="Maintenance" value={summary.vehicles.by_status.maintenance} icon={Wrench} tone="warning" />
-          <StatCard label="Scrapped" value={summary.vehicles.by_status.scrap} icon={Recycle} />
+          <StatCard label="Retired" value={summary.vehicles.by_status.retired} icon={Recycle} />
           <StatCard label="Total Riders" value={summary.riders.total} icon={Users} />
           <StatCard label="Active Plans" value={summary.plans.active_subscriptions} icon={CreditCard} />
           <StatCard label="Pending Bookings" value={summary.bookings.pending_count} icon={PackageCheck} tone="warning" />
@@ -352,9 +355,9 @@ export default function AdminDashboardPage() {
                 <div key={inv.id} className="flex items-center justify-between gap-2 border-b border-border pb-2 text-sm last:border-0 last:pb-0">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{inv.rider?.full_name ?? "—"}</p>
-                    <p className="text-xs text-muted-foreground">{formatCurrency(inv.amount_due)}</p>
+                    <p className="text-xs text-muted-foreground">{formatCurrency(inv.total_amount)}</p>
                   </div>
-                  <StatusBadge status={inv.payment_status} />
+                  <StatusBadge status={inv.payment_state} />
                 </div>
               ))
             )}

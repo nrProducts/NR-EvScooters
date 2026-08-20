@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useAuthStore } from '../store/useAuthStore';
-import { userRepository, referralRepository } from '../services';
+import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { isValidPhone, toE164 } from '../lib/authValidation';
 import { COLORS } from '../constants/theme';
@@ -52,8 +52,6 @@ export default function ProfileSetupScreen() {
   const [city, setCity] = useState(profile?.city ?? '');
   const [state, setState] = useState(profile?.state ?? '');
   const [postalCode, setPostalCode] = useState(profile?.postal_code ?? '');
-  const [referralCode, setReferralCode] = useState('');
-  const [referralNote, setReferralNote] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -114,14 +112,6 @@ export default function ProfileSetupScreen() {
         state: state.trim(),
         postal_code: postalCode.trim(),
       });
-      if (referralCode.trim()) {
-        try {
-          await referralRepository.redeem(referralCode.trim().toUpperCase());
-        } catch {
-          // Optional bonus, not a requirement — never block onboarding on this.
-          setReferralNote('Referral code invalid or expired — you can continue without it.');
-        }
-      }
       await refreshProfile();
       // Root layout routes onward once needs-profile clears.
     } catch (err) {
@@ -302,22 +292,16 @@ export default function ProfileSetupScreen() {
           onSubmitEditing={() => void save()}
         />
 
-        <FormField
-          label="Referral Code (optional)"
-          value={referralCode}
-          onChangeText={(t) => {
-            setReferralCode(t);
-            if (referralNote) setReferralNote('');
-          }}
-          placeholder="Got a code from a friend?"
-          autoCapitalize="characters"
-          hint="Enter it now to unlock your first-booking offer."
-        />
-        {referralNote ? (
-          <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold mb-4 px-1">
-            {referralNote}
-          </Text>
-        ) : null}
+        {/*
+          The Referral Code field was here.
+          Referrals are not part of the current database schema — `referrals`,
+          `referral_rewards` and `users.referral_code` have no successor, and
+          the backend module is a documented stub that refuses every call (see
+          apps/backend/src/modules/referrals/referrals.service.ts). Asking for
+          a code that can only ever come back "invalid or expired" is worse
+          than not asking, so the field is gone until referrals have a schema
+          again. See docs/final-system-audit (finding M5).
+        */}
 
         {error ? (
           <Text style={{ color: COLORS.danger }} className="text-xs font-semibold mb-4 px-1">

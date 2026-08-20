@@ -9,90 +9,183 @@ import {
     ListNotificationsFilters, NotificationRow, NotifyInput,
 } from "./notifications.types";
 
-const ROW_COLUMNS = `
-    id, user_id, channel, template, payload, status, sent_at, read_at, created_at,
-    notification_type, reference_type, reference_id, booking_id, vehicle_id, rider_id
+/**
+ * Rider-facing notifications.
+ *
+ * Reading is now a join across the three tables: the message is the rider's
+ * copy (title, body, read_at), the event says what happened, and the delivery
+ * says whether the push made it. The old single row was all three at once.
+ *
+ * The `read_at` change is the one worth knowing: it lives on the MESSAGE, not
+ * the delivery. Previously each channel had its own `read_at`, so a rider who
+ * read a notification in-app had not "read" the email copy — two rows about
+ * one thing, disagreeing.
+ */
+
+const MESSAGE_COLUMNS = `
+    id, user_id, notification_type_code, title, body, read_at, created_at,
+    notification_deliveries(id, channel, status, sent_at),
+    notification_events(notification_type_code, subject_type, subject_id, payload)
 `;
-const ADMIN_ROW_COLUMNS = `${ROW_COLUMNS}, users(id, full_name)`;
+
+const ADMIN_MESSAGE_COLUMNS = `${MESSAGE_COLUMNS}, users(id, full_name)`;
 
 function unwrap<T>(raw: unknown): T | null {
     const v = Array.isArray(raw) ? raw[0] : raw;
     return (v as T) ?? null;
 }
 
+interface RawMessageRow {
+    id: string;
+    user_id: string;
+    notification_type_code: string;
+    title: string;
+    body: string;
+    read_at: string | null;
+    created_at: string;
+    notification_deliveries: unknown;
+    notification_events: unknown;
+    users?: unknown;
+}
+
 /**
- * Given an already-inserted notifications_log row, best-effort attempts push
- * delivery and updates its status. Split out of notifyUser so notify()
- * (notify.service.ts) can reuse the exact same delivery logic for
- * admin/staff-scoped rows instead of a second, diverging copy. Never throws
- * — same contract as writeAudit; a delivery failure must not roll back the
- * business action that triggered it.
+ * Flattens a message plus its deliveries back into the one-row-per-channel
+ * shape both apps read. The push delivery is the one reported, since that is
+ * what the old inbox row always was.
+ */
+function toNotificationRow(row: RawMessageRow): NotificationRow {
+    const deliveries = (Array.isArray(row.notification_deliveries)
+        ? row.notification_deliveries
+        : []) as Array<{ channel: string; status: NotificationRow["status"]; sent_at: string | null }>;
+    const push = deliveries.find((d) => d.channel === "push") ?? deliveries[0];
+
+    const event = unwrap<{
+        subject_type: string | null; subject_id: string | null; payload: Record<string, unknown> | null;
+    }>(row.notification_events);
+    const payload = (event?.payload ?? {}) as Record<string, string | null>;
+
+    return {
+        id: row.id,
+        user_id: row.user_id,
+        channel: (push?.channel as NotificationRow["channel"]) ?? "push",
+        template: row.notification_type_code,
+        payload: {
+            title: row.title,
+            body: row.body,
+            screen: payload.screen ?? undefined,
+        },
+        status: push?.status ?? "pending",
+        sent_at: push?.sent_at ?? null,
+        read_at: row.read_at,
+        created_at: row.created_at,
+        notification_type: row.notification_type_code,
+        reference_type: event?.subject_type ?? null,
+        reference_id: event?.subject_id ?? null,
+        booking_id: payload.booking_id ?? null,
+        vehicle_id: payload.vehicle_id ?? null,
+        rider_id: payload.rider_id ?? null,
+    };
+}
+
+/**
+ * Best-effort push delivery for an already-created `notification_deliveries`
+ * row. Never throws — a delivery failure must not roll back the business
+ * action that triggered it.
+ *
+ * The token lookup changed: a rider can have several devices now
+ * (`user_devices`), so this sends to every live one rather than the single
+ * `users.push_token` that whichever device logged in last had overwritten.
  */
 export async function deliverPush(
-    rowId: string, userId: string, input: Pick<NotifyInput, "title" | "body" | "screen" | "template">,
+    deliveryId: string,
+    userId: string,
+    input: Pick<NotifyInput, "title" | "body" | "screen" | "template">,
 ): Promise<void> {
-    const { data: user, error: userError } = await supabaseAdmin
-        .from("users")
+    const { data: devices, error: deviceError } = await supabaseAdmin
+        .from("user_devices")
         .select("push_token")
-        .eq("id", userId)
-        .maybeSingle();
+        .eq("user_id", userId)
+        .is("revoked_at", null);
 
-    if (userError || !user?.push_token) return; // no token yet — row stays 'pending'
+    const tokens = (devices ?? []).map((d) => d.push_token).filter(Boolean);
+    if (deviceError || tokens.length === 0) return; // No device yet — stays 'pending'.
 
     try {
-        await sendExpoPush(user.push_token, { title: input.title, body: input.body, data: { screen: input.screen } });
+        await Promise.all(tokens.map((token) => sendExpoPush(token, {
+            title: input.title, body: input.body, data: { screen: input.screen },
+        })));
         await supabaseAdmin
-            .from("notifications_log")
+            .from("notification_deliveries")
             .update({ status: "sent", sent_at: new Date().toISOString() })
-            .eq("id", rowId);
+            .eq("id", deliveryId);
     } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
         console.error("[notifications] push delivery failed", {
-            userId,
-            template: input.template,
-            error: err instanceof Error ? err.message : err,
+            userId, template: input.template, error: message,
         });
-        await supabaseAdmin.from("notifications_log").update({ status: "failed" }).eq("id", rowId);
+        await supabaseAdmin
+            .from("notification_deliveries")
+            .update({ status: "failed", error: message })
+            .eq("id", deliveryId);
     }
 }
 
 /**
- * The one function every module calls to notify a rider. Persists first —
- * the log row is the source of truth — then best-effort attempts push
- * delivery via deliverPush. Never throws: a notification failure must not
- * roll back the business action that triggered it (same contract as
- * writeAudit).
+ * The one function every module calls to notify a rider.
+ *
+ * Three rows where there was one: the event, the rider's message, and the
+ * push delivery. Persists first — the message is the source of truth — then
+ * attempts delivery. Never throws.
  */
 export async function notifyUser(userId: string, input: NotifyInput): Promise<void> {
-    const payload = { title: input.title, body: input.body, screen: input.screen };
+    try {
+        const typeCode = input.notification_type ?? input.template;
 
-    const { data: row, error: insertError } = await supabaseAdmin
-        .from("notifications_log")
-        .insert({
-            user_id: userId,
-            channel: "push",
-            template: input.template,
-            payload,
-            status: "pending",
-            notification_type: input.notification_type ?? null,
-            reference_type: input.reference_type ?? null,
-            reference_id: input.reference_id ?? null,
-            booking_id: input.booking_id ?? null,
-            vehicle_id: input.vehicle_id ?? null,
-            rider_id: input.rider_id ?? null,
-        })
-        .select("id")
-        .single();
+        const { data: event, error: eventError } = await supabaseAdmin
+            .from("notification_events")
+            .insert({
+                notification_type_code: typeCode,
+                subject_type: input.reference_type ?? "user",
+                subject_id: input.reference_id ?? userId,
+                payload: {
+                    booking_id: input.booking_id ?? null,
+                    vehicle_id: input.vehicle_id ?? null,
+                    rider_id: input.rider_id ?? null,
+                    screen: input.screen ?? null,
+                    template: input.template,
+                },
+            })
+            .select("id")
+            .single();
+        if (eventError) throw eventError;
 
-    if (insertError || !row) {
+        const { data: message, error: messageError } = await supabaseAdmin
+            .from("notification_messages")
+            .insert({
+                notification_event_id: event.id,
+                notification_type_code: typeCode,
+                user_id: userId,
+                title: input.title,
+                body: input.body,
+            })
+            .select("id")
+            .single();
+        if (messageError) throw messageError;
+
+        const { data: delivery, error: deliveryError } = await supabaseAdmin
+            .from("notification_deliveries")
+            .insert({ notification_message_id: message.id, channel: "push", status: "pending" })
+            .select("id")
+            .single();
+        if (deliveryError) throw deliveryError;
+
+        await deliverPush(delivery.id, userId, input);
+    } catch (err) {
         console.error("[notifications] failed to record notification", {
-            userId,
-            template: input.template,
-            error: insertError?.message,
+            userId, template: input.template,
+            error: err instanceof Error ? err.message : String(err),
         });
-        return;
     }
-
-    await deliverPush(row.id, userId, input);
 }
 
 export async function listMyNotifications(
@@ -101,24 +194,26 @@ export async function listMyNotifications(
 ): Promise<Paginated<NotificationRow>> {
     const [from, to] = toRange(filters);
     const { data, error, count } = await supabaseAdmin
-        .from("notifications_log")
-        .select(ROW_COLUMNS, { count: "exact" })
-        // channel='email' rows are delivery-status tracking only (see
-        // notify.service.ts's two-row design) — never surfaced in an inbox.
-        .eq("channel", "push")
+        .from("notification_messages")
+        .select(MESSAGE_COLUMNS, { count: "exact" })
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .range(from, to);
 
     if (error) throw error;
-    return paginate((data ?? []) as unknown as NotificationRow[], count ?? 0, filters);
+    // The old `channel = 'push'` filter is gone: a message is one row now
+    // whatever channels carried it, so an inbox can no longer show duplicates.
+    return paginate(
+        ((data ?? []) as unknown as RawMessageRow[]).map(toNotificationRow),
+        count ?? 0,
+        filters,
+    );
 }
 
 export async function unreadCount(userId: string): Promise<{ count: number }> {
     const { count, error } = await supabaseAdmin
-        .from("notifications_log")
+        .from("notification_messages")
         .select("id", { count: "exact", head: true })
-        .eq("channel", "push")
         .eq("user_id", userId)
         .is("read_at", null);
 
@@ -128,21 +223,21 @@ export async function unreadCount(userId: string): Promise<{ count: number }> {
 
 export async function markRead(userId: string, id: string): Promise<NotificationRow> {
     const { data, error } = await supabaseAdmin
-        .from("notifications_log")
+        .from("notification_messages")
         .update({ read_at: new Date().toISOString() })
         .eq("id", id)
         .eq("user_id", userId)
-        .select(ROW_COLUMNS)
+        .select(MESSAGE_COLUMNS)
         .maybeSingle();
 
     if (error) throw error;
     if (!data) throw notFound("Notification not found.");
-    return data as unknown as NotificationRow;
+    return toNotificationRow(data as unknown as RawMessageRow);
 }
 
 export async function markAllRead(userId: string): Promise<void> {
     const { error } = await supabaseAdmin
-        .from("notifications_log")
+        .from("notification_messages")
         .update({ read_at: new Date().toISOString() })
         .eq("user_id", userId)
         .is("read_at", null);
@@ -157,10 +252,20 @@ export async function markAllRead(userId: string): Promise<void> {
 export async function listAllNotifications(
     filters: ListAdminNotificationsFilters,
 ): Promise<Paginated<AdminNotificationRow>> {
-    let query = supabaseAdmin.from("notifications_log").select(ADMIN_ROW_COLUMNS, { count: "exact" });
+    // Status is the DELIVERY's, so filtering it means filtering the embed, and
+    // `!inner` is what makes that restrict the message rather than null it
+    // out. The select is chosen up front rather than the query being rebuilt
+    // mid-function, so there is only ever one builder and one inferred type.
+    const select = filters.status
+        ? ADMIN_MESSAGE_COLUMNS.replace("notification_deliveries(", "notification_deliveries!inner(")
+        : ADMIN_MESSAGE_COLUMNS;
 
-    if (filters.status) query = query.eq("status", filters.status);
+    let query = supabaseAdmin
+        .from("notification_messages")
+        .select(select, { count: "exact" });
+
     if (filters.userId) query = query.eq("user_id", filters.userId);
+    if (filters.status) query = query.eq("notification_deliveries.status", filters.status);
 
     const [from, to] = toRange(filters);
     query = query.order(filters.sortBy, { ascending: filters.sortDir === "asc" }).range(from, to);
@@ -168,70 +273,111 @@ export async function listAllNotifications(
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const rows = (data ?? []) as unknown as Array<NotificationRow & { users: unknown }>;
+    const rows = (data ?? []) as unknown as RawMessageRow[];
     return paginate(
-        rows.map((row) => ({ ...row, rider: unwrap<{ id: string; full_name: string }>(row.users) })),
+        rows.map((row) => ({
+            ...toNotificationRow(row),
+            rider: unwrap<{ id: string; full_name: string }>(row.users),
+        })),
         count ?? 0,
         filters,
     );
 }
 
 /**
- * Sends a push notification to every targeted rider (explicit `user_ids`, or
- * every active rider when omitted). SMS/email broadcast isn't wired up —
- * `notification_channel` has those values in the DB, but only push actually
- * has a delivery path today (see common/push.ts); MSG91 is OTP-only.
- * Per-recipient delivery failures don't fail the whole broadcast — same
- * best-effort contract as notifyUser.
+ * Sends a push to every targeted rider (explicit `user_ids`, or every active
+ * rider when omitted). Per-recipient failures don't fail the broadcast.
+ *
+ * A broadcast is ONE event with many messages — which is what the three-table
+ * split makes expressible, and is more honest than the old N unrelated rows
+ * that happened to share a template string.
  */
 export async function broadcastNotification(
     input: BroadcastInput,
     actor: AuthContext,
 ): Promise<BroadcastResult> {
-    const targetIds = input.user_ids && input.user_ids.length > 0 ? input.user_ids : await allActiveRiderIds();
+    const targetIds = input.user_ids && input.user_ids.length > 0
+        ? input.user_ids
+        : await allActiveRiderIds();
     if (targetIds.length === 0) throw businessRule("No riders match the broadcast target.");
 
     const template = "admin_broadcast";
-    const payload = { title: input.title, body: input.body, screen: input.screen };
 
-    const { data: rows, error: insertError } = await supabaseAdmin
-        .from("notifications_log")
+    const { data: event, error: eventError } = await supabaseAdmin
+        .from("notification_events")
+        .insert({
+            notification_type_code: template,
+            subject_type: "broadcast",
+            subject_id: actor.id,
+            payload: { screen: input.screen ?? null, title: input.title },
+        })
+        .select("id")
+        .single();
+    if (eventError) throw eventError;
+
+    const { data: messages, error: messageError } = await supabaseAdmin
+        .from("notification_messages")
         .insert(targetIds.map((userId) => ({
-            user_id: userId, channel: "push" as const, template, payload, status: "pending" as const,
+            notification_event_id: event.id,
+            notification_type_code: template,
+            user_id: userId,
+            title: input.title,
+            body: input.body,
         })))
         .select("id, user_id");
-    if (insertError) throw insertError;
+    if (messageError) throw messageError;
 
-    const { data: users, error: usersError } = await supabaseAdmin
-        .from("users")
-        .select("id, push_token")
-        .in("id", targetIds);
-    if (usersError) throw usersError;
-    const tokenByUser = new Map((users ?? []).map((u) => [u.id as string, u.push_token as string | null]));
+    const { data: deliveries, error: deliveryError } = await supabaseAdmin
+        .from("notification_deliveries")
+        .insert((messages ?? []).map((m) => ({
+            notification_message_id: m.id, channel: "push" as const, status: "pending" as const,
+        })))
+        .select("id, notification_message_id");
+    if (deliveryError) throw deliveryError;
+
+    const deliveryByMessage = new Map(
+        (deliveries ?? []).map((d) => [d.notification_message_id, d.id]),
+    );
+
+    const { data: devices, error: devicesError } = await supabaseAdmin
+        .from("user_devices")
+        .select("user_id, push_token")
+        .in("user_id", targetIds)
+        .is("revoked_at", null);
+    if (devicesError) throw devicesError;
+
+    const tokensByUser = new Map<string, string[]>();
+    for (const d of devices ?? []) {
+        tokensByUser.set(d.user_id, [...(tokensByUser.get(d.user_id) ?? []), d.push_token]);
+    }
 
     let sent = 0;
     let failed = 0;
-    await Promise.all(
-        ((rows ?? []) as Array<{ id: string; user_id: string }>).map(async (row) => {
-            const token = tokenByUser.get(row.user_id);
-            if (!token) return; // no device registered yet — row stays 'pending'
-            try {
-                await sendExpoPush(token, { title: input.title, body: input.body, data: { screen: input.screen } });
-                await supabaseAdmin
-                    .from("notifications_log")
-                    .update({ status: "sent", sent_at: new Date().toISOString() })
-                    .eq("id", row.id);
-                sent += 1;
-            } catch (err) {
-                await supabaseAdmin.from("notifications_log").update({ status: "failed" }).eq("id", row.id);
-                failed += 1;
-                console.error("[notifications] broadcast delivery failed", {
-                    userId: row.user_id,
-                    error: err instanceof Error ? err.message : err,
-                });
-            }
-        }),
-    );
+    await Promise.all((messages ?? []).map(async (message) => {
+        const deliveryId = deliveryByMessage.get(message.id);
+        const tokens = tokensByUser.get(message.user_id) ?? [];
+        if (!deliveryId || tokens.length === 0) return; // No device — stays 'pending'.
+        try {
+            await Promise.all(tokens.map((token) => sendExpoPush(token, {
+                title: input.title, body: input.body, data: { screen: input.screen },
+            })));
+            await supabaseAdmin
+                .from("notification_deliveries")
+                .update({ status: "sent", sent_at: new Date().toISOString() })
+                .eq("id", deliveryId);
+            sent += 1;
+        } catch (err) {
+            const reason = err instanceof Error ? err.message : String(err);
+            await supabaseAdmin
+                .from("notification_deliveries")
+                .update({ status: "failed", error: reason })
+                .eq("id", deliveryId);
+            failed += 1;
+            console.error("[notifications] broadcast delivery failed", {
+                userId: message.user_id, error: reason,
+            });
+        }
+    }));
 
     const result: BroadcastResult = { template, targeted: targetIds.length, sent, failed };
 
@@ -240,42 +386,37 @@ export async function broadcastNotification(
         targetUserId: null,
         action: "notification.broadcast",
         entityType: "notification_broadcast",
-        entityId: template,
+        entityId: event.id,
         after: { title: input.title, ...result },
     });
 
     return result;
 }
 
+/** Role is a column now — one query where there were three tables. */
 async function allActiveRiderIds(): Promise<string[]> {
-    const { data, error } = await supabaseAdmin
-        .from("user_roles")
-        .select("user_id, roles!inner(name), users!user_roles_user_id_fkey!inner(deleted_at, account_status)")
-        .eq("roles.name", "rider")
-        .is("users.deleted_at", null)
-        .eq("users.account_status", "active");
-    if (error) throw error;
-    return [...new Set((data ?? []).map((r) => r.user_id as string))];
+    return activeIdsForRole("rider");
 }
 
 async function allActiveAdminIds(): Promise<string[]> {
+    return activeIdsForRole("admin");
+}
+
+async function activeIdsForRole(role: "rider" | "staff" | "admin"): Promise<string[]> {
     const { data, error } = await supabaseAdmin
-        .from("user_roles")
-        .select("user_id, roles!inner(name), users!user_roles_user_id_fkey!inner(deleted_at, account_status)")
-        .eq("roles.name", "admin")
-        .is("users.deleted_at", null)
-        .eq("users.account_status", "active");
+        .from("users")
+        .select("id")
+        .eq("role", role)
+        .eq("status", "active")
+        .is("deleted_at", null);
     if (error) throw error;
-    return [...new Set((data ?? []).map((r) => r.user_id as string))];
+    return (data ?? []).map((r) => r.id);
 }
 
 /**
- * Notifies every active admin — used for "staff needs to act" events (e.g. a
- * rider submitting KYC documents for review, or a maintenance ticket being
- * reported). Same best-effort contract as notifyUser: never throws, a
- * delivery failure must not roll back the business action that triggered it.
- * `excludeUserId` skips the admin who caused the event themselves (e.g. the
- * staff member who just filed the maintenance ticket).
+ * Notifies every active admin — for "staff needs to act" events. Same
+ * best-effort contract as notifyUser. `excludeUserId` skips the admin who
+ * caused the event themselves.
  */
 export async function notifyAdmins(input: NotifyInput, excludeUserId?: string): Promise<void> {
     const adminIds = await allActiveAdminIds();

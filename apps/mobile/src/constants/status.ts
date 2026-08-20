@@ -38,7 +38,7 @@ export const VERIFICATION_TONE: Record<VerificationStatus, Tone> = {
 
 export const DOC_TYPE_LABEL: Record<KycDocType, string> = {
   aadhaar: 'Aadhaar',
-  driving_license: 'Driving Licence',
+  driving_licence: 'Driving Licence',
   passport: 'Passport',
   voter_id: 'Voter ID',
   address_proof: 'Address Proof',
@@ -62,22 +62,25 @@ export const BOOKING_STATUS_LABEL: Record<BookingStatus, string> = {
   expired: 'Expired',
 };
 
+// `cancelled` is gone from `rental_status`: a rental that never really
+// happened is a booking that was cancelled, and no rental row exists for it.
 export const RENTAL_STATUS_TONE: Record<RentalStatus, Tone> = {
   active: 'primary',
   completed: 'success',
   force_ended: 'warning',
-  cancelled: 'danger',
 };
 
 export const RENTAL_STATUS_LABEL: Record<RentalStatus, string> = {
   active: 'Active',
   completed: 'Completed',
   force_ended: 'Force Ended',
-  cancelled: 'Cancelled',
 };
 
 export const MAINTENANCE_STATUS_TONE: Record<MaintenanceStatus, Tone> = {
   reported: 'warning',
+  // New: someone has looked at it and decided what happens next, which is
+  // materially different from nobody having looked yet.
+  triaged: 'warning',
   in_progress: 'primary',
   resolved: 'success',
   cancelled: 'neutral',
@@ -85,6 +88,7 @@ export const MAINTENANCE_STATUS_TONE: Record<MaintenanceStatus, Tone> = {
 
 export const MAINTENANCE_STATUS_LABEL: Record<MaintenanceStatus, string> = {
   reported: 'Reported',
+  triaged: 'Triaged',
   in_progress: 'In Progress',
   resolved: 'Resolved',
   cancelled: 'Cancelled',
@@ -123,33 +127,34 @@ export const REFUND_STATUS_LABEL: Record<BookingRefundStatus, string> = {
 export const DEPOSIT_STATUS_TONE: Record<DepositStatus, Tone> = {
   pending: 'neutral',
   held: 'primary',
-  partially_refunded: 'warning',
-  refunded: 'success',
+  released: 'success',
   forfeited: 'danger',
 };
 
+// "Released" rather than "Refunded": the deposit is no longer held, and how
+// much actually came back is the refund's business — the rider sees the
+// amount on the refund itself, which is the only place it is now recorded.
 export const DEPOSIT_STATUS_LABEL: Record<DepositStatus, string> = {
   pending: 'Pending',
   held: 'Held',
-  partially_refunded: 'Partially Refunded',
-  refunded: 'Refunded',
+  released: 'Released',
   forfeited: 'Forfeited',
 };
 
 export const VEHICLE_STATUS_TONE: Record<VehicleStatus, Tone> = {
   available: 'success',
-  booked: 'warning',
+  reserved: 'warning',
   assigned: 'primary',
   maintenance: 'neutral',
-  scrap: 'danger',
+  retired: 'danger',
 };
 
 export const VEHICLE_STATUS_LABEL: Record<VehicleStatus, string> = {
   available: 'Available',
-  booked: 'Booked',
+  reserved: 'Reserved',
   assigned: 'Assigned',
   maintenance: 'In Maintenance',
-  scrap: 'Retired',
+  retired: 'Retired',
 };
 
 export const formatDate = (iso: string | null): string => {

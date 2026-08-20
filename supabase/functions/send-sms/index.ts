@@ -15,10 +15,21 @@
 // NOTE: the MSG91 request/response logic here is intentionally kept in sync
 // with apps/backend/src/modules/auth/msg91.ts (which has the unit tests).
 // If you change one, change the other.
+//
+// ── What the new schema changed ──────────────────────────────────────────
+//
+// `auth_otp_attempts` is gone, so the per-send row this used to write has
+// nowhere to go and the Supabase client is no longer needed here at all.
+//
+// That table stored a rider's phone number against every login attempt, and
+// Supabase Auth already owns OTP generation, expiry and rate limiting — the
+// row was a second copy of a decision made elsewhere, with a 30-day
+// retention policy attached to it. Delivery failures are still visible: they
+// are logged below (status and provider type only, never the number) and
+// surfaced to Supabase Auth in the response.
 // =========================================================================
 
 import { Webhook } from "https://esm.sh/standardwebhooks@1.0.0";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const HOOK_SECRET = Deno.env.get("SEND_SMS_HOOK_SECRET") ?? "";
 const MSG91_AUTH_KEY = Deno.env.get("MSG91_AUTH_KEY") ?? "";
@@ -26,9 +37,6 @@ const MSG91_OTP_TEMPLATE_ID = Deno.env.get("MSG91_OTP_TEMPLATE_ID") ?? "";
 const MSG91_SENDER_ID = Deno.env.get("MSG91_SENDER_ID") ?? "";
 const MSG91_OTP_VAR = Deno.env.get("MSG91_OTP_VAR") ?? "otp";
 const MSG91_BASE_URL = Deno.env.get("MSG91_BASE_URL") ?? "https://control.msg91.com";
-
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 interface HookPayload {
     user: { id?: string; phone?: string };
@@ -58,22 +66,6 @@ function isMsg91Success(status: number, json: unknown): boolean {
     if (status < 200 || status >= 300) return false;
     const type = (json as { type?: string } | null)?.type;
     return type === undefined || type === "success";
-}
-
-async function logAttempt(phone: string, succeeded: boolean) {
-    if (!SUPABASE_URL || !SERVICE_ROLE) return;
-    try {
-        const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
-            auth: { autoRefreshToken: false, persistSession: false },
-        });
-        await admin.from("auth_otp_attempts").insert({
-            phone: toMsg91Mobile(phone),
-            purpose: "login",
-            succeeded,
-        });
-    } catch (_) {
-        // best-effort audit; never fail the send because logging failed
-    }
 }
 
 Deno.serve(async (req) => {
@@ -123,7 +115,6 @@ Deno.serve(async (req) => {
 
         const body = await res.json().catch(() => null);
         const ok = isMsg91Success(res.status, body);
-        await logAttempt(phone, ok);
 
         if (!ok) {
             // DPDPA: never log the raw MSG91 body. It echoes the recipient
@@ -142,7 +133,6 @@ Deno.serve(async (req) => {
         // Message only — a thrown Error can carry the request in `cause`, and
         // the request body contains the mobile number and the OTP.
         console.error("[send-sms] MSG91 request threw", (err as Error)?.message ?? "unknown");
-        await logAttempt(phone, false);
         return json({ error: { message: "SMS delivery failed. Please try again." } }, 502);
     }
 });

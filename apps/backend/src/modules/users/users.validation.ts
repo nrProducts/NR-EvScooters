@@ -1,8 +1,5 @@
 import { z } from "zod";
-import {
-    ACCOUNT_STATUSES, KYC_STATUSES, MODULE_KEYS, ROLE_NAMES, STAFF_CAPABILITIES,
-} from "../../types";
-import { PERMISSION_PROFILE_NAMES } from "../../config/permissionProfiles";
+import { KYC_STATUSES, USER_ROLES, USER_STATUSES } from "../../types";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
 
 export const uuidParam = z.object({ id: z.string().uuid("A valid user id is required.") });
@@ -60,9 +57,9 @@ export const listUsersQuery = z.object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     search: z.string().trim().min(1).max(100).optional(),
-    accountStatus: z.enum(ACCOUNT_STATUSES as [string, ...string[]]).optional(),
+    accountStatus: z.enum(USER_STATUSES as [string, ...string[]]).optional(),
     kycStatus: z.enum(KYC_STATUSES as [string, ...string[]]).optional(),
-    role: z.enum(ROLE_NAMES as [string, ...string[]]).optional(),
+    role: z.enum(USER_ROLES as [string, ...string[]]).optional(),
     staffOnly: z
         .enum(["true", "false"])
         .default("false")
@@ -84,14 +81,17 @@ export const createUserBody = z.object({
     ...addressFields,
     emergency_contact_name: personNameSchema.max(120).optional(),
     emergency_contact_phone: phoneSchema.optional(),
-    role: z.enum(ROLE_NAMES as [string, ...string[]]).default("rider"),
-    account_status: z.enum(ACCOUNT_STATUSES as [string, ...string[]]).default("active"),
+    role: z.enum(USER_ROLES as [string, ...string[]]).default("rider"),
+    account_status: z.enum(USER_STATUSES as [string, ...string[]]).default("active"),
     // Staff/admin only — an optional operator-entered identifier, not auto-generated.
     staff_code: z.string().trim().min(1).max(40).optional(),
     // Applied right after the role is set, on top of createUser()'s existing
     // admin-only gate on non-rider roles. Omitted for a rider, or for a staff
     // account the admin means to build from a blank slate ("Custom").
-    permission_profile: z.enum(PERMISSION_PROFILE_NAMES as unknown as [string, ...string[]]).optional(),
+    // A `permission_profiles.code`. Not an enum: the profiles are rows now,
+    // so the set is only knowable at runtime — the service checks it against
+    // the table and 404s on an unknown code.
+    permission_profile: z.string().trim().min(1).max(60).optional(),
 });
 
 /** Fields an admin/staff member may change on someone else. */
@@ -141,46 +141,43 @@ export const updateStatusBody = z
         path: ["reason"],
     });
 
-export const updateRolesBody = z.object({
-    roles: z
-        .array(z.enum(ROLE_NAMES as [string, ...string[]]))
-        .min(1, "A user must keep at least one role.")
-        .max(ROLE_NAMES.length),
-});
+/**
+ * A user has exactly one role now. The legacy `{ roles: [...] }` shape is
+ * still accepted so the console keeps working until Stage 10 updates it;
+ * anything longer than one element is rejected rather than silently truncated.
+ */
+export const updateRolesBody = z
+    .object({
+        role: z.enum(USER_ROLES as [string, ...string[]]).optional(),
+        roles: z
+            .array(z.enum(USER_ROLES as [string, ...string[]]))
+            .length(1, "A user has exactly one role.")
+            .optional(),
+    })
+    .refine((v) => !!v.role || !!v.roles, "A role is required.");
 
 /**
- * Empty array is valid here (unlike roles) — "revoke every module" is a
- * legitimate call. Each module's `actions` is validated against
- * MODULE_ACTIONS in the service layer (isValidModuleAction) rather than
- * here, since the valid set is per-module, not global — zod would need a
- * discriminated union per module key to express that, which buys nothing
- * over a single service-layer check shared with applyPermissionProfile.
+ * Empty array is valid — "revoke every module" is a legitimate call.
+ *
+ * Neither the module keys nor the actions are enumerated here any more. They
+ * are rows in `modules` and `permissions`, so zod cannot know them at build
+ * time; `replaceModulePermissions` resolves every `<module>.<action>` pair
+ * against the table and reports the unknown ones together. The bounds below
+ * are there to stop an absurd payload, not to validate content.
  */
 export const updatePermissionsBody = z.object({
     modules: z
         .array(
             z.object({
-                module_key: z.enum(MODULE_KEYS as [string, ...string[]]),
+                module_key: z.string().trim().min(1).max(40),
                 actions: z.array(z.string().trim().min(1).max(40)).max(20),
             }),
         )
-        .max(MODULE_KEYS.length),
+        .max(50),
 });
 
 export const applyPermissionProfileBody = z.object({
-    profile: z.enum(PERMISSION_PROFILE_NAMES as unknown as [string, ...string[]]),
-});
-
-/**
- * Capabilities are replaced wholesale too, so an empty array is likewise the
- * valid way to revoke everything — unlike roles, where a user must keep at
- * least one. Separate from modules on purpose: see the two-layer note in
- * types/index.ts.
- */
-export const updateCapabilitiesBody = z.object({
-    capabilities: z
-        .array(z.enum(STAFF_CAPABILITIES as unknown as [string, ...string[]]))
-        .max(STAFF_CAPABILITIES.length),
+    profile: z.string().trim().min(1).max(60),
 });
 
 /** Normalises an email the same way the unique index does (lower(email)). */

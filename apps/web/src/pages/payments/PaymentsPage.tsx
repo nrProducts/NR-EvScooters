@@ -21,15 +21,31 @@ import { ApiError } from "@/services/api/httpClient";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
-import type { Invoice, InvoiceStatus, PaymentStatus, PaymentType } from "@/types";
+import type { Invoice, InvoiceStatus, InvoicePaymentState, InvoicePurpose } from "@/types";
 
-const STATUS_OPTIONS: (InvoiceStatus | "all")[] = ["all", "draft", "issued", "paid", "overdue", "void"];
-const PAYMENT_STATUS_OPTIONS: (PaymentStatus | "all")[] = [
-  "all", "pending", "processing", "succeeded", "failed", "refunded",
+/**
+ * `invoice_status` has THREE values. "paid" and "overdue" were never invoice
+ * statuses in the new schema — they are properties of the money, and they
+ * live in the payment-state filter below.
+ */
+const STATUS_OPTIONS: (InvoiceStatus | "all")[] = ["all", "draft", "issued", "void"];
+
+/** Derived by the backend from the allocations. There is no stored column. */
+const PAYMENT_STATE_OPTIONS: (InvoicePaymentState | "all")[] = [
+  "all", "paid", "partial", "overdue", "unpaid",
 ];
-const PAYMENT_TYPE_OPTIONS: (PaymentType | "all")[] = [
-  "all", "rental", "deposit", "damage", "penalty", "refund", "other",
+
+/** Was "payment type". An invoice is raised for a REASON. */
+const PURPOSE_OPTIONS: (InvoicePurpose | "all")[] = [
+  "all", "initial", "subscription_period", "settlement", "adhoc",
 ];
+
+const PURPOSE_LABELS: Record<InvoicePurpose, string> = {
+  initial: "Initial",
+  subscription_period: "Plan renewal",
+  settlement: "Return settlement",
+  adhoc: "Ad hoc",
+};
 
 export default function PaymentsPage() {
   const user = useAuthStore((s) => s.user);
@@ -37,16 +53,16 @@ export default function PaymentsPage() {
   const [searchParams] = useSearchParams();
   const bookingId = searchParams.get("bookingId") ?? undefined;
   const [status, setStatus] = useState<InvoiceStatus | "all">("all");
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | "all">("all");
-  const [paymentType, setPaymentType] = useState<PaymentType | "all">("all");
+  const [paymentState, setPaymentState] = useState<InvoicePaymentState | "all">("all");
+  const [purpose, setPurpose] = useState<InvoicePurpose | "all">("all");
   const [page, setPage] = useState(1);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [refundTarget, setRefundTarget] = useState<Invoice | null>(null);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useInvoices({
-    status, paymentStatus, paymentType, bookingId, page, pageSize: 8,
-    sortBy: sort.by as "created_at" | "amount_due" | "due_date", sortDir: sort.dir,
+    status, paymentState, purpose, bookingId, page, pageSize: 8,
+    sortBy: sort.by as "created_at" | "total_amount" | "due_on", sortDir: sort.dir,
   });
 
   const columns: DataTableColumn<Invoice>[] = [
@@ -61,14 +77,40 @@ export default function PaymentsPage() {
       ),
     },
     {
-      header: "Type",
-      key: "payment_type",
-      render: (inv) => <span className="capitalize text-sm">{inv.payment_type ?? "—"}</span>,
+      header: "Invoice",
+      key: "invoice_number",
+      render: (inv) => (
+        <div className="min-w-0">
+          <p className="truncate font-mono text-xs">{inv.invoice_number}</p>
+          <p className="truncate text-xs text-muted-foreground">{PURPOSE_LABELS[inv.purpose]}</p>
+        </div>
+      ),
+      hideOnMobile: true,
     },
-    { header: "Amount", key: "amount", sortKey: "amount_due", render: (inv) => formatCurrency(inv.amount_due) },
+    {
+      header: "Amount",
+      key: "amount",
+      sortKey: "total_amount",
+      render: (inv) => (
+        <div className="min-w-0">
+          <p>{formatCurrency(inv.total_amount)}</p>
+          {inv.balance_amount > 0 && inv.allocated_amount > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {formatCurrency(inv.balance_amount)} outstanding
+            </p>
+          )}
+        </div>
+      ),
+    },
     { header: "Status", key: "status", render: (inv) => <StatusBadge status={inv.status} /> },
-    { header: "Payment", key: "payment_status", render: (inv) => <StatusBadge status={inv.payment_status} /> },
-    { header: "Due", key: "due_date", sortKey: "due_date", render: (inv) => formatDate(inv.due_date), hideOnMobile: true },
+    { header: "Payment", key: "payment_state", render: (inv) => <StatusBadge status={inv.payment_state} /> },
+    {
+      header: "Due",
+      key: "due_on",
+      sortKey: "due_on",
+      render: (inv) => (inv.due_on ? formatDate(inv.due_on) : "—"),
+      hideOnMobile: true,
+    },
     { header: "Created", key: "created_at", sortKey: "created_at", render: (inv) => formatDate(inv.created_at), hideOnMobile: true },
     {
       header: "Actions",
@@ -84,21 +126,27 @@ export default function PaymentsPage() {
             <DropdownMenuItem onClick={() => setDetailId(inv.id)}>
               <Eye className="mr-2 h-4 w-4" /> View details
             </DropdownMenuItem>
-            {inv.payment_status === "succeeded" && canRefund && (
+            {inv.payment_state === "paid" && canRefund && (
               <DropdownMenuItem onClick={() => setRefundTarget(inv)}>
                 <Undo2 className="mr-2 h-4 w-4" /> Refund
               </DropdownMenuItem>
             )}
-            {inv.booking_id && (
+            {/*
+              `invoices.booking_id` is gone — an invoice belongs to the
+              SUBSCRIPTION, which belongs to the booking. The rider is the
+              stable handle both links actually wanted, so both key on that
+              rather than reaching a booking through two hops.
+            */}
+            {inv.rider && (
               <DropdownMenuItem asChild>
-                <Link to={`/payments?bookingId=${inv.booking_id}`} onClick={(e) => e.stopPropagation()}>
+                <Link to={`/payments?userId=${inv.rider.id}`} onClick={(e) => e.stopPropagation()}>
                   <Eye className="mr-2 h-4 w-4" /> View payment history
                 </Link>
               </DropdownMenuItem>
             )}
-            {inv.booking_id && inv.payment_type === "damage" && (
+            {inv.rental_id && (
               <DropdownMenuItem asChild>
-                <Link to={`/damages?bookingId=${inv.booking_id}`} onClick={(e) => e.stopPropagation()}>
+                <Link to={`/damages?rentalId=${inv.rental_id}`} onClick={(e) => e.stopPropagation()}>
                   <Eye className="mr-2 h-4 w-4" /> View damage
                 </Link>
               </DropdownMenuItem>
@@ -140,19 +188,19 @@ export default function PaymentsPage() {
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
           <Select
-            value={paymentType}
+            value={purpose}
             onValueChange={(v) => {
-              setPaymentType(v as PaymentType | "all");
+              setPurpose(v as InvoicePurpose | "all");
               setPage(1);
             }}
           >
             <SelectTrigger className="sm:w-48">
-              <SelectValue placeholder="Payment type" />
+              <SelectValue placeholder="Purpose" />
             </SelectTrigger>
             <SelectContent>
-              {PAYMENT_TYPE_OPTIONS.map((t) => (
-                <SelectItem key={t} value={t} className="capitalize">
-                  {t === "all" ? "All payment types" : t}
+              {PURPOSE_OPTIONS.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t === "all" ? "All purposes" : PURPOSE_LABELS[t]}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -176,19 +224,19 @@ export default function PaymentsPage() {
             </SelectContent>
           </Select>
           <Select
-            value={paymentStatus}
+            value={paymentState}
             onValueChange={(v) => {
-              setPaymentStatus(v as PaymentStatus | "all");
+              setPaymentState(v as InvoicePaymentState | "all");
               setPage(1);
             }}
           >
             <SelectTrigger className="sm:w-48">
-              <SelectValue placeholder="Payment status" />
+              <SelectValue placeholder="Payment state" />
             </SelectTrigger>
             <SelectContent>
-              {PAYMENT_STATUS_OPTIONS.map((s) => (
+              {PAYMENT_STATE_OPTIONS.map((s) => (
                 <SelectItem key={s} value={s} className="capitalize">
-                  {s === "all" ? "All payment statuses" : s}
+                  {s === "all" ? "All payment states" : s}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -254,35 +302,48 @@ function InvoiceDetailDialog({
               <div className="space-y-1 rounded-lg border border-border p-3">
                 {invoice.items.map((item) => (
                   <div key={item.id} className="flex items-center justify-between text-xs">
-                    <span className={item.item_type === "discount" ? "text-success" : "text-muted-foreground"}>
-                      {item.label}
+                    {/*
+                      `invoice_item_type` is plan_fee / adjustment / deposit.
+                      There is no "discount" line type any more — a discount is
+                      an `adjustment` with a NEGATIVE amount, which is what let
+                      the old charge/discount pair collapse into one signed
+                      path. So the sign is read off the amount, not the type.
+                    */}
+                    <span className={item.amount < 0 ? "text-success" : "text-muted-foreground"}>
+                      {item.description}
                     </span>
-                    <span className="font-medium">
-                      {item.item_type === "discount" ? "-" : ""}{formatCurrency(item.amount)}
-                    </span>
+                    <span className="font-medium">{formatCurrency(item.amount)}</span>
                   </div>
                 ))}
                 <div className="mt-1 flex items-center justify-between border-t border-border pt-1 text-sm font-semibold">
                   <span>Total</span>
-                  <span>{formatCurrency(invoice.amount_due)}</span>
+                  <span>{formatCurrency(invoice.total_amount)}</span>
                 </div>
               </div>
             ) : (
-              <Row label="Amount due" value={formatCurrency(invoice.amount_due)} />
+              <Row label="Total" value={formatCurrency(invoice.total_amount)} />
             )}
+            <Row label="Invoice number" value={invoice.invoice_number} />
             <Row label="Invoice status" value={<StatusBadge status={invoice.status} />} />
-            <Row label="Payment status" value={<StatusBadge status={invoice.payment_status} />} />
+            <Row label="Payment state" value={<StatusBadge status={invoice.payment_state} />} />
+            <Row label="Allocated" value={formatCurrency(invoice.allocated_amount)} />
+            <Row label="Outstanding" value={formatCurrency(invoice.balance_amount)} />
             <Row label="Payment method" value={invoice.payment_method ?? "—"} />
             <Row label="Gateway reference" value={invoice.gateway_ref ?? "—"} />
-            <Row label="Due date" value={formatDate(invoice.due_date)} />
+            <Row label="Due date" value={invoice.due_on ? formatDate(invoice.due_on) : "—"} />
             <Row label="Paid at" value={invoice.paid_at ? formatDate(invoice.paid_at) : "—"} />
             <Row label="Plan" value={invoice.plan?.name ?? "—"} />
-            <Row label="Vehicle" value={invoice.vehicle ? `${invoice.vehicle.name} (${invoice.vehicle.registration_number})` : "—"} />
+            <Row
+              label="Vehicle"
+              value={invoice.vehicle
+                ? `${invoice.vehicle.display_name ?? "Scooter"} (${invoice.vehicle.registration_number})`
+                : "—"}
+            />
           </div>
         )}
 
         <DialogFooter>
-          {invoice?.payment_status === "succeeded" && canRefund && (
+          {invoice?.payment_state === "paid" && canRefund && (
             <Button variant="outline" onClick={() => onRefund(invoice)}>
               <Undo2 className="h-4 w-4" /> Refund
             </Button>
@@ -308,7 +369,7 @@ function RefundDialog({ invoice, onOpenChange }: { invoice: Invoice | null; onOp
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Refund {invoice ? formatCurrency(invoice.amount_due) : ""}?</DialogTitle>
+          <DialogTitle>Refund {invoice ? formatCurrency(invoice.allocated_amount) : ""}?</DialogTitle>
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground">

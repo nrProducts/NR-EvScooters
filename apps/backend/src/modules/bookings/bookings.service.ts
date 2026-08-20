@@ -2,110 +2,67 @@ import { supabaseAdmin } from "../../config/supabase";
 import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
-import { addDays } from "../../common/dates";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { hasActiveRentalForUser } from "../users/users.service";
-import { computeLateReturnPenalty, planExpiryFor } from "../rentals/rentals.service";
+import { computeLateReturnPenalty } from "../rentals/rentals.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
-import { getDepositForBookingOrNull } from "../deposits/deposits.service";
+import { getDepositForSubscriptionOrNull } from "../deposits/deposits.service";
 import { initiateCancellationRefund } from "../refunds/refunds.service";
-import { generateWeeklyInvoice } from "../billing/billing.service";
-import { computeLateRenewalFee } from "../payments/renewalFee";
+import { generatePeriodInvoice } from "../billing/billing.service";
+import { computeLateRenewalFee, lateFeeOverrideCode } from "../payments/renewalFee";
+import { setLateFeeOverride as setSubscriptionLateFeeOverride } from "../subscriptions/subscriptions.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     ACTIVE_BOOKING_STATUSES, AvailableVehicleView, BookingActiveRental, BookingHistoryFilters,
-    BookingRefundStatus, BookingStatus, BookingView, CancelBookingInput, ConfirmPickupInput, CreateBookingInput,
-    PickupBookingView, PickupQueueFilters,
+    BookingLifecycleStatus, BookingRefundStatus, BookingStatus, BookingView, CancelBookingInput,
+    ConfirmPickupInput, CreateBookingInput, PickupBookingView, PickupQueueFilters,
 } from "./bookings.types";
+import { businessToday, endOfBusinessDay } from "../../common/dates";
 import {
     FREE_CANCELLATION_GRACE_MINUTES, FREE_CANCELLATION_NOTICE_DAYS, LATE_CANCELLATION_PENALTY_RATE,
 } from "./cancellation.constants";
 
-const CANCELLATION_COLUMNS = `
-    cancelled_at, cancellation_reason, plan_price_at_cancellation,
-    cancellation_penalty_amount, refund_amount, refund_status,
-    refund_initiated_at, refund_completed_at, refund_transaction_id
-`;
-
 /**
- * Recurring-billing state — see 20260810100300_booking_plan_billing.sql,
- * widened by 20260819100000_plan_renewal_scheduling.sql for the two-phase
- * "pay now, activate later" renewal design (renewal_status/scheduled_*) and
- * the per-booking late-fee override.
+ * Bookings.
+ *
+ * The booking row is now a reservation and nothing else, so most of what this
+ * module reports no longer lives on it. Rather than making every caller issue
+ * four extra queries, the assembly happens here: {@link loadBookingContext}
+ * fetches the subscription, its current and scheduled periods, its pauses, the
+ * cancellation, the refund and the live rental for a whole page of bookings in
+ * one batch, and {@link toBookingView} folds them into the flat shape both
+ * apps already read.
+ *
+ * That batching is not incidental. The old `BOOKING_COLUMNS` embed pulled all
+ * of this through foreign keys on the booking itself; without it, the obvious
+ * translation would be an N+1 on every list endpoint in the admin console.
  */
-const PLAN_BILLING_COLUMNS = `
-    plan_status, plan_activated_at, plan_duration_days, deposit_amount_at_booking,
-    current_period_start, next_due_at, plan_paused_at, plan_paused_days_total,
-    renewal_status, scheduled_start_date, scheduled_duration_days, late_fee_override
-`;
-
-/**
- * The rental this booking's handover opened (bookings.active_rental_id) —
- * just enough of rentals' return-request/settlement state (rentals.types.ts's
- * RentalReturnFields) for the Rental Operations screen to know whether a
- * return is pending, without a second round trip. `!inner` swapped in by
- * pickupBookingColumns() below turns this from a left join into a filter.
- */
-const ACTIVE_RENTAL_COLUMNS = `
-    id, status, started_at, return_requested_at, return_reason, return_feedback, return_due_at, return_approved_at
-`;
 
 const BOOKING_COLUMNS = `
-    id, status, start_day, created_at, vehicle_id, referral_discount_amount,
-    ${CANCELLATION_COLUMNS},
-    ${PLAN_BILLING_COLUMNS},
-    vehicle_models(id, name),
-    stations(id, name, code, lat, lng),
-    plans(id, name, billing_cycle, price, duration_days, deposit_amount),
-    vehicles(id, name, registration_number, battery_percentage, status),
-    active_rental:rentals!bookings_active_rental_id_fkey(${ACTIVE_RENTAL_COLUMNS})
+    id, user_id, status, requested_start_on, created_at, held_vehicle_id, hold_expires_at,
+    plan_price_snapshot, duration_days_snapshot, deposit_amount_snapshot,
+    vehicle_models:plans(vehicle_models(id, name)),
+    hubs(id, name, code, latitude, longitude),
+    plans(id, name, billing_period),
+    vehicles:held_vehicle_id(id, display_name, registration_number, status, vehicle_models(name))
 `;
-
-type RawActiveRental = {
-    id: string;
-    status: string;
-    started_at: string;
-    return_requested_at: string | null;
-    return_reason: string | null;
-    return_feedback: string | null;
-    return_due_at: string | null;
-    return_approved_at: string | null;
-};
 
 type RawBookingRow = {
     id: string;
+    user_id: string;
     status: BookingStatus;
-    start_day: string;
+    requested_start_on: string;
     created_at: string;
-    vehicle_id: string | null;
-    referral_discount_amount: number | null;
-    cancelled_at: string | null;
-    cancellation_reason: string | null;
-    plan_price_at_cancellation: number | null;
-    cancellation_penalty_amount: number | null;
-    refund_amount: number | null;
-    refund_status: BookingRefundStatus | null;
-    refund_initiated_at: string | null;
-    refund_completed_at: string | null;
-    refund_transaction_id: string | null;
-    plan_status: BookingView["plan_status"];
-    plan_activated_at: string | null;
-    plan_duration_days: number | null;
-    deposit_amount_at_booking: number | string | null;
-    current_period_start: string | null;
-    next_due_at: string | null;
-    plan_paused_at: string | null;
-    plan_paused_days_total: number;
-    renewal_status: BookingView["renewal_status"];
-    scheduled_start_date: string | null;
-    scheduled_duration_days: number | null;
-    late_fee_override: number | string | null;
+    held_vehicle_id: string | null;
+    hold_expires_at: string | null;
+    plan_price_snapshot: number | string;
+    duration_days_snapshot: number;
+    deposit_amount_snapshot: number | string;
     vehicle_models: unknown;
-    stations: unknown;
+    hubs: unknown;
     plans: unknown;
     vehicles: unknown;
-    active_rental: unknown;
 };
 
 function unwrap<T>(raw: unknown): T | null {
@@ -113,27 +70,268 @@ function unwrap<T>(raw: unknown): T | null {
     return (v as T) ?? null;
 }
 
-function toActiveRental(raw: unknown): BookingActiveRental | null {
-    const row = unwrap<RawActiveRental>(raw);
-    if (!row) return null;
-    return {
-        id: row.id,
-        status: row.status,
-        started_at: row.started_at,
-        return_requested_at: row.return_requested_at ?? null,
-        return_reason: row.return_reason ?? null,
-        return_feedback: row.return_feedback ?? null,
-        return_due_at: row.return_due_at ?? null,
-        return_approved_at: row.return_approved_at ?? null,
-    };
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+// ---------------------------------------------------------------------------
+// Context assembly — everything that used to be a booking column
+// ---------------------------------------------------------------------------
+
+interface BookingContext {
+    subscriptionId: string | null;
+    planStatus: BookingView["plan_status"];
+    /** True when the subscription has ended — what the view reports as `completed`. */
+    subscriptionEnded: boolean;
+    planActivatedAt: string | null;
+    planDurationDays: number | null;
+    currentPeriodStart: string | null;
+    nextDueAt: string | null;
+    pausedAt: string | null;
+    pausedDaysTotal: number;
+    renewalStatus: "none" | "scheduled";
+    scheduledStartDate: string | null;
+    scheduledDurationDays: number | null;
+    lateFeeOverride: number | null;
+    referralDiscountAmount: number | null;
+    cancelledAt: string | null;
+    cancellationReason: string | null;
+    cancellationPenaltyAmount: number | null;
+    refundAmount: number | null;
+    refundStatus: BookingRefundStatus | null;
+    refundInitiatedAt: string | null;
+    refundCompletedAt: string | null;
+    refundTransactionId: string | null;
+    activeRental: BookingActiveRental | null;
+    /** The vehicle the rental currently holds, once riding. */
+    currentVehicleId: string | null;
+}
+
+const EMPTY_CONTEXT: BookingContext = {
+    subscriptionId: null, planStatus: null, subscriptionEnded: false, planActivatedAt: null,
+    planDurationDays: null, currentPeriodStart: null, nextDueAt: null, pausedAt: null,
+    pausedDaysTotal: 0, renewalStatus: "none", scheduledStartDate: null,
+    scheduledDurationDays: null, lateFeeOverride: null, referralDiscountAmount: null,
+    cancelledAt: null, cancellationReason: null, cancellationPenaltyAmount: null,
+    refundAmount: null, refundStatus: null, refundInitiatedAt: null, refundCompletedAt: null,
+    refundTransactionId: null, activeRental: null, currentVehicleId: null,
+};
+
+/** `refunds.status` → the vocabulary the clients already speak. */
+function toRefundStatus(status: string | null | undefined): BookingRefundStatus | null {
+    if (!status) return null;
+    if (status === "succeeded") return "processed";
+    if (status === "pending") return "pending";
+    if (status === "processing") return "processing";
+    if (status === "failed") return "failed";
+    return null;
 }
 
 /**
- * Live estimate of the late-return fee that WOULD be settled if this
- * booking's pending return were approved right now — same helper
- * completeRide's settlement uses (rentals.service.ts), just not written
- * anywhere. return_due_at is guaranteed non-null whenever return_requested_at
- * is (rentals_return_request_chk), so no expires_at fallback is needed here.
+ * Whole days a scheduled period covers, inclusive of both ends — the direct
+ * equivalent of the deleted `scheduled_duration_days` column.
+ */
+function inclusiveDays(startsOn: string, endsOn: string): number {
+    const start = Date.parse(`${startsOn}T00:00:00Z`);
+    const end = Date.parse(`${endsOn}T00:00:00Z`);
+    if (Number.isNaN(start) || Number.isNaN(end)) return 0;
+    return Math.round((end - start) / 86_400_000) + 1;
+}
+
+/**
+ * Everything a booking used to carry itself, for a whole page at once.
+ *
+ * Six queries regardless of page size, rather than six per row.
+ */
+async function loadBookingContext(bookingIds: string[]): Promise<Map<string, BookingContext>> {
+    const contexts = new Map<string, BookingContext>();
+    if (bookingIds.length === 0) return contexts;
+
+    for (const id of bookingIds) contexts.set(id, { ...EMPTY_CONTEXT });
+
+    const [subsRes, cancellationsRes] = await Promise.all([
+        supabaseAdmin
+            .from("subscriptions")
+            .select("id, booking_id, status, started_on, duration_days_snapshot")
+            .in("booking_id", bookingIds),
+        supabaseAdmin
+            .from("booking_cancellations")
+            .select("booking_id, cancelled_at, reason, penalty_amount, refund_id")
+            .in("booking_id", bookingIds),
+    ]);
+    if (subsRes.error) throw subsRes.error;
+    if (cancellationsRes.error) throw cancellationsRes.error;
+
+    const bookingBySubscription = new Map<string, string>();
+    for (const sub of subsRes.data ?? []) {
+        const ctx = contexts.get(sub.booking_id);
+        if (!ctx) continue;
+        bookingBySubscription.set(sub.id, sub.booking_id);
+        ctx.subscriptionId = sub.id;
+        ctx.planActivatedAt = sub.started_on;
+        ctx.planDurationDays = sub.duration_days_snapshot;
+        ctx.subscriptionEnded = sub.status === "ended" || sub.status === "cancelled";
+        ctx.planStatus =
+            sub.status === "active" || sub.status === "past_due" || sub.status === "paused"
+                ? sub.status
+                : null;
+    }
+
+    const refundIds = (cancellationsRes.data ?? [])
+        .map((c) => c.refund_id)
+        .filter((id): id is string => !!id);
+
+    const subscriptionIds = [...bookingBySubscription.keys()];
+
+    const [periodsRes, pausesRes, rentalsRes, overridesRes, refundsRes, adjustmentsRes] =
+        await Promise.all([
+            subscriptionIds.length
+                ? supabaseAdmin
+                    .from("subscription_periods")
+                    .select("subscription_id, status, starts_on, ends_on, due_on")
+                    .in("subscription_id", subscriptionIds)
+                    .in("status", ["current", "scheduled"])
+                : Promise.resolve({ data: [], error: null } as const),
+            subscriptionIds.length
+                ? supabaseAdmin
+                    .from("subscription_pauses")
+                    .select("subscription_id, paused_at, resumed_at, days_paused")
+                    .in("subscription_id", subscriptionIds)
+                : Promise.resolve({ data: [], error: null } as const),
+            subscriptionIds.length
+                ? supabaseAdmin
+                    .from("rentals")
+                    .select(`
+                        id, subscription_id, status, picked_up_at, due_back_at,
+                        rental_returns(requested_at, requested_reason, rider_notes, due_back_at, approved_at),
+                        rental_vehicle_assignments(vehicle_id, released_at)
+                    `)
+                    .in("subscription_id", subscriptionIds)
+                    .order("picked_up_at", { ascending: false })
+                : Promise.resolve({ data: [], error: null } as const),
+            subscriptionIds.length
+                ? supabaseAdmin
+                    .from("pricing_rules")
+                    .select("scope_ref_id, amount")
+                    .eq("scope", "subscription")
+                    .eq("is_active", true)
+                    .in("code", subscriptionIds.map(lateFeeOverrideCode))
+                : Promise.resolve({ data: [], error: null } as const),
+            refundIds.length
+                ? supabaseAdmin
+                    .from("refunds")
+                    .select("id, amount, status, initiated_at, completed_at, gateway_refund_id")
+                    .in("id", refundIds)
+                : Promise.resolve({ data: [], error: null } as const),
+            subscriptionIds.length
+                ? supabaseAdmin
+                    .from("subscription_adjustments")
+                    .select("subscription_id, amount, code_snapshot")
+                    .in("subscription_id", subscriptionIds)
+                    .like("code_snapshot", "referral%")
+                : Promise.resolve({ data: [], error: null } as const),
+        ]);
+    if (periodsRes.error) throw periodsRes.error;
+    if (pausesRes.error) throw pausesRes.error;
+    if (rentalsRes.error) throw rentalsRes.error;
+    if (overridesRes.error) throw overridesRes.error;
+    if (refundsRes.error) throw refundsRes.error;
+    if (adjustmentsRes.error) throw adjustmentsRes.error;
+
+    const ctxFor = (subscriptionId: string | null): BookingContext | undefined => {
+        if (!subscriptionId) return undefined;
+        const bookingId = bookingBySubscription.get(subscriptionId);
+        return bookingId ? contexts.get(bookingId) : undefined;
+    };
+
+    for (const period of periodsRes.data ?? []) {
+        const ctx = ctxFor(period.subscription_id);
+        if (!ctx) continue;
+        if (period.status === "current") {
+            ctx.currentPeriodStart = period.starts_on;
+            ctx.nextDueAt = period.due_on;
+        } else {
+            ctx.renewalStatus = "scheduled";
+            ctx.scheduledStartDate = period.starts_on;
+            ctx.scheduledDurationDays = inclusiveDays(period.starts_on, period.ends_on);
+        }
+    }
+
+    for (const pause of pausesRes.data ?? []) {
+        const ctx = ctxFor(pause.subscription_id);
+        if (!ctx) continue;
+        ctx.pausedDaysTotal += pause.days_paused ?? 0;
+        if (!pause.resumed_at) ctx.pausedAt = pause.paused_at;
+    }
+
+    for (const rental of rentalsRes.data ?? []) {
+        const ctx = ctxFor(rental.subscription_id);
+        // Newest first, so the first rental seen per subscription is the live one.
+        if (!ctx || ctx.activeRental) continue;
+
+        const ret = unwrap<{
+            requested_at: string | null; requested_reason: string | null; rider_notes: string | null;
+            due_back_at: string | null; approved_at: string | null;
+        }>(rental.rental_returns);
+
+        ctx.activeRental = {
+            id: rental.id,
+            status: rental.status,
+            started_at: rental.picked_up_at,
+            return_requested_at: ret?.requested_at ?? null,
+            return_reason: ret?.requested_reason ?? null,
+            return_feedback: ret?.rider_notes ?? null,
+            // An approved return can move the due date; the rental's own is
+            // the fallback. This is effectiveDueAt(), inlined.
+            return_due_at: ret?.due_back_at ?? rental.due_back_at,
+            return_approved_at: ret?.approved_at ?? null,
+        };
+
+        const assignments = (Array.isArray(rental.rental_vehicle_assignments)
+            ? rental.rental_vehicle_assignments
+            : []) as Array<{ vehicle_id: string; released_at: string | null }>;
+        ctx.currentVehicleId = assignments.find((a) => !a.released_at)?.vehicle_id ?? null;
+    }
+
+    for (const rule of overridesRes.data ?? []) {
+        const ctx = ctxFor(rule.scope_ref_id);
+        if (ctx) ctx.lateFeeOverride = Number(rule.amount);
+    }
+
+    for (const adjustment of adjustmentsRes.data ?? []) {
+        const ctx = ctxFor(adjustment.subscription_id);
+        // Discounts are stored negative; the API has always reported the
+        // referral discount as a positive amount deducted.
+        if (ctx) ctx.referralDiscountAmount = Math.abs(Number(adjustment.amount));
+    }
+
+    const refundById = new Map((refundsRes.data ?? []).map((r) => [r.id, r]));
+    for (const cancellation of cancellationsRes.data ?? []) {
+        const ctx = contexts.get(cancellation.booking_id);
+        if (!ctx) continue;
+        ctx.cancelledAt = cancellation.cancelled_at;
+        ctx.cancellationReason = cancellation.reason;
+        ctx.cancellationPenaltyAmount = Number(cancellation.penalty_amount);
+
+        const refund = cancellation.refund_id ? refundById.get(cancellation.refund_id) : undefined;
+        if (refund) {
+            ctx.refundAmount = Number(refund.amount);
+            ctx.refundStatus = toRefundStatus(refund.status);
+            ctx.refundInitiatedAt = refund.initiated_at;
+            ctx.refundCompletedAt = refund.completed_at;
+            ctx.refundTransactionId = refund.gateway_refund_id;
+        } else {
+            // A cancellation with no refund row owed nothing.
+            ctx.refundAmount = 0;
+            ctx.refundStatus = "not_required";
+        }
+    }
+
+    return contexts;
+}
+
+/**
+ * Live estimate of the late-return fee that WOULD be settled if this booking's
+ * pending return were approved right now — the same helper the settlement
+ * uses, just not written anywhere.
  */
 function toReturnLateFeePreview(activeRental: BookingActiveRental | null): BookingView["return_late_fee_preview"] {
     if (!activeRental?.return_requested_at) return null;
@@ -141,18 +339,93 @@ function toReturnLateFeePreview(activeRental: BookingActiveRental | null): Booki
     return { days_late: charge.daysLate, penalty_amount: charge.penaltyAmount, fee_per_day: charge.feePerDay };
 }
 
-/**
- * Best-effort call to allocate_vehicle_for_booking() (20260727095801) — finds
- * a free unit matching the booking's model/station and reserves it
- * ('booked'). Never throws: a booking with no vehicle available yet is still
- * a valid booking, just unassigned until one frees up.
- */
-async function tryAllocateVehicle(bookingId: string): Promise<void> {
-    const { error } = await supabaseAdmin.rpc("allocate_vehicle_for_booking", { p_booking_id: bookingId });
-    if (error) {
-        console.error("[bookings] allocate_vehicle_for_booking failed", { bookingId, error: error.message });
-    }
+export function toBookingView(row: RawBookingRow, ctx: BookingContext = EMPTY_CONTEXT): BookingView {
+    const plan = unwrap<{ id: string; name: string; billing_period: string }>(row.plans);
+    const hub = unwrap<{
+        id: string; name: string; code: string; latitude: number | null; longitude: number | null;
+    }>(row.hubs);
+    const vehicle = unwrap<{
+        id: string; display_name: string | null; registration_number: string;
+        status: NonNullable<BookingView["vehicle"]>["status"]; vehicle_models: unknown;
+    }>(row.vehicles);
+
+    // The model comes through the plan: a booking names a plan, and a plan
+    // names exactly one model, so `bookings.vehicle_model_id` was redundant.
+    const model = unwrap<{ vehicle_models: unknown }>(row.vehicle_models);
+    const modelRef = unwrap<{ id: string; name: string }>(model?.vehicle_models);
+
+    return {
+        id: row.id,
+        // `completed` is derived, never stored — see bookings.types.ts.
+        status: (row.status === "fulfilled" && ctx.subscriptionEnded
+            ? "completed"
+            : row.status) as BookingLifecycleStatus,
+        start_day: row.requested_start_on,
+        created_at: row.created_at,
+        vehicle_model: modelRef,
+        station: hub
+            ? { id: hub.id, name: hub.name, code: hub.code, lat: hub.latitude ?? 0, lng: hub.longitude ?? 0 }
+            : null,
+        plan: plan
+            ? {
+                id: plan.id,
+                name: plan.name,
+                billing_cycle: plan.billing_period,
+                // Snapshots, not the live plan row.
+                price: Number(row.plan_price_snapshot),
+                duration_days: row.duration_days_snapshot,
+                deposit_amount: Number(row.deposit_amount_snapshot),
+            }
+            : null,
+        vehicle: vehicle
+            ? {
+                id: vehicle.id,
+                name: vehicle.display_name ?? unwrap<{ name: string }>(vehicle.vehicle_models)?.name ?? "",
+                registration_number: vehicle.registration_number,
+                status: vehicle.status,
+            }
+            : null,
+        referral_discount_amount: ctx.referralDiscountAmount,
+        cancelled_at: ctx.cancelledAt,
+        cancellation_reason: ctx.cancellationReason,
+        // Reconstructed rather than stored: the net owed at cancel time is the
+        // agreed price less any discount, which the snapshot and the
+        // adjustment together still give exactly.
+        plan_price_at_cancellation: ctx.cancelledAt
+            ? round2(Math.max(0, Number(row.plan_price_snapshot) - (ctx.referralDiscountAmount ?? 0)))
+            : null,
+        cancellation_penalty_amount: ctx.cancellationPenaltyAmount,
+        refund_amount: ctx.refundAmount,
+        refund_status: ctx.refundStatus,
+        refund_initiated_at: ctx.refundInitiatedAt,
+        refund_completed_at: ctx.refundCompletedAt,
+        refund_transaction_id: ctx.refundTransactionId,
+        plan_status: ctx.planStatus,
+        plan_activated_at: ctx.planActivatedAt,
+        plan_duration_days: ctx.planDurationDays,
+        deposit_amount_at_booking: Number(row.deposit_amount_snapshot),
+        current_period_start: ctx.currentPeriodStart,
+        next_due_at: ctx.nextDueAt,
+        plan_paused_at: ctx.pausedAt,
+        plan_paused_days_total: ctx.pausedDaysTotal,
+        renewal_status: ctx.renewalStatus,
+        scheduled_start_date: ctx.scheduledStartDate,
+        scheduled_duration_days: ctx.scheduledDurationDays,
+        late_fee_override: ctx.lateFeeOverride,
+        active_rental: ctx.activeRental,
+        return_late_fee_preview: toReturnLateFeePreview(ctx.activeRental),
+    };
 }
+
+/** Reads rows and their context together — the shape every read path wants. */
+async function viewsFor(rows: RawBookingRow[]): Promise<BookingView[]> {
+    const contexts = await loadBookingContext(rows.map((r) => r.id));
+    return rows.map((row) => toBookingView(row, contexts.get(row.id)));
+}
+
+// ---------------------------------------------------------------------------
+// Rules — unchanged logic, exported for the tests
+// ---------------------------------------------------------------------------
 
 /**
  * Not a Sunday (dow 0) and not in the past. Exported so validation.ts and
@@ -177,17 +450,15 @@ export interface CancellationCharge {
     isLate: boolean;
     /** True when the booking is still inside its post-creation grace period. */
     withinGrace: boolean;
-    /** plans.price minus any referral discount — what the rider would actually have owed. */
+    /** Plan price minus any referral discount — what the rider would actually have owed. */
     chargeableAmount: number;
     /** Penalty on the rental portion only — the deposit is never the rider's "fault" money. */
     penaltyAmount: number;
-    /** The security deposit actually paid (deposits.amount) — always refunded in full pre-pickup, never penalized. */
+    /** The security deposit actually paid — always refunded in full pre-pickup, never penalized. */
     depositRefund: number;
     /** (chargeableAmount - penaltyAmount) + depositRefund. */
     refundAmount: number;
 }
-
-const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 /**
  * Cancelling is free when EITHER of these holds:
@@ -195,30 +466,25 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
  *   2. start_day is FREE_CANCELLATION_NOTICE_DAYS or more calendar days out.
  * Otherwise LATE_CANCELLATION_PENALTY_RATE of the net plan price is kept back.
  *
- * start_day is DATE-only, so ">24h notice" is expressed in whole days:
- *   +2 days or more -> free  |  +1 (tomorrow), today, or past -> penalty
- *
  * The grace period matters because the notice rule alone only asks how close
  * pickup is: a booking made FOR tomorrow is born inside the penalty window and
  * would otherwise be charged seconds after it was created.
  *
  * The penalty applies to the NET price (after any referral discount) — charging
  * a fee on an amount the rider was never going to owe would be wrong. The
- * security deposit (if any was actually paid — pass depositAmount only for a
- * booking that reached 'confirmed') is never subject to this penalty: no
- * damage is possible before pickup, so it's always refunded in full.
+ * security deposit is never subject to this penalty: no damage is possible
+ * before pickup, so it is always refunded in full.
  *
- * Exported so the service and the tests exercise the exact same rule, same
- * reason isValidStartDay is exported. `now` is injectable for deterministic
- * tests; like isValidStartDay this works in server-local time, never UTC.
+ * Unchanged by the migration, and exported so the service and the tests
+ * exercise the same rule. `now` is injectable for deterministic tests; like
+ * isValidStartDay this works in server-local time, never UTC.
  */
 export function computeCancellationCharge(input: {
     startDay: string;
     planPrice: number | null;
     discountAmount?: number | null;
-    /** deposits.amount for this booking — omit (or 0) if the booking was never paid. */
+    /** The deposit for this booking — omit (or 0) if it was never paid. */
     depositAmount?: number | null;
-    /** bookings.created_at — omit only where it genuinely isn't known. */
     createdAt?: string | null;
     now?: Date;
 }): CancellationCharge {
@@ -250,80 +516,60 @@ export function computeCancellationCharge(input: {
     return { daysUntilPickup, isLate, withinGrace, chargeableAmount, penaltyAmount, depositRefund, refundAmount };
 }
 
-export function toBookingView(row: RawBookingRow): BookingView {
-    const activeRental = toActiveRental(row.active_rental);
-    return {
-        id: row.id,
-        status: row.status,
-        start_day: row.start_day,
-        created_at: row.created_at,
-        vehicle_model: unwrap(row.vehicle_models),
-        station: unwrap(row.stations),
-        plan: unwrap(row.plans),
-        vehicle: unwrap(row.vehicles),
-        referral_discount_amount: row.referral_discount_amount ?? null,
-        cancelled_at: row.cancelled_at ?? null,
-        cancellation_reason: row.cancellation_reason ?? null,
-        plan_price_at_cancellation: row.plan_price_at_cancellation ?? null,
-        cancellation_penalty_amount: row.cancellation_penalty_amount ?? null,
-        refund_amount: row.refund_amount ?? null,
-        refund_status: row.refund_status ?? null,
-        refund_initiated_at: row.refund_initiated_at ?? null,
-        refund_completed_at: row.refund_completed_at ?? null,
-        refund_transaction_id: row.refund_transaction_id ?? null,
-        plan_status: row.plan_status ?? null,
-        plan_activated_at: row.plan_activated_at ?? null,
-        plan_duration_days: row.plan_duration_days ?? null,
-        deposit_amount_at_booking: row.deposit_amount_at_booking == null ? null : Number(row.deposit_amount_at_booking),
-        current_period_start: row.current_period_start ?? null,
-        next_due_at: row.next_due_at ?? null,
-        plan_paused_at: row.plan_paused_at ?? null,
-        plan_paused_days_total: row.plan_paused_days_total ?? 0,
-        renewal_status: row.renewal_status ?? "none",
-        scheduled_start_date: row.scheduled_start_date ?? null,
-        scheduled_duration_days: row.scheduled_duration_days ?? null,
-        late_fee_override: row.late_fee_override == null ? null : Number(row.late_fee_override),
-        active_rental: activeRental,
-        return_late_fee_preview: toReturnLateFeePreview(activeRental),
-    };
+// ---------------------------------------------------------------------------
+// Create
+// ---------------------------------------------------------------------------
+
+/**
+ * Best-effort call to `allocate_vehicle_for_booking()` — finds a free unit
+ * matching the booking's model/hub and holds it (`held_vehicle_id`, and
+ * `recompute_vehicle_status()` derives `reserved` from that). Never throws: a
+ * booking with no vehicle available yet is still a valid booking.
+ */
+async function tryAllocateVehicle(bookingId: string): Promise<void> {
+    const { error } = await supabaseAdmin.rpc("allocate_vehicle_for_booking", { p_booking_id: bookingId });
+    if (error) {
+        console.error("[bookings] allocate_vehicle_for_booking failed", { bookingId, error: error.message });
+    }
 }
 
 /**
  * A booking is only worth taking if a unit can actually be handed over at that
- * station. tryAllocateVehicle() below is still best-effort — between this count
- * and the insert another rider could take the last one — but that narrow race
- * is very different from cheerfully confirming a booking against an empty
- * station, which is what happened before this check existed.
+ * hub. tryAllocateVehicle() is still best-effort — between this count and the
+ * insert another rider could take the last one — but that narrow race is very
+ * different from cheerfully confirming a booking against an empty hub.
  */
-async function assertVehicleAvailable(modelId: string, stationId: string): Promise<void> {
-    const { count, error } = await supabaseAdmin
-        .from("vehicles")
-        .select("id", { count: "exact", head: true })
-        .eq("model_id", modelId)
-        .eq("station_id", stationId)
-        .eq("status", "available")
-        .eq("active", true);
+async function assertVehicleAvailable(modelId: string, hubId: string): Promise<void> {
+    const { data, error } = await supabaseAdmin
+        .from("v_vehicle_availability")
+        .select("vehicle_count")
+        .eq("vehicle_model_id", modelId)
+        .eq("hub_id", hubId)
+        .eq("status", "available");
 
     if (error) throw error;
-    if ((count ?? 0) === 0) {
+    const available = (data ?? []).reduce((sum, row) => sum + (row.vehicle_count ?? 0), 0);
+    if (available === 0) {
         throw businessRule("No scooters of this model are available at that pickup station right now. Try another day or station.");
     }
 }
 
 /** The plan must belong to the booked model and still be on sale. */
-async function assertPlanBookable(planId: string, modelId: string): Promise<void> {
+async function requireBookablePlan(planId: string, modelId: string) {
     const { data, error } = await supabaseAdmin
         .from("plans")
-        .select("id, active, vehicle_model_id")
+        .select("id, is_active, vehicle_model_id, price_amount, duration_days, deposit_amount")
         .eq("id", planId)
+        .is("deleted_at", null)
         .maybeSingle();
 
     if (error) throw error;
     if (!data) throw notFound("That plan could not be found.");
-    if (!data.active) throw businessRule("That plan is no longer available. Please choose another.");
+    if (!data.is_active) throw businessRule("That plan is no longer available. Please choose another.");
     if (data.vehicle_model_id !== modelId) {
         throw businessRule("That plan does not apply to the scooter you selected.");
     }
+    return data;
 }
 
 export async function createBooking(
@@ -338,8 +584,8 @@ export async function createBooking(
         throw conflict("You already have an active booking or rental. Return your scooter or wait for pickup before booking another.");
     }
 
-    await Promise.all([
-        assertPlanBookable(input.plan_id, input.vehicle_model_id),
+    const [plan] = await Promise.all([
+        requireBookablePlan(input.plan_id, input.vehicle_model_id),
         assertVehicleAvailable(input.vehicle_model_id, input.station_id),
     ]);
 
@@ -347,18 +593,22 @@ export async function createBooking(
         .from("bookings")
         .insert({
             user_id: actor.id,
-            vehicle_model_id: input.vehicle_model_id,
-            station_id: input.station_id,
+            hub_id: input.station_id,
             plan_id: input.plan_id,
-            start_day: input.start_day,
-            // Payment-gated: the rider must pay (weekly rent + deposit) via
-            // POST /payments/bookings/:id/order before this moves to
-            // 'confirmed' — see payments.service.ts's applyPaymentSuccess.
-            // Staff then hand over the physical vehicle via confirmPickup()
-            // below, which activates the plan.
+            requested_start_on: input.start_day,
+            // The price, duration and deposit are frozen onto the booking at
+            // this moment. `bookings.vehicle_model_id` is gone — the plan
+            // names the model, so storing it twice could only ever disagree.
+            plan_price_snapshot: plan.price_amount,
+            duration_days_snapshot: plan.duration_days,
+            deposit_amount_snapshot: plan.deposit_amount,
+            // Payment-gated: the rider must pay via POST
+            // /payments/bookings/:id/order before this moves to 'confirmed'
+            // — see payments.service.ts's applyPaymentSuccess, which is also
+            // where the subscription is now born.
             status: "pending_payment",
         })
-        .select(BOOKING_COLUMNS)
+        .select("id")
         .single();
 
     if (error) {
@@ -368,72 +618,71 @@ export async function createBooking(
         throw error;
     }
 
-    const view = toBookingView(data as unknown as RawBookingRow);
-
     await writeAudit({
         actorId: actor.id,
         targetUserId: actor.id,
         action: "booking.created",
         entityType: "booking",
-        entityId: view.id,
-        after: { vehicle_model_id: input.vehicle_model_id, station_id: input.station_id, plan_id: input.plan_id, start_day: input.start_day },
+        entityId: data.id,
+        after: {
+            vehicle_model_id: input.vehicle_model_id,
+            hub_id: input.station_id,
+            plan_id: input.plan_id,
+            requested_start_on: input.start_day,
+        },
     });
 
-    // Best-effort early reservation — flips a matching free vehicle to
-    // 'booked' right away. If none is free yet, the booking is still valid;
-    // staff can allocate one manually at pickup time (confirmPickup below).
-    await tryAllocateVehicle(view.id);
+    // Best-effort early reservation. If nothing is free yet the booking is
+    // still valid; staff can allocate one manually at pickup time.
+    await tryAllocateVehicle(data.id);
 
-    // First-booking referral discount, if this rider was referred and this
-    // is genuinely their first booking (see qualifyReferralIfApplicable).
-    const { discount_amount } = await qualifyReferralIfApplicable(actor.id, actor);
-    if (discount_amount > 0) {
-        await supabaseAdmin
-            .from("bookings")
-            .update({ referral_discount_amount: discount_amount })
-            .eq("id", view.id);
-    }
+    // First-booking referral discount, if this rider was referred and this is
+    // genuinely their first booking. The discount is recorded against the
+    // subscription when payment creates it — there is no booking column for
+    // it any more — so this only marks the referral as qualified here.
+    await qualifyReferralIfApplicable(actor.id, actor);
 
-    return getBookingById(view.id);
+    return getBookingById(data.id);
 }
 
-export async function getBookingById(id: string): Promise<BookingView> {
-    const { data, error } = await supabaseAdmin
-        .from("bookings")
-        .select(BOOKING_COLUMNS)
-        .eq("id", id)
-        .maybeSingle();
+// ---------------------------------------------------------------------------
+// Read
+// ---------------------------------------------------------------------------
+
+async function readOne(
+    build: (q: ReturnType<typeof bookingQuery>) => ReturnType<typeof bookingQuery>,
+): Promise<BookingView | null> {
+    const { data, error } = await build(bookingQuery()).maybeSingle();
     if (error) throw error;
-    if (!data) throw notFound("Booking not found.");
-    return toBookingView(data as unknown as RawBookingRow);
+    if (!data) return null;
+    const [view] = await viewsFor([data as unknown as RawBookingRow]);
+    return view;
+}
+
+const bookingQuery = () => supabaseAdmin.from("bookings").select(BOOKING_COLUMNS);
+
+export async function getBookingById(id: string): Promise<BookingView> {
+    const view = await readOne((q) => q.eq("id", id));
+    if (!view) throw notFound("Booking not found.");
+    return view;
 }
 
 /**
- * Rider-scoped "get one of my own bookings by id" — unlike getMyCurrentBooking
- * (GET /bookings/me/current), which only ever returns a pending_payment/confirmed
- * booking, this also serves a 'fulfilled' one. The Billing screen needs that:
- * plan_status/next_due_at live on bookings, not rentals, so once a rider has
- * been picked up (the normal case for most of a rental's life), this is the
- * only way for the app to keep showing their recurring-billing state.
+ * Rider-scoped "get one of my own bookings by id" — unlike getMyCurrentBooking,
+ * this also serves a `fulfilled` one, which the Billing screen needs: the
+ * subscription state hangs off the booking, so this is how the app keeps
+ * showing recurring-billing state after pickup.
  */
 export async function getMyBookingById(bookingId: string, userId: string): Promise<BookingView> {
-    const { data, error } = await supabaseAdmin
-        .from("bookings")
-        .select(BOOKING_COLUMNS)
-        .eq("id", bookingId)
-        .eq("user_id", userId)
-        .maybeSingle();
-    if (error) throw error;
-    if (!data) throw notFound("Booking not found.");
-    return toBookingView(data as unknown as RawBookingRow);
+    const view = await readOne((q) => q.eq("id", bookingId).eq("user_id", userId));
+    if (!view) throw notFound("Booking not found.");
+    return view;
 }
 
 export async function getMyCurrentBooking(userId: string): Promise<BookingView> {
-    const { data, error } = await supabaseAdmin
-        .from("bookings")
-        .select(BOOKING_COLUMNS)
+    const { data, error } = await bookingQuery()
         .eq("user_id", userId)
-        .in("status", ACTIVE_BOOKING_STATUSES as string[])
+        .in("status", [...ACTIVE_BOOKING_STATUSES])
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -441,10 +690,11 @@ export async function getMyCurrentBooking(userId: string): Promise<BookingView> 
     if (error) throw error;
     if (!data) throw notFound("No active booking found.");
 
-    return toBookingView(data as unknown as RawBookingRow);
+    const [view] = await viewsFor([data as unknown as RawBookingRow]);
+    return view;
 }
 
-/** All of the rider's own bookings, any status, most recent first — what the Booking History screen renders. */
+/** All of the rider's own bookings, any status, most recent first. */
 export async function getMyBookingHistory(
     userId: string,
     filters: BookingHistoryFilters,
@@ -458,49 +708,84 @@ export async function getMyBookingHistory(
         .range(from, to);
 
     if (error) throw error;
-    const items = ((data ?? []) as unknown as RawBookingRow[]).map(toBookingView);
+    const items = await viewsFor((data ?? []) as unknown as RawBookingRow[]);
     return paginate(items, count ?? 0, filters);
 }
 
+/** Mirrors hasActiveRentalForUser in users.service.ts. pending_payment counts as active. */
+export async function hasActiveBookingForUser(userId: string): Promise<boolean> {
+    const { count, error } = await supabaseAdmin
+        .from("bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .in("status", [...ACTIVE_BOOKING_STATUSES]);
+
+    if (error) throw error;
+    return (count ?? 0) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Cancellation
+// ---------------------------------------------------------------------------
+
 /**
- * Opens the refund request for a pre-pickup cancellation, right after the
- * booking row has been flipped to 'cancelled' with refund_status='pending'.
- * Deliberately does NOT call the gateway here — a cancellation refund needs
- * staff to review and approve it first (POST /refunds/:id/retry, which
- * doubles as "approve" for a refund that's never been processed and "retry"
- * for one that failed). Never throws: a DB hiccup creating the refund row
- * must not fail the rider's (or staff's) cancel request — worst case the
- * refund request doesn't appear yet and needs a manual follow-up.
+ * Records the cancellation and, when money is owed back, opens the refund.
+ *
+ * `booking_cancellations` is one row per cancelled booking, replacing nine
+ * columns that sat null on every booking that was never cancelled — and, more
+ * usefully, replacing the five-column refund mirror with a foreign key to the
+ * refund itself, so the two can no longer disagree.
+ *
+ * The refund is deliberately NOT sent to the gateway here: a cancellation
+ * refund needs staff approval first (POST /refunds/:id/retry, which doubles as
+ * "approve"). Failure to open it is logged, not thrown — a DB hiccup must not
+ * fail the rider's cancel request.
  */
-async function openCancellationRefund(
-    bookingId: string,
-    depositId: string,
-    amount: number,
-    actor: AuthContext | null,
-): Promise<void> {
-    try {
-        await initiateCancellationRefund(bookingId, depositId, amount, actor);
-    } catch (err) {
-        console.error("[bookings] opening cancellation refund failed", {
-            bookingId,
-            error: err instanceof Error ? err.message : String(err),
-        });
+async function recordCancellation(input: {
+    bookingId: string;
+    subscriptionId: string | null;
+    penaltyAmount: number;
+    refundAmount: number;
+    reason: string | null;
+    actor: AuthContext;
+}): Promise<void> {
+    let refundId: string | null = null;
+
+    if (input.refundAmount > 0 && input.subscriptionId) {
+        try {
+            const deposit = await getDepositForSubscriptionOrNull(input.subscriptionId);
+            refundId = await initiateCancellationRefund(
+                input.subscriptionId,
+                deposit?.id ?? null,
+                input.refundAmount,
+                input.actor,
+            );
+        } catch (err) {
+            console.error("[bookings] opening cancellation refund failed", {
+                bookingId: input.bookingId,
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
     }
+
+    const { error } = await supabaseAdmin.from("booking_cancellations").insert({
+        booking_id: input.bookingId,
+        cancelled_at: new Date().toISOString(),
+        cancelled_by_user_id: input.actor.id,
+        reason: input.reason,
+        penalty_amount: input.penaltyAmount,
+        refund_id: refundId,
+    });
+    if (error && (error as { code?: string }).code !== "23505") throw error;
 }
 
 /**
- * Rider-initiated PRE-PICKUP cancellation. Distinct from rejectBooking (staff,
- * pending_payment only): this accepts 'confirmed' too and is scoped to the
- * caller's own booking. Post-pickup returns are a separate, future policy.
+ * Rider-initiated PRE-PICKUP cancellation, scoped to the caller's own booking.
  *
- * Cancelling within FREE_CANCELLATION_GRACE_MINUTES of booking is always fee-
- * free (see computeCancellationCharge). If the booking had actually been paid
- * for (status 'confirmed'), the eligible amount — rental minus any late fee,
- * plus the full security deposit — is queued as a refund request
- * (refund_status='pending'). The actual Razorpay refund only fires once staff
- * approve it (POST /refunds/:id/retry) — cancellation refunds are never
- * auto-processed, unlike deposit refunds. A booking still awaiting payment
- * has nothing to refund: no fee, no refund request.
+ * Cancelling within FREE_CANCELLATION_GRACE_MINUTES is always fee-free. If the
+ * booking was actually paid for (`confirmed`), the eligible amount — rental
+ * minus any penalty, plus the full deposit — is queued as a refund request.
+ * A booking still awaiting payment has nothing to refund.
  */
 export async function cancelMyBooking(
     bookingId: string,
@@ -509,7 +794,7 @@ export async function cancelMyBooking(
 ): Promise<BookingView> {
     const { data: existing, error: fetchError } = await supabaseAdmin
         .from("bookings")
-        .select("id, user_id, status, start_day, created_at, vehicle_id, referral_discount_amount, plans(price)")
+        .select("id, user_id, status, requested_start_on, created_at, held_vehicle_id, plan_price_snapshot")
         .eq("id", bookingId)
         .maybeSingle();
 
@@ -523,57 +808,58 @@ export async function cancelMyBooking(
     }
     if (existing.status === "cancelled") throw conflict("This booking is already cancelled.");
     if (existing.status === "expired") throw conflict("This booking has expired and can't be cancelled.");
-    if (!(ACTIVE_BOOKING_STATUSES as string[]).includes(existing.status)) {
+    if (!(ACTIVE_BOOKING_STATUSES as readonly string[]).includes(existing.status)) {
         throw conflict("This booking can no longer be cancelled.");
     }
 
-    // Only a 'confirmed' booking was ever actually paid for — a
-    // 'pending_payment' one has nothing to charge a fee against or refund,
-    // no matter what the timing math would otherwise say.
+    // Only a 'confirmed' booking was ever actually paid for.
     const wasPaid = existing.status === "confirmed";
-    const deposit = wasPaid ? await getDepositForBookingOrNull(bookingId) : null;
+    const context = (await loadBookingContext([bookingId])).get(bookingId) ?? EMPTY_CONTEXT;
+    const deposit = wasPaid && context.subscriptionId
+        ? await getDepositForSubscriptionOrNull(context.subscriptionId)
+        : null;
 
     const charge = computeCancellationCharge({
-        startDay: existing.start_day as string,
-        planPrice: unwrap<{ price: number }>(existing.plans)?.price ?? null,
-        discountAmount: existing.referral_discount_amount as number | null,
+        startDay: existing.requested_start_on,
+        planPrice: Number(existing.plan_price_snapshot),
+        discountAmount: context.referralDiscountAmount,
         depositAmount: deposit?.amount ?? 0,
-        createdAt: existing.created_at as string,
+        createdAt: existing.created_at,
     });
 
     const penaltyAmount = wasPaid ? charge.penaltyAmount : 0;
     const refundAmount = wasPaid ? charge.refundAmount : 0;
-    // 'pending' here means "refund requested, awaiting staff approval" — the
-    // gateway call only fires once an admin approves via POST /refunds/:id/retry.
-    const refundStatus: BookingRefundStatus = refundAmount > 0 ? "pending" : "not_required";
-    const nowIso = new Date().toISOString();
 
     const { data: updated, error } = await supabaseAdmin
         .from("bookings")
         .update({
             status: "cancelled",
-            cancelled_at: nowIso,
-            cancelled_by: actor.id,
-            cancellation_reason: input.reason ?? null,
-            plan_price_at_cancellation: charge.chargeableAmount,
-            cancellation_penalty_amount: penaltyAmount,
-            refund_amount: refundAmount,
-            refund_status: refundStatus,
-            refund_initiated_at: refundStatus === "pending" ? nowIso : null,
-            // vehicle_id is deliberately untouched — trg_release_vehicle_on_booking_close
-            // (20260727095801) frees the held unit and nulls it as part of this update.
+            // Releasing the hold is what frees the vehicle:
+            // recompute_vehicle_status() reads held_vehicle_id, so clearing it
+            // returns the unit to 'available' without touching its status.
+            held_vehicle_id: null,
+            hold_expires_at: null,
         })
         .eq("id", bookingId)
         .eq("user_id", actor.id)
         // Optimistic-concurrency guard: if staff confirmed pickup between the
         // read above and here, this matches zero rows instead of cancelling a
         // booking that is already fulfilled.
-        .in("status", ACTIVE_BOOKING_STATUSES as string[])
+        .in("status", [...ACTIVE_BOOKING_STATUSES])
         .select("id")
         .maybeSingle();
 
     if (error) throw error;
     if (!updated) throw conflict("This booking can no longer be cancelled.");
+
+    await recordCancellation({
+        bookingId,
+        subscriptionId: context.subscriptionId,
+        penaltyAmount,
+        refundAmount,
+        reason: input.reason ?? null,
+        actor,
+    });
 
     await writeAudit({
         actorId: actor.id,
@@ -583,8 +869,8 @@ export async function cancelMyBooking(
         entityId: bookingId,
         before: {
             status: existing.status,
-            vehicle_id: existing.vehicle_id,
-            start_day: existing.start_day,
+            held_vehicle_id: existing.held_vehicle_id,
+            requested_start_on: existing.requested_start_on,
         },
         after: {
             status: "cancelled",
@@ -596,10 +882,6 @@ export async function cancelMyBooking(
             reason: input.reason ?? null,
         },
     });
-
-    if (refundStatus === "pending" && deposit) {
-        await openCancellationRefund(bookingId, deposit.id, refundAmount, actor);
-    }
 
     await notifyUser(actor.id, {
         template: "booking_cancelled",
@@ -613,152 +895,23 @@ export async function cancelMyBooking(
     });
 
     await notify({
-        notificationType: "cancellation",
+        notificationType: "booking_cancelled",
         referenceType: "booking",
         referenceId: bookingId,
-        template: "booking_cancelled",
         title: "Booking Cancelled",
         bodyFallback: "{rider} cancelled their booking for {vehicle}.",
         screen: "/bookings",
         riderId: actor.id,
-        vehicleId: existing.vehicle_id ?? undefined,
+        vehicleId: existing.held_vehicle_id ?? undefined,
         bookingId,
     });
 
     return getBookingById(bookingId);
 }
 
-export interface EarlyRechargeLineItem {
-    itemType: "base_rental" | "charge" | "discount";
-    label: string;
-    amount: number;
-}
-
-export interface EarlyRechargeResult {
-    invoiceId: string;
-    amountDue: number;
-    dueDate: string;
-    /** Itemized breakdown (base rental + any charges/discounts) so the rider app can show a review before charging, not just a total. */
-    items: EarlyRechargeLineItem[];
-    /** True once next_due_at has already passed — a late renewal fee applies and paying activates the new period immediately. */
-    isLate: boolean;
-    lateFee: number;
-    /** Whole days past next_due_at — lateFee = daysLate * feePerDay. 0 when not late. */
-    daysLate: number;
-    /** The configured per-day rate (override or global) — 0 when not late or the fee is disabled. */
-    feePerDay: number;
-    /** amountDue + lateFee — what the rider actually pays. */
-    total: number;
-    /** When the renewed period will actually start. Today for a late renewal; next_due_at (unchanged) for an on-time one — see notify comment on applyWeeklyDueSuccess. */
-    scheduledStartDate: string;
-}
-
 /**
- * Rider-initiated "Renew Plan" — mints (or reuses) the invoice for the
- * upcoming period any time before or after next_due_at, not just the day
- * before it. Paying doesn't activate the new period itself — that's
- * payments.service.ts's applyWeeklyDueSuccess, which schedules it (on-time)
- * or rolls forward immediately (late); see that function's doc comment for
- * the full two-phase design this is one half of.
- *
- * Reuses fn_generate_weekly_invoice via billing.service.ts's
- * generateWeeklyInvoice — the exact same idempotent function the
- * payment-overdue-sweep cron calls — so this can never mint a
- * second/duplicate 'rental' invoice for the period.
- */
-export async function requestEarlyRecharge(bookingId: string, actor: AuthContext): Promise<EarlyRechargeResult> {
-    const { data: booking, error } = await supabaseAdmin
-        .from("bookings")
-        .select("id, user_id, plan_status, next_due_at, renewal_status, scheduled_start_date")
-        .eq("id", bookingId)
-        .maybeSingle();
-    if (error) throw error;
-    if (!booking || booking.user_id !== actor.id) throw notFound("Booking not found.");
-
-    if (booking.plan_status !== "active" && booking.plan_status !== "due") {
-        throw businessRule("This plan can't be renewed right now.");
-    }
-    if (booking.renewal_status === "scheduled") {
-        throw businessRule(
-            `Your renewal is already scheduled to start on ${booking.scheduled_start_date}.`,
-        );
-    }
-    if (!booking.next_due_at) throw businessRule("This booking has no billing period to renew.");
-
-    const { invoiceId } = await generateWeeklyInvoice(bookingId);
-
-    const { data: invoice, error: invoiceError } = await supabaseAdmin
-        .from("invoices")
-        .select("amount_due, due_date, invoice_items(item_type, label, amount)")
-        .eq("id", invoiceId)
-        .single();
-    if (invoiceError) throw invoiceError;
-
-    const rawItems = (invoice.invoice_items ?? []) as unknown as
-        { item_type: EarlyRechargeLineItem["itemType"]; label: string; amount: number | string }[];
-    const items: EarlyRechargeLineItem[] = rawItems.map((item) => ({
-        itemType: item.item_type, label: item.label, amount: Number(item.amount),
-    }));
-
-    const { isLate, lateFee, daysLate, feePerDay } = await computeLateRenewalFee(bookingId, invoice.due_date as string);
-    const amountDue = Number(invoice.amount_due);
-    const today = new Date().toISOString().slice(0, 10);
-
-    await writeAudit({
-        actorId: actor.id, targetUserId: actor.id, action: "plan.updated",
-        entityType: "booking", entityId: bookingId,
-        after: { early_recharge_invoice_id: invoiceId },
-    });
-
-    return {
-        invoiceId,
-        amountDue,
-        dueDate: invoice.due_date as string,
-        items,
-        isLate,
-        lateFee,
-        daysLate,
-        feePerDay,
-        total: round2(amountDue + lateFee),
-        scheduledStartDate: isLate ? today : (invoice.due_date as string),
-    };
-}
-
-/**
- * Admin per-booking override for the late renewal fee — wins over the global
- * plan_renewal_settings amount whenever computeLateRenewalFee runs for this
- * booking. Pass null to clear it and fall back to the global setting.
- */
-export async function setLateFeeOverride(
-    bookingId: string, lateFeeOverride: number | null, actor: AuthContext,
-): Promise<BookingView> {
-    const { data: updated, error } = await supabaseAdmin
-        .from("bookings")
-        .update({ late_fee_override: lateFeeOverride })
-        .eq("id", bookingId)
-        .select("id")
-        .maybeSingle();
-    if (error) throw error;
-    if (!updated) throw notFound("Booking not found.");
-
-    await writeAudit({
-        actorId: actor.id, targetUserId: null, action: "plan.updated",
-        entityType: "booking", entityId: bookingId,
-        after: { late_fee_override: lateFeeOverride },
-    });
-
-    return getBookingById(bookingId);
-}
-
-/**
- * Staff-initiated cancellation — the fix for a vehicle getting force-released
- * (e.g. the Vehicles admin screen's "Mark available") out from under a
- * booking that still held it as 'pending_payment'/'confirmed': that only
- * ever touched vehicles.status directly, leaving the booking itself active,
- * so the rider's app kept showing it as a current booking with a cancel
- * option. This closes the booking out properly instead. No late-cancellation
- * penalty applies — the rider isn't the one backing out — and whatever was
- * already captured for the initial rental+deposit payment is queued as a
+ * Staff-initiated cancellation. No late-cancellation penalty applies — the
+ * rider isn't the one backing out — and whatever was captured is queued as a
  * refund request, same as cancelMyBooking, pending staff approval.
  */
 export async function adminCancelBooking(
@@ -768,53 +921,48 @@ export async function adminCancelBooking(
 ): Promise<BookingView> {
     const { data: existing, error: fetchError } = await supabaseAdmin
         .from("bookings")
-        .select("id, user_id, status, vehicle_id")
+        .select("id, user_id, status, held_vehicle_id")
         .eq("id", bookingId)
         .maybeSingle();
     if (fetchError) throw fetchError;
     if (!existing) throw notFound("Booking not found.");
-    if (!(ACTIVE_BOOKING_STATUSES as string[]).includes(existing.status)) {
+    if (!(ACTIVE_BOOKING_STATUSES as readonly string[]).includes(existing.status)) {
         throw conflict("Only a pending or confirmed booking can be cancelled.");
     }
 
-    const wasPaid = existing.status === "confirmed";
-    const deposit = wasPaid ? await getDepositForBookingOrNull(bookingId) : null;
+    const context = (await loadBookingContext([bookingId])).get(bookingId) ?? EMPTY_CONTEXT;
 
-    const { data: paidInvoices, error: invoiceError } = await supabaseAdmin
-        .from("invoices")
-        .select("amount_due")
-        .eq("booking_id", bookingId)
-        .eq("payment_status", "succeeded")
-        .in("payment_type", ["rental", "deposit"]);
-    if (invoiceError) throw invoiceError;
-    const refundAmount = (paidInvoices ?? []).reduce((sum, inv) => sum + Number(inv.amount_due), 0);
-    // 'pending' here means "refund requested, awaiting staff approval" — the
-    // gateway call only fires once an admin approves via POST /refunds/:id/retry.
-    const refundStatus: BookingRefundStatus = refundAmount > 0 ? "pending" : "not_required";
-    const nowIso = new Date().toISOString();
+    // What was actually collected, from the payments themselves rather than an
+    // invoice status column — `invoices.payment_status` is gone, and the sum
+    // of allocations is the honest answer to "how much did they pay".
+    let refundAmount = 0;
+    if (context.subscriptionId) {
+        const { data: allocations, error: allocationError } = await supabaseAdmin
+            .from("payment_allocations")
+            .select("amount, invoices!inner(subscription_id)")
+            .eq("invoices.subscription_id", context.subscriptionId);
+        if (allocationError) throw allocationError;
+        refundAmount = (allocations ?? []).reduce((sum, a) => sum + Number(a.amount), 0);
+    }
 
     const { data: updated, error } = await supabaseAdmin
         .from("bookings")
-        .update({
-            status: "cancelled",
-            cancelled_at: nowIso,
-            cancelled_by: actor.id,
-            cancellation_reason: reason,
-            cancellation_penalty_amount: 0,
-            refund_amount: refundAmount,
-            refund_status: refundStatus,
-            refund_initiated_at: refundStatus === "pending" ? nowIso : null,
-            // vehicle_id is deliberately untouched — trg_release_vehicle_on_booking_close
-            // (20260727095801) frees the held unit and nulls it as part of this update.
-            // If the vehicle was already force-marked available out-of-band, the trigger's
-            // own `where status = 'booked'` guard just no-ops on that part — harmless.
-        })
+        .update({ status: "cancelled", held_vehicle_id: null, hold_expires_at: null })
         .eq("id", bookingId)
-        .in("status", ACTIVE_BOOKING_STATUSES as string[])
+        .in("status", [...ACTIVE_BOOKING_STATUSES])
         .select("id")
         .maybeSingle();
     if (error) throw error;
     if (!updated) throw conflict("This booking can no longer be cancelled.");
+
+    await recordCancellation({
+        bookingId,
+        subscriptionId: context.subscriptionId,
+        penaltyAmount: 0,
+        refundAmount,
+        reason,
+        actor,
+    });
 
     await writeAudit({
         actorId: actor.id,
@@ -822,13 +970,9 @@ export async function adminCancelBooking(
         action: "booking.cancelled",
         entityType: "booking",
         entityId: bookingId,
-        before: { status: existing.status, vehicle_id: existing.vehicle_id },
+        before: { status: existing.status, held_vehicle_id: existing.held_vehicle_id },
         after: { status: "cancelled", reason, refund_amount: refundAmount },
     });
-
-    if (refundStatus === "pending" && deposit) {
-        await openCancellationRefund(bookingId, deposit.id, refundAmount, actor);
-    }
 
     await notifyUser(existing.user_id, {
         template: "booking_cancelled",
@@ -842,81 +986,183 @@ export async function adminCancelBooking(
     return getBookingById(bookingId);
 }
 
-/** Mirrors hasActiveRentalForUser in users.service.ts. pending_payment counts as active. */
-export async function hasActiveBookingForUser(userId: string): Promise<boolean> {
-    const { count, error } = await supabaseAdmin
+// ---------------------------------------------------------------------------
+// Renewal
+// ---------------------------------------------------------------------------
+
+export interface EarlyRechargeLineItem {
+    itemType: "plan_fee" | "adjustment" | "deposit";
+    label: string;
+    amount: number;
+}
+
+export interface EarlyRechargeResult {
+    invoiceId: string;
+    amountDue: number;
+    dueDate: string;
+    items: EarlyRechargeLineItem[];
+    /** True once the period is already past due — a late fee applies. */
+    isLate: boolean;
+    lateFee: number;
+    daysLate: number;
+    feePerDay: number;
+    total: number;
+    scheduledStartDate: string;
+}
+
+/**
+ * Rider-initiated "Renew Plan" — mints (or reuses) the invoice for the
+ * upcoming period at any time, not just the day before it is due.
+ *
+ * Reuses `generate_period_invoice()` via billing.service.ts — the same
+ * idempotent function the overdue sweep calls — so this can never mint a
+ * duplicate invoice for a period.
+ *
+ * The renewal is keyed on the SUBSCRIPTION now, not the booking. A booking
+ * that never became a subscription has nothing to renew, and the guard says so
+ * rather than reading a `plan_status` column that no longer exists.
+ */
+export async function requestEarlyRecharge(bookingId: string, actor: AuthContext): Promise<EarlyRechargeResult> {
+    const { data: booking, error } = await supabaseAdmin
         .from("bookings")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .in("status", ACTIVE_BOOKING_STATUSES as string[]);
-
+        .select("id, user_id")
+        .eq("id", bookingId)
+        .maybeSingle();
     if (error) throw error;
-    return (count ?? 0) > 0;
-}
+    if (!booking || booking.user_id !== actor.id) throw notFound("Booking not found.");
 
-// ---------------------------------------------------------------------------
-// Staff pickup queue + confirmation — the "future pickup/check-in phase"
-// this module's own header comment anticipated but deferred.
-// ---------------------------------------------------------------------------
+    const context = (await loadBookingContext([bookingId])).get(bookingId) ?? EMPTY_CONTEXT;
 
-// Keep in sync with BOOKING_COLUMNS: RawPickupBookingRow extends RawBookingRow,
-// so TypeScript will NOT flag a missing column here — the fields would just
-// silently come back undefined in staff responses.
-//
-// active_rental normally embeds as a left join (a pre-pickup booking has
-// none yet); the Return Requests tab needs it as a genuine FILTER instead,
-// which PostgREST only applies to embedded-resource conditions when the
-// embed itself is `!inner` — hence this is a function, not a constant.
-function pickupBookingColumns(opts: { innerActiveRental?: boolean } = {}): string {
-    const activeRentalRel = opts.innerActiveRental
-        ? "rentals!bookings_active_rental_id_fkey!inner"
-        : "rentals!bookings_active_rental_id_fkey";
-    return `
-        id, status, start_day, created_at, vehicle_id, referral_discount_amount,
-        ${CANCELLATION_COLUMNS},
-        ${PLAN_BILLING_COLUMNS},
-        vehicle_models(id, name),
-        stations(id, name, code),
-        plans(id, name, billing_cycle, price, duration_days, deposit_amount),
-        vehicles(id, name, registration_number, battery_percentage, status),
-        users!bookings_user_id_fkey(id, full_name, phone),
-        active_rental:${activeRentalRel}(${ACTIVE_RENTAL_COLUMNS})
-    `;
-}
+    if (!context.subscriptionId) throw businessRule("This booking has no plan to renew yet.");
+    if (context.planStatus !== "active" && context.planStatus !== "past_due") {
+        throw businessRule("This plan can't be renewed right now.");
+    }
+    if (context.renewalStatus === "scheduled") {
+        throw businessRule(
+            `Your renewal is already scheduled to start on ${context.scheduledStartDate}.`,
+        );
+    }
+    if (!context.nextDueAt) throw businessRule("This booking has no billing period to renew.");
 
-const PICKUP_BOOKING_COLUMNS = pickupBookingColumns();
+    const { invoiceId } = await generatePeriodInvoice(context.subscriptionId);
 
-type RawPickupBookingRow = RawBookingRow & { users: unknown };
+    const [{ data: invoice, error: invoiceError }, { data: balance, error: balanceError }] =
+        await Promise.all([
+            supabaseAdmin
+                .from("invoices")
+                .select("due_on, total_amount, invoice_items(item_type, description, amount)")
+                .eq("id", invoiceId)
+                .single(),
+            supabaseAdmin
+                .from("v_invoice_balances")
+                .select("balance_amount")
+                .eq("invoice_id", invoiceId)
+                .maybeSingle(),
+        ]);
+    if (invoiceError) throw invoiceError;
+    if (balanceError) throw balanceError;
 
-function toPickupBookingView(row: RawPickupBookingRow): PickupBookingView {
+    const rawItems = (invoice.invoice_items ?? []) as unknown as Array<{
+        item_type: EarlyRechargeLineItem["itemType"]; description: string; amount: number | string;
+    }>;
+    const items: EarlyRechargeLineItem[] = rawItems.map((item) => ({
+        itemType: item.item_type,
+        label: item.description,
+        amount: Number(item.amount),
+    }));
+
+    const dueDate = invoice.due_on ?? context.nextDueAt;
+    const { isLate, lateFee, daysLate, feePerDay } = await computeLateRenewalFee(
+        context.subscriptionId, dueDate,
+    );
+    // What is still owed, not the invoice total — a part-paid renewal must not
+    // ask for the whole thing again.
+    const amountDue = Number(balance?.balance_amount ?? invoice.total_amount);
+    const today = businessToday();
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: actor.id, action: "plan.updated",
+        entityType: "subscription", entityId: context.subscriptionId,
+        after: { early_recharge_invoice_id: invoiceId },
+    });
+
     return {
-        ...toBookingView(row),
-        rider: unwrap(row.users) as PickupBookingView["rider"],
+        invoiceId,
+        amountDue,
+        dueDate,
+        items,
+        isLate,
+        lateFee,
+        daysLate,
+        feePerDay,
+        total: round2(amountDue + lateFee),
+        scheduledStartDate: isLate ? today : dueDate,
     };
 }
+
+/**
+ * Admin per-subscription override for the late renewal fee.
+ *
+ * Still addressed by booking id, because that is what the console has, but it
+ * writes a subscription-scoped `pricing_rules` row — see
+ * subscriptions.service.ts's setLateFeeOverride for why that replaced the
+ * `bookings.late_fee_override` column.
+ */
+export async function setLateFeeOverride(
+    bookingId: string, lateFeeOverride: number | null, actor: AuthContext,
+): Promise<BookingView> {
+    const context = (await loadBookingContext([bookingId])).get(bookingId);
+    if (!context?.subscriptionId) {
+        throw businessRule("This booking has no plan yet, so there is no late fee to override.");
+    }
+
+    await setSubscriptionLateFeeOverride(context.subscriptionId, lateFeeOverride, actor);
+
+    return getBookingById(bookingId);
+}
+
+// ---------------------------------------------------------------------------
+// Staff pickup queue + confirmation
+// ---------------------------------------------------------------------------
+
+const PICKUP_BOOKING_COLUMNS = `
+    ${BOOKING_COLUMNS},
+    users(id, full_name, phone)
+`;
+
+type RawPickupBookingRow = RawBookingRow & { users: unknown };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Resolves a free-text search into a booking-id allowlist. PostgREST can't
- * OR-combine conditions across several embedded tables (rider name, vehicle
- * registration) in one call, so this runs small targeted lookups first and
- * unions the results — cheap at this admin console's scale, same posture as
- * the rest of this module (no search indexes/materialized views anywhere
- * else either). Returns an empty array (not null) when nothing matches, so
- * the caller can short-circuit instead of hitting the main table.
+ * OR-combine conditions across several embedded tables in one call, so this
+ * runs small targeted lookups first and unions the results — cheap at this
+ * admin console's scale.
  */
 async function resolveSearchBookingIds(search: string): Promise<string[]> {
     const term = search.trim();
     if (!term) return [];
 
     if (UUID_RE.test(term)) {
-        const { data, error } = await supabaseAdmin
-            .from("bookings")
-            .select("id")
-            .or(`id.eq.${term},active_rental_id.eq.${term}`);
-        if (error) throw error;
-        return (data ?? []).map((r) => r.id as string);
+        // A rental id is no longer reachable from the booking directly — it
+        // hangs off the subscription — so that leg is a two-hop lookup.
+        const [byBooking, byRental] = await Promise.all([
+            supabaseAdmin.from("bookings").select("id").eq("id", term),
+            supabaseAdmin
+                .from("rentals")
+                .select("subscriptions!inner(booking_id)")
+                .eq("id", term),
+        ]);
+        if (byBooking.error) throw byBooking.error;
+        if (byRental.error) throw byRental.error;
+
+        const ids = (byBooking.data ?? []).map((r) => r.id);
+        for (const row of byRental.data ?? []) {
+            const sub = unwrap<{ booking_id: string }>(row.subscriptions);
+            if (sub) ids.push(sub.booking_id);
+        }
+        return [...new Set(ids)];
     }
 
     // Escape ilike's own wildcards so a literal '%' or '_' typed by staff
@@ -931,48 +1177,75 @@ async function resolveSearchBookingIds(search: string): Promise<string[]> {
     if (byPhone.error) throw byPhone.error;
     if (byVehicle.error) throw byVehicle.error;
 
-    // These ids came back from the DB, not typed by the caller, so it's safe
-    // to interpolate them straight into the next .or() below.
-    const userIds = [...(byName.data ?? []), ...(byPhone.data ?? [])].map((r) => r.id as string);
-    const vehicleIds = (byVehicle.data ?? []).map((r) => r.id as string);
+    const userIds = [...(byName.data ?? []), ...(byPhone.data ?? [])].map((r) => r.id);
+    const vehicleIds = (byVehicle.data ?? []).map((r) => r.id);
     if (userIds.length === 0 && vehicleIds.length === 0) return [];
 
     const orParts: string[] = [];
     if (userIds.length) orParts.push(`user_id.in.(${userIds.join(",")})`);
-    if (vehicleIds.length) orParts.push(`vehicle_id.in.(${vehicleIds.join(",")})`);
+    // The vehicle leg matches the HELD unit. A vehicle the rider is currently
+    // riding is matched through their rental below.
+    if (vehicleIds.length) orParts.push(`held_vehicle_id.in.(${vehicleIds.join(",")})`);
 
-    const { data, error } = await supabaseAdmin.from("bookings").select("id").or(orParts.join(","));
-    if (error) throw error;
-    return (data ?? []).map((r) => r.id as string);
+    const [direct, viaAssignment] = await Promise.all([
+        supabaseAdmin.from("bookings").select("id").or(orParts.join(",")),
+        vehicleIds.length
+            ? supabaseAdmin
+                .from("rental_vehicle_assignments")
+                .select("rentals!inner(subscriptions!inner(booking_id))")
+                .in("vehicle_id", vehicleIds)
+            : Promise.resolve({ data: [], error: null } as const),
+    ]);
+    if (direct.error) throw direct.error;
+    if (viaAssignment.error) throw viaAssignment.error;
+
+    const ids = (direct.data ?? []).map((r) => r.id);
+    for (const row of viaAssignment.data ?? []) {
+        const rental = unwrap<{ subscriptions: unknown }>(row.rentals);
+        const sub = unwrap<{ booking_id: string }>(rental?.subscriptions);
+        if (sub) ids.push(sub.booking_id);
+    }
+    return [...new Set(ids)];
 }
 
 /**
- * Bookings for the admin "Rental Operations" screen, one row per tab: Pending
- * (confirmed), Assigned (fulfilled), Active/Due (fulfilled + planStatus),
- * Return Requests (fulfilled + active_rental.return_requested_at set),
- * Completed, Cancelled, Expired, or All (status/planStatus/returnRequested
- * all omitted — no filter is applied server-side, the caller decides the
- * default view).
+ * Bookings for the admin "Rental Operations" screen.
+ *
+ * Three of its tabs used to be plain column filters on `bookings` and are now
+ * filters on the subscription: Active/Due, Scheduled Renewals, and Return
+ * Requests. Those are resolved to a booking-id allowlist first, the same way
+ * search already was — PostgREST cannot filter a parent by a grandchild.
  */
 export async function listPickupQueue(filters: PickupQueueFilters): Promise<Paginated<PickupBookingView>> {
     const [from, to] = toRange(filters);
 
-    let matchedIds: string[] | null = null;
+    const allowlists: string[][] = [];
+
     if (filters.search?.trim()) {
-        matchedIds = await resolveSearchBookingIds(filters.search);
-        if (matchedIds.length === 0) return paginate([], 0, filters);
+        allowlists.push(await resolveSearchBookingIds(filters.search));
     }
+    if (filters.planStatus || filters.renewalStatus || filters.returnRequested || filters.status === "completed") {
+        allowlists.push(await resolveSubscriptionFilterIds(filters));
+    }
+
+    // Intersect: every supplied filter must hold.
+    let matchedIds: string[] | null = null;
+    for (const list of allowlists) {
+        matchedIds = matchedIds === null ? list : matchedIds.filter((id) => list.includes(id));
+    }
+    if (matchedIds !== null && matchedIds.length === 0) return paginate([], 0, filters);
 
     let query = supabaseAdmin
         .from("bookings")
-        .select(pickupBookingColumns({ innerActiveRental: filters.returnRequested }), { count: "exact" });
+        .select(PICKUP_BOOKING_COLUMNS, { count: "exact" });
 
-    if (filters.status) query = query.eq("status", filters.status);
-    if (filters.planStatus) query = query.eq("plan_status", filters.planStatus);
-    if (filters.renewalStatus) query = query.eq("renewal_status", filters.renewalStatus);
-    if (filters.stationId) query = query.eq("station_id", filters.stationId);
-    if (filters.returnRequested) query = query.not("active_rental.return_requested_at", "is", null);
-    if (filters.unassigned) query = query.is("vehicle_id", null);
+    // `completed` is derived, so it is expressed by the allowlist above plus
+    // the stored status the derivation starts from.
+    if (filters.status) {
+        query = query.eq("status", filters.status === "completed" ? "fulfilled" : filters.status);
+    }
+    if (filters.stationId) query = query.eq("hub_id", filters.stationId);
+    if (filters.unassigned) query = query.is("held_vehicle_id", null);
     if (matchedIds) query = query.in("id", matchedIds);
 
     const { data, error, count } = await query
@@ -980,57 +1253,107 @@ export async function listPickupQueue(filters: PickupQueueFilters): Promise<Pagi
         .range(from, to);
 
     if (error) throw error;
-    const items = ((data ?? []) as unknown as RawPickupBookingRow[]).map(toPickupBookingView);
+
+    const rows = (data ?? []) as unknown as RawPickupBookingRow[];
+    const contexts = await loadBookingContext(rows.map((r) => r.id));
+    const items = rows.map((row) => ({
+        ...toBookingView(row, contexts.get(row.id)),
+        rider: unwrap(row.users) as PickupBookingView["rider"],
+    }));
+
     return paginate(items, count ?? 0, filters);
 }
 
-/** Available vehicles matching this booking's model + pickup station — what the staff picker offers. */
+/** Booking ids whose SUBSCRIPTION matches the plan-state filters. */
+async function resolveSubscriptionFilterIds(filters: PickupQueueFilters): Promise<string[]> {
+    let subsQuery = supabaseAdmin.from("subscriptions").select("id, booking_id");
+
+    if (filters.planStatus) subsQuery = subsQuery.eq("status", filters.planStatus);
+    if (filters.status === "completed") subsQuery = subsQuery.in("status", ["ended", "cancelled"]);
+
+    const { data: subs, error } = await subsQuery;
+    if (error) throw error;
+
+    let candidates = subs ?? [];
+
+    if (filters.renewalStatus === "scheduled") {
+        const { data: scheduled, error: scheduledError } = await supabaseAdmin
+            .from("subscription_periods")
+            .select("subscription_id")
+            .eq("status", "scheduled");
+        if (scheduledError) throw scheduledError;
+        const withScheduled = new Set((scheduled ?? []).map((p) => p.subscription_id));
+        candidates = candidates.filter((s) => withScheduled.has(s.id));
+    }
+
+    if (filters.returnRequested) {
+        const { data: returns, error: returnsError } = await supabaseAdmin
+            .from("rental_returns")
+            .select("rentals!inner(subscription_id)")
+            .in("status", ["requested", "inspected"]);
+        if (returnsError) throw returnsError;
+        const withReturn = new Set(
+            (returns ?? []).flatMap((r) => {
+                const rental = unwrap<{ subscription_id: string }>(r.rentals);
+                return rental ? [rental.subscription_id] : [];
+            }),
+        );
+        candidates = candidates.filter((s) => withReturn.has(s.id));
+    }
+
+    return candidates.map((s) => s.booking_id);
+}
+
+/** Available vehicles matching this booking's model + pickup hub. */
 export async function listAvailableVehiclesForBooking(bookingId: string): Promise<AvailableVehicleView[]> {
     const { data: booking, error: bookingError } = await supabaseAdmin
         .from("bookings")
-        .select("vehicle_model_id, station_id")
+        .select("hub_id, plans(vehicle_model_id)")
         .eq("id", bookingId)
         .maybeSingle();
 
     if (bookingError) throw bookingError;
     if (!booking) throw notFound("Booking not found.");
 
+    const modelId = unwrap<{ vehicle_model_id: string }>(booking.plans)?.vehicle_model_id;
+    if (!modelId) return [];
+
     const { data, error } = await supabaseAdmin
         .from("vehicles")
-        .select("id, name, registration_number, battery_percentage")
-        .eq("model_id", booking.vehicle_model_id)
-        .eq("station_id", booking.station_id)
+        .select("id, display_name, registration_number, vehicle_models(name)")
+        .eq("vehicle_model_id", modelId)
+        .eq("hub_id", booking.hub_id)
         .eq("status", "available");
 
     if (error) throw error;
-    return (data ?? []) as AvailableVehicleView[];
+    return (data ?? []).map((v) => ({
+        id: v.id,
+        name: v.display_name ?? unwrap<{ name: string }>(v.vehicle_models)?.name ?? "",
+        registration_number: v.registration_number,
+    }));
 }
 
 /**
- * Staff hands over a physical vehicle for a confirmed (approved) booking:
- * creates the rentals row (the actual ride), frees the booking into its
- * terminal 'fulfilled' state, and flips the vehicle 'booked' -> 'assigned'.
- * Normally the vehicle was already reserved by allocate_vehicle_for_booking()
- * at booking/approval time (booking.vehicle_id); input.vehicle_id is only
- * needed as a manual override (e.g. that reservation never found a unit).
+ * Staff hands over a physical vehicle for a confirmed booking.
  *
- * Write order is deliberate, not incidental — it's what prevents two racing
- * calls (a double-click, a network retry, two staff confirming the same
- * booking from two tabs) from each creating their own 'assigned' rentals
- * row for the same booking/vehicle:
- *   1. Claim the vehicle with a guarded UPDATE (only succeeds from its
- *      current status) — whoever's update actually matches a row wins.
- *   2. Claim the booking the same way (only succeeds from 'confirmed'). If
- *      this loses the race (someone else already confirmed this exact
- *      booking a moment earlier), the vehicle claim from step 1 is reverted
- *      before returning an error — there's no transaction infra here, so
- *      this compensating write is how a partial failure doesn't strand the
- *      vehicle as 'assigned' with nothing behind it.
- *   3. Only once BOTH claims succeed does the rentals row (the actual
- *      assignment record) get inserted — so at most one can ever exist per
- *      confirmPickup call sequence. rentals_one_active_per_vehicle_idx /
- *      rentals_one_active_per_booking_idx (20260811100000) are the
- *      database-level backstop if any of this is ever bypassed.
+ * **This function got much smaller, and the reason matters.** It used to
+ * activate the plan as well as open the rental: it wrote `plan_status`,
+ * `plan_activated_at`, `next_due_at`, `current_period_start`,
+ * `billing_cycle_number` and a duration snapshot onto the booking, because
+ * pickup was where the subscription effectively began.
+ *
+ * The subscription is created on PAYMENT CAPTURE now
+ * (payments.service.ts's applyPaymentSuccess), together with its deposit,
+ * period #1 and opening invoice. By the time staff hand over a scooter the
+ * commercial agreement already exists and its clock is already running, so
+ * pickup does one thing: it opens the rental and attaches a vehicle to it.
+ *
+ * The concurrency story changed with it. The old code claimed the vehicle with
+ * a guarded `UPDATE vehicles SET status='assigned' WHERE status=...`, using
+ * that as a lock. `status` is read-only now, so the lock is the assignment
+ * row: a partial unique index permits one open assignment per vehicle, and the
+ * loser of a race gets 23505 on the insert. The booking claim stays a guarded
+ * update, which is what stops two rentals being opened for one booking.
  */
 export async function confirmPickup(
     bookingId: string,
@@ -1039,166 +1362,144 @@ export async function confirmPickup(
 ): Promise<PickupBookingView> {
     const { data: booking, error: bookingError } = await supabaseAdmin
         .from("bookings")
-        .select(PICKUP_BOOKING_COLUMNS)
+        .select("id, user_id, status, hub_id, held_vehicle_id, plans(vehicle_model_id)")
         .eq("id", bookingId)
         .maybeSingle();
 
     if (bookingError) throw bookingError;
     if (!booking) throw notFound("Booking not found.");
+    if (booking.status !== "confirmed") throw conflict("This booking is not awaiting pickup.");
 
-    const bookingRow = booking as unknown as RawPickupBookingRow & {
-        vehicle_models: { id: string } | { id: string }[] | null;
-        stations: { id: string } | { id: string }[] | null;
-    };
-    if (bookingRow.status !== "confirmed") {
-        throw conflict("This booking is not awaiting pickup.");
+    const context = (await loadBookingContext([bookingId])).get(bookingId) ?? EMPTY_CONTEXT;
+    if (!context.subscriptionId) {
+        throw businessRule(
+            "This booking has no subscription yet. Payment must be captured before a scooter can be handed over.",
+        );
     }
 
-    const modelId = unwrap<{ id: string }>(bookingRow.vehicle_models)?.id;
-    const stationId = unwrap<{ id: string }>(bookingRow.stations)?.id;
-    const vehicleId = input.vehicle_id ?? bookingRow.vehicle_id;
+    const modelId = unwrap<{ vehicle_model_id: string }>(booking.plans)?.vehicle_model_id;
+    const vehicleId = input.vehicle_id ?? booking.held_vehicle_id;
     if (!vehicleId) {
         throw businessRule("No vehicle has been allocated to this booking yet — pick one manually.");
     }
 
     const { data: vehicle, error: vehicleError } = await supabaseAdmin
         .from("vehicles")
-        .select("id, status, station_id, model_id")
+        .select("id, status, hub_id, vehicle_model_id")
         .eq("id", vehicleId)
         .maybeSingle();
 
     if (vehicleError) throw vehicleError;
     if (!vehicle) throw notFound("Vehicle not found.");
-    // 'booked' is the normal path (already reserved by allocate_vehicle_for_booking);
-    // 'available' covers a manual override onto a unit that was never auto-allocated.
-    if (vehicle.status !== "booked" && vehicle.status !== "available") {
+    // 'reserved' is the normal path (already held by this booking);
+    // 'available' covers a manual override onto a unit never auto-allocated.
+    if (vehicle.status !== "reserved" && vehicle.status !== "available") {
         throw businessRule("This vehicle is not available for pickup.");
     }
-    if (vehicle.station_id !== stationId) throw businessRule("This vehicle is not at the booking's pickup station.");
-    if (vehicle.model_id !== modelId) throw businessRule("This vehicle does not match the booked model.");
-
-    // Step 1: claim the vehicle. Guarded on the exact status just read, so a
-    // concurrent claim on the SAME vehicle (from this booking retried, or a
-    // different booking that also had it allocated) can only ever win once.
-    const { data: claimedVehicle, error: vehicleClaimError } = await supabaseAdmin
-        .from("vehicles")
-        .update({ status: "assigned" })
-        .eq("id", vehicleId)
-        .eq("status", vehicle.status)
-        .select("id")
-        .maybeSingle();
-    if (vehicleClaimError) throw vehicleClaimError;
-    if (!claimedVehicle) {
-        throw conflict("This vehicle was just assigned elsewhere — refresh and try again.");
+    if (vehicle.hub_id !== booking.hub_id) {
+        throw businessRule("This vehicle is not at the booking's pickup station.");
+    }
+    if (vehicle.vehicle_model_id !== modelId) {
+        throw businessRule("This vehicle does not match the booked model.");
     }
 
-    const rider = unwrap<{ id: string; full_name: string; phone: string | null }>(bookingRow.users);
-    // The plan is FROZEN onto the rental here rather than read back through
-    // booking_id -> bookings -> plans, so a later repricing can't rewrite this
-    // rental's deadline or its settled penalty (20260804100000). A booking
-    // with no plan leaves those fields null — that rental simply never expires.
-    const plan = unwrap<{ id: string; price: number; duration_days: number; deposit_amount: number }>(bookingRow.plans);
-    const startedAt = new Date();
-    const expiresAt = plan ? planExpiryFor(startedAt, plan.duration_days) : null;
+    // The rental runs to the end of the current billing period. That date is
+    // the period's, not a duration added to "now": the clock started when the
+    // rider paid, so a scooter collected two days late is still due back on
+    // the same day.
+    if (!context.nextDueAt) {
+        throw businessRule("This subscription has no current billing period to rent against.");
+    }
+    // End of the IST day, not `T23:59:59Z` — that is 05:29:59 IST the next
+    // morning, and it handed every rental five and a half hours before
+    // computeLateReturnPenalty considered it late.
+    const dueBackAt = endOfBusinessDay(context.nextDueAt);
 
-    // Plan/billing rental period starts HERE — at vehicle assignment, never
-    // at payment time, per spec. duration_days is snapshotted so a later
-    // admin edit to the plan template can't reshape an already-active plan.
-    const nowIso = startedAt.toISOString();
-    const today = nowIso.slice(0, 10);
-    const durationDays = plan?.duration_days ?? 7;
-    const nextDueAt = addDays(today, durationDays);
-
-    // Step 2: claim the booking. Guarded on 'confirmed' — if this booking was
-    // already fulfilled by a racing call, undo step 1's vehicle claim (it's
-    // otherwise left 'assigned' with no rental behind it) and surface a
-    // clean, idempotency-friendly error instead of a duplicate assignment.
-    const { data: updated, error: bookingUpdateError } = await supabaseAdmin
+    // Step 1: claim the booking. Guarded on 'confirmed', so a racing call
+    // cannot also open a rental for it.
+    const { data: claimedBooking, error: claimError } = await supabaseAdmin
         .from("bookings")
-        .update({
-            status: "fulfilled",
-            vehicle_id: vehicleId,
-            plan_status: "active",
-            plan_activated_at: nowIso,
-            plan_duration_days: durationDays,
-            deposit_amount_at_booking: plan?.deposit_amount ?? null,
-            current_period_start: today,
-            next_due_at: nextDueAt,
-            // The rider's first week (already paid for at checkout) IS cycle
-            // 1 — the Billing & Charges engine's "every N cycles" rules
-            // (transaction_fee etc.) count from here, matching the plan's
-            // own period start rather than payment time. See
-            // 20260817100000_billing_charge_engine.sql.
-            billing_cycle_number: 1,
-        })
+        .update({ status: "fulfilled", held_vehicle_id: null, hold_expires_at: null })
         .eq("id", bookingId)
         .eq("status", "confirmed")
-        .select(PICKUP_BOOKING_COLUMNS)
+        .select("id")
         .maybeSingle();
-    if (bookingUpdateError) throw bookingUpdateError;
-    if (!updated) {
-        await supabaseAdmin.from("vehicles").update({ status: vehicle.status }).eq("id", vehicleId);
-        throw conflict("This booking has already been confirmed.");
-    }
+    if (claimError) throw claimError;
+    if (!claimedBooking) throw conflict("This booking has already been confirmed.");
 
-    // Step 3: only now insert the actual assignment record. rentalError.code
-    // 23505 would mean rentals_one_active_per_vehicle_idx /
-    // _per_booking_idx caught a duplicate that somehow got past steps 1-2 —
-    // translated to the same conflict message rather than a raw DB error.
+    // Step 2: open the rental.
     const { data: rental, error: rentalError } = await supabaseAdmin
         .from("rentals")
         .insert({
-            user_id: rider!.id,
-            vehicle_id: vehicleId,
-            booking_id: bookingId,
+            user_id: booking.user_id,
+            subscription_id: context.subscriptionId,
             status: "active",
-            started_at: startedAt.toISOString(),
-            plan_id: plan?.id ?? null,
-            plan_duration_days: plan?.duration_days ?? null,
-            plan_price_at_pickup: plan?.price ?? null,
-            expires_at: expiresAt?.toISOString() ?? null,
+            picked_up_at: new Date().toISOString(),
+            due_back_at: dueBackAt,
         })
         .select("id")
         .single();
     if (rentalError) {
+        // Compensating write — put the booking back so staff can retry.
+        await supabaseAdmin
+            .from("bookings")
+            .update({ status: "confirmed", held_vehicle_id: vehicleId })
+            .eq("id", bookingId);
         if ((rentalError as { code?: string }).code === "23505") {
-            throw conflict("This vehicle or booking was just assigned elsewhere — refresh and try again.");
+            throw conflict("This rider already has an active rental — refresh and try again.");
         }
         throw rentalError;
     }
 
-    const { error: activeRentalLinkError } = await supabaseAdmin
-        .from("bookings")
-        .update({ active_rental_id: rental.id })
-        .eq("id", bookingId);
-    if (activeRentalLinkError) throw activeRentalLinkError;
+    // Step 3: attach the vehicle. The unique index on open assignments is what
+    // makes this the real mutual exclusion.
+    const { error: assignmentError } = await supabaseAdmin
+        .from("rental_vehicle_assignments")
+        .insert({
+            rental_id: rental.id,
+            vehicle_id: vehicleId,
+            reason: "initial",
+            assigned_hub_id: booking.hub_id,
+        });
+    if (assignmentError) {
+        await supabaseAdmin.from("rentals").delete().eq("id", rental.id);
+        await supabaseAdmin
+            .from("bookings")
+            .update({ status: "confirmed", held_vehicle_id: vehicleId })
+            .eq("id", bookingId);
+        if ((assignmentError as { code?: string }).code === "23505") {
+            throw conflict("This vehicle was just assigned elsewhere — refresh and try again.");
+        }
+        throw assignmentError;
+    }
 
     await writeAudit({
         actorId: actor.id,
-        targetUserId: rider!.id,
+        targetUserId: booking.user_id,
         action: "booking.fulfilled",
         entityType: "booking",
         entityId: bookingId,
-        after: { vehicle_id: vehicleId, status: "fulfilled", expires_at: expiresAt?.toISOString() ?? null },
+        after: { vehicle_id: vehicleId, status: "fulfilled", rental_id: rental.id, due_back_at: dueBackAt },
     });
 
-    await writeAudit({
-        actorId: actor.id,
-        targetUserId: rider!.id,
-        action: "plan.activated",
-        entityType: "booking",
-        entityId: bookingId,
-        after: { plan_status: "active", next_due_at: nextDueAt, plan_duration_days: durationDays },
-    });
-
-    await notifyUser(rider!.id, {
+    await notifyUser(booking.user_id, {
         template: "pickup_confirmed",
         title: "Scooter Picked Up",
-        body: expiresAt
-            ? `Enjoy your ride! Your rental is now active until ${expiresAt.toLocaleDateString()}.`
-            : "Enjoy your ride! Your rental is now active.",
+        body: `Enjoy your ride! Your rental is now active until ${context.nextDueAt}.`,
         screen: "post-booking-dashboard",
     });
 
-    return toPickupBookingView(updated as unknown as RawPickupBookingRow);
+    const { data: refreshed, error: refreshError } = await supabaseAdmin
+        .from("bookings")
+        .select(PICKUP_BOOKING_COLUMNS)
+        .eq("id", bookingId)
+        .single();
+    if (refreshError) throw refreshError;
+
+    const row = refreshed as unknown as RawPickupBookingRow;
+    const contexts = await loadBookingContext([bookingId]);
+    return {
+        ...toBookingView(row, contexts.get(bookingId)),
+        rider: unwrap(row.users) as PickupBookingView["rider"],
+    };
 }

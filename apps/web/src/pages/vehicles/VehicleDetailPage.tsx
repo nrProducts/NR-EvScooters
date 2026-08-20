@@ -1,8 +1,6 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  ArrowLeft, BatteryMedium, Pencil, FileText, Images, Upload, Trash2, Loader2, Recycle,
-} from "lucide-react";
+import { ArrowLeft, Pencil, FileText, Recycle, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,9 +15,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistorySplitView } from "@/components/vehicles/VehicleHistorySplitView";
-import {
-  useVehicle, useUpdateVehicle, useUploadVehiclePhoto, useDeleteVehiclePhoto, useScrapVehicle,
-} from "@/hooks/useVehicles";
+import { useVehicle, useUpdateVehicle, useScrapVehicle } from "@/hooks/useVehicles";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
@@ -31,12 +27,9 @@ export default function VehicleDetailPage() {
   const user = useAuthStore((s) => s.user);
   const { data: vehicle, isLoading, isError, refetch } = useVehicle(id);
   const updateVehicle = useUpdateVehicle();
-  const uploadPhoto = useUploadVehiclePhoto();
-  const deletePhoto = useDeleteVehiclePhoto();
   const scrapVehicle = useScrapVehicle();
   const [editOpen, setEditOpen] = useState(false);
   const [scrapOpen, setScrapOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (isLoading) {
     return (
@@ -57,7 +50,7 @@ export default function VehicleDetailPage() {
         <div className="flex-1">
           <h1 className="text-2xl font-semibold tracking-tight">{vehicle.name}</h1>
           <p className="text-sm text-muted-foreground">
-            {vehicle.manufacturer} {vehicle.model} · {vehicle.registration_number}
+            {vehicle.model} · {vehicle.registration_number}
           </p>
         </div>
         <StatusBadge status={vehicle.status} />
@@ -79,29 +72,19 @@ export default function VehicleDetailPage() {
             <CardTitle>Vehicle details</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/*
+              Battery number and charge level are gone: a battery is swapped at
+              a station, so it was never a property of a scooter. Service dates
+              are the maintenance history below, and insurance is one of the
+              documents beside it — both were separately-stored copies of
+              something already recorded elsewhere.
+            */}
             <Detail label="VIN" value={vehicle.vin} />
-            <Detail label="Battery number" value={vehicle.battery_number} />
-            <Detail
-              label="Battery"
-              value={`${vehicle.battery_percentage}%`}
-              icon={BatteryMedium}
-              hint="Manually recorded — live telemetry isn't wired up yet."
-            />
             <Detail label="Current rider" value={vehicle.current_rider?.full_name ?? "None"} />
-            <Detail label="Last service" value={vehicle.last_service_date ? formatDate(vehicle.last_service_date) : "Not recorded"} />
-            <Detail label="Next service due" value={vehicle.next_service_due_date ? formatDate(vehicle.next_service_due_date) : "Not scheduled"} />
             <Detail label="Color" value={vehicle.color ?? "Not recorded"} />
             <Detail label="QR code" value={vehicle.qr_code ?? "Not assigned"} />
             <Detail label="IMEI / IoT device" value={vehicle.imei ?? "Not recorded"} />
             <Detail label="Purchase date" value={vehicle.purchase_date ? formatDate(vehicle.purchase_date) : "Not recorded"} />
-            <Detail
-              label="Insurance"
-              value={
-                vehicle.insurance_number
-                  ? `${vehicle.insurance_number}${vehicle.insurance_expiry ? ` · expires ${formatDate(vehicle.insurance_expiry)}` : ""}`
-                  : "Not recorded"
-              }
-            />
           </CardContent>
         </Card>
 
@@ -113,13 +96,15 @@ export default function VehicleDetailPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             {vehicle.documents.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No registration/insurance documents on file.</p>
+              <p className="text-xs text-muted-foreground">
+                No registration, insurance, PUC, fitness or permit documents on file.
+              </p>
             ) : (
               vehicle.documents.map((doc) => (
                 <div key={doc.id} className="flex items-center justify-between gap-2">
                   <div>
                     <p className="font-medium capitalize">{doc.doc_type}</p>
-                    <p className="text-xs text-muted-foreground">expires {formatDate(doc.expiry_date)}</p>
+                    <p className="text-xs text-muted-foreground">expires {formatDate(doc.expires_on)}</p>
                   </div>
                 </div>
               ))
@@ -147,65 +132,15 @@ export default function VehicleDetailPage() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="flex items-center gap-2">
-            <Images className="h-4 w-4" /> Photos
-          </CardTitle>
-          {hasAction(user, "vehicles", "edit") && (
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) uploadPhoto.mutate({ id: vehicle.id, file });
-                  e.target.value = "";
-                }}
-              />
-              <Button variant="outline" size="sm" disabled={uploadPhoto.isPending} onClick={() => fileInputRef.current?.click()}>
-                {uploadPhoto.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                Upload photo
-              </Button>
-            </div>
-          )}
-        </CardHeader>
-        <CardContent>
-          {uploadPhoto.isError && (
-            <p className="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              Could not upload that photo. Please try again.
-            </p>
-          )}
-          {vehicle.photos.length === 0 ? (
-            <EmptyState title="No photos yet" description="Upload condition or inspection photos for this vehicle." />
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {vehicle.photos.map((p) => (
-                <div key={p.id} className="group relative overflow-hidden rounded-lg border border-border">
-                  <img src={p.url} alt="Vehicle" className="aspect-square w-full object-cover" />
-                  {p.is_primary && (
-                    <span className="absolute left-1.5 top-1.5 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
-                      Primary
-                    </span>
-                  )}
-                  {hasAction(user, "vehicles", "edit") && (
-                    <button
-                      type="button"
-                      onClick={() => deletePhoto.mutate({ id: vehicle.id, photoId: p.id })}
-                      className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                      aria-label="Delete photo"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/*
+        The Photos card is gone with the `vehicle_photos` table.
+
+        Every scooter of a model carried the same six studio shots, re-uploaded
+        per unit — those belong to the MODEL, and live on
+        `vehicle_model_media` now. Condition photographs, the genuinely
+        per-unit kind, are `incidents.photo_paths`, shown next to the damage
+        they evidence rather than in a gallery detached from any claim.
+      */}
 
       <VehicleHistorySplitView vehicle={vehicle} />
 
@@ -321,7 +256,7 @@ function Detail({
 }: {
   label: string;
   value: string;
-  icon?: typeof BatteryMedium;
+  icon?: typeof FileText;
   hint?: string;
 }) {
   return (

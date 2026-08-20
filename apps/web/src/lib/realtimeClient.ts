@@ -6,7 +6,32 @@ import { supabase } from "./supabaseClient";
  * logic lives in the caller's handlers, not here, so this stays reusable for
  * future realtime work (chat, fleet tracking) beyond admin notifications.
  */
-export type RealtimeTable = "bookings" | "vehicles" | "invoices" | "notifications_log";
+
+/**
+ * The four tables in the `supabase_realtime` publication, asserted by
+ * migration 27 rather than clicked in a dashboard.
+ *
+ * Two changed with the schema:
+ *
+ *   `invoices` → `payment_allocations`. The console listened for
+ *   `payment_status` flipping to 'succeeded'; that column is gone, because
+ *   paid-ness is derived from the allocations rather than stored. An
+ *   allocation INSERT is the better signal anyway — money moving is an event,
+ *   where a status flip was a description of one.
+ *
+ *   `notifications_log` → `notification_messages`. The addressed message is
+ *   the only part of the three-table split published to realtime; the event
+ *   stream and the delivery attempts are internal.
+ *
+ * Adding a name here does nothing on its own — the table has to be in the
+ * publication, and its RLS is the only thing standing between it and every
+ * subscribed browser.
+ */
+export type RealtimeTable =
+  | "bookings"
+  | "vehicles"
+  | "payment_allocations"
+  | "notification_messages";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RealtimeHandler = (payload: RealtimePostgresChangesPayload<Record<string, any>>) => void;

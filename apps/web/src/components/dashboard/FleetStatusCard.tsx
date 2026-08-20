@@ -8,18 +8,18 @@ import type { VehicleStatus } from "@/types";
 
 export const VEHICLE_STATUS_LABEL: Record<VehicleStatus, string> = {
   available: "Available",
-  booked: "Booked",
+  reserved: "Reserved",
   assigned: "Assigned",
   maintenance: "Maintenance",
-  scrap: "Scrapped",
+  retired: "Retired",
 };
 
 const FLEET_BAR_COLOR: Record<VehicleStatus, string> = {
   available: "bg-success",
-  booked: "bg-info",
+  reserved: "bg-info",
   assigned: "bg-primary",
   maintenance: "bg-warning",
-  scrap: "bg-muted-foreground/50",
+  retired: "bg-muted-foreground/50",
 };
 
 function FleetStatusRow({ status, count, total }: { status: VehicleStatus; count: number; total: number }) {

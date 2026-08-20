@@ -149,13 +149,13 @@ describe("mobile station list — exclusions", () => {
     it("excludes stations hidden from mobile for a non-admin caller", async () => {
         queryStub.result = { data: [egmoreRow], error: null };
         await listStationsForMobile({}, false);
-        expect(queryStub.eqArgs()).toContainEqual(["is_visible_on_mobile", true]);
+        expect(queryStub.eqArgs()).toContainEqual(["is_rider_visible", true]);
     });
 
     it("includes hidden stations for an admin caller, but still not deleted ones", async () => {
         queryStub.result = { data: [egmoreRow], error: null };
         await listStationsForMobile({}, true);
-        expect(queryStub.eqArgs()).not.toContainEqual(["is_visible_on_mobile", true]);
+        expect(queryStub.eqArgs()).not.toContainEqual(["is_rider_visible", true]);
         expect(queryStub.calledWith("is", "deleted_at", null)).toBe(true);
     });
 
@@ -193,7 +193,7 @@ describe("station detail", () => {
     it("hides a mobile-hidden station behind the same 404 as a missing one", async () => {
         queryStub.result = { data: null, error: null };
         await expect(getStationById(egmoreRow.id, false)).rejects.toMatchObject({ status: 404 });
-        expect(queryStub.eqArgs()).toContainEqual(["is_visible_on_mobile", true]);
+        expect(queryStub.eqArgs()).toContainEqual(["is_rider_visible", true]);
     });
 });
 
@@ -308,8 +308,8 @@ describe("query validation", () => {
 });
 
 describe("admin permission checks", () => {
-    const run = (roles: string[] | null) => {
-        const req = { user: roles ? { roles } : undefined } as unknown as AuthedRequest;
+    const run = (role: string | null) => {
+        const req = { user: role ? { role } : undefined } as unknown as AuthedRequest;
         let captured: unknown;
         requireAdmin(req, {} as never, ((err?: unknown) => {
             captured = err;
@@ -318,16 +318,16 @@ describe("admin permission checks", () => {
     };
 
     it("lets an admin through", () => {
-        expect(run(["admin"])).toBeUndefined();
+        expect(run("admin")).toBeUndefined();
     });
 
     it("rejects a rider with 403", () => {
-        expect(run(["rider"])).toBeInstanceOf(AppError);
-        expect(run(["rider"])).toMatchObject({ status: 403 });
+        expect(run("rider")).toBeInstanceOf(AppError);
+        expect(run("rider")).toMatchObject({ status: 403 });
     });
 
     it("rejects staff who are not admins — station writes are admin-only", () => {
-        expect(run(["staff", "technician"])).toMatchObject({ status: 403 });
+        expect(run("staff")).toMatchObject({ status: 403 });
     });
 
     it("rejects an unauthenticated caller with 401", () => {

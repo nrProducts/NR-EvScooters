@@ -7,21 +7,25 @@ import { useAuthStore } from "@/store/authStore";
 import { useToastStore } from "@/store/toastStore";
 import { ToastViewport } from "@/components/common/ToastViewport";
 import { ApprovalPopup, type ApprovalRequest } from "@/components/common/ApprovalPopup";
+import { useNotificationTypeSummaries } from "@/hooks/useNotificationSettings";
 
-// Notification templates that need a staff decision, not just an FYI toast —
-// these open a blocking center-screen popup instead of/alongside the toast.
-// Add new "needs review" templates here as they're wired up on the backend.
-const APPROVAL_TEMPLATES: Record<string, { reviewPath: string; reviewLabel: string }> = {
-  kyc_review_needed: { reviewPath: "/kyc", reviewLabel: "Review KYC" },
-  maintenance_review_needed: { reviewPath: "/maintenance", reviewLabel: "Review Ticket" },
-};
+/*
+ * `APPROVAL_TEMPLATES` lived here — a two-entry map deciding which incoming
+ * notifications open a blocking popup rather than just ticking the bell.
+ *
+ * It is `notification_types.requires_action` now, with `action_path` for
+ * where the popup's button goes. The map meant a backend notification that
+ * needed a decision was silently treated as news until someone remembered to
+ * add it here in a second repository; a migration moves it instead.
+ */
 
+/** `vehicle_status`: five values, and `booked`/`scrap` are not among them. */
 const VEHICLE_STATUS_LABEL: Record<string, string> = {
   available: "Available",
-  booked: "Booked",
+  reserved: "Reserved",
   assigned: "Assigned",
   maintenance: "Under Maintenance",
-  scrap: "Scrapped",
+  retired: "Retired",
 };
 
 function unwrap<T>(raw: unknown): T | null {
@@ -41,11 +45,27 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const push = useToastStore((s) => s.push);
   const navigate = useNavigate();
   const [approval, setApproval] = useState<ApprovalRequest | null>(null);
+  // The catalogue decides which notifications are tasks. Fetched, not
+  // hard-coded — see the note where APPROVAL_TEMPLATES used to be. The
+  // subscriber-free /types read, because this provider runs for staff too and
+  // the full settings endpoint is admin-only.
+  const { data: notificationTypes } = useNotificationTypeSummaries();
 
   useEffect(() => {
-    // Admin-only for now — bookings/invoices/notifications_log RLS only
-    // passes realtime rows through to the 'admin' role, not 'staff'.
-    if (user?.role !== "admin") {
+    // Staff and admin both.
+    //
+    // This used to be admin-only, justified by "the RLS on the published
+    // tables only passes realtime rows through to the 'admin' role, not
+    // 'staff'". That was not true: p_bookings_read, p_vehicles_read and
+    // p_payment_allocations_read all resolve through public.is_staff(), which
+    // is role in ('staff','admin'). RLS was never the constraint — this line
+    // was — and the cost fell on the people most likely to sit on the pickup
+    // queue all day, watching a list that never moved.
+    //
+    // RLS remains the actual control on what each session receives; it is
+    // per-row, so a staff member sees exactly what a staff member may see.
+    // See docs/final-system-audit (finding M2).
+    if (!user || (user.role !== "admin" && user.role !== "staff")) {
       unsubscribeAdminChannel();
       return;
     }
@@ -63,15 +83,22 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
           // rather than dropping the popup if this fails.
           // New bookings need a staff decision (prepare/confirm the pickup),
           // so this opens the approval popup rather than just toasting.
+          //
+          // The embed changed shape: a booking reserves a PLAN, and the plan
+          // is what names a vehicle model — `bookings.vehicle_model_id` is
+          // gone. The `!fkey` hint on the rider is gone too, since
+          // `cancelled_by` moved to `booking_cancellations` and bookings has
+          // one foreign key to users again.
           void supabase
             .from("bookings")
-            .select("users!bookings_user_id_fkey(full_name), vehicle_models(name)")
+            .select("users(full_name), plans(vehicle_models(name))")
             .eq("id", row.id)
             .maybeSingle()
             .then(
               ({ data }) => {
                 const rider = unwrap<{ full_name: string }>(data?.users);
-                const model = unwrap<{ name: string }>(data?.vehicle_models);
+                const plan = unwrap<{ vehicle_models: unknown }>(data?.plans);
+                const model = unwrap<{ name: string }>(plan?.vehicle_models);
                 setApproval({
                   title: "New Booking",
                   message: rider && model ? `${rider.full_name} booked ${model.name}` : "A new booking was just created.",
@@ -109,7 +136,11 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
       vehicles: (payload) => {
         if (payload.eventType !== "UPDATE") return;
-        const next = payload.new as { id: string; name: string; registration_number: string; status?: string };
+        // `vehicles.name` is `display_name`, and it is nullable — the
+        // registration number is the one identifier every vehicle has.
+        const next = payload.new as {
+          id: string; display_name: string | null; registration_number: string; status?: string;
+        };
         const prev = payload.old as { status?: string };
         if (!next.status || next.status === prev?.status) return;
 
@@ -117,21 +148,29 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         qc.invalidateQueries({ queryKey: ["vehicle", next.id] });
         qc.invalidateQueries({ queryKey: ["reports", "summary"] });
 
+        const label = next.display_name ?? next.registration_number;
         push({
           tone: "info",
           title: "Vehicle Status Changed",
-          message: `${next.name} (${next.registration_number}) is now ${VEHICLE_STATUS_LABEL[next.status] ?? next.status}.`,
+          message: `${label} (${next.registration_number}) is now ${VEHICLE_STATUS_LABEL[next.status] ?? next.status}.`,
         });
       },
 
-      invoices: (payload) => {
-        if (payload.eventType !== "UPDATE") return;
-        const next = payload.new as { id: string; payment_status?: string };
-        const prev = payload.old as { payment_status?: string };
-        if (next.payment_status !== "succeeded" || prev?.payment_status === "succeeded") return;
+      // Money landing, rather than a status column describing it having
+      // landed. `invoices.payment_status` is gone — paid-ness is derived from
+      // exactly these rows — so an allocation INSERT is both the earliest and
+      // the only reliable signal that a payment settled an invoice.
+      //
+      // An INSERT, not an UPDATE: an allocation is written once and never
+      // revised, which also means the old "did it JUST become succeeded?"
+      // guard against re-toasting on unrelated updates is unnecessary.
+      payment_allocations: (payload) => {
+        if (payload.eventType !== "INSERT") return;
+        const row = payload.new as { invoice_id?: string };
 
         qc.invalidateQueries({ queryKey: ["invoices"] });
-        qc.invalidateQueries({ queryKey: ["invoice", next.id] });
+        if (row.invoice_id) qc.invalidateQueries({ queryKey: ["invoice", row.invoice_id] });
+        qc.invalidateQueries({ queryKey: ["payments"] });
         qc.invalidateQueries({ queryKey: ["reports", "summary"] });
 
         push({ tone: "success", title: "Payment Received", message: "A payment was just received." });
@@ -139,28 +178,39 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
       // Rider-facing notifications fire constantly (KYC updates, booking
       // confirmations, etc.) — toasting every one would spam admins, so this
-      // just keeps the header bell badge live, except for templates that need
-      // a staff decision, which open the blocking approval popup instead.
-      notifications_log: (payload) => {
+      // just keeps the header bell badge live, except for the ones the
+      // catalogue marks as needing action, which open the blocking popup.
+      //
+      // `title` and `body` are columns on the message now rather than keys
+      // inside a `payload` blob, which is why the fallbacks below almost
+      // never fire: the row itself carries the words.
+      notification_messages: (payload) => {
         qc.invalidateQueries({ queryKey: ["notifications"] });
         if (payload.eventType !== "INSERT") return;
 
-        const row = payload.new as { template?: string; payload?: { title?: string; body?: string } };
-        const approvalTemplate = row.template && APPROVAL_TEMPLATES[row.template];
-        if (!approvalTemplate) return;
+        const row = payload.new as {
+          notification_type_code?: string; title?: string; body?: string;
+        };
+        const type = notificationTypes?.find(
+          (t) => t.notification_type === row.notification_type_code,
+        );
+        if (!type?.requires_action) return;
 
         setApproval({
-          title: row.payload?.title ?? "Approval needed",
-          message: row.payload?.body ?? "Something needs your review.",
-          reviewPath: approvalTemplate.reviewPath,
-          reviewLabel: approvalTemplate.reviewLabel,
+          title: row.title ?? type.label ?? "Approval needed",
+          message: row.body ?? "Something needs your review.",
+          // A type marked as needing action with nowhere to go is a catalogue
+          // mistake, not a reason to drop the popup — the dashboard is at
+          // least somewhere the person can start looking.
+          reviewPath: type.action_path ?? "/",
+          reviewLabel: "Review",
         });
       },
     };
 
     subscribeAdminChannel(handlers);
     return () => unsubscribeAdminChannel();
-  }, [user?.id, user?.role, qc, push]);
+  }, [user?.id, user?.role, qc, push, notificationTypes]);
 
   return (
     <>

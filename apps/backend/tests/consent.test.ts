@@ -7,7 +7,7 @@ import {
 import { publishNoticeBody, recordConsentBody } from "../src/modules/consent/consent.validation";
 
 const MIGRATION = join(
-    __dirname, "../../../supabase/migrations/20260814100000_dpdpa_enums.sql",
+    __dirname, "../../../supabase/v2/migrations/20260819100100_enums.sql",
 );
 
 describe("consent purpose registry", () => {
@@ -42,7 +42,10 @@ describe("consent purpose registry", () => {
         // granular-consent requirement exists to prevent.
         expect(isRequiredPurpose("location_services")).toBe(false);
         expect(isRequiredPurpose("marketing_communications")).toBe(false);
-        expect(isRequiredPurpose("referral_program")).toBe(false);
+        // `referral_program` left the enum with the referral module. A purpose
+        // with nothing behind it is a consent request for data we do not
+        // collect, so it is not merely optional — it is absent.
+        expect(ALL_PURPOSES).not.toContain("referral_program");
     });
 
     it("classifies identity verification and payments as required", () => {

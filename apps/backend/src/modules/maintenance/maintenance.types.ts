@@ -1,6 +1,8 @@
-export type MaintenanceStatus = "reported" | "in_progress" | "resolved" | "cancelled";
+/** `triaged` is new: the gap between reporting and starting work is real. */
+export type MaintenanceStatus =
+    "reported" | "triaged" | "in_progress" | "resolved" | "cancelled";
 export const MAINTENANCE_STATUSES: readonly MaintenanceStatus[] = [
-    "reported", "in_progress", "resolved", "cancelled",
+    "reported", "triaged", "in_progress", "resolved", "cancelled",
 ] as const;
 
 /**
@@ -9,9 +11,10 @@ export const MAINTENANCE_STATUSES: readonly MaintenanceStatus[] = [
  * repaired) / not_repairable (scrapped, rider permanently reassigned). Null
  * until triaged — a plain "Report issue" ticket never gets one.
  */
-export type MaintenanceOutcome = "quick_fix" | "standard_temp" | "not_repairable";
+export type MaintenanceOutcome =
+    "quick_fix" | "temp_vehicle" | "replacement" | "not_repairable";
 export const MAINTENANCE_OUTCOMES: readonly MaintenanceOutcome[] = [
-    "quick_fix", "standard_temp", "not_repairable",
+    "quick_fix", "temp_vehicle", "replacement", "not_repairable",
 ] as const;
 
 interface MaintenanceVehicleRef {
@@ -20,9 +23,12 @@ interface MaintenanceVehicleRef {
     registration_number: string;
 }
 
-interface MaintenanceTempVehicleRef extends MaintenanceVehicleRef {
-    battery_percentage: number;
-}
+/**
+ * Was `MaintenanceVehicleRef` plus `battery_percentage`. Charge level is not a
+ * vehicle column any more — nothing measured it, and it was a static 100 on
+ * every row — so a temp vehicle reference is now just a vehicle reference.
+ */
+type MaintenanceTempVehicleRef = MaintenanceVehicleRef;
 
 interface MaintenanceUserRef {
     id: string;

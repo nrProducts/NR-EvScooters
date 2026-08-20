@@ -87,7 +87,6 @@ export const updateRequestBody = z
         status: z.enum(["in_progress", "awaiting_principal", "completed"]).optional(),
         assigned_to: z.string().uuid().nullable().optional(),
         resolution_notes: z.string().trim().max(4000).optional(),
-        ticket_ref: z.string().trim().max(120).optional(),
     })
     .strict()
     .refine((v) => Object.keys(v).length > 0, "Provide at least one field to update.");

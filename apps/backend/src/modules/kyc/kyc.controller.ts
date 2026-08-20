@@ -32,7 +32,9 @@ export async function uploadMyDocumentHandler(req: AuthedRequest, res: Response)
     const front = fileFrom(req, "front");
     if (!front) throw badRequest("A front image or PDF is required.", { front: "Attach the document." });
 
-    const body = req.body as { doc_type: KycDocType; doc_number: string; expiry_date?: string };
+    // The API keeps its own field names; the service maps them onto
+    // document_type / expires_on.
+    const body = req.body as { document_type: KycDocType; doc_number: string; expires_on?: string };
     const document = await service.uploadDocument(
         req.user!.id,
         { ...body, front, back: fileFrom(req, "back") },
@@ -82,7 +84,7 @@ export async function documentUrlHandler(req: AuthedRequest, res: Response) {
         targetUserId: result.user_id,
         resource: "kyc_document_image",
         resourceId: documentId,
-        fields: [`${result.doc_type}_${side}_image`],
+        fields: [`${result.document_type}_${side}_image`],
         reason: reason ?? (isStaff(req) ? "kyc_review" : "rider_self"),
         contextRef: context_ref,
         req,

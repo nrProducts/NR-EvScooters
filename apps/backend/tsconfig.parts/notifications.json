@@ -1,0 +1,11 @@
+{
+    "extends": "./_shared.json",
+    "include": [
+        "../src/modules/notifications",
+        "../src/modules/notification-settings",
+        "../src/common",
+        "../src/config",
+        "../src/middleware",
+        "../src/types"
+    ]
+}

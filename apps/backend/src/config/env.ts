@@ -29,6 +29,17 @@ export const env = {
     /** Lifetime of a minted signed URL, in seconds. Short by design. */
     kycSignedUrlTtlSeconds: intFromEnv("KYC_SIGNED_URL_TTL_SECONDS", 300),
 
+    // --- KYC field encryption (see common/fieldCrypto.ts) -----------------
+    // Deliberately optional/empty-default, never `required(...)`: the app must
+    // still boot in dev with no keys configured. The KYC paths throw a clear
+    // error at call time instead. The two secrets must be different — one
+    // decrypts, the other only searches, and that separation is the point.
+    // Generate each with: openssl rand -base64 32
+    /** AES-256-GCM key for `kyc_documents.document_number_encrypted`. */
+    kycEncryptionKey: process.env.KYC_ENCRYPTION_KEY ?? "",
+    /** HMAC-SHA256 pepper for the `document_number_hmac` blind index. */
+    kycHmacPepper: process.env.KYC_HMAC_PEPPER ?? "",
+
     /** Private bucket holding rider profile photos. Must not be public. */
     profilePhotoBucket: process.env.PROFILE_PHOTO_BUCKET ?? "profile-photos",
     /** Keep in sync with storage.buckets.file_size_limit in the migration. */

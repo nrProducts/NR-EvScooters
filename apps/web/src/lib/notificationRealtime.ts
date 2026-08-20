@@ -5,7 +5,7 @@ import { supabase } from "./supabaseClient";
  * A separate channel from lib/realtimeClient's "admin-realtime" (admin-only,
  * used by RealtimeProvider/ApprovalPopup) — this one is for the personal
  * notification bell (admin, staff, or rider), gated purely by RLS's
- * `user_id = auth.uid()` clause on notifications_log, not by role. Kept
+ * `user_id = auth.uid()` clause on notification_messages, not by role. Kept
  * distinct so neither channel's lifecycle affects the other.
  */
 let channel: RealtimeChannel | null = null;
@@ -16,7 +16,7 @@ export function subscribeNotificationBell(onInsert: () => void): void {
   const ch = supabase.channel("notification-bell");
   ch.on(
     "postgres_changes",
-    { event: "INSERT", schema: "public", table: "notifications_log" },
+    { event: "INSERT", schema: "public", table: "notification_messages" },
     onInsert,
   );
   ch.subscribe();

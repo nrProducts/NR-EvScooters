@@ -20,7 +20,7 @@ import { ApiError } from "@/services/api/httpClient";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Damage, DamageStatus } from "@/types";
 
-const STATUS_OPTIONS: (DamageStatus | "all")[] = ["all", "recorded", "disputed", "resolved"];
+const STATUS_OPTIONS: (DamageStatus | "all")[] = ["all", "assessed", "disputed", "settled", "waived"];
 
 export default function DamagesPage() {
   const [searchParams] = useSearchParams();

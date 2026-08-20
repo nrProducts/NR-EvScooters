@@ -9,7 +9,6 @@ import { KycBanner } from '../components/KycBanner';
 import { MaintenanceNoticeBanner } from '../components/MaintenanceNoticeBanner';
 import { ActiveRentalCard } from '../components/ActiveRentalCard';
 import { FeaturedScooterCard } from '../components/FeaturedScooterCard';
-import { ReferAndEarnBanner } from '../components/ReferAndEarnBanner';
 import { Badge } from '../components/ui/Badge';
 import { SkeletonList } from '../components/ui/Skeleton';
 import { pullToRefresh } from '../components/ui/PullToRefresh';
@@ -294,7 +293,13 @@ export default function HomeScreen() {
           {greeting}, {firstName}
         </Text>
 
-        <ReferAndEarnBanner />
+        {/*
+          <ReferAndEarnBanner /> was here. It already rendered nothing —
+          referralRepository.mine() now always rejects and the banner treats
+          that as "no promo" — but it still fired a doomed request on every
+          Home mount. Removed with the referral field on profile-setup; see
+          docs/final-system-audit (finding M5).
+        */}
 
         <KycBanner />
 

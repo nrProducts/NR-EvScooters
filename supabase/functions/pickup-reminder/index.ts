@@ -1,31 +1,42 @@
 // =========================================================================
 // pickup-reminder  —  daily pg_cron job  →  Expo push
 //
-// Finds bookings with status='confirmed' whose start_day is tomorrow and
-// sends a reminder push. Runs once/day, so a given booking's fixed
-// start_day only ever matches "tomorrow" exactly once — no separate
-// already-reminded tracking needed.
+// Finds confirmed bookings starting tomorrow and reminds the rider. Runs
+// once a day against a booking's fixed start date, so a given booking
+// matches "tomorrow" exactly once — no already-reminded tracking needed.
 //
-// Mirrors the "log first, best-effort send" contract of
-// apps/backend/src/modules/notifications/notifications.service.ts's
-// notifyUser(), re-implemented here in Deno because this function can't
-// import the backend's TS modules — same reason send-sms re-implements
-// apps/backend/src/modules/auth/msg91.ts's logic instead of importing it.
+// ── What the new schema changed ──────────────────────────────────────────
+//
+// `bookings.start_day` is `requested_start_on`, and the pickup location is a
+// HUB rather than a station. The scooter model is reached through the plan
+// (`plans.vehicle_model_id`) instead of hanging off the booking directly —
+// a booking reserves a plan, and the plan is what names a model.
+//
+// The FK hint on the rider embed is gone with the column that made it
+// necessary: `cancelled_by` moved to `booking_cancellations`, so `bookings`
+// has one foreign key to `users` again and the embed is unambiguous. It is
+// not needed at all here any more — the push token lives in `user_devices`,
+// which _shared/notify.ts reads for itself.
+//
+// "Tomorrow" is business_today() + 1, not the Deno process clock + 1: the
+// UTC clock rolls over at 05:30 IST, which put a whole evening's worth of
+// bookings one day out.
 // =========================================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { adminClient, isConfigured, json, notConfigured } from "../_shared/client.ts";
+import { addDays, businessToday } from "../_shared/dates.ts";
+import { notifyUser } from "../_shared/notify.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+const SOURCE = "pickup-reminder";
 
 interface BookingRow {
     id: string;
     user_id: string;
-    start_day: string;
-    vehicle_models: { name: string } | { name: string }[] | null;
-    stations: { name: string } | { name: string }[] | null;
-    users: { push_token: string | null } | { push_token: string | null }[] | null;
+    requested_start_on: string;
+    plans: { name: string; vehicle_models: { name: string } | { name: string }[] | null }
+        | Array<{ name: string; vehicle_models: { name: string } | { name: string }[] | null }>
+        | null;
+    hubs: { name: string } | { name: string }[] | null;
 }
 
 function unwrap<T>(raw: unknown): T | null {
@@ -33,94 +44,48 @@ function unwrap<T>(raw: unknown): T | null {
     return (v as T) ?? null;
 }
 
-function tomorrowIso(): string {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
-}
-
 Deno.serve(async (_req) => {
-    if (!SUPABASE_URL || !SERVICE_ROLE) {
-        return json({ error: "Function not configured." }, 500);
+    if (!isConfigured()) return notConfigured();
+    const admin = adminClient();
+
+    let tomorrow: string;
+    try {
+        tomorrow = addDays(await businessToday(admin), 1);
+    } catch (err) {
+        console.error(`[${SOURCE}] could not read business_today()`, err);
+        return json({ error: "Could not resolve the business date." }, 500);
     }
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
-        auth: { autoRefreshToken: false, persistSession: false },
-    });
 
     const { data: bookings, error } = await admin
         .from("bookings")
-        // The FK hint is REQUIRED, not decoration: 20260729100000 added
-        // bookings.cancelled_by -> users, giving bookings two foreign keys to
-        // users. A bare users(...) embed then fails to resolve (PGRST201) and
-        // this whole function 500s. Same disambiguation the backend already
-        // does in bookings.service.ts's PICKUP_BOOKING_COLUMNS.
-        .select("id, user_id, start_day, vehicle_models(name), stations(name), users!bookings_user_id_fkey(push_token)")
+        .select("id, user_id, requested_start_on, plans(name, vehicle_models(name)), hubs(name)")
         .eq("status", "confirmed")
-        .eq("start_day", tomorrowIso());
+        .eq("requested_start_on", tomorrow);
 
     if (error) {
-        console.error("[pickup-reminder] failed to query bookings", error);
+        console.error(`[${SOURCE}] failed to query bookings`, error);
         return json({ error: "Query failed." }, 500);
     }
 
-    let sent = 0;
     let logged = 0;
+    let sent = 0;
 
     for (const row of (bookings ?? []) as unknown as BookingRow[]) {
-        const model = unwrap<{ name: string }>(row.vehicle_models);
-        const station = unwrap<{ name: string }>(row.stations);
-        const user = unwrap<{ push_token: string | null }>(row.users);
+        const plan = unwrap<{ name: string; vehicle_models: unknown }>(row.plans);
+        const model = unwrap<{ name: string }>(plan?.vehicle_models);
+        const hub = unwrap<{ name: string }>(row.hubs);
 
-        const title = "Pickup Tomorrow";
-        const body = `Your ${model?.name ?? "scooter"} is ready for pickup tomorrow at ${station?.name ?? "your station"}.`;
-
-        const { data: inserted, error: insertError } = await admin
-            .from("notifications_log")
-            .insert({
-                user_id: row.user_id,
-                channel: "push",
-                template: "pickup_reminder",
-                payload: { title, body, screen: "home" },
-                status: "pending",
-            })
-            .select("id")
-            .single();
-
-        if (insertError || !inserted) {
-            console.error("[pickup-reminder] failed to log notification", { bookingId: row.id, error: insertError });
-            continue;
-        }
-        logged++;
-
-        if (!user?.push_token) continue;
-
-        try {
-            const res = await fetch(EXPO_PUSH_URL, {
-                method: "POST",
-                headers: { "content-type": "application/json", accept: "application/json" },
-                body: JSON.stringify({ to: user.push_token, title, body, sound: "default", data: { screen: "home" } }),
-            });
-            const result = await res.json().catch(() => null);
-            const ok = res.ok && result?.data?.status !== "error";
-
-            await admin
-                .from("notifications_log")
-                .update({ status: ok ? "sent" : "failed", sent_at: ok ? new Date().toISOString() : null })
-                .eq("id", inserted.id);
-
-            if (ok) sent++;
-        } catch (err) {
-            console.error("[pickup-reminder] push send threw", { bookingId: row.id, err });
-            await admin.from("notifications_log").update({ status: "failed" }).eq("id", inserted.id);
-        }
+        const result = await notifyUser(admin, row.user_id, {
+            typeCode: "pickup_reminder",
+            subjectType: "booking",
+            subjectId: row.id,
+            title: "Pickup Tomorrow",
+            body: `Your ${model?.name ?? "scooter"} is ready for pickup tomorrow at ${hub?.name ?? "your hub"}.`,
+            screen: "home",
+        });
+        if (result.logged) logged++;
+        if (result.sent) sent++;
     }
 
     return json({ bookings: bookings?.length ?? 0, logged, sent }, 200);
 });
-
-function json(body: unknown, status: number): Response {
-    return new Response(JSON.stringify(body), {
-        status,
-        headers: { "content-type": "application/json" },
-    });
-}

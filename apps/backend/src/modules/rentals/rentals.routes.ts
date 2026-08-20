@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireModule } from "../../middleware/authorize.middleware";
+import { requireAction } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import { damagePhotoUpload } from "../damages/damages.photo.upload";
@@ -15,6 +15,13 @@ import * as v from "./rentals.validation";
  * admin route here is only ever exercised from the Vehicles page's
  * per-vehicle actions (complete ride, move to maintenance, return
  * inspection). Revisit if a dedicated Ride Management page ever ships.
+ *
+ * Those admin routes carry a specific `vehicles` ACTION rather than the
+ * coarse requireModule("vehicles"). Under the module gate, `vehicles.view`
+ * alone authorised closing a ride, moving a scooter to maintenance, rejecting
+ * a rider's return request and recording damage against them — a read-only
+ * fleet grant that could end rentals and raise charges. Same defect as the
+ * one fixed in refunds/returns/damages; found in the same sweep.
  */
 const router = Router();
 router.use(requireAuth);
@@ -40,28 +47,28 @@ router.post(
 
 router.get(
     "/",
-    requireModule("vehicles"),
+    requireAction("vehicles", "view"),
     validate({ query: v.listRentalsQuery }),
     asyncHandler(c.listRentalsHandler),
 );
 
 router.get(
     "/:id",
-    requireModule("vehicles"),
+    requireAction("vehicles", "view"),
     validate({ params: v.rentalIdParam }),
     asyncHandler(c.getRentalHandler),
 );
 
 router.post(
     "/:id/complete",
-    requireModule("vehicles"),
+    requireAction("vehicles", "edit"),
     validate({ params: v.rentalIdParam, body: v.completeRideBody }),
     asyncHandler(c.completeRideHandler),
 );
 
 router.post(
     "/:id/maintenance",
-    requireModule("vehicles"),
+    requireAction("vehicles", "edit"),
     validate({ params: v.rentalIdParam, body: v.moveToMaintenanceBody }),
     asyncHandler(c.moveToMaintenanceHandler),
 );
@@ -73,7 +80,7 @@ router.post(
 // back to being a normal active ride with no return pending.
 router.post(
     "/:id/return-reject",
-    requireModule("vehicles"),
+    requireAction("vehicles", "edit"),
     validate({ params: v.rentalIdParam, body: v.rejectReturnBody }),
     asyncHandler(c.rejectReturnHandler),
 );
@@ -83,7 +90,7 @@ router.post(
 // late fee); a no-damage return never touches this endpoint at all.
 router.post(
     "/:id/return-inspection",
-    requireModule("vehicles"),
+    requireAction("vehicles", "edit"),
     validate({ params: damageRentalIdParam }),
     damagePhotoUpload,
     validate({ body: recordDamageBody }),

@@ -187,11 +187,13 @@ export function VehicleHistoryDialog({
                             </div>
 
                             {/* Branch: temp vehicle issued during this ticket */}
-                            {node.ticket.outcome === "standard_temp" && node.ticket.temp_vehicle && (
+                            {(node.ticket.outcome === "temp_vehicle"
+                              || node.ticket.outcome === "replacement") && node.ticket.temp_vehicle && (
                               <div className="mt-2 flex items-center gap-1.5 border-l border-dashed border-border pl-3">
                                 <CornerDownRight className="h-3 w-3 shrink-0 text-muted-foreground" />
                                 <span className="text-xs text-muted-foreground">
-                                  Temp vehicle used: <span className="font-medium text-foreground">{node.ticket.temp_vehicle.name}</span>
+                                  {node.ticket.outcome === "replacement" ? "Replaced with" : "Temp vehicle used"}:{" "}
+                                  <span className="font-medium text-foreground">{node.ticket.temp_vehicle.name}</span>
                                 </span>
                               </div>
                             )}

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireAdmin, requireAction } from "../../middleware/authorize.middleware";
+import { requireAdmin, requireAction, requireSelfOrStaff } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import { photoUpload } from "./users.photo.upload";
@@ -46,9 +46,20 @@ router.post(
     asyncHandler(c.createUserHandler),
 );
 
+// Self or staff. This is the most PII-dense endpoint in the system —
+// PROFILE_SELECT returns name, email, phone, date of birth, gender, the full
+// postal address and the emergency contact — and it carried no authorisation
+// check at all, so any authenticated rider could read any other user's
+// profile by uuid. Uuids are not secret: riders receive other users' ids
+// through support threads, damage disputes and booking payloads.
+//
+// The two routes below already did this inline; this one did not, and the
+// purpose-built middleware existed unused. Not requireAction("users","view"):
+// a rider must still be able to read their own record through the "me" alias.
 router.get(
     "/:id",
     validate({ params: v.uuidOrMeParam }),
+    requireSelfOrStaff(),
     asyncHandler(c.getUserHandler),
 );
 
@@ -121,21 +132,9 @@ router.post(
     asyncHandler(c.applyPermissionProfileHandler),
 );
 
-// --- capabilities (DPDPA least privilege over raw personal data) ----------
-// Separate from permissions above, and deliberately so — see the two-layer
-// note in src/types/index.ts. GET is self-or-staff (a staff member may check
-// their own), PUT is admin-only and refuses self-modification in the service.
-router.get(
-    "/:id/capabilities",
-    validate({ params: v.uuidOrMeParam }),
-    asyncHandler(c.getCapabilitiesHandler),
-);
-
-router.put(
-    "/:id/capabilities",
-    requireAdmin,
-    validate({ params: v.uuidParam, body: v.updateCapabilitiesBody }),
-    asyncHandler(c.updateCapabilitiesHandler),
-);
+// The /:id/capabilities pair is gone. Capabilities are ordinary permissions
+// now — kyc.reveal_number, privacy.process, privacy.export — so they are
+// granted and read through /:id/permissions above, with no second endpoint,
+// no second table and no second middleware. See src/types/index.ts.
 
 export default router;

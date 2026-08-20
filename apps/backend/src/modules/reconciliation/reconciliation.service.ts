@@ -25,22 +25,35 @@ export async function getReconciliationReport(filters: ReconciliationFilters): P
 
     const { data: internalRows, error: internalError } = await supabaseAdmin
         .from("payment_transactions")
-        .select("gateway_payment_id, amount, applied_at")
-        .gte("applied_at", filters.from)
-        .lt("applied_at", new Date(toUnix * 1000).toISOString());
+        // `applied_at` is `captured_at` — the moment the gateway captured the
+        // money, which is what a reconciliation window should be cut on. The
+        // old name described when WE processed it, which drifts under retries.
+        .select("gateway_payment_id, amount, captured_at")
+        .gte("captured_at", filters.from)
+        .lt("captured_at", new Date(toUnix * 1000).toISOString());
     if (internalError) throw internalError;
 
+    // `webhook_events` is `payment_webhook_events`; three columns renamed
+    // (`signature_valid` → `is_signature_valid`, `error` → `processing_error`)
+    // and `processed` became the nullable `processed_at`, which is strictly
+    // more useful — it says WHEN, not just whether.
+    //
+    // "Failed" is therefore: a bad signature, or received but never processed.
     const { data: webhookRows, error: webhookError } = await supabaseAdmin
-        .from("webhook_events")
-        .select("id, event_type, signature_valid, processed, error, received_at")
+        .from("payment_webhook_events")
+        .select("id, event_type, is_signature_valid, processed_at, processing_error, received_at")
         .gte("received_at", filters.from)
         .lt("received_at", new Date(toUnix * 1000).toISOString())
-        .or("signature_valid.eq.false,processed.eq.false");
+        .or("is_signature_valid.eq.false,processed_at.is.null");
     if (webhookError) throw webhookError;
 
     const failedWebhooks: FailedWebhookEvent[] = (webhookRows ?? []).map((w) => ({
-        id: w.id, eventType: w.event_type, signatureValid: w.signature_valid, processed: w.processed,
-        error: w.error, receivedAt: w.received_at,
+        id: w.id,
+        eventType: w.event_type,
+        signatureValid: w.is_signature_valid,
+        processed: w.processed_at !== null,
+        error: w.processing_error,
+        receivedAt: w.received_at,
     }));
 
     if (!env.razorpayKeyId || !env.razorpayKeySecret) {
@@ -63,7 +76,7 @@ export async function getReconciliationReport(filters: ReconciliationFilters): P
 
     const unmatchedInternal: UnmatchedInternalPayment[] = (internalRows ?? [])
         .filter((r) => !gatewayIds.has(r.gateway_payment_id))
-        .map((r) => ({ gatewayPaymentId: r.gateway_payment_id, amount: Number(r.amount), appliedAt: r.applied_at }));
+        .map((r) => ({ gatewayPaymentId: r.gateway_payment_id, amount: Number(r.amount), appliedAt: r.captured_at }));
 
     const missingInternal: MissingGatewayPayment[] = gatewayResult.items
         .filter((p) => p.status === "captured" && !internalIds.has(p.id))

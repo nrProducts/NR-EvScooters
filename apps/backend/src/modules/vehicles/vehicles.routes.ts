@@ -3,7 +3,6 @@ import { requireAuth } from "../../middleware/auth.middleware";
 import { requireAction } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
-import { vehiclePhotoUpload } from "./vehicles.photo.upload";
 import * as c from "./vehicles.controller";
 import * as v from "./vehicles.validation";
 
@@ -48,20 +47,8 @@ router.post(
     asyncHandler(c.assignVehicleToUserHandler),
 );
 
-router.post(
-    "/:id/photos",
-    requireAction("vehicles", "edit"),
-    validate({ params: v.uuidParam }),
-    vehiclePhotoUpload,
-    asyncHandler(c.uploadVehiclePhotoHandler),
-);
-
-router.delete(
-    "/:id/photos/:photoId",
-    requireAction("vehicles", "edit"),
-    validate({ params: v.photoIdParam }),
-    asyncHandler(c.deleteVehiclePhotoHandler),
-);
+// POST /:id/photos and DELETE /:id/photos/:photoId are gone with the
+// `vehicle_photos` table — see the note in vehicles.controller.ts.
 
 router.post(
     "/:id/scrap",

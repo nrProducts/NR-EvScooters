@@ -1,18 +1,37 @@
 import type { Request } from "express";
 import { supabaseAdmin } from "../../config/supabase";
-import { businessRule } from "../../common/AppError";
+import { businessRule, notFound } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
-import { AuthContext, ModuleKey, isValidModuleAction } from "../../types";
-import { PERMISSION_PROFILES, PermissionProfileName } from "../../config/permissionProfiles";
-import { getRoles, requireLiveUser } from "./users.service";
+import {
+    getPermissionProfiles,
+    resolvePermissionIds,
+} from "../../common/permissionCatalog";
+import { AuthContext, ModuleKey, PermissionKey, permissionKey } from "../../types";
+import { getRole, requireLiveUser } from "./users.service";
 
 /**
- * Per-user module+action grants (public.staff_permissions) — a staff
- * account's individual access, on top of the coarse "staff" role. Admin
- * never has rows here; admin access is unconditional (see requireModule()/
- * requireAction() in authorize.middleware.ts, which never even query this
- * table for an admin caller). Mirrors getRoles/replaceRoles in
- * users.service.ts.
+ * A staff account's individual grants.
+ *
+ * Storage moved: this used to be `public.staff_permissions`, one row per
+ * module holding an `actions[]` array. It is now
+ * `public.user_permission_overrides`, one row per permission, each carrying
+ * an explicit `is_granted` boolean.
+ *
+ * Two consequences worth knowing:
+ *
+ *  - The console still speaks in modules-with-actions, because that is how a
+ *    permission matrix reads. The flattening happens here, at the boundary.
+ *
+ *  - `is_granted = false` exists in the schema so a role-level grant can be
+ *    *revoked* for one person. Nothing writes a denial today — staff hold no
+ *    role grants (`role_permissions` is empty; see
+ *    `v_user_effective_permissions`), so an absent row already means "no".
+ *    Writing rows of `false` would be noise, and the view reads them
+ *    identically. The column is honoured on read, not produced on write.
+ *
+ * Admin never has rows here at all; admin access is unconditional (see
+ * `resolveAccess()` in authorize.middleware.ts, and the admin branch of the
+ * view).
  */
 
 export interface ModulePermission {
@@ -22,64 +41,83 @@ export interface ModulePermission {
 
 export async function getModulePermissions(id: string): Promise<ModulePermission[]> {
     await requireLiveUser(id);
+
     const { data, error } = await supabaseAdmin
-        .from("staff_permissions")
-        .select("module_key, actions")
-        .eq("user_id", id);
+        .from("user_permission_overrides")
+        .select("is_granted, permissions(module_key, action)")
+        .eq("user_id", id)
+        .eq("is_granted", true);
     if (error) throw error;
-    return (data ?? []).map((row) => ({
-        module_key: row.module_key as ModuleKey,
-        actions: (row.actions as string[] | null) ?? [],
-    }));
+
+    const byModule = new Map<ModuleKey, string[]>();
+    for (const row of data ?? []) {
+        const p = Array.isArray(row.permissions) ? row.permissions[0] : row.permissions;
+        if (!p) continue;
+        const actions = byModule.get(p.module_key) ?? [];
+        actions.push(p.action);
+        byModule.set(p.module_key, actions);
+    }
+
+    return [...byModule.entries()]
+        .map(([module_key, actions]) => ({ module_key, actions: actions.sort() }))
+        .sort((a, b) => a.module_key.localeCompare(b.module_key));
 }
 
 /**
- * Full-replace, same shape as the old module-only version: clears every
- * existing grant for this user, then (re-)inserts the new set. A module
- * with an empty actions array is never stored as a row — that's how a
- * staff_permissions row's mere existence stays equivalent to "at least one
- * action granted", which is what requireModule()/sidebar visibility rely on.
+ * Full-replace: clears every existing grant for this user, then inserts the
+ * new set.
+ *
+ * A module with an empty actions array writes no rows — which keeps "this
+ * user has at least one action in the module" equivalent to "the module is
+ * visible to them", the property `requireModule()` and the console sidebar
+ * both rely on.
  */
 export async function replaceModulePermissions(
     id: string,
     modules: ModulePermission[],
     actor: AuthContext,
     req?: Request,
-    profileApplied?: PermissionProfileName,
+    profileApplied?: string,
 ): Promise<ModulePermission[]> {
     await requireLiveUser(id);
 
-    const roles = await getRoles(id);
+    const role = await getRole(id);
     const toWrite = modules.filter((m) => m.actions.length > 0);
-    if (toWrite.length > 0 && !roles.includes("staff")) {
+    if (toWrite.length > 0 && role !== "staff") {
         throw businessRule("Only accounts holding the staff role can be granted module permissions.");
     }
-    for (const m of toWrite) {
-        for (const action of m.actions) {
-            if (!isValidModuleAction(m.module_key, action)) {
-                throw businessRule(`"${action}" is not a valid action for the "${m.module_key}" module.`);
-            }
-        }
+
+    const requested: PermissionKey[] = toWrite.flatMap((m) =>
+        m.actions.map((action) => permissionKey(m.module_key, action)),
+    );
+    const { ids, unknown } = await resolvePermissionIds(requested);
+    if (unknown.length > 0) {
+        throw businessRule(
+            unknown.length === 1
+                ? `"${unknown[0]}" is not a permission this system defines.`
+                : `These are not permissions this system defines: ${unknown.join(", ")}.`,
+        );
     }
 
     const before = await getModulePermissions(id);
 
     const { error: deleteError } = await supabaseAdmin
-        .from("staff_permissions")
+        .from("user_permission_overrides")
         .delete()
         .eq("user_id", id);
     if (deleteError) throw deleteError;
 
-    if (toWrite.length > 0) {
-        const { error: insertError } = await supabaseAdmin.from("staff_permissions").upsert(
-            toWrite.map((m) => ({
-                user_id: id,
-                module_key: m.module_key,
-                actions: m.actions,
-                granted_by: actor.id,
-            })),
-            { onConflict: "user_id,module_key", ignoreDuplicates: true },
-        );
+    if (ids.length > 0) {
+        const { error: insertError } = await supabaseAdmin
+            .from("user_permission_overrides")
+            .insert(
+                ids.map((permission_id) => ({
+                    user_id: id,
+                    permission_id,
+                    is_granted: true,
+                    granted_by_user_id: actor.id,
+                })),
+            );
         if (insertError) throw insertError;
     }
 
@@ -97,20 +135,40 @@ export async function replaceModulePermissions(
     return toWrite;
 }
 
-/** Resolves a named preset (Viewer, Operations Staff, ...) and applies it wholesale. */
+/**
+ * Resolves a named preset (Viewer, Operations Staff, ...) and applies it
+ * wholesale.
+ *
+ * The presets are rows in `permission_profiles` now, not a constant in
+ * `config/permissionProfiles.ts` — so an operator can add one without a
+ * deploy, and the console and the backend can no longer disagree about what
+ * "Operations Staff" means.
+ */
 export async function applyPermissionProfile(
     id: string,
-    profile: Exclude<PermissionProfileName, "custom">,
+    profile: string,
     actor: AuthContext,
     req?: Request,
 ): Promise<ModulePermission[]> {
-    const preset = PERMISSION_PROFILES[profile];
-    if (!preset) throw businessRule(`"${profile}" is not a recognised permission profile.`);
+    const profiles = await getPermissionProfiles();
+    const preset = profiles.find((p) => p.code === profile);
+    if (!preset) throw notFound(`"${profile}" is not a recognised permission profile.`);
 
-    const modules: ModulePermission[] = Object.entries(preset.modules).map(([module_key, actions]) => ({
-        module_key: module_key as ModuleKey,
-        actions: [...(actions ?? [])],
-    }));
+    const byModule = new Map<ModuleKey, string[]>();
+    for (const key of preset.permissions) {
+        // Split on the FIRST dot: an action never contains one, a module key
+        // theoretically could.
+        const dot = key.indexOf(".");
+        if (dot < 1) continue;
+        const moduleKey = key.slice(0, dot);
+        const actions = byModule.get(moduleKey) ?? [];
+        actions.push(key.slice(dot + 1));
+        byModule.set(moduleKey, actions);
+    }
 
-    return replaceModulePermissions(id, modules, actor, req, profile);
+    const modules: ModulePermission[] = [...byModule.entries()].map(
+        ([module_key, actions]) => ({ module_key, actions }),
+    );
+
+    return replaceModulePermissions(id, modules, actor, req, preset.code);
 }

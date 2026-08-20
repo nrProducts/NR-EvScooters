@@ -29,7 +29,8 @@ export interface NavItem {
   icon: LucideIcon;
   roles: Role[];
   /**
-   * Which staff_permissions grant unlocks this item for a `staff` account.
+   * Which permission module unlocks this item for a `staff` account —
+   * a `modules.key`, resolved through v_user_effective_permissions.
    * Omitted = always visible to any role listed in `roles` (e.g. Dashboard),
    * since it needs no individual grant. Admin never consults this — admin
    * access is unconditional regardless of moduleKey.
@@ -45,18 +46,24 @@ export interface NavItem {
 
 /**
  * Single source of truth for sidebar navigation + route guarding.
- * Admin sees everything. Staff sees Dashboard plus whichever modules they've
- * been individually granted (see Settings → Roles & Staff) — this is a UX
- * convenience layer only; apps/backend/src/middleware/authorize.middleware.ts
- * requireModule() is what actually enforces it.
  *
- * NOTE ON THE SECOND LAYER: module access decides which SECTIONS a staff
- * member can open. Whether they may see raw personal data INSIDE one is a
- * separate question — the DPDPA capabilities (kyc_reviewer, rights_officer,
- * pii_exporter), enforced server-side per endpoint. Someone can hold the
- * `kyc` module and still be unable to open an Aadhaar scan. Capabilities are
- * deliberately NOT consulted for navigation: they gate actions within a
- * section, not reaching it. See the two-layer note in @/types.
+ * Admin sees everything. Staff sees Dashboard plus whichever modules they have
+ * been granted (Settings → Staff Access). This is a UX convenience layer only:
+ * apps/backend/src/middleware/authorize.middleware.ts is what enforces it, and
+ * hiding a nav item has never been a control.
+ *
+ * NOTE ON THE SECOND LAYER: `moduleKey` decides which SECTIONS a staff member
+ * may open — the coarse "any permission in this module" test. What they may DO
+ * inside one is the finer `<module>.<action>` grant, checked per route by
+ * requireAction(): `refunds.view` opens the Refunds page, `refunds.approve`
+ * issues a refund from it. Actions are deliberately NOT consulted for
+ * navigation.
+ *
+ * The DPDPA capabilities this comment used to describe — kyc_reviewer,
+ * rights_officer, pii_exporter — no longer exist as a separate axis. They are
+ * ordinary permissions now: `kyc.reveal_number`, `privacy.process`,
+ * `privacy.export`, granted from the same matrix as everything else. One
+ * table, one middleware, one screen.
  */
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, roles: ["admin", "staff"] },
@@ -89,10 +96,16 @@ export const NAV_ITEMS: NavItem[] = [
   // Deposit refunds and (as of the approval-gate change) booking-cancellation
   // refunds both need staff to actually see and approve them, not just reach
   // them via the "Refunds" button buried on the Payments page.
-  { label: "Refunds", path: "/refunds", icon: Undo2, roles: ["admin"], moduleKey: "refunds" },
+  // Delegable, not admin-only. The backend gates these on ordinary `refunds.*`
+  // permissions, so listing them as roles:["admin"] here was frontend hiding
+  // standing in for a control that did not exist — and the router's own
+  // docstring claimed admin-only while agreeing with neither. The two now
+  // match: `refunds.view` opens the section, `refunds.approve` moves money.
+  { label: "Refunds", path: "/refunds", icon: Undo2, roles: ["admin", "staff"], moduleKey: "refunds" },
   // Configurable charge rules (transaction fee, etc.) and their materialized
   // rider charges — see 20260817100000_billing_charge_engine.sql.
-  { label: "Billing & Charges", path: "/billing", icon: Receipt, roles: ["admin"], moduleKey: "billing" },
+  // Delegable for the same reason as Refunds above.
+  { label: "Billing & Charges", path: "/billing", icon: Receipt, roles: ["admin", "staff"], moduleKey: "billing" },
   { label: "Plans", path: "/plans", icon: Layers, roles: ["admin", "staff"], moduleKey: "plans" },
   {
     label: "Reconciliation",
@@ -130,15 +143,25 @@ export const NAV_ITEMS: NavItem[] = [
     moduleKey: "pii_access_log",
   },
   { label: "Audit Log", path: "/audit", icon: ScrollText, roles: ["admin", "staff"], moduleKey: "audit" },
-  // Delegable for the generic Company/Security/API Keys/Branding tabs only —
-  // SettingsPage.tsx hard-codes the Roles & Staff / Capabilities / Staff
-  // Access tabs to role === "admin" regardless of this grant. See the
-  // carve-out note there.
+  // Effectively admin-only in practice, and the entry stays shaped this way
+  // rather than being hard-coded to ["admin"] so it says WHY.
+  //
+  // `settings.view` / `settings.edit` are flagged is_enforced = false in the
+  // catalogue, because no route checks either and none should: everything on
+  // this page that does anything (Roles & Staff, Staff Access, Notification
+  // Manager) is requireAdmin at the endpoint, and the Company / Security /
+  // API Keys / Branding tabs are placeholders — Security renders
+  // <NotConnected/>. An unenforced permission is rendered as a disabled
+  // checkbox in the matrix, so the grant cannot be handed out, so no staff
+  // account passes hasModule() here.
+  //
+  // If a real, delegable settings surface ever ships, enforce the permission
+  // on its routes and the nav follows automatically.
   { label: "Settings", path: "/settings", icon: Settings, roles: ["admin", "staff"], moduleKey: "settings" },
 
   // --- routed but not in the sidebar ---------------------------------------
-  // The module keys match what the backend already enforces (damages.routes.ts
-  // and refunds.routes.ts both use requireModule), so the console and the API
+  // The module keys match what the backend enforces (damages.routes.ts and
+  // refunds.routes.ts now check specific actions), so the console and the API
   // agree rather than the UI admitting someone to meet a wall of 403s.
   { label: "Damages", path: "/damages", icon: Scale, roles: ["admin", "staff"], moduleKey: "damages", hidden: true },
   // The full-page permission matrix — reached from Staff Access / the Users

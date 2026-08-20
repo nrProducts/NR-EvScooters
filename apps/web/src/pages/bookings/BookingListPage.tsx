@@ -420,7 +420,7 @@ export default function BookingListPage() {
             <div className="rounded-lg border border-border p-3 text-sm">
               <p className="font-medium">{pickupTarget.vehicle.registration_number}</p>
               <p className="text-xs text-muted-foreground">
-                {pickupTarget.vehicle.name} · {pickupTarget.vehicle.battery_percentage}% battery · already reserved
+                {pickupTarget.vehicle.name} · already reserved
               </p>
             </div>
           ) : vehiclesLoading ? (

@@ -15,23 +15,29 @@ import { billingRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
 import { getRenewalEligibility } from '../lib/returnPolicy';
 import { ApiError } from '../lib/ApiError';
-import type { ApiEarlyRecharge, ApiInvoice, InvoicePaymentStatus, PlanStatus } from '../types/api';
+import type { ApiEarlyRecharge, ApiInvoice, InvoicePaymentState, PlanStatus } from '../types/api';
 
 const CYCLE_LABEL: Record<string, string> = {
   daily: 'Day', weekly: 'Week', monthly: 'Month', yearly: 'Year',
 };
 
 const PLAN_STATUS_TONE: Record<PlanStatus, 'success' | 'warning' | 'danger'> = {
-  active: 'success', due: 'warning', paused: 'warning',
+  active: 'success', past_due: 'warning', paused: 'warning',
 };
 
-const PAYMENT_STATUS_TONE: Record<InvoicePaymentStatus, 'success' | 'warning' | 'danger' | undefined> = {
-  succeeded: 'success', pending: 'warning', processing: 'warning', failed: 'danger', refunded: undefined,
+const PAYMENT_STATE_TONE: Record<InvoicePaymentState, 'success' | 'warning' | 'danger' | undefined> = {
+  paid: 'success', partial: 'warning', overdue: 'danger', unpaid: undefined,
 };
 
-const PAYMENT_TYPE_LABEL: Record<string, string> = {
-  rental: 'Weekly Rental', deposit: 'Security Deposit', damage: 'Damage Charge',
-  penalty: 'Penalty', refund: 'Refund', other: 'Payment',
+/**
+ * An invoice is raised for a REASON now, not for a payment kind. The old
+ * rental/deposit/damage/penalty split was `payment_type`, which is gone —
+ * a deposit is a LINE on the initial invoice, and a damage charge is a line
+ * on the settlement one.
+ */
+const PURPOSE_LABEL: Record<string, string> = {
+  initial: 'Plan & Deposit', subscription_period: 'Plan Renewal',
+  settlement: 'Return Settlement', adhoc: 'Payment',
 };
 
 function formatDate(dateStr: string | null): string {
@@ -116,13 +122,20 @@ export default function BillingScreen() {
   );
 
   const plan = booking?.plan;
-  const outstandingInvoices = invoices.filter((inv) => inv.payment_status === 'pending' || inv.payment_status === 'failed');
+  // Anything not fully covered by allocations, voided invoices excluded.
+  // `partial` counts: half-paid is still owed.
+  const outstandingInvoices = invoices.filter(
+    (inv) => inv.status !== 'void' && inv.payment_state !== 'paid',
+  );
   // GET /invoices/me already attaches the live-computed late fee (days late ×
-  // the admin-configured per-day rate) to any overdue 'rental' invoice — see
-  // total_due on ApiInvoice. Falls back to amount_due for anything else
-  // (deposit/damage/penalty invoices never carry a late fee).
-  const outstandingTotal = outstandingInvoices.reduce((sum, inv) => sum + (inv.total_due ?? inv.amount_due), 0);
-  const isDue = booking?.plan_status === 'due';
+  // the admin-configured per-day rate) to any late PERIOD invoice — see
+  // total_due on ApiInvoice. Falls back to the outstanding BALANCE for
+  // anything else, not the whole bill: a part-paid invoice must not ask for
+  // the full amount again.
+  const outstandingTotal = outstandingInvoices.reduce(
+    (sum, inv) => sum + (inv.total_due ?? inv.balance_amount), 0,
+  );
+  const isDue = booking?.plan_status === 'past_due';
   const renewalStatus = booking?.renewal_status ?? null;
   const renewalEligibility = getRenewalEligibility(booking?.plan_status ?? null, booking?.next_due_at ?? null, renewalStatus);
   // Hidden once an outstanding invoice already exists (a prior recharge
@@ -144,7 +157,7 @@ export default function BillingScreen() {
           currency: order.currency,
           order_id: order.gatewayOrderId,
           name: 'SwapNgo',
-          description: PAYMENT_TYPE_LABEL[invoice.payment_type ?? 'other'],
+          description: PURPOSE_LABEL[invoice.purpose] ?? 'Payment',
           prefill: {
             email: profile?.email ?? undefined,
             contact: profile?.phone ?? undefined,
@@ -456,7 +469,7 @@ export default function BillingScreen() {
 
               {outstandingInvoices.map((inv) => {
                 const perDay = inv.late_fee && inv.days_late ? inv.late_fee / inv.days_late : 0;
-                const total = inv.total_due ?? inv.amount_due;
+                const total = inv.total_due ?? inv.balance_amount;
                 return (
                   <View
                     key={inv.id}
@@ -471,17 +484,20 @@ export default function BillingScreen() {
                       <View className="flex-row items-center">
                         <Receipt size={13} color={COLORS.danger} />
                         <Text style={{ color: COLORS.danger }} className="text-xs font-extrabold ml-2">
-                          {PAYMENT_TYPE_LABEL[inv.payment_type ?? 'other']}
+                          {PURPOSE_LABEL[inv.purpose] ?? 'Payment'}
                         </Text>
                       </View>
                       <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-semibold">
-                        Due {formatDate(inv.due_date)}
+                        Due {formatDate(inv.due_on)}
                       </Text>
                     </View>
 
                     {/* Itemized lines */}
                     <View className="px-4 pt-3 pb-1">
-                      <BillLine label="Rental plan amount" amount={inv.amount_due} />
+                      <BillLine label="Rental plan amount" amount={inv.total_amount} />
+                      {inv.allocated_amount > 0 ? (
+                        <BillLine label="Already paid" amount={-inv.allocated_amount} />
+                      ) : null}
                       {inv.late_fee ? (
                         <BillLine
                           label={`Late fee (${inv.days_late} day${inv.days_late === 1 ? '' : 's'} × ₹${perDay.toFixed(0)}/day)`}
@@ -528,13 +544,15 @@ export default function BillingScreen() {
                 <ShieldCheck size={16} color={COLORS.primary} />
                 <View className="ml-3">
                   <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">₹{(deposit?.amount ?? 0).toFixed(0)}</Text>
-                  {deposit?.status === 'refunded' && deposit.refunded_at ? (
+                  {/*
+                    'refunded' and 'partially_refunded' collapsed into
+                    'released'. The distinction was the deposit row holding an
+                    opinion about how much came back; the refund itself is
+                    where that amount lives, and the two could disagree.
+                  */}
+                  {deposit?.status === 'released' && deposit.refunded_at ? (
                     <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                      Refunded {formatDate(deposit.refunded_at)}
-                    </Text>
-                  ) : deposit?.status === 'partially_refunded' && deposit.refunded_at ? (
-                    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                      Partially refunded {formatDate(deposit.refunded_at)}
+                      Released {formatDate(deposit.refunded_at)}
                     </Text>
                   ) : deposit?.status === 'forfeited' ? (
                     <Text style={{ color: COLORS.danger }} className="text-[11px] font-medium mt-0.5">
@@ -626,17 +644,17 @@ export default function BillingScreen() {
                     >
                       <View>
                         <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">
-                          {PAYMENT_TYPE_LABEL[inv.payment_type ?? 'other']}
+                          {PURPOSE_LABEL[inv.purpose] ?? 'Payment'}
                         </Text>
                         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                          {formatDate(inv.paid_at ?? inv.due_date)}
+                          {formatDate(inv.paid_at ?? inv.due_on)}
                           {hasItems ? (expanded ? '  ▲' : '  ▼') : ''}
                         </Text>
                       </View>
                       <View className="items-end">
-                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">₹{inv.amount_due.toFixed(0)}</Text>
+                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">₹{inv.total_amount.toFixed(0)}</Text>
                         <View className="mt-1">
-                          <Badge label={inv.payment_status} tone={PAYMENT_STATUS_TONE[inv.payment_status]} />
+                          <Badge label={inv.payment_state} tone={PAYMENT_STATE_TONE[inv.payment_state]} />
                         </View>
                       </View>
                     </TouchableOpacity>
@@ -644,11 +662,17 @@ export default function BillingScreen() {
                       <View className="px-4 pb-4">
                         {inv.items.map((item) => (
                           <View key={item.id} className="flex-row items-center justify-between py-1">
-                            <Text style={{ color: item.item_type === 'discount' ? COLORS.success : COLORS.textSecondary }} className="text-[11px] font-medium">
-                              {item.label}
+                            {/*
+                              A discount is an `adjustment` with a NEGATIVE
+                              amount, not its own line type — which is what
+                              let the old charge/discount pair collapse into
+                              one signed path. Read the sign, not the type.
+                            */}
+                            <Text style={{ color: item.amount < 0 ? COLORS.success : COLORS.textSecondary }} className="text-[11px] font-medium">
+                              {item.description}
                             </Text>
                             <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
-                              {item.item_type === 'discount' ? '-' : ''}₹{item.amount.toFixed(0)}
+                              {item.amount < 0 ? '-' : ''}₹{Math.abs(item.amount).toFixed(0)}
                             </Text>
                           </View>
                         ))}

@@ -21,7 +21,7 @@ import {
 import { useOpenUserPhoto } from "@/hooks/useUsers";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate } from "@/lib/utils";
-import { PII_ACCESS_REASON_LABELS, type KycQueueItem, type KycStatus, type PiiAccessReason } from "@/types";
+import { PII_ACCESS_REASON_LABELS, hasPermission, type KycQueueItem, type KycStatus, type PiiAccessReason } from "@/types";
 
 /** Staff can never claim "rider_self" — the server sets that one. */
 type StaffAccessReason = Exclude<PiiAccessReason, "rider_self">;
@@ -231,7 +231,13 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
   // Whether this staff member may see identity documents at all. The backend
   // enforces the same thing on every one of these routes — hiding the controls
   // is so people are not offered actions that will 403, not the control itself.
-  const canReview = useAuthStore((st) => st.user?.capabilities.includes("kyc_reviewer") ?? false);
+  //
+  // This was the `kyc_reviewer` CAPABILITY. It is an ordinary permission now,
+  // granted from the same matrix as everything else, so the check is a lookup
+  // in the caller's permission keys rather than a separate array.
+  const canReview = useAuthStore((st) =>
+    st.user ? hasPermission(st.user, "kyc", "reveal_number") : false,
+  );
 
   // Asked once per opened rider, not once per document: a reviewer working
   // through one rider's file is doing one task, and re-prompting per click
@@ -337,8 +343,8 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
                           number to compare against. */}
                     </p>
                   )}
-                  {doc.expiry_date && (
-                    <p className="text-xs text-muted-foreground">Expires {formatDate(doc.expiry_date)}</p>
+                  {doc.expires_on && (
+                    <p className="text-xs text-muted-foreground">Expires {formatDate(doc.expires_on)}</p>
                   )}
                   {doc.rejection_reason && (
                     <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">{doc.rejection_reason}</p>

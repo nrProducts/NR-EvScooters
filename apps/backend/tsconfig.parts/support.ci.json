@@ -1,0 +1,11 @@
+{
+    "extends": "./_shared.json",
+    "include": [
+        "../src/modules/support",
+        "../src/modules/geocode",
+        "../src/common",
+        "../src/config",
+        "../src/middleware",
+        "../src/types"
+    ]
+}

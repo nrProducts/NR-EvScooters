@@ -28,7 +28,7 @@ import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { Vehicle, VehicleStatus } from "@/types";
 
-const STATUS_OPTIONS: (VehicleStatus | "all")[] = ["all", "available", "booked", "assigned", "maintenance", "scrap"];
+const STATUS_OPTIONS: (VehicleStatus | "all")[] = ["all", "available", "reserved", "assigned", "maintenance", "retired"];
 
 export default function VehicleListPage() {
   const navigate = useNavigate();
@@ -57,7 +57,7 @@ export default function VehicleListPage() {
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useVehicles({
     search, status, page, pageSize: 8,
-    sortBy: sort.by as "created_at" | "name" | "battery_percentage" | "next_service_due_date", sortDir: sort.dir,
+    sortBy: sort.by as "created_at" | "display_name" | "registration_number", sortDir: sort.dir,
   });
   const createVehicle = useCreateVehicle();
   const updateVehicle = useUpdateVehicle();
@@ -68,18 +68,17 @@ export default function VehicleListPage() {
     setIssueDescription("");
   };
 
+  // Opening the ticket IS putting the scooter into maintenance.
+  //
+  // This used to open a ticket and then PATCH the vehicle's status, which was
+  // two writes that could disagree — and the second one no longer does
+  // anything: `recompute_vehicle_status()` derives the status from the open
+  // ticket, and a trigger applies it in the same transaction as the insert.
   const confirmMaintenance = () => {
     if (!maintenanceTarget) return;
     createMaintenanceTicket.mutate(
       { vehicle_id: maintenanceTarget.id, description: issueDescription.trim() },
-      {
-        onSuccess: () => {
-          updateVehicle.mutate(
-            { id: maintenanceTarget.id, patch: { status: "maintenance" } },
-            { onSuccess: closeMaintenanceDialog },
-          );
-        },
-      },
+      { onSuccess: closeMaintenanceDialog },
     );
   };
 
@@ -87,24 +86,13 @@ export default function VehicleListPage() {
     {
       header: "Vehicle",
       key: "name",
-      sortKey: "name",
+      sortKey: "display_name",
       render: (v) => (
         <div className="min-w-0">
           <p className="truncate font-medium">{v.name}</p>
           <p className="truncate text-xs text-muted-foreground">
-            {v.manufacturer} {v.model} · {v.registration_number}
+            {v.model} · {v.registration_number}
           </p>
-        </div>
-      ),
-    },
-    {
-      header: "Battery",
-      key: "battery",
-      sortKey: "battery_percentage",
-      render: (v) => (
-        <div className="flex items-center gap-1.5">
-          <BatteryMedium className="h-4 w-4 text-muted-foreground" />
-          {v.battery_percentage}%
         </div>
       ),
     },
@@ -114,12 +102,11 @@ export default function VehicleListPage() {
       key: "payment_status",
       render: (v) => (v.payment_status ? <StatusBadge status={v.payment_status} /> : <span className="text-muted-foreground">—</span>),
     },
-    { header: "VIN", key: "vin", render: (v) => v.vin, hideOnMobile: true },
     {
-      header: "Next service",
-      key: "service",
-      sortKey: "next_service_due_date",
-      render: (v) => v.next_service_due_date ?? "—",
+      header: "VIN",
+      key: "vin",
+      sortKey: "registration_number",
+      render: (v) => v.vin,
       hideOnMobile: true,
     },
     { header: "Added", key: "created_at", sortKey: "created_at", render: (v) => formatDate(v.created_at), hideOnMobile: true },
@@ -145,18 +132,19 @@ export default function VehicleListPage() {
                 <Zap className="mr-2 h-4 w-4" /> Assign to rider
               </DropdownMenuItem>
             )}
-            {v.status !== "maintenance" && v.status !== "scrap" && v.status !== "assigned" &&
-              hasAction(user, "maintenance", "create") && hasAction(user, "vehicles", "edit") && (
+            {v.status !== "maintenance" && v.status !== "retired" && v.status !== "assigned" &&
+              hasAction(user, "maintenance", "create") && (
               <DropdownMenuItem onClick={() => setMaintenanceTarget(v)}>
                 <Wrench className="mr-2 h-4 w-4" /> Mark in maintenance
               </DropdownMenuItem>
             )}
-            {v.status !== "available" && v.status !== "scrap" && v.status !== "assigned" &&
-              hasAction(user, "vehicles", "edit") && (
-              <DropdownMenuItem onClick={() => updateVehicle.mutate({ id: v.id, patch: { status: "available" } })}>
-                <CheckCircle2 className="mr-2 h-4 w-4" /> Mark available
-              </DropdownMenuItem>
-            )}
+            {/*
+              "Mark available" is gone. `vehicles.status` is derived, so the
+              way back to available is resolving the maintenance ticket that
+              made it unavailable — which is what the Maintenance page does.
+              A button here would have written a value the next recompute
+              immediately overwrote.
+            */}
           </DropdownMenuContent>
         </DropdownMenu>
       ),

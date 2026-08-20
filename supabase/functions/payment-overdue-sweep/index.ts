@@ -1,238 +1,301 @@
 // =========================================================================
 // payment-overdue-sweep  —  daily pg_cron job
 //
-// Once a booking's next_due_at passes, this does ONE of two things:
+// Once a subscription period's due date passes, this does ONE of two things:
 //
-//   - renewal_status = 'scheduled' (the rider already paid ahead via
-//     Renew Plan — see bookings.service.ts's requestEarlyRecharge and
-//     payments.service.ts's applyWeeklyDueSuccess): ACTIVATE the scheduled
-//     period. This is the "pay now, activate later" design's other half —
-//     paying early never touches current_period_start/next_due_at itself,
-//     this sweep is the only thing that does, and only once the old period
-//     has actually run out.
-//   - otherwise: flip plan_status 'active' -> 'due' (nothing else in the
-//     app writes plan_status='due') and open the invoice that period is
-//     payable through, exactly as before this feature existed.
+//   - a `scheduled` next period exists (the rider already paid ahead — see
+//     applyRenewalSuccess in apps/backend/src/modules/payments/payments
+//     .service.ts): PROMOTE it. Close the lapsed period, make the scheduled
+//     one `current`, and the plan simply carries on.
+//   - otherwise: mark the subscription `past_due` and make sure the invoice
+//     for the period they owe actually exists.
 //
-// Writes an audit_logs row directly (can't import common/audit.ts's
-// writeAudit from Deno) and notifies the rider, following the same "log
-// first, best-effort push" contract as the backend's notifyUser().
+// ── What the new schema changed ──────────────────────────────────────────
 //
-// Invoice creation itself is delegated to fn_generate_weekly_invoice (see
-// 20260817100000_billing_charge_engine.sql) via RPC rather than a plain
-// insert here — that single Postgres function is also called by the Node
-// backend's on-demand path, so it's the one place "what does this rider owe
-// this cycle" (base rental + eligible charge_rules, e.g. the Transaction
-// Fee every N cycles) is computed, and it's idempotent against being
-// re-run.
+// The whole subject of this sweep moved. It used to read four columns on
+// `bookings` — plan_status, next_due_at, renewal_status, scheduled_start_date
+// — and write them back. Billing is a property of the PERIOD now, so the
+// sweep walks `subscription_periods` and the "pay now, activate later"
+// design is expressed with rows: paying inserts the next period as
+// `scheduled`, and this is the only thing that promotes it. There is no
+// renewal_status to reset and no dates to recompute, because the scheduled
+// row already carries them.
+//
+// Invoice generation is still delegated to a Postgres function, now
+// generate_period_invoice(period_id) rather than fn_generate_weekly_invoice
+// (booking_id). It is idempotent — one invoice per period — so a re-run of
+// the sweep cannot mint a duplicate bill.
+//
+// Every date comparison goes through business_today(). The old todayIso()
+// read the Deno clock, which is UTC: between 18:30 and midnight IST it
+// believed it was already tomorrow and marked riders overdue a day early.
 // =========================================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
+import { businessToday } from "../_shared/dates.ts";
+import { notifyUser } from "../_shared/notify.ts";
+import { writeAudit } from "../_shared/audit.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+const SOURCE = "payment-overdue-sweep";
 
-interface BookingRow {
+interface PeriodRow {
     id: string;
-    user_id: string;
-    next_due_at: string;
-    renewal_status: "none" | "scheduled";
-    scheduled_start_date: string | null;
-    scheduled_duration_days: number | null;
-    billing_cycle_number: number;
-    // Aliased below as `users:users!bookings_user_id_fkey(...)` — bookings has
-    // TWO fkeys to users (user_id and cancelled_by), so the embed is ambiguous
-    // without naming which one PostgREST should follow.
-    users: { push_token: string | null } | { push_token: string | null }[] | null;
+    subscription_id: string;
+    sequence_number: number;
+    due_on: string;
+    ends_on: string;
+    subscriptions: { id: string; user_id: string; status: string } | null;
 }
+
+Deno.serve(async (_req) => {
+    if (!isConfigured()) return notConfigured();
+    const admin = adminClient();
+
+    let today: string;
+    try {
+        today = await businessToday(admin);
+    } catch (err) {
+        console.error(`[${SOURCE}] could not read business_today()`, err);
+        return json({ error: "Could not resolve the business date." }, 500);
+    }
+
+    const { data: lapsed, error } = await admin
+        .from("subscription_periods")
+        .select(
+            "id, subscription_id, sequence_number, due_on, ends_on, subscriptions(id, user_id, status)",
+        )
+        .eq("status", "current")
+        .lt("due_on", today);
+
+    if (error) {
+        console.error(`[${SOURCE}] query failed`, error);
+        return json({ error: "Query failed." }, 500);
+    }
+
+    let promoted = 0;
+    let markedPastDue = 0;
+
+    for (const period of (lapsed ?? []) as unknown as PeriodRow[]) {
+        const subscription = unwrap<{ id: string; user_id: string; status: string }>(
+            period.subscriptions,
+        );
+        // A period whose subscription has already ended or been cancelled is
+        // not overdue, it is finished — closing it is all that is left.
+        if (!subscription) continue;
+        if (subscription.status === "ended" || subscription.status === "cancelled") {
+            await closePeriod(admin, period.id);
+            continue;
+        }
+
+        const next = await findScheduledPeriod(admin, period.subscription_id, period.sequence_number);
+        if (next) {
+            if (await promotePeriod(admin, period, next, subscription)) promoted++;
+            continue;
+        }
+
+        if (await markPastDue(admin, period, subscription, today)) markedPastDue++;
+    }
+
+    return json({ candidates: lapsed?.length ?? 0, promoted, markedPastDue }, 200);
+});
 
 function unwrap<T>(raw: unknown): T | null {
     const v = Array.isArray(raw) ? raw[0] : raw;
     return (v as T) ?? null;
 }
 
-function todayIso(): string {
-    return new Date().toISOString().slice(0, 10);
+async function closePeriod(admin: Admin, periodId: string): Promise<void> {
+    await admin
+        .from("subscription_periods")
+        .update({ status: "closed" })
+        .eq("id", periodId)
+        .eq("status", "current");
 }
 
-/** Postgres `date` arithmetic done in JS, UTC-anchored — mirrors apps/backend/src/common/dates.ts's addDays (not importable from Deno). */
-function addDaysIso(dateStr: string, days: number): string {
-    const d = new Date(`${dateStr}T00:00:00Z`);
-    d.setUTCDate(d.getUTCDate() + days);
-    return d.toISOString().slice(0, 10);
-}
-
-Deno.serve(async (_req) => {
-    if (!SUPABASE_URL || !SERVICE_ROLE) return json({ error: "Function not configured." }, 500);
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { autoRefreshToken: false, persistSession: false } });
-
-    const { data: overdue, error } = await admin
-        .from("bookings")
-        .select(
-            "id, user_id, next_due_at, renewal_status, scheduled_start_date, scheduled_duration_days, billing_cycle_number, users:users!bookings_user_id_fkey(push_token)",
-        )
-        .eq("plan_status", "active")
-        .lt("next_due_at", todayIso());
-
+/**
+ * The next period, if the rider paid ahead.
+ *
+ * Its existence IS the proof of payment: applyRenewalSuccess only inserts it
+ * once a capture has been applied, so there is nothing further to verify.
+ */
+async function findScheduledPeriod(
+    admin: Admin,
+    subscriptionId: string,
+    currentSequence: number,
+): Promise<{ id: string; starts_on: string; ends_on: string } | null> {
+    const { data, error } = await admin
+        .from("subscription_periods")
+        .select("id, starts_on, ends_on")
+        .eq("subscription_id", subscriptionId)
+        .eq("status", "scheduled")
+        .eq("sequence_number", currentSequence + 1)
+        .maybeSingle();
     if (error) {
-        console.error("[payment-overdue-sweep] query failed", error);
-        return json({ error: "Query failed." }, 500);
-    }
-
-    let flipped = 0;
-    let activated = 0;
-    let sent = 0;
-
-    for (const row of (overdue ?? []) as unknown as BookingRow[]) {
-        const user = unwrap<{ push_token: string | null }>(row.users);
-
-        if (row.renewal_status === "scheduled" && row.scheduled_start_date && row.scheduled_duration_days) {
-            // Rider already paid ahead — activate the period they paid for
-            // instead of marking them overdue. Guarded on renewal_status so a
-            // re-run of the sweep (or a race with a duplicate payment
-            // delivery) can't double-activate.
-            const newNextDueAt = addDaysIso(row.scheduled_start_date, row.scheduled_duration_days);
-            const { data: updated, error: updateError } = await admin
-                .from("bookings")
-                .update({
-                    plan_status: "active",
-                    current_period_start: row.scheduled_start_date,
-                    next_due_at: newNextDueAt,
-                    billing_cycle_number: row.billing_cycle_number + 1,
-                    renewal_status: "none",
-                    scheduled_start_date: null,
-                    scheduled_duration_days: null,
-                    renewal_invoice_id: null,
-                })
-                .eq("id", row.id)
-                .eq("renewal_status", "scheduled")
-                .select("id")
-                .maybeSingle();
-
-            if (updateError) {
-                console.error("[payment-overdue-sweep] activation update failed", { bookingId: row.id, error: updateError });
-                continue;
-            }
-            if (!updated) continue;
-            activated++;
-
-            await admin.from("audit_logs").insert({
-                actor_id: null,
-                target_user_id: row.user_id,
-                action: "plan.renewed",
-                entity_type: "booking",
-                entity_id: row.id,
-                after_data: { plan_status: "active", current_period_start: row.scheduled_start_date, next_due_at: newNextDueAt },
-                request_context: { source: "payment-overdue-sweep" },
-            });
-
-            const title = "Plan Renewed";
-            const body = "Your renewed plan is now active.";
-            const { data: inserted } = await admin
-                .from("notifications_log")
-                .insert({
-                    user_id: row.user_id, channel: "push", template: "plan_renewed",
-                    payload: { title, body, screen: "billing" }, status: "pending",
-                })
-                .select("id")
-                .single();
-
-            if (!inserted || !user?.push_token) continue;
-            try {
-                const res = await fetch(EXPO_PUSH_URL, {
-                    method: "POST",
-                    headers: { "content-type": "application/json", accept: "application/json" },
-                    body: JSON.stringify({ to: user.push_token, title, body, sound: "default", data: { screen: "billing" } }),
-                });
-                const result = await res.json().catch(() => null);
-                const ok = res.ok && result?.data?.status !== "error";
-                await admin
-                    .from("notifications_log")
-                    .update({ status: ok ? "sent" : "failed", sent_at: ok ? new Date().toISOString() : null })
-                    .eq("id", inserted.id);
-                if (ok) sent++;
-            } catch (err) {
-                console.error("[payment-overdue-sweep] push send threw", { bookingId: row.id, err });
-                await admin.from("notifications_log").update({ status: "failed" }).eq("id", inserted.id);
-            }
-            continue;
-        }
-
-        // Guarded on plan_status='active' so a concurrent payment (which
-        // flips it elsewhere) can't be clobbered back to 'due' by this sweep.
-        const { data: updated, error: updateError } = await admin
-            .from("bookings")
-            .update({ plan_status: "due" })
-            .eq("id", row.id)
-            .eq("plan_status", "active")
-            .select("id")
-            .maybeSingle();
-
-        if (updateError) {
-            console.error("[payment-overdue-sweep] update failed", { bookingId: row.id, error: updateError });
-            continue;
-        }
-        if (!updated) continue;
-        flipped++;
-
-        // Full plan price (no referral discount — that's a one-time
-        // first-booking incentive, never repeated on renewals) plus whatever
-        // charge_rules are eligible this cycle (e.g. the Transaction Fee
-        // every N cycles) — see fn_generate_weekly_invoice's own comment.
-        // Idempotent: re-running the sweep for this booking/due-date returns
-        // the same invoice id rather than creating a duplicate.
-        const { error: invoiceError } = await admin.rpc("fn_generate_weekly_invoice", { p_booking_id: row.id });
-        if (invoiceError) {
-            console.error("[payment-overdue-sweep] invoice generation failed", { bookingId: row.id, error: invoiceError });
-        }
-
-        await admin.from("audit_logs").insert({
-            actor_id: null,
-            target_user_id: row.user_id,
-            action: "plan.due",
-            entity_type: "booking",
-            entity_id: row.id,
-            after_data: { plan_status: "due" },
-            request_context: { source: "payment-overdue-sweep" },
+        console.error(`[${SOURCE}] scheduled period lookup failed`, {
+            subscriptionId,
+            error: error.message,
         });
+        return null;
+    }
+    return data as { id: string; starts_on: string; ends_on: string } | null;
+}
 
-        const title = "Payment Overdue";
-        const body = "Your weekly rental payment is overdue. Please complete the payment to continue your rental.";
-
-        const { data: inserted } = await admin
-            .from("notifications_log")
-            .insert({
-                user_id: row.user_id, channel: "push", template: "payment_overdue",
-                payload: { title, body, screen: "billing" }, status: "pending",
-            })
-            .select("id")
-            .single();
-
-        if (!inserted || !user?.push_token) continue;
-
-        try {
-            const res = await fetch(EXPO_PUSH_URL, {
-                method: "POST",
-                headers: { "content-type": "application/json", accept: "application/json" },
-                body: JSON.stringify({ to: user.push_token, title, body, sound: "default", data: { screen: "billing" } }),
+/**
+ * Close the lapsed period, open the paid-for one.
+ *
+ * Order is load-bearing: only one period per subscription may be `current`,
+ * so the old one closes first. Both updates are guarded on the status they
+ * were read at, which makes a second run of the sweep — or a race with a
+ * late capture doing the same promotion — a no-op rather than a double
+ * advance.
+ */
+async function promotePeriod(
+    admin: Admin,
+    period: PeriodRow,
+    next: { id: string; starts_on: string; ends_on: string },
+    subscription: { id: string; user_id: string; status: string },
+): Promise<boolean> {
+    const { data: closed, error: closeError } = await admin
+        .from("subscription_periods")
+        .update({ status: "closed" })
+        .eq("id", period.id)
+        .eq("status", "current")
+        .select("id")
+        .maybeSingle();
+    if (closeError || !closed) {
+        if (closeError) {
+            console.error(`[${SOURCE}] could not close lapsed period`, {
+                periodId: period.id,
+                error: closeError,
             });
-            const result = await res.json().catch(() => null);
-            const ok = res.ok && result?.data?.status !== "error";
-            await admin
-                .from("notifications_log")
-                .update({ status: ok ? "sent" : "failed", sent_at: ok ? new Date().toISOString() : null })
-                .eq("id", inserted.id);
-            if (ok) sent++;
-        } catch (err) {
-            console.error("[payment-overdue-sweep] push send threw", { bookingId: row.id, err });
-            await admin.from("notifications_log").update({ status: "failed" }).eq("id", inserted.id);
         }
+        return false;
     }
 
-    return json({ candidates: overdue?.length ?? 0, flipped, activated, sent }, 200);
-});
+    const { error: openError } = await admin
+        .from("subscription_periods")
+        .update({ status: "current" })
+        .eq("id", next.id)
+        .eq("status", "scheduled");
+    if (openError) {
+        console.error(`[${SOURCE}] could not open scheduled period`, {
+            periodId: next.id,
+            error: openError,
+        });
+        return false;
+    }
 
-function json(body: unknown, status: number): Response {
-    return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    // A rider who paid late was left `past_due` by the capture; the plan is
+    // running again now.
+    if (subscription.status === "past_due") {
+        await admin
+            .from("subscriptions")
+            .update({ status: "active" })
+            .eq("id", subscription.id)
+            .eq("status", "past_due");
+    }
+
+    await writeAudit(admin, {
+        targetUserId: subscription.user_id,
+        action: "plan.renewed",
+        entityType: "subscription",
+        entityId: subscription.id,
+        before: { period_id: period.id, sequence_number: period.sequence_number },
+        after: {
+            period_id: next.id,
+            sequence_number: period.sequence_number + 1,
+            starts_on: next.starts_on,
+            ends_on: next.ends_on,
+        },
+        source: SOURCE,
+    });
+
+    await notifyUser(admin, subscription.user_id, {
+        typeCode: "plan_renewed",
+        subjectType: "subscription_period",
+        subjectId: next.id,
+        title: "Plan Renewed",
+        body: "Your renewed plan is now active.",
+        screen: "billing",
+        payload: { subscription_id: subscription.id },
+    });
+    return true;
+}
+
+/**
+ * Nothing was paid ahead, so the rider is behind.
+ *
+ * `past_due` lives on the subscription now rather than on the booking, and
+ * this is the only thing that sets it — a capture is the only thing that
+ * clears it. The lapsed period stays `current` deliberately: it is still the
+ * period being billed for, and closing it would leave the subscription with
+ * no current period at all.
+ */
+async function markPastDue(
+    admin: Admin,
+    period: PeriodRow,
+    subscription: { id: string; user_id: string; status: string },
+    today: string,
+): Promise<boolean> {
+    // The bill has to exist before anyone can be told it is overdue.
+    // Idempotent by contract — one invoice per period.
+    const { error: invoiceError } = await admin.rpc("generate_period_invoice", {
+        p_subscription_period_id: period.id,
+    });
+    if (invoiceError) {
+        console.error(`[${SOURCE}] invoice generation failed`, {
+            periodId: period.id,
+            error: invoiceError,
+        });
+    }
+
+    // Paid-ness is read, never written: v_invoice_balances derives it from
+    // payment_allocations, so a rider who settled after the due date is not
+    // marked past_due by a sweep that ran later the same day.
+    const { data: balances } = await admin
+        .from("v_invoice_balances")
+        .select("is_paid")
+        .eq("subscription_id", subscription.id)
+        .eq("is_paid", false)
+        .limit(1);
+    if ((balances ?? []).length === 0) return false;
+
+    if (subscription.status !== "active") return false;
+
+    const { data: updated, error } = await admin
+        .from("subscriptions")
+        .update({ status: "past_due" })
+        .eq("id", subscription.id)
+        .eq("status", "active")
+        .select("id")
+        .maybeSingle();
+    if (error || !updated) {
+        if (error) {
+            console.error(`[${SOURCE}] past_due update failed`, {
+                subscriptionId: subscription.id,
+                error,
+            });
+        }
+        return false;
+    }
+
+    await writeAudit(admin, {
+        targetUserId: subscription.user_id,
+        action: "plan.due",
+        entityType: "subscription",
+        entityId: subscription.id,
+        after: { status: "past_due", period_id: period.id, due_on: period.due_on, as_of: today },
+        source: SOURCE,
+    });
+
+    await notifyUser(admin, subscription.user_id, {
+        typeCode: "payment_overdue",
+        subjectType: "subscription_period",
+        subjectId: period.id,
+        title: "Payment Overdue",
+        body: "Your rental payment is overdue. Please complete the payment to continue your rental.",
+        screen: "billing",
+        payload: { subscription_id: subscription.id },
+    });
+    return true;
 }

@@ -16,12 +16,17 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { ApiError } from "@/services/api/httpClient";
 import type { Refund, RefundStatus, RefundType } from "@/types";
 
-const STATUS_OPTIONS: (RefundStatus | "all")[] = ["all", "pending", "processing", "success", "failed"];
-const REFUND_TYPE_OPTIONS: (RefundType | "all")[] = ["all", "deposit", "booking_cancellation", "return_settlement"];
+const STATUS_OPTIONS: (RefundStatus | "all")[] = ["all", "pending", "processing", "succeeded", "failed"];
+const REFUND_TYPE_OPTIONS: (RefundType | "all")[] = [
+  "all", "deposit_release", "booking_cancellation", "settlement", "goodwill",
+];
 const REFUND_TYPE_LABEL: Record<RefundType, string> = {
-  deposit: "Deposit",
+  deposit_release: "Deposit Release",
   booking_cancellation: "Booking Cancellation",
-  return_settlement: "Return Settlement",
+  settlement: "Return Settlement",
+  // New: a discretionary refund had no expression at all before, so one was
+  // recorded as whichever of the other two fitted least badly.
+  goodwill: "Goodwill",
 };
 
 export default function RefundsPage() {
@@ -227,7 +232,7 @@ function ApproveRefundDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const retry = useRetryRefund();
-  const isDeposit = refund?.refund_type === "deposit";
+  const isDeposit = refund?.refund_type === "deposit_release";
   const settlement = useRefundSettlement(isDeposit ? refund?.id : undefined);
 
   return (

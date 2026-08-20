@@ -1,3 +1,5 @@
+import { UserRole } from "../../types";
+
 export interface AuditLogRow {
     id: string;
     action: string;
@@ -28,9 +30,15 @@ export interface PiiAccessRow {
     fields: string[] | null;
     reason: string;
     context_ref: string | null;
-    actor_roles: string[];
-    ip: string | null;
-    path: string | null;
+    /**
+     * The actor's role AT THE TIME OF ACCESS — `actor_role_snapshot`, one
+     * value. Was `actor_roles: string[]`, off the deleted `user_roles` table.
+     */
+    actor_role: UserRole;
+    /** `ip_address`. */
+    ip_address: string | null;
+    /** `request_path`. */
+    request_path: string | null;
     created_at: string;
     actor: { id: string; full_name: string } | null;
     target_user: { id: string; full_name: string } | null;

@@ -12,58 +12,89 @@ async function vehicleStatusCounts(): Promise<Record<VehicleStatus, number>> {
     const { data, error } = await supabaseAdmin.from("vehicles").select("status");
     if (error) throw error;
     const counts = zeroed(VEHICLE_STATUSES);
-    for (const row of (data ?? []) as Array<{ status: VehicleStatus }>) counts[row.status] += 1;
+    for (const row of data ?? []) counts[row.status] += 1;
     return counts;
 }
 
 async function maintenanceStatusCounts(): Promise<Record<MaintenanceStatus, number>> {
-    const { data, error } = await supabaseAdmin.from("vehicle_maintenance").select("status");
+    const { data, error } = await supabaseAdmin.from("maintenance_tickets").select("status");
     if (error) throw error;
     const counts = zeroed(MAINTENANCE_STATUSES);
-    for (const row of (data ?? []) as Array<{ status: MaintenanceStatus }>) counts[row.status] += 1;
+    for (const row of data ?? []) counts[row.status] += 1;
     return counts;
 }
 
+/**
+ * Riders and their KYC spread.
+ *
+ * Three queries became one: the role is a column on `users` rather than a
+ * `roles` lookup joined through `user_roles`, and `kyc_status` is embedded
+ * from `rider_profiles`. `!inner` is what keeps this to riders who actually
+ * have a profile row.
+ */
 async function riderStats(): Promise<{ total: number; by_kyc_status: Record<KycStatus, number> }> {
-    const { data: riderRole, error: roleError } = await supabaseAdmin
-        .from("roles")
-        .select("id")
-        .eq("name", "rider")
-        .single();
-    if (roleError) throw roleError;
-
     const { data, error } = await supabaseAdmin
-        .from("user_roles")
-        .select("users!user_roles_user_id_fkey!inner(kyc_status, deleted_at)")
-        .eq("role_id", riderRole.id);
+        .from("users")
+        .select("id, rider_profiles!inner(kyc_status)")
+        .eq("role", "rider")
+        .is("deleted_at", null);
     if (error) throw error;
-
-    const rows = (data ?? []) as unknown as Array<{ users: { kyc_status: KycStatus; deleted_at: string | null } }>;
-    const live = rows.filter((r) => !r.users.deleted_at);
 
     const by_kyc_status = zeroed(KYC_STATUSES);
-    for (const r of live) by_kyc_status[r.users.kyc_status] += 1;
+    for (const row of data ?? []) {
+        // PostgREST types a 1:1 embed as an array here, so the element type
+        // has to be narrowed by hand before it can index the record.
+        const profile = (Array.isArray(row.rider_profiles) ? row.rider_profiles[0] : row.rider_profiles) as
+            | { kyc_status: KycStatus }
+            | undefined;
+        if (profile) by_kyc_status[profile.kyc_status] += 1;
+    }
 
-    return { total: live.length, by_kyc_status };
+    return { total: (data ?? []).length, by_kyc_status };
 }
 
+/**
+ * Revenue.
+ *
+ * `invoices` no longer carries `amount_due` or `payment_status`: an invoice's
+ * paid-ness is the sum of its `payment_allocations` against its total, which
+ * is what `v_invoice_balances` computes. Reading a status column was always a
+ * bet that some other code kept it honest.
+ *
+ * The `refunded_total` bucket therefore changes meaning slightly. There was a
+ * `payment_status = 'refunded'` state; there is no such invoice state now,
+ * because refunding does not un-issue an invoice. It is read from `refunds`
+ * instead, which is where the money actually went.
+ */
 async function revenueSummary(): Promise<ReportsSummary["revenue"]> {
-    const { data, error } = await supabaseAdmin.from("invoices").select("amount_due, payment_status");
-    if (error) throw error;
+    const [balancesRes, refundsRes] = await Promise.all([
+        supabaseAdmin
+            .from("v_invoice_balances")
+            .select("total_amount, balance_amount, is_paid, status"),
+        supabaseAdmin.from("refunds").select("amount").eq("status", "succeeded"),
+    ]);
+    if (balancesRes.error) throw balancesRes.error;
+    if (refundsRes.error) throw refundsRes.error;
 
-    const rows = (data ?? []) as Array<{ amount_due: number | string; payment_status: string }>;
     let paid_total = 0;
     let pending_total = 0;
     let pending_count = 0;
-    let refunded_total = 0;
+
+    const rows = balancesRes.data ?? [];
     for (const row of rows) {
-        const amount = Number(row.amount_due);
-        if (row.payment_status === "succeeded") paid_total += amount;
-        else if (row.payment_status === "pending") {
-            pending_total += amount;
+        // A voided invoice is not revenue and not owed.
+        if (row.status === "void") continue;
+        if (row.is_paid) {
+            paid_total += Number(row.total_amount ?? 0);
+        } else {
+            // What is outstanding is the BALANCE, not the total: a partly-paid
+            // invoice would otherwise be counted at full value in both buckets.
+            pending_total += Number(row.balance_amount ?? 0);
             pending_count += 1;
-        } else if (row.payment_status === "refunded") refunded_total += amount;
+        }
     }
+
+    const refunded_total = (refundsRes.data ?? []).reduce((sum, r) => sum + Number(r.amount), 0);
 
     return { paid_total, pending_total, pending_count, refunded_total, invoice_count: rows.length };
 }
@@ -107,19 +138,31 @@ function lastNMonths(n: number): string[] {
     return out;
 }
 
+/**
+ * Revenue by month.
+ *
+ * `invoices.paid_at` is gone with `payment_status`, so the month a payment
+ * belongs to comes from the payment itself — `payment_transactions.created_at`
+ * via `payment_allocations`. That is more accurate than the old column: an
+ * invoice settled by two payments in different months now contributes to both,
+ * where a single `paid_at` could only name one.
+ */
 async function revenueTrend(months: string[]): Promise<ReportsSummary["trends"]["revenue"]> {
     const { data, error } = await supabaseAdmin
-        .from("invoices")
-        .select("amount_due, paid_at")
-        .eq("payment_status", "succeeded")
-        .gte("paid_at", `${months[0]}-01`);
+        .from("payment_allocations")
+        .select("amount, payment_transactions!inner(created_at, status)")
+        .eq("payment_transactions.status", "succeeded")
+        .gte("payment_transactions.created_at", `${months[0]}-01`);
     if (error) throw error;
 
     const buckets = new Map(months.map((m) => [m, 0]));
-    for (const row of (data ?? []) as Array<{ amount_due: number | string; paid_at: string | null }>) {
-        if (!row.paid_at) continue;
-        const key = row.paid_at.slice(0, 7);
-        if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + Number(row.amount_due));
+    for (const row of data ?? []) {
+        const txn = Array.isArray(row.payment_transactions)
+            ? row.payment_transactions[0]
+            : row.payment_transactions;
+        if (!txn?.created_at) continue;
+        const key = txn.created_at.slice(0, 7);
+        if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + Number(row.amount));
     }
     return months.map((month) => ({ month, amount: buckets.get(month) ?? 0 }));
 }
@@ -132,7 +175,7 @@ async function bookingsTrend(months: string[]): Promise<ReportsSummary["trends"]
     if (error) throw error;
 
     const buckets = new Map(months.map((m) => [m, 0]));
-    for (const row of (data ?? []) as Array<{ created_at: string }>) {
+    for (const row of data ?? []) {
         const key = row.created_at.slice(0, 7);
         if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
     }
@@ -141,13 +184,13 @@ async function bookingsTrend(months: string[]): Promise<ReportsSummary["trends"]
 
 async function maintenanceTrend(months: string[]): Promise<ReportsSummary["trends"]["maintenance"]> {
     const { data, error } = await supabaseAdmin
-        .from("vehicle_maintenance")
+        .from("maintenance_tickets")
         .select("created_at")
         .gte("created_at", `${months[0]}-01`);
     if (error) throw error;
 
     const buckets = new Map(months.map((m) => [m, 0]));
-    for (const row of (data ?? []) as Array<{ created_at: string }>) {
+    for (const row of data ?? []) {
         const key = row.created_at.slice(0, 7);
         if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
     }
@@ -157,12 +200,12 @@ async function maintenanceTrend(months: string[]): Promise<ReportsSummary["trend
 /**
  * Single aggregate endpoint backing the Reports page and Admin Dashboard.
  * Fetches unpaginated status/amount columns and counts them in memory — fine
- * at this app's current scale (same approach already used by
- * assertNotLastAdmin and userIdsWithRole); worth revisiting with real SQL
- * aggregates once the fleet/rider counts grow large.
+ * at this app's current scale; worth revisiting with real SQL aggregates once
+ * the fleet/rider counts grow large.
  *
- * Deliberately absent: per-repair maintenance cost (vehicle_maintenance has
- * no cost column in the schema).
+ * Per-repair maintenance cost is now available (`maintenance_tickets.cost_amount`,
+ * which the old `vehicle_maintenance` lacked) but is not reported here — adding
+ * it is a new figure on the page, not schema breakage.
  */
 export async function getReportsSummary(): Promise<ReportsSummary> {
     const months = lastNMonths(6);

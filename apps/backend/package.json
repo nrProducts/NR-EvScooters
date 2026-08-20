@@ -7,8 +7,11 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "node tsconfig.parts/run.mjs",
+    "verify:selects": "node scripts/verify-selects.mjs",
+    "typecheck:slice": "node tsconfig.parts/run.mjs",
+    "typecheck:whole": "tsc -p tsconfig.json --noEmit",
+    "lint": "node tsconfig.parts/run.mjs"
   },
   "keywords": [],
   "author": "",

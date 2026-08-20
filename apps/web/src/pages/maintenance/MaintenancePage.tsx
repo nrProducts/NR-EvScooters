@@ -80,8 +80,13 @@ export default function MaintenancePage() {
             </span>
           );
         }
-        if (t.outcome === "standard_temp") {
+        if (t.outcome === "temp_vehicle") {
           return <span className="text-xs">Temp vehicle: {t.temp_vehicle?.name ?? "—"}</span>;
+        }
+        // `replacement` is new: a permanent swap, where `temp_vehicle` is a
+        // loan the rider gives back. The old schema could not tell them apart.
+        if (t.outcome === "replacement") {
+          return <span className="text-xs">Replaced with: {t.temp_vehicle?.name ?? "—"}</span>;
         }
         return <span className="text-xs">Not repairable</span>;
       },

@@ -1,251 +1,295 @@
-export type RoleName = "rider" | "staff" | "technician" | "station_manager" | "admin";
-export const ROLE_NAMES: readonly RoleName[] = [
-    "rider", "staff", "technician", "station_manager", "admin",
-] as const;
+import type { Database } from "./database.types";
 
-export const STAFF_ROLES: readonly RoleName[] = ["staff", "technician", "station_manager", "admin"] as const;
+type Enums = Database["public"]["Enums"];
 
 /**
  * ============================================================================
- * TWO LAYERS OF STAFF AUTHORISATION. They are not alternatives.
+ * ROLE
  * ============================================================================
  *
- * ModuleKey answers "which part of the console may this person OPEN?"
- * StaffCapability answers "may this person see RAW PERSONAL DATA?"
+ * One column, three values. The old schema had a `roles` table, a `user_roles`
+ * join and five role names; the new one has `users.role`, and the JWT carries
+ * it as the `user_role` claim (see `public.custom_access_token_hook`).
  *
- * They compose, coarse gate then fine gate. Reaching the KYC queue needs the
- * `kyc` module; opening the Aadhaar image inside it additionally needs the
- * `kyc_reviewer` capability. An ops agent can therefore work the queue —
- * chasing riders for missing documents — without ever being able to look at
- * an identity document, which is the whole point of the DPDPA least-privilege
- * work and is not expressible with modules alone.
- *
- * Keep them separate. Folding capabilities into MODULE_KEYS would make
- * "can open the KYC section" and "can view someone's Aadhaar" the same
- * permission, which is the state this replaced.
+ * `technician` and `station_manager` are gone as roles. They were never
+ * anything but named bundles of permissions, which is what
+ * `permission_profiles` now is — see the `operations_staff` profile.
  */
+export type UserRole = Enums["user_role"];
+export const USER_ROLES: readonly UserRole[] = ["rider", "staff", "admin"] as const;
+
+/** Roles that can reach the admin console at all. Mirrors `is_staff()` in SQL. */
+export const STAFF_ROLES: readonly UserRole[] = ["staff", "admin"] as const;
+
+export const isStaffRole = (role: UserRole): boolean =>
+    role === "staff" || role === "admin";
 
 /**
- * Modules a staff account can be individually granted access to (see
- * public.staff_permissions / requireModule() in authorize.middleware.ts).
- * Admin bypasses this entirely — always unconditional access. Mirrored in
- * apps/web/src/types/index.ts — keep both lists in sync by hand (no shared
- * package exists in this monorepo).
+ * ============================================================================
+ * PERMISSIONS — ONE LAYER NOW, NOT TWO
+ * ============================================================================
+ *
+ * The old model had modules ("which part of the console may this person
+ * OPEN?") and, orthogonal to them, capabilities ("may this person see RAW
+ * PERSONAL DATA?") — `kyc_reviewer`, `rights_officer`, `pii_exporter` living
+ * in their own table with their own middleware.
+ *
+ * The new schema collapses that into `modules` x `permissions`, because the
+ * distinction was one of naming rather than mechanism: a capability was
+ * always just a permission that happened not to have a module. The three
+ * capabilities map onto ordinary permissions:
+ *
+ *   kyc_reviewer   -> kyc.reveal_number
+ *   rights_officer -> privacy.process
+ *   pii_exporter   -> privacy.export
+ *
+ * The DPDPA least-privilege property that motivated the split survives intact:
+ * `kyc.view` still lets an agent work the queue without `kyc.reveal_number`
+ * ever letting them read an Aadhaar number. It is now expressed with one
+ * mechanism instead of two.
+ *
+ * Crucially, **the catalogue is data, not code**. `MODULE_KEYS` and
+ * `MODULE_ACTIONS` used to be hard-coded here and hand-mirrored into the web
+ * app; adding a permission meant editing three files and a migration. The
+ * `modules` and `permissions` tables are now the only source of truth, read at
+ * runtime — which is why the types below are structural rather than unions of
+ * literals. A permission that does not exist in the database is not a type
+ * error, it is a lookup that returns nothing, and that is the right failure:
+ * the code cannot drift from the grant table.
  */
-export type ModuleKey =
-    | "vehicles" | "users" | "kyc" | "bookings" | "maintenance" | "support"
-    | "payments" | "notifications" | "damages" | "refunds"
-    // The data-principal rights queue. No migration needed to add a module —
-    // staff_permissions.module_key is deliberately free text (see
-    // 20260813100100_staff_role_seed_and_permissions_table.sql).
-    | "privacy"
-    // Added by 20260814101000_staff_permission_actions.sql alongside the
-    // `actions` column — these were previously hard admin-only in
-    // roleConfig.ts with no delegation path at all.
-    | "plans" | "reconciliation" | "pii_access_log" | "audit" | "settings"
-    | "dashboard" | "battery_stations"
-    // Configurable Billing & Charges engine (charge rules, materialized
-    // rider charges, waivers) — see 20260817100000_billing_charge_engine.sql.
-    | "billing"
-    // Return review + settlement — see 20260820100000_return_settlements.sql.
-    | "returns";
-export const MODULE_KEYS: readonly ModuleKey[] = [
-    "vehicles", "users", "kyc", "bookings", "maintenance", "support",
-    "payments", "notifications", "damages", "refunds", "privacy",
-    "plans", "reconciliation", "pii_access_log", "audit", "settings",
-    "dashboard", "battery_stations", "billing", "returns",
-] as const;
 
-export interface ModuleActionDef {
-    /** Stored verbatim in staff_permissions.actions[]. */
-    key: string;
-    /** Console label — where one backend check covers several spec verbs
-     * (e.g. KYC's requireAction("kyc","review") gates verify/approve/reject
-     * alike, because the capability layer — not the module-action layer —
-     * is what actually distinguishes "see the queue" from "act on it"), the
-     * label says so rather than offering separate checkboxes that would
-     * silently move together. */
+/** A `modules.key` value. Free-form by design — see the note above. */
+export type ModuleKey = string;
+
+/** A `permissions.action` value, unique only within its module. */
+export type PermissionAction = string;
+
+/** `"<module_key>.<action>"` — how a permission is written in logs and grants. */
+export type PermissionKey = `${string}.${string}`;
+
+export const permissionKey = (
+    moduleKey: ModuleKey,
+    action: PermissionAction,
+): PermissionKey => `${moduleKey}.${action}`;
+
+/** A row of `public.modules`, as the console's permission matrix consumes it. */
+export interface ModuleDef {
+    key: ModuleKey;
     label: string;
-    /** False = no backend route (or, for "settings"/"view_kyc", no UI wired
-     * yet) checks this action at all. The console renders it disabled —
-     * matches the full permission spec visually without implying a
-     * capability that doesn't exist. See requireAction() call sites for
-     * what's actually enforced. */
-    available: boolean;
+    description: string | null;
+    sortOrder: number;
+    isActive: boolean;
+}
+
+/** A row of `public.permissions`. */
+export interface PermissionDef {
+    id: string;
+    moduleKey: ModuleKey;
+    action: PermissionAction;
+    label: string;
+    description: string | null;
+    /**
+     * False when no route actually checks this permission yet. The console
+     * renders it disabled — the replacement for the old `available` flag,
+     * except a migration now moves it rather than a code edit.
+     */
+    isEnforced: boolean;
 }
 
 /**
- * Every module's grantable verbs, in the shape the permission matrix UI
- * renders directly — see the `actions` column added by
- * 20260814101000_staff_permission_actions.sql. Kept here, not per-route,
- * because it's the one place the matrix UI, the profile config, and the
- * update-permissions validator all need to agree on what's grantable.
+ * A row of `public.permission_profiles` — the replacement for the deleted
+ * `config/permissionProfiles.ts` in both the backend and the web app.
  */
-export const MODULE_ACTIONS: Record<ModuleKey, readonly ModuleActionDef[]> = {
-    dashboard: [{ key: "view", label: "View", available: true }],
-    vehicles: [
-        { key: "view", label: "View", available: true },
-        { key: "create", label: "Create", available: true },
-        { key: "edit", label: "Edit", available: true },
-        { key: "assign", label: "Assign / Unassign", available: true },
-        { key: "maintenance", label: "Maintenance", available: false }, // lives under the Maintenance module's own actions
-        { key: "delete", label: "Delete", available: true },
-    ],
-    users: [
-        { key: "view", label: "View", available: true },
-        { key: "create", label: "Create", available: false }, // POST /users stays admin-only regardless — creating any account (rider included) isn't delegable
-        { key: "edit", label: "Edit", available: true },
-        { key: "suspend", label: "Suspend / Activate", available: true },
-        { key: "delete", label: "Delete", available: false }, // DELETE /:id stays admin-only
-        { key: "view_kyc", label: "View KYC", available: true }, // UI-only: shows/hides the KYC tab on the user detail page
-    ],
-    kyc: [
-        { key: "view", label: "View", available: true },
-        { key: "review", label: "Review / Approve / Reject", available: true },
-    ],
-    bookings: [
-        { key: "view", label: "View", available: true },
-        { key: "create", label: "Create", available: false }, // riders create their own bookings; no staff-facing route
-        { key: "edit", label: "Edit", available: true },
-        { key: "cancel", label: "Cancel", available: true },
-        { key: "assign_vehicle", label: "Assign Vehicle", available: false }, // folded into the pickup route (bookings.edit); no separate endpoint
-    ],
-    maintenance: [
-        { key: "view", label: "View", available: true },
-        { key: "create", label: "Create", available: true },
-        { key: "edit", label: "Edit", available: true },
-        { key: "complete", label: "Complete", available: true },
-        { key: "delete", label: "Delete", available: false }, // no delete route exists
-    ],
-    support: [
-        { key: "view", label: "View", available: true },
-        { key: "create", label: "Create", available: false }, // rider-initiated only
-        { key: "reply", label: "Reply / Resolve", available: true }, // single PATCH route can't distinguish reply from resolve server-side
-        { key: "resolve", label: "Resolve (see Reply)", available: false },
-        { key: "delete", label: "Delete", available: false }, // no delete route
-    ],
-    payments: [
-        { key: "view", label: "View", available: true },
-        { key: "create", label: "Create", available: false }, // riders create their own payment orders
-        { key: "refund", label: "Refund", available: true },
-        { key: "export", label: "Export", available: false }, // no export endpoint yet
-    ],
-    plans: [
-        { key: "view", label: "View", available: true },
-        { key: "create", label: "Create", available: true },
-        { key: "edit", label: "Edit / Activate / Deactivate", available: true },
-        { key: "delete", label: "Delete", available: false }, // no delete route exists
-    ],
-    reconciliation: [
-        { key: "view", label: "View", available: true }, // reconciliation is read-only computed data today
-        { key: "create", label: "Create", available: false },
-        { key: "approve", label: "Approve", available: false },
-        { key: "export", label: "Export", available: false },
-    ],
-    notifications: [
-        { key: "view", label: "View", available: true },
-        { key: "create", label: "Create", available: false }, // no draft/create route
-        { key: "send", label: "Send", available: true },
-        { key: "delete", label: "Delete", available: false }, // no delete route
-    ],
-    privacy: [
-        { key: "view", label: "View", available: true },
-        { key: "process", label: "Approve / Reject / Process", available: true }, // requireRightsOfficer stays layered on top
-    ],
-    pii_access_log: [
-        { key: "view", label: "View", available: true },
-        { key: "export", label: "Export", available: false },
-    ],
-    audit: [
-        { key: "view", label: "View", available: true },
-        { key: "export", label: "Export", available: false },
-    ],
-    settings: [
-        { key: "view", label: "View", available: true }, // gates the generic Company/Security/API Keys/Branding tabs only — never Staff Access
-        { key: "edit", label: "Edit", available: true },
-    ],
-    battery_stations: [
-        { key: "view", label: "View", available: true },
-        { key: "create", label: "Create", available: true },
-        { key: "edit", label: "Edit", available: true },
-        { key: "delete", label: "Delete", available: true },
-    ],
-    damages: [
-        { key: "view", label: "View", available: true },
-        { key: "resolve", label: "Resolve", available: true },
-    ],
-    refunds: [
-        { key: "view", label: "View", available: true },
-        { key: "create", label: "Process", available: true },
-    ],
-    billing: [
-        { key: "view", label: "View", available: true },
-        { key: "create", label: "Create Charge Rule", available: true },
-        { key: "edit", label: "Edit Charge Rule / Waive Charge", available: true },
-    ],
-    returns: [
-        { key: "view", label: "View", available: true },
-        { key: "approve", label: "Approve Return / Settlement", available: true },
-    ],
-};
-
-/** Every valid `{module, action}` pair — the update-permissions validator's source of truth. */
-export function isValidModuleAction(moduleKey: ModuleKey, action: string): boolean {
-    return MODULE_ACTIONS[moduleKey]?.some((a) => a.key === action) ?? false;
+export interface PermissionProfileDef {
+    code: string;
+    label: string;
+    description: string;
+    sortOrder: number;
+    /** System profiles ship with the schema and cannot be deleted. */
+    isSystem: boolean;
+    permissions: PermissionKey[];
 }
 
 /**
- * Orthogonal to both role and module. Granted per user in
- * public.user_capabilities, never implied by a role — including admin, which
- * only starts with all three because the migration backfilled existing admins
- * so nobody was locked out on deploy.
+ * ============================================================================
+ * STATUS AND DOCUMENT ENUMS
+ * ============================================================================
+ * Sourced from the generated database types rather than restated, so a
+ * migration that adds a value breaks the compiler here instead of failing
+ * silently at the insert.
  */
-export type StaffCapability = "kyc_reviewer" | "rights_officer" | "pii_exporter";
-export const STAFF_CAPABILITIES: readonly StaffCapability[] = [
-    "kyc_reviewer", "rights_officer", "pii_exporter",
+
+/** Was `AccountStatus`; the column is `users.status`, the enum `user_status`. */
+export type UserStatus = Enums["user_status"];
+export const USER_STATUSES: readonly UserStatus[] = [
+    "active", "inactive", "suspended",
 ] as const;
 
-export type AccountStatus = "active" | "inactive" | "suspended";
-export const ACCOUNT_STATUSES: readonly AccountStatus[] = ["active", "inactive", "suspended"] as const;
-
-export type KycStatus = "not_submitted" | "pending" | "partially_verified" | "verified" | "rejected";
+export type KycStatus = Enums["kyc_status"];
 export const KYC_STATUSES: readonly KycStatus[] = [
     "not_submitted", "pending", "partially_verified", "verified", "rejected",
 ] as const;
 
-export type KycDocType = "aadhaar" | "driving_license" | "passport" | "voter_id" | "address_proof";
+/** Note the spelling: the new enum is `driving_licence`, not `driving_license`. */
+export type KycDocType = Enums["kyc_document_type"];
 export const KYC_DOC_TYPES: readonly KycDocType[] = [
-    "aadhaar", "driving_license", "passport", "voter_id", "address_proof",
+    "aadhaar", "driving_licence", "passport", "voter_id", "address_proof",
 ] as const;
 
-/** Types a rider must have verified before overall KYC can reach 'verified'. */
-export const MANDATORY_KYC_DOC_TYPES: readonly KycDocType[] = ["aadhaar", "driving_license"] as const;
+/**
+ * Types a rider must have verified before overall KYC can reach `verified`.
+ * Duplicated from `public.mandatory_kyc_doc_types()`, which is what
+ * `compute_kyc_status()` actually uses — keep the two in step.
+ */
+export const MANDATORY_KYC_DOC_TYPES: readonly KycDocType[] = [
+    "aadhaar", "driving_licence",
+] as const;
 
-export type VerificationStatus = "pending" | "verified" | "rejected";
+export type VerificationStatus = Enums["verification_status"];
 
-export type NotificationChannel = "sms" | "push" | "email";
-export const NOTIFICATION_CHANNELS: readonly NotificationChannel[] = ["sms", "push", "email"] as const;
+export type NotificationChannel = Enums["notification_channel"];
+export const NOTIFICATION_CHANNELS: readonly NotificationChannel[] = [
+    "push", "email", "sms",
+] as const;
 
-export type NotificationStatus = "sent" | "failed" | "pending";
-export const NOTIFICATION_STATUSES: readonly NotificationStatus[] = ["sent", "failed", "pending"] as const;
+/**
+ * Per-channel outcome. The old single `notifications_log.status` is now
+ * `notification_deliveries.status`, one row per channel attempted.
+ */
+export type DeliveryStatus = Enums["delivery_status"];
+export const DELIVERY_STATUSES: readonly DeliveryStatus[] = [
+    "pending", "sent", "failed",
+] as const;
 
-/** The 7 admin/staff-configurable event categories — see notification_settings. */
-export type NotificationType =
-    "booking" | "kyc" | "return" | "cancellation" | "refund" | "damage" | "maintenance";
-export const NOTIFICATION_TYPES: readonly NotificationType[] =
-    ["booking", "kyc", "return", "cancellation", "refund", "damage", "maintenance"] as const;
+/**
+ * Notification categories are no longer an enum — `notification_types` is a
+ * table, so a new one needs no deploy. This is its `code` column, and it stays
+ * `string` on purpose: the set of codes that may EXIST is data.
+ */
+export type NotificationTypeCode = string;
+
+/**
+ * The codes this application can EMIT.
+ *
+ * A different question from the one above, and the distinction is what was
+ * missing. Which codes may exist is data — a row, no deploy. Which codes this
+ * source can produce is finite, hard-coded, and knowable at compile time, so
+ * it is a union.
+ *
+ * `notification_type_code` is `FOREIGN KEY … REFERENCES notification_types(code)
+ * ON DELETE RESTRICT` on both `notification_events` and
+ * `notification_messages`. Every other table and column reference in this
+ * codebase is compile-checked, because `supabaseAdmin` is typed over the
+ * generated `Database`. This one was not — it was a bare `string` — and it is
+ * exactly where two independent defects hid:
+ *
+ *   · 20 of the 26 codes emitted did not exist in the database at all, so
+ *     `notifyUser` failed its insert on a foreign key and swallowed the error;
+ *   · `notify()` was passing seven category names that were not codes in any
+ *     sense, and was dropping every staff notification before it inserted.
+ *
+ * Neither was a type error. Both are now: adding a code here without seeding
+ * it fails `notificationCodes.test.ts`, which reads the seed migrations and
+ * checks this union against them.
+ *
+ * See docs/final-system-audit (findings C5, C6, L3).
+ */
+export type EmittedNotificationCode =
+    // Bookings and the payment that confirms them.
+    | "booking_created"
+    | "booking_cancelled"
+    | "booking_expired"
+    | "payment_success"
+    | "payment_failed"
+    | "payment_overdue"
+    // Subscription lifecycle.
+    | "plan_renewed"
+    | "plan_resumed"
+    // Pickup, rental, return.
+    | "pickup_confirmed"
+    | "vehicle_assigned"
+    | "vehicle_available_again"
+    | "rental_completed"
+    | "rental_return_requested"
+    | "rental_return_rejected"
+    // KYC.
+    | "kyc_review_needed"
+    | "kyc_approved"
+    | "kyc_rejected"
+    // Maintenance.
+    | "maintenance_review_needed"
+    | "maintenance_ticket_created"
+    | "maintenance_plan_paused"
+    | "maintenance_quick_fix"
+    | "maintenance_temp_vehicle"
+    | "maintenance_vehicle_returned"
+    // Damages.
+    | "damage_added"
+    | "damage_dispute_resolved"
+    // Refunds.
+    | "refund_needs_approval"
+    | "refund_initiated"
+    | "refund_completed"
+    // Support and broadcasts.
+    | "support_status_updated"
+    | "admin_broadcast";
+
+/** Every member of the union above, for the seed-coverage test to iterate. */
+export const EMITTED_NOTIFICATION_CODES: readonly EmittedNotificationCode[] = [
+    "booking_created", "booking_cancelled", "booking_expired",
+    "payment_success", "payment_failed", "payment_overdue",
+    "plan_renewed", "plan_resumed",
+    "pickup_confirmed", "vehicle_assigned", "vehicle_available_again",
+    "rental_completed", "rental_return_requested", "rental_return_rejected",
+    "kyc_review_needed", "kyc_approved", "kyc_rejected",
+    "maintenance_review_needed", "maintenance_ticket_created",
+    "maintenance_plan_paused", "maintenance_quick_fix",
+    "maintenance_temp_vehicle", "maintenance_vehicle_returned",
+    "damage_added", "damage_dispute_resolved",
+    "refund_needs_approval", "refund_initiated", "refund_completed",
+    "support_status_updated", "admin_broadcast",
+] as const;
 
 export interface Paginated<T> {
     data: T[];
     pagination: { page: number; pageSize: number; total: number; totalPages: number };
 }
 
+/**
+ * What `auth.middleware` resolves for the current request.
+ *
+ * `permissions` is the flattened `v_user_effective_permissions` result — role
+ * grants and per-user overrides already reconciled by the view, admins already
+ * expanded to everything. Consumers check membership; they never re-derive it
+ * from the role.
+ */
 export interface AuthContext {
     id: string;
     email?: string;
-    roles: RoleName[];
-    capabilities: StaffCapability[];
-    accountStatus: AccountStatus;
+    role: UserRole;
+    /** `"<module>.<action>"` keys. Empty for riders. */
+    permissions: ReadonlySet<PermissionKey>;
+    status: UserStatus;
     kycStatus: KycStatus;
     isDeleted: boolean;
 }
+
+/** Does this request hold `<moduleKey>.<action>`? */
+export const hasPermission = (
+    auth: Pick<AuthContext, "permissions">,
+    moduleKey: ModuleKey,
+    action: PermissionAction,
+): boolean => auth.permissions.has(permissionKey(moduleKey, action));
+
+/**
+ * Does this request hold *any* permission in the module? The coarse
+ * "may they open this section at all" gate the old `requireModule` provided.
+ */
+export const hasModuleAccess = (
+    auth: Pick<AuthContext, "permissions">,
+    moduleKey: ModuleKey,
+): boolean => {
+    const prefix = `${moduleKey}.`;
+    for (const key of auth.permissions) if (key.startsWith(prefix)) return true;
+    return false;
+};

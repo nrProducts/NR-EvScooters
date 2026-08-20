@@ -24,12 +24,32 @@ export async function myInvoicesHandler(req: AuthedRequest, res: Response) {
     });
 
     const data = await Promise.all(result.data.map(async (invoice) => {
-        if (invoice.payment_type !== "rental" || invoice.payment_status !== "pending" || !invoice.booking_id) {
-            return invoice;
-        }
-        const { isLate, lateFee, daysLate } = await computeLateRenewalFee(invoice.booking_id, invoice.due_date);
+        // Only an unpaid PERIOD renewal can be late. `initial` is what starts
+        // the subscription (nothing to be late against), and `settlement` /
+        // `adhoc` are not renewals.
+        //
+        // Two things were wrong here before the audit: this tested
+        // `payment_type === "rental"` against a column that no longer exists,
+        // and it passed `invoice.booking_id` — also gone — into
+        // computeLateRenewalFee, whose first parameter is a SUBSCRIPTION id.
+        // Even had the column existed, it would have looked up a late-fee
+        // override keyed on the wrong entity and silently found none.
+        if (invoice.purpose !== "subscription_period") return invoice;
+        if (invoice.payment_state === "paid" || !invoice.due_on) return invoice;
+
+        const { isLate, lateFee, daysLate } = await computeLateRenewalFee(
+            invoice.subscription_id,
+            invoice.due_on,
+        );
         if (!isLate) return invoice;
-        return { ...invoice, late_fee: lateFee, days_late: daysLate, total_due: invoice.amount_due + lateFee };
+        return {
+            ...invoice,
+            late_fee: lateFee,
+            days_late: daysLate,
+            // What the rider actually has to pay: what is still outstanding
+            // on the bill, not the whole bill again.
+            total_due: Math.round((invoice.balance_amount + lateFee) * 100) / 100,
+        };
     }));
 
     res.json({ ...result, data });

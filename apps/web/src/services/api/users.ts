@@ -1,9 +1,8 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
 import type {
-  AccountStatus, AppUser, AppUserDetail, BackendRoleName, Capability, KycStatus, ModulePermission,
-  PaginatedResult,
+  AccountStatus, AppUser, AppUserDetail, BackendRoleName, KycStatus, ModulePermission,
+  PaginatedResult, PermissionProfileName,
 } from "@/types";
-import type { PermissionProfileName } from "@/config/permissionProfiles";
 
 export interface UserFilters {
   search?: string;
@@ -64,43 +63,31 @@ export async function restoreUser(id: string) {
   return apiClient.post(`/users/${id}/restore`);
 }
 
-/**
- * GET /users/:id/capabilities
+/*
+ * The /users/:id/capabilities pair is gone.
  *
- * Capabilities gate access to raw rider personal data (Aadhaar/DL images, the
- * rights queue, data exports). Separate from roles on purpose — see
- * types/index.ts and supabase/migrations/20260814100100_*.sql.
+ * Capabilities are ordinary permissions now — kyc.reveal_number,
+ * privacy.process, privacy.export — so they are read and written through the
+ * permissions endpoints below like everything else. There is no separate
+ * endpoint and no separate screen.
  */
-export async function fetchUserCapabilities(id: string): Promise<{ capabilities: Capability[] }> {
-  return apiClient.get<{ capabilities: Capability[] }>(`/users/${id}/capabilities`);
+
+/** GET /users/:id/roles — one role now; `roles` is kept as a one-element echo. */
+export async function fetchUserRole(id: string): Promise<BackendRoleName> {
+  const res = await apiClient.get<{ role: BackendRoleName }>(`/users/${id}/roles`);
+  return res.role;
 }
 
 /**
- * PUT /users/:id/capabilities — requireAdmin. Replaces the set wholesale, so
- * an empty array revokes everything. The backend refuses self-modification:
- * an admin who can grant themselves kyc_reviewer has not been restricted.
+ * PUT /users/:id/roles — requireAdmin.
+ *
+ * `users.role` is a single column, so this sets a role rather than replacing
+ * a set. Blocked for self-edit and for removing the last admin
+ * (backend-enforced, surfaced via the thrown ApiError's message).
  */
-export async function replaceUserCapabilities(
-  id: string,
-  capabilities: Capability[],
-): Promise<{ capabilities: Capability[] }> {
-  return apiClient.put<{ capabilities: Capability[] }>(`/users/${id}/capabilities`, { capabilities });
-}
-
-/** GET /users/:id/roles */
-export async function fetchUserRoles(id: string): Promise<BackendRoleName[]> {
-  const res = await apiClient.get<{ roles: BackendRoleName[] }>(`/users/${id}/roles`);
-  return res.roles;
-}
-
-/**
- * PUT /users/:id/roles — requireAdmin. Full-replace. Blocked entirely for
- * self-edit and for removing the last admin (backend-enforced, surfaced via
- * the thrown ApiError's message).
- */
-export async function replaceUserRoles(id: string, roles: BackendRoleName[]): Promise<BackendRoleName[]> {
-  const res = await apiClient.put<{ roles: BackendRoleName[] }>(`/users/${id}/roles`, { roles });
-  return res.roles;
+export async function changeUserRole(id: string, role: BackendRoleName): Promise<BackendRoleName> {
+  const res = await apiClient.put<{ role: BackendRoleName }>(`/users/${id}/roles`, { role });
+  return res.role;
 }
 
 /** GET /users/:id/permissions — requireAdmin. Module+action grants, not just module presence. */
@@ -121,13 +108,13 @@ export async function replaceUserPermissions(id: string, modules: ModulePermissi
 
 /**
  * POST /users/:id/permissions/apply-profile — requireAdmin. Resolves a named
- * preset (Viewer, Operations Staff, ...) server-side and applies it wholesale
- * — the source of truth for what a profile grants lives in
- * apps/backend/src/config/permissionProfiles.ts, not in this client.
+ * preset server-side and applies it wholesale. The source of truth for what a
+ * profile grants is the `permission_profiles` table, which both this client
+ * and the backend read — neither holds a copy.
  */
 export async function applyUserPermissionProfile(
   id: string,
-  profile: Exclude<PermissionProfileName, "custom">,
+  profile: PermissionProfileName,
 ): Promise<ModulePermission[]> {
   const res = await apiClient.post<{ modules: ModulePermission[] }>(
     `/users/${id}/permissions/apply-profile`,

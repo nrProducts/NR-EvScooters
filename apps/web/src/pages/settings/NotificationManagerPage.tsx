@@ -10,8 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/common/ErrorState";
 import { useNotificationSettings, useUpdateNotificationSetting } from "@/hooks/useNotificationSettings";
 import { useUsers } from "@/hooks/useUsers";
-import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_LABELS } from "@/types";
-import type { NotificationSetting, NotificationType } from "@/types";
+import type { NotificationSetting } from "@/types";
 
 interface PendingState {
   enabled: boolean;
@@ -79,32 +78,31 @@ export default function NotificationManagerPage() {
         </div>
       )}
 
+      {/*
+        Driven by what the server actually has, not by a hard-coded list.
+        `notification_types` is a table; a code added by migration appears
+        here without a front-end change, and — more to the point — a code the
+        console had never heard of is no longer silently unconfigurable.
+      */}
       <div className="grid gap-4 sm:grid-cols-2">
-        {NOTIFICATION_TYPES.map((type) => {
-          const setting = settings.find((s) => s.notification_type === type);
-          if (!setting) return null;
-          return (
-            <NotificationTypeCard
-              key={type}
-              type={type}
-              setting={setting}
-              recipientOptions={recipientOptions}
-            />
-          );
-        })}
+        {settings.map((setting) => (
+          <NotificationTypeCard
+            key={setting.notification_type}
+            setting={setting}
+            recipientOptions={recipientOptions}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
 function NotificationTypeCard({
-  type,
   setting,
   recipientOptions,
 }: {
-  type: NotificationType;
   setting: NotificationSetting;
-  recipientOptions: Array<{ id: string; full_name: string; roles: string[] }>;
+  recipientOptions: Array<{ id: string; full_name: string; role: string }>;
 }) {
   const updateSetting = useUpdateNotificationSetting();
   const saved = useMemo(() => toPending(setting), [setting]);
@@ -133,10 +131,13 @@ function NotificationTypeCard({
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
         <div>
-          <CardTitle className="text-sm">{NOTIFICATION_TYPE_LABELS[type]}</CardTitle>
+          <CardTitle className="text-sm">{setting.label}</CardTitle>
           <CardDescription>{pending.recipient_user_ids.length} recipient{pending.recipient_user_ids.length === 1 ? "" : "s"}</CardDescription>
         </div>
-        {setting.enabled && <Badge variant="success">Enabled</Badge>}
+        <div className="flex items-center gap-1.5">
+          {setting.requires_action && <Badge variant="outline">Needs action</Badge>}
+          {setting.enabled && <Badge variant="success">Enabled</Badge>}
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-2.5">
@@ -168,7 +169,7 @@ function NotificationTypeCard({
                 />
                 <span className="truncate">
                   {user.full_name}
-                  {user.roles.includes("admin") && <span className="ml-1 text-xs text-muted-foreground">(Admin)</span>}
+                  {user.role === "admin" && <span className="ml-1 text-xs text-muted-foreground">(Admin)</span>}
                 </span>
               </label>
             ))}
@@ -186,7 +187,7 @@ function NotificationTypeCard({
             disabled={!dirty || updateSetting.isPending}
             onClick={() => {
               updateSetting.mutate(
-                { type, input: pending },
+                { type: setting.notification_type, input: pending },
                 { onError: (err) => setError(err instanceof Error ? err.message : "Could not save.") },
               );
             }}

@@ -8,7 +8,7 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   sent: "success",
   success: "success",
   current: "info",
-  booked: "info",
+  reserved: "info",
   in_progress: "info",
   scheduled: "info",
   assigned: "info",
@@ -23,7 +23,7 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   failed: "destructive",
   maintenance: "destructive",
   offline: "muted",
-  scrap: "muted",
+  retired: "muted",
   refunded: "secondary",
   draft: "muted",
   on_leave: "muted",
@@ -48,7 +48,7 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   // payments/plans/deposits/damages/refunds
   processing: "info",
   held: "info",
-  partially_refunded: "secondary",
+  released: "success",
   forfeited: "destructive",
   recorded: "warning",
   disputed: "destructive",
@@ -65,6 +65,15 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   no_refund_required: "muted",
   amount_due: "destructive",
   settlement_completed: "success",
+  // Invoice payment state — DERIVED from the allocations, not a column.
+  // `succeeded` used to appear here for the departed `invoices.payment_status`;
+  // these four replace it. `paid` and `overdue` are deliberately NOT invoice
+  // statuses: `invoice_status` has three values and none of them is about
+  // money having moved.
+  paid: "success",
+  partial: "warning",
+  overdue: "destructive",
+  unpaid: "muted",
 };
 
 export function StatusBadge({ status }: { status: string }) {

@@ -43,7 +43,7 @@ export function useMyKyc() {
           const result = existingId
             ? await kycRepository.updateMine(existingId, {
                 doc_number: input.doc_number,
-                expiry_date: input.expiry_date,
+                expires_on: input.expires_on,
                 front: input.front,
                 back: input.back,
               })

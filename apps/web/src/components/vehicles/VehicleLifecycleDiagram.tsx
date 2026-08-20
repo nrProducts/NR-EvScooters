@@ -17,19 +17,19 @@ const VIEWBOX_H = 480;
 const POSITIONS: Record<NodeKey, NodePos> = {
   created: { x: 100, y: 30 },
   available: { x: 100, y: 130 },
-  booked: { x: 100, y: 230 },
+  reserved: { x: 100, y: 230 },
   assigned: { x: 100, y: 330 },
   maintenance: { x: 300, y: 230 },
-  scrap: { x: 300, y: 430 },
+  retired: { x: 300, y: 430 },
 };
 
 const NODE_META: Record<NodeKey, { label: string; icon: typeof CircleDot; tone: "default" | "success" | "info" | "destructive" | "muted" }> = {
   created: { label: "Created", icon: CircleDot, tone: "default" },
   available: { label: "Available", icon: BatteryCharging, tone: "success" },
-  booked: { label: "Booked", icon: CalendarClock, tone: "info" },
+  reserved: { label: "Reserved", icon: CalendarClock, tone: "info" },
   assigned: { label: "Assigned", icon: Zap, tone: "info" },
   maintenance: { label: "Maintenance", icon: Wrench, tone: "destructive" },
-  scrap: { label: "Scrap", icon: Recycle, tone: "muted" },
+  retired: { label: "Retired", icon: Recycle, tone: "muted" },
 };
 
 const TONE_CLASSES: Record<string, string> = {
@@ -43,16 +43,16 @@ const TONE_CLASSES: Record<string, string> = {
 /** Hand-tuned connector paths — the state machine is small and fixed, so exact per-edge curves read cleaner than a generic layout algorithm. Nodes render on top and cover the in-node segments. */
 const EDGES: { path: string; dashed?: boolean }[] = [
   { path: `M ${POSITIONS.created.x} ${POSITIONS.created.y} L ${POSITIONS.available.x} ${POSITIONS.available.y}` },
-  { path: `M ${POSITIONS.available.x} ${POSITIONS.available.y} L ${POSITIONS.booked.x} ${POSITIONS.booked.y}` },
-  { path: `M ${POSITIONS.booked.x} ${POSITIONS.booked.y} L ${POSITIONS.assigned.x} ${POSITIONS.assigned.y}` },
+  { path: `M ${POSITIONS.available.x} ${POSITIONS.available.y} L ${POSITIONS.reserved.x} ${POSITIONS.reserved.y}` },
+  { path: `M ${POSITIONS.reserved.x} ${POSITIONS.reserved.y} L ${POSITIONS.assigned.x} ${POSITIONS.assigned.y}` },
   // assigned -> available (ride ends): loop bowed left
   { path: "M 100 330 C 15 330, 15 130, 100 130", dashed: true },
   { path: `M ${POSITIONS.available.x} ${POSITIONS.available.y} L ${POSITIONS.maintenance.x} ${POSITIONS.maintenance.y}` },
-  { path: `M ${POSITIONS.booked.x} ${POSITIONS.booked.y} L ${POSITIONS.maintenance.x} ${POSITIONS.maintenance.y}` },
+  { path: `M ${POSITIONS.reserved.x} ${POSITIONS.reserved.y} L ${POSITIONS.maintenance.x} ${POSITIONS.maintenance.y}` },
   { path: `M ${POSITIONS.assigned.x} ${POSITIONS.assigned.y} L ${POSITIONS.maintenance.x} ${POSITIONS.maintenance.y}` },
   // maintenance -> available (fixed / handed back): loop bowed over the top
   { path: "M 300 230 C 300 55, 100 55, 100 130", dashed: true },
-  { path: `M ${POSITIONS.maintenance.x} ${POSITIONS.maintenance.y} L ${POSITIONS.scrap.x} ${POSITIONS.scrap.y}` },
+  { path: `M ${POSITIONS.maintenance.x} ${POSITIONS.maintenance.y} L ${POSITIONS.retired.x} ${POSITIONS.retired.y}` },
 ];
 
 export function VehicleLifecycleDiagram({

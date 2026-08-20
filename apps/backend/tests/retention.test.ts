@@ -4,24 +4,36 @@ import { join } from "node:path";
 import { NEVER_PURGED, RETENTION_POLICIES } from "../src/modules/privacy/retention.constants";
 
 const ROOT = join(__dirname, "../../..");
-const RETENTION_SQL = readFileSync(
-    join(ROOT, "supabase/migrations/20260814100500_dpdpa_retention.sql"), "utf8",
-);
-const CRON_SQL = readFileSync(
-    join(ROOT, "supabase/migrations/20260814100600_dpdpa_retention_cron.sql"), "utf8",
-);
+const V2 = join(ROOT, "supabase/v2/migrations");
+
+const SEED_SQL = readFileSync(join(V2, "20260819102400_realtime_and_seed.sql"), "utf8");
+const EXPORTS_SQL = readFileSync(join(V2, "20260819102800_retention_data_exports.sql"), "utf8");
+const FUNCTIONS_SQL = readFileSync(join(V2, "20260819102600_operational_functions.sql"), "utf8");
+const CRON_SQL = readFileSync(join(V2, "20260819102900_scheduled_jobs.sql"), "utf8");
 const PURGE_FN = readFileSync(
     join(ROOT, "supabase/functions/data-retention-purge/index.ts"), "utf8",
 );
 
-/** (category, retain_days, action) parsed out of the seeded VALUES list. */
+/**
+ * (category, retain_days, action) parsed out of the seeded VALUES lists.
+ *
+ * Two files now: the bulk of the schedule ships with the reference seed, and
+ * `data_exports` was added afterwards — the bundle every rider is told is
+ * deleted after 30 days had no policy row enforcing that.
+ */
 function seededPolicies(): { category: string; retainDays: number; action: string }[] {
-    const block = RETENTION_SQL.slice(
-        RETENTION_SQL.indexOf("insert into public.retention_policies"),
-        RETENTION_SQL.indexOf("on conflict (category) do nothing"),
-    );
-    return [...block.matchAll(/\('([a-z_]+)',[\s\S]*?(\d+),\s*'(delete|anonymise|redact|never)'/g)]
-        .map((m) => ({ category: m[1], retainDays: Number(m[2]), action: m[3] }));
+    const blocks = [
+        SEED_SQL.slice(
+            SEED_SQL.indexOf("insert into public.retention_policies"),
+            SEED_SQL.indexOf("insert into public.invoice_series"),
+        ),
+        EXPORTS_SQL,
+    ];
+    return blocks.flatMap((block) => [
+        ...block.matchAll(
+            /'([a-z_]+)',\s*\n?\s*'[^']*',\s*\n?\s*(\d+),\s*\n?\s*'(delete|anonymise|redact|retain)'/g,
+        ),
+    ].map((m) => ({ category: m[1], retainDays: Number(m[2]), action: m[3] })));
 }
 
 describe("retention constants match the migration", () => {
@@ -52,17 +64,24 @@ describe("retention constants match the migration", () => {
 });
 
 describe("financial records are never purged", () => {
-    it("is declared 'never' in both places", () => {
+    it("is declared 'retain' in both places", () => {
         expect(NEVER_PURGED).toContain("financial_records");
         const seeded = seededPolicies().find((p) => p.category === "financial_records");
-        expect(seeded?.action).toBe("never");
+        expect(seeded?.action).toBe("retain");
     });
 
     // Belt and braces: even a mis-edited policy row cannot make the job
-    // delete a financial record, because 'never' short-circuits before the
+    // delete a financial record, because 'retain' short-circuits before the
     // handler lookup.
     it("is short-circuited by the job before any handler runs", () => {
-        expect(PURGE_FN).toMatch(/if \(policy\.action === "never"\)[\s\S]{0,200}continue;/);
+        expect(PURGE_FN).toMatch(/if \(policy\.action === "retain"\)[\s\S]{0,200}continue;/);
+    });
+
+    // The consent record is the evidence of the lawful basis for everything
+    // that was done with a rider's data. Destroying it destroys the defence.
+    it("keeps consent records and financial audit rows too", () => {
+        expect(NEVER_PURGED).toContain("consent_records");
+        expect(NEVER_PURGED).toContain("audit_logs_financial");
     });
 });
 
@@ -76,7 +95,7 @@ describe("the purge job implements every enabled policy", () => {
         );
         for (const policy of RETENTION_POLICIES) {
             expect(handlerBlock, `no handler for "${policy.category}"`)
-                .toMatch(new RegExp(`async ${policy.category}\\b`));
+                .toMatch(new RegExp(`\\b${policy.category}\\(`));
         }
     });
 
@@ -85,16 +104,28 @@ describe("the purge job implements every enabled policy", () => {
         expect(PURGE_FN).toMatch(/policy has no handler; nothing was enforced/);
     });
 
-    // The period for keeping identity documents after a rider leaves is
-    // unresolved. Acting on a placeholder would destroy real documents on a
-    // schedule nobody signed off.
-    it("does not act on the unsettled kyc_former_customer period", () => {
+    // `auth_otp_attempts` has a policy row and no table. A handler returning 0
+    // without saying why would read as "enforced" in every run summary from
+    // here on — which is the same failure the NO HANDLER case guards against,
+    // one level further in.
+    it("says so out loud when a policy has no table behind it", () => {
         const handler = PURGE_FN.slice(
-            PURGE_FN.indexOf("async kyc_former_customer"),
-            PURGE_FN.indexOf("async inactive_accounts"),
+            PURGE_FN.indexOf("auth_otp_attempts()"),
+            PURGE_FN.indexOf("notification_bodies("),
         );
-        expect(handler).toContain("return 0");
+        expect(handler).toMatch(/no table in this schema/);
         expect(handler).not.toMatch(/\.delete\(\)|remove\(/);
+    });
+
+    // Redaction blanks the words and keeps the row: the delivery record and
+    // the read state are operational history, the message text is not.
+    it("redacts notification bodies rather than deleting the messages", () => {
+        const handler = PURGE_FN.slice(
+            PURGE_FN.indexOf("async notification_bodies("),
+            PURGE_FN.indexOf("async notification_events("),
+        );
+        expect(handler).toContain('"[redacted]"');
+        expect(handler).not.toMatch(/\.delete\(\)/);
     });
 });
 
@@ -113,51 +144,70 @@ describe("append-only tables are purged through named functions only", () => {
         expect(PURGE_FN).toContain('rpc("purge_consent_records"');
     });
 
-    it("re-enables every trigger in an exception handler", () => {
-        // Leaving a trigger off after a failed delete would silently remove
-        // the append-only guarantee and nobody would notice.
-        const fns = ["purge_audit_logs", "purge_pii_access_log", "purge_consent_records"];
-        for (const fn of fns) {
-            const body = CRON_SQL.slice(
-                CRON_SQL.indexOf(`create or replace function public.${fn}`),
-                CRON_SQL.indexOf("$$;", CRON_SQL.indexOf(`create or replace function public.${fn}`)),
+    /**
+     * The escape hatch is transaction-local, which is what replaced
+     * `alter table ... disable trigger`.
+     *
+     * That matters more than it looks. Disabling a trigger is a schema change
+     * visible to every session, so a purge that failed between the disable
+     * and the re-enable left the table mutable for everyone until someone
+     * noticed. `set_config(..., true)` is scoped to the transaction and
+     * cannot outlive it, so there is nothing to leak and no exception handler
+     * to get wrong.
+     */
+    it("suspends the guard transaction-locally, not by altering the table", () => {
+        for (const fn of ["purge_audit_logs", "purge_pii_access_log", "purge_consent_records"]) {
+            const body = FUNCTIONS_SQL.slice(
+                FUNCTIONS_SQL.indexOf(`create or replace function public.${fn}`),
+                FUNCTIONS_SQL.indexOf("end $$;", FUNCTIONS_SQL.indexOf(`create or replace function public.${fn}`)),
             );
-            expect(body, `${fn} has no exception handler`).toContain("exception when others then");
-            expect(body.match(/enable trigger/g)?.length, `${fn} re-enables only once`)
-                .toBeGreaterThanOrEqual(2);
+            expect(body, `${fn} does not set the purge-mode flag`)
+                .toContain("set_config('app.purge_mode', 'on', true)");
+            expect(body, `${fn} disables a trigger, which outlives its transaction`)
+                .not.toMatch(/disable trigger/i);
         }
     });
 
-    it("only purges consent for accounts that are already erased", () => {
-        const body = CRON_SQL.slice(CRON_SQL.indexOf("create or replace function public.purge_consent_records"));
-        expect(body).toContain("u.erased_at is not null");
+    it("still blocks UPDATE on an append-only table, purge mode or not", () => {
+        const guard = FUNCTIONS_SQL.slice(
+            FUNCTIONS_SQL.indexOf("create or replace function public.trg_append_only"),
+        );
+        expect(guard).toMatch(/tg_op = 'DELETE'/);
     });
 });
 
 describe("candidate selection is conservative", () => {
-    it("never treats a rider with any transaction as abandoned", () => {
-        const fn = CRON_SQL.slice(
-            CRON_SQL.indexOf("create or replace function public.kyc_abandoned_user_ids"),
-            CRON_SQL.indexOf("create or replace function public.inactive_user_ids"),
+    it("never treats a rider with a submitted document as abandoned", () => {
+        const fn = FUNCTIONS_SQL.slice(
+            FUNCTIONS_SQL.indexOf("create or replace function public.kyc_abandoned_user_ids"),
         );
-        for (const table of ["bookings", "rentals", "invoices"]) {
-            expect(fn, `abandoned check ignores ${table}`)
-                .toMatch(new RegExp(`not exists[\\s\\S]{0,80}public\\.${table}`));
-        }
+        expect(fn).toMatch(/d\.submitted_at is null/);
+        expect(fn).toMatch(/u\.erased_at is null/);
     });
 
-    it("never anonymises an account with a live obligation", () => {
-        const fn = CRON_SQL.slice(CRON_SQL.indexOf("create or replace function public.inactive_user_ids"));
-        expect(fn).toMatch(/r\.status = 'active'/);
-        expect(fn).toMatch(/i\.status in \('issued', 'overdue'\)/);
-        expect(fn).toMatch(/dpr\.status in \('open', 'in_progress', 'awaiting_principal'\)/);
+    it("never anonymises a rider with a live subscription", () => {
+        const fn = FUNCTIONS_SQL.slice(
+            FUNCTIONS_SQL.indexOf("create or replace function public.inactive_user_ids"),
+            FUNCTIONS_SQL.indexOf("create or replace function public.kyc_abandoned_user_ids"),
+        );
+        expect(fn).toMatch(/s\.status = 'active'/);
+        expect(fn).toMatch(/not exists[\s\S]{0,120}public\.subscriptions/);
     });
 
     // Anonymising a staff account would break the audit trail's actor names
     // and lock a colleague out of the console.
     it("never anonymises a staff account on inactivity", () => {
-        const fn = CRON_SQL.slice(CRON_SQL.indexOf("create or replace function public.inactive_user_ids"));
-        expect(fn).toMatch(/r\.name <> 'rider'/);
+        const fn = FUNCTIONS_SQL.slice(
+            FUNCTIONS_SQL.indexOf("create or replace function public.inactive_user_ids"),
+        );
+        expect(fn).toMatch(/u\.role = 'rider'/);
+    });
+
+    it("never re-erases an account that is already erased", () => {
+        const fn = FUNCTIONS_SQL.slice(
+            FUNCTIONS_SQL.indexOf("create or replace function public.inactive_user_ids"),
+        );
+        expect(fn).toMatch(/u\.erased_at is null/);
     });
 });
 
@@ -167,8 +217,53 @@ describe("the job is scheduled", () => {
         expect(CRON_SQL).toContain("'30 3 * * *'");
     });
 
+    // Retention destroys data. Running it before a sweep that still needs to
+    // read that data would make the sweep's behaviour depend on the clock.
+    it("runs last among the daily jobs", () => {
+        const minuteOf = (job: string): number => {
+            const at = CRON_SQL.indexOf(`'${job}'`);
+            const schedule = CRON_SQL.slice(at, at + 200).match(/'(\d+) 3 \* \* \*'/);
+            return schedule ? Number(schedule[1]) : -1;
+        };
+        const retention = minuteOf("retention-purge-daily");
+        for (const job of [
+            "pickup-reminder-daily",
+            "payment-due-reminder-daily",
+            "payment-overdue-sweep-daily",
+            "refund-eligibility-sweep-daily",
+            "maintenance-plan-resume-safety-net-daily",
+        ]) {
+            expect(minuteOf(job), `${job} is not scheduled before retention`)
+                .toBeLessThan(retention);
+        }
+    });
+
+    // A rider must be warned that a payment is due BEFORE the sweep marks
+    // them past due, or the first they hear of it is the overdue notice.
+    it("warns about a due payment before sweeping it overdue", () => {
+        expect(CRON_SQL.indexOf("'payment-due-reminder-daily'"))
+            .toBeLessThan(CRON_SQL.indexOf("'payment-overdue-sweep-daily'"));
+    });
+
     it("reads the service key from Vault rather than embedding it", () => {
         expect(CRON_SQL).toContain("vault.decrypted_secrets");
+        expect(CRON_SQL).toMatch(/name = 'service_role_key'/);
+        // A key literal would look like one of these.
         expect(CRON_SQL).not.toMatch(/eyJ[A-Za-z0-9_-]{20,}/);
+    });
+
+    it("schedules every scheduled function exactly once", () => {
+        const JOBS = [
+            "pickup-reminder", "payment-due-reminder", "payment-overdue-sweep",
+            "refund-eligibility-sweep", "maintenance-plan-resume-safety-net",
+            "data-retention-purge", "plan-expiry-reminder",
+            "booking-payment-expiry-sweep", "failed-payment-retry", "failed-refund-retry",
+        ];
+        for (const job of JOBS) {
+            const calls = CRON_SQL.match(
+                new RegExp(`invoke_edge_function\\('${job}'\\)`, "g"),
+            );
+            expect(calls?.length, `${job} is not scheduled exactly once`).toBe(1);
+        }
     });
 });

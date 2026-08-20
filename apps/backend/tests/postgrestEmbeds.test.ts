@@ -43,25 +43,44 @@ import { join } from "node:path";
  * has just silently broken.
  */
 const AMBIGUOUS_PAIRS: ReadonlyArray<{ child: string; parent: string }> = [
-    { child: "audit_logs", parent: "users" },
-    { child: "battery_stations", parent: "users" },
-    { child: "bookings", parent: "users" },
-    { child: "consent_records", parent: "users" },
-    { child: "damages", parent: "users" },
-    { child: "data_principal_requests", parent: "users" },
-    { child: "pii_access_log", parent: "users" },
-    { child: "referrals", parent: "users" },
-    // rentals.user_id (rider) + rentals.return_approved_by (staff), added by
-    // 20260814110000_rental_return_approval.sql.
-    { child: "rentals", parent: "users" },
-    { child: "staff_permissions", parent: "users" },
-    { child: "support_requests", parent: "users" },
-    { child: "user_capabilities", parent: "users" },
-    { child: "user_documents", parent: "users" },
-    { child: "user_roles", parent: "users" },
-    { child: "vehicle_maintenance", parent: "users" },
-    { child: "vehicle_maintenance", parent: "vehicles" },
+    // Every one of these is (actor, subject): a row that records both WHOSE
+    // data it concerns and WHO acted on it. That shape is what produces two
+    // foreign keys to `users`, and it is why the list is mostly compliance
+    // and workflow tables.
+    { child: "audit_logs", parent: "users" },              // actor + target
+    { child: "consent_records", parent: "users" },         // rider + staff recorder
+    { child: "damage_disputes", parent: "users" },         // raised_by + resolved_by
+    { child: "data_principal_requests", parent: "users" }, // rider + assignee
+    { child: "kyc_documents", parent: "users" },           // rider + verifier
+    { child: "maintenance_tickets", parent: "users" },     // reporter + triager
+    { child: "pii_access_log", parent: "users" },          // actor + target
+    { child: "rental_returns", parent: "users" },          // approver + inspector + rejecter
+    { child: "support_tickets", parent: "users" },         // rider + assignee
+    { child: "swap_stations", parent: "users" },           // created_by + updated_by
+    { child: "user_permission_overrides", parent: "users" }, // subject + granter
+
+    // Not about people: a temp-vehicle swap records the hub the scooter came
+    // from and the one it went back to.
+    { child: "rental_vehicle_assignments", parent: "hubs" },
+
+    // Two FKs to the same VIEW, not the same table: `v_subscription_current_period`
+    // is reachable through both subscription_id and subscription_period_id.
+    // PostgREST is ambiguous about views for exactly the same reason.
+    { child: "invoices", parent: "v_subscription_current_period" },
+    { child: "subscription_adjustments", parent: "v_subscription_current_period" },
 ];
+
+/*
+ * Pairs that LEFT this list, and why it matters that they did:
+ *
+ *   bookings → users        `cancelled_by` moved to `booking_cancellations`
+ *   rentals  → users        the return workflow moved to `rental_returns`
+ *   damages  → users        split into incidents + damages + damage_disputes
+ *
+ * Each of those had a mandatory `!fkey` disambiguator on every embed. Those
+ * hints are now WRONG rather than merely unnecessary — they name constraints
+ * that no longer exist — so removing them was not tidying.
+ */
 
 interface Offender {
     file: string;
@@ -140,11 +159,27 @@ describe("PostgREST embeds between multi-FK tables are disambiguated", () => {
         ).toEqual([]);
     });
 
-    // requireAuth is the highest blast radius in the codebase: an ambiguous
-    // embed here fails every authenticated request in both apps at once.
-    it("keeps the auth middleware explicitly disambiguated", () => {
+    /**
+     * requireAuth is the highest blast radius in the codebase: an ambiguous
+     * embed here fails every authenticated request in both apps at once.
+     *
+     * It no longer NEEDS a disambiguator, and that is the assertion. The two
+     * embeds it used to hand-qualify are gone: the role is a column on
+     * `users`, and capabilities are permissions read through a view. What is
+     * left — `rider_profiles` — has exactly one foreign key back, so naming a
+     * constraint here would be naming one that may not stay unique.
+     *
+     * The check is that requireAuth touches no table on the ambiguous list at
+     * all, which is stronger than checking it spells one hint correctly.
+     */
+    it("keeps the auth middleware clear of every ambiguous pair", () => {
         const src = readFileSync(join(__dirname, "../src/middleware/auth.middleware.ts"), "utf8");
-        expect(src).toContain("user_roles!user_roles_user_id_fkey");
-        expect(src).toContain("user_capabilities!user_capabilities_user_id_fkey");
+        for (const { child, parent } of AMBIGUOUS_PAIRS) {
+            expect(src, `requireAuth embeds ${child}, which has several FKs to ${parent}`)
+                .not.toMatch(new RegExp(String.raw`\b${child}\s*\(`));
+        }
+        // The permission read goes through the view, which resolves the whole
+        // question rather than disambiguating it.
+        expect(src).toContain("v_user_effective_permissions");
     });
 });

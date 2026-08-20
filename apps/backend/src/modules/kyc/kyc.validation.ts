@@ -26,13 +26,17 @@ export const uploadDocumentBody = z.object({
         .min(4, "A document number must be at least 4 characters.")
         .max(32, "A document number must be 32 characters or fewer.")
         .regex(/^[A-Za-z0-9 -]+$/, "Use letters, numbers, spaces or hyphens only."),
-    expiry_date: isoDate.optional(),
+    // `kyc_documents.expires_on`. Renamed from `expiry_date` so the wire
+    // name matches the column: a `_date` suffix hides whether a field is a
+    // date or an instant, which is the whole point of the `_on`/`_at`
+    // convention the schema enforces.
+    expires_on: isoDate.optional(),
 });
 
 export const updateDocumentBody = z
     .object({
         doc_number: uploadDocumentBody.shape.doc_number.optional(),
-        expiry_date: isoDate.optional(),
+        expires_on: isoDate.optional(),
     })
     .refine(
         (v) => Object.keys(v).length > 0,

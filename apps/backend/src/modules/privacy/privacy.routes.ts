@@ -2,7 +2,6 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.middleware";
 import { requireAction, requireAdmin } from "../../middleware/authorize.middleware";
-import { requirePiiExporter, requireRightsOfficer } from "../../middleware/capability.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./privacy.controller";
@@ -75,26 +74,25 @@ adminPrivacyRouter.use(requireAuth, requireAction("privacy", "view"));
 
 adminPrivacyRouter.get(
     "/requests",
-    requireRightsOfficer,
+    requireAction("privacy", "process"),
     validate({ query: v.listRequestsQuery }),
     asyncHandler(c.listRequestsHandler),
 );
 
 adminPrivacyRouter.get(
     "/requests/:id",
-    requireRightsOfficer,
+    requireAction("privacy", "process"),
     validate({ params: v.uuidParam }),
     asyncHandler(c.getRequestHandler),
 );
 
 // requireAction("privacy","process") stacks ON TOP of the router-level
-// view-only gate, alongside (not instead of) requireRightsOfficer — acting on
-// a rights request needs both the stronger module action grant and the
-// capability, neither one substituting for the other.
+// view-only gate. It used to stack alongside a separate rights_officer
+// capability too; that capability IS privacy.process now, so the pair
+// collapsed into the single check without loosening anything.
 adminPrivacyRouter.patch(
     "/requests/:id",
     requireAction("privacy", "process"),
-    requireRightsOfficer,
     validate({ params: v.uuidParam, body: v.updateRequestBody }),
     asyncHandler(c.updateRequestHandler),
 );
@@ -102,7 +100,6 @@ adminPrivacyRouter.patch(
 adminPrivacyRouter.post(
     "/requests/:id/reject",
     requireAction("privacy", "process"),
-    requireRightsOfficer,
     validate({ params: v.uuidParam, body: v.rejectRequestBody }),
     asyncHandler(c.rejectRequestHandler),
 );
@@ -125,10 +122,10 @@ adminPrivacyRouter.post(
 );
 
 // Generating someone else's export is reading their entire record, so it
-// needs its own capability rather than riding on rights_officer.
+// needs its own permission rather than riding on privacy.process.
 adminPrivacyRouter.post(
     "/users/:userId/export",
-    requirePiiExporter,
+    requireAction("privacy", "export"),
     validate({ params: z.object({ userId: z.string().uuid() }) }),
     asyncHandler(c.exportForUserHandler),
 );

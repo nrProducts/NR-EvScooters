@@ -4,8 +4,16 @@
  * API contract, not on the backend's internal row types.
  */
 
-export type RoleName = 'rider' | 'staff' | 'technician' | 'station_manager' | 'admin';
-export const ROLE_NAMES: RoleName[] = ['rider', 'staff', 'technician', 'station_manager', 'admin'];
+/**
+ * Three values, on one column.
+ *
+ * `roles`/`user_roles` collapsed into `users.role`, and `technician` and
+ * `station_manager` did not survive: they were role names with no distinct
+ * grants behind them, and what they reached for is now expressed by giving an
+ * account the operations permissions instead.
+ */
+export type RoleName = 'rider' | 'staff' | 'admin';
+export const ROLE_NAMES: RoleName[] = ['rider', 'staff', 'admin'];
 
 export type AccountStatus = 'active' | 'inactive' | 'suspended';
 export const ACCOUNT_STATUSES: AccountStatus[] = ['active', 'inactive', 'suspended'];
@@ -15,8 +23,16 @@ export const KYC_STATUSES: KycStatus[] = [
     'not_submitted', 'pending', 'partially_verified', 'verified', 'rejected',
 ];
 
-export type KycDocType = 'aadhaar' | 'driving_license' | 'passport' | 'voter_id' | 'address_proof';
-export const MANDATORY_KYC_DOC_TYPES: KycDocType[] = ['aadhaar', 'driving_license'];
+/**
+ * `driving_licence`, with a C.
+ *
+ * The app spelled it `driving_license`; `kyc_document_type` spells it
+ * `driving_licence`, and the enum is the authority. Sending the American
+ * spelling is not a display quirk — it fails the insert, so a rider's licence
+ * upload would have been rejected outright.
+ */
+export type KycDocType = 'aadhaar' | 'driving_licence' | 'passport' | 'voter_id' | 'address_proof';
+export const MANDATORY_KYC_DOC_TYPES: KycDocType[] = ['aadhaar', 'driving_licence'];
 
 export type VerificationStatus = 'pending' | 'verified' | 'rejected';
 
@@ -58,7 +74,8 @@ export interface ApiUser {
     created_at: string;
     updated_at: string;
     deleted_at: string | null;
-    roles: RoleName[];
+    /** One value now — `users.role`. Was an array off `user_roles`. */
+    role: RoleName;
     assigned_vehicle: { id: string; vin: string; model: string } | null;
     current_plan: { id: string; name: string; status: string } | null;
 }
@@ -67,11 +84,11 @@ export interface ApiUserDetail extends ApiUser {
     kyc_completion_percent: number;
     documents: Array<{
         id: string;
-        doc_type: KycDocType;
+        document_type: KycDocType;
         doc_number_masked: string | null;
         verification_status: VerificationStatus;
         rejection_reason: string | null;
-        expiry_date: string | null;
+        expires_on: string | null;
         submitted_at: string | null;
         verified_at: string | null;
     }>;
@@ -120,7 +137,8 @@ export interface UpdateUserPayload {
 
 export interface ApiDocument {
     id: string;
-    doc_type: KycDocType;
+    /** `kyc_documents.document_type`. Was `doc_type`. */
+    document_type: KycDocType;
     /**
      * Display-only tail, e.g. "•••• 0124". The full Aadhaar/DL number is
      * validated at upload and deliberately never stored, so there is no
@@ -129,7 +147,8 @@ export interface ApiDocument {
     doc_number_masked: string | null;
     verification_status: VerificationStatus;
     rejection_reason: string | null;
-    expiry_date: string | null;
+    /** `kyc_documents.expires_on`. Was `expires_on`. */
+    expires_on: string | null;
     is_expired: boolean;
     submitted_at: string | null;
     verified_at: string | null;
@@ -281,7 +300,13 @@ export interface CreateBookingPayload {
     start_day: string; // YYYY-MM-DD
 }
 
-export type VehicleStatus = 'available' | 'booked' | 'assigned' | 'maintenance' | 'scrap';
+/**
+ * `booked` is `reserved`, and `scrap` is `retired`.
+ *
+ * Read-only either way: `recompute_vehicle_status()` derives it from the
+ * vehicle's maintenance ticket, rental assignment and booking hold.
+ */
+export type VehicleStatus = 'available' | 'reserved' | 'assigned' | 'maintenance' | 'retired';
 
 /**
  * No payment is captured in this phase, so a refund is a recorded request for
@@ -380,7 +405,8 @@ export interface VerifyPaymentPayload {
 // views the rider payment screen reads.
 // ---------------------------------------------------------------------------
 
-export type PlanStatus = 'active' | 'due' | 'paused';
+/** `subscriptions.status`, narrowed. `due` was renamed `past_due`. */
+export type PlanStatus = 'active' | 'past_due' | 'paused';
 export type RenewalStatus = 'none' | 'scheduled';
 
 export interface ApiBookingWithPlan extends ApiBooking {
@@ -398,29 +424,54 @@ export interface ApiBookingWithPlan extends ApiBooking {
     scheduled_duration_days: number | null;
 }
 
-export type InvoicePaymentType = 'rental' | 'deposit' | 'damage' | 'penalty' | 'refund' | 'other';
-export type InvoicePaymentStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'refunded';
+/** Why the invoice exists. Was `InvoicePaymentType` (rental/deposit/damage/...). */
+export type InvoicePurpose = 'initial' | 'subscription_period' | 'settlement' | 'adhoc';
 
-/** A single invoice line — see 20260817100000_billing_charge_engine.sql. Empty on every invoice minted before that migration. */
+/**
+ * Paid-ness, DERIVED by the backend from the money actually allocated.
+ *
+ * Was `InvoicePaymentStatus` ('pending' | 'processing' | 'succeeded' | ...),
+ * read off an `invoices.payment_status` column that no longer exists — the
+ * flag was removed precisely because it could disagree with the payments.
+ */
+export type InvoicePaymentState = 'paid' | 'partial' | 'overdue' | 'unpaid';
+
+/** A single invoice line. */
 export interface ApiInvoiceItem {
     id: string;
-    item_type: 'base_rental' | 'charge' | 'discount';
-    rider_charge_id: string | null;
-    label: string;
+    item_type: 'plan_fee' | 'adjustment' | 'deposit';
+    /** Was `rider_charge_id`. */
+    subscription_adjustment_id: string | null;
+    /** Was `label`. */
+    description: string;
+    quantity: number;
+    unit_amount: number;
+    /** Negative for a discount — there is no separate discount line type. */
     amount: number;
     created_at: string;
 }
 
 export interface ApiInvoice {
     id: string;
-    payment_type: InvoicePaymentType | null;
-    amount_due: number;
-    due_date: string;
-    payment_status: InvoicePaymentStatus;
+    /** Gap-free, allocated by the database. */
+    invoice_number: string;
+    /** Was `payment_type`. */
+    purpose: InvoicePurpose;
+    status: 'draft' | 'issued' | 'void';
+    /** Was `amount_due`. */
+    total_amount: number;
+    subtotal_amount: number;
+    /** What is still owed after allocations. */
+    balance_amount: number;
+    allocated_amount: number;
+    /** Was `due_date`. A date — an IST calendar day. */
+    due_on: string | null;
+    /** Was `payment_status`. Derived, not stored. */
+    payment_state: InvoicePaymentState;
     paid_at: string | null;
     created_at: string;
     items: ApiInvoiceItem[];
-    /** Only ever set on GET /invoices/me for an overdue 'rental' invoice — see the backend's InvoiceRow.late_fee doc comment. */
+    /** Only ever set on GET /invoices/me for an unpaid PERIOD invoice that is late — see the backend's InvoiceRow.late_fee doc comment. */
     late_fee?: number;
     days_late?: number;
     total_due?: number;
@@ -450,7 +501,12 @@ export interface ApiEarlyRecharge {
     scheduledStartDate: string;
 }
 
-export type DepositStatus = 'pending' | 'held' | 'partially_refunded' | 'refunded' | 'forfeited';
+/**
+ * Four values, not five. `partially_refunded` and `refunded` collapsed into
+ * `released` — how much came back is the refund's business, and the deposit
+ * row no longer duplicates an amount the refund already knows.
+ */
+export type DepositStatus = 'pending' | 'held' | 'released' | 'forfeited';
 
 export interface ApiDeposit {
     id: string;
@@ -466,7 +522,11 @@ export interface ApiDeposit {
     refundable_amount: number;
 }
 
-export type DamageStatus = 'recorded' | 'disputed' | 'resolved';
+/**
+ * `recorded` is `assessed`; `settled` and `waived` are new terminal states —
+ * a scratch written off previously had nowhere to go.
+ */
+export type DamageStatus = 'assessed' | 'disputed' | 'settled' | 'waived';
 
 export interface ApiDamage {
     id: string;
@@ -488,7 +548,11 @@ export interface ApiAvailableVehicle {
     battery_percentage: number;
 }
 
-export type RentalStatus = 'active' | 'completed' | 'force_ended' | 'cancelled';
+/**
+ * Three values. `cancelled` is gone: a rental that never really happened is a
+ * booking that was cancelled, and no rental row should have existed for it.
+ */
+export type RentalStatus = 'active' | 'completed' | 'force_ended';
 
 export interface ApiRental {
     id: string;
@@ -582,7 +646,9 @@ export interface ReturnRequestPayload {
     rating: number;
 }
 
-export type MaintenanceStatus = 'reported' | 'in_progress' | 'resolved' | 'cancelled';
+/** `maintenance_status` gained a `triaged` state between reported and in progress. */
+export type MaintenanceStatus =
+    'reported' | 'triaged' | 'in_progress' | 'resolved' | 'cancelled';
 
 export interface ApiMaintenanceRecord {
     id: string;
@@ -608,7 +674,12 @@ export interface MaintenanceHistoryParams {
 }
 
 /** What Home renders for a rider currently displaced by their own vehicle's maintenance. */
-export type MaintenanceNoticeStage = 'pending_triage' | 'quick_fix' | 'temp_vehicle';
+/**
+ * `replacement` is new — a permanent swap, where `temp_vehicle` is a loan the
+ * rider gives back. The old schema could not tell the two apart.
+ */
+export type MaintenanceNoticeStage =
+    'pending_triage' | 'quick_fix' | 'temp_vehicle' | 'replacement';
 
 export interface ApiMaintenanceNotice {
     ticket_id: string;

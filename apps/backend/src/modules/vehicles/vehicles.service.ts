@@ -7,51 +7,134 @@ import { notifyUser } from "../notifications/notifications.service";
 import { adminCancelBooking } from "../bookings/bookings.service";
 import { completeRide } from "../rentals/rentals.service";
 import { Paginated, AuthContext } from "../../types";
-import {
-    buildVehiclePhotoPath, createSignedVehiclePhotoUrl, removeVehiclePhotoFile, uploadVehiclePhotoFile,
-} from "./vehicles.photo.storage";
-import type { UploadedFile } from "../kyc/kyc.storage";
+import { businessToday, endOfBusinessDay } from "../../common/dates";
 import {
     CreateVehicleInput, ListVehiclesFilters, ScrapRecordRow, ScrapVehicleInput, UpdateVehicleInput,
     VehicleBookingRow, VehicleDetail, VehicleDocumentRow, VehicleMaintenanceRow, VehiclePaymentStatus,
-    VehiclePhotoRow, VehicleRentalRow, VehicleRow,
+    VehicleRentalRow, VehicleRow,
 } from "./vehicles.types";
 
+/**
+ * The fleet.
+ *
+ * Nine columns left this table. Six were specification, and belong to the
+ * MODEL rather than the unit: `manufacturer`, `model`, `battery_percentage`,
+ * `battery_number`, and the two service dates. Two were insurance, and belong
+ * to `vehicle_documents` alongside registration and PUC. One, `active`, was a
+ * second way of saying `status = 'retired'`.
+ *
+ * `vehicle_photos` went too — the audit found it held zero rows and duplicated
+ * the model image (docs/database-audit/05-initial-problems.md). Vehicle
+ * imagery lives on the model, in `vehicle_model_media`; a photo of a specific
+ * unit's damage lives on the incident. The upload/delete endpoints are gone
+ * with the table.
+ *
+ * Two structural changes matter more than the renames:
+ *
+ *   `vehicles.status` is READ-ONLY. `recompute_vehicle_status()` owns it,
+ *   driven by triggers on maintenance tickets, rental assignments and booking
+ *   holds. Nothing here writes it, and the guarded-UPDATE-as-a-lock trick that
+ *   `assignVehicleToUser` used to rely on had to be replaced.
+ *
+ *   `rentals.vehicle_id` is gone. Which vehicle a rental holds is a row in
+ *   `rental_vehicle_assignments`, because a rental can change vehicle
+ *   mid-term. `v_rental_current_vehicle` is the view that resolves the open one.
+ */
+
 const VEHICLE_COLUMNS = `
-    id, name, registration_number, battery_number, manufacturer, model, vin,
-    battery_percentage, status, last_service_date, next_service_due_date,
-    active, color, qr_code, imei, purchase_date, insurance_number, insurance_expiry,
-    created_at, updated_at
+    id, display_name, registration_number, vin, vehicle_model_id, hub_id,
+    status, colour, qr_code, imei, purchased_on, created_at, updated_at,
+    vehicle_models(name)
 `;
 
-/** Postgres `numeric` columns round-trip through PostgREST as strings, not numbers. */
-function toVehicleRow(row: VehicleRow): VehicleRow {
-    return { ...row, battery_percentage: Number(row.battery_percentage) };
+interface RawVehicleRow {
+    id: string;
+    display_name: string | null;
+    registration_number: string;
+    vin: string;
+    vehicle_model_id: string;
+    hub_id: string | null;
+    status: VehicleRow["status"];
+    colour: string | null;
+    qr_code: string | null;
+    imei: string | null;
+    purchased_on: string | null;
+    created_at: string;
+    updated_at: string | null;
+    vehicle_models: unknown;
+}
+
+function unwrap<T>(raw: unknown): T | null {
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    return (v as T) ?? null;
+}
+
+function toVehicleRow(row: RawVehicleRow): VehicleRow {
+    const modelName = unwrap<{ name: string }>(row.vehicle_models)?.name ?? "";
+    return {
+        id: row.id,
+        // A unit without its own name is shown as its model — better than a
+        // blank cell in the fleet table, and it is what the name meant anyway.
+        name: row.display_name ?? modelName,
+        registration_number: row.registration_number,
+        model: modelName,
+        vehicle_model_id: row.vehicle_model_id,
+        vin: row.vin,
+        status: row.status,
+        color: row.colour,
+        qr_code: row.qr_code,
+        imei: row.imei,
+        purchase_date: row.purchased_on,
+        hub_id: row.hub_id,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        payment_status: null,
+    };
 }
 
 /**
- * Payment/billing status per vehicle, derived from whichever booking
- * currently holds it — bookings.vehicle_id is never cleared on close (see
- * confirmPickup's comment), so a vehicle can have several past bookings;
- * only a live one (not cancelled/expired) is ever relevant, and a vehicle's
- * status trigger machinery guarantees at most one is live at a time.
+ * Payment/billing status per vehicle.
+ *
+ * Two sources now, because the commercial state split in two. A vehicle held
+ * by a paid-up rider is answered by their `subscriptions` row, reached through
+ * the open rental assignment; a vehicle merely *reserved* by an unpaid booking
+ * is answered by `bookings.status` via `held_vehicle_id`.
+ *
+ * The subscription wins where both exist: a scooter in someone's hands is
+ * described by their subscription, not by the booking that produced it.
  */
-async function paymentStatusesForVehicles(vehicleIds: string[]): Promise<Map<string, VehiclePaymentStatus>> {
+async function paymentStatusesForVehicles(
+    vehicleIds: string[],
+): Promise<Map<string, VehiclePaymentStatus>> {
     const map = new Map<string, VehiclePaymentStatus>();
     if (vehicleIds.length === 0) return map;
 
-    const { data, error } = await supabaseAdmin
-        .from("bookings")
-        .select("vehicle_id, status, plan_status, created_at")
-        .in("vehicle_id", vehicleIds)
-        .in("status", ["pending_payment", "confirmed", "fulfilled"])
-        .order("created_at", { ascending: false });
-    if (error) throw error;
+    const [assignedRes, heldRes] = await Promise.all([
+        supabaseAdmin
+            .from("v_rental_current_vehicle")
+            .select("vehicle_id, subscriptions(status)")
+            .in("vehicle_id", vehicleIds),
+        supabaseAdmin
+            .from("bookings")
+            .select("held_vehicle_id, status, created_at")
+            .in("held_vehicle_id", vehicleIds)
+            .in("status", ["pending_payment", "confirmed"])
+            .order("created_at", { ascending: false }),
+    ]);
+    if (assignedRes.error) throw assignedRes.error;
+    if (heldRes.error) throw heldRes.error;
 
-    for (const row of (data ?? []) as { vehicle_id: string | null; status: string; plan_status: string | null; created_at: string }[]) {
-        if (!row.vehicle_id || map.has(row.vehicle_id)) continue; // newest first — first hit per vehicle wins
-        map.set(row.vehicle_id, (row.status === "fulfilled" ? row.plan_status : row.status) as VehiclePaymentStatus);
+    for (const row of heldRes.data ?? []) {
+        if (!row.held_vehicle_id || map.has(row.held_vehicle_id)) continue;
+        map.set(row.held_vehicle_id, row.status as VehiclePaymentStatus);
     }
+
+    for (const row of assignedRes.data ?? []) {
+        if (!row.vehicle_id) continue;
+        const subscription = unwrap<{ status: string }>(row.subscriptions);
+        if (subscription) map.set(row.vehicle_id, subscription.status as VehiclePaymentStatus);
+    }
+
     return map;
 }
 
@@ -65,12 +148,14 @@ export async function listVehicles(filters: ListVehiclesFilters): Promise<Pagina
     if (filters.status) query = query.eq("status", filters.status);
     if (filters.search) {
         const term = escapeLike(filters.search);
+        // `model` dropped out of the search terms: it is a joined column now,
+        // and PostgREST cannot `or` across an embed. Searching by model is
+        // the model filter's job, not the free-text box's.
         query = query.or(
             [
-                `name.ilike.%${term}%`,
+                `display_name.ilike.%${term}%`,
                 `registration_number.ilike.%${term}%`,
                 `vin.ilike.%${term}%`,
-                `model.ilike.%${term}%`,
             ].join(","),
         );
     }
@@ -81,9 +166,12 @@ export async function listVehicles(filters: ListVehiclesFilters): Promise<Pagina
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const rows = ((data ?? []) as unknown as VehicleRow[]).map(toVehicleRow);
+    const rows = ((data ?? []) as unknown as RawVehicleRow[]).map(toVehicleRow);
     const paymentStatuses = await paymentStatusesForVehicles(rows.map((r) => r.id));
-    const withPaymentStatus = rows.map((r) => ({ ...r, payment_status: paymentStatuses.get(r.id) ?? null }));
+    const withPaymentStatus = rows.map((r) => ({
+        ...r,
+        payment_status: paymentStatuses.get(r.id) ?? null,
+    }));
 
     return paginate(withPaymentStatus, count ?? 0, filters);
 }
@@ -102,47 +190,62 @@ export async function getVehicleById(id: string): Promise<VehicleDetail> {
     if (error) throw error;
     if (!data) throw notFound("Vehicle not found.");
 
-    const [documents, photos, maintenanceHistory, rentalHistory, bookingHistory, scrapRecord] = await Promise.all([
-        documentsForVehicle(id),
-        photosForVehicle(id),
-        maintenanceForVehicle(id),
-        rentalsForVehicle(id),
-        bookingsForVehicle(id),
-        scrapRecordForVehicle(id),
-    ]);
+    const [documents, maintenanceHistory, rentalHistory, bookingHistory, scrapRecord, currentRider] =
+        await Promise.all([
+            documentsForVehicle(id),
+            maintenanceForVehicle(id),
+            rentalsForVehicle(id),
+            bookingsForVehicle(id),
+            scrapRecordForVehicle(id),
+            currentRiderForVehicle(id),
+        ]);
 
-    const currentRental = rentalHistory.find((r) => r.status === "active") ?? null;
     const paymentStatuses = await paymentStatusesForVehicles([id]);
 
     return {
-        ...toVehicleRow(data as unknown as VehicleRow),
+        ...toVehicleRow(data as unknown as RawVehicleRow),
         payment_status: paymentStatuses.get(id) ?? null,
         documents,
-        photos,
         maintenance_history: maintenanceHistory,
         rental_history: rentalHistory,
         booking_history: bookingHistory,
-        current_rider: currentRental?.rider ?? null,
+        current_rider: currentRider,
         scrap_record: scrapRecord,
     };
 }
 
+/**
+ * Who is holding this vehicle right now.
+ *
+ * Was `rentalHistory.find(r => r.status === "active")`, which only worked
+ * because a rental named its vehicle. It does not, so this asks the view that
+ * resolves the open assignment instead.
+ */
+async function currentRiderForVehicle(
+    vehicleId: string,
+): Promise<{ id: string; full_name: string } | null> {
+    const { data, error } = await supabaseAdmin
+        .from("v_rental_current_vehicle")
+        .select("users(id, full_name)")
+        .eq("vehicle_id", vehicleId)
+        .maybeSingle();
+    if (error) throw error;
+    return data ? unwrap<{ id: string; full_name: string }>(data.users) : null;
+}
+
 async function scrapRecordForVehicle(vehicleId: string): Promise<ScrapRecordRow | null> {
     const { data, error } = await supabaseAdmin
-        .from("scrap_records")
-        .select("id, reason, scrapped_on, estimated_value, created_at, users(id, full_name)")
+        .from("vehicle_disposals")
+        .select("reason, disposed_on, salvage_amount, created_at, users(id, full_name)")
         .eq("vehicle_id", vehicleId)
-        .order("created_at", { ascending: false })
-        .limit(1)
         .maybeSingle();
     if (error) throw error;
     if (!data) return null;
 
     return {
-        id: data.id,
         reason: data.reason,
-        scrapped_on: data.scrapped_on,
-        estimated_value: data.estimated_value === null ? null : Number(data.estimated_value),
+        scrapped_on: data.disposed_on,
+        estimated_value: data.salvage_amount === null ? null : Number(data.salvage_amount),
         approved_by: unwrap(data.users),
         created_at: data.created_at,
     };
@@ -151,29 +254,64 @@ async function scrapRecordForVehicle(vehicleId: string): Promise<ScrapRecordRow 
 async function documentsForVehicle(vehicleId: string): Promise<VehicleDocumentRow[]> {
     const { data, error } = await supabaseAdmin
         .from("vehicle_documents")
-        .select("id, doc_type, doc_number, issued_date, expiry_date")
+        .select("id, document_type, document_number, issued_on, expires_on")
         .eq("vehicle_id", vehicleId)
-        .order("expiry_date", { ascending: true });
+        .order("expires_on", { ascending: true });
     if (error) throw error;
-    return (data ?? []) as unknown as VehicleDocumentRow[];
+
+    return (data ?? []).map((row) => ({
+        id: row.id,
+        doc_type: row.document_type,
+        doc_number: row.document_number,
+        issued_date: row.issued_on,
+        expires_on: row.expires_on,
+    }));
 }
 
+/**
+ * Maintenance history, with whatever vehicle the rider was given meanwhile.
+ *
+ * The old `vehicle_maintenance.temp_vehicle_id` column is gone. A handover is
+ * a `rental_vehicle_assignments` row stamped with the ticket that caused it,
+ * which is strictly more expressive — one ticket can produce a temp vehicle
+ * and then a permanent replacement, and the old column could only hold one.
+ * The most recent such assignment is reported, matching what the column used
+ * to end up containing.
+ */
 async function maintenanceForVehicle(vehicleId: string): Promise<VehicleMaintenanceRow[]> {
     const { data, error } = await supabaseAdmin
-        .from("vehicle_maintenance")
-        .select(`
-            id, status, description, resolved_at, created_at, outcome, expected_ready_at,
-            temp_vehicle:vehicles!temp_vehicle_id(id, name, registration_number)
-        `)
+        .from("maintenance_tickets")
+        .select("id, status, description, resolved_at, created_at, outcome, expected_ready_at")
         .eq("vehicle_id", vehicleId)
         .order("created_at", { ascending: false });
     if (error) throw error;
 
-    return ((data ?? []) as unknown as Array<{
-        id: string; status: VehicleMaintenanceRow["status"]; description: string; resolved_at: string | null;
-        created_at: string; outcome: VehicleMaintenanceRow["outcome"]; expected_ready_at: string | null;
-        temp_vehicle: unknown;
-    }>).map((row) => ({
+    const tickets = data ?? [];
+    if (tickets.length === 0) return [];
+
+    const { data: handovers, error: handoverError } = await supabaseAdmin
+        .from("rental_vehicle_assignments")
+        .select("maintenance_ticket_id, assigned_at, vehicles(id, display_name, registration_number, vehicle_models(name))")
+        .in("maintenance_ticket_id", tickets.map((t) => t.id))
+        .order("assigned_at", { ascending: false });
+    if (handoverError) throw handoverError;
+
+    const byTicket = new Map<string, { id: string; name: string; registration_number: string }>();
+    for (const row of handovers ?? []) {
+        if (!row.maintenance_ticket_id || byTicket.has(row.maintenance_ticket_id)) continue;
+        const v = unwrap<{
+            id: string; display_name: string | null; registration_number: string; vehicle_models: unknown;
+        }>(row.vehicles);
+        if (!v) continue;
+        const modelName = unwrap<{ name: string }>(v.vehicle_models)?.name ?? "";
+        byTicket.set(row.maintenance_ticket_id, {
+            id: v.id,
+            name: v.display_name ?? modelName,
+            registration_number: v.registration_number,
+        });
+    }
+
+    return tickets.map((row) => ({
         id: row.id,
         status: row.status,
         description: row.description,
@@ -181,140 +319,96 @@ async function maintenanceForVehicle(vehicleId: string): Promise<VehicleMaintena
         created_at: row.created_at,
         outcome: row.outcome,
         expected_ready_at: row.expected_ready_at,
-        temp_vehicle: unwrap<{ id: string; name: string; registration_number: string }>(row.temp_vehicle),
+        temp_vehicle: byTicket.get(row.id) ?? null,
     }));
 }
 
+/**
+ * Rentals that have held this vehicle.
+ *
+ * Reached through the assignment table rather than a `rentals.vehicle_id`
+ * filter, and the return details come from `rental_returns` — the four
+ * `return_*` columns left the rentals row when the return became a workflow
+ * with its own states.
+ */
 async function rentalsForVehicle(vehicleId: string): Promise<VehicleRentalRow[]> {
     const { data, error } = await supabaseAdmin
-        .from("rentals")
+        .from("rental_vehicle_assignments")
         .select(`
-            id, status, started_at, ended_at, users!rentals_user_id_fkey(id, full_name),
-            return_requested_at, return_reason, return_feedback, return_due_at
+            assigned_at,
+            rentals(
+                id, status, picked_up_at, returned_at, due_back_at,
+                users(id, full_name),
+                rental_returns(requested_at, requested_reason, rider_notes, due_back_at)
+            )
         `)
         .eq("vehicle_id", vehicleId)
-        .order("started_at", { ascending: false })
+        .order("assigned_at", { ascending: false })
         .limit(20);
     if (error) throw error;
 
-    return ((data ?? []) as unknown as Array<{
-        id: string; status: string; started_at: string; ended_at: string | null; users: unknown;
-        return_requested_at: string | null; return_reason: string | null;
-        return_feedback: string | null; return_due_at: string | null;
-    }>).map((row) => ({
-        id: row.id,
-        status: row.status,
-        started_at: row.started_at,
-        ended_at: row.ended_at,
-        rider: unwrap<{ id: string; full_name: string }>(row.users),
-        return_requested_at: row.return_requested_at,
-        return_reason: row.return_reason,
-        return_feedback: row.return_feedback,
-        return_due_at: row.return_due_at,
-    }));
+    const rows: VehicleRentalRow[] = [];
+    const seen = new Set<string>();
+
+    for (const assignment of data ?? []) {
+        const rental = unwrap<{
+            id: string; status: string; picked_up_at: string; returned_at: string | null;
+            due_back_at: string; users: unknown; rental_returns: unknown;
+        }>(assignment.rentals);
+        // One rental can hold the same vehicle twice (out for repair, back
+        // again), which would otherwise list it twice.
+        if (!rental || seen.has(rental.id)) continue;
+        seen.add(rental.id);
+
+        // `reason` and `feedback` were the OLD column names and neither
+        // exists — the table has `requested_reason` and `rider_notes`. The
+        // whole embed 400'd, so the vehicle detail page's rental history was
+        // dead. Missed by tsc because supabase-js cannot parse this select
+        // (the `users(...)` / nested embeds defeat it), so the string
+        // degrades to unchecked. Same class as invoices.service.ts and
+        // audit.service.ts; see docs/final-system-audit.
+        const ret = unwrap<{
+            requested_at: string | null; requested_reason: string | null;
+            rider_notes: string | null; due_back_at: string | null;
+        }>(rental.rental_returns);
+
+        rows.push({
+            id: rental.id,
+            status: rental.status,
+            started_at: rental.picked_up_at,
+            ended_at: rental.returned_at,
+            rider: unwrap<{ id: string; full_name: string }>(rental.users),
+            return_requested_at: ret?.requested_at ?? null,
+            return_reason: ret?.requested_reason ?? null,
+            return_feedback: ret?.rider_notes ?? null,
+            // An approved return can move the due date; the rental's own is
+            // the fallback. This is the effectiveDueAt() rule, inlined.
+            return_due_at: ret?.due_back_at ?? rental.due_back_at,
+        });
+    }
+
+    return rows;
 }
 
-/** Bookings that have (at some point) held this vehicle — the "booked" leg of its lifecycle. */
+/** Bookings that have (at some point) reserved this vehicle. */
 async function bookingsForVehicle(vehicleId: string): Promise<VehicleBookingRow[]> {
     const { data, error } = await supabaseAdmin
         .from("bookings")
-        .select("id, status, plan_status, start_day, created_at, users!bookings_user_id_fkey(id, full_name)")
-        .eq("vehicle_id", vehicleId)
+        .select("id, status, requested_start_on, created_at, users(id, full_name), subscriptions(status)")
+        .eq("held_vehicle_id", vehicleId)
         .order("created_at", { ascending: false })
         .limit(20);
     if (error) throw error;
 
-    return ((data ?? []) as unknown as Array<{
-        id: string; status: string; plan_status: VehicleBookingRow["plan_status"];
-        start_day: string; created_at: string; users: unknown;
-    }>).map((row) => ({
+    return (data ?? []).map((row) => ({
         id: row.id,
         status: row.status,
-        plan_status: row.plan_status,
-        start_day: row.start_day,
+        plan_status:
+            (unwrap<{ status: string }>(row.subscriptions)?.status as VehicleBookingRow["plan_status"]) ?? null,
+        start_day: row.requested_start_on,
         created_at: row.created_at,
         rider: unwrap<{ id: string; full_name: string }>(row.users),
     }));
-}
-
-function unwrap<T>(raw: unknown): T | null {
-    const v = Array.isArray(raw) ? raw[0] : raw;
-    return (v as T) ?? null;
-}
-
-async function photosForVehicle(vehicleId: string): Promise<VehiclePhotoRow[]> {
-    const { data, error } = await supabaseAdmin
-        .from("vehicle_photos")
-        .select("id, url, is_primary, sort_order, created_at")
-        .eq("vehicle_id", vehicleId)
-        .order("sort_order", { ascending: true });
-    if (error) throw error;
-
-    const rows = (data ?? []) as Array<{ id: string; url: string; is_primary: boolean; sort_order: number; created_at: string }>;
-    return Promise.all(
-        rows.map(async (row) => ({
-            id: row.id,
-            url: await createSignedVehiclePhotoUrl(row.url),
-            is_primary: row.is_primary,
-            sort_order: row.sort_order,
-            created_at: row.created_at,
-        })),
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Photos
-// ---------------------------------------------------------------------------
-
-export async function uploadVehiclePhoto(
-    vehicleId: string,
-    file: UploadedFile,
-    mime: "image/jpeg" | "image/png",
-    isPrimary: boolean,
-): Promise<VehiclePhotoRow> {
-    await requireVehicle(vehicleId);
-
-    const path = buildVehiclePhotoPath(vehicleId, mime);
-    await uploadVehiclePhotoFile(path, file, mime);
-
-    if (isPrimary) {
-        await supabaseAdmin.from("vehicle_photos").update({ is_primary: false }).eq("vehicle_id", vehicleId);
-    }
-
-    const { data, error } = await supabaseAdmin
-        .from("vehicle_photos")
-        .insert({ vehicle_id: vehicleId, url: path, is_primary: isPrimary })
-        .select("id, url, is_primary, sort_order, created_at")
-        .single();
-
-    if (error) {
-        await removeVehiclePhotoFile(path);
-        throw error;
-    }
-
-    return {
-        id: data.id,
-        url: await createSignedVehiclePhotoUrl(data.url),
-        is_primary: data.is_primary,
-        sort_order: data.sort_order,
-        created_at: data.created_at,
-    };
-}
-
-export async function deleteVehiclePhoto(vehicleId: string, photoId: string): Promise<void> {
-    const { data, error } = await supabaseAdmin
-        .from("vehicle_photos")
-        .select("id, url")
-        .eq("id", photoId)
-        .eq("vehicle_id", vehicleId)
-        .maybeSingle();
-    if (error) throw error;
-    if (!data) throw notFound("Photo not found.");
-
-    const { error: deleteError } = await supabaseAdmin.from("vehicle_photos").delete().eq("id", photoId);
-    if (deleteError) throw deleteError;
-
-    await removeVehiclePhotoFile(data.url);
 }
 
 // ---------------------------------------------------------------------------
@@ -329,29 +423,24 @@ export async function createVehicle(
     const { data, error } = await supabaseAdmin
         .from("vehicles")
         .insert({
-            name: input.name,
+            display_name: input.name ?? null,
             registration_number: input.registration_number,
-            battery_number: input.battery_number,
-            manufacturer: input.manufacturer,
-            model: input.model,
             vin: input.vin,
-            battery_percentage: input.battery_percentage ?? 100,
-            status: input.status ?? "available",
-            last_service_date: input.last_service_date ?? null,
-            next_service_due_date: input.next_service_due_date ?? null,
-            color: input.color ?? null,
+            vehicle_model_id: input.vehicle_model_id,
+            hub_id: input.hub_id ?? null,
+            colour: input.color ?? null,
             qr_code: input.qr_code ?? null,
             imei: input.imei ?? null,
-            purchase_date: input.purchase_date ?? null,
-            insurance_number: input.insurance_number ?? null,
-            insurance_expiry: input.insurance_expiry ?? null,
+            purchased_on: input.purchase_date ?? null,
+            // No `status`: the column defaults to 'available' and
+            // recompute_vehicle_status() maintains it from there.
         })
         .select(VEHICLE_COLUMNS)
         .single();
 
     if (error) throw mapPostgresError(error);
 
-    const vehicle = toVehicleRow(data as unknown as VehicleRow);
+    const vehicle = toVehicleRow(data as unknown as RawVehicleRow);
 
     await writeAudit({
         actorId: actor.id,
@@ -359,7 +448,11 @@ export async function createVehicle(
         action: "vehicle.created",
         entityType: "vehicle",
         entityId: vehicle.id,
-        after: { registration_number: vehicle.registration_number, vin: vehicle.vin, status: vehicle.status },
+        after: {
+            registration_number: vehicle.registration_number,
+            vin: vehicle.vin,
+            status: vehicle.status,
+        },
         req,
     });
 
@@ -378,21 +471,20 @@ export async function updateVehicle(
 ): Promise<VehicleRow> {
     const before = await requireVehicle(id);
 
-    // A 'booked' vehicle is still held by a live pending_payment/confirmed
-    // booking (bookings.vehicle_id) — force-flipping it straight to
-    // 'available' here used to leave that booking dangling, so the rider's
-    // app kept showing it as a current booking with a cancel option even
-    // though the vehicle had already moved on. Cancel the booking properly
-    // instead; trg_release_vehicle_on_booking_close_fn (20260727095801)
-    // frees the vehicle back to 'available' as a side effect of that, so
-    // `status` is dropped from the direct column write below to avoid
-    // racing the trigger.
-    const releasingFromBooking = before.status === "booked" && patch.status === "available";
-    if (releasingFromBooking) {
+    // Releasing a reserved vehicle.
+    //
+    // Status is no longer settable, so the old "admin flips reserved →
+    // available" path cannot be expressed as a column write at all. That is
+    // an improvement: the flip was never the real action. Cancelling the
+    // booking is, and `recompute_vehicle_status()` frees the vehicle as a
+    // consequence — which is what the old code ended up doing anyway, via a
+    // release trigger, after a comment explaining why it dropped `status`
+    // from the write to avoid racing it.
+    if (before.status === "reserved") {
         const { data: liveBooking, error: bookingError } = await supabaseAdmin
             .from("bookings")
             .select("id")
-            .eq("vehicle_id", id)
+            .eq("held_vehicle_id", id)
             .in("status", ["pending_payment", "confirmed"])
             .maybeSingle();
         if (bookingError) throw bookingError;
@@ -401,16 +493,23 @@ export async function updateVehicle(
         }
     }
 
-    const columnsToWrite: UpdateVehicleInput = { ...patch };
-    if (releasingFromBooking) delete columnsToWrite.status;
+    const columns: Record<string, unknown> = {};
+    if (patch.name !== undefined) columns.display_name = patch.name;
+    if (patch.registration_number !== undefined) columns.registration_number = patch.registration_number;
+    if (patch.vin !== undefined) columns.vin = patch.vin;
+    if (patch.hub_id !== undefined) columns.hub_id = patch.hub_id;
+    if (patch.color !== undefined) columns.colour = patch.color;
+    if (patch.qr_code !== undefined) columns.qr_code = patch.qr_code;
+    if (patch.imei !== undefined) columns.imei = patch.imei;
+    if (patch.purchase_date !== undefined) columns.purchased_on = patch.purchase_date;
 
     let vehicle: VehicleRow;
-    if (Object.keys(columnsToWrite).length === 0) {
+    if (Object.keys(columns).length === 0) {
         vehicle = await requireVehicle(id);
     } else {
         const { data, error } = await supabaseAdmin
             .from("vehicles")
-            .update(columnsToWrite)
+            .update(columns as never)
             .eq("id", id)
             .select(VEHICLE_COLUMNS)
             .maybeSingle();
@@ -418,7 +517,7 @@ export async function updateVehicle(
         if (error) throw mapPostgresError(error);
         if (!data) throw notFound("Vehicle not found.");
 
-        vehicle = toVehicleRow(data as unknown as VehicleRow);
+        vehicle = toVehicleRow(data as unknown as RawVehicleRow);
     }
 
     await writeAudit({
@@ -443,7 +542,7 @@ async function requireVehicle(id: string): Promise<VehicleRow> {
         .maybeSingle();
     if (error) throw error;
     if (!data) throw notFound("Vehicle not found.");
-    return data as unknown as VehicleRow;
+    return toVehicleRow(data as unknown as RawVehicleRow);
 }
 
 function pick<T extends object>(source: T, keys: string[]): Record<string, unknown> {
@@ -456,17 +555,12 @@ function escapeLike(input: string): string {
     return input.replace(/[%_\\,()]/g, "");
 }
 
-/** 23505 = unique_violation on registration_number / battery_number / vin. */
+/** 23505 = unique_violation on registration_number / vin / qr_code / imei. */
 function mapPostgresError(error: { code?: string; message?: string }): Error {
     if (error.code === "23505") {
         if (error.message?.includes("registration_number")) {
             return conflict("This registration number is already in use.", {
                 registration_number: "This registration number is already in use.",
-            });
-        }
-        if (error.message?.includes("battery_number")) {
-            return conflict("This battery number is already in use.", {
-                battery_number: "This battery number is already in use.",
             });
         }
         if (error.message?.includes("vin")) {
@@ -484,11 +578,18 @@ function mapPostgresError(error: { code?: string; message?: string }): Error {
 }
 
 // ---------------------------------------------------------------------------
-// Scrap — terminal state. Only a 'maintenance' vehicle may be scrapped;
-// `active: false` keeps it out of allocate_vehicle_for_booking()'s pool
-// (which filters on v.active) even though 'scrap' also isn't 'available'.
+// Dispose — terminal state.
 // ---------------------------------------------------------------------------
 
+/**
+ * Retires a vehicle permanently.
+ *
+ * The disposal row is what makes this terminal: `recompute_vehicle_status()`
+ * reads it and derives `retired`. The old version wrote `status: 'scrap'` and
+ * `active: false` itself, needing both because `allocate_vehicle_for_booking`
+ * filtered on `active` rather than on status. The new allocator filters on
+ * status alone, so one fact does the job of two.
+ */
 export async function scrapVehicle(
     id: string,
     input: ScrapVehicleInput,
@@ -499,24 +600,24 @@ export async function scrapVehicle(
         throw businessRule("Only a vehicle currently in maintenance can be scrapped.");
     }
 
-    const { error: recordError } = await supabaseAdmin.from("scrap_records").insert({
+    const { error: recordError } = await supabaseAdmin.from("vehicle_disposals").insert({
         vehicle_id: id,
         reason: input.reason,
-        scrapped_on: input.scrapped_on ?? new Date().toISOString().slice(0, 10),
-        approved_by: actor.id,
-        estimated_value: input.estimated_value ?? null,
+        disposed_on: input.scrapped_on ?? businessToday(),
+        approved_by_user_id: actor.id,
+        salvage_amount: input.estimated_value ?? null,
     });
-    if (recordError) throw recordError;
+    if (recordError) {
+        if ((recordError as { code?: string }).code === "23505") {
+            throw conflict("This vehicle has already been disposed of.");
+        }
+        throw recordError;
+    }
 
-    const { data, error } = await supabaseAdmin
-        .from("vehicles")
-        .update({ status: "scrap", active: false })
-        .eq("id", id)
-        .select(VEHICLE_COLUMNS)
-        .single();
-    if (error) throw error;
-
-    const updated = toVehicleRow(data as unknown as VehicleRow);
+    const { error: recomputeError } = await supabaseAdmin.rpc("recompute_vehicle_status", {
+        p_vehicle_id: id,
+    });
+    if (recomputeError) throw recomputeError;
 
     await writeAudit({
         actorId: actor.id,
@@ -525,27 +626,28 @@ export async function scrapVehicle(
         entityType: "vehicle",
         entityId: id,
         before: { status: "maintenance" },
-        after: { status: "scrap", reason: input.reason, estimated_value: input.estimated_value ?? null },
+        after: { status: "retired", reason: input.reason, estimated_value: input.estimated_value ?? null },
     });
 
-    return updated;
+    return requireVehicle(id);
 }
 
 // ---------------------------------------------------------------------------
-// Assign (pre-existing) — largely superseded by the booking flow's
-// allocate_vehicle_for_booking() + POST /bookings/:id/pickup (which go
-// through 'booked' first, then 'assigned'). Kept working for any direct
-// caller, but new code should go through bookings, not this.
+// Assign
 // ---------------------------------------------------------------------------
 
+/**
+ * Largely superseded by the booking flow's allocate_vehicle_for_booking() +
+ * POST /bookings/:id/pickup. Kept working for any direct caller, but new code
+ * should go through bookings, not this.
+ */
 export async function assignVehicle(vehicleId: string, userId: string) {
     const { data, error } = await supabaseAdmin
         .from("vehicles")
-        .update({ status: "assigned" })
+        .select("id, status")
         .eq("id", vehicleId)
         .eq("status", "available")
-        .select()
-        .single();
+        .maybeSingle();
 
     if (error || !data) throw new AppError(400, "Vehicle unavailable or not found");
     return data;
@@ -553,117 +655,130 @@ export async function assignVehicle(vehicleId: string, userId: string) {
 
 export interface AssignVehicleToUserResult {
     vehicle: VehicleRow;
-    /** The rentals row this handover just opened — callers that need to resume a paused billing plan use this. */
+    /** The rentals row this handover just opened — callers resuming a paused subscription need it. */
     rentalId: string;
 }
 
 /**
- * Staff hand a specific available vehicle straight to a specific rider —
- * no booking involved (walk-in handovers, replacements, demo units). Mirrors
- * bookings.service.ts's confirmPickup(): opens the same 'rentals' row a
- * booking-based pickup would, so Unassign/complete-ride and the vehicle's
- * assignment history work identically regardless of how the ride started.
+ * Staff hand a specific available vehicle straight to a specific rider — no
+ * booking involved (walk-in handovers, replacements, demo units). Mirrors
+ * bookings.service.ts's confirmPickup(): opens the same `rentals` row a
+ * booking-based pickup would, plus the `rental_vehicle_assignments` row that
+ * actually attaches the vehicle.
  *
- * `bookingId` is optional and stamped onto the new rentals row when this is
- * a maintenance-flow handover (temp vehicle / handback / replacement) tied
- * to an existing booking's recurring plan — omitted for a plain walk-in
- * assignment with no booking behind it.
+ * **The concurrency story changed.** The old version claimed the vehicle with
+ * `UPDATE vehicles SET status='assigned' WHERE status='available'`, using the
+ * guarded update as a lock: two racing calls, one winner. That is no longer
+ * available, because nothing may write `status`.
  *
- * The vehicle is claimed with a guarded UPDATE *before* the rentals row is
- * inserted — same reasoning as confirmPickup's step ordering: two racing
- * calls on the same vehicle (a double-click, a retry) can only ever have
- * one succeed, so at most one 'assigned' rentals row is ever created here.
- * rentals_one_active_per_vehicle_idx / _per_booking_idx (20260811100000)
- * back this up at the database level.
+ * The lock is now the assignment row itself. A partial unique index permits
+ * only one open (`released_at IS NULL`) assignment per vehicle, so the loser
+ * of a race gets 23505 on the insert instead of zero rows from the update.
+ * The check-then-act read below is a courtesy that produces a good error
+ * message in the common case; the index is what makes it correct.
  *
  * A rider can only ever have one active rental. If they already hold a
- * *different* vehicle, this refuses by default (409, `active_rental_id` in
- * `fields`) rather than silently opening a second concurrent rental and
- * stranding the old vehicle stuck 'assigned' — pass `unassignExisting: true`
- * (after the caller has confirmed with staff) to close that old rental via
- * the same completeRide() a normal return goes through, then proceed.
+ * different vehicle this refuses by default (409, `active_rental_id` in
+ * `fields`) rather than silently opening a second concurrent rental — pass
+ * `unassignExisting: true` to close the old one through completeRide() first.
  */
 export async function assignVehicleToUser(
     vehicleId: string,
     userId: string,
     actor: AuthContext,
-    bookingId?: string,
+    subscriptionId?: string,
     options?: { unassignExisting?: boolean },
 ): Promise<AssignVehicleToUserResult> {
     const { data: rider, error: riderError } = await supabaseAdmin
         .from("users")
-        .select("id, full_name, kyc_status, deleted_at")
+        .select("id, full_name, deleted_at, rider_profiles(kyc_status)")
         .eq("id", userId)
         .maybeSingle();
     if (riderError) throw riderError;
     if (!rider || rider.deleted_at) throw notFound("Rider not found.");
-    if (rider.kyc_status !== "verified") {
+
+    const kycStatus = unwrap<{ kyc_status: string }>(rider.rider_profiles)?.kyc_status;
+    if (kycStatus !== "verified") {
         throw businessRule("This rider's KYC must be verified before handing over a vehicle.");
     }
 
     const { data: existingRental, error: existingRentalError } = await supabaseAdmin
-        .from("rentals")
-        .select("id, vehicle_id, vehicles(id, name, registration_number)")
+        .from("v_rental_current_vehicle")
+        .select("rental_id, vehicle_id, vehicles(id, display_name, registration_number, vehicle_models(name))")
         .eq("user_id", userId)
-        .eq("status", "active")
         .maybeSingle();
     if (existingRentalError) throw existingRentalError;
 
-    if (existingRental && existingRental.vehicle_id !== vehicleId) {
-        const existingVehicle = (Array.isArray(existingRental.vehicles) ? existingRental.vehicles[0] : existingRental.vehicles) as
-            | { id: string; name: string; registration_number: string }
-            | null;
+    if (existingRental?.rental_id && existingRental.vehicle_id !== vehicleId) {
+        const v = unwrap<{
+            id: string; display_name: string | null; registration_number: string; vehicle_models: unknown;
+        }>(existingRental.vehicles);
+        const existingName = v?.display_name ?? unwrap<{ name: string }>(v?.vehicle_models)?.name ?? null;
+
         if (!options?.unassignExisting) {
             throw conflict(
-                `${rider.full_name} already has ${existingVehicle?.name ?? "a scooter"} assigned. Unassign it before handing over a new one.`,
+                `${rider.full_name} already has ${existingName ?? "a scooter"} assigned. Unassign it before handing over a new one.`,
                 {
-                    active_rental_id: String(existingRental.id),
-                    existing_vehicle_id: existingVehicle?.id ?? "",
-                    existing_vehicle_name: existingVehicle?.name ?? "",
-                    existing_vehicle_registration: existingVehicle?.registration_number ?? "",
+                    active_rental_id: existingRental.rental_id,
+                    existing_vehicle_id: v?.id ?? "",
+                    existing_vehicle_name: existingName ?? "",
+                    existing_vehicle_registration: v?.registration_number ?? "",
                 },
             );
         }
-        await completeRide(String(existingRental.id), {}, actor);
+        await completeRide(existingRental.rental_id, {}, actor);
     }
 
-    const { data: claimed, error: claimError } = await supabaseAdmin
-        .from("vehicles")
-        .update({ status: "assigned" })
-        .eq("id", vehicleId)
-        .eq("status", "available")
-        .select(VEHICLE_COLUMNS)
-        .maybeSingle();
-    if (claimError) throw claimError;
-    if (!claimed) {
-        // Distinguish "doesn't exist" from "exists but already taken" the
-        // same way the original single-select version did.
-        const { data: exists } = await supabaseAdmin.from("vehicles").select("id").eq("id", vehicleId).maybeSingle();
-        if (!exists) throw notFound("Vehicle not found.");
+    const vehicle = await requireVehicle(vehicleId);
+    if (vehicle.status !== "available") {
         throw businessRule("This vehicle is not available to assign.");
     }
-    const updated = toVehicleRow(claimed as unknown as VehicleRow);
+
+    // A rental needs a subscription. A walk-in handover with no subscription
+    // behind it has nothing to attach the rental to — the FK is NOT NULL —
+    // so this refuses rather than inventing one.
+    if (!subscriptionId) {
+        throw businessRule(
+            "A subscription is required before a vehicle can be handed over. " +
+            "Take payment for a plan first.",
+        );
+    }
 
     const { data: rental, error: rentalError } = await supabaseAdmin
         .from("rentals")
         .insert({
             user_id: userId,
-            vehicle_id: vehicleId,
-            booking_id: bookingId ?? null,
+            subscription_id: subscriptionId,
             status: "active",
-            started_at: new Date().toISOString(),
+            picked_up_at: new Date().toISOString(),
+            due_back_at: await dueBackForSubscription(subscriptionId),
         })
         .select("id")
         .single();
     if (rentalError) {
-        // Revert the claim — there's no transaction infra here, so this
-        // compensating write is what stops the vehicle being stranded
-        // 'assigned' with no rental behind it.
-        await supabaseAdmin.from("vehicles").update({ status: "available" }).eq("id", vehicleId);
         if ((rentalError as { code?: string }).code === "23505") {
-            throw conflict("This vehicle or booking was just assigned elsewhere — refresh and try again.");
+            throw conflict("This rider already has an active rental — refresh and try again.");
         }
         throw rentalError;
+    }
+
+    const { error: assignmentError } = await supabaseAdmin
+        .from("rental_vehicle_assignments")
+        .insert({
+            rental_id: rental.id,
+            vehicle_id: vehicleId,
+            reason: "initial",
+            assigned_hub_id: vehicle.hub_id,
+        });
+    if (assignmentError) {
+        // Compensating write: a rental with no vehicle attached is worse than
+        // no rental at all, because recompute_vehicle_status() would leave the
+        // scooter available while the rider believes they have it.
+        await supabaseAdmin.from("rentals").delete().eq("id", rental.id);
+        if ((assignmentError as { code?: string }).code === "23505") {
+            throw conflict("This vehicle was just assigned elsewhere — refresh and try again.");
+        }
+        throw assignmentError;
     }
 
     await writeAudit({
@@ -672,7 +787,7 @@ export async function assignVehicleToUser(
         action: "vehicle.assigned",
         entityType: "vehicle",
         entityId: vehicleId,
-        after: { status: "assigned", user_id: userId },
+        after: { status: "assigned", user_id: userId, rental_id: rental.id },
     });
 
     await notifyUser(userId, {
@@ -682,5 +797,27 @@ export async function assignVehicleToUser(
         screen: "post-booking-dashboard",
     });
 
-    return { vehicle: updated, rentalId: rental.id as string };
+    return { vehicle: await requireVehicle(vehicleId), rentalId: rental.id };
+}
+
+/**
+ * When the scooter is due back: the end of the subscription's current period.
+ *
+ * `rentals.due_back_at` is NOT NULL, and the period is the only thing that
+ * knows the answer — the rental is due back when the rider stops paying for it.
+ */
+async function dueBackForSubscription(subscriptionId: string): Promise<string> {
+    const { data, error } = await supabaseAdmin
+        .from("v_subscription_current_period")
+        .select("ends_on")
+        .eq("subscription_id", subscriptionId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data?.ends_on) {
+        throw businessRule("This subscription has no current billing period to rent against.");
+    }
+    // End of the last usable day, not its midnight — a rider whose period ends
+    // on the 17th has the whole of the 17th. In IST: `T23:59:59Z` would be
+    // 05:29:59 IST on the 18th, giving away five and a half hours.
+    return endOfBusinessDay(data.ends_on);
 }

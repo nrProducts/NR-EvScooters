@@ -1,12 +1,13 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
-import type { PaginatedResult, Vehicle, VehicleDetail, VehiclePhoto, VehicleStatus } from "@/types";
+import type { PaginatedResult, Vehicle, VehicleDetail, VehicleStatus } from "@/types";
 
 export interface VehicleFilters {
   search?: string;
   status?: VehicleStatus | "all";
   page?: number;
   pageSize?: number;
-  sortBy?: "created_at" | "name" | "battery_percentage" | "next_service_due_date";
+  /** `battery_percentage` and `next_service_due_date` are gone — no columns back them. */
+  sortBy?: "created_at" | "display_name" | "registration_number";
   sortDir?: "asc" | "desc";
 }
 
@@ -29,24 +30,33 @@ export async function fetchVehicleById(id: string): Promise<VehicleDetail> {
   return apiClient.get<VehicleDetail>(`/vehicles/${id}`);
 }
 
+/**
+ * What POST /vehicles accepts.
+ *
+ * `model` is chosen by id now — the model is a row, and the vehicle points at
+ * it — and `status` is not accepted at all: `recompute_vehicle_status()`
+ * derives it from the vehicle's maintenance ticket, rental assignment and
+ * booking hold, so a value sent here would be overwritten and, worse, would
+ * disagree with the facts it claims to summarise.
+ *
+ * Insurance moved to `vehicle_documents` and service dates are derived from
+ * maintenance tickets, so neither is set from this form any more.
+ */
 export interface VehicleFormInput {
-  name: string;
+  /** Stored as `display_name`. Optional — a vehicle can just be its plate. */
+  name?: string;
   registration_number: string;
-  battery_number: string;
-  manufacturer: string;
-  model: string;
   vin: string;
-  battery_percentage?: number;
-  status?: VehicleStatus;
-  last_service_date?: string;
-  next_service_due_date?: string;
+  vehicle_model_id: string;
+  hub_id?: string;
   color?: string;
   qr_code?: string;
   imei?: string;
   purchase_date?: string;
-  insurance_number?: string;
-  insurance_expiry?: string;
 }
+
+/** The model a vehicle belongs to is fixed at creation. */
+export type VehicleUpdateInput = Partial<Omit<VehicleFormInput, "vehicle_model_id">>;
 
 /** POST /vehicles — requireStaff. */
 export async function createVehicle(input: VehicleFormInput): Promise<Vehicle> {
@@ -54,22 +64,19 @@ export async function createVehicle(input: VehicleFormInput): Promise<Vehicle> {
 }
 
 /** PATCH /vehicles/:id — requireStaff. Accepts any subset of the create fields. */
-export async function updateVehicle(id: string, patch: Partial<VehicleFormInput>): Promise<Vehicle> {
+export async function updateVehicle(id: string, patch: VehicleUpdateInput): Promise<Vehicle> {
   return apiClient.patch<Vehicle>(`/vehicles/${id}`, patch);
 }
 
-/** POST /vehicles/:id/photos — requireStaff. Multipart upload. */
-export async function uploadVehiclePhoto(id: string, file: File, isPrimary = false): Promise<VehiclePhoto> {
-  const form = new FormData();
-  form.append("photo", file);
-  if (isPrimary) form.append("is_primary", "true");
-  return apiClient.postForm<VehiclePhoto>(`/vehicles/${id}/photos`, form);
-}
-
-/** DELETE /vehicles/:id/photos/:photoId — requireStaff. */
-export async function deleteVehiclePhoto(id: string, photoId: string): Promise<void> {
-  await apiClient.delete(`/vehicles/${id}/photos/${photoId}`);
-}
+/*
+ * The photo endpoints are gone with the `vehicle_photos` table.
+ *
+ * A photo of a SCOOTER was a photo of its model — the same six studio shots
+ * re-uploaded per unit — so the imagery lives on `vehicle_model_media` and is
+ * shown once for the model. Condition photographs, the genuinely per-unit
+ * kind, are `incidents.photo_paths`, where they sit next to the damage they
+ * evidence.
+ */
 
 export interface ScrapVehicleInput {
   reason: string;

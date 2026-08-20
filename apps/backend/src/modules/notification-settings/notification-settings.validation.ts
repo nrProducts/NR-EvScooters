@@ -1,8 +1,12 @@
 import { z } from "zod";
-import { NOTIFICATION_TYPES } from "../../types";
 
+/**
+ * The type code is free text, not an enum — `notification_types` is a
+ * catalogue, so a new event type must not need a deploy. The service 404s on
+ * a code the table does not have.
+ */
 export const notificationTypeParam = z.object({
-    type: z.enum(NOTIFICATION_TYPES as [string, ...string[]]),
+    type: z.string().trim().min(1).max(60),
 });
 
 export const updateNotificationSettingBody = z.object({

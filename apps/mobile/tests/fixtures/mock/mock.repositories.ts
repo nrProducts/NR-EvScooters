@@ -190,7 +190,7 @@ function requireSession(): MockUserRow {
     return user;
 }
 
-const isAdminRow = (u: MockUserRow) => u.roles.includes('admin');
+const isAdminRow = (u: MockUserRow) => u.role === 'admin';
 
 /**
  * Mirrors public.compute_kyc_status() and deriveKycStatus() on the backend.
@@ -205,7 +205,7 @@ function computeKycStatus(userId: string): KycStatus {
     if (docs.some((d) => d.verification_status === 'rejected')) return 'rejected';
 
     const verified = docs.filter(
-        (d) => d.verification_status === 'verified' && !isExpired(d.expiry_date),
+        (d) => d.verification_status === 'verified' && !isExpired(d.expires_on),
     ).length;
 
     if (verified === MANDATORY_KYC_DOC_TYPES.length) return 'verified';
@@ -220,7 +220,7 @@ function completionPercent(userId: string): number {
                 d.user_id === userId &&
                 d.doc_type === type &&
                 d.verification_status === 'verified' &&
-                !isExpired(d.expiry_date),
+                !isExpired(d.expires_on),
         ),
     ).length;
     return Math.round((verified / MANDATORY_KYC_DOC_TYPES.length) * 100);
@@ -241,12 +241,17 @@ function toApiUser(row: MockUserRow): ApiUser {
 function toApiDocument(row: MockDocumentRow): ApiDocument {
     return {
         id: row.id,
-        doc_type: row.doc_type,
+        // The wire names changed with `kyc_documents`: `doc_type` is
+        // `document_type` and `expires_on` is `expires_on`. The mock ROW
+        // keeps its own field names — it stands in for the table, not the
+        // response — so the rename happens here, in the projection, exactly
+        // as it does in the real service.
+        document_type: row.doc_type,
         doc_number_masked: maskDocNumber(row.doc_number),
         verification_status: row.verification_status,
         rejection_reason: row.rejection_reason,
-        expiry_date: row.expiry_date,
-        is_expired: isExpired(row.expiry_date),
+        expires_on: row.expires_on,
+        is_expired: isExpired(row.expires_on),
         submitted_at: row.submitted_at,
         verified_at: row.verified_at,
         has_back_side: !!row.back_uri,
@@ -261,11 +266,11 @@ function toApiUserDetail(row: MockUserRow): ApiUserDetail {
         kyc_completion_percent: completionPercent(row.id),
         documents: docs.map((d) => ({
             id: d.id,
-            doc_type: d.doc_type,
+            document_type: d.doc_type,
             doc_number_masked: maskDocNumber(d.doc_number),
             verification_status: d.verification_status,
             rejection_reason: d.rejection_reason,
-            expiry_date: d.expiry_date,
+            expires_on: d.expires_on,
             submitted_at: d.submitted_at,
             verified_at: d.verified_at,
         })),
@@ -351,7 +356,7 @@ export class MockAuthRepository implements AuthRepository {
                 created_at: nowIso(),
                 updated_at: nowIso(),
                 deleted_at: null,
-                roles: ['rider'],
+                role: 'rider',
                 assigned_vehicle: null,
                 current_plan: null,
             };
@@ -556,15 +561,15 @@ export class MockKycRepository implements KycRepository {
         await delay(700);
         const actor = requireSession();
 
-        if (input.doc_type === 'driving_license') {
-            if (!input.expiry_date) {
+        if (input.doc_type === 'driving_licence') {
+            if (!input.expires_on) {
                 throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'A driving licence must include its expiry date.', {
-                    expiry_date: 'Enter the licence expiry date.',
+                    expires_on: 'Enter the licence expiry date.',
                 });
             }
-            if (isExpired(input.expiry_date)) {
+            if (isExpired(input.expires_on)) {
                 throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'This driving licence has already expired.', {
-                    expiry_date: 'This licence has expired.',
+                    expires_on: 'This licence has expired.',
                 });
             }
         }
@@ -596,7 +601,7 @@ export class MockKycRepository implements KycRepository {
             rejection_reason: null,
             verified_by: null,
             verified_at: null,
-            expiry_date: input.expiry_date ?? null,
+            expires_on: input.expires_on ?? null,
             submitted_at: null,
             created_at: nowIso(),
             updated_at: nowIso(),
@@ -620,14 +625,14 @@ export class MockKycRepository implements KycRepository {
                 'A verified document cannot be changed. Contact support if it is wrong.',
             );
         }
-        if (input.expiry_date && doc.doc_type === 'driving_license' && isExpired(input.expiry_date)) {
+        if (input.expires_on && doc.doc_type === 'driving_licence' && isExpired(input.expires_on)) {
             throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'This driving licence has already expired.', {
-                expiry_date: 'This licence has expired.',
+                expires_on: 'This licence has expired.',
             });
         }
 
         if (input.doc_number) doc.doc_number = input.doc_number.trim().toUpperCase();
-        if (input.expiry_date) doc.expiry_date = input.expiry_date;
+        if (input.expires_on) doc.expires_on = input.expires_on;
         if (input.front) doc.front_uri = input.front.uri;
         if (input.back) doc.back_uri = input.back.uri;
 

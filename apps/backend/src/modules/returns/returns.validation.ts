@@ -28,7 +28,7 @@ export const listSettlementsQuery = z.object({
         "pending_refund", "refund_processing", "refund_completed",
         "no_refund_required", "amount_due", "settlement_completed",
     ]).optional(),
-    sortBy: z.enum(["created_at", "processed_at"]).default("created_at"),
+    sortBy: z.enum(["created_at", "settled_at"]).default("created_at"),
     sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 export type ListSettlementsQuery = z.infer<typeof listSettlementsQuery>;
