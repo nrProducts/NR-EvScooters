@@ -155,11 +155,11 @@ export default function ReturnDetailPage() {
         <div className="flex flex-col items-end gap-1.5">
           {/* Two SEPARATE statuses — never merge scooter-return state with financial settlement state. */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-muted-foreground">Scooter Return:</span>
+            <span className="text-[0.6875rem] text-muted-foreground">Scooter Return:</span>
             <StatusBadge status={alreadySettled ? "completed" : "return_requested"} />
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-muted-foreground">Financial Settlement:</span>
+            <span className="text-[0.6875rem] text-muted-foreground">Financial Settlement:</span>
             <StatusBadge status={settlement?.status ?? "pending_refund"} />
           </div>
         </div>

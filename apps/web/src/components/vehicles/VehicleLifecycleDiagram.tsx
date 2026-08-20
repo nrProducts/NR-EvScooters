@@ -120,7 +120,7 @@ export function VehicleLifecycleDiagram({
               <Icon className="h-3.5 w-3.5" />
               {meta.label}
             </span>
-            <span className="text-[10px] font-normal opacity-70">{count} occurrence{count === 1 ? "" : "s"}</span>
+            <span className="text-[0.625rem] font-normal opacity-70">{count} occurrence{count === 1 ? "" : "s"}</span>
           </button>
         );
       })}

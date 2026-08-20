@@ -38,9 +38,9 @@ export function NotificationBell() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
-          <Bell className="h-[18px] w-[18px]" />
+          <Bell className="h-[1.125rem] w-[1.125rem]" />
           {count > 0 && (
-            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground">
+            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold leading-none text-destructive-foreground">
               {count > 9 ? "9+" : count}
             </span>
           )}
@@ -75,7 +75,7 @@ export function NotificationBell() {
               >
                 <span className="text-sm font-medium">{n.payload?.title ?? "Notification"}</span>
                 {n.payload?.body && <span className="text-xs text-muted-foreground">{n.payload.body}</span>}
-                <span className="text-[11px] text-muted-foreground">{timeAgo(n.created_at)}</span>
+                <span className="text-[0.6875rem] text-muted-foreground">{timeAgo(n.created_at)}</span>
               </DropdownMenuItem>
             ))
           )}

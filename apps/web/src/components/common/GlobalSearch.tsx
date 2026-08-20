@@ -67,7 +67,7 @@ export function GlobalSearch() {
 
           {enabled && !isLoading && users.length > 0 && (
             <div className="mb-1">
-              <p className="px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <p className="px-3 py-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
                 Users
               </p>
               {users.map((u) => (
@@ -93,7 +93,7 @@ export function GlobalSearch() {
 
           {enabled && !isLoading && vehicles.length > 0 && (
             <div>
-              <p className="px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <p className="px-3 py-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
                 Vehicles
               </p>
               {vehicles.map((v) => (

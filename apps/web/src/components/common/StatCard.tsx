@@ -25,12 +25,12 @@ export function StatCard({ label, value, icon: Icon, trend, tone = "default" }: 
     <MotionCard className="bg-card/80 backdrop-blur-sm">
       <CardContent className="flex items-center justify-between gap-2 p-3">
         <div className="flex min-w-0 flex-col gap-1">
-          <span className="truncate text-[11px] font-medium text-muted-foreground">{label}</span>
+          <span className="truncate text-[0.6875rem] font-medium text-muted-foreground">{label}</span>
           <span className="text-lg font-semibold tracking-tight">{value}</span>
           {trend && (
             <span
               className={cn(
-                "flex items-center gap-0.5 text-[11px] font-medium",
+                "flex items-center gap-0.5 text-[0.6875rem] font-medium",
                 trend.positive ? "text-success" : "text-destructive",
               )}
             >

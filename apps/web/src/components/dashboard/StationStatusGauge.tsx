@@ -48,12 +48,12 @@ export function StationStatusGauge({
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <span className={cn("font-semibold tracking-tight", compact ? "text-sm" : "text-xl")}>{summary.totalStations}</span>
-          {!compact && <span className="text-[11px] text-muted-foreground">Total Stations</span>}
+          {!compact && <span className="text-[0.6875rem] text-muted-foreground">Total Stations</span>}
         </div>
       </div>
       <div className={cn("flex flex-col", compact ? "gap-1.5" : "gap-2.5")}>
         {data.map((d) => (
-          <div key={d.label} className={cn("flex items-center gap-2", compact ? "text-[11px]" : "text-xs")}>
+          <div key={d.label} className={cn("flex items-center gap-2", compact ? "text-[0.6875rem]" : "text-xs")}>
             <span className={cn("h-2 w-2 rounded-full", d.dot)} />
             <span className="text-muted-foreground">{d.label}</span>
             <span className="ml-auto font-semibold tabular-nums">{d.value}</span>

@@ -125,6 +125,28 @@
     --shadow-card: 0 8px 30px rgb(0 0 0 / 0.25);
   }
 
+  /*
+   * Global density scale. Tailwind's default spacing/sizing/font-size/
+   * border-radius steps (h-*, w-*, p-*, gap-*, text-*, rounded-*, and this
+   * project's own --radius token) are all `rem`, not hardcoded px — `1rem`
+   * always equals the root element's font-size, so this one rule uniformly
+   * scales every one of those utilities across the entire app at once,
+   * instead of hand-editing height/padding/gap classes component by
+   * component (which for an app this size would be both enormous in scope
+   * and impossible to keep consistent). 80% mirrors the ask precisely: "100%
+   * zoom should look like today's 80% zoom" IS "shrink the rem baseline to
+   * 80%" — that's mathematically what browser zoom does to rem-derived
+   * sizing. The literal handful of icon sizes and micro-text labels that
+   * were hardcoded in px (not rem) were converted alongside this change so
+   * they keep scaling in step rather than becoming comparatively oversized;
+   * a few explicit page/viewport-width layout thresholds (dialog/table
+   * max-widths) were deliberately left in px — those are breakpoint
+   * decisions, not density ones.
+   */
+  html {
+    font-size: 80%;
+  }
+
   * {
     @apply border-border;
   }

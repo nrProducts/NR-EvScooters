@@ -265,7 +265,7 @@ function Detail({
       <div>
         <p className="text-xs text-muted-foreground">{label}</p>
         <p className="font-medium">{value}</p>
-        {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+        {hint && <p className="text-[0.6875rem] text-muted-foreground">{hint}</p>}
       </div>
     </div>
   );

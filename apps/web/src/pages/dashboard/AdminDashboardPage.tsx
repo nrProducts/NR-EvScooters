@@ -423,7 +423,7 @@ export default function AdminDashboardPage() {
                     <p className="truncate font-medium">{n.payload?.title ?? n.template.replace(/_/g, " ")}</p>
                     <p className="truncate text-xs text-muted-foreground">{n.rider?.full_name ?? "—"}</p>
                   </div>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">{timeAgo(n.created_at)}</span>
+                  <span className="shrink-0 text-[0.6875rem] text-muted-foreground">{timeAgo(n.created_at)}</span>
                 </div>
               ))
             )}

@@ -31,11 +31,11 @@ export function SparkStatCard({ label, value, points, tone = "default" }: SparkS
     <MotionCard className="bg-card/80 backdrop-blur-sm">
       <CardContent className="space-y-2 p-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-[11px] font-medium text-muted-foreground">{label}</span>
+          <span className="truncate text-[0.6875rem] font-medium text-muted-foreground">{label}</span>
           {trend !== null && (
             <span
               className={cn(
-                "flex shrink-0 items-center gap-0.5 text-[11px] font-medium",
+                "flex shrink-0 items-center gap-0.5 text-[0.6875rem] font-medium",
                 trend >= 0 ? "text-success" : "text-destructive",
               )}
             >

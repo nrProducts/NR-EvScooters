@@ -68,7 +68,7 @@ export function FleetStatusCard({
             <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
             <CardTitle className="text-xs">Fleet Status</CardTitle>
           </div>
-          <span className="text-[11px] font-semibold text-muted-foreground">{total} total</span>
+          <span className="text-[0.6875rem] font-semibold text-muted-foreground">{total} total</span>
         </CardHeader>
         <CardContent className="space-y-2 p-3 pt-1">
           {isLoading || !byStatus ? (
@@ -90,7 +90,7 @@ export function FleetStatusCard({
                   );
                 })}
               </div>
-              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[0.6875rem]">
                 {statuses.map((status) => (
                   <div key={status} className="flex items-center gap-1.5">
                     <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", FLEET_BAR_COLOR[status])} />

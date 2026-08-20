@@ -73,7 +73,7 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
         <span className="hidden text-xs text-muted-foreground lg:inline">{formatDate(new Date())}</span>
 
         <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
-          {theme === "light" ? <Moon className="h-[18px] w-[18px]" /> : <Sun className="h-[18px] w-[18px]" />}
+          {theme === "light" ? <Moon className="h-[1.125rem] w-[1.125rem]" /> : <Sun className="h-[1.125rem] w-[1.125rem]" />}
         </Button>
 
         <NotificationBell />
@@ -90,7 +90,7 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuLabel>
               <p className="truncate">{user?.name}</p>
-              <p className="truncate text-[11px] font-normal capitalize text-muted-foreground">{user?.role}</p>
+              <p className="truncate text-[0.6875rem] font-normal capitalize text-muted-foreground">{user?.role}</p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {user?.role === "admin" && (

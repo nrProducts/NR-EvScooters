@@ -40,7 +40,7 @@ function NavItemLink({
       }
       title={collapsed ? item.label : undefined}
     >
-      <item.icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+      <item.icon className="h-[1.125rem] w-[1.125rem] shrink-0" strokeWidth={1.75} />
       {!collapsed && <span className="truncate">{item.label}</span>}
     </NavLink>
   );
@@ -155,7 +155,7 @@ export function Sidebar({
                     )}
                   >
                     <span className="flex items-center gap-3">
-                      <entry.icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+                      <entry.icon className="h-[1.125rem] w-[1.125rem] shrink-0" strokeWidth={1.75} />
                       {entry.label}
                     </span>
                   </AccordionTrigger>

@@ -48,7 +48,7 @@ export function DashboardLayout() {
             </PageFade>
           </div>
         </main>
-        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-1 border-t border-border bg-card/80 px-4 py-2 text-[11px] text-muted-foreground sm:px-6">
+        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-1 border-t border-border bg-card/80 px-4 py-2 text-[0.6875rem] text-muted-foreground sm:px-6">
           <span>© {new Date().getFullYear()} Swapngo. All rights reserved.</span>
           <span>EV Fleet Admin · v1.0.0</span>
         </footer>

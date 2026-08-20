@@ -54,7 +54,7 @@ export function RentalOperationsSummaryCards() {
       {COUNTERS.map((c, i) => {
         const q = results[i];
         return q.isLoading ? (
-          <Skeleton key={c.key} className="h-[76px] rounded-2xl" />
+          <Skeleton key={c.key} className="h-[4.75rem] rounded-2xl" />
         ) : (
           <StatCard key={c.key} label={c.label} value={q.data?.total ?? 0} icon={c.icon} tone={c.tone} />
         );

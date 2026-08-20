@@ -17,7 +17,7 @@ export function AuthLayout() {
         onClick={toggleTheme}
         aria-label="Toggle theme"
       >
-        {theme === "light" ? <Moon className="h-[18px] w-[18px]" /> : <Sun className="h-[18px] w-[18px]" />}
+        {theme === "light" ? <Moon className="h-[1.125rem] w-[1.125rem]" /> : <Sun className="h-[1.125rem] w-[1.125rem]" />}
       </Button>
 
       <div className="w-full max-w-md">

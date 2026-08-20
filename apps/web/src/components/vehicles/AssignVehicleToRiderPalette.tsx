@@ -102,7 +102,7 @@ export function AssignVehicleToRiderPalette({
                 <Bike className="h-4 w-4 shrink-0 text-primary" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold">{title}</p>
-                  <p className="truncate text-[11px] text-muted-foreground">
+                  <p className="truncate text-[0.6875rem] text-muted-foreground">
                     {subtitle ?? `For ${riderName}`}
                   </p>
                 </div>
@@ -164,7 +164,7 @@ export function AssignVehicleToRiderPalette({
                         {pendingThis ? (
                           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
                         ) : (
-                          <span className="shrink-0 text-[11px] font-medium text-primary">Assign</span>
+                          <span className="shrink-0 text-[0.6875rem] font-medium text-primary">Assign</span>
                         )}
                       </button>
                     );

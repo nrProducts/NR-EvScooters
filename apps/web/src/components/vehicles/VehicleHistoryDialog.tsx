@@ -150,7 +150,7 @@ export function VehicleHistoryDialog({
                     const isLast = i === nodes.length - 1;
                     return (
                       <div key={`${node.kind}-${node.id}`} className={cn("relative pl-6", !isLast && "pb-5")}>
-                        {!isLast && <span className="absolute left-[7px] top-3 h-full w-px bg-border" />}
+                        {!isLast && <span className="absolute left-[0.4375rem] top-3 h-full w-px bg-border" />}
                         {node.kind === "assignment" ? (
                           <>
                             <span className="absolute left-0 top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-secondary ring-4 ring-card">
