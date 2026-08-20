@@ -29,3 +29,10 @@ export const staffSignupBody = z.object({
 });
 
 export type StaffSignupBody = z.infer<typeof staffSignupBody>;
+
+/** Query for the public GET /auth/account-exists — either an email or a phone number. */
+export const accountExistsQuery = z.object({
+    identifier: z.string().trim().min(1, "identifier is required"),
+});
+
+export type AccountExistsQuery = z.infer<typeof accountExistsQuery>;

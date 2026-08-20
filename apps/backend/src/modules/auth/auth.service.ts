@@ -89,6 +89,24 @@ async function resolveSessionPermissions(actor: AuthContext): Promise<ModulePerm
  */
 
 /**
+ * Whether any live (non-deleted) account holds this email or phone.
+ * Public/unauthenticated — used by the web login screen to tell "no account
+ * exists yet" apart from "wrong password" without Supabase's
+ * signInWithPassword call itself ever revealing that (it deliberately
+ * returns the same generic error for both, to prevent enumeration). Login is
+ * already staff/admin-only and the public POST /auth/signup endpoint reveals
+ * the same "email already registered" fact, so this adds no new exposure.
+ */
+export async function checkAccountExists(identifier: string): Promise<boolean> {
+    const isEmail = identifier.includes("@");
+    let q = supabaseAdmin.from("users").select("id").is("deleted_at", null).limit(1);
+    q = isEmail ? q.ilike("email", identifier.trim().toLowerCase()) : q.eq("phone", identifier.trim().replace(/[\s()-]/g, ""));
+    const { data, error } = await q;
+    if (error) throw error;
+    return !!data && data.length > 0;
+}
+
+/**
  * Global sign-out: revokes every refresh token for the user server-side, so a
  * stolen refresh token can't be used to mint new access tokens after logout.
  */

@@ -111,9 +111,36 @@ export async function login(identifier: string, password: string): Promise<Staff
   const { error } = looksLikeEmail(trimmed)
     ? await supabase.auth.signInWithPassword({ email: trimmed.toLowerCase(), password })
     : await supabase.auth.signInWithPassword({ phone: trimmed.replace(/[\s()-]/g, ""), password });
-  if (error) throw new ApiError(error.message, 401, "UNAUTHENTICATED");
+
+  if (error) {
+    // Supabase deliberately returns the same generic error for "no such
+    // account" and "wrong password" (anti-enumeration). GET /auth/account-exists
+    // lets us tell them apart so a first-time visitor is pointed at sign-up
+    // instead of being told their (nonexistent) password is wrong.
+    const exists = await accountExists(trimmed);
+    if (!exists) {
+      throw new ApiError(
+        "No account found for this email or phone. Create one to get started.",
+        401,
+        "ACCOUNT_NOT_FOUND",
+      );
+    }
+    throw new ApiError(error.message, 401, "UNAUTHENTICATED");
+  }
 
   return resolveStaffSession();
+}
+
+/** GET /auth/account-exists — public, used to disambiguate login errors (see login() above). */
+async function accountExists(identifier: string): Promise<boolean> {
+  try {
+    const { exists } = await apiClient.get<{ exists: boolean }>("/auth/account-exists", { identifier });
+    return exists;
+  } catch {
+    // If the check itself fails, fall back to the generic Supabase message
+    // rather than misreporting a real account as missing.
+    return true;
+  }
 }
 
 export async function fetchCurrentSession(): Promise<StaffUser | null> {
