@@ -27,6 +27,13 @@
 create or replace function public.assert_profile_matches_role()
 returns trigger
 language plpgsql
+-- SECURITY DEFINER is load-bearing — see migration 40. The trigger below is
+-- DEFERRED, so it fires at COMMIT as whoever owns the transaction, which for
+-- a signup is `supabase_auth_admin`. That role cannot read the profile
+-- tables, so without this every signup failed at commit with
+-- "permission denied for table rider_profiles". Recovered from the live
+-- database WITHOUT this clause, faithfully preserving the original defect.
+security definer
 set search_path = ''
 as $$
 begin
