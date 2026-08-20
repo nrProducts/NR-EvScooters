@@ -28,6 +28,7 @@ import {
   useUsers, useDeleteUser, useChangeUserStatus, useChangeUserRole,
 } from "@/hooks/useUsers";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
 import { initials, formatDate } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
@@ -241,13 +242,10 @@ export default function UserListPage() {
     },
   ];
 
+  usePageSubtitle(`${data?.total ?? 0} registered users`);
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
-        <p className="text-sm text-muted-foreground">{data?.total ?? 0} registered users</p>
-      </div>
-
       {roleError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {roleError}

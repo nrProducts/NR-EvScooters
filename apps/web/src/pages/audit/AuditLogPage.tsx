@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { useAuditLogs } from "@/hooks/useAudit";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatDateTime } from "@/lib/utils";
 import type { AuditLogEntry } from "@/types";
 
@@ -84,17 +85,16 @@ export default function AuditLogPage() {
     },
   ];
 
+  usePageSubtitle(
+    <>
+      Every recorded change, append-only — entries cannot be edited or deleted, including by us.
+      Personal data in the payloads is redacted at write time; the field names remain so a change
+      is still provable. For who <em>read</em> a rider's data, see the PII access log.
+    </>,
+  );
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Audit log</h1>
-        <p className="text-sm text-muted-foreground">
-          Every recorded change, append-only — entries cannot be edited or deleted, including by
-          us. Personal data in the payloads is redacted at write time; the field names remain so a
-          change is still provable. For who <em>read</em> a rider's data, see the PII access log.
-        </p>
-      </div>
-
       <div className="flex flex-wrap gap-2">
         <Input
           value={action}

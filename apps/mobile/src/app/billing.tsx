@@ -375,17 +375,18 @@ export default function BillingScreen() {
                   <View className="rounded-xl p-3 mb-3" style={{ backgroundColor: COLORS.card }}>
                     {rechargePreview.items.map((item, i) => (
                       <View key={i} className="flex-row items-center justify-between py-1">
+                        {/* A discount is an `adjustment` with a NEGATIVE amount, not its own line type — read the sign, not the type. */}
                         <Text
-                          style={{ color: item.itemType === 'discount' ? COLORS.success : COLORS.textPrimary }}
+                          style={{ color: item.amount < 0 ? COLORS.success : COLORS.textPrimary }}
                           className="text-xs font-medium"
                         >
                           {item.label}
                         </Text>
                         <Text
-                          style={{ color: item.itemType === 'discount' ? COLORS.success : COLORS.textPrimary }}
+                          style={{ color: item.amount < 0 ? COLORS.success : COLORS.textPrimary }}
                           className="text-xs font-semibold"
                         >
-                          {item.itemType === 'discount' ? '-' : ''}₹{item.amount.toFixed(0)}
+                          {item.amount < 0 ? '-' : ''}₹{Math.abs(item.amount).toFixed(0)}
                         </Text>
                       </View>
                     ))}

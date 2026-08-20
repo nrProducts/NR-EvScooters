@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useDamages, useDamage, useResolveDamageDispute } from "@/hooks/useDamages";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Damage, DamageStatus } from "@/types";
@@ -66,21 +67,20 @@ export default function DamagesPage() {
     },
   ];
 
+  usePageSubtitle(
+    <>
+      {data?.total ?? 0} damage records
+      {bookingId && (
+        <>
+          {" · filtered to one booking — "}
+          <Link to="/damages" className="underline">clear</Link>
+        </>
+      )}
+    </>,
+  );
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Damage Review</h1>
-        <p className="text-sm text-muted-foreground">
-          {data?.total ?? 0} damage records
-          {bookingId && (
-            <>
-              {" · filtered to one booking — "}
-              <Link to="/damages" className="underline">clear</Link>
-            </>
-          )}
-        </p>
-      </div>
-
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
           <Select

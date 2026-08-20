@@ -12,6 +12,7 @@ import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { useRefunds, useRefundSettlement, useRetryRefund } from "@/hooks/useRefunds";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { ApiError } from "@/services/api/httpClient";
 import type { Refund, RefundStatus, RefundType } from "@/types";
@@ -153,13 +154,11 @@ export default function RefundsPage() {
     },
   ];
 
+  usePageSubtitle(`${data?.total ?? 0} refunds — security deposits and cancelled bookings`);
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Refund Queue</h1>
-          <p className="text-sm text-muted-foreground">{data?.total ?? 0} refunds — security deposits and cancelled bookings</p>
-        </div>
+      <div className="flex justify-end">
         <Button variant="outline" size="sm" asChild>
           <Link to="/returns">Returns &amp; Settlements</Link>
         </Button>

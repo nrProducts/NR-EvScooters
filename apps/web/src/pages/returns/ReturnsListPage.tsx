@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePickupQueue } from "@/hooks/useBookings";
 import { useSettlements } from "@/hooks/useReturns";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
 import type { PickupBooking, ReturnSettlement } from "@/types";
 
@@ -91,13 +92,10 @@ export default function ReturnsListPage() {
     },
   ];
 
+  usePageSubtitle("Review pending returns and track their financial settlement.");
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Returns</h1>
-        <p className="text-sm text-muted-foreground">Review pending returns and track their financial settlement.</p>
-      </div>
-
       <Tabs value={view} onValueChange={(v) => { setView(v as ReturnsView); setPage(1); }}>
         <TabsList>
           <TabsTrigger value="pending">Pending</TabsTrigger>

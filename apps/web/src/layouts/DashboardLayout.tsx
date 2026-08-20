@@ -39,7 +39,7 @@ export function DashboardLayout() {
         </SheetContent>
       </Sheet>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-3xl border border-border/60 shadow-card">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-3xl border border-border/60 bg-card shadow-card">
         <Header onOpenMobileNav={() => setMobileNavOpen(true)} />
         <main className="flex-1 overflow-y-auto scrollbar-thin pb-16 sm:pb-6">
           <div className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6">

@@ -14,6 +14,7 @@ import {
   useAdminStations, useCreateStation, useDeleteStation, useStationSummary,
   useUpdateStation, useUpdateStationVisibility,
 } from "@/hooks/useBatteryStations";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import {
   BATTERY_STATION_STATUSES, STATION_STATUS_LABEL,
   type BatteryStation, type StationSortBy, type StationStatus, type StationVisibilityFilter,
@@ -80,25 +81,19 @@ export default function BatteryStationsPage() {
     void summary.refetch();
   };
 
+  usePageSubtitle("Add, edit and control which battery swap stations riders see on the mobile map.");
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Battery Station Management</h1>
-          <p className="text-sm text-muted-foreground">
-            Add, edit and control which battery swap stations riders see on the mobile map.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={refreshAll} disabled={isFetching}>
-            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="outline" onClick={refreshAll} disabled={isFetching}>
+          <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+        </Button>
+        {canCreate && (
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" /> Add station
           </Button>
-          {canCreate && (
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Add station
-            </Button>
-          )}
-        </div>
+        )}
       </div>
 
       <StationSummaryCards summary={summary.data} isLoading={summary.isLoading} />

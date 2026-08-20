@@ -19,6 +19,7 @@ import {
   useKycQueue, useApproveKyc, useRejectKyc, useKycDetail, useVerifyDocument, useRejectDocument, useOpenDocument,
 } from "@/hooks/useKyc";
 import { useOpenUserPhoto } from "@/hooks/useUsers";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate } from "@/lib/utils";
 import { PII_ACCESS_REASON_LABELS, hasPermission, type KycQueueItem, type KycStatus, type PiiAccessReason } from "@/types";
@@ -66,13 +67,10 @@ export default function KycQueuePage() {
     });
   };
 
+  usePageSubtitle("Review rider identity documents before approving fleet access");
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">KYC Management</h1>
-        <p className="text-sm text-muted-foreground">Review rider identity documents before approving fleet access</p>
-      </div>
-
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs value={tab} onValueChange={(v) => { setTab(v as KycStatus); setPage(1); }}>
           <TabsList className="flex-wrap">

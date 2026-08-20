@@ -145,7 +145,17 @@
     height: 6px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-border rounded-full;
+    background-color: #bbf7d0; /* green-200 — even lighter green, all screens */
+    border-radius: 9999px;
+  }
+
+  /* Narrower than .scrollbar-thin — for the sidebar nav, where a 6px thumb crowds the icon column. */
+  .scrollbar-nav::-webkit-scrollbar {
+    width: 3px;
+  }
+  .scrollbar-nav::-webkit-scrollbar-thumb {
+    background-color: #bbf7d0; /* green-200 — even lighter green, matches .scrollbar-thin */
+    border-radius: 9999px;
   }
 
   .transition-smooth {

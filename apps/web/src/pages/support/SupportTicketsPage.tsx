@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LifeBuoy, MoreHorizontal, PlayCircle, CheckCircle2, XCircle } from "lucide-react";
+import { MoreHorizontal, PlayCircle, CheckCircle2, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { SideDrawer } from "@/components/common/SideDrawer";
 import { useSupportQueue, useUpdateSupportTicket } from "@/hooks/useSupport";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDateTime } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
@@ -105,16 +106,10 @@ export default function SupportTicketsPage() {
     },
   ];
 
+  usePageSubtitle("Rider issues awaiting a response");
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center gap-2">
-        <LifeBuoy className="h-5 w-5 text-primary" />
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Support Tickets</h1>
-          <p className="text-sm text-muted-foreground">Rider issues awaiting a response</p>
-        </div>
-      </div>
-
       <Tabs value={tab} onValueChange={(v) => { setTab(v as SupportStatus | "all"); setPage(1); }}>
         <TabsList className="flex-wrap">
           {TABS.map((t) => (

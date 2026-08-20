@@ -22,6 +22,7 @@ import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
 import { useVehicles, useCreateVehicle, useUpdateVehicle } from "@/hooks/useVehicles";
 import { useCreateMaintenanceTicket } from "@/hooks/useMaintenance";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
@@ -151,19 +152,17 @@ export default function VehicleListPage() {
     },
   ];
 
+  usePageSubtitle(`${data?.total ?? 0} vehicles in the fleet`);
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Vehicles</h1>
-          <p className="text-sm text-muted-foreground">{data?.total ?? 0} vehicles in the fleet</p>
-        </div>
-        {hasAction(user, "vehicles", "create") && (
+      {hasAction(user, "vehicles", "create") && (
+        <div className="flex justify-end">
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" /> Add vehicle
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">

@@ -12,6 +12,7 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { usePlans, useCreatePlan, useUpdatePlan } from "@/hooks/usePlans";
 import { useVehicleModelOptions } from "@/hooks/useVehicleModelOptions";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import type { PlanInput } from "@/services/api/plans";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -77,21 +78,17 @@ export default function PlansPage() {
     },
   ];
 
+  usePageSubtitle(`${data?.total ?? 0} plans · price, duration and deposit are configured here, never hardcoded`);
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Rental Plans</h1>
-          <p className="text-sm text-muted-foreground">
-            {data?.total ?? 0} plans · price, duration and deposit are configured here, never hardcoded
-          </p>
-        </div>
-        {canCreate && (
+      {canCreate && (
+        <div className="flex justify-end">
           <Button onClick={() => setCreating(true)}>
             <Plus className="mr-1.5 h-4 w-4" /> New plan
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <Card>
         <DataTable

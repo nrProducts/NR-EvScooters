@@ -21,6 +21,7 @@ import {
 } from "@/hooks/useBilling";
 import { usePlanRenewalSettings, useUpdatePlanRenewalSettings } from "@/hooks/usePlanRenewalSettings";
 import { useVehicles } from "@/hooks/useVehicles";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { ApiError } from "@/services/api/httpClient";
 import {
@@ -41,15 +42,10 @@ const RIDER_DISCOUNT_STATUS_OPTIONS: (RiderDiscountStatus | "all")[] = ["all", "
 export default function BillingPage() {
   const [tab, setTab] = useState<"rules" | "charges" | "discountRules" | "discounts">("rules");
 
+  usePageSubtitle("Configure charge and discount rules (globally or per vehicle) and review what's been applied.");
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Billing &amp; Charges</h1>
-        <p className="text-sm text-muted-foreground">
-          Configure charge and discount rules (globally or per vehicle) and review what&apos;s been applied.
-        </p>
-      </div>
-
       <LateRenewalFeeCard />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>

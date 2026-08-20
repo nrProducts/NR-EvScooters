@@ -1015,8 +1015,14 @@ export interface EarlyRechargeResult {
  * upcoming period at any time, not just the day before it is due.
  *
  * Reuses `generate_period_invoice()` via billing.service.ts — the same
- * idempotent function the overdue sweep calls — so this can never mint a
- * duplicate invoice for a period.
+ * function the overdue sweep calls. That function is idempotent at the
+ * invoice level (checks `invoices.subscription_period_id` before applying
+ * adjustments), but two near-simultaneous calls for the same period (e.g. a
+ * double-tapped "Renew") can both pass that check before either commits.
+ * The actual duplicate-application guard is the partial unique index
+ * `uq_subscription_adjustments_rule_period` (migration 38) plus the
+ * `on conflict do nothing` inside `apply_period_adjustments()` — that is what
+ * makes a duplicate call a no-op rather than a duplicate charge/discount.
  *
  * The renewal is keyed on the SUBSCRIPTION now, not the booking. A booking
  * that never became a subscription has nothing to renew, and the guard says so

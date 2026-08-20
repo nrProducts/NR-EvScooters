@@ -478,7 +478,8 @@ export interface ApiInvoice {
 }
 
 export interface ApiEarlyRechargeLineItem {
-    itemType: 'base_rental' | 'charge' | 'discount';
+    /** Matches the DB enum invoice_item_type — there is no separate 'discount' type; a discount is an 'adjustment' with a negative amount. */
+    itemType: 'plan_fee' | 'adjustment' | 'deposit';
     label: string;
     amount: number;
 }

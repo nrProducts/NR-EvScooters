@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { PackageCheck, Undo2 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { PackageCheck } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import { usePickupQueue, useAvailableVehicles, useConfirmPickup, useSetLateFeeOv
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import type { PickupQueueFilters } from "@/services/api/bookings";
 import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
 import { ApiError } from "@/services/api/httpClient";
@@ -56,14 +57,13 @@ function RefundStatusBadge({ status }: { status: BookingRefundStatus }) {
  * status type.
  */
 type RentalOpsView =
-  | "pending" | "assigned" | "active" | "return_requests" | "due" | "scheduled_renewals"
+  | "pending" | "assigned" | "active" | "due" | "scheduled_renewals"
   | "completed" | "cancelled" | "expired" | "all";
 
 const VIEW_TABS: { value: RentalOpsView; label: string }[] = [
   { value: "pending", label: "Pending Bookings" },
   { value: "assigned", label: "Assigned" },
   { value: "active", label: "Active" },
-  { value: "return_requests", label: "Return Requests" },
   { value: "due", label: "Due" },
   // Upcoming/scheduled renewals — a rider already paid ahead, current plan
   // stays active until scheduled_start_date, kept separate from Active so
@@ -84,7 +84,6 @@ function filtersForView(
     case "pending": return { status: "confirmed" };
     case "assigned": return { status: "fulfilled" };
     case "active": return { status: "fulfilled", planStatus: "active" };
-    case "return_requests": return { status: "fulfilled", returnRequested: true };
     case "due": return { status: "fulfilled", planStatus: "due" };
     case "scheduled_renewals": return { status: "fulfilled", renewalStatus: "scheduled" };
     case "completed": return { status: "completed" };
@@ -95,7 +94,6 @@ function filtersForView(
 }
 
 export default function BookingListPage() {
-  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const [view, setView] = useState<RentalOpsView>("pending");
   const [search, setSearch] = useState("");
@@ -229,63 +227,6 @@ export default function BookingListPage() {
     },
   ];
 
-  /** Return Requests gets its own, narrower column set — the fields staff actually need to triage a queue of pending returns. */
-  const returnColumns: DataTableColumn<PickupBooking>[] = [
-    { header: "Rider", key: "rider", render: (b) => b.rider.full_name },
-    {
-      header: "Vehicle",
-      key: "vehicle",
-      render: (b) => (
-        <div>
-          <p className="font-medium">{b.vehicle?.registration_number ?? "—"}</p>
-          <p className="text-xs text-muted-foreground">{b.vehicle_model?.name ?? "—"}</p>
-        </div>
-      ),
-    },
-    {
-      header: "Booking / Rental",
-      key: "ids",
-      render: (b) => (
-        <div className="font-mono text-[11px] text-muted-foreground">
-          <p>B {b.id.slice(0, 8)}</p>
-          {b.active_rental && <p>R {b.active_rental.id.slice(0, 8)}</p>}
-        </div>
-      ),
-      hideOnMobile: true,
-    },
-    {
-      header: "Rental started",
-      key: "started",
-      render: (b) => (b.active_rental ? formatDate(b.active_rental.started_at) : "—"),
-      hideOnMobile: true,
-    },
-    {
-      header: "Return requested",
-      key: "return_requested",
-      render: (b) => (b.active_rental?.return_requested_at ? formatDateTime(b.active_rental.return_requested_at) : "—"),
-    },
-    {
-      header: "Rental status",
-      key: "rental_status",
-      render: (b) => (b.active_rental ? <StatusBadge status={b.active_rental.status} /> : "—"),
-      hideOnMobile: true,
-    },
-    {
-      header: "Return status",
-      key: "return_status",
-      render: () => <StatusBadge status="return_requested" />,
-    },
-    {
-      header: "Actions",
-      key: "actions",
-      render: (b) => (
-        <Button size="sm" variant="outline" onClick={() => b.active_rental && navigate(`/returns/${b.active_rental.id}`)}>
-          <Undo2 className="h-3.5 w-3.5" /> Review Return
-        </Button>
-      ),
-    },
-  ];
-
   /** Cancelled tab gets its own column set — cancellation + refund tracking, not pickup/payment-due fields that never apply here. */
   const cancelledColumns: DataTableColumn<PickupBooking>[] = [
     { header: "Rider", key: "rider", render: (b) => b.rider.full_name },
@@ -360,15 +301,12 @@ export default function BookingListPage() {
     },
   ];
 
-  const columns = view === "return_requests" ? returnColumns : view === "cancelled" ? cancelledColumns : baseColumns;
+  const columns = view === "cancelled" ? cancelledColumns : baseColumns;
+
+  usePageSubtitle("Manage the full rental lifecycle, from booking to return.");
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Rental Operations</h1>
-        <p className="text-sm text-muted-foreground">Manage the full rental lifecycle, from booking to return.</p>
-      </div>
-
       <RentalOperationsSummaryCards />
 
       <Tabs value={view} onValueChange={(v) => { setView(v as RentalOpsView); setPage(1); }}>
@@ -398,7 +336,7 @@ export default function BookingListPage() {
           isLoading={isLoading}
           isError={isError}
           onRetry={() => refetch()}
-          emptyTitle={view === "return_requests" ? "No pending return requests" : "No bookings match your filters"}
+          emptyTitle="No bookings match your filters"
           sort={sort}
           onSortChange={onSortChange}
         />

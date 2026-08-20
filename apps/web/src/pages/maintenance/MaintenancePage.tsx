@@ -18,6 +18,7 @@ import { TriageDialog } from "@/components/maintenance/TriageDialog";
 import { useMaintenanceTickets, useCreateMaintenanceTicket, useUpdateMaintenanceTicket } from "@/hooks/useMaintenance";
 import { useTableSort } from "@/hooks/useTableSort";
 import { useVehicles } from "@/hooks/useVehicles";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
@@ -151,19 +152,17 @@ export default function MaintenancePage() {
     },
   ];
 
+  usePageSubtitle(`${data?.total ?? 0} tickets · service requests, inspections and repairs`);
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Maintenance</h1>
-          <p className="text-sm text-muted-foreground">{data?.total ?? 0} tickets · service requests, inspections and repairs</p>
-        </div>
-        {hasAction(user, "maintenance", "create") && (
+      {hasAction(user, "maintenance", "create") && (
+        <div className="flex justify-end">
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" /> Report issue
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">

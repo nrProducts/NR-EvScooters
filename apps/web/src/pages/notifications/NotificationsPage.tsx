@@ -11,6 +11,7 @@ import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { useNotificationLog, useBroadcastNotification } from "@/hooks/useNotifications";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
@@ -53,13 +54,10 @@ export default function NotificationsPage() {
 
   const canSend = title.trim() && body.trim() && canSendBroadcast;
 
+  usePageSubtitle("Push notifications sent to riders — SMS/email aren't wired up yet");
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Notification Center</h1>
-        <p className="text-sm text-muted-foreground">Push notifications sent to riders — SMS/email aren't wired up yet</p>
-      </div>
-
       <Card>
         <div className="space-y-4 p-4">
           <div className="flex items-center gap-2 text-sm font-medium">

@@ -74,6 +74,25 @@ function PlanStatusCard({
     );
   }
 
+  if (rental.return_requested_at) {
+    return (
+      <View
+        className="rounded-2xl p-4 mb-4 flex-row items-center"
+        style={{ backgroundColor: COLORS.warning + '14', borderWidth: 1, borderColor: COLORS.warning + '55' }}
+      >
+        <Undo2 size={16} color={COLORS.warning} />
+        <View className="flex-1 ml-3">
+          <Text style={{ color: COLORS.warning }} className="text-xs font-extrabold">
+            Return requested — awaiting staff confirmation
+          </Text>
+          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+            Your scooter stays yours until our team confirms the handover.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   if (!eligibility.canRenew && !canReturn) return null;
 
   const remaining = rental.next_due_at ? daysRemaining(rental.next_due_at) : null;

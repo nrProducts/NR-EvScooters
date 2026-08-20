@@ -19,9 +19,17 @@ import {
   Undo2,
   PackageCheck,
   Receipt,
+  Boxes,
+  UserRound,
+  Wallet,
+  Headset,
+  ShieldAlert,
 } from "lucide-react";
 import type { ModuleKey, Role, StaffUser } from "@/types";
 import { hasModule } from "@/lib/permissions";
+
+/** Accordion sections the sidebar groups related screens into — see NAV_GROUPS below. Dashboard and Settings sit outside any group. */
+export type NavGroupKey = "fleet" | "people" | "finance" | "support" | "compliance";
 
 export interface NavItem {
   label: string;
@@ -42,7 +50,18 @@ export interface NavItem {
    * authorise it, because it denies anything it does not recognise.
    */
   hidden?: boolean;
+  /** Which sidebar accordion section this item nests under. Omitted = rendered flat, outside any group (Dashboard, Settings). */
+  group?: NavGroupKey;
 }
+
+/** Accordion section metadata — label/icon shown on the collapsible group header. Render order = this array's order. */
+export const NAV_GROUPS: { key: NavGroupKey; label: string; icon: LucideIcon }[] = [
+  { key: "fleet", label: "Fleet Operations", icon: Boxes },
+  { key: "people", label: "People", icon: UserRound },
+  { key: "finance", label: "Finance", icon: Wallet },
+  { key: "support", label: "Support & Comms", icon: Headset },
+  { key: "compliance", label: "Compliance", icon: ShieldAlert },
+];
 
 /**
  * Single source of truth for sidebar navigation + route guarding.
@@ -65,8 +84,35 @@ export interface NavItem {
  * `privacy.export`, granted from the same matrix as everything else. One
  * table, one middleware, one screen.
  */
+/**
+ * Array order = sidebar render order within each section (Sidebar.tsx groups
+ * items by `group` into accordion sections per NAV_GROUPS, preserving each
+ * item's position within its group). Dashboard and Settings have no `group`
+ * — they render flat, pinned at the top and bottom respectively. Order has no
+ * effect on access control — canAccess depends only on roles/moduleKey, and
+ * matchPath() below sorts by path length, not array position.
+ */
 export const NAV_ITEMS: NavItem[] = [
+  // Ungrouped — always pinned at the top, outside any accordion section.
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, roles: ["admin", "staff"] },
+
+  // --- Fleet Operations — bookings, the fleet itself, and the stations that keep it running ---
+  {
+    label: "Rental Operations",
+    path: "/bookings",
+    icon: CalendarCheck,
+    roles: ["admin", "staff"],
+    moduleKey: "bookings",
+    group: "fleet",
+  },
+  {
+    label: "Vehicles", path: "/vehicles", icon: Bike, roles: ["admin", "staff"], moduleKey: "vehicles", group: "fleet",
+  },
+  // Return review + settlement — a dedicated page (not a popup) covering
+  // the full return-processing workflow, deposit/late-fee/damage settlement.
+  {
+    label: "Returns", path: "/returns", icon: PackageCheck, roles: ["admin", "staff"], moduleKey: "returns", group: "fleet",
+  },
   // Previously hard admin-only ("every write route is requireAdmin, showing
   // this to staff would just be a wall of 403s") — now delegable like every
   // other module now that real per-action checks exist server-side.
@@ -76,23 +122,28 @@ export const NAV_ITEMS: NavItem[] = [
     icon: BatteryCharging,
     roles: ["admin", "staff"],
     moduleKey: "battery_stations",
+    group: "fleet",
   },
   {
-    label: "Rental Operations",
-    path: "/bookings",
-    icon: CalendarCheck,
-    roles: ["admin", "staff"],
-    moduleKey: "bookings",
+    label: "Maintenance", path: "/maintenance", icon: Wrench, roles: ["admin", "staff"], moduleKey: "maintenance", group: "fleet",
   },
-  // Return review + settlement — a dedicated page (not a popup) covering
-  // the full return-processing workflow, deposit/late-fee/damage settlement.
-  { label: "Returns", path: "/returns", icon: PackageCheck, roles: ["admin", "staff"], moduleKey: "returns" },
-  { label: "Vehicles", path: "/vehicles", icon: Bike, roles: ["admin", "staff"], moduleKey: "vehicles" },
-  { label: "Users", path: "/users", icon: Users, roles: ["admin", "staff"], moduleKey: "users" },
-  { label: "KYC Queue", path: "/kyc", icon: ShieldCheck, roles: ["admin", "staff"], moduleKey: "kyc" },
-  { label: "Maintenance", path: "/maintenance", icon: Wrench, roles: ["admin", "staff"], moduleKey: "maintenance" },
-  { label: "Support Tickets", path: "/support", icon: LifeBuoy, roles: ["admin", "staff"], moduleKey: "support" },
-  { label: "Payments", path: "/payments", icon: CreditCard, roles: ["admin", "staff"], moduleKey: "payments" },
+
+  // --- People — riders and the identity checks that gate their access ---
+  { label: "Users", path: "/users", icon: Users, roles: ["admin", "staff"], moduleKey: "users", group: "people" },
+  {
+    label: "KYC Queue", path: "/kyc", icon: ShieldCheck, roles: ["admin", "staff"], moduleKey: "kyc", group: "people",
+  },
+
+  // --- Finance — money in, money out, and reconciling it against Razorpay ---
+  {
+    label: "Payments", path: "/payments", icon: CreditCard, roles: ["admin", "staff"], moduleKey: "payments", group: "finance",
+  },
+  // Configurable charge rules (transaction fee, etc.) and their materialized
+  // rider charges — see 20260817100000_billing_charge_engine.sql.
+  // Delegable for the same reason as Refunds below.
+  {
+    label: "Billing & Charges", path: "/billing", icon: Receipt, roles: ["admin", "staff"], moduleKey: "billing", group: "finance",
+  },
   // Deposit refunds and (as of the approval-gate change) booking-cancellation
   // refunds both need staff to actually see and approve them, not just reach
   // them via the "Refunds" button buried on the Payments page.
@@ -101,18 +152,24 @@ export const NAV_ITEMS: NavItem[] = [
   // standing in for a control that did not exist — and the router's own
   // docstring claimed admin-only while agreeing with neither. The two now
   // match: `refunds.view` opens the section, `refunds.approve` moves money.
-  { label: "Refunds", path: "/refunds", icon: Undo2, roles: ["admin", "staff"], moduleKey: "refunds" },
-  // Configurable charge rules (transaction fee, etc.) and their materialized
-  // rider charges — see 20260817100000_billing_charge_engine.sql.
-  // Delegable for the same reason as Refunds above.
-  { label: "Billing & Charges", path: "/billing", icon: Receipt, roles: ["admin", "staff"], moduleKey: "billing" },
-  { label: "Plans", path: "/plans", icon: Layers, roles: ["admin", "staff"], moduleKey: "plans" },
+  {
+    label: "Refunds", path: "/refunds", icon: Undo2, roles: ["admin", "staff"], moduleKey: "refunds", group: "finance",
+  },
+  {
+    label: "Plans", path: "/plans", icon: Layers, roles: ["admin", "staff"], moduleKey: "plans", group: "finance",
+  },
   {
     label: "Reconciliation",
     path: "/reconciliation",
     icon: Scale,
     roles: ["admin", "staff"],
     moduleKey: "reconciliation",
+    group: "finance",
+  },
+
+  // --- Support & Comms — the rider-facing feedback loop ---
+  {
+    label: "Support Tickets", path: "/support", icon: LifeBuoy, roles: ["admin", "staff"], moduleKey: "support", group: "support",
   },
   {
     label: "Notifications",
@@ -120,7 +177,10 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Bell,
     roles: ["admin", "staff"],
     moduleKey: "notifications",
+    group: "support",
   },
+
+  // --- Compliance — DPDPA rights, access logging and the audit trail ---
   // Data-principal rights queue. Gated by the `privacy` module here and
   // additionally by the rights_officer capability on the server — reaching
   // the queue and being allowed to action a request are different questions.
@@ -134,6 +194,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: FileLock2,
     roles: ["admin", "staff"],
     moduleKey: "privacy",
+    group: "compliance",
   },
   {
     label: "PII Access Log",
@@ -141,8 +202,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Eye,
     roles: ["admin", "staff"],
     moduleKey: "pii_access_log",
+    group: "compliance",
   },
-  { label: "Audit Log", path: "/audit", icon: ScrollText, roles: ["admin", "staff"], moduleKey: "audit" },
+  {
+    label: "Audit Log", path: "/audit", icon: ScrollText, roles: ["admin", "staff"], moduleKey: "audit", group: "compliance",
+  },
+
+  // Ungrouped — pinned at the bottom, outside any accordion section.
   // Effectively admin-only in practice, and the entry stays shaped this way
   // rather than being hard-coded to ["admin"] so it says WHY.
   //
@@ -204,11 +270,53 @@ export function navForUser(user: AccessUser) {
   return NAV_ITEMS.filter((item) => !item.hidden && canAccess(item, user));
 }
 
+/** One rendered row in the sidebar's accordion tree: either a flat item (Dashboard, Settings) or a whole group with its member items. */
+export type NavTreeEntry =
+  | { type: "item"; item: NavItem }
+  | { type: "group"; key: NavGroupKey; label: string; icon: LucideIcon; items: NavItem[] };
+
+/**
+ * Turns the flat, already-role-filtered item list (navForUser's output) into
+ * the accordion tree Sidebar.tsx renders: items without a `group` stay flat
+ * in their original position, items sharing a `group` collapse into one
+ * NavTreeEntry positioned where that group's first item appeared. A group
+ * with zero surviving items (every member filtered out for this user) simply
+ * never appears — nothing to special-case.
+ */
+export function buildNavTree(items: NavItem[]): NavTreeEntry[] {
+  const entries: NavTreeEntry[] = [];
+  const groupEntryIndex = new Map<NavGroupKey, number>();
+
+  for (const item of items) {
+    if (!item.group) {
+      entries.push({ type: "item", item });
+      continue;
+    }
+    const existingIndex = groupEntryIndex.get(item.group);
+    if (existingIndex !== undefined) {
+      const entry = entries[existingIndex];
+      if (entry.type === "group") entry.items.push(item);
+      continue;
+    }
+    const meta = NAV_GROUPS.find((g) => g.key === item.group);
+    if (!meta) {
+      // Defensive fallback — a group key with no NAV_GROUPS entry is a bug,
+      // but rendering the item flat beats silently dropping it.
+      entries.push({ type: "item", item });
+      continue;
+    }
+    groupEntryIndex.set(item.group, entries.length);
+    entries.push({ type: "group", key: meta.key, label: meta.label, icon: meta.icon, items: [item] });
+  }
+
+  return entries;
+}
+
 /**
  * Longest-prefix match, so "/privacy/access-log" is never resolved by the
  * "/privacy/requests" entry, or vice versa.
  */
-function matchPath(path: string): NavItem | undefined {
+export function matchPath(path: string): NavItem | undefined {
   const hits = NAV_ITEMS.filter((n) => path === n.path || path.startsWith(n.path + "/"));
   if (hits.length === 0) return undefined;
   return hits.sort((a, b) => b.path.length - a.path.length)[0];

@@ -88,7 +88,7 @@ export default function PermissionMatrixPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">Manage permissions — {user.full_name}</h1>
+          <h1 className="truncate text-2xl font-semibold tracking-tight">{user.full_name}</h1>
           <p className="text-sm text-muted-foreground">
             {user.email ?? user.phone} · {totalGranted} permission{totalGranted === 1 ? "" : "s"} granted
           </p>

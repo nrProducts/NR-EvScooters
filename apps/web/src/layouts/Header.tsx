@@ -14,12 +14,17 @@ import {
 import { useUiStore } from "@/store/uiStore";
 import { useAuth } from "@/hooks/useAuth";
 import { cn, initials, formatDate } from "@/lib/utils";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import { matchPath } from "@/routes/roleConfig";
+import { usePageHeaderStore } from "@/store/pageHeaderStore";
 
 export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const { theme, toggleTheme } = useUiStore();
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const pageTitle = matchPath(location.pathname)?.label ?? "";
+  const pageSubtitle = usePageHeaderStore((s) => s.subtitle);
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur-md sm:px-6">
@@ -27,9 +32,18 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
         <Menu className="h-5 w-5" />
       </Button>
 
-      <GlobalSearch />
+      <div className="flex flex-1 min-w-0 items-baseline gap-2">
+        <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">{pageTitle}</h1>
+        {pageSubtitle && (
+          <span className="hidden min-w-0 items-baseline gap-2 text-xs font-medium text-muted-foreground sm:inline-flex sm:text-sm">
+            <span aria-hidden="true">-</span>
+            <span className="truncate">{pageSubtitle}</span>
+          </span>
+        )}
+      </div>
 
-      <div className="flex flex-1 items-center justify-end gap-1.5 sm:gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-3">
+        <GlobalSearch />
         {user?.role && (
           <div className="hidden items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 lg:flex">
             <span

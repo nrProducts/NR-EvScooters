@@ -17,6 +17,7 @@ import {
 import { Link, useSearchParams } from "react-router-dom";
 import { useInvoices, useInvoice, useRefundInvoice } from "@/hooks/usePayments";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
@@ -157,32 +158,30 @@ export default function PaymentsPage() {
     },
   ];
 
+  usePageSubtitle(
+    <>
+      {data?.total ?? 0} invoices · revenue, transactions and refunds
+      {bookingId && (
+        <>
+          {" · filtered to one booking — "}
+          <Link to="/payments" className="underline">clear</Link>
+        </>
+      )}
+    </>,
+  );
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Payments</h1>
-          <p className="text-sm text-muted-foreground">
-            {data?.total ?? 0} invoices · revenue, transactions and refunds
-            {bookingId && (
-              <>
-                {" · filtered to one booking — "}
-                <Link to="/payments" className="underline">clear</Link>
-              </>
-            )}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/damages">Damages</Link>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/refunds">Refunds</Link>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/plans">Plans</Link>
-          </Button>
-        </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/damages">Damages</Link>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/refunds">Refunds</Link>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/plans">Plans</Link>
+        </Button>
       </div>
 
       <Card>

@@ -16,6 +16,7 @@ import {
   useApproveErasure, useExecuteErasure,
 } from "@/hooks/usePrivacyRequests";
 import { useToastStore } from "@/store/toastStore";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
@@ -100,16 +101,12 @@ export default function RightsQueuePage() {
     },
   ];
 
+  usePageSubtitle(
+    "Access, correction, erasure and grievance requests from riders. Each has a published response period we have committed to in the privacy notice.",
+  );
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Privacy requests</h1>
-        <p className="text-sm text-muted-foreground">
-          Access, correction, erasure and grievance requests from riders. Each has a published
-          response period we have committed to in the privacy notice.
-        </p>
-      </div>
-
       <div className="flex flex-wrap gap-2">
         <Select value={type} onValueChange={(v) => { setType(v as DpRequestType | "all"); setPage(1); }}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Any type" /></SelectTrigger>

@@ -21,7 +21,6 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Timeline, type TimelineItem } from "@/components/common/Timeline";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuth } from "@/hooks/useAuth";
 import { useUsers } from "@/hooks/useUsers";
 import { usePickupQueue } from "@/hooks/useBookings";
 import { useReportsSummary } from "@/hooks/useReports";
@@ -31,7 +30,7 @@ import { useAuditLogs } from "@/hooks/useAudit";
 import { useNotificationLog } from "@/hooks/useNotifications";
 import { useAdminStations, useStationSummary } from "@/hooks/useBatteryStations";
 import { useUiStore } from "@/store/uiStore";
-import { cn, formatCurrency, formatDate, greetingForHour, timeAgo } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, timeAgo } from "@/lib/utils";
 import type { PickupBooking, VehicleStatus } from "@/types";
 
 const NOTIFICATION_DOT: Record<string, string> = {
@@ -64,7 +63,6 @@ function activityTone(action: string): TimelineItem["tone"] {
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
   const { theme } = useUiStore();
-  const { user } = useAuth();
   const { data: summary, isLoading: summaryLoading } = useReportsSummary();
   const { data: pendingKyc, isLoading: pendingLoading } = useUsers({ page: 1, pageSize: 1, kycStatus: "pending" });
   const { data: recentBookings, isLoading: bookingsLoading } = usePickupQueue({ pageSize: 5 });
@@ -111,14 +109,6 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      {/* Hero */}
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {greetingForHour(new Date().getHours())} {user?.name?.split(" ")[0] ?? "there"} 👋
-        </h1>
-        <p className="text-sm text-muted-foreground">Fleet Performance Overview — real counts from the backend, no fabricated numbers</p>
-      </div>
-
       {/* At-a-glance */}
       {isLoading || !summary ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
