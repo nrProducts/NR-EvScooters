@@ -33,11 +33,28 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
       </Button>
 
       <div className="flex flex-1 min-w-0 items-baseline gap-2">
-        <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">{pageTitle}</h1>
+        {/*
+          shrink-0 is the fix: without it, flexbox shrinks the title and the
+          subtitle proportionally whenever they don't both fit, so even a
+          short title like "Privacy Requests" was getting clipped to "Privacy
+          Req...". The title now always renders at its full natural width —
+          the (less important) subtitle gives up space first, down to
+          nothing on narrow screens. max-w/truncate/title stay only as a
+          last-resort safety net for a hypothetically very long future label;
+          none of today's labels are anywhere near wide enough to hit it.
+        */}
+        <h1
+          className="max-w-[60%] shrink-0 truncate text-base font-semibold text-foreground sm:max-w-[50%] sm:text-lg"
+          title={pageTitle}
+        >
+          {pageTitle}
+        </h1>
         {pageSubtitle && (
-          <span className="hidden min-w-0 items-baseline gap-2 text-xs font-medium text-muted-foreground sm:inline-flex sm:text-sm">
-            <span aria-hidden="true">-</span>
-            <span className="truncate">{pageSubtitle}</span>
+          <span className="hidden min-w-0 flex-1 items-baseline gap-2 text-xs font-medium text-muted-foreground sm:inline-flex sm:text-sm">
+            <span aria-hidden="true" className="shrink-0">-</span>
+            <span className="truncate" title={typeof pageSubtitle === "string" ? pageSubtitle : undefined}>
+              {pageSubtitle}
+            </span>
           </span>
         )}
       </div>
