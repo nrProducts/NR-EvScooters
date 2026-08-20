@@ -57,7 +57,11 @@ export type AuditAction =
     | "privacy.erasure_requested" | "privacy.erasure_approved"
     | "privacy.erasure_executed" | "privacy.erasure_cancelled"
     // DPDPA — retention
-    | "retention.purge_run";
+    | "retention.purge_run"
+    // Mini HRMS
+    | "attendance.checked_in" | "attendance.checked_out"
+    | "leave.applied" | "leave.approved" | "leave.rejected" | "leave.cancelled"
+    | "holiday.created" | "holiday.updated" | "holiday.deleted";
 
 export interface AuditEntry {
     actorId: string | null;
@@ -83,7 +87,8 @@ export interface AuditEntry {
         | "incident" | "damage" | "damage_dispute" | "support_ticket"
         | "notification_broadcast" | "notification_setting" | "notification_message"
         | "consent_record" | "consent_notice" | "privacy_request" | "retention_run"
-        | "referral";
+        | "referral"
+        | "attendance_record" | "leave_request" | "holiday";
     entityId: string;
     before?: Record<string, unknown> | null;
     after?: Record<string, unknown> | null;

@@ -28,6 +28,10 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   draft: "muted",
   on_leave: "muted",
   open: "warning",
+  // Mini HRMS — attendance roster status (derived, not stored — see attendance.service.ts)
+  present: "success",
+  absent: "destructive",
+  week_off: "secondary",
   // real backend status values
   verified: "success",
   resolved: "success",

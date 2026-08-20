@@ -1,6 +1,7 @@
 import { Menu, Sun, Moon, LogOut, Settings as SettingsIcon } from "lucide-react";
 import { GlobalSearch } from "@/components/common/GlobalSearch";
 import { NotificationBell } from "@/components/common/NotificationBell";
+import { HeaderAttendanceControl } from "@/components/common/HeaderAttendanceControl";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -75,6 +76,8 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
         <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
           {theme === "light" ? <Moon className="h-[1.125rem] w-[1.125rem]" /> : <Sun className="h-[1.125rem] w-[1.125rem]" />}
         </Button>
+
+        <HeaderAttendanceControl role={user?.role} />
 
         <NotificationBell />
 

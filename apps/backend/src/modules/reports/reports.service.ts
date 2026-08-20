@@ -2,6 +2,7 @@ import { supabaseAdmin } from "../../config/supabase";
 import { KYC_STATUSES, KycStatus } from "../../types";
 import { VEHICLE_STATUSES, VehicleStatus } from "../vehicles/vehicles.types";
 import { MAINTENANCE_STATUSES, MaintenanceStatus } from "../maintenance/maintenance.types";
+import { businessToday, isWeeklyOff } from "../../common/dates";
 import { ReportsSummary } from "./reports.types";
 
 function zeroed<T extends string>(keys: readonly T[]): Record<T, number> {
@@ -126,6 +127,95 @@ async function activeRideCount(): Promise<number> {
     return count ?? 0;
 }
 
+/**
+ * Mini HRMS dashboard stats. Roster is role = 'staff' only, same as
+ * attendance.service.ts's getTodayRoster() — admin manages attendance, they
+ * aren't tracked by it, so an admin account must never inflate Total Staff
+ * or appear as present/absent. Also mirrors that function's exact
+ * status-derivation precedence (on_leave wins over present, so nobody is
+ * double-counted across both buckets) — fetches the id sets rather than two
+ * independent `head:true` counts, specifically so that precedence can be
+ * applied here too.
+ */
+async function attendanceAndLeaveStats(): Promise<{
+    attendance: ReportsSummary["attendance"];
+    leave: ReportsSummary["leave"];
+}> {
+    const today = businessToday();
+
+    const [rosterRes, leaveStatusRes] = await Promise.all([
+        supabaseAdmin
+            .from("users")
+            .select("id")
+            .eq("role", "staff")
+            .eq("status", "active")
+            .is("deleted_at", null),
+        supabaseAdmin.from("leave_requests").select("status"),
+    ]);
+    if (rosterRes.error) throw rosterRes.error;
+    if (leaveStatusRes.error) throw leaveStatusRes.error;
+
+    const leaveCounts = { pending_count: 0, approved_count: 0, rejected_count: 0 };
+    for (const row of leaveStatusRes.data ?? []) {
+        if (row.status === "pending") leaveCounts.pending_count += 1;
+        else if (row.status === "approved") leaveCounts.approved_count += 1;
+        else if (row.status === "rejected") leaveCounts.rejected_count += 1;
+    }
+
+    const userIds = (rosterRes.data ?? []).map((r) => r.id);
+    const totalStaff = userIds.length;
+
+    if (totalStaff === 0) {
+        return {
+            attendance: { total_staff: 0, present_today: 0, absent_today: 0, on_leave_today: 0, on_week_off_today: 0 },
+            leave: leaveCounts,
+        };
+    }
+
+    const [attendanceRes, leaveRes] = await Promise.all([
+        supabaseAdmin
+            .from("attendance_records")
+            .select("user_id, check_in_at")
+            .eq("work_date", today)
+            .in("user_id", userIds),
+        supabaseAdmin
+            .from("leave_requests")
+            .select("user_id")
+            .eq("status", "approved")
+            .lte("start_date", today)
+            .gte("end_date", today)
+            .in("user_id", userIds),
+    ]);
+    if (attendanceRes.error) throw attendanceRes.error;
+    if (leaveRes.error) throw leaveRes.error;
+
+    const onLeaveUsers = new Set((leaveRes.data ?? []).map((l) => l.user_id));
+    const checkedInUsers = new Set(
+        (attendanceRes.data ?? []).filter((a) => a.check_in_at).map((a) => a.user_id),
+    );
+
+    let presentToday = 0;
+    let onLeaveToday = 0;
+    for (const id of userIds) {
+        if (onLeaveUsers.has(id)) onLeaveToday += 1;
+        else if (checkedInUsers.has(id)) presentToday += 1;
+    }
+    // Sunday: whoever isn't present/on_leave is on the weekly off, not
+    // absent — same precedence as getTodayRoster()'s per-user derivation.
+    const remaining = totalStaff - presentToday - onLeaveToday;
+    const weeklyOff = isWeeklyOff(today);
+    const onWeekOffToday = weeklyOff ? remaining : 0;
+    const absentToday = weeklyOff ? 0 : remaining;
+
+    return {
+        attendance: {
+            total_staff: totalStaff, present_today: presentToday, absent_today: absentToday,
+            on_leave_today: onLeaveToday, on_week_off_today: onWeekOffToday,
+        },
+        leave: leaveCounts,
+    };
+}
+
 /** YYYY-MM for the current month and the (n-1) before it, oldest first. */
 function lastNMonths(n: number): string[] {
     const out: string[] = [];
@@ -211,7 +301,7 @@ export async function getReportsSummary(): Promise<ReportsSummary> {
     const months = lastNMonths(6);
     const [
         vehicleStatus, riders, revenue, maintenanceStatus, activeSubscriptions, pendingBookings, activeRides,
-        revenueTrendData, bookingsTrendData, maintenanceTrendData,
+        revenueTrendData, bookingsTrendData, maintenanceTrendData, hrmsStats,
     ] = await Promise.all([
         vehicleStatusCounts(),
         riderStats(),
@@ -223,6 +313,7 @@ export async function getReportsSummary(): Promise<ReportsSummary> {
         revenueTrend(months),
         bookingsTrend(months),
         maintenanceTrend(months),
+        attendanceAndLeaveStats(),
     ]);
 
     return {
@@ -236,6 +327,8 @@ export async function getReportsSummary(): Promise<ReportsSummary> {
         plans: { active_subscriptions: activeSubscriptions },
         bookings: { pending_count: pendingBookings },
         rides: { active_count: activeRides },
+        attendance: hrmsStats.attendance,
+        leave: hrmsStats.leave,
         trends: { revenue: revenueTrendData, bookings: bookingsTrendData, maintenance: maintenanceTrendData },
     };
 }

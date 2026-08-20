@@ -23,6 +23,12 @@ export function formatDate(value: string | Date) {
   }).format(d);
 }
 
+/** Time only, e.g. "09:12 AM" — for the header attendance control's check-in/out stamp. */
+export function formatTime(value: string | Date) {
+  const d = typeof value === "string" ? new Date(value) : value;
+  return new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).format(d);
+}
+
 export function formatDateTime(value: string | Date) {
   const d = typeof value === "string" ? new Date(value) : value;
   return new Intl.DateTimeFormat("en-IN", {

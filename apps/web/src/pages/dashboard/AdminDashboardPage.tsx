@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import {
   Users, ShieldCheck, PackageCheck, Bike, IndianRupee, Wrench, Recycle, Navigation, CalendarClock,
-  CreditCard, Wallet, Plus, Bell,
+  CreditCard, Wallet, Plus, Bell, ClipboardList,
 } from "lucide-react";
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { SparkStatCard } from "@/components/common/SparkStatCard";
 import { ChartCard } from "@/components/common/ChartCard";
 import { MotionCard } from "@/components/motion/MotionCard";
 import { FleetStatusCard, VEHICLE_STATUS_LABEL } from "@/components/dashboard/FleetStatusCard";
+import { HorizontalSummaryCard } from "@/components/dashboard/HorizontalSummaryCard";
 import { StationNetworkMap } from "@/components/dashboard/StationNetworkMap";
 import { StationStatusGauge } from "@/components/dashboard/StationStatusGauge";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -109,18 +110,71 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      {/* At-a-glance */}
-      {isLoading || !summary ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <StatCard label="Available Vehicles" value={summary.vehicles.by_status.available} icon={Bike} tone="success" />
-          <StatCard label="Pending KYC" value={pendingKyc?.total ?? 0} icon={ShieldCheck} tone="warning" />
-          <StatCard label="Pending Maintenance" value={pendingMaintenance} icon={Wrench} tone="destructive" />
-        </div>
-      )}
+      {/* At-a-glance — Fleet Overview / Staff Attendance / Leave Management, side by side on larger
+          screens. Stretched (the grid default) rather than items-start, so all three sit on the same
+          bottom edge even though only Fleet Overview has a footer progress bar. */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <HorizontalSummaryCard
+          icon={Bike}
+          iconTone="success"
+          title="Fleet Overview"
+          isLoading={isLoading || !summary}
+          metrics={[
+            { label: "Available", value: summary?.vehicles.by_status.available ?? 0, tone: "success" },
+            { label: "Pending KYC", value: pendingKyc?.total ?? 0, tone: "warning" },
+            { label: "Pending Maintenance", value: pendingMaintenance, tone: "destructive" },
+          ]}
+          linkLabel="View Fleet"
+          onLinkClick={() => navigate("/vehicles")}
+          footer={
+            summary && summary.vehicles.total > 0 ? (
+              <div className="mt-2.5 space-y-1">
+                <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full bg-success"
+                    style={{ width: `${(summary.vehicles.by_status.available / summary.vehicles.total) * 100}%` }}
+                  />
+                  <div
+                    className="h-full bg-info"
+                    style={{ width: `${(summary.vehicles.by_status.reserved / summary.vehicles.total) * 100}%` }}
+                  />
+                </div>
+                <p className="text-center text-[0.6875rem] text-muted-foreground">Available / Reserved</p>
+              </div>
+            ) : undefined
+          }
+        />
+
+        <HorizontalSummaryCard
+          icon={Users}
+          title="Staff Attendance"
+          isLoading={isLoading || !summary}
+          metrics={[
+            { label: "Total", value: summary?.attendance.total_staff ?? 0 },
+            { label: "Present", value: summary?.attendance.present_today ?? 0, tone: "success" },
+            { label: "Absent", value: summary?.attendance.absent_today ?? 0, tone: "destructive" },
+            { label: "On Leave", value: summary?.attendance.on_leave_today ?? 0, tone: "info" },
+            { label: "Week Off", value: summary?.attendance.on_week_off_today ?? 0 },
+          ]}
+          linkLabel="View Attendance"
+          onLinkClick={() => navigate("/attendance")}
+        />
+
+        <HorizontalSummaryCard
+          icon={ClipboardList}
+          iconTone="warning"
+          title="Leave Management"
+          isLoading={isLoading || !summary}
+          primaryMetric={`${summary?.leave.pending_count ?? 0} Pending Request${summary?.leave.pending_count === 1 ? "" : "s"}`}
+          metrics={[
+            { label: "Pending", value: summary?.leave.pending_count ?? 0, tone: "warning" },
+            { label: "Approved", value: summary?.leave.approved_count ?? 0, tone: "success" },
+            { label: "Rejected", value: summary?.leave.rejected_count ?? 0, tone: "destructive" },
+          ]}
+          linkLabel="View Requests"
+          onLinkClick={() => navigate("/leave")}
+        />
+      </div>
 
       {/* Station Network (wide, left) + Fleet Status / Quick Actions / Battery Stations (compact, right) */}
       <div className="grid gap-3 lg:grid-cols-3">

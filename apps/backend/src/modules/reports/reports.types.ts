@@ -30,6 +30,24 @@ export interface ReportsSummary {
     rides: {
         active_count: number;
     };
+    /**
+     * Mini HRMS — active staff roster (role='staff' only, admin excluded —
+     * see attendance.service.ts's getTodayRoster()), today's derived status
+     * counts. total_staff = present + absent + on_leave + on_week_off.
+     */
+    attendance: {
+        total_staff: number;
+        present_today: number;
+        absent_today: number;
+        on_leave_today: number;
+        /** Sunday, no check-in. See common/dates.ts's isWeeklyOff(). */
+        on_week_off_today: number;
+    };
+    leave: {
+        pending_count: number;
+        approved_count: number;
+        rejected_count: number;
+    };
     /** Last 6 calendar months, oldest first. */
     trends: {
         revenue: Array<{ month: string; amount: number }>;

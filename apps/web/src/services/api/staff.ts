@@ -30,6 +30,8 @@ interface SessionResponse {
   permission_keys: PermissionKey[];
   /** True for a staff account still on its admin-issued temporary password — gates every route to /change-password until cleared. */
   must_change_password: boolean;
+  staff_code: string | null;
+  joined_on: string | null;
 }
 
 /** One place to build the client-side user, so login and refresh cannot drift. */
@@ -45,6 +47,8 @@ function toStaffUser(session: SessionResponse, role: Role): StaffUser {
     permissions: session.permissions,
     permissionKeys: session.permission_keys ?? [],
     mustChangePassword: session.must_change_password,
+    staffCode: session.staff_code ?? undefined,
+    joinedOn: session.joined_on,
   };
 }
 

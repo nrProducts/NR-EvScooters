@@ -42,7 +42,7 @@ const PROFILE_SELECT = `
     id, full_name, email, phone, date_of_birth, gender, role, status,
     photo_storage_path, created_at, updated_at, deleted_at,
     rider_profiles(kyc_status, onboarding_completed_at),
-    staff_profiles(staff_code, must_change_password),
+    staff_profiles(staff_code, must_change_password, joined_on),
     user_addresses(line_1, line_2, city, state, postal_code, country, is_primary),
     user_related_persons(person_role, full_name, phone)
 `;
@@ -89,7 +89,9 @@ function toProfile(row: RawUserRow): UserProfile {
     const rider = one<{ kyc_status: UserProfile["kyc_status"]; onboarding_completed_at: string | null }>(
         row.rider_profiles,
     );
-    const staff = one<{ staff_code: string | null; must_change_password: boolean }>(row.staff_profiles);
+    const staff = one<{ staff_code: string | null; must_change_password: boolean; joined_on: string | null }>(
+        row.staff_profiles,
+    );
 
     const addresses = many<{
         line_1: string; line_2: string | null; city: string; state: string;
@@ -125,6 +127,7 @@ function toProfile(row: RawUserRow): UserProfile {
         deleted_at: row.deleted_at,
         staff_code: staff?.staff_code ?? null,
         must_change_password: staff?.must_change_password ?? false,
+        joined_on: staff?.joined_on ?? null,
     };
 }
 

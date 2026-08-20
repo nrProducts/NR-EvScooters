@@ -90,3 +90,26 @@ export function wholeDaysBetween(earlier: Date, later: Date): number {
     const b = new Date(later); b.setHours(0, 0, 0, 0);
     return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
+
+/**
+ * The Mini HRMS weekly off — every Sunday, fleet-wide, no per-staff or
+ * per-region override. `dateStr` is a `YYYY-MM-DD` business day (typically
+ * from businessToday()); parsed as UTC midnight, which is safe here
+ * specifically because the string already IS the correct IST calendar day —
+ * there's no further timezone conversion left to get wrong, unlike computing
+ * "today" from an instant (see this file's header comment on that bug).
+ */
+export function isWeeklyOff(dateStr: string): boolean {
+    return new Date(`${dateStr}T00:00:00Z`).getUTCDay() === 0;
+}
+
+/**
+ * Every calendar day from `startDate` to `endDate`, inclusive, as
+ * `YYYY-MM-DD` strings. UTC-anchored via addDays(), so it inherits the same
+ * "operates on a date string, not now()" safety.
+ */
+export function datesBetween(startDate: string, endDate: string): string[] {
+    const days: string[] = [];
+    for (let d = startDate; d <= endDate; d = addDays(d, 1)) days.push(d);
+    return days;
+}

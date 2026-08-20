@@ -50,6 +50,8 @@ export interface UserProfile {
     staff_code: string | null;
     /** `staff_profiles.must_change_password`. False for riders. */
     must_change_password: boolean;
+    /** `staff_profiles.joined_on`. Null for riders, and for staff hired before this was tracked. */
+    joined_on: string | null;
 }
 
 export interface UserListItem extends UserProfile {

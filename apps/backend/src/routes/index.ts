@@ -29,6 +29,9 @@ import notificationSettingsRoutes from "../modules/notification-settings/notific
 import planRenewalSettingsRoutes from "../modules/plan-renewal-settings/plan-renewal-settings.routes";
 import returnsRoutes from "../modules/returns/returns.routes";
 import permissionsRoutes from "../modules/permissions/permissions.routes";
+import attendanceRoutes from "../modules/attendance/attendance.routes";
+import leaveRoutes from "../modules/leave/leave.routes";
+import holidaysRoutes from "../modules/holidays/holidays.routes";
 
 const router = Router();
 
@@ -85,5 +88,8 @@ router.use("/plan-renewal-settings", planRenewalSettingsRoutes);
 router.use("/returns", returnsRoutes);
 router.use("/billing", billingRoutes);
 router.use("/reconciliation", reconciliationRoutes);
+router.use("/attendance", attendanceRoutes);
+router.use("/leave", leaveRoutes);
+router.use("/holidays", holidaysRoutes);
 
 export default router;

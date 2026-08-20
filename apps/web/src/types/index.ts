@@ -137,6 +137,10 @@ export interface StaffUser {
   phone?: string;
   /** True for a staff account still on its admin-issued temporary password — ProtectedRoute locks every other page until they set their own. */
   mustChangePassword: boolean;
+  /** `staff_profiles.staff_code`. Undefined for riders (never authenticate on the web console anyway). */
+  staffCode?: string;
+  /** `staff_profiles.joined_on`. Null if unset — see MyProfilePage.tsx. */
+  joinedOn?: string | null;
 }
 
 /** Does this console user hold `<module>.<action>`? Admin always does. */
@@ -1059,6 +1063,12 @@ export interface ReportsSummary {
   plans: { active_subscriptions: number };
   bookings: { pending_count: number };
   rides: { active_count: number };
+  /** Mini HRMS — active staff roster (admin excluded), today's derived status counts. */
+  attendance: {
+    total_staff: number; present_today: number; absent_today: number;
+    on_leave_today: number; on_week_off_today: number;
+  };
+  leave: { pending_count: number; approved_count: number; rejected_count: number };
   trends: {
     revenue: { month: string; amount: number }[];
     bookings: { month: string; count: number }[];

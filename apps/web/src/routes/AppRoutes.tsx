@@ -33,6 +33,10 @@ import NotificationManagerPage from "@/pages/settings/NotificationManagerPage";
 import PiiAccessPage from "@/pages/privacy/PiiAccessPage";
 import RightsQueuePage from "@/pages/privacy/RightsQueuePage";
 import AuditLogPage from "@/pages/audit/AuditLogPage";
+import AttendanceRouter from "@/pages/attendance/AttendanceRouter";
+import LeaveRouter from "@/pages/leave/LeaveRouter";
+import MyProfilePage from "@/pages/profile/MyProfilePage";
+import HolidaysPage from "@/pages/holidays/HolidaysPage";
 import NotFoundPage from "@/pages/errors/NotFoundPage";
 import ForbiddenPage from "@/pages/errors/ForbiddenPage";
 
@@ -93,6 +97,16 @@ export function AppRoutes() {
         <Route path="/privacy/requests" element={<RightsQueuePage />} />
         <Route path="/privacy/access-log" element={<PiiAccessPage />} />
         <Route path="/audit" element={<AuditLogPage />} />
+
+        {/* Mini HRMS — AttendanceRouter/LeaveRouter branch by role internally
+            too (see their own comments), so the two paths mounting the same
+            router component can never end up wired to the wrong page. */}
+        <Route path="/attendance" element={<AttendanceRouter />} />
+        <Route path="/my-attendance" element={<AttendanceRouter />} />
+        <Route path="/leave" element={<LeaveRouter />} />
+        <Route path="/my-leave" element={<LeaveRouter />} />
+        <Route path="/holidays" element={<HolidaysPage />} />
+        <Route path="/my-profile" element={<MyProfilePage />} />
 
         <Route path="/403" element={<ForbiddenPage />} />
       </Route>
