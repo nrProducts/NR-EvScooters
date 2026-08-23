@@ -67,6 +67,8 @@ export interface BookingView {
     /** `bookings.requested_start_on`. */
     start_day: string;
     created_at: string;
+    /** When an unpaid hold lapses. Null once the booking is no longer pending. */
+    hold_expires_at: string | null;
     vehicle_model: { id: string; name: string } | null;
     /** From `hubs`. `lat`/`lng` are the generated `latitude`/`longitude`. */
     station: { id: string; name: string; code: string; lat: number; lng: number } | null;

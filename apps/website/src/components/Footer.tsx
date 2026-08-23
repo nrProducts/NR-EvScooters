@@ -79,7 +79,7 @@ export function Footer() {
 
       <div className="bg-foreground">
         <Container className="flex flex-col items-center justify-between gap-3 py-6 text-xs text-white/60 sm:flex-row">
-          <p>© {year} SwapNgo. All rights reserved.</p>
+          <p>© {year} Swapngo. All rights reserved.</p>
           <div className="flex gap-5">
             <a href="#" className="hover:text-white">
               Privacy Policy

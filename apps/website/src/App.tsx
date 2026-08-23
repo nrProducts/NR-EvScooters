@@ -4,7 +4,7 @@ import { Hero } from "@/components/sections/Hero";
 import { HowItWorks } from "@/components/sections/HowItWorks";
 import { Impact } from "@/components/sections/Impact";
 import { Vehicles } from "@/components/sections/Vehicles";
-import { WhySwapNgo } from "@/components/sections/WhySwapNgo";
+import { WhySwapngo } from "@/components/sections/WhySwapngo";
 import { Pricing } from "@/components/sections/Pricing";
 import { About } from "@/components/sections/About";
 import { Faq } from "@/components/sections/Faq";
@@ -20,7 +20,7 @@ export default function App() {
         <HowItWorks />
         <Impact />
         <Vehicles />
-        <WhySwapNgo />
+        <WhySwapngo />
         <Pricing />
         <About />
         <Faq />

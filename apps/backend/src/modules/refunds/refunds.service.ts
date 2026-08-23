@@ -1,7 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "../../config/supabase";
 import { getRazorpay } from "../../config/razorpay";
-import { env } from "../../config/env";
 import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
@@ -60,10 +58,17 @@ const REFUND_COLUMNS = `
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 const rupeesToPaise = (rupees: number): number => Math.round(rupees * 100);
 
-/** Same "no keys configured in dev" fallback payments.service.ts uses. */
-function isGatewayConfigured(): boolean {
-    return !!env.razorpayKeyId && !!env.razorpayKeySecret;
-}
+/**
+ * There is no "no keys configured" fallback here any more, matching
+ * payments.service.ts.
+ *
+ * It used to mint `mock_refund_<uuid>` and mark the refund `succeeded` with a
+ * `completed_at`, which released the deposit and told the rider their money
+ * was on its way while nothing left the business. Worse than a silent no-op:
+ * the fake refund also consumed refundable headroom against the real payment,
+ * because assert_refund_within_payment counts every non-failed row. A payout
+ * is now recorded only when Razorpay has accepted it.
+ */
 
 function unwrap<T>(raw: unknown): T | null {
     const v = Array.isArray(raw) ? raw[0] : raw;
@@ -384,19 +389,48 @@ export async function processRefund(
         .eq("id", refundId);
 
     try {
-        const gatewayRefundId = isGatewayConfigured()
-            ? (await getRazorpay().payments.refund(sourcePaymentId, {
-                amount: rupeesToPaise(Number(refund.amount)),
-                notes: { refund_id: refundId, reason: refund.reason },
-            })).id
-            : `mock_refund_${randomUUID()}`;
+        // Duplicate-payout protection is OURS, not the gateway's.
+        //
+        // Razorpay's refund API accepts an idempotency header, but the Node
+        // SDK does not expose it — `payments.refund`'s third parameter is a
+        // callback, not a headers bag. So the guarantee comes from two things
+        // we do control: the `processing` check at the top of this function,
+        // and `uq_refunds_open_per_transaction`, a partial unique index that
+        // permits at most one pending-or-processing refund per captured
+        // payment. Two concurrent approvals cannot both reach this line.
+        const created = await getRazorpay().payments.refund(sourcePaymentId, {
+            amount: rupeesToPaise(Number(refund.amount)),
+            notes: { refund_id: refundId, reason: refund.reason },
+        });
+
+        const gatewayRefundId = created.id;
+
+        // `processed` means the money has actually left. Razorpay returns
+        // `pending` for most instant refunds, and that stays `processing`
+        // here until the refund.processed webhook confirms it — marking it
+        // succeeded now would release the deposit against a payout the bank
+        // has not made yet, which is the same mistake the deleted mock branch
+        // made, just with a real id attached.
+        const settledAtGateway = created.status === "processed";
 
         const nowIso = new Date().toISOString();
         const { error: updateError } = await supabaseAdmin
             .from("refunds")
-            .update({ status: "succeeded", gateway_refund_id: gatewayRefundId, completed_at: nowIso })
+            .update(settledAtGateway
+                ? { status: "succeeded", gateway_refund_id: gatewayRefundId, completed_at: nowIso }
+                : { status: "processing", gateway_refund_id: gatewayRefundId })
             .eq("id", refundId);
         if (updateError) throw updateError;
+
+        if (!settledAtGateway) {
+            await writeAudit({
+                actorId: actor?.id ?? null, targetUserId: refund.user_id, action: "refund.submitted",
+                entityType: "refund", entityId: refundId,
+                after: { gateway_refund_id: gatewayRefundId, awaiting: "refund.processed webhook" },
+            });
+            const pending = await readRefund(refundId);
+            return toRefundRow(pending ?? refund);
+        }
 
         if (subscription) {
             await releaseDepositIfFullyRefunded(subscription.id, Number(refund.amount));

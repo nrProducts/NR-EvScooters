@@ -1,6 +1,6 @@
 ﻿import { beforeEach, describe, expect, it } from 'vitest';
 import { buildMapsUrl, buildWebMapsUrl } from '../src/lib/maps';
-import { getNextDays, isValidStartDay } from '../src/lib/bookingDays';
+import { getNextBookableDay, getNextDays, isValidStartDay } from '../src/lib/bookingDays';
 import {
   MockBookingRepository, MockUserRepository, signInAs,
   backdateBookingCreatedAt as backdateBooking, resetMockDb,
@@ -257,4 +257,54 @@ describe('MockBookingRepository.cancel', () => {
     expect(row?.refund_status).toBe('processed');
     expect(row?.cancelled_at).not.toBeNull();
   });
+});
+
+/**
+ * The start day the app picks for itself.
+ *
+ * There is no date picker in the booking flow any more — the screen sets the
+ * start day directly for immediate pickup. While that was plain `getToday()`,
+ * every Sunday sent a date the backend rejects (hubs are closed; see
+ * isValidStartDay), and the rider got "Please correct the highlighted fields"
+ * on a screen that has no fields. Booking was impossible one day in seven.
+ *
+ * Dates are constructed relative to a fixed anchor rather than to `now`, so
+ * these assertions do not rot the moment the week turns over.
+ */
+describe('getNextBookableDay', () => {
+    // 2026-08-23 is a Sunday. Local-time construction matches how the helper
+    // and isValidStartDay both parse dates.
+    const sunday = new Date(2026, 7, 23);
+
+    it('rolls a Sunday forward to Monday', () => {
+        expect(getNextBookableDay(sunday)).toBe('2026-08-24');
+    });
+
+    it('leaves Monday through Saturday untouched', () => {
+        const expected = [
+            '2026-08-24', '2026-08-25', '2026-08-26',
+            '2026-08-27', '2026-08-28', '2026-08-29',
+        ];
+        expected.forEach((date, i) => {
+            const day = new Date(2026, 7, 24 + i);
+            expect(getNextBookableDay(day)).toBe(date);
+        });
+    });
+
+    it('never returns a Sunday, for any day of any week', () => {
+        for (let i = 0; i < 28; i++) {
+            const day = new Date(2026, 7, 23 + i);
+            const picked = getNextBookableDay(day);
+            expect(new Date(`${picked}T00:00:00`).getDay()).not.toBe(0);
+        }
+    });
+
+    it('agrees with isValidStartDay, which is the rule the backend mirrors', () => {
+        for (let i = 0; i < 28; i++) {
+            const day = new Date(2026, 7, 23 + i);
+            // Only meaningful for days that are not already in the past.
+            if (day < new Date(new Date().setHours(0, 0, 0, 0))) continue;
+            expect(isValidStartDay(getNextBookableDay(day))).toBe(true);
+        }
+    });
 });

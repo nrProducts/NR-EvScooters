@@ -13,7 +13,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "How do I rent a scooter?",
     answer:
-      "Download the SwapNgo app, verify your identity (KYC), choose a plan, and pay online. Once your booking is confirmed, you'll pick up your scooter from your assigned station.",
+      "Download the Swapngo app, verify your identity (KYC), choose a plan, and pay online. Once your booking is confirmed, you'll pick up your scooter from your assigned station.",
   },
   {
     question: "What documents are required?",
@@ -43,7 +43,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "What if my scooter's battery runs low?",
     answer:
-      "SwapNgo scooters use swappable batteries — head to any of our battery-swap stations across Chennai and swap in under 2 minutes instead of waiting to charge.",
+      "Swapngo scooters use swappable batteries — head to any of our battery-swap stations across Chennai and swap in under 2 minutes instead of waiting to charge.",
   },
   {
     question: "How do I contact support?",

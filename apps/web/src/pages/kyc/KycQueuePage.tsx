@@ -330,7 +330,7 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
               detail.documents.map((doc) => (
                 <div key={doc.id} className="space-y-2 rounded-lg border border-border p-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium capitalize">{doc.doc_type.replace(/_/g, " ")}</p>
+                    <p className="text-sm font-medium capitalize">{doc.document_type.replace(/_/g, " ")}</p>
                     <StatusBadge status={doc.verification_status} />
                   </div>
                   {doc.doc_number_masked && (
@@ -353,7 +353,7 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
                         size="sm"
                         variant="outline"
                         disabled={openDocument.isPending}
-                        onClick={() => viewDocument(doc.id, "front", doc.doc_type.replace(/_/g, " "))}
+                        onClick={() => viewDocument(doc.id, "front", doc.document_type.replace(/_/g, " "))}
                       >
                         <ExternalLink className="h-3.5 w-3.5" /> Front
                       </Button>
@@ -363,7 +363,7 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
                         size="sm"
                         variant="outline"
                         disabled={openDocument.isPending}
-                        onClick={() => viewDocument(doc.id, "back", doc.doc_type.replace(/_/g, " "))}
+                        onClick={() => viewDocument(doc.id, "back", doc.document_type.replace(/_/g, " "))}
                       >
                         <ExternalLink className="h-3.5 w-3.5" /> Back
                       </Button>

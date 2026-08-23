@@ -320,6 +320,12 @@ export interface ApiBooking {
     status: BookingStatus;
     start_day: string;
     created_at: string;
+    /**
+     * When an unpaid hold lapses, ISO-8601. Null once the booking is no
+     * longer pending. A `pending_payment` booking is NOT a confirmed
+     * pickup — it is a scooter held on a clock — and the UI must say so.
+     */
+    hold_expires_at: string | null;
     vehicle_model: { id: string; name: string } | null;
     station: { id: string; name: string; code: string; lat: number; lng: number } | null;
     plan: {
@@ -386,12 +392,37 @@ export interface ApiPaymentOrder {
     /** Razorpay's PUBLIC key id — safe on-device, never the secret. */
     keyId: string;
     /**
-     * True when the backend has no Razorpay keys configured yet — the order
-     * is already settled server-side with temp data. Skip Checkout and
-     * /payments/verify entirely and treat this as paid immediately.
+     * When this checkout session stops being collectable, ISO-8601. The
+     * scooter hold expires with it.
      */
-    mock: boolean;
+    expiresAt: string | null;
+    /**
+     * The itemised breakdown behind `amount`, computed server-side.
+     *
+     * The app MUST render this rather than adding up plan price + deposit
+     * itself: pricing rules (transaction fee, welcome discount, plan-scoped
+     * charges) are resolved by the backend and are invisible to the client.
+     * Computing locally is what made the review screen quote a total the
+     * gateway then disagreed with.
+     */
+    lines: ApiOrderLine[];
 }
+
+export interface ApiOrderLine {
+    description: string;
+    /** Rupees. Negative for a discount. */
+    amount: number;
+}
+
+/**
+ * The `mock` flag is gone.
+ *
+ * It meant "the backend has no Razorpay keys, so it already settled this
+ * order — skip Checkout and treat it as paid", and the app honoured it. Any
+ * deploy with a blank secret therefore confirmed bookings for free. There is
+ * no longer a path where a payment succeeds without the gateway saying so, on
+ * either side.
+ */
 
 export interface VerifyPaymentPayload {
     razorpay_order_id: string;

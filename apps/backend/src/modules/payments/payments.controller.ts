@@ -30,6 +30,8 @@ export async function webhookHandler(req: Request, res: Response) {
     const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
     if (!rawBody) throw badRequest("Missing request body.");
     const signature = req.get("x-razorpay-signature");
-    await service.handleWebhook(rawBody, signature);
+    // Stable across redeliveries — the idempotency key for the whole handler.
+    const eventId = req.get("x-razorpay-event-id");
+    await service.handleWebhook(rawBody, signature, eventId);
     res.json({ status: "ok" });
 }

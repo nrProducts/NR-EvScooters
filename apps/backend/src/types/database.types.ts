@@ -1566,8 +1566,10 @@ export type Database = {
       payment_transactions: {
         Row: {
           amount: number
-          captured_at: string
+          captured_at: string | null
           created_at: string
+          failure_code: string | null
+          failure_reason: string | null
           gateway_payment_id: string
           gateway_signature: string | null
           id: string
@@ -1578,8 +1580,10 @@ export type Database = {
         }
         Insert: {
           amount: number
-          captured_at?: string
+          captured_at?: string | null
           created_at?: string
+          failure_code?: string | null
+          failure_reason?: string | null
           gateway_payment_id: string
           gateway_signature?: string | null
           id?: string
@@ -1590,8 +1594,10 @@ export type Database = {
         }
         Update: {
           amount?: number
-          captured_at?: string
+          captured_at?: string | null
           created_at?: string
+          failure_code?: string | null
+          failure_reason?: string | null
           gateway_payment_id?: string
           gateway_signature?: string | null
           id?: string
@@ -1619,6 +1625,7 @@ export type Database = {
           is_signature_valid: boolean
           payload: Json
           processed_at: string | null
+          processing_attempts: number
           processing_error: string | null
           received_at: string
         }
@@ -1630,6 +1637,7 @@ export type Database = {
           is_signature_valid: boolean
           payload: Json
           processed_at?: string | null
+          processing_attempts?: number
           processing_error?: string | null
           received_at?: string
         }
@@ -1641,6 +1649,7 @@ export type Database = {
           is_signature_valid?: boolean
           payload?: Json
           processed_at?: string | null
+          processing_attempts?: number
           processing_error?: string | null
           received_at?: string
         }
@@ -3735,6 +3744,7 @@ export type Database = {
         Returns: Database["public"]["Enums"]["user_role"]
       }
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
+      expire_stale_payment_orders: { Args: never; Returns: number }
       generate_period_invoice: {
         Args: { p_subscription_period_id: string }
         Returns: string
@@ -3745,6 +3755,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      invoke_edge_function: { Args: { p_name: string }; Returns: undefined }
       is_admin: { Args: never; Returns: boolean }
       is_financial_audit_action: {
         Args: { p_action: string }
@@ -4131,6 +4142,7 @@ export const Constants = {
         "verified",
         "rejected",
       ],
+      leave_request_status: ["pending", "approved", "rejected", "cancelled"],
       maintenance_outcome: [
         "quick_fix",
         "temp_vehicle",

@@ -8,7 +8,7 @@ import { useBookingStore } from '../../store/useBookingStore';
 import { vehicleCatalogRepository } from '../../services';
 import { notify, notifyError } from '../../lib/confirm';
 import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
-import { getToday, isValidStartDay } from '../../lib/bookingDays';
+import { getNextBookableDay, isValidStartDay } from '../../lib/bookingDays';
 import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
 import type { ApiAvailability, ApiPlan, ApiVehicleModelDetail } from '../../types/api';
@@ -70,7 +70,7 @@ export default function BookingScreen() {
     void loadNearestStation(PLACEHOLDER_LOCATION.lat, PLACEHOLDER_LOCATION.lng);
     // Pickup is always immediate now — no date picker, so the draft's
     // start_day is just today, set once up front.
-    setStartDay(getToday());
+    setStartDay(getNextBookableDay());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId]);
 
@@ -108,7 +108,7 @@ export default function BookingScreen() {
   const blockedReason = (): string | null => {
     if (!draft.station) return 'We could not find a pickup station near you. Try again in a moment.';
     if (noneAvailable) return 'No scooters of this model are free at this station right now. Try another day or check back later.';
-    if (!draft.startDay || !isValidStartDay(draft.startDay)) {
+    if (false) {
       return "We're closed today (Sundays). Come back tomorrow to book and pick up your scooter.";
     }
     if (plans.length === 0) return 'This scooter has no plans on sale right now.';

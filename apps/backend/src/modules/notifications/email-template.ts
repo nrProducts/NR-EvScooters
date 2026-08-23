@@ -35,7 +35,7 @@ export function renderNotificationEmail(input: NotificationEmailInput): string {
                 <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;">
                     <tr>
                         <td style="background-color:#0f172a;padding:20px 24px;">
-                            <span style="color:#ffffff;font-size:18px;font-weight:700;">SwapNgo</span>
+                            <span style="color:#ffffff;font-size:18px;font-weight:700;">Swapngo</span>
                         </td>
                     </tr>
                     <tr>
@@ -52,7 +52,7 @@ export function renderNotificationEmail(input: NotificationEmailInput): string {
                     </tr>
                     <tr>
                         <td style="padding:16px 24px;background-color:#f9fafb;">
-                            <p style="margin:0;font-size:12px;color:#9ca3af;">This is an automated notification from SwapNgo Admin.</p>
+                            <p style="margin:0;font-size:12px;color:#9ca3af;">This is an automated notification from Swapngo Admin.</p>
                         </td>
                     </tr>
                 </table>

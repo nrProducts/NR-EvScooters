@@ -34,9 +34,15 @@ export type AuditAction =
     | "rental.completed" | "rental.moved_to_maintenance" | "rental.return_requested" | "rental.return_rejected"
     | "referral.redeemed" | "referral.qualified"
     | "payment.order_created" | "payment.verified" | "payment.failed" | "payment.webhook_received"
+    // Added with the payment hardening work. `unallocated_surplus` and
+    // `partial` are the two money-arrived-but-not-settled cases the
+    // Reconciliation console needs to be able to find; `signature_invalid`
+    // is the forged-webhook trail.
+    | "payment.order_superseded" | "payment.webhook_signature_invalid"
+    | "payment.unallocated_surplus" | "payment.partial"
     | "deposit.held" | "deposit.refund_initiated" | "deposit.refunded" | "deposit.forfeited"
     | "damage.created" | "damage.disputed" | "damage.resolved"
-    | "refund.initiated" | "refund.processed" | "refund.failed"
+    | "refund.initiated" | "refund.submitted" | "refund.processed" | "refund.failed"
     // The `plan.*` names are kept even though the state they describe moved
     // from bookings to `subscriptions`: the events are the same events, and
     // renaming them would split the history in two.

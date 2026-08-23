@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
-  ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, Zap, RefreshCw, Undo2,
+  ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, Zap, RefreshCw, Undo2, CreditCard,
 } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
 import { KycBanner } from '../components/KycBanner';
@@ -167,6 +167,21 @@ export default function HomeScreen() {
     list, loadingList, loadList,
   } = useVehicleCatalogStore();
   const [pendingBooking, setPendingBooking] = useState<ApiBooking | null>(null);
+
+  // A `pending_payment` booking is a scooter held on a clock, not a confirmed
+  // pickup. Rendering the two identically told riders their scooter was
+  // reserved and staff would hand it over, when nothing had been paid and the
+  // hold was about to lapse.
+  const awaitingPayment = pendingBooking?.status === 'pending_payment';
+
+  /** e.g. "24 min" — how long the unpaid hold has left, or null once lapsed. */
+  const holdCountdown = (() => {
+    if (!awaitingPayment || !pendingBooking?.hold_expires_at) return null;
+    const msLeft = new Date(pendingBooking.hold_expires_at).getTime() - Date.now();
+    if (msLeft <= 0) return null;
+    const mins = Math.ceil(msLeft / 60_000);
+    return mins >= 60 ? `${Math.floor(mins / 60)} hr ${mins % 60} min` : `${mins} min`;
+  })();
   const [activeRental, setActiveRental] = useState<ApiRental | null>(null);
   const [settlement, setSettlement] = useState<ApiReturnSettlement | null>(null);
   // Without this, a rider with has_active_rental sees the booking card flash
@@ -301,6 +316,8 @@ export default function HomeScreen() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
 
+  console.log("Featured", featured);
+
   return (
     <AppShell title="Home">
       <ScrollView
@@ -329,13 +346,18 @@ export default function HomeScreen() {
         {pendingBooking ? (
           <View
             className="rounded-2xl p-4 mb-4"
-            style={{ backgroundColor: COLORS.primary + '0A', borderWidth: 1, borderColor: COLORS.primary + '33' }}
+            style={awaitingPayment
+              ? { backgroundColor: COLORS.warning + '0A', borderWidth: 1, borderColor: COLORS.warning + '44' }
+              : { backgroundColor: COLORS.primary + '0A', borderWidth: 1, borderColor: COLORS.primary + '33' }}
           >
             <View className="flex-row items-center justify-between mb-2">
               <View className="flex-row items-center">
-                <Clock size={16} color={COLORS.primary} />
-                <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-extrabold ml-2">
-                  Pickup Scheduled
+                <Clock size={16} color={awaitingPayment ? COLORS.warning : COLORS.primary} />
+                <Text
+                  style={{ color: awaitingPayment ? COLORS.warning : COLORS.primaryPressed }}
+                  className="text-sm font-extrabold ml-2"
+                >
+                  {awaitingPayment ? 'Payment Pending' : 'Pickup Scheduled'}
                 </Text>
               </View>
               {pendingBooking.vehicle ? (
@@ -362,12 +384,28 @@ export default function HomeScreen() {
                 </Text>
               </View>
             ) : null}
-            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-2.5">
-              {pendingBooking.vehicle
-                ? 'Your scooter is reserved — staff will hand it over at pickup.'
-                : "We'll notify you the day before — staff will assign your scooter at pickup."}
+            <Text
+              style={{ color: awaitingPayment ? COLORS.warning : COLORS.textSecondary }}
+              className="text-[11px] font-medium mt-2.5"
+            >
+              {awaitingPayment
+                ? `This booking is not confirmed yet — complete payment to secure it.${holdCountdown ? ` Held for ${holdCountdown}.` : ''}`
+                : pendingBooking.vehicle
+                  ? 'Your scooter is reserved — staff will hand it over at pickup.'
+                  : "We'll notify you the day before — staff will assign your scooter at pickup."}
             </Text>
-            {pendingBooking.station ? (
+            {awaitingPayment ? (
+              <TouchableOpacity
+                onPress={() => router.push('/billing' as any)}
+                accessibilityRole="button"
+                className="flex-row items-center justify-center rounded-xl py-2.5 mt-3"
+                style={{ backgroundColor: COLORS.warning }}
+              >
+                <CreditCard size={14} color="#FFF" />
+                <Text className="text-white text-xs font-bold ml-2">Complete Payment</Text>
+              </TouchableOpacity>
+            ) : null}
+            {!awaitingPayment && pendingBooking.station ? (
               <TouchableOpacity
                 onPress={() => handleGetDirections(pendingBooking.station!)}
                 className="flex-row items-center justify-center rounded-xl py-2.5 mt-3"

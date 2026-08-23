@@ -84,7 +84,7 @@ export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model 
 
         {model.starting_price != null ? (
           <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-extrabold mt-4">
-            From ₹{model.starting_price.toFixed(0)} / day
+            From ₹{model.starting_price.toFixed(0)} / Week
           </Text>
         ) : null}
 

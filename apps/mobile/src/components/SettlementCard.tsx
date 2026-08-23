@@ -58,23 +58,20 @@ export function SettlementCard({
     setPaying(true);
     try {
       const order = await billingRepository.createOrderForInvoice(settlement.due_invoice_id);
-      if (!order.mock) {
-        const verifyPayload = await openRazorpayCheckout({
-          key: order.keyId,
-          amount: Math.round(order.amount * 100),
-          currency: order.currency,
-          order_id: order.gatewayOrderId,
-          name: 'SwapNgo',
-          description: 'Return Settlement',
-          prefill: {
-            email: profile?.email ?? undefined,
-            contact: profile?.phone ?? undefined,
-            name: profile?.full_name,
-          },
-          theme: { color: COLORS.primary },
-        });
-        await billingRepository.verifyPayment(verifyPayload);
-      }
+      const verifyPayload = await openRazorpayCheckout({
+        key: order.keyId,
+        amount: Math.round(order.amount * 100),
+        currency: order.currency,
+        order_id: order.gatewayOrderId,
+        description: 'Return Settlement',
+        prefill: {
+          email: profile?.email ?? undefined,
+          contact: profile?.phone ?? undefined,
+          name: profile?.full_name,
+        },
+        theme: { color: COLORS.primary },
+      });
+      await billingRepository.verifyPayment(verifyPayload);
       onPaid();
     } catch (err) {
       if (err instanceof PaymentCancelledError || err instanceof PaymentUnavailableError) {

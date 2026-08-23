@@ -6,6 +6,20 @@ function required(name: string): string {
     return value;
 }
 
+/**
+ * Empty string in dev, hard failure at boot in production.
+ *
+ * Fail-fast is the whole value: a payment secret that is missing must stop
+ * the process, not degrade the behaviour of the money path at runtime.
+ */
+function requiredInProduction(name: string): string {
+    const value = process.env[name] ?? "";
+    if (!value && process.env.NODE_ENV === "production") {
+        throw new Error(`Missing required environment variable in production: ${name}`);
+    }
+    return value;
+}
+
 function intFromEnv(name: string, fallback: number): number {
     const raw = process.env[name];
     if (!raw) return fallback;
@@ -79,12 +93,31 @@ export const env = {
     msg91BaseUrl: process.env.MSG91_BASE_URL ?? "https://control.msg91.com",
 
     // --- Razorpay (payment gateway) -----------------------------------
-    // Deliberately optional/empty-default, never `required(...)`: the app
-    // must still boot in dev with no keys configured. Anything that actually
-    // needs them throws a clear error at call time — see config/razorpay.ts.
-    razorpayKeyId: process.env.RAZORPAY_KEY_ID ?? "",
-    razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET ?? "",
-    razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ?? "",
+    // Optional in dev so the app still boots with no keys configured;
+    // anything that needs them throws a clean 503 at call time — see
+    // config/razorpay.ts.
+    //
+    // MANDATORY in production, and that asymmetry is the point. These used
+    // to be plain optional everywhere, and a separate "gateway not
+    // configured" branch in payments.service.ts settled the order as PAID
+    // with a fabricated payment id when they were blank. A missing secret in
+    // a production deploy therefore handed out free rentals silently. The
+    // mock branch is gone; this is what stops the same deploy from merely
+    // failing later and less legibly.
+    razorpayKeyId: requiredInProduction("RAZORPAY_KEY_ID"),
+    razorpayKeySecret: requiredInProduction("RAZORPAY_KEY_SECRET"),
+    razorpayWebhookSecret: requiredInProduction("RAZORPAY_WEBHOOK_SECRET"),
+
+    /**
+     * How long a checkout session stays collectable. Matches the vehicle hold
+     * (BOOKING_PAYMENT_GRACE_MINUTES) by default so the order and the scooter
+     * reservation expire together — an order outliving its hold would send a
+     * rider to Checkout for a scooter already given away.
+     */
+    paymentOrderTtlMinutes: intFromEnv(
+        "PAYMENT_ORDER_TTL_MINUTES",
+        intFromEnv("BOOKING_PAYMENT_GRACE_MINUTES", 30),
+    ),
 
     /** Default security deposit when a plan doesn't override it, in rupees. */
     defaultDepositAmount: intFromEnv("DEFAULT_DEPOSIT_AMOUNT", 2000),

@@ -201,7 +201,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
             <View className="px-5 pb-5 border-b flex-row items-center" style={{ borderColor: COLORS.border }}>
               <Image
                 source={require('../../assets/images/logo-wordmark.png')}
-                accessibilityLabel="SwapNgo"
+                accessibilityLabel="Swapngo"
                 className="h-7 w-32"
                 resizeMode="contain"
               />
@@ -344,7 +344,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
               style={{ backgroundColor: COLORS.primary + '0F' }}
             >
               <Text style={{ color: COLORS.primary }} className="text-[11px] font-bold flex-1 mr-2">
-                How SwapNgo Works
+                How Swapngo Works
               </Text>
               <ChevronRight size={16} color={COLORS.primary} />
             </TouchableOpacity>

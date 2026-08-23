@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "SwapNgo",
+    "name": "Swapngo",
     "slug": "nr-ev-scooters",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -46,12 +46,13 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow SwapNgo to use your location to show nearby battery swap stations and how far away they are.",
-          "locationWhenInUsePermission": "Allow SwapNgo to use your location to show nearby battery swap stations and how far away they are.",
+          "locationAlwaysAndWhenInUsePermission": "Allow Swapngo to use your location to show nearby battery swap stations and how far away they are.",
+          "locationWhenInUsePermission": "Allow Swapngo to use your location to show nearby battery swap stations and how far away they are.",
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
         }
-      ]
+      ],
+      "./plugins/withUpiIntentQueries"
     ],
     "experiments": {
       "typedRoutes": true,

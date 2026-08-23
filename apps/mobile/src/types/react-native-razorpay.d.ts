@@ -9,12 +9,41 @@ declare module 'react-native-razorpay' {
         amount: number; // paise
         currency: string;
         order_id: string;
+        /** Defaulted to 'Swapngo' by openRazorpayCheckout; override per call if ever needed. */
         name?: string;
         description?: string;
         image?: string;
         prefill?: { email?: string; contact?: string; name?: string };
         theme?: { color?: string };
         notes?: Record<string, string>;
+        /**
+         * Payment-method display config. Reorders and groups what the sheet
+         * shows; it cannot enable an instrument the merchant account does not
+         * already offer. See Razorpay's "Configure Payment Methods" docs.
+         */
+        config?: {
+            display: {
+                // Readonly throughout so a caller can declare the config with
+                // `as const` — which is how it should be declared, since it is
+                // fixed data rather than something built per payment.
+                blocks: Readonly<Record<string, {
+                    readonly name: string;
+                    readonly instruments: readonly {
+                        readonly method: 'upi' | 'card' | 'wallet' | 'netbanking' | 'emi';
+                        /** e.g. ['google_pay', 'phonepe'] — omit to allow all. */
+                        readonly apps?: readonly string[];
+                        readonly types?: readonly string[];
+                        readonly issuers?: readonly string[];
+                    }[];
+                }>>;
+                /** Order of blocks, each referenced as `block.<name>`. */
+                sequence: readonly string[];
+                preferences?: {
+                    /** false hides every instrument not named in `blocks`. */
+                    show_default_blocks?: boolean;
+                };
+            };
+        };
     }
 
     export interface RazorpaySuccessResponse {

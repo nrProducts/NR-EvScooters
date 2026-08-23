@@ -243,7 +243,19 @@ export interface KycQueueItem {
 
 export interface KycDocumentDetail {
   id: string;
-  doc_type: string;
+  /**
+   * `document_type`, NOT `doc_type` — this shape comes from DocumentView in
+   * kyc.service.ts, which renamed the field to match the column. Declaring it
+   * as doc_type here did not fail the build (the API is typed by hand, not
+   * generated), it just made every read `undefined`, so the review dialog
+   * crashed on `.replace` the moment the endpoint started returning data.
+   *
+   * The near-identical AppUserDocument above genuinely IS `doc_type`:
+   * /users/:id maps `doc_type: d.document_type` on the way out while
+   * /kyc/:userId passes the column name straight through. Two endpoints, two
+   * wire names, one column — check which one you are holding.
+   */
+  document_type: string;
   /**
    * Display-only tail, e.g. "•••• 0124". There is no unmasked counterpart:
    * the full Aadhaar/DL number is validated at upload and never stored.

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isValidStartDay, toBookingView } from "../src/modules/bookings/bookings.service";
+import { ACTIVE_BOOKING_STATUSES } from "../src/modules/bookings/bookings.types";
+import { env } from "../src/config/env";
 
 // Local-date formatting (NOT toISOString, which is UTC-based and can land
 // on the wrong calendar day depending on the runner's timezone offset) —
@@ -129,6 +131,9 @@ describe("toBookingView", () => {
             status: "pending_payment",
             start_day: "2026-08-03",
             created_at: "2026-07-22T00:00:00.000Z",
+            // Surfaced so the app can show that an unpaid hold is on a
+            // clock rather than rendering it as a confirmed pickup.
+            hold_expires_at: null,
             vehicle_model: { id: "m-1", name: "NR Volt X1" },
             station: { id: "s-1", name: "MG Road Hub", code: "STN-MGR", lat: 12.97, lng: 77.6 },
             // Priced from the SNAPSHOTS, not the live plan row: a repricing
@@ -305,5 +310,32 @@ describe("toBookingView", () => {
         const cancelled = { ...baseRow, status: "cancelled" as const };
         expect(toBookingView(cancelled, { ...EMPTY_CTX, subscriptionEnded: true }).status)
             .toBe("cancelled");
+    });
+});
+
+/**
+ * The hold deadline is what makes an abandoned checkout recoverable.
+ *
+ * booking-payment-expiry-sweep only ever looked at bookings whose
+ * `hold_expires_at` was set, and createBooking never set it. So a rider who
+ * opened Checkout and did not pay left a `pending_payment` booking that no
+ * sweep could see: it kept its scooter `reserved` forever, and because
+ * ACTIVE_BOOKING_STATUSES contains `pending_payment`, it also blocked that
+ * rider from ever booking again. One cancelled payment bricked the account.
+ *
+ * This asserts the constant the fix depends on. The write itself is covered
+ * end-to-end by the sweep, which now also expires deadline-less bookings on
+ * age so that forgetting the column again degrades to "late" rather than
+ * "never".
+ */
+describe("pending_payment bookings must be time-boxed", () => {
+    it("counts pending_payment as an active booking, which is why the deadline matters", () => {
+        // If this ever stops being true, the immortal-booking bug stops being
+        // account-fatal and this whole guard can be reconsidered.
+        expect(ACTIVE_BOOKING_STATUSES).toContain("pending_payment");
+    });
+
+    it("has a positive grace period to build the deadline from", () => {
+        expect(env.bookingPaymentGraceMinutes).toBeGreaterThan(0);
     });
 });

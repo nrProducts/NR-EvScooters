@@ -148,25 +148,22 @@ export default function BillingScreen() {
     setPayingInvoiceId(invoice.id);
     try {
       const order = await billingRepository.createOrderForInvoice(invoice.id);
-      // No Razorpay keys configured on the backend yet — the order was
-      // already settled server-side with temp data. Skip Checkout entirely.
-      if (!order.mock) {
-        const verifyPayload = await openRazorpayCheckout({
-          key: order.keyId,
-          amount: Math.round(order.amount * 100),
-          currency: order.currency,
-          order_id: order.gatewayOrderId,
-          name: 'SwapNgo',
-          description: PURPOSE_LABEL[invoice.purpose] ?? 'Payment',
-          prefill: {
-            email: profile?.email ?? undefined,
-            contact: profile?.phone ?? undefined,
-            name: profile?.full_name,
-          },
-          theme: { color: COLORS.primary },
-        });
-        await billingRepository.verifyPayment(verifyPayload);
-      }
+      // Checkout is the only way a payment happens. The backend can no
+      // longer reply `mock: true` to say it settled the order itself.
+      const verifyPayload = await openRazorpayCheckout({
+        key: order.keyId,
+        amount: Math.round(order.amount * 100),
+        currency: order.currency,
+        order_id: order.gatewayOrderId,
+        description: PURPOSE_LABEL[invoice.purpose] ?? 'Payment',
+        prefill: {
+          email: profile?.email ?? undefined,
+          contact: profile?.phone ?? undefined,
+          name: profile?.full_name,
+        },
+        theme: { color: COLORS.primary },
+      });
+      await billingRepository.verifyPayment(verifyPayload);
       reload();
     } catch (err) {
       if (err instanceof PaymentCancelledError || err instanceof PaymentUnavailableError) {
@@ -213,25 +210,20 @@ export default function BillingScreen() {
     setRecharging(true);
     try {
       const order = await billingRepository.createOrderForInvoice(rechargePreview.invoiceId);
-      // No Razorpay keys configured on the backend yet — the order was
-      // already settled server-side with temp data. Skip Checkout entirely.
-      if (!order.mock) {
-        const verifyPayload = await openRazorpayCheckout({
-          key: order.keyId,
-          amount: Math.round(order.amount * 100),
-          currency: order.currency,
-          order_id: order.gatewayOrderId,
-          name: 'SwapNgo',
-          description: 'Weekly Rental — Recharge',
-          prefill: {
-            email: profile?.email ?? undefined,
-            contact: profile?.phone ?? undefined,
-            name: profile?.full_name,
-          },
-          theme: { color: COLORS.primary },
-        });
-        await billingRepository.verifyPayment(verifyPayload);
-      }
+      const verifyPayload = await openRazorpayCheckout({
+        key: order.keyId,
+        amount: Math.round(order.amount * 100),
+        currency: order.currency,
+        order_id: order.gatewayOrderId,
+        description: 'Weekly Rental — Recharge',
+        prefill: {
+          email: profile?.email ?? undefined,
+          contact: profile?.phone ?? undefined,
+          name: profile?.full_name,
+        },
+        theme: { color: COLORS.primary },
+      });
+      await billingRepository.verifyPayment(verifyPayload);
       setRechargePreview(null);
       reload();
     } catch (err) {

@@ -22,7 +22,7 @@ export function Hero() {
           </span>
 
           <h1 className="mt-5 text-4xl font-extrabold leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-            Move Smarter with SwapNgo
+            Move Smarter with Swapngo
           </h1>
 
           <p className="mt-6 max-w-lg text-lg leading-relaxed text-foreground/80">

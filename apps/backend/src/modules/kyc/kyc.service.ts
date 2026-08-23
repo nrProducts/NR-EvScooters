@@ -5,7 +5,8 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { maskLast4 } from "../../common/mask";
 import {
-    AuthContext, KycDocType, KycStatus, MANDATORY_KYC_DOC_TYPES, Paginated, VerificationStatus,
+    AuthContext, KycDocType, KycStatus, MANDATORY_KYC_DOC_TYPES, Paginated, UserStatus,
+    VerificationStatus,
 } from "../../types";
 import { kycCompletionPercent } from "../users/users.service";
 import { hasGrantedConsent } from "../consent/consent.service";
@@ -504,22 +505,74 @@ export async function listKycQueue(filters: KycListFilters): Promise<Paginated<K
     return paginate(items, count ?? 0, filters);
 }
 
-/** Full detail for the review screen. Staff see unmasked numbers here only. */
+/**
+ * Full detail for the review screen. Staff see unmasked numbers here only.
+ *
+ * Seven of the columns this used to select off `users` moved in the v2
+ * schema, so the whole endpoint 500d with "column users.address_line_1 does
+ * not exist" (Postgres names only the first casualty; kyc_status, city,
+ * state, postal_code, country and account_status were equally gone). The
+ * review modal therefore rendered "No documents uploaded" for every rider,
+ * and approval was unreachable behind it — the 422 from /approve is correct
+ * and stays correct, because documents are verified one at a time from this
+ * screen.
+ *
+ *   kyc_status     -> rider_profiles
+ *   address_*      -> user_addresses (one row per address, line_1/line_2)
+ *   account_status -> users.status
+ *
+ * listKycQueue was migrated for the first of those and this was missed. The
+ * flat `rider` shape is rebuilt below because both apps read it — see
+ * KycDetail in apps/web/src/types/index.ts.
+ */
 export async function getKycDetail(userId: string) {
     const { data, error } = await supabaseAdmin
         .from("users")
-        .select("id, full_name, email, phone, date_of_birth, address_line_1, city, state, postal_code, country, kyc_status, account_status")
+        .select(
+            "id, full_name, email, phone, date_of_birth, status, " +
+            "rider_profiles(kyc_status), " +
+            "user_addresses(line_1, city, state, postal_code, country, is_primary)",
+        )
         .eq("id", userId)
         .is("deleted_at", null)
         .maybeSingle();
     if (error) throw error;
     if (!data) throw notFound("User not found.");
 
+    const row = data as unknown as {
+        id: string; full_name: string; email: string | null; phone: string | null;
+        date_of_birth: string | null; status: UserStatus;
+        rider_profiles: { kyc_status: KycStatus } | { kyc_status: KycStatus }[] | null;
+        user_addresses: Array<{
+            line_1: string; city: string; state: string;
+            postal_code: string; country: string; is_primary: boolean;
+        }> | null;
+    };
+
+    const profile = Array.isArray(row.rider_profiles) ? row.rider_profiles[0] : row.rider_profiles;
+    // Same choice toProfile() makes: the primary address, else whatever exists
+    // — a rider with only a billing address on file should still show one.
+    const addresses = row.user_addresses ?? [];
+    const address = addresses.find((a) => a.is_primary) ?? addresses[0] ?? null;
+
     const docs = await documentsFor(userId);
     const history = await verificationHistory(userId);
 
     return {
-        rider: data,
+        rider: {
+            id: row.id,
+            full_name: row.full_name,
+            email: row.email,
+            phone: row.phone,
+            date_of_birth: row.date_of_birth,
+            address_line_1: address?.line_1 ?? null,
+            city: address?.city ?? null,
+            state: address?.state ?? null,
+            postal_code: address?.postal_code ?? null,
+            country: address?.country ?? null,
+            kyc_status: profile?.kyc_status ?? "not_submitted",
+            account_status: row.status,
+        },
         kyc_status: deriveKycStatus(docs),
         completion_percent: kycCompletionPercent(docs),
         documents: docs.map((d) => toDocumentView(d)),
@@ -836,7 +889,9 @@ async function userIdsMatchingDocumentFilters(filters: KycListFilters): Promise<
 async function verificationHistory(userId: string) {
     const { data, error } = await supabaseAdmin
         .from("audit_logs")
-        .select("id, action, actor_id, created_at, after_data")
+        // actor_user_id, not actor_id — the v2 audit_logs column carries the
+        // _user_id suffix, matching target_user_id beside it.
+        .select("id, action, actor_user_id, created_at, after_data")
         .eq("target_user_id", userId)
         .in("action", [
             "kyc.document_verified", "kyc.document_rejected",

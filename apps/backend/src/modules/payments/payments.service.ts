@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
 import Razorpay from "razorpay";
 import { supabaseAdmin } from "../../config/supabase";
-import { getRazorpay } from "../../config/razorpay";
+import { createGatewayOrder, fetchGatewayPayment } from "../../config/razorpay";
 import { env } from "../../config/env";
 import { badRequest, businessRule, conflict, notFound } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
@@ -11,7 +10,8 @@ import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { applyRefundWebhookResult } from "../refunds/refunds.service";
 import { AuthContext } from "../../types";
-import { CreateOrderResult, VerifyPaymentInput } from "./payments.types";
+import { Json } from "../../types/database.types";
+import { CreateOrderResult, OrderLine, VerifyPaymentInput } from "./payments.types";
 
 /**
  * Payments.
@@ -49,21 +49,46 @@ function unwrap<T>(raw: unknown): T | null {
 }
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
-const rupeesToPaise = (rupees: number): number => Math.round(rupees * 100);
+
+/**
+ * Rupees to paise. Exported for tests: Razorpay is denominated in the
+ * smallest currency unit, and every amount comparison in the verify path
+ * depends on this rounding being exact.
+ */
+export const rupeesToPaise = (rupees: number): number => Math.round(rupees * 100);
 
 /** Razorpay reports card/upi/wallet/netbanking/emi — `payment_method` has five. */
-function mapGatewayMethod(method: string | null): "card" | "wallet" | "upi" | "netbanking" | "cash" | null {
+export function mapGatewayMethod(method: string | null): "card" | "wallet" | "upi" | "netbanking" | "cash" | null {
     if (method === "card" || method === "wallet" || method === "upi" || method === "netbanking") return method;
     return null;
 }
 
 /**
- * No RAZORPAY_KEY_ID/SECRET set yet. Order creation falls back to settling
- * immediately with temp data instead of calling out, so the flow stays
- * testable until real keys are supplied.
+ * There is deliberately no `isGatewayConfigured()` short-circuit here any
+ * more.
+ *
+ * The previous version settled the order immediately with a fabricated
+ * `mock_payment_<uuid>` id whenever the keys were blank — booking confirmed,
+ * deposit held, invoice fully allocated, no money taken. It existed so the
+ * flow stayed clickable before real keys arrived, and the cost of that
+ * convenience was that a production deploy with a dropped secret handed out
+ * free rentals silently, writing fabricated rows into an append-only ledger
+ * that cannot be deleted afterwards, only compensated.
+ *
+ * `getRazorpay()` now throws a clean 503 in dev, and env.ts refuses to boot
+ * in production without the keys. A payment is recorded when, and only when,
+ * Razorpay says it was captured.
  */
-function isGatewayConfigured(): boolean {
-    return !!env.razorpayKeyId && !!env.razorpayKeySecret;
+
+/** Whether every currency amount owed on this invoice has now been allocated. */
+async function isInvoiceSettled(invoiceId: string): Promise<boolean> {
+    const { data, error } = await supabaseAdmin
+        .from("v_invoice_balances")
+        .select("is_paid")
+        .eq("invoice_id", invoiceId)
+        .maybeSingle();
+    if (error) throw error;
+    return data?.is_paid === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -317,37 +342,55 @@ async function createOrderForInvoiceInternal(
     const amount = round2(Number(balance?.balance_amount ?? 0) + lateFee);
     if (amount <= 0) throw conflict("This invoice has already been paid.");
 
-    const existing = await findReusableOrder(invoiceId);
+    // Reuse only an order for the SAME amount. Matching on invoice alone
+    // returned a stale order after the price had moved: the late fee is
+    // recomputed on every call and grows daily, so a rider who opened
+    // checkout on Monday and paid on Friday was charged Monday's total and
+    // left part-paid and apparently delinquent. See audit finding H3.
+    const existing = await findReusableOrder(invoiceId, amount, lateFee);
     if (existing) return existing;
 
-    const configured = isGatewayConfigured();
-    const gatewayOrderId = configured
-        ? (await getRazorpay().orders.create({
-            amount: rupeesToPaise(amount),
-            currency: "INR",
-            receipt: `invoice_${invoiceId}`.slice(0, 40),
-            notes: { invoice_id: invoiceId, purpose: invoice.purpose },
-        })).id
-        : `mock_order_${randomUUID()}`;
+    // Anything still open at a DIFFERENT amount is now wrong, and
+    // uq_payment_orders_open_per_invoice would reject the insert below while
+    // it lives. Closing it is the correct resolution either way: one invoice
+    // has one collectable price at a time.
+    await supersedeOpenOrders(invoiceId, amount);
+
+    const expiresAt = new Date(Date.now() + env.paymentOrderTtlMinutes * 60_000);
+
+    const gatewayOrder = await createGatewayOrder({
+        amount: rupeesToPaise(amount),
+        currency: "INR",
+        receipt: `invoice_${invoiceId}`.slice(0, 40),
+        notes: { invoice_id: invoiceId, purpose: invoice.purpose },
+    });
 
     const { data: order, error: orderError } = await supabaseAdmin
         .from("payment_orders")
         .insert({
-            gateway_order_id: gatewayOrderId,
+            gateway_order_id: gatewayOrder.id,
             invoice_id: invoiceId,
             user_id: actor.id,
             amount,
             currency: "INR",
             status: "created",
             // NOT NULL, and the point of it: a retried checkout for the same
-            // invoice and amount must not create a second order.
+            // invoice and amount must not create a second order. The amount
+            // is IN the key, which is why superseding above is needed as well
+            // — a changed price yields a different key and would otherwise
+            // open a second live order.
             idempotency_key: `invoice:${invoiceId}:${amount}`,
+            expires_at: expiresAt.toISOString(),
         })
-        .select("id, gateway_order_id, amount, currency")
+        .select("id, gateway_order_id, amount, currency, expires_at")
         .single();
     if (orderError) {
+        // Two concurrent taps on Pay. One insert wins; the loser re-reads
+        // rather than erroring, so the rider sees one checkout sheet either
+        // way. 23505 covers both the idempotency key and the partial unique
+        // index on open orders.
         if ((orderError as { code?: string }).code === "23505") {
-            const reused = await findReusableOrder(invoiceId);
+            const reused = await findReusableOrder(invoiceId, amount, lateFee);
             if (reused) return reused;
         }
         throw orderError;
@@ -359,37 +402,67 @@ async function createOrderForInvoiceInternal(
         after: { invoice_id: invoiceId, purpose: invoice.purpose, amount, late_fee: lateFee },
     });
 
-    if (!configured) {
-        await applyPaymentSuccess({
-            paymentOrderId: order.id,
-            gatewayPaymentId: `mock_payment_${randomUUID()}`,
-            gatewaySignature: null,
-            amount,
-            method: null,
-            rawPayload: { source: "mock_mode" },
-        });
-        return toOrderResult(order, true);
-    }
-
-    return toOrderResult(order);
+    return toOrderResult(order, await orderLinesFor(invoiceId, lateFee));
 }
 
-async function findReusableOrder(invoiceId: string): Promise<CreateOrderResult | null> {
+async function findReusableOrder(
+    invoiceId: string,
+    amount: number,
+    lateFee: number,
+): Promise<CreateOrderResult | null> {
     const { data, error } = await supabaseAdmin
         .from("payment_orders")
-        .select("id, gateway_order_id, amount, currency")
+        .select("id, gateway_order_id, amount, currency, expires_at")
         .eq("invoice_id", invoiceId)
+        .eq("amount", amount)
         .in("status", ["created", "attempted"])
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
     if (error) throw error;
-    return data ? toOrderResult(data) : null;
+    if (!data) return null;
+
+    // An order past its TTL is not reusable even at the right price — its
+    // vehicle hold may already have been released.
+    if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) return null;
+
+    return toOrderResult(data, await orderLinesFor(invoiceId, lateFee));
+}
+
+/**
+ * Closes any open order for this invoice whose amount no longer matches.
+ *
+ * The superseded Razorpay order is deliberately NOT cancelled at the gateway.
+ * Razorpay has no order-cancellation API, and a rider holding the old
+ * checkout sheet may still complete it — that money is real and must be
+ * recordable. `applyPaymentSuccess` therefore accepts payments against
+ * expired orders, and the allocation cap keeps the invoice from over-paying.
+ */
+async function supersedeOpenOrders(invoiceId: string, keepAmount: number): Promise<void> {
+    const { data, error } = await supabaseAdmin
+        .from("payment_orders")
+        .update({ status: "expired" })
+        .eq("invoice_id", invoiceId)
+        .neq("amount", keepAmount)
+        .in("status", ["created", "attempted"])
+        .select("id, amount");
+    if (error) throw error;
+
+    for (const superseded of data ?? []) {
+        await writeAudit({
+            actorId: null, targetUserId: null, action: "payment.order_superseded",
+            entityType: "payment_order", entityId: superseded.id,
+            after: { reason: "amount changed", old_amount: superseded.amount, new_amount: keepAmount },
+        });
+    }
 }
 
 function toOrderResult(
-    order: { id: string; gateway_order_id: string | null; amount: number | string; currency: string },
-    mock = false,
+    order: {
+        id: string; gateway_order_id: string | null; amount: number | string;
+        currency: string; expires_at?: string | null;
+    },
+    lines: OrderLine[] = [],
 ): CreateOrderResult {
     return {
         orderId: order.id,
@@ -397,14 +470,66 @@ function toOrderResult(
         amount: Number(order.amount),
         currency: order.currency,
         keyId: env.razorpayKeyId,
-        mock,
+        expiresAt: order.expires_at ?? null,
+        lines,
     };
+}
+
+/**
+ * What the rider is paying for, itemised.
+ *
+ * Read from `invoice_items` — the same rows the invoice total is derived
+ * from — so the breakdown and the charge cannot disagree. The late fee is
+ * appended separately because it is computed fresh at checkout rather than
+ * stored as a line: it grows daily until the invoice is paid.
+ *
+ * This exists because the CLIENT CANNOT COMPUTE THIS. Pricing rules are
+ * resolved server-side by apply_period_adjustments, so a device adding
+ * `plan.price + deposit` produces a different number — which is precisely the
+ * mismatch a rider saw between the review screen and Checkout.
+ */
+async function orderLinesFor(invoiceId: string, lateFee: number): Promise<OrderLine[]> {
+    const { data, error } = await supabaseAdmin
+        .from("invoice_items")
+        .select("description, amount, line_number")
+        .eq("invoice_id", invoiceId)
+        .order("line_number", { ascending: true });
+    if (error) throw error;
+
+    const lines: OrderLine[] = (data ?? []).map((item) => ({
+        description: item.description,
+        amount: Number(item.amount),
+    }));
+
+    if (lateFee > 0) lines.push({ description: "Late fee", amount: round2(lateFee) });
+    return lines;
 }
 
 // ---------------------------------------------------------------------------
 // Client-side verify callback — UI feedback only. NOT authoritative.
 // ---------------------------------------------------------------------------
 
+/**
+ * The rider's app reporting what Checkout told it.
+ *
+ * Two independent things are established here, and the old version did only
+ * the first:
+ *
+ *   1. AUTHENTICITY — the HMAC over `order_id|payment_id` proves the pair is
+ *      genuine and belongs to this merchant. A forged or guessed payment id
+ *      cannot produce a valid signature without KEY_SECRET.
+ *
+ *   2. SETTLEMENT — the signature says nothing about whether the money
+ *      arrived. Razorpay computes it when the payment is CREATED, so it is
+ *      equally valid for a payment that is merely `authorized`, one that is
+ *      later voided, and one that failed. The amount is likewise not covered
+ *      by it. So we ask the gateway directly, and every downstream effect
+ *      uses the answer rather than what we hoped to collect.
+ *
+ * Even fully verified this path is a convenience: it lets the rider see
+ * "confirmed" without waiting for the webhook. The webhook remains the
+ * authority, and both funnel through the same idempotent core.
+ */
 export async function verifyPayment(input: VerifyPaymentInput, actor: AuthContext): Promise<void> {
     if (!env.razorpayKeySecret) throw businessRule("Payment gateway is not configured.");
 
@@ -416,23 +541,100 @@ export async function verifyPayment(input: VerifyPaymentInput, actor: AuthContex
     if (!valid) throw badRequest("Payment signature verification failed.");
 
     const order = await findOrderByGatewayOrderId(input.razorpay_order_id);
+    // 404 rather than 403 on someone else's order — same convention as the
+    // booking paths, so the endpoint is not an existence oracle.
     if (!order) throw notFound("Payment order not found.");
     if (order.user_id !== actor.id) throw notFound("Payment order not found.");
 
+    const payment = await fetchGatewayPayment(input.razorpay_payment_id);
+
+    // A genuine signature for a payment belonging to a DIFFERENT order. The
+    // signature alone does not bind the pair to *our* order row, so this is
+    // the check that stops one rider's captured payment being replayed
+    // against another rider's order.
+    if (payment.order_id !== input.razorpay_order_id) {
+        throw badRequest("Payment does not belong to this order.");
+    }
+
+    if (payment.status === "failed") {
+        await recordFailedAttempt(order.id, payment);
+        throw businessRule(payment.error_description ?? "The payment did not go through.");
+    }
+
+    // `authorized` means the bank has reserved the funds and Razorpay has not
+    // captured them. With auto-capture on this window is milliseconds, so the
+    // honest answer to the rider is "we're confirming", not "you're booked".
+    // The webhook completes it. Treating this as success is precisely how
+    // goods get released against money that never settles.
+    if (payment.status !== "captured" || !payment.captured) {
+        await markOrderAttempted(order.id);
+        throw conflict("Your payment is still being confirmed. This page will update shortly.");
+    }
+
+    if (payment.currency !== order.currency) {
+        throw badRequest("Payment currency does not match the order.");
+    }
+
+    // Amount tampering, checked against the gateway's own figure rather than
+    // anything the client sent. `partial_payment` is never enabled on our
+    // orders, so a captured amount below the ask should be impossible —
+    // which is exactly why it is worth failing loudly on.
+    if (payment.amount !== rupeesToPaise(Number(order.amount))) {
+        throw badRequest("Payment amount does not match the order.");
+    }
+
     await applyPaymentSuccess({
         paymentOrderId: order.id,
-        gatewayPaymentId: input.razorpay_payment_id,
+        gatewayPaymentId: payment.id,
         gatewaySignature: input.razorpay_signature,
-        amount: Number(order.amount),
-        method: null,
-        rawPayload: { source: "verify_callback" },
+        amount: payment.amount / 100,
+        method: payment.method,
+        rawPayload: { source: "verify_callback", payment },
     });
 
     await writeAudit({
         actorId: actor.id, targetUserId: actor.id, action: "payment.verified",
         entityType: "payment_order", entityId: order.id,
-        after: { gateway_payment_id: input.razorpay_payment_id },
+        after: { gateway_payment_id: payment.id, method: payment.method, amount: payment.amount / 100 },
     });
+}
+
+/** Moves a still-open order to `attempted` — the rider reached the gateway. */
+async function markOrderAttempted(orderId: string): Promise<void> {
+    const { error } = await supabaseAdmin
+        .from("payment_orders")
+        .update({ status: "attempted" })
+        .eq("id", orderId)
+        .eq("status", "created");
+    if (error) throw error;
+}
+
+/**
+ * Records a declined attempt against the order.
+ *
+ * `payment_transactions` gained nullable `captured_at` plus `failure_code` /
+ * `failure_reason` in migration 47 for exactly this. The row is worth having:
+ * a rider who fails three times and succeeds on the fourth previously left no
+ * trace of the three, which is the history support is asked about.
+ *
+ * Idempotent on `gateway_payment_id`, like every other write here.
+ */
+async function recordFailedAttempt(
+    orderId: string,
+    payment: { id: string; amount: number; method: string | null; error_code: string | null; error_description: string | null },
+): Promise<void> {
+    const { error } = await supabaseAdmin.from("payment_transactions").insert({
+        payment_order_id: orderId,
+        gateway_payment_id: payment.id,
+        status: "failed",
+        amount: payment.amount / 100,
+        method: mapGatewayMethod(payment.method),
+        captured_at: null,
+        failure_code: payment.error_code,
+        failure_reason: payment.error_description ?? "Payment failed.",
+        raw_payload: payment as never,
+    });
+    if (error && (error as { code?: string }).code !== "23505") throw error;
 }
 
 // ---------------------------------------------------------------------------
@@ -449,6 +651,7 @@ interface WebhookPayload {
 export async function handleWebhook(
     rawBody: Buffer,
     signatureHeader: string | undefined,
+    eventIdHeader: string | undefined,
 ): Promise<void> {
     if (!env.razorpayWebhookSecret) throw businessRule("Webhook secret is not configured.");
     if (!signatureHeader) throw badRequest("Missing webhook signature.");
@@ -458,13 +661,52 @@ export async function handleWebhook(
         signatureHeader,
         env.razorpayWebhookSecret,
     );
-    if (!valid) throw badRequest("Webhook signature verification failed.");
 
     const body = JSON.parse(rawBody.toString("utf8")) as WebhookPayload & {
         event?: string; id?: string;
     };
     const eventType = body.event ?? "unknown";
-    const eventId = body.id ?? randomUUID();
+
+    // Razorpay sends `x-razorpay-event-id` for precisely this purpose and it
+    // is stable across redeliveries; the body's `id` is the fallback.
+    //
+    // The previous fallback was `randomUUID()`, which is unique per call and
+    // therefore the opposite of an idempotency key — a redelivery would have
+    // inserted a second event row and re-dispatched. The money stayed correct
+    // because applyPaymentSuccess is anchored on gateway_payment_id, but
+    // failure and refund handling are not equally protected. An event we
+    // cannot identify is now rejected rather than invented.
+    const eventId = eventIdHeader ?? body.id;
+    if (!eventId) throw badRequest("Missing webhook event id.");
+
+    // A forged or replayed delivery is RECORDED, not silently dropped.
+    // Throwing before any write left the Reconciliation console's
+    // `is_signature_valid = false` query permanently empty, so an attacker
+    // probing the endpoint was invisible. The row is the evidence.
+    if (!valid) {
+        await supabaseAdmin
+            .from("payment_webhook_events")
+            .insert({
+                gateway: "razorpay",
+                gateway_event_id: `invalid:${eventId}`,
+                event_type: eventType,
+                is_signature_valid: false,
+                payload: body as unknown as Json,
+                processing_error: "Signature verification failed.",
+            })
+            // A repeat forgery with the same id is not worth a 500.
+            .then(({ error: e }) => {
+                if (e && (e as { code?: string }).code !== "23505") throw e;
+            });
+
+        await writeAudit({
+            actorId: null, targetUserId: null, action: "payment.webhook_signature_invalid",
+            entityType: "payment_webhook_event", entityId: eventId,
+            after: { event: eventType },
+        });
+
+        throw badRequest("Webhook signature verification failed.");
+    }
 
     // The unique index on gateway_event_id is what makes a redelivered
     // webhook a no-op rather than a double-apply.
@@ -489,8 +731,14 @@ export async function handleWebhook(
             gateway: "razorpay",
             gateway_event_id: eventId,
             event_type: eventType,
-            payload: body as unknown as Record<string, unknown>,
-        } as never)
+            // NOT NULL with no default, and it was omitted under an `as never`
+            // cast that suppressed the compile error. Every delivery therefore
+            // raised 23502 and the webhook — the authoritative confirmation
+            // path — had never once run. See audit finding C1. The cast is
+            // gone so the type checker guards this column from now on.
+            is_signature_valid: true,
+            payload: body as unknown as Json,
+        })
         .select("id")
         .maybeSingle();
 
@@ -522,16 +770,43 @@ export async function handleWebhook(
         });
     }
 
-    await dispatchWebhookEvent(eventType, body);
+    // Counted before dispatch, so a payload that throws every time is
+    // distinguishable from a first delivery still in flight. `processed_at is
+    // null AND processing_attempts > 3` is a poison event worth paging on.
+    await bumpWebhookAttempt(eventRowId);
 
-    // Only now is the event finished. Anything that threw above leaves this
-    // null, which is both the retry signal for a redelivery and the query
-    // reconciliation should run: `payment_webhook_events where processed_at
-    // is null and created_at < now() - interval '1 hour'` is the list of
-    // payments that were taken and not applied.
+    try {
+        await dispatchWebhookEvent(eventType, body);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await supabaseAdmin
+            .from("payment_webhook_events")
+            .update({ processing_error: message })
+            .eq("id", eventRowId);
+        // Rethrown so Razorpay sees a non-2xx and redelivers. processed_at
+        // stays null, which is both the retry signal and the reconciliation
+        // query: payments that were taken and never applied.
+        throw err;
+    }
+
+    // Only now is the event finished.
     await supabaseAdmin
         .from("payment_webhook_events")
-        .update({ processed_at: new Date().toISOString() })
+        .update({ processed_at: new Date().toISOString(), processing_error: null })
+        .eq("id", eventRowId);
+}
+
+async function bumpWebhookAttempt(eventRowId: string): Promise<void> {
+    const { data, error } = await supabaseAdmin
+        .from("payment_webhook_events")
+        .select("processing_attempts")
+        .eq("id", eventRowId)
+        .maybeSingle();
+    if (error) throw error;
+
+    await supabaseAdmin
+        .from("payment_webhook_events")
+        .update({ processing_attempts: (data?.processing_attempts ?? 0) + 1 })
         .eq("id", eventRowId);
 }
 
@@ -539,9 +814,22 @@ async function dispatchWebhookEvent(eventType: string, payload: WebhookPayload):
     const payment = payload.payload?.payment?.entity;
     const refund = payload.payload?.refund?.entity;
 
-    if (eventType === "payment.captured" && payment) {
+    // `order.paid` fires once the order is fully collected and carries the
+    // payment entity alongside; treated as a capture so a missed
+    // payment.captured still lands. Both funnel into the same idempotent
+    // core, so receiving both is a no-op on the second.
+    if ((eventType === "payment.captured" || eventType === "order.paid") && payment) {
         const order = await findOrderByGatewayOrderId(String(payment.order_id));
         if (!order) return;
+
+        // Currency is checked here as well as in verifyPayment because the
+        // webhook is the path that runs when the client never comes back.
+        if (String(payment.currency ?? order.currency) !== order.currency) {
+            throw new Error(
+                `Webhook currency ${String(payment.currency)} does not match order ${order.id}.`,
+            );
+        }
+
         await applyPaymentSuccess({
             paymentOrderId: order.id,
             gatewayPaymentId: String(payment.id),
@@ -553,7 +841,29 @@ async function dispatchWebhookEvent(eventType: string, payload: WebhookPayload):
         return;
     }
 
+    // The bank has reserved the funds; Razorpay has not captured them. Not
+    // success — but it does mean the rider is mid-payment, so the order moves
+    // to `attempted` and the expiry sweep leaves it alone rather than
+    // releasing the scooter hold out from under an in-flight payment.
+    if (eventType === "payment.authorized" && payment) {
+        const order = await findOrderByGatewayOrderId(String(payment.order_id));
+        if (!order) return;
+        await markOrderAttempted(order.id);
+        await extendOrderExpiry(order.id);
+        return;
+    }
+
     if (eventType === "payment.failed" && payment) {
+        const order = await findOrderByGatewayOrderId(String(payment.order_id));
+        if (order && payment.id) {
+            await recordFailedAttempt(order.id, {
+                id: String(payment.id),
+                amount: Number(payment.amount),
+                method: (payment.method as string) ?? null,
+                error_code: payment.error_code ? String(payment.error_code) : null,
+                error_description: payment.error_description ? String(payment.error_description) : null,
+            });
+        }
         await applyPaymentFailure(String(payment.order_id), String(payment.error_description ?? "Payment failed."));
         return;
     }
@@ -572,14 +882,29 @@ async function dispatchWebhookEvent(eventType: string, payload: WebhookPayload):
 
 async function findOrderByGatewayOrderId(
     gatewayOrderId: string,
-): Promise<{ id: string; user_id: string; amount: number | string } | null> {
+): Promise<{ id: string; user_id: string; amount: number | string; currency: string } | null> {
     const { data, error } = await supabaseAdmin
         .from("payment_orders")
-        .select("id, user_id, amount")
+        .select("id, user_id, amount, currency")
         .eq("gateway_order_id", gatewayOrderId)
         .maybeSingle();
     if (error) throw error;
     return data ?? null;
+}
+
+/**
+ * Pushes an in-flight order's expiry out, so the sweep does not close a
+ * checkout the rider is actively completing. Only ever extends.
+ */
+async function extendOrderExpiry(orderId: string): Promise<void> {
+    const extendedTo = new Date(Date.now() + env.paymentOrderTtlMinutes * 60_000).toISOString();
+    const { error } = await supabaseAdmin
+        .from("payment_orders")
+        .update({ expires_at: extendedTo })
+        .eq("id", orderId)
+        .in("status", ["created", "attempted"])
+        .lt("expires_at", extendedTo);
+    if (error) throw error;
 }
 
 async function applyPaymentFailure(gatewayOrderId: string, reason: string): Promise<void> {
@@ -658,11 +983,21 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
         throw txnError;
     }
 
+    // `neq("status", "paid")` rather than a whitelist of open statuses.
+    //
+    // A rider whose first attempt declines may retry the SAME Razorpay order
+    // and succeed, and a rider holding a superseded checkout sheet may pay an
+    // order we already expired. Both arrive here against an order that is
+    // `failed` or `expired`, and both are real money. Restricting the update
+    // to created/attempted left those orders permanently mislabelled while
+    // the transaction and allocation were written — the ledger and the order
+    // disagreeing about the same payment. `paid` is terminal and the database
+    // trigger enforces that; getting INTO it is what must stay permissive.
     await supabaseAdmin
         .from("payment_orders")
         .update({ status: "paid" })
         .eq("id", order.id)
-        .in("status", ["created", "attempted"]);
+        .neq("status", "paid");
 
     // The allocation IS the record that this invoice was paid.
     //
@@ -708,12 +1043,52 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
         }
     }
 
-    if (invoice?.purpose === "initial") {
+    // Money that arrived but had nowhere to go. Either the invoice was
+    // already settled by another path, or a superseded checkout sheet was
+    // completed after the price moved. It is an overpayment and needs a
+    // human decision — auto-refunding it here would be a money movement
+    // nobody asked for — so it is flagged where Reconciliation will find it.
+    if (allocated < round2(input.amount)) {
+        await writeAudit({
+            actorId: null, targetUserId: order.user_id, action: "payment.unallocated_surplus",
+            entityType: "payment_transaction", entityId: txn!.id,
+            after: {
+                invoice_id: order.invoice_id,
+                captured: round2(input.amount),
+                allocated,
+                surplus: round2(input.amount - allocated),
+            },
+        });
+    }
+
+    // Goods are released on SETTLEMENT, not on the arrival of some money.
+    //
+    // These used to be called on `purpose` alone, so a capture smaller than
+    // the invoice total confirmed the booking and held the deposit against a
+    // part-paid bill. Razorpay rejects a mismatched amount while
+    // `partial_payment` is false — which it is, and which we never set — so
+    // that was defence in depth rather than a live hole. It is still the
+    // wrong dependency: the state machine must not be correct only because
+    // of a gateway setting made in a dashboard we do not control.
+    const settled = await isInvoiceSettled(order.invoice_id);
+
+    if (settled && invoice?.purpose === "initial") {
         await applyInitialSuccess(invoice.subscription_id, order.user_id);
-    } else if (invoice?.purpose === "subscription_period") {
+    } else if (settled && invoice?.purpose === "subscription_period") {
         await applyRenewalSuccess(invoice.subscription_id, invoice.subscription_period_id);
     }
     // 'settlement' and 'adhoc': the allocation above is the whole effect.
+
+    if (!settled) {
+        await writeAudit({
+            actorId: null, targetUserId: order.user_id, action: "payment.partial",
+            entityType: "invoice", entityId: order.invoice_id,
+            after: { allocated, note: "invoice still has a balance; no state advanced" },
+        });
+        // Deliberately no success notification — telling a rider their rental
+        // is active when the bill is not settled is the worst of both.
+        return;
+    }
 
     await notifyUser(order.user_id, {
         template: "payment_success", title: "Payment Successful",

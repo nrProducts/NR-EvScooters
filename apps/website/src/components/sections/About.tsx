@@ -6,11 +6,11 @@ export function About() {
   return (
     <section id="about" className="py-20 sm:py-28">
       <Container className="max-w-3xl">
-        <SectionHeading align="left" eyebrow="About SwapNgo" title="EV rentals, without the wait" />
+        <SectionHeading align="left" eyebrow="About Swapngo" title="EV rentals, without the wait" />
 
         <div className="mt-8 space-y-5 text-base leading-relaxed text-muted-foreground">
           <p>
-            SwapNgo rents electric scooters built around swappable-battery charging: instead of plugging in and
+            Swapngo rents electric scooters built around swappable-battery charging: instead of plugging in and
             waiting, riders swap a depleted battery for a fully charged one in minutes at a nearby station. It's the
             same idea behind our name — swap, and go.
           </p>

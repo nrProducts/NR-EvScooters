@@ -29,6 +29,12 @@ export async function getReconciliationReport(filters: ReconciliationFilters): P
         // money, which is what a reconciliation window should be cut on. The
         // old name described when WE processed it, which drifts under retries.
         .select("gateway_payment_id, amount, captured_at")
+        // Succeeded only. `payment_transactions` now also records DECLINED
+        // attempts (nullable captured_at, plus failure_code/failure_reason),
+        // which carry a real gateway_payment_id and would otherwise show up
+        // here as internal payments Razorpay has no capture for — a
+        // reconciliation report full of false discrepancies.
+        .eq("status", "succeeded")
         .gte("captured_at", filters.from)
         .lt("captured_at", new Date(toUnix * 1000).toISOString());
     if (internalError) throw internalError;
@@ -76,7 +82,7 @@ export async function getReconciliationReport(filters: ReconciliationFilters): P
 
     const unmatchedInternal: UnmatchedInternalPayment[] = (internalRows ?? [])
         .filter((r) => !gatewayIds.has(r.gateway_payment_id))
-        .map((r) => ({ gatewayPaymentId: r.gateway_payment_id, amount: Number(r.amount), appliedAt: r.captured_at }));
+        .map((r) => ({ gatewayPaymentId: r.gateway_payment_id, amount: Number(r.amount), appliedAt: r.captured_at! }));
 
     const missingInternal: MissingGatewayPayment[] = gatewayResult.items
         .filter((p) => p.status === "captured" && !internalIds.has(p.id))

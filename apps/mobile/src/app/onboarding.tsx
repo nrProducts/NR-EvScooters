@@ -24,14 +24,14 @@ const SLIDES: Slide[] = [
   {
     title: 'Find Your EV. Book in Seconds.',
     description:
-      'Discover available SwapNgo electric scooters near you, choose your preferred vehicle, and book it directly from the app.',
+      'Discover available Swapngo electric scooters near you, choose your preferred vehicle, and book it directly from the app.',
     Icon: Bike,
     badges: [{ Icon: MapPin, position: 'topRight' }],
   },
   {
     title: 'Ride More. Swap Anytime.',
     description:
-      'Enjoy your ride without worrying about charging. When the battery is low, find a nearby SwapNgo battery swapping station and swap the battery quickly.',
+      'Enjoy your ride without worrying about charging. When the battery is low, find a nearby Swapngo battery swapping station and swap the battery quickly.',
     Icon: BatteryCharging,
     badges: [{ Icon: Zap, position: 'topRight' }],
   },

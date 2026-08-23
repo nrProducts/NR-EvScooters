@@ -35,11 +35,11 @@ const REASONS = [
   },
 ];
 
-export function WhySwapNgo() {
+export function WhySwapngo() {
   return (
     <section id="why" className="py-20 sm:py-28">
       <Container>
-        <SectionHeading eyebrow="Why SwapNgo" title="Everything you need, nothing you don't" />
+        <SectionHeading eyebrow="Why Swapngo" title="Everything you need, nothing you don't" />
 
         <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {REASONS.map(({ icon: Icon, title, description }) => (

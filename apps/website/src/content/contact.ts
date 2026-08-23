@@ -1,9 +1,9 @@
 /**
- * TODO: replace with SwapNgo's real support channel. The codebase has no
+ * TODO: replace with Swapngo's real support channel. The codebase has no
  * verified contact info to source this from —
  * apps/mobile/src/constants/support.ts marks its own SUPPORT_EMAIL
  * "placeholder — not real yet", and the only phone number in the database
- * (public.vendors) belongs to the fleet vendor Motovolt, not SwapNgo itself.
+ * (public.vendors) belongs to the fleet vendor Motovolt, not Swapngo itself.
  * These are placeholders so the site ships complete; swap the values below
  * for the real ones when they exist.
  */

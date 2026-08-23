@@ -14,7 +14,7 @@ export function Vehicles() {
         <SectionHeading
           eyebrow="Our Vehicles"
           title="Built for daily rides, real payloads"
-          description="Every SwapNgo scooter runs on a swappable battery, so a low charge never means downtime."
+          description="Every Swapngo scooter runs on a swappable battery, so a low charge never means downtime."
         />
 
         <div className="mt-14 grid gap-8 lg:grid-cols-2">

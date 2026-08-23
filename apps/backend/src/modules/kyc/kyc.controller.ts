@@ -32,12 +32,27 @@ export async function uploadMyDocumentHandler(req: AuthedRequest, res: Response)
     const front = fileFrom(req, "front");
     if (!front) throw badRequest("A front image or PDF is required.", { front: "Attach the document." });
 
-    // The API keeps its own field names; the service maps them onto
-    // document_type / expires_on.
-    const body = req.body as { document_type: KycDocType; doc_number: string; expires_on?: string };
+    // The wire field is `doc_type`; the service's input is `document_type`,
+    // named for the column. That rename has to happen HERE — validate()
+    // replaces req.body with the zod result, so `doc_type` is the only key
+    // that exists by now, and reading `document_type` off it yielded
+    // undefined. Nothing downstream defends against that: it reached
+    // activeDocumentOfType()'s .eq("document_type", undefined), which
+    // PostgREST serialises as the literal `document_type=eq.undefined` and
+    // Postgres rejects with 22P02 (invalid input for enum
+    // kyc_document_type: "undefined") — a 500 on every upload of every type.
+    // Mapping field by field rather than spreading, so the next rename on
+    // either side is a compile error instead of another silent undefined.
+    const body = req.body as { doc_type: KycDocType; doc_number: string; expires_on?: string };
     const document = await service.uploadDocument(
         req.user!.id,
-        { ...body, front, back: fileFrom(req, "back") },
+        {
+            document_type: body.doc_type,
+            doc_number: body.doc_number,
+            expires_on: body.expires_on,
+            front,
+            back: fileFrom(req, "back"),
+        },
         req.user!,
         req,
     );

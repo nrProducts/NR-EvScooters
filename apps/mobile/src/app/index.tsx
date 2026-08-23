@@ -70,7 +70,7 @@ export default function LoginScreen() {
         <View className="items-center mb-10">
           <Image
             source={require('../../assets/images/logo-wordmark.png')}
-            accessibilityLabel="SwapNgo"
+            accessibilityLabel="Swapngo"
             className="h-10 w-48 mb-4"
             resizeMode="contain"
           />

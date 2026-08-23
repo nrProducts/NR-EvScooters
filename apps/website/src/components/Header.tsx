@@ -43,7 +43,7 @@ export function Header() {
       )}
     >
       <Container className="flex h-16 items-center justify-between">
-        <a href="#home" aria-label="SwapNgo home">
+        <a href="#home" aria-label="Swapngo home">
           <Logo />
         </a>
 

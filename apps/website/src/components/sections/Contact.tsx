@@ -11,7 +11,7 @@ export function Contact() {
 
         {CONTACT_IS_PLACEHOLDER && (
           <p className="mx-auto mt-4 max-w-md text-center text-xs text-muted-foreground">
-            Contact details below are placeholders pending confirmation from the SwapNgo team.
+            Contact details below are placeholders pending confirmation from the Swapngo team.
           </p>
         )}
 

@@ -19,6 +19,7 @@ import {
     ConfirmPickupInput, CreateBookingInput, PickupBookingView, PickupQueueFilters,
 } from "./bookings.types";
 import { businessToday, endOfBusinessDay } from "../../common/dates";
+import { env } from "../../config/env";
 import {
     FREE_CANCELLATION_GRACE_MINUTES, FREE_CANCELLATION_NOTICE_DAYS, LATE_CANCELLATION_PENALTY_RATE,
 } from "./cancellation.constants";
@@ -362,6 +363,10 @@ export function toBookingView(row: RawBookingRow, ctx: BookingContext = EMPTY_CO
             : row.status) as BookingLifecycleStatus,
         start_day: row.requested_start_on,
         created_at: row.created_at,
+        // Exposed so the rider can see that an unpaid booking is on a
+        // clock. Without it the app can only say "reserved", which is
+        // how an unpaid hold ends up looking like a confirmed pickup.
+        hold_expires_at: row.hold_expires_at,
         vehicle_model: modelRef,
         station: hub
             ? { id: hub.id, name: hub.name, code: hub.code, lat: hub.latitude ?? 0, lng: hub.longitude ?? 0 }
@@ -607,6 +612,19 @@ export async function createBooking(
             // — see payments.service.ts's applyPaymentSuccess, which is also
             // where the subscription is now born.
             status: "pending_payment",
+            // THE DEADLINE ON THAT GATE. Without it the booking is immortal.
+            //
+            // booking-payment-expiry-sweep filters on
+            // `hold_expires_at is not null and hold_expires_at < now()`, and
+            // nothing anywhere wrote this column — so every abandoned checkout
+            // stayed `pending_payment` forever, kept its scooter `reserved`,
+            // and (because ACTIVE_BOOKING_STATUSES includes pending_payment)
+            // permanently blocked the rider from ever booking again. One
+            // cancelled payment bricked the account and removed a vehicle from
+            // inventory, with no path back except a manual DB edit.
+            hold_expires_at: new Date(
+                Date.now() + env.bookingPaymentGraceMinutes * 60_000,
+            ).toISOString(),
         })
         .select("id")
         .single();

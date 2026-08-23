@@ -15,9 +15,30 @@ const fmt = (d: Date): string => {
     return `${year}-${month}-${day}`;
 };
 
-/** Today as YYYY-MM-DD — booking now always starts today (immediate pickup, no date picker). */
+/** Today as YYYY-MM-DD. */
 export function getToday(): string {
     return fmt(new Date());
+}
+
+/**
+ * The soonest day a booking may actually START — today, unless today is a
+ * Sunday, in which case Monday.
+ *
+ * There is no date picker any more: the flow sets the start day itself for
+ * immediate pickup. That made Sunday unbookable in a way nothing surfaced —
+ * the screen sent today's date, the backend rejected it via isValidStartDay
+ * (hubs are closed Sunday), and the rider saw "Please correct the highlighted
+ * fields" on a screen with no fields on it. Every Sunday, for everyone.
+ *
+ * Rolling forward rather than blocking, because a closed hub is a reason to
+ * collect tomorrow, not a reason to refuse the booking.
+ */
+export function getNextBookableDay(from = new Date()): string {
+    const d = new Date(from);
+    d.setHours(0, 0, 0, 0);
+    // Sunday === 0. At most one shift is ever needed.
+    if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+    return fmt(d);
 }
 
 export function isValidStartDay(dateStr: string): boolean {

@@ -41,16 +41,48 @@ Deno.serve(async (_req) => {
     if (!isConfigured()) return notConfigured();
     const admin = adminClient();
 
+    // A booking with NO deadline is expired on age instead.
+    //
+    // The original filter required `hold_expires_at is not null`, and for a
+    // long time nothing wrote that column — so every abandoned checkout was
+    // invisible to this sweep, kept its scooter reserved, and locked the rider
+    // out of booking again (ACTIVE_BOOKING_STATUSES includes pending_payment).
+    // createBooking now sets the deadline, but this sweep must not depend on
+    // any single writer remembering to: a null deadline is treated as
+    // `created_at + the same grace period`, so a future code path that forgets
+    // the column degrades to "cleaned up a bit later" rather than "never".
+    const nowIso = new Date().toISOString();
+    const graceMinutes = Number(Deno.env.get("BOOKING_PAYMENT_GRACE_MINUTES") ?? "30");
+    const staleBeforeIso = new Date(Date.now() - graceMinutes * 60_000).toISOString();
+
     const { data: candidates, error } = await admin
         .from("bookings")
         .select("id, user_id")
         .eq("status", "pending_payment")
-        .not("hold_expires_at", "is", null)
-        .lt("hold_expires_at", new Date().toISOString());
+        .or(`hold_expires_at.lt.${nowIso},and(hold_expires_at.is.null,created_at.lt.${staleBeforeIso})`);
 
     if (error) {
         console.error(`[${SOURCE}] query failed`, error);
         return json({ error: "Query failed." }, 500);
+    }
+
+    // Close checkout sessions whose TTL has passed, before deciding which
+    // bookings to expire.
+    //
+    // `payment_order_status` has always had an `expired` label and nothing
+    // ever wrote it, so idx_payment_orders_expiry served a sweep that did not
+    // exist. Without this, an abandoned order sits at `created` forever and
+    // uq_payment_orders_open_per_invoice (migration 47) then blocks the rider
+    // from ever opening a fresh one at the current price.
+    //
+    // The function skips any order with a succeeded transaction against it,
+    // so a capture landing mid-sweep is never expired out from under itself.
+    const { data: expiredOrders, error: expireError } = await admin
+        .rpc("expire_stale_payment_orders");
+    if (expireError) {
+        // Not fatal: booking expiry below is the load-bearing part, and a
+        // stale order is a nuisance rather than a money problem.
+        console.error(`[${SOURCE}] payment order expiry failed`, expireError);
     }
 
     let expired = 0;
@@ -99,7 +131,12 @@ Deno.serve(async (_req) => {
     }
 
     return json(
-        { candidates: candidates?.length ?? 0, expired, subscriptionsCancelled },
+        {
+            candidates: candidates?.length ?? 0,
+            expired,
+            subscriptionsCancelled,
+            paymentOrdersExpired: expiredOrders ?? 0,
+        },
         200,
     );
 });

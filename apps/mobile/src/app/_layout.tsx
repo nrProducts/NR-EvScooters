@@ -34,7 +34,7 @@ const RIDER_ROUTES = [
   "battery-stations",
   // DPDPA. "privacy" covers privacy/index, notice, requests, [id] and nominee.
   "consent", "privacy",
-  // Replayed from Profile ("How SwapNgo Works") while signed in — see the
+  // Replayed from Profile ("How Swapngo Works") while signed in — see the
   // !hasSeenOnboarding gate below for the signed-out first-run case, which
   // doesn't rely on this list at all.
   "onboarding",
@@ -230,7 +230,7 @@ export default function RootLayout() {
         <View className="flex-1 items-center justify-center" style={{ backgroundColor: COLORS.background }}>
           <Image
             source={require('../../assets/images/logo-lockup.png')}
-            accessibilityLabel="SwapNgo — Swap. Ride. Go Green."
+            accessibilityLabel="Swapngo — Swap. Ride. Go Green."
             className="w-60 h-16"
             resizeMode="contain"
           />

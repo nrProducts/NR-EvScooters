@@ -9,6 +9,7 @@
     "test:watch": "vitest",
     "typecheck": "node tsconfig.parts/run.mjs",
     "verify:selects": "node scripts/verify-selects.mjs",
+    "verify:razorpay": "node scripts/verify-razorpay.mjs",
     "typecheck:slice": "node tsconfig.parts/run.mjs",
     "typecheck:whole": "tsc -p tsconfig.json --noEmit",
     "lint": "node tsconfig.parts/run.mjs"

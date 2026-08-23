@@ -42,10 +42,17 @@ export async function fetchInvoiceById(id: string): Promise<InvoiceDetail> {
 }
 
 /**
- * POST /invoices/:id/refund — requireStaff. Bookkeeping only: flips the
- * invoice's payment_status to "refunded". There's no payment gateway wired
- * into this codebase, so no money actually moves — see the backend service
- * for the full caveat.
+ * POST /invoices/:id/refund — gated on `payments.refund`, NOT `payments.view`.
+ *
+ * **This moves real money.** The comment here used to say the opposite —
+ * "bookkeeping only… no payment gateway wired into this codebase" — which
+ * stopped being true when the Razorpay integration landed and was still on
+ * screen for anyone reading the client. It creates a `refunds` row against
+ * the payment that settled this invoice; a subsequent `POST /refunds/:id/retry`
+ * submits it to Razorpay as an actual payout.
+ *
+ * There is also no `payment_status` to flip any more: paid-ness is derived
+ * from `payment_allocations` by `v_invoice_balances`.
  */
 export async function refundInvoice(id: string, reason?: string): Promise<Invoice> {
   return apiClient.post<Invoice>(`/invoices/${id}/refund`, { reason });

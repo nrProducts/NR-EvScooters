@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { billingRepository } from '../../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
 import { ApiError } from '../../lib/ApiError';
+import type { ApiPaymentOrder } from '../../types/api';
 import { COLORS } from '../../constants/theme';
 import {
   FREE_CANCELLATION_GRACE_MINUTES, LATE_CANCELLATION_PENALTY_RATE,
@@ -34,6 +35,11 @@ export default function BillingScreen() {
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  // The authoritative breakdown, straight from the backend. Until this
+  // arrives the screen shows the plan's own figures as an ESTIMATE and says
+  // so — it cannot know about the transaction fee or the welcome discount,
+  // which are pricing rules resolved server-side.
+  const [quote, setQuote] = useState<ApiPaymentOrder | null>(null);
 
   useEffect(() => {
     if (!created && (!draft.vehicleModel || !draft.station || !draft.startDay || !draft.plan)) {
@@ -58,25 +64,35 @@ export default function BillingScreen() {
 
       setPaying(true);
       const order = await billingRepository.createOrderForBooking(booking.id);
-      // No Razorpay keys configured on the backend yet — the order was
-      // already settled server-side with temp data. Skip Checkout entirely.
-      if (!order.mock) {
-        const verifyPayload = await openRazorpayCheckout({
-          key: order.keyId,
-          amount: Math.round(order.amount * 100),
-          currency: order.currency,
-          order_id: order.gatewayOrderId,
-          name: 'SwapNgo',
-          description: plan ? `${plan.name} — weekly rental + deposit` : 'Scooter rental',
-          prefill: {
-            email: profile?.email ?? undefined,
-            contact: profile?.phone ?? undefined,
-            name: profile?.full_name,
-          },
-          theme: { color: COLORS.primary },
-        });
-        await billingRepository.verifyPayment(verifyPayload);
-      }
+
+      // Kept so that if the rider cancels Checkout and lands back here, the
+      // breakdown redraws with the REAL server-side lines instead of the
+      // plan-only estimate. It does not gate the flow — one press still pays.
+      setQuote(order);
+
+      // No conditional around this any more. The backend used to be able to
+      // reply `mock: true`, meaning it had settled the order itself with no
+      // gateway involved, and this screen skipped Checkout and showed
+      // "Booking Confirmed". Checkout is now the only way a payment happens.
+      const verifyPayload = await openRazorpayCheckout({
+        key: order.keyId,
+        amount: Math.round(order.amount * 100),
+        currency: order.currency,
+        order_id: order.gatewayOrderId,
+        description: plan ? `${plan.name} — weekly rental + deposit` : 'Scooter rental',
+        prefill: {
+          email: profile?.email ?? undefined,
+          contact: profile?.phone ?? undefined,
+          name: profile?.full_name,
+        },
+        theme: { color: COLORS.primary },
+      });
+
+      // Reports what Checkout returned; the backend asks Razorpay what
+      // actually happened before believing any of it. A non-2xx here means
+      // the payment is not confirmed — the screen must NOT advance, because
+      // the webhook may still land and this is the rider's only signal.
+      await billingRepository.verifyPayment(verifyPayload);
       setPaid(true);
     } catch (err) {
       if (err instanceof PaymentCancelledError) {
@@ -186,22 +202,54 @@ export default function BillingScreen() {
 
         <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Price Breakdown</Text>
         <View className="rounded-2xl p-4 border mb-6" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-          <View className="flex-row items-center justify-between mb-2">
-            <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">Weekly rental</Text>
-            <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold">₹{rentalAmount.toFixed(0)}</Text>
-          </View>
-          <View className="flex-row items-center justify-between mb-2">
-            <View className="flex-row items-center">
-              <ShieldCheck size={12} color={COLORS.textSecondary} />
-              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium ml-1">Security deposit (refundable)</Text>
-            </View>
-            <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold">₹{depositAmount.toFixed(0)}</Text>
-          </View>
+          {quote ? (
+            /* The real bill. Every line comes from invoice_items, so what is
+               shown here and what Razorpay charges are the same rows. */
+            quote.lines.map((line, i) => (
+              <View key={i} className="flex-row items-center justify-between mb-2">
+                <Text
+                  style={{ color: line.amount < 0 ? COLORS.success : COLORS.textSecondary }}
+                  className="text-xs font-medium flex-1 pr-3"
+                >
+                  {line.description}
+                </Text>
+                <Text
+                  style={{ color: line.amount < 0 ? COLORS.success : COLORS.textPrimary }}
+                  className="text-xs font-semibold"
+                >
+                  {line.amount < 0 ? '-' : ''}₹{Math.abs(line.amount).toFixed(0)}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <>
+              <View className="flex-row items-center justify-between mb-2">
+                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">Weekly rental</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold">₹{rentalAmount.toFixed(0)}</Text>
+              </View>
+              <View className="flex-row items-center justify-between mb-2">
+                <View className="flex-row items-center">
+                  <ShieldCheck size={12} color={COLORS.textSecondary} />
+                  <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium ml-1">Security deposit (refundable)</Text>
+                </View>
+                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold">₹{depositAmount.toFixed(0)}</Text>
+              </View>
+            </>
+          )}
           <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
           <View className="flex-row items-center justify-between">
-            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Total to pay now</Text>
-            <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-extrabold">₹{totalAmount.toFixed(0)}</Text>
+            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
+              {quote ? 'Total to pay now' : 'Estimated total'}
+            </Text>
+            <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-extrabold">
+              ₹{(quote ? quote.amount : totalAmount).toFixed(0)}
+            </Text>
           </View>
+          {!quote ? (
+            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-2">
+              Taxes, fees and any discount are confirmed on the next step.
+            </Text>
+          ) : null}
         </View>
 
         {payError ? (
@@ -218,7 +266,9 @@ export default function BillingScreen() {
         >
           {busy ? <ActivityIndicator size="small" color="#FFF" /> : <CreditCard size={16} color="#FFF" />}
           <Text className="text-white text-sm font-bold ml-2">
-            {paying ? 'Processing payment…' : creating ? 'Reserving…' : `Pay ₹${totalAmount.toFixed(0)}`}
+            {paying ? 'Processing payment…'
+              : creating ? 'Reserving…'
+              : `Pay ₹${(quote ? quote.amount : totalAmount).toFixed(0)}`}
           </Text>
         </TouchableOpacity>
         <Text style={{ color: COLORS.warning }} className="text-[11px] font-bold text-center mt-3">

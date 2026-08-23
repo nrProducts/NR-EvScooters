@@ -124,9 +124,9 @@ export function Sidebar({
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <div className={cn("flex h-16 items-center justify-center border-b border-border px-4", collapsed && "px-2")}>
         {collapsed ? (
-          <img src={logoMark} alt="SwapNgo" className="h-8 w-8 shrink-0" />
+          <img src={logoMark} alt="Swapngo" className="h-8 w-8 shrink-0" />
         ) : (
-          <img src={theme === "dark" ? logoWordmarkDark : logoWordmark} alt="SwapNgo" className="h-6 w-auto" />
+          <img src={theme === "dark" ? logoWordmarkDark : logoWordmark} alt="Swapngo" className="h-6 w-auto" />
         )}
       </div>
 

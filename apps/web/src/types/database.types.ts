@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      attendance_records: {
+        Row: {
+          check_in_at: string | null
+          check_out_at: string | null
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+          work_date: string
+        }
+        Insert: {
+          check_in_at?: string | null
+          check_out_at?: string | null
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+          work_date: string
+        }
+        Update: {
+          check_in_at?: string | null
+          check_out_at?: string | null
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_records_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -561,6 +599,36 @@ export type Database = {
           },
         ]
       }
+      holidays: {
+        Row: {
+          created_at: string
+          description: string | null
+          holiday_date: string
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          holiday_date: string
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          holiday_date?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       hubs: {
         Row: {
           address_line: string | null
@@ -957,6 +1025,106 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      leave_requests: {
+        Row: {
+          created_at: string
+          days: number
+          end_date: string
+          id: string
+          leave_type_id: string
+          reason: string | null
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          start_date: string
+          status: Database["public"]["Enums"]["leave_request_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          days: number
+          end_date: string
+          id?: string
+          leave_type_id: string
+          reason?: string | null
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          start_date: string
+          status?: Database["public"]["Enums"]["leave_request_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          days?: number
+          end_date?: string
+          id?: string
+          leave_type_id?: string
+          reason?: string | null
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          start_date?: string
+          status?: Database["public"]["Enums"]["leave_request_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_requests_leave_type_id_fkey"
+            columns: ["leave_type_id"]
+            isOneToOne: false
+            referencedRelation: "leave_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leave_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leave_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leave_types: {
+        Row: {
+          annual_quota_days: number
+          code: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          annual_quota_days: number
+          code: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          annual_quota_days?: number
+          code?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       maintenance_tickets: {
         Row: {
@@ -1398,8 +1566,10 @@ export type Database = {
       payment_transactions: {
         Row: {
           amount: number
-          captured_at: string
+          captured_at: string | null
           created_at: string
+          failure_code: string | null
+          failure_reason: string | null
           gateway_payment_id: string
           gateway_signature: string | null
           id: string
@@ -1410,8 +1580,10 @@ export type Database = {
         }
         Insert: {
           amount: number
-          captured_at?: string
+          captured_at?: string | null
           created_at?: string
+          failure_code?: string | null
+          failure_reason?: string | null
           gateway_payment_id: string
           gateway_signature?: string | null
           id?: string
@@ -1422,8 +1594,10 @@ export type Database = {
         }
         Update: {
           amount?: number
-          captured_at?: string
+          captured_at?: string | null
           created_at?: string
+          failure_code?: string | null
+          failure_reason?: string | null
           gateway_payment_id?: string
           gateway_signature?: string | null
           id?: string
@@ -1451,6 +1625,7 @@ export type Database = {
           is_signature_valid: boolean
           payload: Json
           processed_at: string | null
+          processing_attempts: number
           processing_error: string | null
           received_at: string
         }
@@ -1462,6 +1637,7 @@ export type Database = {
           is_signature_valid: boolean
           payload: Json
           processed_at?: string | null
+          processing_attempts?: number
           processing_error?: string | null
           received_at?: string
         }
@@ -1473,6 +1649,7 @@ export type Database = {
           is_signature_valid?: boolean
           payload?: Json
           processed_at?: string | null
+          processing_attempts?: number
           processing_error?: string | null
           received_at?: string
         }
@@ -3567,6 +3744,7 @@ export type Database = {
         Returns: Database["public"]["Enums"]["user_role"]
       }
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
+      expire_stale_payment_orders: { Args: never; Returns: number }
       generate_period_invoice: {
         Args: { p_subscription_period_id: string }
         Returns: string
@@ -3577,6 +3755,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      invoke_edge_function: { Args: { p_name: string }; Returns: undefined }
       is_admin: { Args: never; Returns: boolean }
       is_financial_audit_action: {
         Args: { p_action: string }
@@ -3681,6 +3860,7 @@ export type Database = {
         | "partially_verified"
         | "verified"
         | "rejected"
+      leave_request_status: "pending" | "approved" | "rejected" | "cancelled"
       maintenance_outcome:
         | "quick_fix"
         | "temp_vehicle"
@@ -3962,6 +4142,7 @@ export const Constants = {
         "verified",
         "rejected",
       ],
+      leave_request_status: ["pending", "approved", "rejected", "cancelled"],
       maintenance_outcome: [
         "quick_fix",
         "temp_vehicle",

@@ -778,6 +778,12 @@ function toApiBooking(row: MockBookingRow): ApiBooking {
         status: row.status,
         start_day: row.start_day,
         created_at: row.created_at,
+        // Mirrors the real API: a pending_payment booking is time-boxed,
+        // so the mock must carry a deadline too or Home renders it as a
+        // confirmed pickup in mock mode while behaving correctly live.
+        hold_expires_at: row.status === 'pending_payment'
+            ? new Date(new Date(row.created_at).getTime() + 30 * 60_000).toISOString()
+            : null,
         vehicle_model: model ? { id: model.id, name: model.name } : null,
         station: station ? { id: station.id, name: station.name, code: station.code, lat: station.lat, lng: station.lng } : null,
         plan: plan
