@@ -14,6 +14,7 @@ import {
   useUsers, useUserPermissions, useChangeUserStatus, useChangeUserRole, useUpdateUserPermissions,
 } from "@/hooks/useUsers";
 import { initials, formatDate } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import type { AppUser } from "@/types";
 import { matchProfileName, usePermissionCatalog } from "@/hooks/usePermissionCatalog";
 import { CUSTOM_PROFILE } from "@/types";
@@ -33,11 +34,23 @@ export default function StaffAccessSection() {
   // Revoking staff access is a demotion to `rider` now, not the removal of
   // one entry from a role array — `users.role` holds exactly one value.
   const revokeStaff = (u: AppUser) => {
-    changeRole.mutate({ id: u.id, role: "rider" });
+    changeRole.mutate(
+      { id: u.id, role: "rider" },
+      {
+        onSuccess: () => toastSuccess("Staff access revoked"),
+        onError: (err) => toastError(err, "Could not revoke staff access"),
+      },
+    );
   };
 
   const resetPermissions = (u: AppUser) => {
-    updatePermissions.mutate({ id: u.id, modules: [] });
+    updatePermissions.mutate(
+      { id: u.id, modules: [] },
+      {
+        onSuccess: () => toastSuccess("Permissions reset"),
+        onError: (err) => toastError(err, "Could not reset permissions"),
+      },
+    );
   };
 
   const columns: DataTableColumn<AppUser>[] = [
@@ -73,16 +86,44 @@ export default function StaffAccessSection() {
             <KeyRound className="mr-2 h-4 w-4" /> View / Edit permissions
           </DropdownMenuItem>
           {u.account_status === "suspended" ? (
-            <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
+            <DropdownMenuItem
+              onClick={() =>
+                changeStatus.mutate(
+                  { id: u.id, action: "activate" },
+                  {
+                    onSuccess: () => toastSuccess("Access restored"),
+                    onError: (err) => toastError(err, "Could not restore access"),
+                  },
+                )
+              }
+            >
               <CheckCircle2 className="mr-2 h-4 w-4" /> Restore access
             </DropdownMenuItem>
           ) : u.account_status === "inactive" ? (
-            <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
+            <DropdownMenuItem
+              onClick={() =>
+                changeStatus.mutate(
+                  { id: u.id, action: "activate" },
+                  {
+                    onSuccess: () => toastSuccess("Account activated"),
+                    onError: (err) => toastError(err, "Could not activate account"),
+                  },
+                )
+              }
+            >
               <CheckCircle2 className="mr-2 h-4 w-4" /> Activate account
             </DropdownMenuItem>
           ) : (
             <DropdownMenuItem
-              onClick={() => changeStatus.mutate({ id: u.id, action: "suspend", reason: "Suspended by admin" })}
+              onClick={() =>
+                changeStatus.mutate(
+                  { id: u.id, action: "suspend", reason: "Suspended by admin" },
+                  {
+                    onSuccess: () => toastSuccess("Access suspended"),
+                    onError: (err) => toastError(err, "Could not suspend access"),
+                  },
+                )
+              }
             >
               <Ban className="mr-2 h-4 w-4" /> Suspend access
             </DropdownMenuItem>
@@ -134,7 +175,13 @@ export default function StaffAccessSection() {
           if (promoteTarget) {
             changeRole.mutate(
               { id: promoteTarget.id, role: "admin" },
-              { onSuccess: () => setPromoteTarget(null) },
+              {
+                onSuccess: () => {
+                  toastSuccess("Promoted to admin");
+                  setPromoteTarget(null);
+                },
+                onError: (err) => toastError(err, "Could not promote to admin"),
+              },
             );
           }
         }}

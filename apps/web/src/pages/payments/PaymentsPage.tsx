@@ -21,6 +21,7 @@ import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { useAuthStore } from "@/store/authStore";
 import type { Invoice, InvoiceStatus, InvoicePaymentState, InvoicePurpose } from "@/types";
 
@@ -399,7 +400,13 @@ function RefundDialog({ invoice, onOpenChange }: { invoice: Invoice | null; onOp
               if (invoice) {
                 refund.mutate(
                   { id: invoice.id, reason: reason.trim() || undefined },
-                  { onSuccess: () => onOpenChange(false) },
+                  {
+                    onSuccess: () => {
+                      toastSuccess("Refund initiated");
+                      onOpenChange(false);
+                    },
+                    onError: (err) => toastError(err, "Could not initiate refund"),
+                  },
                 );
               }
             }}

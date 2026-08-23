@@ -215,7 +215,10 @@ export const api = {
     myPhotoUrl: () => request<ApiSignedUrl>('/users/me/photo/url'),
 
     registerPushToken: (token: string) =>
-        request<void>('/users/me/push-token', { method: 'POST', body: { token } }),
+        request<void>('/users/me/push-token', {
+            method: 'POST',
+            body: { token, platform: Platform.OS === 'ios' ? 'ios' : 'android' },
+        }),
 
     // --- notifications -----------------------------------------------------
     myNotifications: (params: { page?: number; pageSize?: number } = {}) =>

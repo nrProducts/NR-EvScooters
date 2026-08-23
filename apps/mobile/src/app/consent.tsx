@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ShieldCheck, ChevronDown, ChevronUp, FileText, Lock } from 'lucide-react-native';
 import { COLORS } from '../constants/theme';
 import { ConsentToggle } from '../components/ui/ConsentToggle';
+import { CheckRow } from '../components/ui/CheckRow';
 import { LanguageToggle } from '../i18n/LanguageToggle';
 import { useT, useLangStore } from '../i18n';
 import type { CopyKey } from '../i18n';
@@ -32,6 +33,7 @@ export default function ConsentScreen() {
     const refreshProfile = useAuthStore((s) => s.refreshProfile);
     const [optional, setOptional] = useState<Record<string, boolean>>({});
     const [expanded, setExpanded] = useState<string | null>(null);
+    const [declared, setDeclared] = useState(false);
 
     useEffect(() => {
         if (!langReady) void hydrate();
@@ -193,11 +195,21 @@ export default function ConsentScreen() {
                 </View>
             ) : null}
 
+            <View className="mb-4">
+                <CheckRow
+                    checked={declared}
+                    onToggle={() => setDeclared((v) => !v)}
+                    text={t('consent.confirmDeclaration')}
+                    disabled={saving}
+                />
+            </View>
+
             <TouchableOpacity
                 onPress={() => void accept()}
-                disabled={saving}
+                disabled={saving || !declared}
                 accessibilityRole="button"
-                style={{ backgroundColor: COLORS.primary, opacity: saving ? 0.7 : 1 }}
+                accessibilityState={{ disabled: saving || !declared }}
+                style={{ backgroundColor: COLORS.primary, opacity: saving || !declared ? 0.5 : 1 }}
                 className="w-full py-4 rounded-2xl flex-row justify-center items-center"
             >
                 {saving ? (

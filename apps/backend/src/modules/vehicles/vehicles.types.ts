@@ -46,9 +46,20 @@ export interface VehicleRow {
     purchase_date: string | null;
     /** Which hub the vehicle belongs to. New; there was no such column. */
     hub_id: string | null;
+    /** Manufacturing batch/lot number. Nullable; unique when present. */
+    batch_number: string | null;
     created_at: string;
     updated_at: string | null;
     payment_status: VehiclePaymentStatus;
+    /** The rider currently holding this vehicle, from the open rental assignment. Null when nothing live holds it. */
+    current_rider: { id: string; full_name: string } | null;
+    /** The plan behind the current rider's subscription, if any. */
+    plan_name: string | null;
+    plan_status: string | null;
+    /** `subscriptions.started_on`. */
+    plan_start_date: string | null;
+    /** `v_subscription_current_period.scheduled_ends_on` — derived, shifts on every pause. */
+    plan_end_date: string | null;
 }
 
 export interface VehicleDocumentRow {
@@ -125,8 +136,6 @@ export interface VehicleDetail extends VehicleRow {
     maintenance_history: VehicleMaintenanceRow[];
     rental_history: VehicleRentalRow[];
     booking_history: VehicleBookingRow[];
-    /** The rider currently holding this vehicle, from the open assignment. */
-    current_rider: { id: string; full_name: string } | null;
     /** Set only once this vehicle has been disposed of. */
     scrap_record: ScrapRecordRow | null;
 }
@@ -158,6 +167,7 @@ export interface CreateVehicleInput {
     qr_code?: string;
     imei?: string;
     purchase_date?: string;
+    batch_number?: string;
     /**
      * NOT accepted. `status` is derived by `recompute_vehicle_status()`;
      * declared here only so the compiler rejects a caller still passing it

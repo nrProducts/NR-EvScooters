@@ -15,6 +15,7 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { ApiError } from "@/services/api/httpClient";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import type { Refund, RefundStatus, RefundType } from "@/types";
 
 const STATUS_OPTIONS: (RefundStatus | "all")[] = ["all", "pending", "processing", "succeeded", "failed"];
@@ -142,7 +143,10 @@ export default function RefundsPage() {
               disabled={retry.isPending}
               onClick={(e) => {
                 e.stopPropagation();
-                retry.mutate(r.id);
+                retry.mutate(r.id, {
+                  onSuccess: () => toastSuccess("Refund retried"),
+                  onError: (err) => toastError(err, "Could not retry refund"),
+                });
               }}
             >
               <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Retry
@@ -309,7 +313,13 @@ function ApproveRefundDialog({
             disabled={retry.isPending}
             onClick={() => {
               if (refund) {
-                retry.mutate(refund.id, { onSuccess: () => onOpenChange(false) });
+                retry.mutate(refund.id, {
+                  onSuccess: () => {
+                    toastSuccess("Refund approved and processed");
+                    onOpenChange(false);
+                  },
+                  onError: (err) => toastError(err, "Could not process refund"),
+                });
               }
             }}
           >

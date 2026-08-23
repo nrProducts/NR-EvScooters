@@ -1,15 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, Pressable, Modal, Animated, Easing, Dimensions, ScrollView, Image } from 'react-native';
+import {
+  View, Text, TouchableOpacity, Pressable, Modal, Animated, Easing, Dimensions, ScrollView, Image, AppState,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
-import { useUnreadNotificationCount } from '../hooks/useNotifications';
+import { useNotificationBadgeStore } from '../store/useNotificationBadgeStore';
 import { Badge } from './ui/Badge';
 import { COLORS } from '../constants/theme';
 import { KYC_STATUS_LABEL, KYC_STATUS_TONE } from '../constants/status';
+import { pickPhoto } from '../lib/filePicker';
+import { userRepository } from '../services';
+import { ApiError } from '../lib/ApiError';
+import { notify } from '../lib/confirm';
 import {
   Menu, X, User, LogOut, Bike, BatteryCharging, CreditCard,
-  Home, LifeBuoy, Mail, Phone, ShieldCheck, ChevronRight, Bell, History, Lock
+  Home, LifeBuoy, Mail, Phone, ShieldCheck, ChevronRight, Bell, History, Lock, Camera,
 } from 'lucide-react-native';
 
 const DRAWER_WIDTH = Math.min(300, Dimensions.get('window').width * 0.8);
@@ -47,6 +53,43 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   // Identity, roles and sign-out come from the authenticated session.
   const profile = useAuthStore(s => s.profile);
   const signOut = useAuthStore(s => s.signOut);
+  const refreshProfile = useAuthStore(s => s.refreshProfile);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+
+  // profile.profile_photo_url is a private-bucket storage path, not a
+  // fetchable URL (see users.types.ts) — it only tells us a photo exists.
+  // Actually rendering it means minting a signed URL via GET /me/photo/url,
+  // same as the KYC document previews do.
+  const hasPhoto = !!profile?.profile_photo_url;
+  useEffect(() => {
+    if (!hasPhoto) {
+      setPhotoUrl(null);
+      return;
+    }
+    let cancelled = false;
+    userRepository.myPhotoUrl()
+      .then((result) => { if (!cancelled) setPhotoUrl(result.url); })
+      .catch(() => { if (!cancelled) setPhotoUrl(null); });
+    return () => { cancelled = true; };
+    // profile_photo_url changes on every re-upload (new storage path), which is
+    // exactly when the signed URL needs to be re-minted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.profile_photo_url]);
+
+  const changePhoto = async () => {
+    const file = await pickPhoto();
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      await userRepository.uploadMyPhoto(file);
+      await refreshProfile();
+    } catch (err) {
+      notify('Upload failed', err instanceof ApiError ? err.message : 'Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   // Assigned vehicle, plan and KYC come from GET /users/me — real data.
 
@@ -57,8 +100,23 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   const [profileOpen, setProfileOpen] = useState(false);
   /** 0 = fully closed, 1 = fully open. Drives the slide and the scrim fade together. */
   const drawerAnim = useRef(new Animated.Value(0)).current;
-  const { count: unreadNotifications } = useUnreadNotificationCount();
+  const unreadNotifications = useNotificationBadgeStore((s) => s.unreadCount);
   const insets = useSafeAreaInsets();
+
+  // Polling fallback: the primary refresh path is the foreground push
+  // listener in _layout.tsx, which fires the instant a notification lands.
+  // This just closes the gap for a push that never arrives (e.g. a device
+  // registration that raced a send — see deliverPush's "stays pending"
+  // comment) — paused while backgrounded, since there's nothing to catch up
+  // on until the rider is looking at the screen again.
+  useEffect(() => {
+    const refresh = useNotificationBadgeStore.getState().refresh;
+    void refresh();
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') void refresh();
+    }, 45000);
+    return () => clearInterval(interval);
+  }, []);
 
   // "My Scooter"/"My Plan" only make sense once a booking or rental exists.
   // has_active_booking excludes 'fulfilled' by design (see bookings.types.ts)
@@ -170,10 +228,16 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
 
         <TouchableOpacity
           onPress={() => setProfileOpen(true)}
-          className="w-9 h-9 rounded-full items-center justify-center border"
+          accessibilityRole="button"
+          accessibilityLabel="Profile"
+          className="w-9 h-9 rounded-full items-center justify-center border overflow-hidden"
           style={{ backgroundColor: COLORS.primary + '1A', borderColor: COLORS.primary + '40' }}
         >
-          <User size={18} color={COLORS.primary} />
+          {photoUrl ? (
+            <Image source={{ uri: photoUrl }} className="w-9 h-9" resizeMode="cover" />
+          ) : (
+            <User size={18} color={COLORS.primary} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -277,14 +341,44 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
             </View>
 
             <View className="items-center mb-5">
-              <View className="w-16 h-16 rounded-full items-center justify-center mb-2.5" style={{ backgroundColor: COLORS.primary + '1A' }}>
-                <User size={28} color={COLORS.primary} />
-              </View>
+              <TouchableOpacity
+                onPress={() => void changePhoto()}
+                disabled={uploadingPhoto}
+                accessibilityRole="button"
+                accessibilityLabel="Change profile photo"
+                className="mb-2.5"
+              >
+                <View
+                  className="w-16 h-16 rounded-full items-center justify-center overflow-hidden"
+                  style={{ backgroundColor: COLORS.primary + '1A' }}
+                >
+                  {photoUrl ? (
+                    <Image
+                      source={{ uri: photoUrl }}
+                      className="w-16 h-16"
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <User size={28} color={COLORS.primary} />
+                  )}
+                </View>
+                <View
+                  className="absolute bottom-0 right-0 w-6 h-6 rounded-full items-center justify-center border-2"
+                  style={{ backgroundColor: COLORS.primary, borderColor: COLORS.card }}
+                >
+                  <Camera size={11} color="#FFF" />
+                </View>
+              </TouchableOpacity>
               <Text style={{ color: COLORS.textPrimary }} className="text-base font-extrabold">{profile.full_name}</Text>
+              <TouchableOpacity onPress={() => void changePhoto()} disabled={uploadingPhoto} accessibilityRole="button">
+                <Text style={{ color: COLORS.primary }} className="text-[11px] font-bold mt-1">
+                  {uploadingPhoto ? 'Uploading...' : 'Change Photo'}
+                </Text>
+              </TouchableOpacity>
               {/* Static now that the app is rider-only. Kept as the visual
                   anchor for the avatar block — the badge that actually varies
                   (KYC status) sits a few rows below. */}
-              <View className="flex-row items-center mt-1 px-2.5 py-1 rounded-full" style={{ backgroundColor: COLORS.secondary + '30' }}>
+              <View className="flex-row items-center mt-2 px-2.5 py-1 rounded-full" style={{ backgroundColor: COLORS.secondary + '30' }}>
                 <ShieldCheck size={12} color={COLORS.primary} />
                 <Text style={{ color: COLORS.primaryPressed }} className="text-[10px] font-bold uppercase tracking-wider ml-1">
                   Rider

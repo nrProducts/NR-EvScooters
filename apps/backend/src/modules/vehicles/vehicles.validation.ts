@@ -42,6 +42,7 @@ export const createVehicleBody = z.object({
     qr_code: z.string().trim().max(120).optional(),
     imei: z.string().trim().max(40).optional(),
     purchase_date: dateSchema.optional(),
+    batch_number: z.string().trim().min(1).max(60).optional(),
 }).strict();
 
 export const updateVehicleBody = z
@@ -54,6 +55,7 @@ export const updateVehicleBody = z
         qr_code: z.string().trim().max(120).nullable().optional(),
         imei: z.string().trim().max(40).nullable().optional(),
         purchase_date: dateSchema.nullable().optional(),
+        batch_number: z.string().trim().min(1).max(60).nullable().optional(),
     })
     .strict()
     .refine((v) => Object.keys(v).length > 0, "Provide at least one field to update.");

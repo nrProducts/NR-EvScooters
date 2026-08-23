@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { View, Text, ActivityIndicator, TouchableOpacity, Image } from "react-native";
+import { View, Text, ActivityIndicator, TouchableOpacity } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -8,11 +8,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";
 import { useAuthStore } from "../store/useAuthStore";
 import { useOnboardingStore } from "../store/useOnboardingStore";
+import { useNotificationBadgeStore } from "../store/useNotificationBadgeStore";
+import { useNotificationToastStore } from "../store/useNotificationToastStore";
 import { userRepository } from "../services";
 import { DialogHost } from "../components/ui/DialogHost";
+import { NotificationToastHost } from "../components/NotificationToastHost";
 import { registerForPushNotificationsAsync } from "../lib/pushNotifications";
 import { missingEnvVars } from "../constants/env";
 import { COLORS } from "../constants/theme";
+import { SplashAnimation } from "../components/SplashAnimation";
 import "../../global.css";
 
 /**
@@ -129,16 +133,27 @@ export default function RootLayout() {
   // within one app session re-registers for the new account instead of
   // silently leaving the device's token on the previous one. Best-effort: a
   // permission denial or network hiccup must never block sign-in/routing.
+  //
+  // Only marked done on actual success: this used to be set unconditionally
+  // before the attempt, so a single transient failure (permission dialog
+  // dismissed, a network hiccup on the POST) permanently blocked retrying for
+  // the rest of the session — the next profile refetch would see the id
+  // already "registered" and skip it, even though no token was ever saved.
   const pushTokenRegisteredFor = useRef<string | null>(null);
   useEffect(() => {
     if (!profile || pushTokenRegisteredFor.current === profile.id) return;
-    pushTokenRegisteredFor.current = profile.id;
     void (async () => {
       try {
         const token = await registerForPushNotificationsAsync();
-        if (token) await userRepository.registerPushToken(token);
-      } catch {
-        // Notifications are a nice-to-have, not a sign-in requirement.
+        if (!token) return;
+        console.log("[push] registering token with backend for user:", profile.id);
+        await userRepository.registerPushToken(token);
+        console.log("[push] token registration request succeeded");
+        pushTokenRegisteredFor.current = profile.id;
+      } catch (err) {
+        // Notifications are a nice-to-have, not a sign-in requirement — but
+        // silent-forever was the bug, so at least this is visible in dev.
+        console.warn("[push] registration failed, will retry next profile refresh", err);
       }
     })();
   }, [profile]);
@@ -148,10 +163,31 @@ export default function RootLayout() {
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const screen = response.notification.request.content.data?.screen;
+      console.log("[push] notification tapped:", response.notification.request.content.title, "-> screen:", screen);
       router.push(`/${typeof screen === "string" ? screen : "notifications"}` as never);
     });
     return () => sub.remove();
   }, [router]);
+
+  // A notification landing while the app is foregrounded no longer shows the
+  // OS banner (shouldShowBanner:false in pushNotifications.ts) — this is what
+  // shows it instead, via the themed popup, and also refreshes the header
+  // badge/list, same instant the push actually arrives rather than waiting
+  // on AppShell's polling fallback.
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      const { title, body, data } = notification.request.content;
+      console.log("[push] notification received:", title, body);
+      void useNotificationBadgeStore.getState().refresh();
+      useNotificationToastStore.getState().enqueue({
+        id: notification.request.identifier,
+        title: title ?? "Notification",
+        body: body ?? "",
+        screen: typeof data?.screen === "string" ? data.screen : undefined,
+      });
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (initialising || !onboardingHydrated) return;
@@ -227,17 +263,7 @@ export default function RootLayout() {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" backgroundColor={COLORS.background} />
-        <View className="flex-1 items-center justify-center" style={{ backgroundColor: COLORS.background }}>
-          <Image
-            source={require('../../assets/images/logo-lockup.png')}
-            accessibilityLabel="Swapngo — Swap. Ride. Go Green."
-            className="w-60 h-16"
-            resizeMode="contain"
-          />
-          <View className="mt-8">
-            <ActivityIndicator size="large" color={COLORS.primary} />
-          </View>
-        </View>
+        <SplashAnimation />
       </SafeAreaProvider>
     );
   }
@@ -290,6 +316,8 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }} />
           {/* Every confirmAction/notify call in the app surfaces here. */}
           <DialogHost />
+          {/* Foreground push popup — see NotificationToastHost.tsx. */}
+          <NotificationToastHost />
         </KeyboardProvider>
       </SafeAreaProvider>
     </QueryClientProvider>

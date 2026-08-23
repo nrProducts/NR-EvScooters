@@ -43,7 +43,7 @@ import {
 
 const VEHICLE_COLUMNS = `
     id, display_name, registration_number, vin, vehicle_model_id, hub_id,
-    status, colour, qr_code, imei, purchased_on, created_at, updated_at,
+    status, colour, qr_code, imei, purchased_on, batch_number, created_at, updated_at,
     vehicle_models(name)
 `;
 
@@ -59,6 +59,7 @@ interface RawVehicleRow {
     qr_code: string | null;
     imei: string | null;
     purchased_on: string | null;
+    batch_number: string | null;
     created_at: string;
     updated_at: string | null;
     vehicle_models: unknown;
@@ -86,10 +87,89 @@ function toVehicleRow(row: RawVehicleRow): VehicleRow {
         imei: row.imei,
         purchase_date: row.purchased_on,
         hub_id: row.hub_id,
+        batch_number: row.batch_number,
         created_at: row.created_at,
         updated_at: row.updated_at,
         payment_status: null,
+        current_rider: null,
+        plan_name: null,
+        plan_status: null,
+        plan_start_date: null,
+        plan_end_date: null,
     };
+}
+
+/**
+ * Current rider + plan detail per vehicle, in bulk.
+ *
+ * Same join `paymentStatusesForVehicles` uses to find the open assignment,
+ * extended to the rider and the plan behind their subscription.
+ * `v_subscription_current_period` supplies `scheduled_ends_on` — the
+ * scheduled end is never stored, since it shifts on every pause (see that
+ * view's comment) — so a second query resolves it for whichever
+ * subscriptions were found in the first.
+ */
+async function ridersAndPlansForVehicles(vehicleIds: string[]): Promise<Map<string, {
+    current_rider: { id: string; full_name: string } | null;
+    plan_name: string | null;
+    plan_status: string | null;
+    plan_start_date: string | null;
+    plan_end_date: string | null;
+}>> {
+    const map = new Map<string, {
+        current_rider: { id: string; full_name: string } | null;
+        plan_name: string | null;
+        plan_status: string | null;
+        plan_start_date: string | null;
+        plan_end_date: string | null;
+    }>();
+    if (vehicleIds.length === 0) return map;
+
+    const { data, error } = await supabaseAdmin
+        .from("v_rental_current_vehicle")
+        .select("vehicle_id, users(id, full_name), subscriptions(id, status, started_on, plans(name))")
+        .in("vehicle_id", vehicleIds);
+    if (error) throw error;
+
+    const rows = (data ?? []) as unknown as Array<{
+        vehicle_id: string;
+        users: unknown;
+        subscriptions: unknown;
+    }>;
+
+    const subscriptionIds = rows
+        .map((r) => unwrap<{ id: string }>(r.subscriptions)?.id)
+        .filter((id): id is string => !!id);
+
+    const endDates = new Map<string, string | null>();
+    if (subscriptionIds.length > 0) {
+        const { data: periods, error: periodsError } = await supabaseAdmin
+            .from("v_subscription_current_period")
+            .select("subscription_id, scheduled_ends_on")
+            .in("subscription_id", subscriptionIds);
+        if (periodsError) throw periodsError;
+        for (const p of (periods ?? []) as Array<{ subscription_id: string; scheduled_ends_on: string | null }>) {
+            endDates.set(p.subscription_id, p.scheduled_ends_on);
+        }
+    }
+
+    for (const row of rows) {
+        const rider = unwrap<{ id: string; full_name: string }>(row.users);
+        const subscription = unwrap<{ id: string; status: string; started_on: string; plans: unknown }>(
+            row.subscriptions,
+        );
+        const plan = subscription ? unwrap<{ name: string }>(subscription.plans) : null;
+
+        map.set(row.vehicle_id, {
+            current_rider: rider,
+            plan_name: plan?.name ?? null,
+            plan_status: subscription?.status ?? null,
+            plan_start_date: subscription?.started_on ?? null,
+            plan_end_date: subscription ? endDates.get(subscription.id) ?? null : null,
+        });
+    }
+
+    return map;
 }
 
 /**
@@ -156,6 +236,7 @@ export async function listVehicles(filters: ListVehiclesFilters): Promise<Pagina
                 `display_name.ilike.%${term}%`,
                 `registration_number.ilike.%${term}%`,
                 `vin.ilike.%${term}%`,
+                `batch_number.ilike.%${term}%`,
             ].join(","),
         );
     }
@@ -167,13 +248,18 @@ export async function listVehicles(filters: ListVehiclesFilters): Promise<Pagina
     if (error) throw error;
 
     const rows = ((data ?? []) as unknown as RawVehicleRow[]).map(toVehicleRow);
-    const paymentStatuses = await paymentStatusesForVehicles(rows.map((r) => r.id));
-    const withPaymentStatus = rows.map((r) => ({
+    const ids = rows.map((r) => r.id);
+    const [paymentStatuses, ridersAndPlans] = await Promise.all([
+        paymentStatusesForVehicles(ids),
+        ridersAndPlansForVehicles(ids),
+    ]);
+    const enriched = rows.map((r) => ({
         ...r,
         payment_status: paymentStatuses.get(r.id) ?? null,
+        ...(ridersAndPlans.get(r.id) ?? {}),
     }));
 
-    return paginate(withPaymentStatus, count ?? 0, filters);
+    return paginate(enriched, count ?? 0, filters);
 }
 
 // ---------------------------------------------------------------------------
@@ -190,47 +276,30 @@ export async function getVehicleById(id: string): Promise<VehicleDetail> {
     if (error) throw error;
     if (!data) throw notFound("Vehicle not found.");
 
-    const [documents, maintenanceHistory, rentalHistory, bookingHistory, scrapRecord, currentRider] =
+    const [documents, maintenanceHistory, rentalHistory, bookingHistory, scrapRecord] =
         await Promise.all([
             documentsForVehicle(id),
             maintenanceForVehicle(id),
             rentalsForVehicle(id),
             bookingsForVehicle(id),
             scrapRecordForVehicle(id),
-            currentRiderForVehicle(id),
         ]);
 
-    const paymentStatuses = await paymentStatusesForVehicles([id]);
+    const [paymentStatuses, ridersAndPlans] = await Promise.all([
+        paymentStatusesForVehicles([id]),
+        ridersAndPlansForVehicles([id]),
+    ]);
 
     return {
         ...toVehicleRow(data as unknown as RawVehicleRow),
         payment_status: paymentStatuses.get(id) ?? null,
+        ...(ridersAndPlans.get(id) ?? {}),
         documents,
         maintenance_history: maintenanceHistory,
         rental_history: rentalHistory,
         booking_history: bookingHistory,
-        current_rider: currentRider,
         scrap_record: scrapRecord,
     };
-}
-
-/**
- * Who is holding this vehicle right now.
- *
- * Was `rentalHistory.find(r => r.status === "active")`, which only worked
- * because a rental named its vehicle. It does not, so this asks the view that
- * resolves the open assignment instead.
- */
-async function currentRiderForVehicle(
-    vehicleId: string,
-): Promise<{ id: string; full_name: string } | null> {
-    const { data, error } = await supabaseAdmin
-        .from("v_rental_current_vehicle")
-        .select("users(id, full_name)")
-        .eq("vehicle_id", vehicleId)
-        .maybeSingle();
-    if (error) throw error;
-    return data ? unwrap<{ id: string; full_name: string }>(data.users) : null;
 }
 
 async function scrapRecordForVehicle(vehicleId: string): Promise<ScrapRecordRow | null> {
@@ -432,6 +501,7 @@ export async function createVehicle(
             qr_code: input.qr_code ?? null,
             imei: input.imei ?? null,
             purchased_on: input.purchase_date ?? null,
+            batch_number: input.batch_number ?? null,
             // No `status`: the column defaults to 'available' and
             // recompute_vehicle_status() maintains it from there.
         })
@@ -502,6 +572,7 @@ export async function updateVehicle(
     if (patch.qr_code !== undefined) columns.qr_code = patch.qr_code;
     if (patch.imei !== undefined) columns.imei = patch.imei;
     if (patch.purchase_date !== undefined) columns.purchased_on = patch.purchase_date;
+    if (patch.batch_number !== undefined) columns.batch_number = patch.batch_number;
 
     let vehicle: VehicleRow;
     if (Object.keys(columns).length === 0) {
@@ -555,7 +626,7 @@ function escapeLike(input: string): string {
     return input.replace(/[%_\\,()]/g, "");
 }
 
-/** 23505 = unique_violation on registration_number / vin / qr_code / imei. */
+/** 23505 = unique_violation on registration_number / vin / qr_code / imei / batch_number. */
 function mapPostgresError(error: { code?: string; message?: string }): Error {
     if (error.code === "23505") {
         if (error.message?.includes("registration_number")) {
@@ -571,6 +642,11 @@ function mapPostgresError(error: { code?: string; message?: string }): Error {
         }
         if (error.message?.includes("imei")) {
             return conflict("This IMEI is already in use.", { imei: "This IMEI is already in use." });
+        }
+        if (error.message?.includes("batch_number")) {
+            return conflict("This batch number is already in use.", {
+                batch_number: "This batch number is already in use.",
+            });
         }
         return conflict("That value is already in use.");
     }

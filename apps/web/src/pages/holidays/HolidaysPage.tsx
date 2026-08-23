@@ -20,6 +20,7 @@ import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import type { CreateHolidayInput, Holiday, UpdateHolidayInput } from "@/services/api/holidays";
 
 type HolidayRow = Holiday & { id: string };
@@ -112,9 +113,14 @@ export default function HolidaysPage() {
         isPending={editTarget ? updateHoliday.isPending : createHoliday.isPending}
         error={editTarget ? updateHoliday.error : createHoliday.error}
         onSubmit={(payload) => {
-          const onSuccess = () => { setFormOpen(false); setEditTarget(null); };
-          if (editTarget) updateHoliday.mutate({ id: editTarget.id, input: payload }, { onSuccess });
-          else createHoliday.mutate(payload, { onSuccess });
+          const onSuccess = () => {
+            toastSuccess(editTarget ? "Holiday updated" : "Holiday added");
+            setFormOpen(false);
+            setEditTarget(null);
+          };
+          const onError = (err: unknown) => toastError(err, editTarget ? "Could not update holiday" : "Could not add holiday");
+          if (editTarget) updateHoliday.mutate({ id: editTarget.id, input: payload }, { onSuccess, onError });
+          else createHoliday.mutate(payload, { onSuccess, onError });
         }}
       />
 
@@ -130,7 +136,13 @@ export default function HolidaysPage() {
           if (!deleteTarget) return;
           deleteHoliday.mutate(
             { id: deleteTarget.id, name: deleteTarget.name },
-            { onSuccess: () => setDeleteTarget(null) },
+            {
+              onSuccess: () => {
+                toastSuccess("Holiday deleted");
+                setDeleteTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not delete holiday"),
+            },
           );
         }}
       />

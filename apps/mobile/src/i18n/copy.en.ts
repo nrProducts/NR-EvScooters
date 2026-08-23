@@ -31,7 +31,8 @@ export const en = {
     'consent.detail.retention': 'How long we keep it',
     'consent.readNotice': 'Read the full privacy notice',
     'consent.version': 'Notice version {version}, effective {date}',
-    'consent.accept': 'Agree and continue',
+    'consent.confirmDeclaration': 'I confirm that I have read and agree to the terms and conditions.',
+    'consent.accept': 'Agree & Continue',
     'consent.saving': 'Saving your choices...',
     'consent.error': 'We could not save your choices. Please try again.',
     'consent.stale':

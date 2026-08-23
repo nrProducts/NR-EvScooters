@@ -122,6 +122,10 @@ export default function KycScreen() {
       notify('Front image required', 'Add a photo or PDF of the front of the document.');
       return;
     }
+    if (!draft.back && !existing) {
+      notify('Back image required', 'Add a photo or PDF of the back of the document.');
+      return;
+    }
     if (type === 'driving_licence' && !draft.expires_on.trim()) {
       notify('Expiry date required', 'A driving licence must include its expiry date.');
       return;
@@ -284,6 +288,7 @@ export default function KycScreen() {
               <ProfilePhotoStep
                 currentPhotoUrl={profile?.profile_photo_url ?? null}
                 onNext={() => goToStep(1)}
+                onUploaded={refreshProfile}
               />
             ) : null}
 
@@ -470,7 +475,8 @@ const PHOTO_GUIDANCE = [
 const ProfilePhotoStep: React.FC<{
   currentPhotoUrl: string | null;
   onNext: () => void;
-}> = ({ currentPhotoUrl, onNext }) => {
+  onUploaded: () => Promise<void> | void;
+}> = ({ currentPhotoUrl, onNext, onUploaded }) => {
   const [picked, setPicked] = useState<LocalFile | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(!!currentPhotoUrl);
@@ -487,6 +493,11 @@ const ProfilePhotoStep: React.FC<{
       await userRepository.uploadMyPhoto(picked);
       setUploaded(true);
       setPicked(null);
+      // The cached profile (read by AppShell's Profile panel and this
+      // wizard's own Review step) must catch up now — without this the
+      // photo just uploaded doesn't appear anywhere until something
+      // unrelated happens to refresh it later.
+      await onUploaded();
     } catch (err) {
       notify('Upload failed', err instanceof ApiError ? err.message : 'Please try again.');
     } finally {
@@ -771,7 +782,8 @@ const DocumentStep: React.FC<DocumentStepProps> = ({
             onClear={() => setDraft((d) => ({ ...d, front: null }))}
           />
           <FileSlot
-            label="Back (optional)"
+            label="Back"
+            required
             file={draft.back}
             onPick={() => void attach('back')}
             onClear={() => setDraft((d) => ({ ...d, back: null }))}
@@ -908,6 +920,12 @@ const DocSummaryRow: React.FC<{ doc: ApiDocument; onPreview: () => void }> = ({ 
           Expired — upload a current one
         </Text>
       ) : null}
+      {(doc.document_type === 'aadhaar' || doc.document_type === 'driving_licence') ? (
+        <View className="flex-row items-center mt-1" style={{ gap: 6 }}>
+          <SideStatusChip label="Front" uploaded />
+          <SideStatusChip label="Back" uploaded={doc.has_back_side} />
+        </View>
+      ) : null}
     </View>
     <Badge label={doc.verification_status} tone={VERIFICATION_TONE[doc.verification_status]} />
     <TouchableOpacity
@@ -919,6 +937,21 @@ const DocSummaryRow: React.FC<{ doc: ApiDocument; onPreview: () => void }> = ({ 
     >
       <Eye size={14} color={COLORS.textSecondary} />
     </TouchableOpacity>
+  </View>
+);
+
+const SideStatusChip: React.FC<{ label: string; uploaded: boolean }> = ({ label, uploaded }) => (
+  <View
+    className="flex-row items-center px-2 py-0.5 rounded-full"
+    style={{ backgroundColor: uploaded ? COLORS.success + '14' : COLORS.danger + '14' }}
+  >
+    {uploaded ? <Check size={10} color={COLORS.success} /> : <X size={10} color={COLORS.danger} />}
+    <Text
+      style={{ color: uploaded ? COLORS.success : COLORS.danger }}
+      className="text-[9px] font-bold ml-1"
+    >
+      {label}
+    </Text>
   </View>
 );
 

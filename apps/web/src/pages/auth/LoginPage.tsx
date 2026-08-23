@@ -40,7 +40,7 @@ export default function LoginPage() {
             <Label htmlFor="identifier">Email or phone</Label>
             <Input
               id="identifier"
-              placeholder="you@swapngo.in or +91 98765 43210"
+              placeholder="you@swapngo.in or 98765 43210"
               {...register("identifier", { required: "Email or phone is required" })}
             />
             {errors.identifier && <p className="text-xs text-destructive">{errors.identifier.message}</p>}

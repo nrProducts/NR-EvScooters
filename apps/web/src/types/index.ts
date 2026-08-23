@@ -442,6 +442,8 @@ export interface Vehicle {
   purchase_date: string | null;
   /** Which hub the vehicle belongs to. New; there was no such column. */
   hub_id: string | null;
+  /** Manufacturing batch/lot number. Nullable; unique when present. */
+  batch_number: string | null;
   created_at: string;
   updated_at: string | null;
   /**
@@ -450,6 +452,14 @@ export interface Vehicle {
    * 'active'/'past_due'/'paused'. null when nothing live holds it.
    */
   payment_status: "pending_payment" | "confirmed" | "active" | "past_due" | "paused" | null;
+  /** The rider currently holding this vehicle, from the open rental assignment. Null when unassigned. */
+  current_rider: { id: string; full_name: string } | null;
+  /** The plan behind the current rider's subscription, if any. */
+  plan_name: string | null;
+  plan_status: string | null;
+  plan_start_date: string | null;
+  /** Scheduled end — derived, shifts on every pause. */
+  plan_end_date: string | null;
 }
 
 export interface VehicleDocument {
@@ -518,7 +528,6 @@ export interface VehicleDetail extends Vehicle {
   maintenance_history: VehicleMaintenanceRecord[];
   rental_history: VehicleRentalRecord[];
   booking_history: VehicleBookingRecord[];
-  current_rider: { id: string; full_name: string } | null;
   scrap_record: ScrapRecord | null;
 }
 

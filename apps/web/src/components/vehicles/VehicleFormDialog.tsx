@@ -45,6 +45,7 @@ const emptyForm: VehicleFormInput = {
   qr_code: "",
   imei: "",
   purchase_date: "",
+  batch_number: "",
 };
 
 function toForm(vehicle: Vehicle): VehicleFormInput {
@@ -57,6 +58,7 @@ function toForm(vehicle: Vehicle): VehicleFormInput {
     qr_code: vehicle.qr_code ?? "",
     imei: vehicle.imei ?? "",
     purchase_date: vehicle.purchase_date ?? "",
+    batch_number: vehicle.batch_number ?? "",
   };
 }
 
@@ -100,6 +102,7 @@ export function VehicleFormDialog({
       qr_code: form.qr_code || undefined,
       imei: form.imei || undefined,
       purchase_date: form.purchase_date || undefined,
+      batch_number: form.batch_number || undefined,
     });
   };
 
@@ -156,6 +159,13 @@ export function VehicleFormDialog({
           </Field>
           <Field label="Purchase date">
             <Input type="date" value={form.purchase_date ?? ""} onChange={(e) => set("purchase_date", e.target.value)} />
+          </Field>
+          <Field label="Batch number">
+            <Input
+              value={form.batch_number ?? ""}
+              onChange={(e) => set("batch_number", e.target.value)}
+              placeholder="BATCH-2026-001"
+            />
           </Field>
         </div>
 

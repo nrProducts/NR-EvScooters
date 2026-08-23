@@ -53,6 +53,7 @@ export interface VehicleFormInput {
   qr_code?: string;
   imei?: string;
   purchase_date?: string;
+  batch_number?: string;
 }
 
 /** The model a vehicle belongs to is fixed at creation. */

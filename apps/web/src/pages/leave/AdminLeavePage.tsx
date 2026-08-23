@@ -17,6 +17,7 @@ import { ApiError } from "@/services/api/httpClient";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import { formatDate } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import type { AdminLeaveRequest, LeaveRequestStatus } from "@/services/api/leave";
 
 const STATUS_OPTIONS: (LeaveRequestStatus | "all")[] = ["all", "pending", "approved", "rejected", "cancelled"];
@@ -54,7 +55,15 @@ export default function AdminLeavePage() {
               size="sm"
               variant="outline"
               disabled={approveRequest.isPending}
-              onClick={() => approveRequest.mutate({ id: r.id })}
+              onClick={() =>
+                approveRequest.mutate(
+                  { id: r.id },
+                  {
+                    onSuccess: () => toastSuccess("Leave request approved"),
+                    onError: (err) => toastError(err, "Could not approve leave request"),
+                  },
+                )
+              }
             >
               <Check className="h-3.5 w-3.5" /> Approve
             </Button>
@@ -158,7 +167,13 @@ function RejectDialog({
               request &&
               rejectRequest.mutate(
                 { id: request.id, reviewNote: note.trim() },
-                { onSuccess: () => onOpenChange(false) },
+                {
+                  onSuccess: () => {
+                    toastSuccess("Leave request rejected");
+                    onOpenChange(false);
+                  },
+                  onError: (err) => toastError(err, "Could not reject leave request"),
+                },
               )
             }
           >

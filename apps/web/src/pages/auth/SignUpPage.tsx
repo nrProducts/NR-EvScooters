@@ -100,7 +100,7 @@ export default function SignUpPage() {
             <Label htmlFor="phone">Phone</Label>
             <Input
               id="phone"
-              placeholder="+91 98765 43210"
+              placeholder="98765 43210"
               {...register("phone", { required: "Phone is required" })}
             />
             {errors.phone && <p className="text-xs text-destructive">{errors.phone.message}</p>}

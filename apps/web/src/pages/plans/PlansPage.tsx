@@ -17,6 +17,7 @@ import { ApiError } from "@/services/api/httpClient";
 import type { PlanInput } from "@/services/api/plans";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { useAuthStore } from "@/store/authStore";
 import type { BillingCycle, Plan } from "@/types";
 
@@ -130,10 +131,22 @@ function PlanFormDialog({
 
   const submit = () => {
     if (mode === "create") {
-      create.mutate(form, { onSuccess: () => onOpenChange(false) });
+      create.mutate(form, {
+        onSuccess: () => {
+          toastSuccess("Plan created");
+          onOpenChange(false);
+        },
+        onError: (err) => toastError(err, "Could not create plan"),
+      });
     } else if (plan) {
       const { vehicle_model_id: _ignored, ...patch } = form;
-      update.mutate({ id: plan.id, patch }, { onSuccess: () => onOpenChange(false) });
+      update.mutate({ id: plan.id, patch }, {
+        onSuccess: () => {
+          toastSuccess("Plan updated");
+          onOpenChange(false);
+        },
+        onError: (err) => toastError(err, "Could not update plan"),
+      });
     }
   };
 

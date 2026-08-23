@@ -3,14 +3,16 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 
 /**
- * Show a banner even while foregrounded — this is what closes the gap where
- * useMyKyc() has no live refresh, so a rider sitting on the KYC screen when
- * staff approve/reject them would otherwise see nothing until they manually
- * refresh.
+ * Foreground delivery renders through our own NotificationToastHost popup
+ * now (see components/NotificationToastCard.tsx), not the OS banner —
+ * shouldShowBanner:true would double them up on iOS, where the system banner
+ * can still appear over a foregrounded app (Android already suppresses its
+ * own heads-up banner in that case). shouldShowList stays true so the
+ * notification still lands in the OS shade/history either way.
  */
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
-        shouldShowBanner: true,
+        shouldShowBanner: false,
         shouldShowList: true,
         shouldPlaySound: true,
         shouldSetBadge: false,
@@ -37,14 +39,20 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
             const requested = await Notifications.requestPermissionsAsync();
             status = requested.status;
         }
+        console.log('[push] permission status:', status);
         if (status !== 'granted') return null;
 
         const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-        if (!projectId) return null;
+        if (!projectId) {
+            console.warn('[push] no EAS projectId configured — cannot request a push token');
+            return null;
+        }
 
         const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+        console.log('[push] token generated:', token);
         return token;
-    } catch {
+    } catch (err) {
+        console.warn('[push] registerForPushNotificationsAsync failed', err);
         return null;
     }
 }

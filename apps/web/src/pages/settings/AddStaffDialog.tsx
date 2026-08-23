@@ -132,7 +132,7 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
                 </div>
                 <div className="space-y-1.5">
                   <Label>Phone</Label>
-                  <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+91 98765 43210" />
+                  <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="98765 43210" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Role</Label>

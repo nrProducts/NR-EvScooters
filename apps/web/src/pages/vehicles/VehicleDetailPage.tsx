@@ -17,6 +17,7 @@ import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistorySplitView } from "@/components/vehicles/VehicleHistorySplitView";
 import { useVehicle, useUpdateVehicle, useScrapVehicle } from "@/hooks/useVehicles";
 import { ApiError } from "@/services/api/httpClient";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
@@ -80,37 +81,60 @@ export default function VehicleDetailPage() {
               something already recorded elsewhere.
             */}
             <Detail label="VIN" value={vehicle.vin} />
-            <Detail label="Current rider" value={vehicle.current_rider?.full_name ?? "None"} />
+            <Detail label="Current rider" value={vehicle.current_rider?.full_name ?? "Unassigned"} />
             <Detail label="Color" value={vehicle.color ?? "Not recorded"} />
             <Detail label="QR code" value={vehicle.qr_code ?? "Not assigned"} />
             <Detail label="IMEI / IoT device" value={vehicle.imei ?? "Not recorded"} />
+            <Detail label="Batch number" value={vehicle.batch_number ?? "Not recorded"} />
             <Detail label="Purchase date" value={vehicle.purchase_date ? formatDate(vehicle.purchase_date) : "Not recorded"} />
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-4 w-4" /> Documents
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            {vehicle.documents.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No registration, insurance, PUC, fitness or permit documents on file.
-              </p>
-            ) : (
-              vehicle.documents.map((doc) => (
-                <div key={doc.id} className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="font-medium capitalize">{doc.doc_type}</p>
-                    <p className="text-xs text-muted-foreground">expires {formatDate(doc.expires_on)}</p>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Current plan</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-4">
+              {vehicle.plan_name ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <Detail label="Plan" value={vehicle.plan_name} />
+                    {vehicle.plan_status && <StatusBadge status={vehicle.plan_status} />}
                   </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+                  <Detail label="Start date" value={vehicle.plan_start_date ? formatDate(vehicle.plan_start_date) : "Not recorded"} />
+                  <Detail label="End date" value={vehicle.plan_end_date ? formatDate(vehicle.plan_end_date) : "Not recorded"} />
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">No active plan — this vehicle is unassigned.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-4 w-4" /> Documents
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {vehicle.documents.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No registration, insurance, PUC, fitness or permit documents on file.
+                </p>
+              ) : (
+                vehicle.documents.map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="font-medium capitalize">{doc.doc_type}</p>
+                      <p className="text-xs text-muted-foreground">expires {formatDate(doc.expires_on)}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {vehicle.scrap_record && (
@@ -151,7 +175,13 @@ export default function VehicleDetailPage() {
         isPending={updateVehicle.isPending}
         error={updateVehicle.error}
         onSubmit={(input) =>
-          updateVehicle.mutate({ id: vehicle.id, patch: input }, { onSuccess: () => setEditOpen(false) })
+          updateVehicle.mutate({ id: vehicle.id, patch: input }, {
+            onSuccess: () => {
+              toastSuccess("Vehicle updated");
+              setEditOpen(false);
+            },
+            onError: (err) => toastError(err, "Could not update vehicle"),
+          })
         }
       />
 
@@ -159,7 +189,13 @@ export default function VehicleDetailPage() {
         open={scrapOpen}
         onOpenChange={setScrapOpen}
         onSubmit={(input) =>
-          scrapVehicle.mutate({ id: vehicle.id, input }, { onSuccess: () => setScrapOpen(false) })
+          scrapVehicle.mutate({ id: vehicle.id, input }, {
+            onSuccess: () => {
+              toastSuccess("Vehicle scrapped");
+              setScrapOpen(false);
+            },
+            onError: (err) => toastError(err, "Could not scrap vehicle"),
+          })
         }
         isPending={scrapVehicle.isPending}
         error={scrapVehicle.error}

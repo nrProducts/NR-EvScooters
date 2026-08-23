@@ -18,6 +18,7 @@ import { useDamages, useDamage, useResolveDamageDispute } from "@/hooks/useDamag
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Damage, DamageStatus } from "@/types";
 
@@ -203,7 +204,13 @@ function DamageDetailDialog({ id, onOpenChange }: { id: string | null; onOpenCha
                         notes: notes.trim(),
                         resolvedAmount: resolvedAmount ? Number(resolvedAmount) : undefined,
                       },
-                      { onSuccess: () => onOpenChange(false) },
+                      {
+                        onSuccess: () => {
+                          toastSuccess("Dispute resolved");
+                          onOpenChange(false);
+                        },
+                        onError: (err) => toastError(err, "Could not resolve dispute"),
+                      },
                     );
                   }}
                 >

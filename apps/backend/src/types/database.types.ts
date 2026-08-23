@@ -3424,6 +3424,7 @@ export type Database = {
       }
       vehicles: {
         Row: {
+          batch_number: string | null
           colour: string | null
           created_at: string
           display_name: string | null
@@ -3439,6 +3440,7 @@ export type Database = {
           vin: string
         }
         Insert: {
+          batch_number?: string | null
           colour?: string | null
           created_at?: string
           display_name?: string | null
@@ -3454,6 +3456,7 @@ export type Database = {
           vin: string
         }
         Update: {
+          batch_number?: string | null
           colour?: string | null
           created_at?: string
           display_name?: string | null

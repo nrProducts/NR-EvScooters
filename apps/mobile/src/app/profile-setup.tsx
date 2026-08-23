@@ -9,6 +9,8 @@ import { COLORS } from '../constants/theme';
 import { FormField } from '../components/ui/FormField';
 import { ChipSelect } from '../components/ui/ChipSelect';
 import { DatePickerField } from '../components/ui/DatePickerField';
+import { SearchableSelectField } from '../components/ui/SearchableSelectField';
+import { INDIAN_STATES } from '../constants/indianStates';
 import { User, Mail, Phone, ArrowRight } from 'lucide-react-native';
 import type { Gender } from '../types/api';
 
@@ -62,7 +64,6 @@ export default function ProfileSetupScreen() {
   const emailOrPhoneRef = useRef<TextInput>(null);
   const addressRef = useRef<TextInput>(null);
   const cityRef = useRef<TextInput>(null);
-  const stateRef = useRef<TextInput>(null);
   const postalCodeRef = useRef<TextInput>(null);
 
   const save = async () => {
@@ -208,7 +209,7 @@ export default function ProfileSetupScreen() {
                   setPhone(t);
                   if (error) setError('');
                 }}
-                placeholder="+91 98765 43210"
+                placeholder="98765 43210"
                 placeholderTextColor={COLORS.textSecondary}
                 keyboardType="phone-pad"
                 autoComplete="tel"
@@ -264,19 +265,17 @@ export default function ProfileSetupScreen() {
               onChangeText={setCity}
               placeholder="City"
               returnKeyType="next"
-              onSubmitEditing={() => stateRef.current?.focus()}
+              onSubmitEditing={() => postalCodeRef.current?.focus()}
             />
           </View>
           <View className="flex-1">
-            <FormField
-              ref={stateRef}
+            <SearchableSelectField
               label="State"
               required
+              options={INDIAN_STATES}
               value={state}
-              onChangeText={setState}
-              placeholder="State"
-              returnKeyType="next"
-              onSubmitEditing={() => postalCodeRef.current?.focus()}
+              onChange={setState}
+              placeholder="Select state"
             />
           </View>
         </View>

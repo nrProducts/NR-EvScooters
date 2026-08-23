@@ -6,6 +6,7 @@ export const uuidParam = z.object({ id: z.string().uuid("A valid user id is requ
 
 export const registerPushTokenBody = z.object({
     token: z.string().trim().min(10, "A valid push token is required."),
+    platform: z.enum(["ios", "android"]).optional(),
 });
 
 /** Route params that accept the "me" alias alongside a real uuid. */

@@ -21,6 +21,7 @@ import {
 } from "@/types/batteryStation";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 
 const PAGE_SIZE = 10;
 
@@ -157,7 +158,10 @@ export default function BatteryStationsPage() {
           onEdit={openEdit}
           onViewOnMap={setMapTarget}
           onToggleVisibility={(station) =>
-            updateVisibility.mutate({ id: station.id, isVisible: !station.isVisibleOnMobile })
+            updateVisibility.mutate(
+              { id: station.id, isVisible: !station.isVisibleOnMobile },
+              { onError: (err) => toastError(err, "Could not update visibility") },
+            )
           }
           onDelete={setDeleteTarget}
           busyId={updateVisibility.isPending ? updateVisibility.variables?.id : null}
@@ -179,11 +183,13 @@ export default function BatteryStationsPage() {
         error={editTarget ? updateStation.error : createStation.error}
         onSubmit={(payload) => {
           const onSuccess = () => {
+            toastSuccess(editTarget ? "Station updated" : "Station added");
             setFormOpen(false);
             setEditTarget(null);
           };
-          if (editTarget) updateStation.mutate({ id: editTarget.id, payload }, { onSuccess });
-          else createStation.mutate(payload, { onSuccess });
+          const onError = (err: unknown) => toastError(err, editTarget ? "Could not update station" : "Could not add station");
+          if (editTarget) updateStation.mutate({ id: editTarget.id, payload }, { onSuccess, onError });
+          else createStation.mutate(payload, { onSuccess, onError });
         }}
       />
 
@@ -194,7 +200,13 @@ export default function BatteryStationsPage() {
         onConfirm={(station) =>
           deleteStation.mutate(
             { id: station.id, name: station.name },
-            { onSuccess: () => setDeleteTarget(null) },
+            {
+              onSuccess: () => {
+                toastSuccess("Station deleted");
+                setDeleteTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not delete station"),
+            },
           )
         }
       />

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, MoreHorizontal, Loader2, Zap } from "lucide-react";
+import {
+  BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, MoreHorizontal, Loader2, Zap, ChevronDown, ChevronRight,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,6 +26,7 @@ import { useCreateMaintenanceTicket } from "@/hooks/useMaintenance";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { formatDate } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
@@ -43,6 +46,7 @@ export default function VehicleListPage() {
   const [issueDescription, setIssueDescription] = useState("");
   const [assignTarget, setAssignTarget] = useState<Vehicle | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get("new")) {
@@ -79,11 +83,35 @@ export default function VehicleListPage() {
     if (!maintenanceTarget) return;
     createMaintenanceTicket.mutate(
       { vehicle_id: maintenanceTarget.id, description: issueDescription.trim() },
-      { onSuccess: closeMaintenanceDialog },
+      {
+        onSuccess: () => {
+          toastSuccess("Vehicle marked in maintenance");
+          closeMaintenanceDialog();
+        },
+        onError: (err) => toastError(err, "Could not open maintenance ticket"),
+      },
     );
   };
 
   const columns: DataTableColumn<Vehicle>[] = [
+    {
+      header: "",
+      key: "expand",
+      className: "w-8",
+      render: (v) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpandedRowId((cur) => (cur === v.id ? null : v.id));
+          }}
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-smooth hover:bg-card-hover hover:text-foreground"
+          aria-label={expandedRowId === v.id ? "Collapse plan details" : "Expand plan details"}
+        >
+          {expandedRowId === v.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
+      ),
+    },
     {
       header: "Vehicle",
       key: "name",
@@ -97,11 +125,27 @@ export default function VehicleListPage() {
         </div>
       ),
     },
+    {
+      header: "Rider",
+      key: "current_rider",
+      render: (v) =>
+        v.current_rider ? (
+          <span className="truncate">{v.current_rider.full_name}</span>
+        ) : (
+          <span className="text-muted-foreground">Unassigned</span>
+        ),
+    },
     { header: "Status", key: "status", render: (v) => <StatusBadge status={v.status} /> },
     {
       header: "Payment",
       key: "payment_status",
       render: (v) => (v.payment_status ? <StatusBadge status={v.payment_status} /> : <span className="text-muted-foreground">—</span>),
+    },
+    {
+      header: "Batch #",
+      key: "batch_number",
+      render: (v) => v.batch_number ?? <span className="text-muted-foreground">—</span>,
+      hideOnMobile: true,
     },
     {
       header: "VIN",
@@ -205,6 +249,27 @@ export default function VehicleListPage() {
           emptyTitle="No vehicles match your filters"
           sort={sort}
           onSortChange={onSortChange}
+          expandedRowId={expandedRowId}
+          renderExpandedRow={(v) => (
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Plan</p>
+                <p className="font-medium">{v.plan_name ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Plan status</p>
+                {v.plan_status ? <StatusBadge status={v.plan_status} /> : <p className="font-medium">—</p>}
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Plan start</p>
+                <p className="font-medium">{v.plan_start_date ? formatDate(v.plan_start_date) : "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Plan end</p>
+                <p className="font-medium">{v.plan_end_date ? formatDate(v.plan_end_date) : "—"}</p>
+              </div>
+            </div>
+          )}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
@@ -216,7 +281,13 @@ export default function VehicleListPage() {
         isPending={createVehicle.isPending}
         error={createVehicle.error}
         onSubmit={(input) =>
-          createVehicle.mutate(input, { onSuccess: () => setCreateOpen(false) })
+          createVehicle.mutate(input, {
+            onSuccess: () => {
+              toastSuccess("Vehicle added");
+              setCreateOpen(false);
+            },
+            onError: (err) => toastError(err, "Could not add vehicle"),
+          })
         }
       />
 

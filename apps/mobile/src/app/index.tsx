@@ -103,7 +103,7 @@ export default function LoginScreen() {
                     setPhone(t);
                     if (error) setError('');
                   }}
-                  placeholder="+91 98765 43210"
+                  placeholder="98765 43210"
                   placeholderTextColor={COLORS.textSecondary}
                   keyboardType="phone-pad"
                   autoComplete="tel"

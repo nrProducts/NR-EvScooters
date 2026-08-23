@@ -173,6 +173,11 @@ export async function uploadDocument(
             });
         }
     }
+    if ((input.document_type === "aadhaar" || input.document_type === "driving_licence") && !input.back) {
+        throw businessRule("Upload both the front and back of this document.", {
+            back: "The back side is required for this document type.",
+        });
+    }
     // Validated in memory, then discarded. From here on the full number is
     // out of scope and only last4() survives into the insert below.
     assertValidDocNumber(input.document_type, input.doc_number);
@@ -685,7 +690,37 @@ export async function rejectDocument(
 
 export async function approveKyc(userId: string, actor: AuthContext, req?: Request) {
     if (userId === actor.id) throw forbidden("You cannot approve your own KYC.");
-    const docs = await documentsFor(userId);
+    let docs = await documentsFor(userId);
+
+    // Single-action approve: rather than requiring the admin to verify each
+    // mandatory document first (a separate click per document), Approve
+    // verifies every eligible pending one itself, then finalizes. A document
+    // already rejected or expired is left alone — those still block approval
+    // below, same as before.
+    const toAutoVerify = docs.filter(
+        (d) => MANDATORY_KYC_DOC_TYPES.includes(d.document_type)
+            && d.verification_status === "pending"
+            && !isExpired(d.expires_on),
+    );
+    for (const doc of toAutoVerify) {
+        const updated = await applyVerification(doc.id, actor.id, {
+            verification_status: "verified",
+            rejection_reason: null,
+            verified_by_user_id: actor.id,
+            verified_at: new Date().toISOString(),
+        });
+        await writeAudit({
+            actorId: actor.id,
+            targetUserId: userId,
+            action: "kyc.document_verified",
+            entityType: "kyc_document",
+            entityId: doc.id,
+            before: { verification_status: doc.verification_status },
+            after: { verification_status: "verified" },
+            req,
+        });
+        docs = docs.map((d) => (d.id === updated.id ? updated : d));
+    }
 
     const unverified = MANDATORY_KYC_DOC_TYPES.filter(
         (type) => !docs.some((d) => d.document_type === type && d.verification_status === "verified"),

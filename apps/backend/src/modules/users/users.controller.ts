@@ -204,7 +204,7 @@ export async function getUserPhotoUrlHandler(req: AuthedRequest, res: Response) 
 }
 
 export async function registerPushTokenHandler(req: AuthedRequest, res: Response) {
-    const { token } = req.body as { token: string };
-    await service.registerPushToken(req.user!.id, token);
+    const { token, platform } = req.body as { token: string; platform?: "ios" | "android" };
+    await service.registerPushToken(req.user!.id, token, platform);
     res.status(204).send();
 }

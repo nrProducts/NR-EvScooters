@@ -63,15 +63,14 @@ export interface NavItem {
 export const NAV_GROUPS: { key: NavGroupKey; label: string; icon: LucideIcon }[] = [
   { key: "fleet", label: "Fleet Operations", icon: Boxes },
   { key: "people", label: "People", icon: UserRound },
+  { key: "finance", label: "Finance", icon: Wallet },
+  { key: "support", label: "Support & Comms", icon: Headset },
   // Mini HRMS — "hrms" (admin: Attendance, Leave) and "my_hr" (staff: My
   // Profile, My Attendance, My Leave) never both appear for the same user
   // (their items' `roles` are mutually exclusive), so their relative order
-  // to each other is moot — grouped here next to "people" since both are
-  // staff-roster-adjacent.
+  // to each other is moot.
   { key: "hrms", label: "HR Management", icon: UserCog },
   { key: "my_hr", label: "My HR", icon: IdCard },
-  { key: "finance", label: "Finance", icon: Wallet },
-  { key: "support", label: "Support & Comms", icon: Headset },
   { key: "compliance", label: "Compliance", icon: ShieldAlert },
 ];
 
@@ -146,29 +145,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "KYC Queue", path: "/kyc", icon: ShieldCheck, roles: ["admin", "staff"], moduleKey: "kyc", group: "people",
   },
 
-  // --- HR Management (admin) — fleet-wide attendance/leave oversight ---
-  // No "Staff" item here deliberately — /settings/staff-access (bare path)
-  // has no route today (only /settings/staff-access/:userId/permissions
-  // does), and a second item pointing at /settings would create a
-  // matchPath() ambiguity with the existing pinned "Settings" entry, which
-  // isn't role-separated the way /attendance vs /my-attendance is. The
-  // existing "Settings" nav item already reaches Staff Access in two clicks.
-  {
-    label: "Attendance", path: "/attendance", icon: ClipboardList, roles: ["admin"], moduleKey: "attendance", group: "hrms",
-  },
-  { label: "Leave", path: "/leave", icon: CalendarClock, roles: ["admin"], moduleKey: "leave", group: "hrms" },
-  {
-    label: "Holidays", path: "/holidays", icon: CalendarOff, roles: ["admin"], moduleKey: "holidays", group: "hrms",
-  },
-
-  // --- My HR (staff) — self-service, no moduleKey: every staff/admin account
-  // has these unconditionally (backend gates them with requireStaff, not
-  // requireAction), so gating the nav with hasModule() would wrongly hide
-  // them from a staff account with zero module grants. ---
-  { label: "My Profile", path: "/my-profile", icon: IdCard, roles: ["staff"], group: "my_hr" },
-  { label: "My Attendance", path: "/my-attendance", icon: ClipboardList, roles: ["staff"], group: "my_hr" },
-  { label: "My Leave", path: "/my-leave", icon: CalendarClock, roles: ["staff"], group: "my_hr" },
-
   // --- Finance — money in, money out, and reconciling it against Razorpay ---
   {
     label: "Payments", path: "/payments", icon: CreditCard, roles: ["admin", "staff"], moduleKey: "payments", group: "finance",
@@ -214,6 +190,29 @@ export const NAV_ITEMS: NavItem[] = [
     moduleKey: "notifications",
     group: "support",
   },
+
+  // --- HR Management (admin) — fleet-wide attendance/leave oversight ---
+  // No "Staff" item here deliberately — /settings/staff-access (bare path)
+  // has no route today (only /settings/staff-access/:userId/permissions
+  // does), and a second item pointing at /settings would create a
+  // matchPath() ambiguity with the existing pinned "Settings" entry, which
+  // isn't role-separated the way /attendance vs /my-attendance is. The
+  // existing "Settings" nav item already reaches Staff Access in two clicks.
+  {
+    label: "Attendance", path: "/attendance", icon: ClipboardList, roles: ["admin"], moduleKey: "attendance", group: "hrms",
+  },
+  { label: "Leave", path: "/leave", icon: CalendarClock, roles: ["admin"], moduleKey: "leave", group: "hrms" },
+  {
+    label: "Holidays", path: "/holidays", icon: CalendarOff, roles: ["admin"], moduleKey: "holidays", group: "hrms",
+  },
+
+  // --- My HR (staff) — self-service, no moduleKey: every staff/admin account
+  // has these unconditionally (backend gates them with requireStaff, not
+  // requireAction), so gating the nav with hasModule() would wrongly hide
+  // them from a staff account with zero module grants. ---
+  { label: "My Profile", path: "/my-profile", icon: IdCard, roles: ["staff"], group: "my_hr" },
+  { label: "My Attendance", path: "/my-attendance", icon: ClipboardList, roles: ["staff"], group: "my_hr" },
+  { label: "My Leave", path: "/my-leave", icon: CalendarClock, roles: ["staff"], group: "my_hr" },
 
   // --- Compliance — DPDPA rights, access logging and the audit trail ---
   // Data-principal rights queue. Gated by the `privacy` module here and

@@ -30,6 +30,7 @@ import {
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { initials, formatDate } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
@@ -83,7 +84,13 @@ export default function UserListPage() {
     setRoleError(null);
     changeRole.mutate(
       { id: u.id, role: "rider" },
-      { onError: (err) => setRoleError(err instanceof Error ? err.message : "Could not revoke staff access.") },
+      {
+        onSuccess: () => toastSuccess("Staff access revoked"),
+        onError: (err) => {
+          setRoleError(err instanceof Error ? err.message : "Could not revoke staff access.");
+          toastError(err, "Could not revoke staff access");
+        },
+      },
     );
   };
 
@@ -196,11 +203,31 @@ export default function UserListPage() {
               </DropdownMenuItem>
             )}
             {u.account_status === "suspended" ? (
-              <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
+              <DropdownMenuItem
+                onClick={() =>
+                  changeStatus.mutate(
+                    { id: u.id, action: "activate" },
+                    {
+                      onSuccess: () => toastSuccess("Account reactivated"),
+                      onError: (err) => toastError(err, "Could not reactivate account"),
+                    },
+                  )
+                }
+              >
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Reactivate
               </DropdownMenuItem>
             ) : u.account_status === "inactive" ? (
-              <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
+              <DropdownMenuItem
+                onClick={() =>
+                  changeStatus.mutate(
+                    { id: u.id, action: "activate" },
+                    {
+                      onSuccess: () => toastSuccess("Account activated"),
+                      onError: (err) => toastError(err, "Could not activate account"),
+                    },
+                  )
+                }
+              >
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Activate account
               </DropdownMenuItem>
             ) : (
@@ -324,7 +351,15 @@ export default function UserListPage() {
         destructive
         loading={deleteUser.isPending}
         onConfirm={() => {
-          if (deleteTarget) deleteUser.mutate(deleteTarget.id, { onSuccess: () => setDeleteTarget(null) });
+          if (deleteTarget) {
+            deleteUser.mutate(deleteTarget.id, {
+              onSuccess: () => {
+                toastSuccess("User deleted");
+                setDeleteTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not delete user"),
+            });
+          }
         }}
       />
 
@@ -348,7 +383,13 @@ export default function UserListPage() {
                 if (suspendTarget) {
                   changeStatus.mutate(
                     { id: suspendTarget.id, action: "suspend", reason },
-                    { onSuccess: () => setSuspendTarget(null) },
+                    {
+                      onSuccess: () => {
+                        toastSuccess("User suspended");
+                        setSuspendTarget(null);
+                      },
+                      onError: (err) => toastError(err, "Could not suspend user"),
+                    },
                   );
                 }
               }}
