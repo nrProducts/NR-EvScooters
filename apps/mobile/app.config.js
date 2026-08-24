@@ -36,6 +36,18 @@ module.exports = {
     plugins: [
       'expo-router',
       [
+        'expo-build-properties',
+        {
+          android: {
+            // R8: strips unused Java/Kotlin code and obfuscates what's left.
+            enableMinifyInReleaseBuilds: true,
+            // Must pair with minify — shrinks resources R8 proved unreachable
+            // (see the plugin's own docs: shrinkResources without minify is a no-op).
+            enableShrinkResourcesInReleaseBuilds: true,
+          },
+        },
+      ],
+      [
         'expo-splash-screen',
         {
           backgroundColor: '#2EAF4A',
