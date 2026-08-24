@@ -372,6 +372,14 @@ describe("handleWebhook — settlement gating", () => {
     it("holds the deposit only on a settled initial invoice", async () => {
         handler = (q) => {
             if (q.table === "v_invoice_balances") return { data: { balance_amount: 2500, is_paid: true } };
+        if (q.table === "subscriptions") {
+            return {
+                data: {
+                    id: "sub-1", booking_id: "booking-1", status: "active",
+                    duration_days_snapshot: 7, plan_price_snapshot: 1800,
+                },
+            };
+        }
             return baseHandler()(q);
         };
 
@@ -380,6 +388,75 @@ describe("handleWebhook — settlement gating", () => {
 
         const depositUpdates = fake.on("deposits", "update");
         expect(depositUpdates.some((u) => u.payload?.status === "held")).toBe(true);
+    });
+});
+
+describe("handleWebhook — activation is keyed on the PERIOD, not the label", () => {
+    // generate_period_invoice() writes purpose='subscription_period' for EVERY
+    // invoice, the opening one included, and chk_invoices_purpose_period forbids
+    // relabelling it. So the production shape of a first payment is
+    // purpose='subscription_period' + sequence_number=1 — and while the code
+    // branched on purpose alone, that shape confirmed nothing. Riders paid in
+    // full and their booking stayed `pending_payment`.
+    const productionShape = (sequenceNumber: number): QueryHandler => (q) => {
+        if (q.table === "payment_orders" && q.op === "select") {
+            return {
+                data: {
+                    id: "order-uuid-1", user_id: "rider-1", amount: 2500, currency: "INR",
+                    invoice_id: "invoice-1",
+                    invoices: {
+                        purpose: "subscription_period",
+                        subscription_id: "sub-1",
+                        subscription_period_id: "period-1",
+                        total_amount: 2500,
+                    },
+                },
+            };
+        }
+        if (q.table === "subscription_periods" && q.op === "select") {
+            // Two different reads hit this table, told apart by their filters.
+            const byId = q.filters.some((f) => f[0] === "eq" && f[1] === "id");
+            // getPeriodSequenceNumber — the one under test.
+            if (byId) return { data: { sequence_number: sequenceNumber } };
+            // applyRenewalSuccess's current-period lookup. Null makes it
+            // early-return, which keeps this test focused on the branch
+            // decision rather than on renewal scheduling.
+            return { data: null };
+        }
+        if (q.table === "v_invoice_balances") return { data: { balance_amount: 2500, is_paid: true } };
+        return baseHandler()(q);
+    };
+
+    it("CONFIRMS the booking when period 1 is paid, despite the label", async () => {
+        handler = productionShape(1);
+        const body = JSON.stringify(capturedEvent());
+        await handleWebhook(Buffer.from(body), sign(body), "evt_p1");
+
+        const bookingUpdates = fake.on("bookings", "update");
+        expect(bookingUpdates.some((u) => u.payload?.status === "confirmed")).toBe(true);
+    });
+
+    it("holds the deposit when period 1 is paid", async () => {
+        handler = productionShape(1);
+        const body = JSON.stringify(capturedEvent());
+        await handleWebhook(Buffer.from(body), sign(body), "evt_p1b");
+
+        const depositUpdates = fake.on("deposits", "update");
+        expect(depositUpdates.some((u) => u.payload?.status === "held")).toBe(true);
+    });
+
+    it("does NOT re-confirm the booking on a later period — that is a renewal", async () => {
+        handler = productionShape(3);
+        const body = JSON.stringify(capturedEvent());
+        await handleWebhook(Buffer.from(body), sign(body), "evt_p3");
+
+        // Only the confirmation is asserted here. What a renewal goes on to
+        // do with periods is applyRenewalSuccess's business and is covered by
+        // its own tests; pinning it here would mean maintaining a full
+        // period/subscription fixture for an assertion this test is not about.
+        const bookingUpdates = fake.on("bookings", "update");
+        expect(bookingUpdates.some((u) => u.payload?.status === "confirmed")).toBe(false);
+        expect(fake.on("deposits", "update")).toHaveLength(0);
     });
 });
 
