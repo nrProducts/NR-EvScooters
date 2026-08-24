@@ -530,8 +530,15 @@ export function computeCancellationCharge(input: {
  * matching the booking's model/hub and holds it (`held_vehicle_id`, and
  * `recompute_vehicle_status()` derives `reserved` from that). Never throws: a
  * booking with no vehicle available yet is still a valid booking.
+ *
+ * Called from payments.service.ts's applyInitialSuccess, once the booking
+ * actually moves to 'confirmed' — not at creation. A vehicle held against a
+ * merely `pending_payment` booking was reserved for a rider who might never
+ * pay, keeping it out of the available pool for the whole grace window; the
+ * RPC itself already accepted 'confirmed' as well as 'pending_payment', so
+ * moving the call needed no migration.
  */
-async function tryAllocateVehicle(bookingId: string): Promise<void> {
+export async function tryAllocateVehicle(bookingId: string): Promise<void> {
     const { error } = await supabaseAdmin.rpc("allocate_vehicle_for_booking", { p_booking_id: bookingId });
     if (error) {
         console.error("[bookings] allocate_vehicle_for_booking failed", { bookingId, error: error.message });
@@ -650,9 +657,9 @@ export async function createBooking(
         },
     });
 
-    // Best-effort early reservation. If nothing is free yet the booking is
-    // still valid; staff can allocate one manually at pickup time.
-    await tryAllocateVehicle(data.id);
+    // Vehicle allocation waits for payment — see tryAllocateVehicle's doc
+    // comment. assertVehicleAvailable above only confirmed a unit existed at
+    // creation time; nothing is held against this booking yet.
 
     // First-booking referral discount, if this rider was referred and this is
     // genuinely their first booking. The discount is recorded against the

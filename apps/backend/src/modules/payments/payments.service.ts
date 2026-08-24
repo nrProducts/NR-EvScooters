@@ -9,6 +9,7 @@ import { computeLateRenewalFee } from "./renewalFee";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { applyRefundWebhookResult } from "../refunds/refunds.service";
+import { tryAllocateVehicle } from "../bookings/bookings.service";
 import { AuthContext } from "../../types";
 import { Json } from "../../types/database.types";
 import { CreateOrderResult, OrderLine, VerifyPaymentInput } from "./payments.types";
@@ -1135,6 +1136,12 @@ async function applyInitialSuccess(subscriptionId: string, userId: string): Prom
         .maybeSingle();
     if (bookingError) throw bookingError;
     if (!updated) return; // Already confirmed by a prior delivery.
+
+    // Only now — payment settled and the booking is genuinely 'confirmed' —
+    // does a specific vehicle get held against it. Best-effort: a booking
+    // with nothing free yet still confirms, and staff allocate one manually
+    // at pickup (confirmPickup accepts an explicit vehicle_id for that).
+    await tryAllocateVehicle(subscription.booking_id);
 
     const { error: depositError } = await supabaseAdmin
         .from("deposits")
