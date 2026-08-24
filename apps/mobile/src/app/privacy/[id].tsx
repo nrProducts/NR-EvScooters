@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { Spinner } from '../../components/Spinner';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Download } from 'lucide-react-native';
@@ -92,7 +93,7 @@ export default function PrivacyRequestDetailScreen() {
                 {error ? (
                     <ErrorState message={error} onRetry={load} />
                 ) : !request ? (
-                    <ActivityIndicator color={COLORS.primary} />
+                    <Spinner size={18} color={COLORS.primary} />
                 ) : (
                     <>
                         <Text style={{ color: COLORS.textPrimary }} className="text-xl font-black mb-1">

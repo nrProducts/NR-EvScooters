@@ -929,6 +929,16 @@ async function applyPaymentFailure(gatewayOrderId: string, reason: string): Prom
         body: `Your payment could not be completed: ${reason}`,
         screen: "payments",
     });
+
+    await notify({
+        notificationType: "payment_failed",
+        referenceType: "payment_order",
+        referenceId: order.id,
+        title: "Payment Failed",
+        bodyFallback: `{rider}'s payment could not be completed: ${reason}`,
+        screen: "/payments",
+        riderId: order.user_id,
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -1094,6 +1104,16 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     await notifyUser(order.user_id, {
         template: "payment_success", title: "Payment Successful",
         body: "Payment successful. Your rental is active.", screen: "payments",
+    });
+
+    await notify({
+        notificationType: "payment_success",
+        referenceType: "payment_order",
+        referenceId: order.id,
+        title: "Payment Received",
+        bodyFallback: "{rider} completed a payment.",
+        screen: "/payments",
+        riderId: order.user_id,
     });
 
     if (invoice?.purpose === "initial") {

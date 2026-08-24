@@ -1,7 +1,7 @@
 ﻿import { ApiError } from '../../../src/lib/ApiError';
 import { isValidStartDay } from '../../../src/lib/bookingDays';
 import { computeCancellationCharge } from '../../../src/lib/cancellationPolicy';
-import { planExpiryFor, returnDeadlineFor } from '../../../src/lib/returnPolicy';
+import { MAX_LATE_PENALTY_DAYS, planExpiryFor, returnDeadlineFor } from '../../../src/lib/returnPolicy';
 import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
     ApiAvailability, ApiBooking, ApiDocument, ApiKycSummary,
@@ -853,6 +853,9 @@ function toApiRental(row: MockRentalRow): ApiRental {
         days_late: row.days_late ?? null,
         late_penalty_amount: row.late_penalty_amount ?? null,
         late_fee_per_day: row.late_fee_per_day ?? null,
+        // Mock mode doesn't simulate vehicle-recovery-sweep — never flagged.
+        recovery_flagged_at: null,
+        max_late_fee_days: MAX_LATE_PENALTY_DAYS,
     };
 }
 

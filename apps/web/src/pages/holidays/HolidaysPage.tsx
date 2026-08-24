@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -238,7 +239,7 @@ function HolidayFormDialog({
               })
             }
           >
-            {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isPending && <Spinner className="h-4 w-4" />}
             {holiday ? "Save" : "Add holiday"}
           </Button>
         </DialogFooter>

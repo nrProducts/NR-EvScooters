@@ -45,6 +45,14 @@ router.patch(
     validate({ params: v.chargeRuleIdParam, body: v.updateChargeRuleBody }),
     asyncHandler(c.updateChargeRuleHandler),
 );
+// Hard delete — a stronger, separately-permissioned action than edit. See
+// billing.service.ts's deleteRule() for why this is safe to do at all.
+router.delete(
+    "/charge-rules/:id",
+    requireAction("billing", "delete"),
+    validate({ params: v.chargeRuleIdParam }),
+    asyncHandler(c.deleteChargeRuleHandler),
+);
 
 router.get(
     "/rider-charges",
@@ -85,6 +93,12 @@ router.patch(
     requireAction("billing", "edit"),
     validate({ params: v.discountRuleIdParam, body: v.updateDiscountRuleBody }),
     asyncHandler(c.updateDiscountRuleHandler),
+);
+router.delete(
+    "/discount-rules/:id",
+    requireAction("billing", "delete"),
+    validate({ params: v.discountRuleIdParam }),
+    asyncHandler(c.deleteDiscountRuleHandler),
 );
 
 router.get(

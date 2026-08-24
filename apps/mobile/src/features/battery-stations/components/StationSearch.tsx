@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-native';
+import { Spinner } from '../../../components/Spinner';
 import { ArrowLeft, MapPin, Search, X } from 'lucide-react-native';
 import { COLORS } from '../../../constants/theme';
 import { formatDistance } from '../utils/distance';
@@ -77,7 +78,7 @@ export const StationSearch: React.FC<{
                     className="flex-1 ml-2.5 text-sm font-semibold"
                     style={{ color: COLORS.textPrimary }}
                 />
-                {isSearchingAreas ? <ActivityIndicator size="small" color={COLORS.textSecondary} /> : null}
+                {isSearchingAreas ? <Spinner size={16} color={COLORS.textSecondary} /> : null}
                 {isSearching ? (
                     <TouchableOpacity
                         onPress={() => onChangeText('')}

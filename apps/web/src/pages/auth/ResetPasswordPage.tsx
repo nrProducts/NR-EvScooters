@@ -2,13 +2,15 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/store/authStore";
 import * as authApi from "@/services/api/staff";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 
 interface ResetPasswordForm {
   password: string;
@@ -37,9 +39,11 @@ export default function ResetPasswordPage() {
       return authApi.resolveStaffSession();
     },
     onSuccess: (user) => {
+      toastSuccess("Password reset");
       setUser(user);
       navigate("/dashboard", { replace: true });
     },
+    onError: (err) => toastError(err, "Could not reset password"),
   });
 
   const onSubmit = (values: ResetPasswordForm) => {
@@ -98,7 +102,7 @@ export default function ResetPasswordPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={resetPassword.isPending}>
-            {resetPassword.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {resetPassword.isPending && <Spinner className="h-4 w-4" />}
             Set password
           </Button>
         </form>

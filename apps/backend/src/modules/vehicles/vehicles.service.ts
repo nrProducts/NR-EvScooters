@@ -4,6 +4,7 @@ import { AppError, businessRule, conflict, notFound } from "../../common/AppErro
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
+import { notify } from "../notifications/notify.service";
 import { adminCancelBooking } from "../bookings/bookings.service";
 import { completeRide } from "../rentals/rentals.service";
 import { Paginated, AuthContext } from "../../types";
@@ -871,6 +872,18 @@ export async function assignVehicleToUser(
         title: "Scooter Assigned to You",
         body: "Staff has handed you a scooter. Enjoy your ride!",
         screen: "post-booking-dashboard",
+    });
+
+    await notify({
+        notificationType: "vehicle_assigned",
+        referenceType: "rental",
+        referenceId: rental.id,
+        title: "Vehicle Assigned",
+        bodyFallback: "{vehicle} was handed over to {rider}.",
+        screen: "/bookings",
+        riderId: userId,
+        vehicleId,
+        excludeUserId: actor.id,
     });
 
     return { vehicle: await requireVehicle(vehicleId), rentalId: rental.id };

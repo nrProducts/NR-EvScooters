@@ -94,6 +94,10 @@ export interface RentalView extends RentalReturnFields, RentalPlanPeriodFields {
     /** `scheduled` once a renewal period exists but has not started. */
     renewal_status: "none" | "scheduled" | null;
     scheduled_start_date: string | null;
+    /** `rentals.recovery_flagged_at` — set once by vehicle-recovery-sweep; never cleared. */
+    recovery_flagged_at: string | null;
+    /** `return_recovery_settings.max_late_fee_days` — the cap the rider's own late-fee display should use. */
+    max_late_fee_days: number;
 }
 
 export interface RequestReturnInput {
@@ -129,6 +133,8 @@ export interface AdminRentalRow extends RentalReturnFields, RentalPlanPeriodFiel
     /** `rental_returns.inspected_at` — gates deposit-refund eligibility. */
     inspected_at: string | null;
     inspected_by: { id: string; full_name: string } | null;
+    /** `rentals.recovery_flagged_at` — set once by vehicle-recovery-sweep; never cleared. */
+    recovery_flagged_at: string | null;
 }
 
 export interface RejectReturnInput {
@@ -139,6 +145,8 @@ export interface ListRentalsFilters {
     page: number;
     pageSize: number;
     status?: RentalStatus;
+    /** Active rentals flagged by vehicle-recovery-sweep — the "awaiting recovery" admin tab. */
+    recoveryRequired?: boolean;
 }
 
 export interface CompleteRideInput {

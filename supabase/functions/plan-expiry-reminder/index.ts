@@ -33,6 +33,7 @@
 import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
 import { addDays, businessToday } from "../_shared/dates.ts";
 import { notifyUser } from "../_shared/notify.ts";
+import { notifyStaff } from "../_shared/notifyStaff.ts";
 
 const SOURCE = "plan-expiry-reminder";
 
@@ -101,6 +102,16 @@ Deno.serve(async (_req) => {
         });
         if (result.logged) logged++;
         if (result.sent) sent++;
+
+        await notifyStaff(admin, {
+            typeCode: "plan_expiring",
+            subjectType: "rental",
+            subjectId: row.id,
+            title: "Plan Ending Soon",
+            body: `${vehicleName ?? "A scooter"}'s plan ends in ${WARN_DAYS_BEFORE} days.`,
+            screen: "/bookings",
+            payload: { due_back_at: row.due_back_at, rider_id: row.user_id },
+        });
     }
 
     return json({ rentals: rentals?.length ?? 0, logged, sent, skippedReturning }, 200);

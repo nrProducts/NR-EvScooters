@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { View, Text, ActivityIndicator, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
+import { Spinner } from "../components/Spinner";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -279,7 +280,7 @@ export default function RootLayout() {
         <StatusBar style="dark" backgroundColor={COLORS.background} />
         <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
           {loadingProfile ? (
-            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Spinner size={32} color={COLORS.primary} />
           ) : (
             <>
               <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">

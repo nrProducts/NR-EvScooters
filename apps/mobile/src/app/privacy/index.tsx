@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { Spinner } from '../../components/Spinner';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FileText, Lock, Mail, ChevronRight } from 'lucide-react-native';
@@ -41,7 +42,7 @@ export default function PrivacyHubScreen() {
         <AppShell title={t('privacy.title')}>
             <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 32 }}>
                 {loading && !state ? (
-                    <ActivityIndicator color={COLORS.primary} />
+                    <Spinner size={18} color={COLORS.primary} />
                 ) : !state ? (
                     <ErrorState message={error ?? 'Could not load your privacy settings.'} onRetry={reload} />
                 ) : (

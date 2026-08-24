@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { Search, CheckCircle2, Loader2, Bike } from "lucide-react";
+import { Search, CheckCircle2, Bike } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import * as vehiclesApi from "@/services/api/vehicles";
 import { ApiError } from "@/services/api/httpClient";
 import { cn } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 
 /**
  * The inverted sibling of AssignRiderPalette — the rider is fixed, staff
@@ -66,10 +68,12 @@ export function AssignVehicleToRiderPalette({
     setPendingId(vehicleId);
     try {
       await onAssign(vehicleId);
+      toastSuccess("Vehicle assigned", `${vehicleName} assigned to ${riderName}.`);
       setAssignedName(vehicleName);
       setTimeout(() => onOpenChange(false), 900);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not assign this vehicle.");
+      toastError(err, "Could not assign vehicle");
     } finally {
       setPendingId(null);
     }
@@ -128,7 +132,7 @@ export function AssignVehicleToRiderPalette({
 
                 {enabled && isFetching && (
                   <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching…
+                    <Spinner className="h-3.5 w-3.5" /> Searching…
                   </div>
                 )}
 
@@ -162,7 +166,7 @@ export function AssignVehicleToRiderPalette({
                           </span>
                         </span>
                         {pendingThis ? (
-                          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                          <Spinner className="h-4 w-4 shrink-0 text-primary" />
                         ) : (
                           <span className="shrink-0 text-[0.6875rem] font-medium text-primary">Assign</span>
                         )}

@@ -2,12 +2,13 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import * as authApi from "@/services/api/staff";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 
 interface ForgotPasswordForm {
   email: string;
@@ -23,7 +24,8 @@ export default function ForgotPasswordPage() {
 
   const requestReset = useMutation({
     mutationFn: (email: string) => authApi.requestPasswordReset(email),
-    onSuccess: (_data, email) => setSentTo(email),
+    onSuccess: (_data, email) => { toastSuccess("Reset link sent"); setSentTo(email); },
+    onError: (err) => toastError(err, "Could not send reset link"),
   });
 
   const onSubmit = (values: ForgotPasswordForm) => {
@@ -73,7 +75,7 @@ export default function ForgotPasswordPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={requestReset.isPending}>
-            {requestReset.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {requestReset.isPending && <Spinner className="h-4 w-4" />}
             Send reset link
           </Button>
 

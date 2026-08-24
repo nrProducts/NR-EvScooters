@@ -401,6 +401,44 @@ async function updateRule(
     return { row, vehicles: await vehiclesFor([row]) };
 }
 
+/**
+ * Hard delete. Safe to do: `subscription_adjustments.pricing_rule_id` is
+ * `on delete set null`, and every adjustment already carries its own
+ * `code_snapshot`/`name_snapshot`/`amount` — a rider's billing history reads
+ * fine with the rule gone, it just can no longer be traced back to a rule
+ * that (by definition) doesn't exist to trace back to. Scoped by `kind` so
+ * the discount-rules screen can't delete a charge rule by id collision.
+ */
+async function deleteRule(
+    id: string,
+    kind: "charge" | "discount",
+    actor: AuthContext,
+): Promise<void> {
+    const { data, error } = await supabaseAdmin
+        .from("pricing_rules")
+        .delete()
+        .eq("id", id)
+        .eq("kind", kind)
+        .select("id, code, name, amount, scope")
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw notFound(kind === "charge" ? "Charge rule not found." : "Discount rule not found.");
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: null,
+        action: "pricing_rule.deleted", entityType: "pricing_rule", entityId: id,
+        before: { kind, code: data.code, name: data.name, amount: data.amount, scope: data.scope },
+    });
+}
+
+export async function deleteChargeRule(id: string, actor: AuthContext): Promise<void> {
+    return deleteRule(id, "charge", actor);
+}
+
+export async function deleteDiscountRule(id: string, actor: AuthContext): Promise<void> {
+    return deleteRule(id, "discount", actor);
+}
+
 export async function updateChargeRule(
     id: string,
     patch: UpdateChargeRuleInput,

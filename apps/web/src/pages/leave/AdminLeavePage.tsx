@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Check, X, Loader2 } from "lucide-react";
+import { Check, X } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -177,7 +178,7 @@ function RejectDialog({
               )
             }
           >
-            {rejectRequest.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {rejectRequest.isPending && <Spinner className="h-4 w-4" />}
             Reject
           </Button>
         </DialogFooter>

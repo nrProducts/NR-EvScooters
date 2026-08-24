@@ -48,12 +48,13 @@ export type AuditAction =
     // renaming them would split the history in two.
     | "plan.activated" | "plan.paused" | "plan.resumed" | "plan.due" | "plan.updated" | "plan.renewed"
     | "plan_renewal_settings.updated"
+    | "return_recovery_settings.updated"
     | "settlement.created" | "settlement.refund_issued" | "settlement.due_created" | "settlement.completed"
     | "battery_station.created" | "battery_station.updated" | "battery_station.shown"
     | "battery_station.hidden" | "battery_station.soft_deleted"
     // charges and discounts merged into one signed-amount path, so the four
     // old rule/instance actions collapse into two.
-    | "pricing_rule.created" | "pricing_rule.updated" | "subscription_adjustment.waived"
+    | "pricing_rule.created" | "pricing_rule.updated" | "pricing_rule.deleted" | "subscription_adjustment.waived"
     // DPDPA — consent (ss.5-6)
     | "consent.granted" | "consent.withdrawn" | "consent.notice_published"
     // DPDPA — data-principal rights (ss.11-14)
@@ -92,6 +93,7 @@ export interface AuditEntry {
         | "payment_webhook_event" | "deposit" | "refund" | "plan" | "pricing_rule"
         | "incident" | "damage" | "damage_dispute" | "support_ticket"
         | "notification_broadcast" | "notification_setting" | "notification_message"
+        | "return_recovery_setting"
         | "consent_record" | "consent_notice" | "privacy_request" | "retention_run"
         | "referral"
         | "attendance_record" | "leave_request" | "holiday";

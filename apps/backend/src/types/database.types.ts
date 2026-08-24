@@ -1876,6 +1876,7 @@ export type Database = {
         Row: {
           amount: number
           amount_type: Database["public"]["Enums"]["amount_type"]
+          auto_apply: boolean
           code: string
           created_at: string
           created_by_user_id: string | null
@@ -1895,6 +1896,7 @@ export type Database = {
         Insert: {
           amount: number
           amount_type?: Database["public"]["Enums"]["amount_type"]
+          auto_apply?: boolean
           code: string
           created_at?: string
           created_by_user_id?: string | null
@@ -1914,6 +1916,7 @@ export type Database = {
         Update: {
           amount?: number
           amount_type?: Database["public"]["Enums"]["amount_type"]
+          auto_apply?: boolean
           code?: string
           created_at?: string
           created_by_user_id?: string | null
@@ -2290,6 +2293,7 @@ export type Database = {
           end_reason: string | null
           id: string
           picked_up_at: string
+          recovery_flagged_at: string | null
           returned_at: string | null
           status: Database["public"]["Enums"]["rental_status"]
           subscription_id: string
@@ -2302,6 +2306,7 @@ export type Database = {
           end_reason?: string | null
           id?: string
           picked_up_at?: string
+          recovery_flagged_at?: string | null
           returned_at?: string | null
           status?: Database["public"]["Enums"]["rental_status"]
           subscription_id: string
@@ -2314,6 +2319,7 @@ export type Database = {
           end_reason?: string | null
           id?: string
           picked_up_at?: string
+          recovery_flagged_at?: string | null
           returned_at?: string | null
           status?: Database["public"]["Enums"]["rental_status"]
           subscription_id?: string
@@ -2411,6 +2417,27 @@ export type Database = {
             referencedColumns: ["category"]
           },
         ]
+      }
+      return_recovery_settings: {
+        Row: {
+          created_at: string
+          id: string
+          max_late_fee_days: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          max_late_fee_days?: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          max_late_fee_days?: number
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       rider_profiles: {
         Row: {

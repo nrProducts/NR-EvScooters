@@ -4,6 +4,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The three staggered dots under BrandedLoader (components/common/BrandedLoader.tsx). */
+@keyframes loader-dot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
 /*
  * Premium dark-first SaaS palette, brand green #22C55E family. Light mode is
  * a complementary palette built from the same primary/radius/shadow

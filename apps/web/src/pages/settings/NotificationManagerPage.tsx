@@ -12,6 +12,7 @@ import { useNotificationSettings, useUpdateNotificationSetting } from "@/hooks/u
 import { useUsers } from "@/hooks/useUsers";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { cn } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import type { NotificationSetting } from "@/types";
 
 interface PendingState {
@@ -193,7 +194,13 @@ function NotificationTypeCard({
                 onClick={() => {
                   updateSetting.mutate(
                     { type: setting.notification_type, input: pending },
-                    { onError: (err) => setError(err instanceof Error ? err.message : "Could not save.") },
+                    {
+                      onSuccess: () => toastSuccess("Notification settings saved"),
+                      onError: (err) => {
+                        setError(err instanceof Error ? err.message : "Could not save.");
+                        toastError(err, "Could not save notification settings");
+                      },
+                    },
                   );
                 }}
               >

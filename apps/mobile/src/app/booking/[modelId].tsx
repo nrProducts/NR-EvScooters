@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Linking, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
+import { Spinner } from '../../components/Spinner';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft, MapPin, Bike, Clock, Navigation, Check, AlertTriangle } from 'lucide-react-native';
 import { Badge } from '../../components/ui/Badge';
@@ -147,7 +148,7 @@ export default function BookingScreen() {
       </View>
 
       {loadingModel ? (
-        <View className="flex-1 items-center justify-center"><ActivityIndicator color={COLORS.primary} /></View>
+        <View className="flex-1 items-center justify-center"><Spinner size={32} color={COLORS.primary} /></View>
       ) : modelError || !model ? (
         <ErrorState message={modelError ?? 'This scooter could not be found.'} onRetry={load} />
       ) : (
@@ -164,7 +165,7 @@ export default function BookingScreen() {
               <View className="flex-1">
                 <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">Pickup Location</Text>
                 {loadingStation ? (
-                  <ActivityIndicator size="small" color={COLORS.primary} />
+                  <Spinner size={16} color={COLORS.primary} />
                 ) : stationError ? (
                   <Text style={{ color: COLORS.danger }} className="text-xs font-semibold mt-0.5">{stationError}</Text>
                 ) : draft.station ? (

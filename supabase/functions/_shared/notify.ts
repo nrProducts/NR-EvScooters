@@ -113,7 +113,7 @@ export async function notifyUser(
  * device is not a failure — the delivery stays 'pending' and the message is
  * waiting in the app when they next open it.
  */
-async function deliverPush(
+export async function deliverPush(
     admin: Admin,
     deliveryId: string,
     userId: string,

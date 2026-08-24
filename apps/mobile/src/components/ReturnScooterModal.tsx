@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal } from 'react-native';
+import { Spinner } from './Spinner';
 // Library version, not RN's: RN's only really works on iOS, and Android is
 // edge-to-edge from SDK 54 so the window no longer resizes for the keyboard.
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -205,7 +206,7 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
               style={{ backgroundColor: COLORS.primary, opacity: submitting ? 0.6 : 1 }}
             >
               {submitting ? (
-                <ActivityIndicator color="#FFF" />
+                <Spinner size={18} color="#FFF" />
               ) : (
                 <Text className="text-white font-bold text-sm">Request Return</Text>
               )}

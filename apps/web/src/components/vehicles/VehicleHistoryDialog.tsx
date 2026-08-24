@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { CheckCircle2, Loader2, Wrench, UserX, Zap, Bike, CornerDownRight, Undo2 } from "lucide-react";
+import { CheckCircle2, Wrench, UserX, Zap, Bike, CornerDownRight, Undo2 } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -14,6 +15,7 @@ import { useVehicle } from "@/hooks/useVehicles";
 import { useCompleteRide, useMoveRideToMaintenance } from "@/hooks/useRentals";
 import { ApiError } from "@/services/api/httpClient";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { VehicleMaintenanceRecord, VehicleRentalRecord } from "@/types";
@@ -57,11 +59,20 @@ export function VehicleHistoryDialog({
   const handleConfirmUnassign = () => {
     if (!current) return;
     if (nextStatus === "available") {
-      completeRide.mutate({ id: current.id }, { onSuccess: closeUnassign });
+      completeRide.mutate(
+        { id: current.id },
+        {
+          onSuccess: () => { toastSuccess("Vehicle unassigned"); closeUnassign(); },
+          onError: (err) => toastError(err, "Could not unassign vehicle"),
+        },
+      );
     } else {
       moveToMaintenance.mutate(
         { id: current.id, input: { description: description.trim() } },
-        { onSuccess: closeUnassign },
+        {
+          onSuccess: () => { toastSuccess("Vehicle sent to maintenance"); closeUnassign(); },
+          onError: (err) => toastError(err, "Could not send vehicle to maintenance"),
+        },
       );
     }
   };
@@ -267,7 +278,7 @@ export function VehicleHistoryDialog({
               disabled={isPending || (nextStatus === "maintenance" && description.trim().length < 3)}
               onClick={handleConfirmUnassign}
             >
-              {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isPending && <Spinner className="h-4 w-4" />}
               Confirm unassign
             </Button>
           </DialogFooter>

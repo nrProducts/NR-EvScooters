@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Linking, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
+import { Spinner } from '../../../components/Spinner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, BatteryCharging, Copy, Hash, MapPin, Navigation } from 'lucide-react-native';
@@ -64,7 +65,7 @@ export default function StationDetailsScreen() {
 
             {isLoading ? (
                 <View className="flex-1 items-center justify-center">
-                    <ActivityIndicator size="large" color={COLORS.primary} />
+                    <Spinner size={32} color={COLORS.primary} />
                 </View>
             ) : isError || !station ? (
                 <ErrorState

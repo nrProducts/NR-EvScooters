@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Bell, Send, Loader2 } from "lucide-react";
+import { Bell, Send } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,7 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { NotificationDeliveryStatus, NotificationLogEntry } from "@/types";
@@ -89,15 +91,18 @@ export default function NotificationsPage() {
                 { title: title.trim(), body: body.trim() },
                 {
                   onSuccess: (res) => {
-                    setResult(`Sent to ${res.sent} of ${res.targeted} riders (${res.failed} failed).`);
+                    const message = `Sent to ${res.sent} of ${res.targeted} riders (${res.failed} failed).`;
+                    setResult(message);
+                    toastSuccess("Broadcast sent", message);
                     setTitle("");
                     setBody("");
                   },
+                  onError: (err) => toastError(err, "Could not send broadcast"),
                 },
               )
             }
           >
-            {broadcast.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {broadcast.isPending && <Spinner className="h-4 w-4" />}
             <Bell className="h-4 w-4" /> Send broadcast
           </Button>
         </div>

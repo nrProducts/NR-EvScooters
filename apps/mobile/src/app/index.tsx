@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image } from 'react-native';
+import { Spinner } from '../components/Spinner';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
@@ -82,7 +83,7 @@ export default function LoginScreen() {
         <View className="w-full max-w-[420px]">
           {busy === 'google' ? (
             <View className="items-center py-10">
-              <ActivityIndicator size="large" color={COLORS.primary} />
+              <Spinner size={32} color={COLORS.primary} />
               <Text style={{ color: COLORS.textSecondary }} className="font-medium mt-4">
                 Opening Google sign-in...
               </Text>
@@ -131,7 +132,7 @@ export default function LoginScreen() {
                 className="w-full py-4 rounded-2xl flex-row justify-center items-center shadow-sm"
               >
                 {busy === 'otp' ? (
-                  <ActivityIndicator color="#FFF" />
+                  <Spinner size={18} color="#FFF" />
                 ) : (
                   <>
                     <Text className="text-white font-bold text-base mr-2">Send Code</Text>

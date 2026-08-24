@@ -1,5 +1,6 @@
 import React, { Component, Suspense, forwardRef, lazy, type ReactNode } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View, Text } from 'react-native';
+import { Spinner } from '../../../components/Spinner';
 import { MapPinOff } from 'lucide-react-native';
 import { COLORS } from '../../../constants/theme';
 import { ENV } from '../../../constants/env';
@@ -51,7 +52,7 @@ export const BatteryStationMap = forwardRef<BatteryStationMapHandle, BatteryStat
 
 const MapLoading = () => (
     <View className="flex-1 items-center justify-center" style={{ backgroundColor: COLORS.gray[100] }}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Spinner size={32} color={COLORS.primary} />
     </View>
 );
 

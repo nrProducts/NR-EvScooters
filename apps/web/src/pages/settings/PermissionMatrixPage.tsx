@@ -13,6 +13,7 @@ import { useUser, useUserPermissions, useUpdateUserPermissions } from "@/hooks/u
 import {
   matchProfileName, permissionsForModule, profileToModules, usePermissionCatalog,
 } from "@/hooks/usePermissionCatalog";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { CUSTOM_PROFILE } from "@/types";
 import type { ModuleKey, ModulePermission, PermissionProfileName } from "@/types";
 
@@ -174,7 +175,13 @@ export default function PermissionMatrixPage() {
             if (!userId) return;
             updatePermissions.mutate(
               { id: userId, modules: pending },
-              { onError: (err) => setSaveError(err instanceof Error ? err.message : "Could not save permissions.") },
+              {
+                onSuccess: () => toastSuccess("Permissions saved"),
+                onError: (err) => {
+                  setSaveError(err instanceof Error ? err.message : "Could not save permissions.");
+                  toastError(err, "Could not save permissions");
+                },
+              },
             );
           }}
         >

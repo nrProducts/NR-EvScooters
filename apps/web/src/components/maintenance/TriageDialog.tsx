@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Clock, Wrench, Ban, Loader2 } from "lucide-react";
+import { Clock, Wrench, Ban } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -13,6 +14,7 @@ import {
 } from "@/hooks/useMaintenance";
 import { ApiError } from "@/services/api/httpClient";
 import { cn } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { MaintenanceTicket } from "@/types";
@@ -73,7 +75,10 @@ export function TriageDialog({
     if (!ticket || !readyAt) return;
     quickFix.mutate(
       { id: ticket.id, expectedReadyAt: new Date(readyAt).toISOString() },
-      { onSuccess: () => onOpenChange(false) },
+      {
+        onSuccess: () => { toastSuccess("Marked as quick fix"); onOpenChange(false); },
+        onError: (err) => toastError(err, "Could not save quick fix"),
+      },
     );
   }
 
@@ -89,9 +94,11 @@ export function TriageDialog({
       },
       {
         onSuccess: () => {
+          toastSuccess("Vehicle scrapped");
           onOpenChange(false);
           if (ticket.displaced_rider) setReassignTarget(ticket);
         },
+        onError: (err) => toastError(err, "Could not scrap vehicle"),
       },
     );
   }
@@ -187,7 +194,7 @@ export function TriageDialog({
             </Button>
             {choice === "quick_fix" && (
               <Button disabled={!readyAt || quickFix.isPending} onClick={confirmQuickFix}>
-                {quickFix.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {quickFix.isPending && <Spinner className="h-4 w-4" />}
                 Confirm quick fix
               </Button>
             )}
@@ -196,7 +203,7 @@ export function TriageDialog({
                 disabled={scrapReason.trim().length < 3 || notRepairable.isPending}
                 onClick={confirmNotRepairable}
               >
-                {notRepairable.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {notRepairable.isPending && <Spinner className="h-4 w-4" />}
                 Scrap vehicle
               </Button>
             )}

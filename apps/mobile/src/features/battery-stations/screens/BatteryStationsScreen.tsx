@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    View, Text, ActivityIndicator, BackHandler, Linking, Platform, TouchableOpacity,
+    View, Text, BackHandler, Linking, Platform, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -12,6 +12,7 @@ import { buildMapsUrl, buildWebMapsUrl } from '../../../lib/maps';
 import { copyToClipboard } from '../../../lib/clipboard';
 import { notifyError, notifySuccess } from '../../../lib/confirm';
 import { ErrorState } from '../../../components/ui/ErrorState';
+import { Spinner } from '../../../components/Spinner';
 import { BatteryStationMap, type BatteryStationMapHandle } from '../components/BatteryStationMap';
 import { StationDetailsBottomSheet } from '../components/StationDetailsBottomSheet';
 import { StationSearch } from '../components/StationSearch';
@@ -361,7 +362,7 @@ export default function BatteryStationsScreen() {
                     className="absolute inset-0 items-center justify-center"
                     style={{ backgroundColor: COLORS.background }}
                 >
-                    <ActivityIndicator size="large" color={COLORS.primary} />
+                    <Spinner size={32} color={COLORS.primary} />
                     <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold mt-3">
                         Loading battery stations…
                     </Text>

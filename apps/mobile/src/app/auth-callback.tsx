@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { Platform, View, ActivityIndicator } from 'react-native';
+import { Platform, View } from 'react-native';
+import { Spinner } from '../components/Spinner';
 import * as WebBrowser from 'expo-web-browser';
 import { COLORS } from '../constants/theme';
 
@@ -19,7 +20,7 @@ export default function AuthCallback() {
 
     return (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background }}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Spinner size={32} color={COLORS.primary} />
         </View>
     );
 }

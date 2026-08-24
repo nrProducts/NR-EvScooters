@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, MoreHorizontal, Loader2, Zap, ChevronDown, ChevronRight,
+  BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, MoreHorizontal, Zap, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { SearchBar } from "@/components/common/SearchBar";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { Spinner } from "@/components/common/Spinner";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
@@ -327,7 +328,7 @@ export default function VehicleListPage() {
               onClick={confirmMaintenance}
             >
               {(createMaintenanceTicket.isPending || updateVehicle.isPending) && (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Spinner className="h-4 w-4" />
               )}
               Mark in maintenance
             </Button>

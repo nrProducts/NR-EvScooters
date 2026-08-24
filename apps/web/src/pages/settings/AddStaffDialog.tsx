@@ -63,10 +63,15 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
           if (data.temporary_password) {
             setRevealed({ email: form.email.trim(), password: data.temporary_password });
           } else {
+            push({ tone: "success", title: "Staff account created", message: `${form.full_name.trim()} can now sign in.` });
             close(false);
           }
         },
-        onError: (err) => setError(err instanceof Error ? err.message : "Could not create the account."),
+        onError: (err) => {
+          const message = err instanceof Error ? err.message : "Could not create the account.";
+          setError(message);
+          push({ tone: "error", title: "Could not create account", message });
+        },
       },
     );
   };

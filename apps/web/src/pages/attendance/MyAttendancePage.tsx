@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { LogIn, LogOut, Loader2 } from "lucide-react";
+import { LogIn, LogOut } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
@@ -8,6 +9,7 @@ import { useMyAttendanceToday, useMyAttendanceHistory, useCheckIn, useCheckOut }
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate, formatDateTime } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import type { AttendanceRecord } from "@/services/api/attendance";
 
 function hoursWorked(record: AttendanceRecord): string {
@@ -67,11 +69,15 @@ export default function MyAttendancePage() {
                 onClick={() => {
                   setError(null);
                   checkOut.mutate(undefined, {
-                    onError: (err) => setError(err instanceof ApiError ? err.message : "Could not check out."),
+                    onSuccess: () => toastSuccess("Checked out"),
+                    onError: (err) => {
+                      setError(err instanceof ApiError ? err.message : "Could not check out.");
+                      toastError(err, "Could not check out");
+                    },
                   });
                 }}
               >
-                {checkOut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+                {checkOut.isPending ? <Spinner className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
                 Check out
               </Button>
             </>
@@ -89,11 +95,15 @@ export default function MyAttendancePage() {
                 onClick={() => {
                   setError(null);
                   checkIn.mutate(undefined, {
-                    onError: (err) => setError(err instanceof ApiError ? err.message : "Could not check in."),
+                    onSuccess: () => toastSuccess("Checked in"),
+                    onError: (err) => {
+                      setError(err instanceof ApiError ? err.message : "Could not check in.");
+                      toastError(err, "Could not check in");
+                    },
                   });
                 }}
               >
-                {checkIn.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+                {checkIn.isPending ? <Spinner className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
                 Check in
               </Button>
             </>

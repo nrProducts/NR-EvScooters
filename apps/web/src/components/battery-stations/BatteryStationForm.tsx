@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Loader2, MapPin, Plus, X } from "lucide-react";
+import { MapPin, Plus, X } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -293,7 +294,7 @@ export function BatteryStationForm({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={isPending}>
-            {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isPending && <Spinner className="h-4 w-4" />}
             {station ? "Save changes" : "Add station"}
           </Button>
         </DialogFooter>

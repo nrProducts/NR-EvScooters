@@ -12,6 +12,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { useReturnDetail, useApproveReturnSettlement } from "@/hooks/useReturns";
 import { useMoveRideToMaintenance, useRejectReturn } from "@/hooks/useRentals";
 import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
 
 interface DamageItemForm {
@@ -104,7 +105,11 @@ export default function ReturnDetailPage() {
       moveToMaintenance.mutate(
         { id: rentalId, input: { description: maintenanceNotes.trim(), inspected: true } },
         {
-          onError: (err) => setFormError(err instanceof ApiError ? err.message : "Something went wrong."),
+          onSuccess: () => toastSuccess("Return approved — vehicle sent to maintenance"),
+          onError: (err) => {
+            setFormError(err instanceof ApiError ? err.message : "Something went wrong.");
+            toastError(err, "Could not approve return");
+          },
         },
       );
       return;
@@ -122,7 +127,11 @@ export default function ReturnDetailPage() {
         },
       },
       {
-        onError: (err) => setFormError(err instanceof ApiError ? err.message : "Something went wrong."),
+        onSuccess: () => toastSuccess("Return approved and settled"),
+        onError: (err) => {
+          setFormError(err instanceof ApiError ? err.message : "Something went wrong.");
+          toastError(err, "Could not settle return");
+        },
       },
     );
   };
@@ -131,7 +140,13 @@ export default function ReturnDetailPage() {
     if (!rentalId) return;
     rejectReturn.mutate(
       { id: rentalId, input: { reason: rejectReason.trim() } },
-      { onSuccess: () => navigate("/returns") },
+      {
+        onSuccess: () => {
+          toastSuccess("Return rejected");
+          navigate("/returns");
+        },
+        onError: (err) => toastError(err, "Could not reject return"),
+      },
     );
   };
 

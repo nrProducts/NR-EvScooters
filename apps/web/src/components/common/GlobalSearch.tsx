@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, User, Bike, Loader2 } from "lucide-react";
+import { Search, User, Bike } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Input } from "@/components/ui/input";
 import { useGlobalSearch } from "@/hooks/useGlobalSearch";
 import { cn } from "@/lib/utils";
@@ -57,7 +58,7 @@ export function GlobalSearch() {
 
           {enabled && isLoading && (
             <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching…
+              <Spinner className="h-3.5 w-3.5" /> Searching…
             </div>
           )}
 

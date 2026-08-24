@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { Spinner } from '../components/Spinner';
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { FormField } from '../components/ui/FormField';
@@ -170,7 +171,7 @@ export default function SupportScreen() {
               style={{ backgroundColor: COLORS.primary, opacity: submitting ? 0.6 : 1 }}
             >
               {submitting ? (
-                <ActivityIndicator size="small" color="#FFF" />
+                <Spinner size={16} color="#FFF" />
               ) : (
                 <>
                   <Send size={15} color="#FFF" />

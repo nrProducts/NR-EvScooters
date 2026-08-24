@@ -34,6 +34,7 @@
 import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
 import { businessToday } from "../_shared/dates.ts";
 import { notifyUser } from "../_shared/notify.ts";
+import { notifyStaff } from "../_shared/notifyStaff.ts";
 import { writeAudit } from "../_shared/audit.ts";
 
 const SOURCE = "payment-overdue-sweep";
@@ -296,6 +297,16 @@ async function markPastDue(
         body: "Your rental payment is overdue. Please complete the payment to continue your rental.",
         screen: "billing",
         payload: { subscription_id: subscription.id },
+    });
+
+    await notifyStaff(admin, {
+        typeCode: "payment_overdue",
+        subjectType: "subscription_period",
+        subjectId: period.id,
+        title: "Payment Due",
+        body: "A rider's rental payment is overdue.",
+        screen: "/bookings",
+        payload: { subscription_id: subscription.id, rider_id: subscription.user_id },
     });
     return true;
 }

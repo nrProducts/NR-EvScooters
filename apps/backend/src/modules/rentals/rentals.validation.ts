@@ -16,6 +16,7 @@ export const listRentalsQuery = z.object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     status: z.enum(RENTAL_STATUSES as [string, ...string[]]).optional(),
+    recoveryRequired: z.coerce.boolean().optional(),
 });
 
 /**

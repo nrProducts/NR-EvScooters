@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapLibreMap, Marker as MapLibreMarker } from "maplibre-gl";
-import { Loader2, MapPinOff } from "lucide-react";
+import { MapPinOff } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { CHENNAI_CENTER, DEFAULT_MAP_ZOOM, MAP_STYLE_URL, isMapConfigured } from "@/lib/mapConfig";
 
 export interface PickedLocation {
@@ -153,7 +154,7 @@ export function BatteryStationMapPicker({
         <div ref={containerRef} className="h-full w-full" />
         {status === "loading" && (
           <div className="absolute inset-0 flex items-center justify-center bg-secondary/40">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <Spinner className="h-5 w-5 text-muted-foreground" />
           </div>
         )}
       </div>

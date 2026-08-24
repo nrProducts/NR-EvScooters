@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
+  View, Text, ScrollView, TouchableOpacity,
   Modal, Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -13,6 +13,7 @@ import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { ErrorState } from '../components/ui/ErrorState';
 import { pullToRefresh } from '../components/ui/PullToRefresh';
+import { Spinner } from '../components/Spinner';
 import { FormField } from '../components/ui/FormField';
 import { DatePickerField } from '../components/ui/DatePickerField';
 import { CheckRow } from '../components/ui/CheckRow';
@@ -220,7 +221,7 @@ export default function KycScreen() {
     return (
       <Shell>
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Spinner size={32} color={COLORS.primary} />
           <Text style={{ color: COLORS.textSecondary }} className="font-medium mt-4 text-xs">
             Loading your verification...
           </Text>
@@ -358,7 +359,7 @@ export default function KycScreen() {
           className="absolute inset-0 items-center justify-center"
           style={{ backgroundColor: 'rgba(15,23,42,0.35)' }}
         >
-          <ActivityIndicator size="large" color="#FFF" />
+          <Spinner size={32} color="#FFF" />
         </View>
       ) : null}
 
@@ -562,7 +563,7 @@ const ProfilePhotoStep: React.FC<{
           style={{ backgroundColor: uploading ? COLORS.gray[300] : COLORS.primary }}
         >
           {uploading ? (
-            <ActivityIndicator size="small" color="#FFF" />
+            <Spinner size={16} color="#FFF" />
           ) : (
             <>
               <Upload size={15} color="#FFF" />
@@ -672,7 +673,7 @@ const EmergencyContactStep: React.FC<{
           style={{ backgroundColor: saving ? COLORS.gray[300] : COLORS.primary }}
         >
           {saving ? (
-            <ActivityIndicator size="small" color="#FFF" />
+            <Spinner size={16} color="#FFF" />
           ) : (
             <>
               <Phone size={13} color="#FFF" />
@@ -797,7 +798,7 @@ const DocumentStep: React.FC<DocumentStepProps> = ({
             style={{ backgroundColor: uploading ? COLORS.gray[300] : COLORS.primary }}
           >
             {uploading ? (
-              <ActivityIndicator size="small" color="#FFF" />
+              <Spinner size={16} color="#FFF" />
             ) : (
               <>
                 <Upload size={15} color="#FFF" />
@@ -1032,7 +1033,7 @@ const ReviewStep: React.FC<{
         style={{ backgroundColor: submitting || !kyc.can_submit ? COLORS.gray[300] : COLORS.primary }}
       >
         {submitting ? (
-          <ActivityIndicator size="small" color="#FFF" />
+          <Spinner size={16} color="#FFF" />
         ) : (
           <>
             <ShieldCheck size={16} color="#FFF" />

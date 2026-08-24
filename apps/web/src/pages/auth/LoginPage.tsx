@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
+import { toastError } from "@/lib/toastHelpers";
 
 interface LoginForm {
   identifier: string;
@@ -26,7 +28,7 @@ export default function LoginPage() {
   } = useForm<LoginForm>({ defaultValues: { identifier: "", password: "" } });
 
   const onSubmit = (values: LoginForm) => {
-    login.mutate(values);
+    login.mutate(values, { onError: (err) => toastError(err, "Could not sign in") });
   };
 
   return (
@@ -88,7 +90,7 @@ export default function LoginPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={login.isPending}>
-            {login.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {login.isPending && <Spinner className="h-4 w-4" />}
             Login
           </Button>
         </form>

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity } from 'react-native';
+import { Spinner } from '../components/Spinner';
 import { useRouter } from 'expo-router';
 import { Bell, ChevronRight, Check } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
@@ -30,7 +31,7 @@ export default function NotificationsScreen() {
     <AppShell title="Notifications">
       {loading ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Spinner size={32} color={COLORS.primary} />
         </View>
       ) : error ? (
         <ErrorState message={error.message} onRetry={retry} />

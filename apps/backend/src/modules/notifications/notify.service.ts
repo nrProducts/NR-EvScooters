@@ -67,7 +67,21 @@ export interface NotifyContext {
 export async function notify(ctx: NotifyContext): Promise<void> {
     const resolution = await getRecipients(ctx.notificationType);
     const recipients = resolution.recipients.filter((r) => r.id !== ctx.excludeUserId);
-    if (recipients.length === 0) return;
+    if (recipients.length === 0) {
+        // Distinct from the type being disabled (getRecipients already
+        // returns [] there without setting either channel) — this is an
+        // ENABLED type with nobody subscribed, which is exactly the class of
+        // gap that let the admin console silently show only one notification
+        // type for months (see this file's doc comment, finding C5). Worth a
+        // log line so the next instance of this is visible, not rediscovered
+        // by code spelunking.
+        if (resolution.sendEmail || resolution.sendInApp) {
+            console.warn("[notify] enabled type has no subscribers — nobody will be notified", {
+                notificationType: ctx.notificationType,
+            });
+        }
+        return;
+    }
 
     const [riderName, vehicleName] = await Promise.all([
         resolveRiderName(ctx),

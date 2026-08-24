@@ -16,6 +16,7 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDateTime } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { SupportPriority, SupportStatus, SupportTicket } from "@/types";
@@ -50,9 +51,14 @@ export default function SupportTicketsPage() {
     updateTicket.mutate(
       { id: t.id, input: { status } },
       {
-        onSuccess: (updated) => setSelected((cur) => (cur?.id === updated.id ? updated : cur)),
-        onError: (err) =>
-          setActionError(err instanceof ApiError ? err.message : "Could not update this ticket."),
+        onSuccess: (updated) => {
+          toastSuccess("Ticket status updated");
+          setSelected((cur) => (cur?.id === updated.id ? updated : cur));
+        },
+        onError: (err) => {
+          setActionError(err instanceof ApiError ? err.message : "Could not update this ticket.");
+          toastError(err, "Could not update ticket status");
+        },
       },
     );
   };
@@ -179,7 +185,13 @@ export default function SupportTicketsPage() {
                 onValueChange={(v) =>
                   updateTicket.mutate(
                     { id: selected.id, input: { priority: v as SupportPriority } },
-                    { onSuccess: (updated) => setSelected(updated) },
+                    {
+                      onSuccess: (updated) => {
+                        toastSuccess("Ticket priority updated");
+                        setSelected(updated);
+                      },
+                      onError: (err) => toastError(err, "Could not update ticket priority"),
+                    },
                   )
                 }
                 disabled={!canReply}

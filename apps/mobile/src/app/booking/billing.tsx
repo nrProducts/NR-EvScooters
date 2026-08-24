@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { Spinner } from '../../components/Spinner';
 import { useRouter } from 'expo-router';
 import { ChevronLeft, CheckCircle2, Bike, MapPin, Calendar, CreditCard, ShieldCheck } from 'lucide-react-native';
 import { useBookingStore } from '../../store/useBookingStore';
@@ -264,7 +265,7 @@ export default function BillingScreen() {
           className="py-4 rounded-2xl items-center flex-row justify-center"
           style={{ backgroundColor: COLORS.primary, opacity: busy ? 0.6 : 1 }}
         >
-          {busy ? <ActivityIndicator size="small" color="#FFF" /> : <CreditCard size={16} color="#FFF" />}
+          {busy ? <Spinner size={16} color="#FFF" /> : <CreditCard size={16} color="#FFF" />}
           <Text className="text-white text-sm font-bold ml-2">
             {paying ? 'Processing payment…'
               : creating ? 'Reserving…'

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, Loader2, X, Check, CalendarOff, PartyPopper, AlertCircle } from "lucide-react";
+import { Plus, X, Check, CalendarOff, PartyPopper, AlertCircle } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,6 +20,7 @@ import {
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import type { LeaveDayBreakdown, LeaveRequest } from "@/services/api/leave";
 
 export default function MyLeavePage() {
@@ -47,7 +49,12 @@ export default function MyLeavePage() {
             variant="ghost"
             className="text-destructive"
             disabled={cancelRequest.isPending}
-            onClick={() => cancelRequest.mutate(r.id)}
+            onClick={() =>
+              cancelRequest.mutate(r.id, {
+                onSuccess: () => toastSuccess("Leave request cancelled"),
+                onError: (err) => toastError(err, "Could not cancel leave request"),
+              })
+            }
           >
             <X className="h-3.5 w-3.5" /> Cancel
           </Button>
@@ -245,11 +252,18 @@ function ApplyLeaveDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
             onClick={() =>
               applyForLeave.mutate(
                 { leave_type_id: leaveTypeId, start_date: startDate, end_date: endDate, reason: reason.trim() || undefined },
-                { onSuccess: () => { reset(); onOpenChange(false); } },
+                {
+                  onSuccess: () => {
+                    toastSuccess("Leave request submitted");
+                    reset();
+                    onOpenChange(false);
+                  },
+                  onError: (err) => toastError(err, "Could not submit leave request"),
+                },
               )
             }
           >
-            {applyForLeave.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {applyForLeave.isPending && <Spinner className="h-4 w-4" />}
             Submit
           </Button>
         </DialogFooter>

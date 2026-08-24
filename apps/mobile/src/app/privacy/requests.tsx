@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-    View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Linking, TextInput,
+    View, Text, ScrollView, TouchableOpacity, Linking, TextInput,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { ChevronRight, Download, ShieldAlert } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { ChipSelect } from '../../components/ui/ChipSelect';
+import { Spinner } from '../../components/Spinner';
 import { CheckRow } from '../../components/ui/CheckRow';
 import { confirmAction, notify } from '../../lib/confirm';
 import { useT } from '../../i18n';
@@ -225,7 +226,7 @@ export default function PrivacyRequestsScreen() {
                 </Text>
 
                 {loading ? (
-                    <ActivityIndicator color={COLORS.primary} />
+                    <Spinner size={18} color={COLORS.primary} />
                 ) : error && requests.length === 0 ? (
                     <ErrorState message={error} onRetry={reload} />
                 ) : requests.length === 0 ? (
@@ -369,7 +370,7 @@ const PrimaryButton: React.FC<{
         className="w-full py-3.5 rounded-2xl flex-row justify-center items-center"
     >
         {busy ? (
-            <ActivityIndicator color="#FFF" />
+            <Spinner size={18} color="#FFF" />
         ) : (
             <>
                 {icon ? <View className="mr-2">{icon}</View> : null}

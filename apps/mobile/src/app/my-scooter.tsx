@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { Spinner } from '../components/Spinner';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
   Bike, Calendar, CalendarClock, CreditCard, Hash, LifeBuoy, MapPin, PackageCheck, RefreshCw, Wrench,
@@ -185,7 +186,7 @@ export default function MyScooterScreen() {
     <AppShell title="My Scooter">
       {loading ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Spinner size={32} color={COLORS.primary} />
         </View>
       ) : error ? (
         <ErrorState message={error} onRetry={() => void reload()} />

@@ -636,6 +636,14 @@ export interface ApiRental {
     days_late: number | null;
     late_penalty_amount: number | null;
     late_fee_per_day: number | null;
+
+    // --- return recovery (20260824100000) -----------------------------------
+    // Set once by vehicle-recovery-sweep when the rental is more than
+    // max_late_fee_days past its due date; never cleared. Can be set even
+    // with no return ever requested — see ReturnStatusCard.
+    recovery_flagged_at: string | null;
+    /** return_recovery_settings.max_late_fee_days — pass into computeLateReturnPenalty as maxDays. */
+    max_late_fee_days: number;
 }
 
 // ---------------------------------------------------------------------------

@@ -8,11 +8,38 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePickupQueue } from "@/hooks/useBookings";
 import { useSettlements } from "@/hooks/useReturns";
+import { useRentals } from "@/hooks/useRentals";
+import { useReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
 import type { PickupBooking, ReturnSettlement } from "@/types";
+import type { AdminRentalRow } from "@/services/api/rentals";
 
-type ReturnsView = "pending" | "settled";
+type ReturnsView = "pending" | "settled" | "recovery";
+
+/**
+ * Read-only summary of return_recovery_settings.max_late_fee_days — the
+ * actual editing happens on Billing & Charges now, in the same card as the
+ * late-fee amount, so there's one place to configure "the late fee" instead
+ * of two. This just surfaces the current value here with a shortcut to it.
+ */
+function RecoveryPolicyNote() {
+  const navigate = useNavigate();
+  const { data: settings } = useReturnRecoverySettings();
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm">
+      <p className="text-muted-foreground">
+        A scooter is flagged for recovery{" "}
+        <span className="font-medium text-foreground">{settings ? settings.max_late_fee_days : "…"} days</span>{" "}
+        past its return due date.
+      </p>
+      <Button variant="ghost" size="sm" onClick={() => navigate("/billing")}>
+        Edit in Billing & Charges
+      </Button>
+    </div>
+  );
+}
 
 export default function ReturnsListPage() {
   const navigate = useNavigate();
@@ -24,6 +51,7 @@ export default function ReturnsListPage() {
     { enabled: view === "pending" },
   );
   const settled = useSettlements({ page, pageSize: 8, sortBy: "created_at", sortDir: "desc" });
+  const recovery = useRentals({ recoveryRequired: true, page, pageSize: 8 });
 
   const pendingColumns: DataTableColumn<PickupBooking>[] = [
     { header: "Rider", key: "rider", render: (b) => b.rider.full_name },
@@ -92,19 +120,54 @@ export default function ReturnsListPage() {
     },
   ];
 
-  usePageSubtitle("Review pending returns and track their financial settlement.");
+  const recoveryColumns: DataTableColumn<AdminRentalRow>[] = [
+    { header: "Rider", key: "rider", render: (r) => r.rider?.full_name ?? "—" },
+    {
+      header: "Vehicle",
+      key: "vehicle",
+      render: (r) => (
+        <div>
+          <p className="font-medium">{r.vehicle?.registration_number ?? "—"}</p>
+          <p className="text-xs text-muted-foreground">{r.vehicle?.name ?? "—"}</p>
+        </div>
+      ),
+    },
+    { header: "Rental started", key: "started", render: (r) => formatDate(r.started_at), hideOnMobile: true },
+    { header: "Due back", key: "due", render: (r) => (r.return_due_at ? formatDate(r.return_due_at) : "—") },
+    { header: "Days late", key: "days_late", render: (r) => r.days_late ?? "—" },
+    {
+      header: "Flagged",
+      key: "flagged",
+      render: (r) => (r.recovery_flagged_at ? formatDateTime(r.recovery_flagged_at) : "—"),
+    },
+    { header: "Status", key: "status", render: () => <StatusBadge status="vehicle_recovery_required" /> },
+    {
+      header: "Actions",
+      key: "actions",
+      render: (r) => (
+        <Button size="sm" onClick={() => navigate(`/returns/${r.id}`)}>
+          Review
+        </Button>
+      ),
+    },
+  ];
+
+  usePageSubtitle("Review pending returns, overdue recoveries, and their financial settlement.");
 
   return (
     <div className="space-y-4 animate-fade-in">
+      <RecoveryPolicyNote />
+
       <Tabs value={view} onValueChange={(v) => { setView(v as ReturnsView); setPage(1); }}>
         <TabsList>
           <TabsTrigger value="pending">Pending</TabsTrigger>
+          <TabsTrigger value="recovery">Recovery</TabsTrigger>
           <TabsTrigger value="settled">Settled</TabsTrigger>
         </TabsList>
       </Tabs>
 
       <Card>
-        {view === "pending" ? (
+        {view === "pending" && (
           <>
             <DataTable
               columns={pendingColumns}
@@ -116,7 +179,21 @@ export default function ReturnsListPage() {
             />
             {pending.data && <Pagination page={page} pageSize={8} total={pending.data.total} onPageChange={setPage} />}
           </>
-        ) : (
+        )}
+        {view === "recovery" && (
+          <>
+            <DataTable
+              columns={recoveryColumns}
+              data={recovery.data?.data ?? []}
+              isLoading={recovery.isLoading}
+              isError={recovery.isError}
+              onRetry={() => recovery.refetch()}
+              emptyTitle="No vehicles awaiting recovery"
+            />
+            {recovery.data && <Pagination page={page} pageSize={8} total={recovery.data.total} onPageChange={setPage} />}
+          </>
+        )}
+        {view === "settled" && (
           <>
             <DataTable
               columns={settledColumns}

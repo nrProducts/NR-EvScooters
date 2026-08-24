@@ -2,12 +2,14 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import * as authApi from "@/services/api/staff";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 
 interface SignUpForm {
   full_name: string;
@@ -41,7 +43,8 @@ export default function SignUpPage() {
         phone: values.phone.trim(),
         password: values.password,
       }),
-    onSuccess: () => setDone(true),
+    onSuccess: () => { toastSuccess("Account created"); setDone(true); },
+    onError: (err) => toastError(err, "Could not create account"),
   });
 
   const onSubmit = (values: SignUpForm) => {
@@ -151,7 +154,7 @@ export default function SignUpPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={signUp.isPending}>
-            {signUp.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {signUp.isPending && <Spinner className="h-4 w-4" />}
             Create account
           </Button>
 

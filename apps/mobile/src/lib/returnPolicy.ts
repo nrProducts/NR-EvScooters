@@ -155,8 +155,11 @@ export function effectiveDueAt(
 export function computeLateReturnPenalty(input: {
   returnDueAt: string | null;
   now?: Date;
+  /** Admin-configured cap (return_recovery_settings.max_late_fee_days, delivered on the rental). Defaults to MAX_LATE_PENALTY_DAYS when omitted. */
+  maxDays?: number;
 }): LateReturnCharge {
   const feePerDay = LATE_RETURN_FEE_PER_DAY;
+  const cap = input.maxDays ?? MAX_LATE_PENALTY_DAYS;
 
   if (!input.returnDueAt) {
     return { daysLate: 0, isLate: false, feePerDay, penaltyAmount: 0, hadDeadline: false };
@@ -175,7 +178,7 @@ export function computeLateReturnPenalty(input: {
   // Math.round rather than floor: a DST shift makes the gap 23 or 25 hours,
   // which would otherwise slide the boundary by a whole day.
   const rawDaysLate = Math.round((returnDay.getTime() - dueDay.getTime()) / 86_400_000);
-  const daysLate = Math.min(Math.max(0, rawDaysLate), MAX_LATE_PENALTY_DAYS);
+  const daysLate = Math.min(Math.max(0, rawDaysLate), cap);
 
   return {
     daysLate,

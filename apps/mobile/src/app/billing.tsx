@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { Spinner } from '../components/Spinner';
 import { useFocusEffect } from 'expo-router';
 import { CreditCard, ShieldCheck, AlertTriangle, Receipt, Zap } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
@@ -243,7 +244,7 @@ export default function BillingScreen() {
     <AppShell title="Billing">
       {loading ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Spinner size={32} color={COLORS.primary} />
         </View>
       ) : error ? (
         <ErrorState message={error} onRetry={() => void reload()} />
@@ -422,7 +423,7 @@ export default function BillingScreen() {
                       className="flex-1 py-3 rounded-xl items-center flex-row justify-center"
                       style={{ backgroundColor: COLORS.primary, opacity: recharging ? 0.6 : 1 }}
                     >
-                      {recharging ? <ActivityIndicator size="small" color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
+                      {recharging ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                       <Text className="text-white text-xs font-bold ml-2">
                         {recharging ? 'Processing…' : `Confirm & Pay ₹${rechargePreview.total.toFixed(0)}`}
                       </Text>
@@ -436,7 +437,7 @@ export default function BillingScreen() {
                   className="py-3 rounded-xl items-center flex-row justify-center"
                   style={{ backgroundColor: COLORS.primary, opacity: previewLoading ? 0.6 : 1 }}
                 >
-                  {previewLoading ? <ActivityIndicator size="small" color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
+                  {previewLoading ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                   <Text className="text-white text-xs font-bold ml-2">
                     {previewLoading ? 'Loading…' : 'Review & Renew'}
                   </Text>
@@ -512,7 +513,7 @@ export default function BillingScreen() {
                       style={{ backgroundColor: COLORS.primary, opacity: payingInvoiceId === inv.id ? 0.6 : 1 }}
                     >
                       {payingInvoiceId === inv.id ? (
-                        <ActivityIndicator size="small" color="#FFF" />
+                        <Spinner size={16} color="#FFF" />
                       ) : (
                         <CreditCard size={14} color="#FFF" />
                       )}

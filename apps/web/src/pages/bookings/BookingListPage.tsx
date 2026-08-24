@@ -21,6 +21,7 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import type { PickupQueueFilters } from "@/services/api/bookings";
 import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
@@ -409,7 +410,13 @@ export default function BookingListPage() {
                 if (pickupTarget) {
                   confirmPickup.mutate(
                     { bookingId: pickupTarget.id, vehicleId: pickupTarget.vehicle ? undefined : selectedVehicleId! },
-                    { onSuccess: () => setPickupTarget(null) },
+                    {
+                      onSuccess: () => {
+                        toastSuccess("Handover confirmed");
+                        setPickupTarget(null);
+                      },
+                      onError: (err) => toastError(err, "Could not confirm handover"),
+                    },
                   );
                 }
               }}
@@ -461,8 +468,14 @@ export default function BookingListPage() {
                 setLateFeeOverride.mutate(
                   { bookingId: lateFeeTarget.id, lateFeeOverride: parsed },
                   {
-                    onSuccess: () => setLateFeeTarget(null),
-                    onError: (err) => setLateFeeError(err instanceof Error ? err.message : "Could not save."),
+                    onSuccess: () => {
+                      toastSuccess("Late fee override saved");
+                      setLateFeeTarget(null);
+                    },
+                    onError: (err) => {
+                      setLateFeeError(err instanceof Error ? err.message : "Could not save.");
+                      toastError(err, "Could not save late fee override");
+                    },
                   },
                 );
               }}

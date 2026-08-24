@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { Spinner } from './Spinner';
 import { CheckCircle2, CreditCard, PackageCheck } from 'lucide-react-native';
 import { COLORS } from '../constants/theme';
 import { billingRepository } from '../services';
@@ -110,7 +111,7 @@ export function SettlementCard({
           className="py-3 rounded-xl items-center flex-row justify-center"
           style={{ backgroundColor: COLORS.danger, opacity: paying ? 0.6 : 1 }}
         >
-          {paying ? <ActivityIndicator size="small" color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
+          {paying ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
           <Text className="text-white text-xs font-bold ml-2">
             {paying ? 'Processing…' : `Pay ₹${settlement.due_amount.toFixed(0)}`}
           </Text>

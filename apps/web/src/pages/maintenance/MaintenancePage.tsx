@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, CheckCircle2, PlayCircle, XCircle, MoreHorizontal, Loader2, ClipboardCheck } from "lucide-react";
+import { Plus, CheckCircle2, PlayCircle, XCircle, MoreHorizontal, ClipboardCheck } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +22,7 @@ import { useVehicles } from "@/hooks/useVehicles";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate, formatDateTime } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { MaintenanceStatus, MaintenanceTicket } from "@/types";
@@ -46,8 +48,11 @@ export default function MaintenancePage() {
     updateTicket.mutate(
       { id, status: ticketStatus },
       {
-        onError: (err) =>
-          setUpdateError(err instanceof ApiError ? err.message : "Could not update this ticket."),
+        onSuccess: () => toastSuccess("Ticket status updated"),
+        onError: (err) => {
+          setUpdateError(err instanceof ApiError ? err.message : "Could not update this ticket.");
+          toastError(err, "Could not update ticket status");
+        },
       },
     );
   };
@@ -268,11 +273,18 @@ function CreateTicketDialog({ open, onOpenChange }: { open: boolean; onOpenChang
             onClick={() =>
               createTicket.mutate(
                 { vehicle_id: vehicleId, description: description.trim() },
-                { onSuccess: () => { reset(); onOpenChange(false); } },
+                {
+                  onSuccess: () => {
+                    toastSuccess("Maintenance ticket created");
+                    reset();
+                    onOpenChange(false);
+                  },
+                  onError: (err) => toastError(err, "Could not create maintenance ticket"),
+                },
               )
             }
           >
-            {createTicket.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {createTicket.isPending && <Spinner className="h-4 w-4" />}
             Report issue
           </Button>
         </DialogFooter>

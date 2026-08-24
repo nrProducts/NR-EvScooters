@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Switch, ActivityIndicator } from 'react-native';
+import { View, Text, Switch } from 'react-native';
+import { Spinner } from '../Spinner';
 import { COLORS } from '../../constants/theme';
 
 interface ConsentToggleProps {
@@ -38,7 +39,7 @@ export const ConsentToggle: React.FC<ConsentToggleProps> = ({
         </View>
 
         {busy ? (
-            <ActivityIndicator size="small" color={COLORS.primary} />
+            <Spinner size={16} color={COLORS.primary} />
         ) : (
             <Switch
                 value={value}

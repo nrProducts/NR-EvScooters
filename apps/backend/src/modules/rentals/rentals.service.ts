@@ -13,6 +13,7 @@ import {
 } from "./rentals.types";
 import { LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS } from "./returnPolicy.constants";
 import { businessToday } from "../../common/dates";
+import { getSettings as getReturnRecoverySettings } from "../return-recovery-settings/return-recovery-settings.service";
 
 /**
  * Rentals.
@@ -70,7 +71,7 @@ const ASSIGNMENT_EMBED = `
 `;
 
 const RENTAL_COLUMNS = `
-    id, status, picked_up_at, returned_at, due_back_at, subscription_id,
+    id, status, picked_up_at, returned_at, due_back_at, subscription_id, recovery_flagged_at,
     ${RETURN_EMBED}, ${SETTLEMENT_EMBED}, ${SUBSCRIPTION_EMBED}, ${ASSIGNMENT_EMBED}
 `;
 
@@ -143,8 +144,11 @@ export interface LateReturnCharge {
 export function computeLateReturnPenalty(input: {
     returnDueAt: string | null;
     now?: Date;
+    /** Admin-configured cap (return_recovery_settings.max_late_fee_days). Defaults to MAX_LATE_PENALTY_DAYS when omitted, so every existing call site and test keeps compiling unchanged. */
+    maxDays?: number;
 }): LateReturnCharge {
     const feePerDay = LATE_RETURN_FEE_PER_DAY;
+    const cap = input.maxDays ?? MAX_LATE_PENALTY_DAYS;
 
     if (!input.returnDueAt) {
         return { daysLate: 0, isLate: false, feePerDay, penaltyAmount: 0, hadDeadline: false };
@@ -163,7 +167,7 @@ export function computeLateReturnPenalty(input: {
     // Math.round rather than floor: a DST shift makes the gap 23 or 25 hours,
     // which would otherwise slide the boundary by a whole day.
     const rawDaysLate = Math.round((returnDay.getTime() - dueDay.getTime()) / 86_400_000);
-    const daysLate = Math.min(Math.max(0, rawDaysLate), MAX_LATE_PENALTY_DAYS);
+    const daysLate = Math.min(Math.max(0, rawDaysLate), cap);
 
     return {
         daysLate,
@@ -185,6 +189,7 @@ interface RawRentalRow {
     returned_at: string | null;
     due_back_at: string;
     subscription_id: string;
+    recovery_flagged_at: string | null;
     rental_returns: unknown;
     rental_settlements: unknown;
     subscriptions: unknown;
@@ -323,7 +328,7 @@ function narrowPlanStatus(status: string | undefined): RentalView["plan_status"]
     return status === "active" || status === "past_due" || status === "paused" ? status : null;
 }
 
-function toRentalView(row: RawRentalRow, periods: Map<string, PeriodInfo>): RentalView {
+function toRentalView(row: RawRentalRow, periods: Map<string, PeriodInfo>, maxLateFeeDays: number): RentalView {
     const subscription = unwrap<SubscriptionSlice>(row.subscriptions);
     const plan = subscription ? unwrap<{ id: string; name: string; billing_period: string }>(subscription.plans) : null;
     const booking = subscription ? unwrap<{ hubs: unknown }>(subscription.bookings) : null;
@@ -350,6 +355,8 @@ function toRentalView(row: RawRentalRow, periods: Map<string, PeriodInfo>): Rent
         current_period_start: period?.currentStart ?? null,
         renewal_status: period?.scheduledStart ? "scheduled" : "none",
         scheduled_start_date: period?.scheduledStart ?? null,
+        recovery_flagged_at: row.recovery_flagged_at,
+        max_late_fee_days: maxLateFeeDays,
         ...toReturnFields(row),
         ...toPlanFields(subscription, row),
     };
@@ -373,6 +380,7 @@ function toAdminRentalRow(row: RawRentalRow, periods: Map<string, PeriodInfo>): 
         return_approved_by: ret ? unwrap<{ id: string; full_name: string }>(ret.approved_by) : null,
         inspected_at: ret?.inspected_at ?? null,
         inspected_by: ret ? unwrap<{ id: string; full_name: string }>(ret.inspected_by) : null,
+        recovery_flagged_at: row.recovery_flagged_at,
         ...toReturnFields(row),
         ...toPlanFields(subscription, row),
     };
@@ -405,7 +413,8 @@ export async function getMyCurrentRental(userId: string): Promise<RentalView> {
     if (!data) throw notFound("No active rental found.");
 
     const row = data as unknown as RawRentalRow;
-    return toRentalView(row, await withPeriods([row]));
+    const { max_late_fee_days } = await getReturnRecoverySettings();
+    return toRentalView(row, await withPeriods([row]), max_late_fee_days);
 }
 
 /**
@@ -553,7 +562,8 @@ export async function getMyRentalHistory(
     if (error) throw error;
     const rows = (data ?? []) as unknown as RawRentalRow[];
     const periods = await withPeriods(rows);
-    return paginate(rows.map((r) => toRentalView(r, periods)), count ?? 0, filters);
+    const { max_late_fee_days } = await getReturnRecoverySettings();
+    return paginate(rows.map((r) => toRentalView(r, periods, max_late_fee_days)), count ?? 0, filters);
 }
 
 // ---------------------------------------------------------------------------
@@ -564,6 +574,7 @@ export async function listRentals(filters: ListRentalsFilters): Promise<Paginate
     let query = supabaseAdmin.from("rentals").select(ADMIN_RENTAL_COLUMNS, { count: "exact" });
 
     if (filters.status) query = query.eq("status", filters.status);
+    if (filters.recoveryRequired) query = query.not("recovery_flagged_at", "is", null);
 
     const [from, to] = toRange(filters);
     query = query.order("picked_up_at", { ascending: false }).range(from, to);
@@ -643,7 +654,8 @@ async function settleReturn(
         return_due_at: ret?.due_back_at ?? null,
         expires_at: before.due_back_at,
     });
-    const charge = computeLateReturnPenalty({ returnDueAt: dueAt });
+    const { max_late_fee_days } = await getReturnRecoverySettings();
+    const charge = computeLateReturnPenalty({ returnDueAt: dueAt, maxDays: max_late_fee_days });
     const lateFee = input.late_fee_override ?? charge.penaltyAmount;
 
     if (ret) {

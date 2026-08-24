@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Pencil, FileText, Recycle, Loader2 } from "lucide-react";
+import { ArrowLeft, Pencil, FileText, Recycle } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -275,7 +276,7 @@ function ScrapDialog({
               })
             }
           >
-            {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isPending && <Spinner className="h-4 w-4" />}
             Scrap vehicle
           </Button>
         </DialogFooter>

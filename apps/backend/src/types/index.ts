@@ -212,6 +212,7 @@ export type EmittedNotificationCode =
     | "rental_completed"
     | "rental_return_requested"
     | "rental_return_rejected"
+    | "vehicle_recovery_required"
     // KYC.
     | "kyc_review_needed"
     | "kyc_approved"
@@ -240,7 +241,7 @@ export const EMITTED_NOTIFICATION_CODES: readonly EmittedNotificationCode[] = [
     "payment_success", "payment_failed", "payment_overdue",
     "plan_renewed", "plan_resumed",
     "pickup_confirmed", "vehicle_assigned", "vehicle_available_again",
-    "rental_completed", "rental_return_requested", "rental_return_rejected",
+    "rental_completed", "rental_return_requested", "rental_return_rejected", "vehicle_recovery_required",
     "kyc_review_needed", "kyc_approved", "kyc_rejected",
     "maintenance_review_needed", "maintenance_ticket_created",
     "maintenance_plan_paused", "maintenance_quick_fix",

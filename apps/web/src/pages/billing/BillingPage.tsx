@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, PlusCircle } from "lucide-react";
+import { CheckCircle2, Pencil, Power, PowerOff, PlusCircle, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,15 +14,19 @@ import {
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import {
-  useCancelRiderDiscount, useChargeRules, useCreateChargeRule, useCreateDiscountRule, useDiscountRules,
-  useRiderCharges, useRiderDiscounts, useUpdateChargeRule, useUpdateDiscountRule, useWaiveRiderCharge,
+  useCancelRiderDiscount, useChargeRules, useCreateChargeRule, useCreateDiscountRule, useDeleteChargeRule,
+  useDeleteDiscountRule, useDiscountRules, useRiderCharges, useRiderDiscounts, useUpdateChargeRule,
+  useUpdateDiscountRule, useWaiveRiderCharge,
 } from "@/hooks/useBilling";
 import { usePlanRenewalSettings, useUpdatePlanRenewalSettings } from "@/hooks/usePlanRenewalSettings";
+import { useReturnRecoverySettings, useUpdateReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { useVehicles } from "@/hooks/useVehicles";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
 import {
   CHARGE_CODE_LABELS, CHARGE_CODES, CHARGE_FREQUENCY_LABELS, DISCOUNT_CODE_LABELS, DISCOUNT_CODES,
@@ -66,43 +70,89 @@ export default function BillingPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Late Renewal Fee — a single global setting (enable/disable + a PER-DAY
-// rate), applied whenever a rider pays their weekly plan invoice after
-// next_due_at has already passed — the charge is this rate × whole days
-// late, computed fresh every time so it keeps growing the longer a rider
-// waits. Per-booking overrides (also a per-day rate) are set from the
-// Bookings list.
+// Late Fee & Recovery Policy — one card, two settings that used to live on
+// two different pages (this one, and the Returns page's Recovery tab),
+// which was confusing since admins think of them as "the late fee stuff."
+// They're still two different backend concepts and stay that way:
+//
+//   Fee amount (₹/day)  — pricing_rules code 'late_fee', via
+//                          plan-renewal-settings. Charged when a rider pays
+//                          their plan renewal after next_due_at has passed —
+//                          total = days late × rate, computed fresh each time.
+//   Recovery after (days) — return_recovery_settings.max_late_fee_days. Once
+//                          a scooter is this many days past its RETURN due
+//                          date, the fee freezes and the rental is flagged
+//                          "Vehicle Recovery Required" (Returns → Recovery
+//                          tab) — staff are notified automatically.
+//
+// One Save button commits both, so there's a single place to configure "the
+// late fee" instead of two.
 // ---------------------------------------------------------------------------
 
 function LateRenewalFeeCard() {
-  const { data: settings, isLoading } = usePlanRenewalSettings();
-  const updateSettings = useUpdatePlanRenewalSettings();
+  const { data: feeSettings, isLoading: feeLoading } = usePlanRenewalSettings();
+  const updateFeeSettings = useUpdatePlanRenewalSettings();
+  const { data: recoverySettings, isLoading: recoveryLoading } = useReturnRecoverySettings();
+  const updateRecoverySettings = useUpdateReturnRecoverySettings();
 
   const [enabled, setEnabled] = useState(false);
   const [amount, setAmount] = useState("0");
+  const [recoveryDays, setRecoveryDays] = useState("30");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!settings) return;
-    setEnabled(settings.late_fee_enabled);
-    setAmount(String(settings.late_fee_amount));
-  }, [settings]);
+    if (!feeSettings) return;
+    setEnabled(feeSettings.late_fee_enabled);
+    setAmount(String(feeSettings.late_fee_amount));
+  }, [feeSettings]);
 
-  if (isLoading || !settings) {
-    return <Card className="p-4"><p className="text-sm text-muted-foreground">Loading late renewal fee settings…</p></Card>;
+  useEffect(() => {
+    if (!recoverySettings) return;
+    setRecoveryDays(String(recoverySettings.max_late_fee_days));
+  }, [recoverySettings]);
+
+  const isLoading = feeLoading || recoveryLoading;
+  if (isLoading || !feeSettings || !recoverySettings) {
+    return <Card className="p-4"><p className="text-sm text-muted-foreground">Loading late fee settings…</p></Card>;
   }
 
   const parsedAmount = Number(amount);
-  const dirty = enabled !== settings.late_fee_enabled || parsedAmount !== settings.late_fee_amount;
-  const invalid = Number.isNaN(parsedAmount) || parsedAmount < 0;
+  const parsedRecoveryDays = Number(recoveryDays);
+  const dirty = enabled !== feeSettings.late_fee_enabled
+    || parsedAmount !== feeSettings.late_fee_amount
+    || parsedRecoveryDays !== recoverySettings.max_late_fee_days;
+  const amountInvalid = Number.isNaN(parsedAmount) || parsedAmount < 0;
+  const recoveryDaysInvalid = !Number.isInteger(parsedRecoveryDays) || parsedRecoveryDays < 1;
+  const invalid = amountInvalid || recoveryDaysInvalid;
+  const isPending = updateFeeSettings.isPending || updateRecoverySettings.isPending;
+
+  const handleSave = async () => {
+    setError(null);
+    try {
+      await Promise.all([
+        feeSettings.late_fee_enabled !== enabled || feeSettings.late_fee_amount !== parsedAmount
+          ? updateFeeSettings.mutateAsync({ late_fee_enabled: enabled, late_fee_amount: parsedAmount })
+          : Promise.resolve(),
+        recoverySettings.max_late_fee_days !== parsedRecoveryDays
+          ? updateRecoverySettings.mutateAsync({ max_late_fee_days: parsedRecoveryDays })
+          : Promise.resolve(),
+      ]);
+      toastSuccess("Late fee & recovery policy saved");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save.");
+      toastError(err, "Could not save late fee settings");
+    }
+  };
 
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <div>
-          <CardTitle className="text-base">Late Renewal Fee</CardTitle>
+          <CardTitle className="text-base">Late Fee & Recovery Policy</CardTitle>
           <CardDescription>
-            Charged per day when a rider renews their plan after it has already ended — total = days late × rate below.
+            Charged per day once a rider's plan renewal is overdue — total = days late × rate below. Once a scooter is
+            past its return date by the day limit below, the fee stops growing and the rental is flagged for our team
+            to go recover it; admins are notified automatically.
           </CardDescription>
         </div>
       </CardHeader>
@@ -114,7 +164,7 @@ function LateRenewalFeeCard() {
           </div>
           <Switch checked={enabled} onCheckedChange={(v) => { setError(null); setEnabled(v); }} />
         </div>
-        <div className="flex items-end gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1.5">
             <Label>Fee amount (₹ per day)</Label>
             <Input
@@ -126,19 +176,22 @@ function LateRenewalFeeCard() {
               disabled={!enabled}
             />
           </div>
-          <Button
-            disabled={!dirty || invalid || updateSettings.isPending}
-            onClick={() => {
-              updateSettings.mutate(
-                { late_fee_enabled: enabled, late_fee_amount: parsedAmount },
-                { onError: (err) => setError(err instanceof Error ? err.message : "Could not save.") },
-              );
-            }}
-          >
-            {updateSettings.isPending ? "Saving..." : "Save"}
+          <div className="space-y-1.5">
+            <Label>Recover vehicle after (days late)</Label>
+            <Input
+              type="number"
+              min={1}
+              value={recoveryDays}
+              onChange={(e) => { setError(null); setRecoveryDays(e.target.value); }}
+              className="w-40"
+            />
+          </div>
+          <Button disabled={!dirty || invalid || isPending} onClick={handleSave}>
+            {isPending ? "Saving..." : "Save"}
           </Button>
         </div>
-        {invalid && <p className="text-xs text-destructive">Enter a valid, non-negative amount.</p>}
+        {amountInvalid && <p className="text-xs text-destructive">Enter a valid, non-negative fee amount.</p>}
+        {recoveryDaysInvalid && <p className="text-xs text-destructive">Enter a whole number of at least 1 day.</p>}
         {error && <p className="text-xs text-destructive">{error}</p>}
       </CardContent>
     </Card>
@@ -154,6 +207,8 @@ function ChargeRulesTab() {
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
   const [page, setPage] = useState(1);
   const [editTarget, setEditTarget] = useState<ChargeRule | null>(null);
+  const [toggleTarget, setToggleTarget] = useState<ChargeRule | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ChargeRule | null>(null);
   const [creating, setCreating] = useState(false);
 
   const { data, isLoading, isError, refetch } = useChargeRules({
@@ -162,8 +217,10 @@ function ChargeRulesTab() {
     page,
     pageSize: 8,
   });
+  const toggleActive = useUpdateChargeRule();
+  const deleteRule = useDeleteChargeRule();
 
-  const columns: DataTableColumn<ChargeRule>[] = [
+  const chargeRuleColumns: DataTableColumn<ChargeRule>[] = [
     { header: "Charge", key: "charge_name", render: (r) => (
       <div className="min-w-0">
         <p className="truncate font-medium">{r.charge_name}</p>
@@ -206,9 +263,38 @@ function ChargeRulesTab() {
       header: "Actions",
       key: "actions",
       render: (r) => (
-        <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditTarget(r); }}>
-          Edit
-        </Button>
+        <div className="inline-flex items-center gap-0.5">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            title="Edit"
+            aria-label="Edit"
+            onClick={(e) => { e.stopPropagation(); setEditTarget(r); }}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            title={r.active ? "Deactivate" : "Activate"}
+            aria-label={r.active ? "Deactivate" : "Activate"}
+            onClick={(e) => { e.stopPropagation(); setToggleTarget(r); }}
+          >
+            {r.active ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-destructive hover:text-destructive"
+            title="Delete"
+            aria-label="Delete"
+            onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -247,7 +333,7 @@ function ChargeRulesTab() {
         </div>
 
         <DataTable
-          columns={columns}
+          columns={chargeRuleColumns}
           data={data?.data ?? []}
           isLoading={isLoading}
           isError={isError}
@@ -265,6 +351,60 @@ function ChargeRulesTab() {
         onOpenChange={(o) => !o && setEditTarget(null)}
       />
       <ChargeRuleDialog rule={null} mode="create" open={creating} onOpenChange={setCreating} />
+
+      <ConfirmDialog
+        open={!!toggleTarget}
+        onOpenChange={(o) => !o && setToggleTarget(null)}
+        title={toggleTarget?.active ? "Deactivate this charge rule?" : "Activate this charge rule?"}
+        description={
+          toggleTarget
+            ? toggleTarget.active
+              ? `"${toggleTarget.charge_name}" will stop applying to new charges. Rider charges already generated from it are unaffected. You can reactivate it later.`
+              : `"${toggleTarget.charge_name}" will start applying to new charges again.`
+            : undefined
+        }
+        confirmLabel={toggleTarget?.active ? "Deactivate" : "Activate"}
+        destructive={!!toggleTarget?.active}
+        loading={toggleActive.isPending}
+        onConfirm={() => {
+          if (!toggleTarget) return;
+          const nextActive = !toggleTarget.active;
+          toggleActive.mutate(
+            { id: toggleTarget.id, patch: { active: nextActive } },
+            {
+              onSuccess: () => {
+                toastSuccess(nextActive ? "Charge rule activated" : "Charge rule deactivated");
+                setToggleTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not update charge rule"),
+            },
+          );
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title="Permanently delete this charge rule?"
+        description={
+          deleteTarget
+            ? `"${deleteTarget.charge_name}" will be permanently removed from the database. This cannot be undone. Rider charges already generated from it are unaffected.`
+            : undefined
+        }
+        confirmLabel="Delete permanently"
+        destructive
+        loading={deleteRule.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteRule.mutate(deleteTarget.id, {
+            onSuccess: () => {
+              toastSuccess("Charge rule deleted");
+              setDeleteTarget(null);
+            },
+            onError: (err) => toastError(err, "Could not delete charge rule"),
+          });
+        }}
+      />
     </div>
   );
 }
@@ -395,7 +535,10 @@ function ChargeRuleDialog({
           effective_to: effectiveTo || undefined,
           active,
         },
-        { onSuccess: close },
+        {
+          onSuccess: () => { toastSuccess("Charge rule created"); close(); },
+          onError: (err) => toastError(err, "Could not create charge rule"),
+        },
       );
     } else if (rule) {
       update.mutate(
@@ -413,7 +556,10 @@ function ChargeRuleDialog({
             active,
           },
         },
-        { onSuccess: close },
+        {
+          onSuccess: () => { toastSuccess("Charge rule updated"); close(); },
+          onError: (err) => toastError(err, "Could not update charge rule"),
+        },
       );
     }
   };
@@ -721,7 +867,10 @@ function WaiveChargeDialog({
               if (!charge) return;
               waive.mutate(
                 { id: charge.id, input: { waived_amount: Number(waivedAmount), reason: reason.trim() } },
-                { onSuccess: close },
+                {
+                  onSuccess: () => { toastSuccess("Charge waived"); close(); },
+                  onError: (err) => toastError(err, "Could not waive charge"),
+                },
               );
             }}
           >
@@ -746,6 +895,8 @@ function DiscountRulesTab() {
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
   const [page, setPage] = useState(1);
   const [editTarget, setEditTarget] = useState<DiscountRule | null>(null);
+  const [toggleTarget, setToggleTarget] = useState<DiscountRule | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DiscountRule | null>(null);
   const [creating, setCreating] = useState(false);
 
   const { data, isLoading, isError, refetch } = useDiscountRules({
@@ -754,6 +905,8 @@ function DiscountRulesTab() {
     page,
     pageSize: 8,
   });
+  const toggleActive = useUpdateDiscountRule();
+  const deleteRule = useDeleteDiscountRule();
 
   const columns: DataTableColumn<DiscountRule>[] = [
     { header: "Discount", key: "discount_name", render: (r) => (
@@ -798,9 +951,38 @@ function DiscountRulesTab() {
       header: "Actions",
       key: "actions",
       render: (r) => (
-        <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditTarget(r); }}>
-          Edit
-        </Button>
+        <div className="inline-flex items-center gap-0.5">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            title="Edit"
+            aria-label="Edit"
+            onClick={(e) => { e.stopPropagation(); setEditTarget(r); }}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            title={r.active ? "Deactivate" : "Activate"}
+            aria-label={r.active ? "Deactivate" : "Activate"}
+            onClick={(e) => { e.stopPropagation(); setToggleTarget(r); }}
+          >
+            {r.active ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-destructive hover:text-destructive"
+            title="Delete"
+            aria-label="Delete"
+            onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -857,6 +1039,60 @@ function DiscountRulesTab() {
         onOpenChange={(o) => !o && setEditTarget(null)}
       />
       <DiscountRuleDialog rule={null} mode="create" open={creating} onOpenChange={setCreating} />
+
+      <ConfirmDialog
+        open={!!toggleTarget}
+        onOpenChange={(o) => !o && setToggleTarget(null)}
+        title={toggleTarget?.active ? "Deactivate this discount rule?" : "Activate this discount rule?"}
+        description={
+          toggleTarget
+            ? toggleTarget.active
+              ? `"${toggleTarget.discount_name}" will stop applying to new discounts. Discounts already applied from it are unaffected. You can reactivate it later.`
+              : `"${toggleTarget.discount_name}" will start applying to new discounts again.`
+            : undefined
+        }
+        confirmLabel={toggleTarget?.active ? "Deactivate" : "Activate"}
+        destructive={!!toggleTarget?.active}
+        loading={toggleActive.isPending}
+        onConfirm={() => {
+          if (!toggleTarget) return;
+          const nextActive = !toggleTarget.active;
+          toggleActive.mutate(
+            { id: toggleTarget.id, patch: { active: nextActive } },
+            {
+              onSuccess: () => {
+                toastSuccess(nextActive ? "Discount rule activated" : "Discount rule deactivated");
+                setToggleTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not update discount rule"),
+            },
+          );
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title="Permanently delete this discount rule?"
+        description={
+          deleteTarget
+            ? `"${deleteTarget.discount_name}" will be permanently removed from the database. This cannot be undone. Discounts already applied from it are unaffected.`
+            : undefined
+        }
+        confirmLabel="Delete permanently"
+        destructive
+        loading={deleteRule.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteRule.mutate(deleteTarget.id, {
+            onSuccess: () => {
+              toastSuccess("Discount rule deleted");
+              setDeleteTarget(null);
+            },
+            onError: (err) => toastError(err, "Could not delete discount rule"),
+          });
+        }}
+      />
     </div>
   );
 }
@@ -944,7 +1180,10 @@ function DiscountRuleDialog({
           effective_to: effectiveTo || undefined,
           active,
         },
-        { onSuccess: close },
+        {
+          onSuccess: () => { toastSuccess("Discount rule created"); close(); },
+          onError: (err) => toastError(err, "Could not create discount rule"),
+        },
       );
     } else if (rule) {
       update.mutate(
@@ -962,7 +1201,10 @@ function DiscountRuleDialog({
             active,
           },
         },
-        { onSuccess: close },
+        {
+          onSuccess: () => { toastSuccess("Discount rule updated"); close(); },
+          onError: (err) => toastError(err, "Could not update discount rule"),
+        },
       );
     }
   };
@@ -1253,7 +1495,13 @@ function CancelDiscountDialog({
             disabled={cancel.isPending || !reasonValid}
             onClick={() => {
               if (!discount) return;
-              cancel.mutate({ id: discount.id, input: { reason: reason.trim() } }, { onSuccess: close });
+              cancel.mutate(
+                { id: discount.id, input: { reason: reason.trim() } },
+                {
+                  onSuccess: () => { toastSuccess("Discount cancelled"); close(); },
+                  onError: (err) => toastError(err, "Could not cancel discount"),
+                },
+              );
             }}
           >
             {cancel.isPending ? "Cancelling..." : "Confirm Cancel"}

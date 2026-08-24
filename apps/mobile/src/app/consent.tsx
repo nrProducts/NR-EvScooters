@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { Spinner } from '../components/Spinner';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ShieldCheck, ChevronDown, ChevronUp, FileText, Lock } from 'lucide-react-native';
@@ -90,7 +91,7 @@ export default function ConsentScreen() {
                 className="flex-1 items-center justify-center"
                 style={{ backgroundColor: COLORS.background }}
             >
-                <ActivityIndicator color={COLORS.primary} />
+                <Spinner size={18} color={COLORS.primary} />
                 <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold mt-3">
                     {t('common.loading')}
                 </Text>
@@ -213,7 +214,7 @@ export default function ConsentScreen() {
                 className="w-full py-4 rounded-2xl flex-row justify-center items-center"
             >
                 {saving ? (
-                    <ActivityIndicator color="#FFF" />
+                    <Spinner size={18} color="#FFF" />
                 ) : (
                     <Text className="text-white font-bold text-base">{t('consent.accept')}</Text>
                 )}

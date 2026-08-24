@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { Spinner } from '../../components/Spinner';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UserPlus, Info } from 'lucide-react-native';
@@ -187,7 +188,7 @@ export default function NomineeScreen() {
                             className="w-full py-4 rounded-2xl flex-row justify-center items-center"
                         >
                             {saving ? (
-                                <ActivityIndicator color="#FFF" />
+                                <Spinner size={18} color="#FFF" />
                             ) : (
                                 <Text className="text-white font-bold text-base">{t('common.save')}</Text>
                             )}

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { Search, CheckCircle2, Loader2, Zap } from "lucide-react";
+import { Search, CheckCircle2, Zap } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -9,6 +10,7 @@ import { useAssignVehicleToUser } from "@/hooks/useVehicles";
 import * as usersApi from "@/services/api/users";
 import { ApiError } from "@/services/api/httpClient";
 import { cn } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import type { Vehicle } from "@/types";
 
 /**
@@ -63,6 +65,7 @@ export function AssignRiderPalette({
       { id: vehicle.id, userId: riderId },
       {
         onSuccess: () => {
+          toastSuccess("Vehicle assigned", `Assigned to ${riderName}.`);
           setAssignedName(riderName);
           setTimeout(() => onOpenChange(false), 900);
         },
@@ -73,6 +76,8 @@ export function AssignRiderPalette({
               riderName,
               existingVehicleName: err.fields.existing_vehicle_name || "their current scooter",
             });
+          } else {
+            toastError(err, "Could not assign vehicle");
           }
         },
       },
@@ -85,11 +90,15 @@ export function AssignRiderPalette({
       { id: vehicle.id, userId: conflict.riderId, unassignExisting: true },
       {
         onSuccess: () => {
+          toastSuccess("Vehicle assigned", `Assigned to ${conflict.riderName}.`);
           setAssignedName(conflict.riderName);
           setConflict(null);
           setTimeout(() => onOpenChange(false), 900);
         },
-        onError: () => setConflict(null),
+        onError: (err) => {
+          setConflict(null);
+          toastError(err, "Could not reassign vehicle");
+        },
       },
     );
   }
@@ -146,7 +155,7 @@ export function AssignRiderPalette({
 
                 {enabled && isFetching && (
                   <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching…
+                    <Spinner className="h-3.5 w-3.5" /> Searching…
                   </div>
                 )}
 
@@ -175,7 +184,7 @@ export function AssignRiderPalette({
                           </span>
                         </span>
                         {pendingThis ? (
-                          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                          <Spinner className="h-4 w-4 shrink-0 text-primary" />
                         ) : (
                           <span className="shrink-0 text-[0.6875rem] font-medium text-primary">Assign</span>
                         )}

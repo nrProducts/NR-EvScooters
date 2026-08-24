@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ActivityIndicator,
+  View, Text, TextInput, TouchableOpacity,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
@@ -8,6 +8,7 @@ import { ApiError } from '../lib/ApiError';
 import { COLORS } from '../constants/theme';
 import { formatPhoneForDisplay, isValidOtp, sanitizeOtpInput } from '../lib/authValidation';
 import { ArrowLeft, ShieldCheck } from 'lucide-react-native';
+import { Spinner } from '../components/Spinner';
 
 const RESEND_SECONDS = 30;
 
@@ -155,7 +156,7 @@ export default function OtpVerifyScreen() {
         className="w-full py-4 rounded-2xl flex-row justify-center items-center shadow-sm"
       >
         {verifying ? (
-          <ActivityIndicator color="#FFF" />
+          <Spinner size={18} color="#FFF" />
         ) : (
           <Text className="text-white font-bold text-base">Verify</Text>
         )}

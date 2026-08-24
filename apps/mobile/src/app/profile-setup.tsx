@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity } from 'react-native';
+import { Spinner } from '../components/Spinner';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useAuthStore } from '../store/useAuthStore';
 import { userRepository } from '../services';
@@ -316,7 +317,7 @@ export default function ProfileSetupScreen() {
           className="w-full py-4 rounded-2xl flex-row justify-center items-center shadow-sm mt-2"
         >
           {saving ? (
-            <ActivityIndicator color="#FFF" />
+            <Spinner size={18} color="#FFF" />
           ) : (
             <>
               <Text className="text-white font-bold text-base mr-2">Continue</Text>

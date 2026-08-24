@@ -1,4 +1,5 @@
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMyAttendanceToday, useCheckIn, useCheckOut } from "@/hooks/useAttendance";
@@ -58,11 +59,12 @@ export function HeaderAttendanceControl({ role }: { role: Role | undefined }) {
           disabled={checkOut.isPending}
           onClick={() =>
             checkOut.mutate(undefined, {
+              onSuccess: () => push({ tone: "success", title: "Checked out", message: "" }),
               onError: (err) => push({ tone: "error", title: "Could not check out", message: errorMessage(err) }),
             })
           }
         >
-          {checkOut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Check Out"}
+          {checkOut.isPending ? <Spinner className="h-3.5 w-3.5" /> : "Check Out"}
         </Button>
       </div>
     );
@@ -76,11 +78,12 @@ export function HeaderAttendanceControl({ role }: { role: Role | undefined }) {
       title="Check in for today"
       onClick={() =>
         checkIn.mutate(undefined, {
+          onSuccess: () => push({ tone: "success", title: "Checked in", message: "" }),
           onError: (err) => push({ tone: "error", title: "Could not check in", message: errorMessage(err) }),
         })
       }
     >
-      {checkIn.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary-foreground" />}
+      {checkIn.isPending ? <Spinner className="h-3.5 w-3.5" /> : <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary-foreground" />}
       Check In
     </Button>
   );

@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Timeline, type TimelineItem } from "@/components/common/Timeline";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BrandedLoader } from "@/components/common/BrandedLoader";
 import { useUsers } from "@/hooks/useUsers";
 import { usePickupQueue } from "@/hooks/useBookings";
 import { useReportsSummary } from "@/hooks/useReports";
@@ -110,6 +111,8 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
+      {isLoading && <BrandedLoader label="Loading dashboard…" />}
+
       {/* At-a-glance — Fleet Overview / Staff Attendance / Leave Management, side by side on larger
           screens. Stretched (the grid default) rather than items-start, so all three sit on the same
           bottom edge even though only Fleet Overview has a footer progress bar. */}

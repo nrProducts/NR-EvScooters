@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
+import { Spinner } from '../../components/Spinner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppShell } from '../../components/AppShell';
 import { COLORS } from '../../constants/theme';
@@ -53,7 +54,7 @@ export default function PrivacyNoticeScreen() {
                         {error}
                     </Text>
                 ) : !notice ? (
-                    <ActivityIndicator color={COLORS.primary} />
+                    <Spinner size={18} color={COLORS.primary} />
                 ) : (
                     <>
                         <Text

@@ -751,6 +751,17 @@ export async function approveKyc(userId: string, actor: AuthContext, req?: Reque
         screen: "home",
     });
 
+    await notify({
+        notificationType: "kyc_approved",
+        referenceType: "user",
+        referenceId: userId,
+        title: "KYC Approved",
+        bodyFallback: "{rider}'s KYC was approved.",
+        screen: "/kyc",
+        riderId: userId,
+        excludeUserId: actor.id,
+    });
+
     // No direct write to users.kyc_status: the trigger derives it. This
     // endpoint is the human checkpoint plus the audit record.
     return getKycForUser(userId);
@@ -790,6 +801,17 @@ export async function rejectKyc(userId: string, reason: string, actor: AuthConte
         title: "KYC Needs Attention",
         body: reason.trim(),
         screen: "kyc",
+    });
+
+    await notify({
+        notificationType: "kyc_rejected",
+        referenceType: "user",
+        referenceId: userId,
+        title: "KYC Rejected",
+        bodyFallback: "{rider}'s KYC was rejected.",
+        screen: "/kyc",
+        riderId: userId,
+        excludeUserId: actor.id,
     });
 
     return getKycForUser(userId);
