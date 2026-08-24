@@ -3775,6 +3775,14 @@ export type Database = {
       }
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
       expire_stale_payment_orders: { Args: never; Returns: number }
+      quote_plan_first_period: {
+        Args: { p_plan_id: string; p_starts_on?: string }
+        Returns: {
+          description: string
+          amount: number
+          sort_order: number
+        }[]
+      }
       generate_period_invoice: {
         Args: { p_subscription_period_id: string }
         Returns: string

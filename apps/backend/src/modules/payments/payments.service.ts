@@ -1340,3 +1340,44 @@ export async function cancelAbandonedSubscription(bookingId: string): Promise<vo
         after: { status: "cancelled", reason: "checkout abandoned" },
     });
 }
+
+/**
+ * What a plan will cost, itemised, BEFORE anything is created.
+ *
+ * Exists so the review screen can show the real bill — including the
+ * welcome discount and any fee — rather than `plan price + deposit`, which
+ * is all the client can work out on its own. Getting that wrong is not a
+ * cosmetic problem: the rider agreed to one number and Razorpay then asked
+ * for a different one.
+ *
+ * Reads through quote_plan_first_period(), which resolves pricing rules via
+ * the SAME function apply_period_adjustments() uses, so the quote and the
+ * invoice it becomes cannot drift apart. Writes nothing — safe to call from
+ * a screen the rider may well abandon.
+ */
+export async function quotePlan(planId: string, startDay?: string): Promise<{
+    lines: OrderLine[];
+    amount: number;
+    currency: string;
+}> {
+    const { data, error } = await supabaseAdmin.rpc("quote_plan_first_period", {
+        p_plan_id: planId,
+        ...(startDay ? { p_starts_on: startDay } : {}),
+    });
+    if (error) {
+        // The function raises no_data_found for an unknown or deleted plan.
+        if ((error as { code?: string }).code === "P0002") throw notFound("Plan not found.");
+        throw error;
+    }
+
+    const lines: OrderLine[] = (data ?? []).map((row) => ({
+        description: row.description,
+        amount: Number(row.amount),
+    }));
+
+    return {
+        lines,
+        amount: round2(lines.reduce((total, line) => total + line.amount, 0)),
+        currency: "INR",
+    };
+}

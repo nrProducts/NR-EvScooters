@@ -3,7 +3,7 @@ import { ApiError } from '../lib/ApiError';
 import { getSupabase } from '../lib/supabase';
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiReferralSummary,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
     ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, ListVehicleModelsParams,
     MaintenanceHistoryParams, Paginated, ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
@@ -163,6 +163,9 @@ export class ApiBookingRepository implements BookingRepository {
 }
 
 export class ApiBillingRepository implements BillingRepository {
+    quotePlan(planId: string, startDay?: string): Promise<ApiPlanQuote> {
+        return api.quotePlan(planId, startDay);
+    }
     createOrderForBooking(bookingId: string): Promise<ApiPaymentOrder> {
         return api.createPaymentOrderForBooking(bookingId);
     }

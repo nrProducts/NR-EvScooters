@@ -32,8 +32,21 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
  *   only to distinguish a late-fee override from any other subscription-scoped
  *   charge someone might add later.
  */
+/**
+ * Underscores, not a colon, and not the raw uuid.
+ *
+ * `pricing_rules.code` is constrained to `^[a-z][a-z0-9_]*$`, which allows
+ * neither `:` nor `-`. The previous form — `late_fee:<uuid>` — could
+ * therefore NEVER be inserted: setLateFeeOverride's insert failed the check
+ * constraint every time, so a per-subscription override was impossible to
+ * create. The read paths matched a code that could not exist, which is why
+ * nothing ever surfaced an error — the lookup simply always missed and the
+ * global rate was used instead.
+ *
+ * Both hyphens and the separator become underscores so the result conforms.
+ */
 export const lateFeeOverrideCode = (subscriptionId: string): string =>
-    `late_fee:${subscriptionId}`;
+    `late_fee_${subscriptionId.replace(/-/g, '_')}`;
 
 export async function computeLateRenewalFee(
     subscriptionId: string,

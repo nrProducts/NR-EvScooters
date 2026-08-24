@@ -408,6 +408,21 @@ export interface ApiPaymentOrder {
     lines: ApiOrderLine[];
 }
 
+/**
+ * The bill for a plan, resolved server-side, shown BEFORE checkout.
+ *
+ * The app cannot compute this: pricing rules (welcome discount, fees) live
+ * in the database and are invisible on-device. Adding `plan.price +
+ * deposit` locally is what made the review screen quote a total that
+ * Razorpay then disagreed with.
+ */
+export interface ApiPlanQuote {
+    lines: ApiOrderLine[];
+    /** Rupees. The sum of `lines`, computed server-side. */
+    amount: number;
+    currency: string;
+}
+
 export interface ApiOrderLine {
     description: string;
     /** Rupees. Negative for a discount. */

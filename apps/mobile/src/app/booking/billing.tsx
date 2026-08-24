@@ -8,7 +8,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { billingRepository } from '../../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
 import { ApiError } from '../../lib/ApiError';
-import type { ApiPaymentOrder } from '../../types/api';
+import type { ApiPaymentOrder, ApiPlanQuote } from '../../types/api';
 import { COLORS } from '../../constants/theme';
 import {
   FREE_CANCELLATION_GRACE_MINUTES, LATE_CANCELLATION_PENALTY_RATE,
@@ -40,7 +40,10 @@ export default function BillingScreen() {
   // arrives the screen shows the plan's own figures as an ESTIMATE and says
   // so — it cannot know about the transaction fee or the welcome discount,
   // which are pricing rules resolved server-side.
-  const [quote, setQuote] = useState<ApiPaymentOrder | null>(null);
+  // Either the pre-checkout plan quote or the created order — both carry
+  // { lines, amount }, and both are authoritative server-side figures.
+  const [quote, setQuote] = useState<ApiPaymentOrder | ApiPlanQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   useEffect(() => {
     if (!created && (!draft.vehicleModel || !draft.station || !draft.startDay || !draft.plan)) {
@@ -57,6 +60,32 @@ export default function BillingScreen() {
   const station = created?.station ?? draft.station;
   const startDay = created?.start_day ?? draft.startDay;
   const plan = created?.plan ?? draft.plan;
+
+  // The real bill, fetched before the rider commits to anything.
+  //
+  // Pricing rules (welcome discount, transaction fee) are resolved in the
+  // database, so the app cannot work the total out for itself. Without this
+  // the screen could only show `plan price + deposit` — and Razorpay would
+  // then ask for a different number, with the discount appearing for the
+  // first time inside the payment sheet.
+  //
+  // Read-only: it creates no booking, subscription or invoice, so backing
+  // out of this screen leaves nothing behind.
+  useEffect(() => {
+    const planId = plan?.id;
+    if (!planId || quote) return;
+    let cancelled = false;
+    setQuoteLoading(true);
+    billingRepository
+      .quotePlan(planId, startDay ?? undefined)
+      .then((q) => { if (!cancelled) setQuote(q); })
+      // A failed quote is not fatal — the estimate below still renders and
+      // the order's own breakdown arrives at payment time.
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setQuoteLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan?.id, startDay]);
 
   const handleContinueToPay = async () => {
     setPayError(null);
