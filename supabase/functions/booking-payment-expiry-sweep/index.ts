@@ -33,6 +33,7 @@
 
 import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
 import { notifyUser } from "../_shared/notify.ts";
+import { notifyStaff } from "../_shared/notifyStaff.ts";
 import { writeAudit } from "../_shared/audit.ts";
 
 const SOURCE = "booking-payment-expiry-sweep";
@@ -127,6 +128,19 @@ Deno.serve(async (_req) => {
             title: "Booking Expired",
             body: "Your reservation expired because payment wasn't completed in time. Please book again.",
             screen: "home",
+        });
+
+        // A rider who never completed payment is a pending-payment case admin
+        // ops should see, same as payment_overdue — this was the one abandoned-
+        // checkout path with no staff-facing copy at all.
+        await notifyStaff(admin, {
+            typeCode: "booking_expired",
+            subjectType: "booking",
+            subjectId: row.id,
+            title: "Booking Expired — Payment Not Completed",
+            body: "A rider's booking hold expired without payment.",
+            screen: "/bookings",
+            payload: { rider_id: row.user_id },
         });
     }
 

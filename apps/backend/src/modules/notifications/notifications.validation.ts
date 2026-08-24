@@ -14,6 +14,7 @@ export const listAdminNotificationsQuery = z.object({
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     status: z.enum(DELIVERY_STATUSES as [string, ...string[]]).optional(),
     userId: z.string().uuid().optional(),
+    notificationType: z.string().trim().min(1).optional(),
     sortBy: z.enum(["created_at"]).default("created_at"),
     sortDir: z.enum(["asc", "desc"]).default("desc"),
 });

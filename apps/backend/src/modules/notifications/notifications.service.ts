@@ -266,6 +266,7 @@ export async function listAllNotifications(
 
     if (filters.userId) query = query.eq("user_id", filters.userId);
     if (filters.status) query = query.eq("notification_deliveries.status", filters.status);
+    if (filters.notificationType) query = query.eq("notification_type_code", filters.notificationType);
 
     const [from, to] = toRange(filters);
     query = query.order(filters.sortBy, { ascending: filters.sortDir === "asc" }).range(from, to);

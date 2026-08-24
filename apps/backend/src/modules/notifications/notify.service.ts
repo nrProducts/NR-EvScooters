@@ -65,36 +65,53 @@ export interface NotifyContext {
  * succeeded. Never throws into the caller's business logic.
  */
 export async function notify(ctx: NotifyContext): Promise<void> {
-    const resolution = await getRecipients(ctx.notificationType);
-    const recipients = resolution.recipients.filter((r) => r.id !== ctx.excludeUserId);
-    if (recipients.length === 0) {
-        // Distinct from the type being disabled (getRecipients already
-        // returns [] there without setting either channel) — this is an
-        // ENABLED type with nobody subscribed, which is exactly the class of
-        // gap that let the admin console silently show only one notification
-        // type for months (see this file's doc comment, finding C5). Worth a
-        // log line so the next instance of this is visible, not rediscovered
-        // by code spelunking.
-        if (resolution.sendEmail || resolution.sendInApp) {
-            console.warn("[notify] enabled type has no subscribers — nobody will be notified", {
-                notificationType: ctx.notificationType,
-            });
+    // The doc comment above promises this never throws into the caller's
+    // business logic — but getRecipients() does `if (error) throw error`,
+    // and until this try/catch existed that propagated straight through.
+    // A transient DB hiccup on the admin fan-out (payment_success, say)
+    // could silently abort whatever synchronous code followed it in the
+    // caller — e.g. a second, unrelated notify() call for booking_created a
+    // few lines later — with nothing logged. Same failure mode notifyUser()
+    // already guards against.
+    try {
+        const resolution = await getRecipients(ctx.notificationType);
+        const recipients = resolution.recipients.filter((r) => r.id !== ctx.excludeUserId);
+        if (recipients.length === 0) {
+            // Distinct from the type being disabled (getRecipients already
+            // returns [] there without setting either channel) — this is an
+            // ENABLED type with nobody subscribed, which is exactly the class of
+            // gap that let the admin console silently show only one notification
+            // type for months (see this file's doc comment, finding C5). Worth a
+            // log line so the next instance of this is visible, not rediscovered
+            // by code spelunking.
+            if (resolution.sendEmail || resolution.sendInApp) {
+                console.warn("[notify] enabled type has no subscribers — nobody will be notified", {
+                    notificationType: ctx.notificationType,
+                });
+            }
+            return;
         }
-        return;
+
+        const [riderName, vehicleName] = await Promise.all([
+            resolveRiderName(ctx),
+            resolveVehicleName(ctx),
+        ]);
+        const body = enrichBody(ctx.bodyFallback, riderName, vehicleName);
+
+        const eventId = await recordEvent(ctx);
+        if (!eventId) return;
+
+        await Promise.all(
+            recipients.map((recipient) => deliverToRecipient(recipient, ctx, resolution, body, eventId)),
+        );
+    } catch (err) {
+        console.error("[notify] admin fan-out failed", {
+            notificationType: ctx.notificationType,
+            referenceType: ctx.referenceType,
+            referenceId: ctx.referenceId,
+            error: err instanceof Error ? err.message : String(err),
+        });
     }
-
-    const [riderName, vehicleName] = await Promise.all([
-        resolveRiderName(ctx),
-        resolveVehicleName(ctx),
-    ]);
-    const body = enrichBody(ctx.bodyFallback, riderName, vehicleName);
-
-    const eventId = await recordEvent(ctx);
-    if (!eventId) return;
-
-    await Promise.all(
-        recipients.map((recipient) => deliverToRecipient(recipient, ctx, resolution, body, eventId)),
-    );
 }
 
 /**

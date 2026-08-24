@@ -100,6 +100,8 @@ export interface ListAdminNotificationsFilters {
     pageSize: number;
     status?: DeliveryStatus;
     userId?: string;
+    /** `notification_type_code` — e.g. scope the fleet log to `admin_broadcast` only. */
+    notificationType?: string;
     sortBy: "created_at";
     sortDir: "asc" | "desc";
 }
