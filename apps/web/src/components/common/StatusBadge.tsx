@@ -58,6 +58,7 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   disputed: "destructive",
   paused: "warning",
   due: "warning",
+  past_due: "warning",
   return_requested: "warning",
   vehicle_recovery_required: "destructive",
   // booking cancellation refund_status (distinct from refunds.status above)

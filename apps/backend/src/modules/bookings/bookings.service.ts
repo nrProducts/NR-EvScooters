@@ -102,8 +102,18 @@ interface BookingContext {
     refundCompletedAt: string | null;
     refundTransactionId: string | null;
     activeRental: BookingActiveRental | null;
-    /** The vehicle the rental currently holds, once riding. */
-    currentVehicleId: string | null;
+    /**
+     * The vehicle the rental currently holds, once riding — from the open
+     * `rental_vehicle_assignments` row, not `held_vehicle_id` (confirmPickup
+     * and assignVehicleToUser both null that out once a rental opens, since
+     * a hold and a possession are different things). This is what makes the
+     * `vehicle` field on a fulfilled booking still resolve to something
+     * instead of "not allocated" once the rider has actually picked up.
+     */
+    currentVehicle: {
+        id: string; name: string; registration_number: string;
+        status: NonNullable<BookingView["vehicle"]>["status"];
+    } | null;
 }
 
 const EMPTY_CONTEXT: BookingContext = {
@@ -113,7 +123,7 @@ const EMPTY_CONTEXT: BookingContext = {
     scheduledDurationDays: null, lateFeeOverride: null, referralDiscountAmount: null,
     cancelledAt: null, cancellationReason: null, cancellationPenaltyAmount: null,
     refundAmount: null, refundStatus: null, refundInitiatedAt: null, refundCompletedAt: null,
-    refundTransactionId: null, activeRental: null, currentVehicleId: null,
+    refundTransactionId: null, activeRental: null, currentVehicle: null,
 };
 
 /** `refunds.status` → the vocabulary the clients already speak. */
@@ -203,7 +213,10 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
                     .select(`
                         id, subscription_id, status, picked_up_at, due_back_at,
                         rental_returns(requested_at, requested_reason, rider_notes, due_back_at, approved_at),
-                        rental_vehicle_assignments(vehicle_id, released_at)
+                        rental_vehicle_assignments(
+                            vehicle_id, released_at,
+                            vehicles(id, display_name, registration_number, status, vehicle_models(name))
+                        )
                     `)
                     .in("subscription_id", subscriptionIds)
                     .order("picked_up_at", { ascending: false })
@@ -288,8 +301,20 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
 
         const assignments = (Array.isArray(rental.rental_vehicle_assignments)
             ? rental.rental_vehicle_assignments
-            : []) as Array<{ vehicle_id: string; released_at: string | null }>;
-        ctx.currentVehicleId = assignments.find((a) => !a.released_at)?.vehicle_id ?? null;
+            : []) as Array<{ vehicle_id: string; released_at: string | null; vehicles: unknown }>;
+        const openAssignment = assignments.find((a) => !a.released_at);
+        const av = unwrap<{
+            id: string; display_name: string | null; registration_number: string;
+            status: NonNullable<BookingView["vehicle"]>["status"]; vehicle_models: unknown;
+        }>(openAssignment?.vehicles);
+        ctx.currentVehicle = av
+            ? {
+                id: av.id,
+                name: av.display_name ?? unwrap<{ name: string }>(av.vehicle_models)?.name ?? "",
+                registration_number: av.registration_number,
+                status: av.status,
+            }
+            : null;
     }
 
     for (const rule of overridesRes.data ?? []) {
@@ -382,6 +407,13 @@ export function toBookingView(row: RawBookingRow, ctx: BookingContext = EMPTY_CO
                 deposit_amount: Number(row.deposit_amount_snapshot),
             }
             : null,
+        // `held_vehicle_id` is the RESERVATION — confirmPickup and
+        // assignVehicleToUser both clear it the moment a rental actually
+        // opens, since a hold and a possession are different things. Once
+        // the rider is riding, ctx.currentVehicle (the open
+        // rental_vehicle_assignments row) is the truth instead; without this
+        // fallback every fulfilled/active booking reported "not allocated"
+        // despite the rider visibly holding a scooter.
         vehicle: vehicle
             ? {
                 id: vehicle.id,
@@ -389,7 +421,7 @@ export function toBookingView(row: RawBookingRow, ctx: BookingContext = EMPTY_CO
                 registration_number: vehicle.registration_number,
                 status: vehicle.status,
             }
-            : null,
+            : ctx.currentVehicle,
         referral_discount_amount: ctx.referralDiscountAmount,
         cancelled_at: ctx.cancelledAt,
         cancellation_reason: ctx.cancellationReason,

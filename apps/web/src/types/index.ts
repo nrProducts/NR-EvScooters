@@ -323,7 +323,8 @@ export interface SupportTicket {
  * had a terminal state at all.
  */
 export type BookingStatus = "pending_payment" | "confirmed" | "cancelled" | "expired" | "fulfilled" | "completed";
-export type BookingPlanStatus = "active" | "due" | "paused";
+/** `subscriptions.status`, narrowed — matches the backend's BookingView["plan_status"]. */
+export type BookingPlanStatus = "active" | "past_due" | "paused";
 
 /**
  * 'pending': legacy value, no longer written. 'processing': a real Razorpay

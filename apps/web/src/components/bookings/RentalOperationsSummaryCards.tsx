@@ -30,7 +30,7 @@ const COUNTERS: Counter[] = [
     key: "returns", label: "Return Requests", icon: Undo2, tone: "destructive",
     filters: { status: "fulfilled", returnRequested: true },
   },
-  { key: "due", label: "Due", icon: CalendarClock, tone: "warning", filters: { status: "fulfilled", planStatus: "due" } },
+  { key: "due", label: "Due", icon: CalendarClock, tone: "warning", filters: { status: "fulfilled", planStatus: "past_due" } },
   { key: "completed", label: "Completed", icon: CheckCircle2, tone: "info", filters: { status: "completed" } },
 ];
 

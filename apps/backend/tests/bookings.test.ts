@@ -93,7 +93,7 @@ const EMPTY_CTX = {
     refundCompletedAt: null,
     refundTransactionId: null,
     activeRental: null,
-    currentVehicleId: null,
+    currentVehicle: null,
 };
 
 /** A minimal reservation, with the snapshots the view needs. */
