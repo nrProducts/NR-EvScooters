@@ -1083,9 +1083,29 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     // of a gateway setting made in a dashboard we do not control.
     const settled = await isInvoiceSettled(order.invoice_id);
 
-    if (settled && invoice?.purpose === "initial") {
+    // WHICH PERIOD is being paid, not what the invoice is labelled.
+    //
+    // `purpose` cannot answer this. generate_period_invoice() writes
+    // 'subscription_period' for every invoice it creates — the opening one
+    // included — and the schema forbids relabelling it: chk_invoices_purpose_period
+    // requires (purpose = 'subscription_period') = (subscription_period_id is not null),
+    // so an invoice tied to period 1 can never be 'initial'.
+    //
+    // Branching on purpose therefore meant applyInitialSuccess NEVER RAN, for
+    // any booking, ever. Riders paid in full, the money was captured and
+    // allocated, `is_paid` went true — and the booking sat at
+    // `pending_payment` with its deposit unheld, because the one branch that
+    // confirms it was gated on a label nothing produces.
+    //
+    // The period's sequence_number is the real question: #1 activates the
+    // agreement, anything later renews it.
+    const periodSequence = invoice?.subscription_period_id
+        ? await getPeriodSequenceNumber(invoice.subscription_period_id)
+        : null;
+
+    if (settled && invoice && (invoice.purpose === "initial" || periodSequence === 1)) {
         await applyInitialSuccess(invoice.subscription_id, order.user_id);
-    } else if (settled && invoice?.purpose === "subscription_period") {
+    } else if (settled && invoice && periodSequence !== null && periodSequence > 1) {
         await applyRenewalSuccess(invoice.subscription_id, invoice.subscription_period_id);
     }
     // 'settlement' and 'adhoc': the allocation above is the whole effect.
@@ -1135,6 +1155,22 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
             bookingId: subscription?.booking_id ?? undefined,
         });
     }
+}
+
+/**
+ * Which billing period this invoice covers. 1 is the opening period.
+ *
+ * Null when the period has since been deleted, which is treated as "neither
+ * activation nor renewal" — the allocation still stands, nothing advances.
+ */
+async function getPeriodSequenceNumber(periodId: string): Promise<number | null> {
+    const { data, error } = await supabaseAdmin
+        .from("subscription_periods")
+        .select("sequence_number")
+        .eq("id", periodId)
+        .maybeSingle();
+    if (error) throw error;
+    return data?.sequence_number ?? null;
 }
 
 /** Confirms the booking and holds the deposit. */
