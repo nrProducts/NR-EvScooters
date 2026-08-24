@@ -316,8 +316,6 @@ export default function HomeScreen() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
 
-  console.log("Featured", featured);
-
   return (
     <AppShell title="Home">
       <ScrollView

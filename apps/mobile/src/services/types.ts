@@ -1,6 +1,6 @@
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiReferralSummary,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
     ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, KycDocType,
     ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
@@ -105,6 +105,13 @@ export interface BookingRepository {
  * backend hands back — this repository never accepts one as input.
  */
 export interface BillingRepository {
+    /**
+     * Itemised price for a plan BEFORE any booking exists. Read-only —
+     * creates no booking, subscription or invoice.
+     *
+     * The app cannot compute this: pricing rules live in the database.
+     */
+    quotePlan(planId: string, startDay?: string): Promise<ApiPlanQuote>;
     createOrderForBooking(bookingId: string): Promise<ApiPaymentOrder>;
     createOrderForInvoice(invoiceId: string): Promise<ApiPaymentOrder>;
     verifyPayment(payload: VerifyPaymentPayload): Promise<void>;

@@ -15,6 +15,15 @@ router.post("/webhook", asyncHandler(c.webhookHandler));
 
 router.use(requireAuth);
 
+// Read-only price preview. Creates nothing, so it is safe to call from a
+// screen the rider may abandon — and it is what lets the review screen show
+// the discount BEFORE Checkout opens rather than after.
+router.get(
+    "/plans/:planId/quote",
+    validate({ params: v.quotePlanParams, query: v.quotePlanQuery }),
+    asyncHandler(c.quotePlanHandler),
+);
+
 router.post(
     "/bookings/:id/order",
     requireKycVerified,

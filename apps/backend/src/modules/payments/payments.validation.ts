@@ -10,3 +10,12 @@ export const verifyPaymentBody = z.object({
 });
 
 export type VerifyPaymentBody = z.infer<typeof verifyPaymentBody>;
+
+export const quotePlanParams = z.object({
+    planId: z.string().uuid("A valid plan id is required."),
+});
+
+export const quotePlanQuery = z.object({
+    /** Optional; defaults to today (IST) server-side. */
+    start_day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use the format YYYY-MM-DD.").optional(),
+});

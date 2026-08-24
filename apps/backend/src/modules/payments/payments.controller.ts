@@ -35,3 +35,16 @@ export async function webhookHandler(req: Request, res: Response) {
     await service.handleWebhook(rawBody, signature, eventId);
     res.json({ status: "ok" });
 }
+
+/**
+ * The bill for a plan, before any booking exists. Read-only.
+ *
+ * Deliberately NOT authenticated against a booking: the rider is still
+ * choosing, so there is nothing to own yet. It exposes only plan pricing,
+ * which the catalogue already shows.
+ */
+export async function quotePlanHandler(req: AuthedRequest, res: Response) {
+    const { planId } = req.params as { planId: string };
+    const startDay = (req.query.start_day as string | undefined) || undefined;
+    res.json(await service.quotePlan(planId, startDay));
+}

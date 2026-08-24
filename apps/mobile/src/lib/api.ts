@@ -12,7 +12,7 @@ import type {
     ApiInvoice, ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
     ApiExportResult, ApiNominee, ApiPrivacyRequest, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
-    ApiPaymentOrder, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
     ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
     ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
@@ -388,6 +388,15 @@ export const api = {
     // the app only ever sends an id, never an amount.
     createPaymentOrderForBooking: (bookingId: string) =>
         request<ApiPaymentOrder>(`/payments/bookings/${bookingId}/order`, { method: 'POST' }),
+
+    /**
+     * Itemised price for a plan, before any booking exists. Read-only, so
+     * it is safe to call from a screen the rider may back out of.
+     */
+    quotePlan: (planId: string, startDay?: string) =>
+        request<ApiPlanQuote>(
+            `/payments/plans/${planId}/quote${startDay ? `?start_day=${startDay}` : ''}`,
+        ),
 
     createPaymentOrderForInvoice: (invoiceId: string) =>
         request<ApiPaymentOrder>(`/payments/invoices/${invoiceId}/order`, { method: 'POST' }),
