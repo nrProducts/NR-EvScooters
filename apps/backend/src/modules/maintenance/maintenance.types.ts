@@ -101,6 +101,49 @@ export interface ReassignAfterScrapInput {
     replacement_vehicle_id: string;
 }
 
+/**
+ * The decision staff make when a support ticket would flag a vehicle that's
+ * currently assigned to an active rider — see resolveSupportTicketRiderImpact
+ * in support.service.ts. "replace" reuses the same temp-swap machinery as
+ * assignTempVehicle (outcome becomes 'temp_vehicle'); "pause" freezes the
+ * rider's billing in place via pauseSubscription without touching the vehicle
+ * assignment — the vehicle itself is still triaged later like any ticket.
+ */
+export type RiderImpactDecision =
+    | { action: "replace"; replacement_vehicle_id: string }
+    | { action: "pause" };
+
+export interface RiderImpactVehicle {
+    id: string; name: string; registration_number: string; status: string;
+}
+
+export interface RiderImpactRider {
+    id: string; full_name: string; phone: string | null;
+}
+
+export interface RiderImpactPlan {
+    subscription_id: string;
+    plan_name: string | null;
+    plan_status: string | null;
+    current_period_start: string | null;
+    next_due_at: string | null;
+    /** Sum of unpaid invoice balances on this subscription. */
+    outstanding_amount: number;
+}
+
+/**
+ * What the Support Ticket page needs before it dare move a ride-linked
+ * ticket to 'in_progress' — see getRiderImpactPreview. `required: false`
+ * means the transition is safe to fire immediately (no active rider on the
+ * vehicle, or the ticket isn't ride-linked at all).
+ */
+export interface RiderImpactPreview {
+    required: boolean;
+    vehicle?: RiderImpactVehicle;
+    rider?: RiderImpactRider;
+    plan?: RiderImpactPlan;
+}
+
 /** What the rider's home screen renders — derived from their own open, displaced-by ticket, if any. */
 export type MaintenanceNoticeStage = "pending_triage" | "quick_fix" | "temp_vehicle";
 

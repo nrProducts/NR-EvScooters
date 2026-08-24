@@ -311,6 +311,32 @@ export interface SupportTicket {
   vehicle_id: string | null;
 }
 
+/**
+ * The decision staff make when starting progress on a ticket would flag a
+ * vehicle that's currently assigned to an active rider — see
+ * RiderImpactPreview and GET /support/:id/rider-impact-preview.
+ */
+export type RiderImpactDecision =
+  | { action: "replace"; replacement_vehicle_id: string }
+  | { action: "pause" };
+
+export interface RiderImpactPlan {
+  subscription_id: string;
+  plan_name: string | null;
+  plan_status: string | null;
+  current_period_start: string | null;
+  next_due_at: string | null;
+  outstanding_amount: number;
+}
+
+/** GET /support/:id/rider-impact-preview — `required: false` means the transition is safe to fire directly. */
+export interface RiderImpactPreview {
+  required: boolean;
+  vehicle?: { id: string; name: string; registration_number: string; status: string };
+  rider?: { id: string; full_name: string; phone: string | null };
+  plan?: RiderImpactPlan;
+}
+
 // ---------------------------------------------------------------------------
 // Bookings (staff pickup queue) — mirrors
 // apps/backend/src/modules/bookings/bookings.types.ts

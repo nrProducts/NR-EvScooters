@@ -11,6 +11,7 @@ import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { SideDrawer } from "@/components/common/SideDrawer";
+import { RiderImpactModal } from "@/components/support/RiderImpactModal";
 import { useSupportQueue, useUpdateSupportTicket } from "@/hooks/useSupport";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
@@ -19,7 +20,7 @@ import { formatDateTime } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
-import type { SupportPriority, SupportStatus, SupportTicket } from "@/types";
+import type { RiderImpactDecision, SupportPriority, SupportStatus, SupportTicket } from "@/types";
 
 const TABS: { value: SupportStatus | "all"; label: string }[] = [
   { value: "all", label: "All" },
@@ -45,6 +46,11 @@ export default function SupportTicketsPage() {
   });
   const updateTicket = useUpdateSupportTicket();
   const [actionError, setActionError] = useState<string | null>(null);
+  // The ticket currently blocked on a Replace/Pause decision — the backend
+  // rejects a plain "in_progress" update with `fields.requires_rider_impact`
+  // when the ticket's vehicle is held by an active rider (see
+  // support.service.ts's updateSupportRequest), which is what opens this.
+  const [impactTicket, setImpactTicket] = useState<SupportTicket | null>(null);
 
   const handleStatusChange = (t: SupportTicket, status: SupportStatus) => {
     setActionError(null);
@@ -56,9 +62,31 @@ export default function SupportTicketsPage() {
           setSelected((cur) => (cur?.id === updated.id ? updated : cur));
         },
         onError: (err) => {
+          if (status === "in_progress" && err instanceof ApiError && err.fields?.requires_rider_impact) {
+            setImpactTicket(t);
+            return;
+          }
           setActionError(err instanceof ApiError ? err.message : "Could not update this ticket.");
           toastError(err, "Could not update ticket status");
         },
+      },
+    );
+  };
+
+  const handleConfirmImpact = (decision: RiderImpactDecision) => {
+    if (!impactTicket) return;
+    updateTicket.mutate(
+      { id: impactTicket.id, input: { status: "in_progress", rider_impact: decision } },
+      {
+        onSuccess: (updated) => {
+          toastSuccess(
+            decision.action === "replace" ? "Replacement vehicle assigned" : "Rider's plan paused",
+            "Ticket moved to In progress and maintenance started.",
+          );
+          setSelected((cur) => (cur?.id === updated.id ? updated : cur));
+          setImpactTicket(null);
+        },
+        onError: (err) => toastError(err, "Could not start maintenance"),
       },
     );
   };
@@ -154,10 +182,14 @@ export default function SupportTicketsPage() {
             <p className="text-sm">{selected.subject}</p>
             <p className="text-xs text-muted-foreground whitespace-pre-wrap">{selected.description}</p>
             <p className="text-xs text-muted-foreground">Created {formatDateTime(selected.created_at)}</p>
-            {selected.vehicle_id && selected.status !== "in_progress" && (
+            {/* `vehicle_id` on this row is always null — a ticket names a
+                rental, never a vehicle directly, so `rental_id` is the real
+                signal. */}
+            {selected.rental_id && selected.status !== "in_progress" && (
               <p className="rounded-md bg-info/10 px-3 py-2 text-xs text-info">
-                This ticket is linked to a vehicle. Setting status to "In progress" will flag that vehicle for
-                maintenance.
+                This ticket is linked to a ride. Setting status to "In progress" will flag that vehicle for
+                maintenance — if it's still assigned to an active rider, you'll be asked how to handle their plan
+                first.
               </p>
             )}
 
@@ -212,6 +244,15 @@ export default function SupportTicketsPage() {
           </div>
         )}
       </SideDrawer>
+
+      <RiderImpactModal
+        open={!!impactTicket}
+        ticketId={impactTicket?.id ?? null}
+        onOpenChange={(o) => !o && setImpactTicket(null)}
+        onConfirm={handleConfirmImpact}
+        isPending={updateTicket.isPending}
+        error={updateTicket.error}
+      />
     </div>
   );
 }

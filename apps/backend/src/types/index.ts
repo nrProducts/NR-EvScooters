@@ -232,6 +232,7 @@ export type EmittedNotificationCode =
     | "refund_initiated"
     | "refund_completed"
     // Support and broadcasts.
+    | "support_ticket_created"
     | "support_status_updated"
     | "admin_broadcast";
 
@@ -248,7 +249,7 @@ export const EMITTED_NOTIFICATION_CODES: readonly EmittedNotificationCode[] = [
     "maintenance_temp_vehicle", "maintenance_vehicle_returned",
     "damage_added", "damage_dispute_resolved",
     "refund_needs_approval", "refund_initiated", "refund_completed",
-    "support_status_updated", "admin_broadcast",
+    "support_ticket_created", "support_status_updated", "admin_broadcast",
 ] as const;
 
 export interface Paginated<T> {

@@ -2,6 +2,7 @@ import { supabaseAdmin } from "../../config/supabase";
 import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
+import { addDays, businessToday } from "../../common/dates";
 import { AuthContext, Paginated } from "../../types";
 import {
     CancelRiderDiscountInput,
@@ -600,11 +601,22 @@ export async function waiveRiderCharge(
 /**
  * Thin wrapper around `generate_period_invoice()` — the database function that
  * resolves the applicable pricing rules, writes the adjustments and then the
- * invoice and its items, all idempotently.
+ * invoice and its items, all idempotently PER PERIOD ROW.
  *
  * Was `fn_generate_weekly_invoice(booking_id)`. It takes a SUBSCRIPTION now,
  * and resolves the period itself: "weekly" was never true (plans can be daily
  * or monthly), and the booking was the wrong handle once the agreement moved.
+ *
+ * The "current" period is not always the right one to invoice, though: once
+ * its own invoice is fully settled (period 1's, from the original booking —
+ * or any later period's, from an earlier renewal), there is nothing left to
+ * charge on that row, and the SQL function's idempotency means asking it
+ * again just hands back the same settled invoice — stale due date, and
+ * whatever one-time items (a welcome discount, the deposit) only ever
+ * belonged to that first charge. See resolveInvoiceablePeriod, which is what
+ * makes this function advance to the next period first when that happens,
+ * rather than callers (requestEarlyRecharge) seeing period 1's invoice
+ * echoed back as if it were a fresh renewal.
  */
 export async function generatePeriodInvoice(subscriptionId: string): Promise<{ invoiceId: string }> {
     const { data: period, error: periodError } = await supabaseAdmin
@@ -617,11 +629,151 @@ export async function generatePeriodInvoice(subscriptionId: string): Promise<{ i
         throw businessRule("This subscription has no current billing period to invoice.");
     }
 
+    const targetPeriodId = await resolveInvoiceablePeriod(subscriptionId, period.subscription_period_id);
+
     const { data, error } = await supabaseAdmin.rpc("generate_period_invoice", {
-        p_subscription_period_id: period.subscription_period_id,
+        p_subscription_period_id: targetPeriodId,
     });
     if (error) throw error;
+    if (!data) {
+        throw new Error(
+            `generatePeriodInvoice: generate_period_invoice(${targetPeriodId}) for subscription `
+            + `${subscriptionId} returned no invoice id.`,
+        );
+    }
     return { invoiceId: data as string };
+}
+
+/**
+ * Which period actually still has something to invoice: the current one, if
+ * it has never been invoiced yet or its invoice is still owed — or the next
+ * one, if the current period's invoice is already fully paid.
+ */
+async function resolveInvoiceablePeriod(subscriptionId: string, currentPeriodId: string): Promise<string> {
+    const { data: existingInvoice, error: invoiceError } = await supabaseAdmin
+        .from("invoices")
+        .select("id")
+        .eq("subscription_period_id", currentPeriodId)
+        .maybeSingle();
+    if (invoiceError) throw invoiceError;
+    if (!existingInvoice) return currentPeriodId; // Never invoiced yet — bill it as-is.
+
+    const { data: balance, error: balanceError } = await supabaseAdmin
+        .from("v_invoice_balances")
+        .select("is_paid")
+        .eq("invoice_id", existingInvoice.id)
+        .maybeSingle();
+    if (balanceError) throw balanceError;
+    if (!balance || !balance.is_paid) return currentPeriodId; // Still owed — same invoice covers it.
+
+    return advanceToNextPeriod(subscriptionId, currentPeriodId);
+}
+
+/**
+ * The current period is fully settled, so the next one is what actually
+ * needs invoicing now. Mirrors the late/early DATE math that used to live in
+ * payments.service.ts's applyRenewalSuccess — moved here because it has to
+ * run BEFORE payment (an invoice needs a period to attach to), not after.
+ *
+ * Deliberately never touches the CURRENT period, and never inserts this one
+ * as anything but 'scheduled' — regardless of whether the renewal is late.
+ * This runs from requestEarlyRecharge merely to build a PREVIEW; a rider who
+ * opens Review & Renew and then cancels, or never confirms at all, must not
+ * have their plan silently advanced with nothing paid. Activating the new
+ * period is applyRenewalSuccess's job, and it only runs after a captured
+ * payment — see its own comment for why a 'scheduled' row created here with
+ * "late" dates is exactly what it expects to find and promote.
+ *
+ * Idempotent: a next period may already exist from an earlier preview
+ * request that was never paid — reused rather than a duplicate being
+ * inserted.
+ */
+async function advanceToNextPeriod(subscriptionId: string, currentPeriodId: string): Promise<string> {
+    const { data: current, error: currentError } = await supabaseAdmin
+        .from("subscription_periods")
+        .select("id, sequence_number, ends_on, due_on")
+        .eq("id", currentPeriodId)
+        .maybeSingle();
+    if (currentError) throw currentError;
+    if (!current) {
+        throw new Error(
+            `advanceToNextPeriod: subscription_periods row ${currentPeriodId} `
+            + `(from subscription ${subscriptionId}) not found — was it deleted concurrently?`,
+        );
+    }
+
+    const { data: existingNext, error: nextError } = await supabaseAdmin
+        .from("subscription_periods")
+        .select("id")
+        .eq("subscription_id", subscriptionId)
+        .eq("sequence_number", current.sequence_number + 1)
+        .maybeSingle();
+    if (nextError) throw nextError;
+    if (existingNext) return existingNext.id;
+
+    const { data: subscription, error: subError } = await supabaseAdmin
+        .from("subscriptions")
+        .select("duration_days_snapshot, plan_price_snapshot")
+        .eq("id", subscriptionId)
+        .maybeSingle();
+    if (subError) throw subError;
+    if (!subscription) {
+        throw new Error(`advanceToNextPeriod: subscription ${subscriptionId} not found.`);
+    }
+
+    // Late (past due_on): dates as if the new period starts today, so the
+    // invoice reflects picking billing back up right now — but it is NOT
+    // activated here. Early/on-time: dates start right after the current
+    // one ends, same as always. Either way this row is 'scheduled'; only a
+    // captured payment (applyRenewalSuccess) promotes it, closing the
+    // current one at that point.
+    const today = businessToday();
+    const late = today > current.due_on;
+    const nextStart = addDays(current.ends_on, 1);
+    const nextEnd = addDays(nextStart, subscription.duration_days_snapshot - 1);
+
+    const { data: inserted, error: insertError } = await supabaseAdmin
+        .from("subscription_periods")
+        .insert({
+            subscription_id: subscriptionId,
+            sequence_number: current.sequence_number + 1,
+            starts_on: late ? today : nextStart,
+            ends_on: late ? addDays(today, subscription.duration_days_snapshot - 1) : nextEnd,
+            due_on: late ? addDays(today, subscription.duration_days_snapshot - 1) : nextEnd,
+            base_amount_snapshot: subscription.plan_price_snapshot,
+            status: "scheduled",
+        })
+        .select("id")
+        .maybeSingle();
+    if (insertError) {
+        // Unique on (subscription_id, sequence_number) — a concurrent call
+        // already advanced this subscription; use what it created.
+        if ((insertError as { code?: string }).code === "23505") {
+            const { data: raced, error: racedError } = await supabaseAdmin
+                .from("subscription_periods")
+                .select("id")
+                .eq("subscription_id", subscriptionId)
+                .eq("sequence_number", current.sequence_number + 1)
+                .maybeSingle();
+            if (racedError) throw racedError;
+            if (!raced) {
+                throw new Error(
+                    `advanceToNextPeriod: insert for subscription ${subscriptionId} sequence `
+                    + `${current.sequence_number + 1} conflicted (23505) but no row was found on re-read.`,
+                );
+            }
+            return raced.id;
+        }
+        throw insertError;
+    }
+    if (!inserted) {
+        throw new Error(
+            `advanceToNextPeriod: insert for subscription ${subscriptionId} sequence `
+            + `${current.sequence_number + 1} reported no error but returned no row.`,
+        );
+    }
+
+    return inserted.id;
 }
 
 /**

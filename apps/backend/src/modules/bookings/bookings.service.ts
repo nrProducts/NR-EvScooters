@@ -10,7 +10,7 @@ import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { getDepositForSubscriptionOrNull } from "../deposits/deposits.service";
 import { initiateCancellationRefund } from "../refunds/refunds.service";
 import { generatePeriodInvoice } from "../billing/billing.service";
-import { computeLateRenewalFee, lateFeeOverrideCode } from "../payments/renewalFee";
+import { computeLateRenewalFee, lateFeeOverrideCode, lateFeeReferenceDate } from "../payments/renewalFee";
 import { setLateFeeOverride as setSubscriptionLateFeeOverride } from "../subscriptions/subscriptions.service";
 import { AuthContext, Paginated } from "../../types";
 import {
@@ -1108,14 +1108,20 @@ export async function requestEarlyRecharge(bookingId: string, actor: AuthContext
     if (!context.nextDueAt) throw businessRule("This booking has no billing period to renew.");
 
     const { invoiceId } = await generatePeriodInvoice(context.subscriptionId);
+    if (!invoiceId) {
+        throw new Error(
+            `requestEarlyRecharge: generatePeriodInvoice(${context.subscriptionId}) returned no invoiceId `
+            + `for booking ${bookingId}.`,
+        );
+    }
 
     const [{ data: invoice, error: invoiceError }, { data: balance, error: balanceError }] =
         await Promise.all([
             supabaseAdmin
                 .from("invoices")
-                .select("due_on, total_amount, invoice_items(item_type, description, amount)")
+                .select("due_on, subscription_period_id, total_amount, invoice_items(item_type, description, amount)")
                 .eq("id", invoiceId)
-                .single(),
+                .maybeSingle(),
             supabaseAdmin
                 .from("v_invoice_balances")
                 .select("balance_amount")
@@ -1124,6 +1130,12 @@ export async function requestEarlyRecharge(bookingId: string, actor: AuthContext
         ]);
     if (invoiceError) throw invoiceError;
     if (balanceError) throw balanceError;
+    if (!invoice) {
+        throw new Error(
+            `requestEarlyRecharge: generatePeriodInvoice(${context.subscriptionId}) returned invoiceId `
+            + `${invoiceId}, but no such invoice exists (booking ${bookingId}).`,
+        );
+    }
 
     const rawItems = (invoice.invoice_items ?? []) as unknown as Array<{
         item_type: EarlyRechargeLineItem["itemType"]; description: string; amount: number | string;
@@ -1134,14 +1146,23 @@ export async function requestEarlyRecharge(bookingId: string, actor: AuthContext
         amount: Number(item.amount),
     }));
 
-    const dueDate = invoice.due_on ?? context.nextDueAt;
-    const { isLate, lateFee, daysLate, feePerDay } = await computeLateRenewalFee(
-        context.subscriptionId, dueDate,
+    // `invoice.due_on` is not always the right "how late is this" reference
+    // date — see lateFeeReferenceDate. Shared with createOrderForInvoice so
+    // the preview and the actual charge can never compute a different fee.
+    const referenceDate = await lateFeeReferenceDate(
+        context.subscriptionId, invoice.subscription_period_id, invoice.due_on,
     );
+    const { isLate, lateFee, daysLate, feePerDay } = referenceDate
+        ? await computeLateRenewalFee(context.subscriptionId, referenceDate)
+        : { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0 };
     // What is still owed, not the invoice total — a part-paid renewal must not
     // ask for the whole thing again.
     const amountDue = Number(balance?.balance_amount ?? invoice.total_amount);
     const today = businessToday();
+    // This invoice's OWN due date — when the period it actually belongs to
+    // is next due. Distinct from `referenceDate` above, which is what the
+    // late fee is measured against.
+    const dueDate = invoice.due_on ?? context.nextDueAt;
 
     await writeAudit({
         actorId: actor.id, targetUserId: actor.id, action: "plan.updated",

@@ -5,7 +5,7 @@ import { env } from "../../config/env";
 import { badRequest, businessRule, conflict, notFound } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
 import { addDays, businessToday } from "../../common/dates";
-import { computeLateRenewalFee } from "./renewalFee";
+import { computeLateRenewalFee, lateFeeReferenceDate } from "./renewalFee";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { applyRefundWebhookResult } from "../refunds/refunds.service";
@@ -320,7 +320,7 @@ async function createOrderForInvoiceInternal(
 ): Promise<CreateOrderResult> {
     const { data: invoice, error } = await supabaseAdmin
         .from("invoices")
-        .select("id, purpose, due_on, subscription_id")
+        .select("id, purpose, due_on, subscription_id, subscription_period_id")
         .eq("id", invoiceId)
         .single();
     if (error) throw error;
@@ -335,10 +335,17 @@ async function createOrderForInvoiceInternal(
     if (balanceError) throw balanceError;
 
     // A late fee applies to a period renewal only, computed fresh every time
-    // so a toggled setting takes effect immediately.
-    const { lateFee } = invoice.purpose === "subscription_period" && invoice.due_on
-        ? await computeLateRenewalFee(invoice.subscription_id, invoice.due_on)
-        : { lateFee: 0 };
+    // so a toggled setting takes effect immediately. `invoice.due_on` is not
+    // always the right reference date — see lateFeeReferenceDate.
+    let lateFee = 0;
+    if (invoice.purpose === "subscription_period" && invoice.due_on) {
+        const referenceDate = await lateFeeReferenceDate(
+            invoice.subscription_id, invoice.subscription_period_id, invoice.due_on,
+        );
+        if (referenceDate) {
+            ({ lateFee } = await computeLateRenewalFee(invoice.subscription_id, referenceDate));
+        }
+    }
 
     const amount = round2(Number(balance?.balance_amount ?? 0) + lateFee);
     if (amount <= 0) throw conflict("This invoice has already been paid.");
@@ -1219,70 +1226,90 @@ async function applyInitialSuccess(subscriptionId: string, userId: string): Prom
 /**
  * A paid renewal.
  *
- * The two-phase "pay now, activate later" design survives, but it is now
- * expressed with rows rather than flags: paying schedules the NEXT period as
- * a real `subscription_periods` row with real dates, and the sweep promotes
- * it to `current` when its start arrives. `renewal_status`,
- * `scheduled_start_date` and `scheduled_duration_days` are all gone.
+ * The two-phase "pay now, activate later" design survives, but billing
+ * .service.ts's advanceToNextPeriod now creates the next `subscription
+ * _periods` row EAGERLY, the moment a rider previews a renewal — before any
+ * payment — always as 'scheduled', because the invoice it is generating
+ * needs a real period to attach to. A preview a rider cancels or never pays
+ * leaves that row behind, scheduled and unpaid; a captured payment is the
+ * only thing allowed to promote it. So this is where activation now
+ * actually happens, decided fresh at payment time rather than trusting
+ * whatever status the row was left in at preview time:
  *
- * A late payment still rolls forward immediately — there is no future period
- * to protect once the old one has lapsed.
+ *   - if the subscription's currently-running period is already past its
+ *     own due date (this was a late renewal), close it and promote the paid
+ *     period to 'current' immediately, and clear `past_due` if it was set.
+ *   - otherwise the rider paid ahead of the period still running — leave
+ *     the paid period 'scheduled'; the payment-overdue sweep's
+ *     promotePeriod activates it once the running period actually ends.
+ *
+ * Guarded to be a no-op if the period isn't 'scheduled' any more (a second
+ * webhook delivery for the same payment, or a race with the sweep already
+ * having promoted it).
  */
 async function applyRenewalSuccess(
     subscriptionId: string,
     paidPeriodId: string | null,
 ): Promise<void> {
+    if (!paidPeriodId) return;
+
     const { data: subscription, error } = await supabaseAdmin
         .from("subscriptions")
-        .select("id, status, duration_days_snapshot, plan_price_snapshot")
+        .select("id, user_id, status")
         .eq("id", subscriptionId)
         .maybeSingle();
     if (error) throw error;
     if (!subscription) return;
 
+    const { data: paidPeriod, error: periodError } = await supabaseAdmin
+        .from("subscription_periods")
+        .select("id, sequence_number, status")
+        .eq("id", paidPeriodId)
+        .maybeSingle();
+    if (periodError) throw periodError;
+    if (!paidPeriod) return;
+    if (paidPeriod.status !== "scheduled") return;
+
     const { data: current, error: currentError } = await supabaseAdmin
         .from("subscription_periods")
-        .select("id, sequence_number, ends_on, due_on")
+        .select("id, due_on")
         .eq("subscription_id", subscriptionId)
         .eq("status", "current")
         .maybeSingle();
     if (currentError) throw currentError;
-    if (!current) return;
 
-    // The invoice paid must be for the period actually running.
-    if (paidPeriodId && paidPeriodId !== current.id) return;
+    const activateNow = !current || businessToday() > current.due_on;
 
-    const nextStart = addDays(current.ends_on, 1);
-    const nextEnd = addDays(nextStart, subscription.duration_days_snapshot - 1);
-    const today = businessToday();
-    const late = today > current.due_on;
-
-    // Scheduled either way; what differs is whether it starts now. The
-    // unique index on (subscription_id, sequence_number) makes a duplicate
-    // delivery a no-op.
-    const { error: insertError } = await supabaseAdmin.from("subscription_periods").insert({
-        subscription_id: subscriptionId,
-        sequence_number: current.sequence_number + 1,
-        starts_on: late ? today : nextStart,
-        ends_on: late ? addDays(today, subscription.duration_days_snapshot - 1) : nextEnd,
-        due_on: late ? addDays(today, subscription.duration_days_snapshot - 1) : nextEnd,
-        base_amount_snapshot: subscription.plan_price_snapshot,
-        status: late ? "current" : "scheduled",
-    });
-    if (insertError) {
-        if ((insertError as { code?: string }).code === "23505") return; // Already advanced.
-        throw insertError;
+    if (!activateNow) {
+        await writeAudit({
+            actorId: null, targetUserId: subscription.user_id, action: "plan.renewed",
+            entityType: "subscription", entityId: subscriptionId,
+            after: {
+                sequence_number: paidPeriod.sequence_number,
+                period_status: "scheduled",
+                activated_immediately: false,
+            },
+        });
+        return;
     }
 
-    if (late) {
-        // Only one period may be `current`, so the lapsed one closes here.
+    if (current) {
         const { error: closeError } = await supabaseAdmin
             .from("subscription_periods")
             .update({ status: "closed" })
             .eq("id", current.id)
             .eq("status", "current");
         if (closeError) throw closeError;
+    }
 
+    const { error: promoteError } = await supabaseAdmin
+        .from("subscription_periods")
+        .update({ status: "current" })
+        .eq("id", paidPeriod.id)
+        .eq("status", "scheduled");
+    if (promoteError) throw promoteError;
+
+    if (subscription.status === "past_due") {
         const { error: statusError } = await supabaseAdmin
             .from("subscriptions")
             .update({ status: "active" })
@@ -1292,12 +1319,12 @@ async function applyRenewalSuccess(
     }
 
     await writeAudit({
-        actorId: null, targetUserId: null, action: late ? "plan.renewed" : "plan.updated",
+        actorId: null, targetUserId: subscription.user_id, action: "plan.renewed",
         entityType: "subscription", entityId: subscriptionId,
         after: {
-            sequence_number: current.sequence_number + 1,
-            starts_on: late ? today : nextStart,
-            activated_immediately: late,
+            sequence_number: paidPeriod.sequence_number,
+            period_status: "current",
+            activated_immediately: true,
         },
     });
 }

@@ -26,11 +26,17 @@ export const supportIdParam = z.object({
     id: z.string().uuid("A valid support request id is required."),
 });
 
+const riderImpactDecision = z.discriminatedUnion("action", [
+    z.object({ action: z.literal("replace"), replacement_vehicle_id: z.string().uuid() }),
+    z.object({ action: z.literal("pause") }),
+]);
+
 export const updateSupportBody = z
     .object({
         status: z.enum(SUPPORT_STATUSES).optional(),
         priority: z.enum(SUPPORT_PRIORITIES).optional(),
         assigned_to: z.string().uuid().optional(),
+        rider_impact: riderImpactDecision.optional(),
     })
     .refine(
         (v) => Object.keys(v).length > 0,

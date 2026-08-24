@@ -53,11 +53,13 @@ export interface RenewalEligibility {
 }
 
 /**
- * Whether "Renew Plan" should be offered, any time before or after
- * next_due_at (no more "day before" window — a rider can renew as early as
- * they like, or late with a fee). Mirrors requestEarlyRecharge's gate in
- * apps/backend/src/modules/bookings/bookings.service.ts: allowed whenever
- * plan_status is 'active' or 'past_due' and no renewal is already scheduled.
+ * Whether "Renew Plan" should be offered — only from the plan's last day
+ * onward (today >= next_due_at), never earlier. The backend's
+ * requestEarlyRecharge gate in apps/backend/src/modules/bookings/bookings
+ * .service.ts still accepts a renewal at any point (plan_status 'active' or
+ * 'past_due', nothing scheduled yet) — this is a display-only restriction so
+ * the button doesn't invite a rider to pay for a period that hasn't started
+ * yet, not a change to what the server will accept.
  *
  * `due` is `past_due` — the same state, read off `subscriptions.status` now
  * rather than the departed `bookings.plan_status`.
@@ -73,7 +75,8 @@ export function getRenewalEligibility(
   const alreadyScheduled = renewalStatus === 'scheduled';
   const canRenew = !alreadyScheduled
     && (planStatus === 'active' || planStatus === 'past_due')
-    && !!nextDueAt;
+    && !!nextDueAt
+    && dateStr(now) >= nextDueAt;
   const isLate = !!nextDueAt && dateStr(now) > nextDueAt;
   return { canRenew, isLate, alreadyScheduled };
 }

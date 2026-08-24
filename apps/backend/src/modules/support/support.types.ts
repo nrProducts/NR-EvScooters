@@ -1,3 +1,5 @@
+import { RiderImpactDecision } from "../maintenance/maintenance.types";
+
 export type SupportStatus = "open" | "in_progress" | "resolved" | "closed";
 export type SupportPriority = "low" | "medium" | "high" | "urgent";
 
@@ -41,4 +43,10 @@ export interface UpdateSupportInput {
     status?: SupportStatus;
     priority?: SupportPriority;
     assigned_to?: string;
+    /**
+     * Required when `status: "in_progress"` would flag a vehicle that's
+     * currently held by an active rider — see getRiderImpactPreview and
+     * updateSupportRequest in support.service.ts. Ignored otherwise.
+     */
+    rider_impact?: RiderImpactDecision;
 }

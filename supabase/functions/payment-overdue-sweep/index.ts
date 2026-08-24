@@ -29,6 +29,16 @@
 // Every date comparison goes through business_today(). The old todayIso()
 // read the Deno clock, which is UTC: between 18:30 and midnight IST it
 // believed it was already tomorrow and marked riders overdue a day early.
+//
+// A 'scheduled' next period is no longer proof of payment on its own.
+// apps/backend/src/modules/billing/billing.service.ts's advanceToNextPeriod
+// now creates that row eagerly, the moment a rider previews a renewal
+// (requestEarlyRecharge) — before any payment — because the invoice needs
+// a real period to attach to. A rider who previews and cancels, or never
+// pays, leaves exactly this row behind: 'scheduled', unpaid. findScheduledPeriod
+// below checks the period's own invoice is actually settled before this sweep
+// promotes it, or an abandoned preview would eventually get promoted into a
+// free, unpaid rental period.
 // =========================================================================
 
 import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
@@ -38,6 +48,11 @@ import { notifyStaff } from "../_shared/notifyStaff.ts";
 import { writeAudit } from "../_shared/audit.ts";
 
 const SOURCE = "payment-overdue-sweep";
+
+function unwrap<T>(raw: unknown): T | null {
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    return (v as T) ?? null;
+}
 
 interface PeriodRow {
     id: string;
@@ -100,11 +115,6 @@ Deno.serve(async (_req) => {
     return json({ candidates: lapsed?.length ?? 0, promoted, markedPastDue }, 200);
 });
 
-function unwrap<T>(raw: unknown): T | null {
-    const v = Array.isArray(raw) ? raw[0] : raw;
-    return (v as T) ?? null;
-}
-
 async function closePeriod(admin: Admin, periodId: string): Promise<void> {
     await admin
         .from("subscription_periods")
@@ -114,10 +124,10 @@ async function closePeriod(admin: Admin, periodId: string): Promise<void> {
 }
 
 /**
- * The next period, if the rider paid ahead.
- *
- * Its existence IS the proof of payment: applyRenewalSuccess only inserts it
- * once a capture has been applied, so there is nothing further to verify.
+ * The next period, if the rider paid ahead — but its existence alone is no
+ * longer proof of that (see this file's header). A 'scheduled' row with no
+ * settled invoice is an abandoned renewal preview, not a paid-ahead one, and
+ * must not be promoted.
  */
 async function findScheduledPeriod(
     admin: Admin,
@@ -126,7 +136,7 @@ async function findScheduledPeriod(
 ): Promise<{ id: string; starts_on: string; ends_on: string } | null> {
     const { data, error } = await admin
         .from("subscription_periods")
-        .select("id, starts_on, ends_on")
+        .select("id, starts_on, ends_on, invoices(id)")
         .eq("subscription_id", subscriptionId)
         .eq("status", "scheduled")
         .eq("sequence_number", currentSequence + 1)
@@ -138,7 +148,27 @@ async function findScheduledPeriod(
         });
         return null;
     }
-    return data as { id: string; starts_on: string; ends_on: string } | null;
+    if (!data) return null;
+
+    const invoice = unwrap<{ id: string }>(data.invoices);
+    if (!invoice) return null; // Scheduled with no invoice at all — nothing was even previewed to pay.
+
+    const { data: balance, error: balanceError } = await admin
+        .from("v_invoice_balances")
+        .select("is_paid")
+        .eq("invoice_id", invoice.id)
+        .maybeSingle();
+    if (balanceError) {
+        console.error(`[${SOURCE}] scheduled period invoice balance lookup failed`, {
+            subscriptionId,
+            invoiceId: invoice.id,
+            error: balanceError.message,
+        });
+        return null;
+    }
+    if (!balance?.is_paid) return null; // Previewed, never paid — leave it scheduled, not promotable.
+
+    return { id: data.id, starts_on: data.starts_on, ends_on: data.ends_on };
 }
 
 /**

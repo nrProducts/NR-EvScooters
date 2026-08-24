@@ -337,11 +337,12 @@ export default function BillingScreen() {
             </View>
           ) : null}
 
-          {/* Renew Plan — pay for the next period any time before or after
-              it's due. Paid on time, the current plan stays active exactly as
-              it is; the new period only starts once this one actually ends
-              (see the scheduled-renewal state above). Paid late, a fee
-              applies and the new period starts right away. */}
+          {/* Renew Plan — only offered from the plan's last day onward
+              (getRenewalEligibility), not before. Paid on time, the current
+              plan stays active exactly as it is; the new period only starts
+              once this one actually ends (see the scheduled-renewal state
+              above). Paid late, a fee applies and the new period starts
+              right away. */}
           {canRechargeEarly ? (
             <View
               className="rounded-2xl p-4 mb-6"

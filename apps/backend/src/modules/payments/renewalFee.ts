@@ -35,6 +35,51 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
 export const lateFeeOverrideCode = (subscriptionId: string): string =>
     `late_fee:${subscriptionId}`;
 
+/**
+ * The date a renewal invoice's lateness is actually measured against.
+ *
+ * Usually that IS the invoice's own `due_on` — the sweep's markPastDue
+ * re-invoices the SAME lapsed period, so its due_on never moves. But
+ * billing.service.ts's generatePeriodInvoice advances to a fresh period once
+ * the current one's own invoice is already settled (see
+ * resolveInvoiceablePeriod / advanceToNextPeriod), and a period created that
+ * way carries its OWN forward-looking due_on (when IT will next be due) —
+ * not the date the rider was actually late against. Using it directly would
+ * make every late renewal price as if paid on time, because the "due" date
+ * on the invoice is now in the future.
+ *
+ * The tell is the immediately preceding period: if it exists and is
+ * `closed`, this invoice's period only exists because that one lapsed, and
+ * ITS due_on is the one lateness is measured against. If the previous period
+ * is still `current` (an early renewal paid ahead of schedule) or there is
+ * no previous period (period 1), the invoice's own due_on is already right.
+ */
+export async function lateFeeReferenceDate(
+    subscriptionId: string,
+    subscriptionPeriodId: string | null,
+    invoiceDueOn: string | null,
+): Promise<string | null> {
+    if (!invoiceDueOn || !subscriptionPeriodId) return invoiceDueOn;
+
+    const { data: period, error: periodError } = await supabaseAdmin
+        .from("subscription_periods")
+        .select("sequence_number")
+        .eq("id", subscriptionPeriodId)
+        .maybeSingle();
+    if (periodError) throw periodError;
+    if (!period || period.sequence_number <= 1) return invoiceDueOn;
+
+    const { data: previous, error: previousError } = await supabaseAdmin
+        .from("subscription_periods")
+        .select("due_on, status")
+        .eq("subscription_id", subscriptionId)
+        .eq("sequence_number", period.sequence_number - 1)
+        .maybeSingle();
+    if (previousError) throw previousError;
+
+    return previous?.status === "closed" ? previous.due_on : invoiceDueOn;
+}
+
 export async function computeLateRenewalFee(
     subscriptionId: string,
     dueDate: string,

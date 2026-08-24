@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/support";
-import type { SupportPriority, SupportStatus } from "@/types";
 
 export function useSupportQueue(filters: api.SupportFilters, options?: { enabled?: boolean }) {
   return useQuery({
@@ -21,16 +20,20 @@ export function useSupportTicket(id: string | undefined) {
 export function useUpdateSupportTicket() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      input,
-    }: {
-      id: string;
-      input: { status?: SupportStatus; priority?: SupportPriority; assigned_to?: string };
-    }) => api.updateSupportTicket(id, input),
+    mutationFn: ({ id, input }: { id: string; input: api.UpdateSupportTicketInput }) =>
+      api.updateSupportTicket(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["support-queue"] });
       qc.invalidateQueries({ queryKey: ["support-ticket"] });
     },
+  });
+}
+
+/** Fetched on demand (see RiderImpactModal) rather than for every row in the queue. */
+export function useRiderImpactPreview(id: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["support-rider-impact-preview", id],
+    queryFn: () => api.fetchRiderImpactPreview(id!),
+    enabled: !!id && (options?.enabled ?? true),
   });
 }

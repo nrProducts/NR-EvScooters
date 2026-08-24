@@ -1,13 +1,137 @@
 import { supabaseAdmin } from "../../config/supabase";
-import { notFound } from "../../common/AppError";
+import { businessRule, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { notifyUser } from "../notifications/notifications.service";
-import { createMaintenanceTicket } from "../maintenance/maintenance.service";
+import { notify } from "../notifications/notify.service";
+import { assignReplacementVehicle, createMaintenanceTicket, triagePausePlan } from "../maintenance/maintenance.service";
+import { RiderImpactPlan, RiderImpactPreview } from "../maintenance/maintenance.types";
 import { AuthContext, Paginated } from "../../types";
 import {
     CreateSupportInput, SupportHistoryFilters, SupportQueueFilters, SupportQueueView,
     SupportView, UpdateSupportInput,
 } from "./support.types";
+
+/**
+ * The vehicle a ride-linked ticket would flag for maintenance, if any —
+ * shared by getRiderImpactPreview (what the UI checks before showing the
+ * decision) and updateSupportRequest (what the backend re-checks before
+ * acting, so the rule holds even if a caller skips the preview).
+ *
+ * Returns null when there's nothing to flag: no rental on the ticket, or the
+ * vehicle is already out of service.
+ */
+async function findFlaggableVehicle(
+    rentalId: string,
+): Promise<{ id: string; display_name: string | null; registration_number: string; status: string } | null> {
+    const { data: current, error } = await supabaseAdmin
+        .from("v_rental_current_vehicle")
+        .select("vehicle_id, vehicles(id, display_name, registration_number, status)")
+        .eq("rental_id", rentalId)
+        .maybeSingle();
+    if (error) throw error;
+
+    const vehicle = unwrap<{ id: string; display_name: string | null; registration_number: string; status: string }>(
+        current?.vehicles,
+    );
+    if (!current?.vehicle_id || !vehicle || vehicle.status === "maintenance" || vehicle.status === "retired") {
+        return null;
+    }
+    return vehicle;
+}
+
+/** The active rider and plan on a rental — what the rider-impact modal needs beyond the vehicle. */
+async function loadRiderImpactContext(rentalId: string): Promise<{
+    riderId: string;
+    rider: { id: string; full_name: string; phone: string | null } | null;
+    plan?: RiderImpactPlan;
+}> {
+    const { data: rental, error } = await supabaseAdmin
+        .from("rentals")
+        .select("user_id, subscription_id, users(id, full_name, phone)")
+        .eq("id", rentalId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!rental) throw notFound("Rental not found.");
+
+    const rider = unwrap<{ id: string; full_name: string; phone: string | null }>(rental.users);
+
+    let plan: RiderImpactPlan | undefined;
+    if (rental.subscription_id) {
+        const [subRes, periodRes, balancesRes] = await Promise.all([
+            supabaseAdmin
+                .from("subscriptions")
+                .select("status, bookings(plans(name))")
+                .eq("id", rental.subscription_id)
+                .maybeSingle(),
+            supabaseAdmin
+                .from("subscription_periods")
+                .select("starts_on, due_on")
+                .eq("subscription_id", rental.subscription_id)
+                .eq("status", "current")
+                .maybeSingle(),
+            supabaseAdmin
+                .from("v_invoice_balances")
+                .select("balance_amount")
+                .eq("subscription_id", rental.subscription_id)
+                .eq("is_paid", false),
+        ]);
+        if (subRes.error) throw subRes.error;
+        if (periodRes.error) throw periodRes.error;
+        if (balancesRes.error) throw balancesRes.error;
+
+        const booking = unwrap<{ plans: unknown }>(subRes.data?.bookings);
+        const planRef = unwrap<{ name: string }>(booking?.plans);
+        const outstanding = (balancesRes.data ?? []).reduce((sum, b) => sum + Number(b.balance_amount), 0);
+
+        plan = {
+            subscription_id: rental.subscription_id,
+            plan_name: planRef?.name ?? null,
+            plan_status: subRes.data?.status ?? null,
+            current_period_start: periodRes.data?.starts_on ?? null,
+            next_due_at: periodRes.data?.due_on ?? null,
+            outstanding_amount: outstanding,
+        };
+    }
+
+    return { riderId: rental.user_id, rider, plan };
+}
+
+/**
+ * What the Support Ticket page checks before it dare move a ride-linked
+ * ticket to 'in_progress'. `required: true` means the transition would
+ * displace an active rider and the UI must collect a Replace-or-Pause
+ * decision first (see updateSupportRequest's `rider_impact`).
+ */
+export async function getRiderImpactPreview(id: string): Promise<RiderImpactPreview> {
+    const { data: ticket, error } = await supabaseAdmin
+        .from("support_tickets")
+        .select("id, status, rental_id")
+        .eq("id", id)
+        .maybeSingle();
+    if (error) throw error;
+    if (!ticket) throw notFound("Support request not found.");
+
+    // Matches updateSupportRequest's own guard exactly: this only matters for
+    // a transition INTO 'in_progress' from anything else.
+    if (!ticket.rental_id || ticket.status === "in_progress") return { required: false };
+
+    const vehicle = await findFlaggableVehicle(ticket.rental_id);
+    if (!vehicle) return { required: false };
+
+    const { rider, plan } = await loadRiderImpactContext(ticket.rental_id);
+
+    return {
+        required: true,
+        vehicle: {
+            id: vehicle.id,
+            name: vehicle.display_name ?? "",
+            registration_number: vehicle.registration_number,
+            status: vehicle.status,
+        },
+        rider: rider ?? undefined,
+        plan,
+    };
+}
 
 /**
  * Support.
@@ -144,6 +268,19 @@ export async function createSupportRequest(
         .single();
     if (readError) throw readError;
 
+    // Staff previously found out about a new ticket only by happening to
+    // look at the Support queue — createSupportRequest had no admin-facing
+    // notify() call at all.
+    await notify({
+        notificationType: "support_ticket_created",
+        referenceType: "support_ticket",
+        referenceId: ticket.id,
+        title: "New Support Ticket",
+        bodyFallback: `{rider} raised a ticket: "${input.subject}".`,
+        screen: "/support",
+        riderId: userId,
+    });
+
     return toSupportView(data as unknown as RawSupportRow);
 }
 
@@ -214,6 +351,31 @@ export async function updateSupportRequest(
     if (existingError) throw existingError;
     if (!existing) throw notFound("Support request not found.");
 
+    // Staff moving a ride-linked ticket into 'in_progress' means they have
+    // confirmed a real vehicle problem, which is what takes the scooter out
+    // of service below. A vehicle still held by an active rider cannot just
+    // vanish into maintenance out from under them — staff must say what
+    // happens to that rider's plan in the same breath, and this is enforced
+    // HERE, not only in the Support Ticket UI, so no other caller (a future
+    // bulk action, another page) can silently strand a rider — see
+    // getRiderImpactPreview for the read-only check the UI uses to avoid
+    // ever hitting this the hard way.
+    //
+    // Checked and thrown BEFORE any write below: a ticket that fails this
+    // must come back exactly as it was, not half-transitioned to
+    // 'in_progress' (and the rider already told so) with nobody having
+    // decided what happens to them.
+    const enteringProgress = patch.status === "in_progress" && existing.status !== "in_progress";
+    const flaggableVehicle = enteringProgress && existing.rental_id
+        ? await findFlaggableVehicle(existing.rental_id)
+        : null;
+    if (flaggableVehicle && !patch.rider_impact) {
+        throw businessRule(
+            "This vehicle is assigned to an active rider. Choose how their plan should be handled before starting maintenance.",
+            { requires_rider_impact: "true" },
+        );
+    }
+
     const update: Record<string, unknown> = {};
     if (patch.status) update.status = patch.status;
     if (patch.priority) update.priority = patch.priority;
@@ -241,31 +403,29 @@ export async function updateSupportRequest(
         });
     }
 
-    // Staff moving a ride-linked ticket into 'in_progress' means they have
-    // confirmed a real vehicle problem — open a maintenance ticket, which is
-    // what takes the scooter out of service.
-    //
-    // The old version ALSO wrote `vehicles.status = 'maintenance'` directly.
-    // It no longer can, and no longer needs to: `recompute_vehicle_status()`
-    // derives that from the open ticket, so the two can't disagree.
-    if (patch.status === "in_progress" && existing.status !== "in_progress" && existing.rental_id) {
-        const { data: current, error: vehicleError } = await supabaseAdmin
-            .from("v_rental_current_vehicle")
-            .select("vehicle_id, vehicles(status)")
-            .eq("rental_id", existing.rental_id)
-            .maybeSingle();
-        if (vehicleError) throw vehicleError;
+    // Open the maintenance ticket — which is what takes the scooter out of
+    // service. The old version ALSO wrote `vehicles.status = 'maintenance'`
+    // directly. It no longer can, and no longer needs to:
+    // `recompute_vehicle_status()` derives that from the open ticket, so the
+    // two can't disagree.
+    if (flaggableVehicle) {
+        const ticket = await createMaintenanceTicket(
+            {
+                vehicle_id: flaggableVehicle.id,
+                description: `Auto-flagged from support ticket "${existing.subject}".`,
+                status: "in_progress",
+            },
+            actor,
+        );
 
-        const vehicle = unwrap<{ status: string }>(current?.vehicles);
-        if (current?.vehicle_id && vehicle && vehicle.status !== "maintenance" && vehicle.status !== "retired") {
-            await createMaintenanceTicket(
-                {
-                    vehicle_id: current.vehicle_id,
-                    description: `Auto-flagged from support ticket "${existing.subject}".`,
-                    status: "in_progress",
-                },
+        if (patch.rider_impact!.action === "replace") {
+            await assignReplacementVehicle(
+                ticket.id,
+                { temp_vehicle_id: patch.rider_impact!.replacement_vehicle_id },
                 actor,
             );
+        } else {
+            await triagePausePlan(ticket.id, actor);
         }
     }
 

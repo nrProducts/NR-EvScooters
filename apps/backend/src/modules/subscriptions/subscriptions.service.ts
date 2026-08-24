@@ -24,7 +24,10 @@ import { AuthContext } from "../../types";
  * it is unchanged.
  */
 
-export type PauseResumeReason = "temp_vehicle" | "original_handback" | "replacement";
+// `maintenance_resolved` covers a ticket that only ever paused the rider's
+// plan (no vehicle was ever swapped, so there is nothing to hand back) —
+// resolving the ticket is the only signal that the pause should end.
+export type PauseResumeReason = "temp_vehicle" | "original_handback" | "replacement" | "maintenance_resolved";
 
 export interface ResumeComputation {
     daysPaused: number;
