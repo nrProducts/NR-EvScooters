@@ -73,53 +73,20 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     const handlers: RealtimeHandlers = {
       bookings: (payload) => {
         if (payload.eventType === "INSERT") {
+          // A freshly-inserted row is always 'pending_payment' — the rider
+          // has neither paid nor been allocated a vehicle yet (that only
+          // happens in applyInitialSuccess, once payment lands), so there is
+          // nothing for staff to act on yet. Popping "Confirm Pickup" here
+          // sent admins to /bookings' default (status=confirmed) tab to find
+          // a booking that could not possibly be there. Just keep the queue
+          // counts live; the actionable popup is the status transition below.
           qc.invalidateQueries({ queryKey: ["pickup-queue"] });
           qc.invalidateQueries({ queryKey: ["reports", "summary"] });
-
-          const row = payload.new as { id: string };
-          // Realtime payloads are raw, unjoined rows — one small enrichment
-          // read for the rider/vehicle names the popup copy needs. Never
-          // blocks the invalidation above, and falls back to generic copy
-          // rather than dropping the popup if this fails.
-          // New bookings need a staff decision (prepare/confirm the pickup),
-          // so this opens the approval popup rather than just toasting.
-          //
-          // The embed changed shape: a booking reserves a PLAN, and the plan
-          // is what names a vehicle model — `bookings.vehicle_model_id` is
-          // gone. The `!fkey` hint on the rider is gone too, since
-          // `cancelled_by` moved to `booking_cancellations` and bookings has
-          // one foreign key to users again.
-          void supabase
-            .from("bookings")
-            .select("users(full_name), plans(vehicle_models(name))")
-            .eq("id", row.id)
-            .maybeSingle()
-            .then(
-              ({ data }) => {
-                const rider = unwrap<{ full_name: string }>(data?.users);
-                const plan = unwrap<{ vehicle_models: unknown }>(data?.plans);
-                const model = unwrap<{ name: string }>(plan?.vehicle_models);
-                setApproval({
-                  title: "New Booking",
-                  message: rider && model ? `${rider.full_name} booked ${model.name}` : "A new booking was just created.",
-                  reviewPath: "/bookings",
-                  reviewLabel: "Confirm Pickup",
-                });
-              },
-              () => {
-                setApproval({
-                  title: "New Booking",
-                  message: "A new booking was just created.",
-                  reviewPath: "/bookings",
-                  reviewLabel: "Confirm Pickup",
-                });
-              },
-            );
           return;
         }
 
         if (payload.eventType === "UPDATE") {
-          const next = payload.new as { status?: string };
+          const next = payload.new as { id: string; status?: string };
           const prev = payload.old as { status?: string };
           if (!next.status || next.status === prev?.status) return;
 
@@ -130,6 +97,42 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             push({ tone: "warning", title: "Booking Cancelled", message: "A booking was just cancelled." });
           } else if (next.status === "fulfilled") {
             push({ tone: "success", title: "Booking Completed", message: "A pickup was just completed." });
+          } else if (next.status === "confirmed") {
+            // Payment just landed (payments.service.ts's applyInitialSuccess)
+            // — this is the actual moment a pickup becomes something staff
+            // can act on, so this is where the blocking popup belongs.
+            //
+            // The embed changed shape: a booking reserves a PLAN, and the
+            // plan is what names a vehicle model — `bookings.vehicle_model_id`
+            // is gone. The `!fkey` hint on the rider is gone too, since
+            // `cancelled_by` moved to `booking_cancellations` and bookings
+            // has one foreign key to users again.
+            void supabase
+              .from("bookings")
+              .select("users(full_name), plans(vehicle_models(name))")
+              .eq("id", next.id)
+              .maybeSingle()
+              .then(
+                ({ data }) => {
+                  const rider = unwrap<{ full_name: string }>(data?.users);
+                  const plan = unwrap<{ vehicle_models: unknown }>(data?.plans);
+                  const model = unwrap<{ name: string }>(plan?.vehicle_models);
+                  setApproval({
+                    title: "Booking Confirmed",
+                    message: rider && model ? `${rider.full_name} paid for ${model.name} — ready for pickup.` : "A booking was just paid for and is ready for pickup.",
+                    reviewPath: "/bookings",
+                    reviewLabel: "Confirm Pickup",
+                  });
+                },
+                () => {
+                  setApproval({
+                    title: "Booking Confirmed",
+                    message: "A booking was just paid for and is ready for pickup.",
+                    reviewPath: "/bookings",
+                    reviewLabel: "Confirm Pickup",
+                  });
+                },
+              );
           }
         }
       },

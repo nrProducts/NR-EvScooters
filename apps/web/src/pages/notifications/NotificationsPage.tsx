@@ -19,7 +19,7 @@ import { useNotificationTypeSummaries } from "@/hooks/useNotificationSettings";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
-import { formatDate, cn } from "@/lib/utils";
+import { formatDateTime, cn } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
@@ -84,7 +84,7 @@ function AdminBroadcastTab() {
     { header: "Rider", key: "rider", render: (n) => n.rider?.full_name ?? "—" },
     { header: "Channel", key: "channel", render: (n) => <span className="capitalize">{n.channel}</span>, hideOnMobile: true },
     { header: "Status", key: "status", render: (n) => <StatusBadge status={n.status} /> },
-    { header: "Sent", key: "sent_at", sortKey: "created_at", render: (n) => (n.sent_at ? formatDate(n.sent_at) : "—"), hideOnMobile: true },
+    { header: "Sent", key: "sent_at", sortKey: "created_at", render: (n) => (n.sent_at ? formatDateTime(n.sent_at) : "—"), hideOnMobile: true },
   ];
 
   const canSend = title.trim() && body.trim() && canSendBroadcast;
@@ -221,7 +221,7 @@ function RiderActivityTab() {
         </div>
       ),
     },
-    { header: "Received", key: "created_at", render: (n) => formatDate(n.created_at), hideOnMobile: true },
+    { header: "Received", key: "created_at", render: (n) => formatDateTime(n.created_at), hideOnMobile: true },
   ];
 
   return (
