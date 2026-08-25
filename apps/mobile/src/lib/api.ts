@@ -12,7 +12,7 @@ import type {
     ApiInvoice, ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
     ApiExportResult, ApiNominee, ApiPrivacyRequest, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
-    ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
+    ApiOverdueLateFee, ApiOverdueLateFeeInvoice, ApiReturnStage,
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
     ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
@@ -444,6 +444,10 @@ export const api = {
     myOverdueLateFee: () => request<ApiOverdueLateFee>('/rentals/me/overdue-late-fee'),
     payMyOverdueLateFee: () =>
         request<ApiOverdueLateFeeInvoice>('/rentals/me/overdue-late-fee', { method: 'POST' }),
+
+    // Vehicle Return → Inspection → Payment Gate → Approve Return, from the
+    // rider's own side. Null once there's no return to report on.
+    myReturnStage: () => request<ApiReturnStage | null>('/rentals/me/return-stage'),
 
     // --- maintenance ---------------------------------------------------
     maintenanceHistory: (params: MaintenanceHistoryParams = {}) =>

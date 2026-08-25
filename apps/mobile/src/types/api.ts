@@ -683,6 +683,32 @@ export interface ApiOverdueLateFee {
     isSettled: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Vehicle Return → Inspection → Payment Gate → Approve Return
+//
+// The rider's own view of the SAME state machine the admin Return Detail
+// page drives (apps/backend/src/modules/returns/returns.types.ts's
+// ReturnStage / apps/web's ReturnStage) — computed server-side so the rider
+// and admin can never see two different answers to "what's happening with
+// my return."
+// ---------------------------------------------------------------------------
+
+export type ReturnStageStatus =
+    | 'return_requested' | 'payment_required' | 'payment_submitted'
+    | 'ready_for_approval' | 'return_completed' | 'rejected';
+
+export interface ApiReturnStage {
+    status: ReturnStageStatus;
+    depositAmount: number;
+    damageAmount: number;
+    otherChargesAmount: number;
+    totalCharges: number;
+    additionalDue: number;
+    refundDue: number;
+    additionalDueInvoiceId: string | null;
+    paymentVerifiedAt: string | null;
+}
+
 export interface ApiOverdueLateFeeInvoice {
     invoiceId: string;
     amount: number;

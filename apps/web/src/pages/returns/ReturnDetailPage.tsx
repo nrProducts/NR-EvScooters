@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Plus, ShieldCheck, Trash2, Wrench, XCircle } from "lucide-react";
+import {
+  ArrowLeft, CheckCircle2, Plus, ShieldCheck, Trash2, Wrench, XCircle, Clock, CreditCard,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,11 +11,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/common/ErrorState";
-import { useReturnDetail, useApproveReturnSettlement } from "@/hooks/useReturns";
+import {
+  useReturnDetail, useSaveInspection, usePaymentReview, useVerifyReturnPayment, useApproveReturnSettlement,
+} from "@/hooks/useReturns";
 import { useMoveRideToMaintenance, useRejectReturn } from "@/hooks/useRentals";
 import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
+import type { ReturnStageStatus } from "@/types";
 
 interface DamageItemForm {
   amount: string;
@@ -25,22 +30,46 @@ interface OtherChargeForm {
   amount: string;
 }
 
+/**
+ * Vehicle Return → Inspection → Payment Gate → Approve Return.
+ *
+ * `stage.status` (computed server-side, see returns.types.ts's ReturnStage)
+ * drives which of four panels renders — the inspection form, "payment
+ * required" (waiting on the rider), "review payment" (waiting on staff to
+ * verify), or the vehicle-outcome/Approve Return step. Only the backend's
+ * settleReturn gate is the real enforcement (a return with money owed and
+ * not yet verified is rejected outright, not just hidden) — this page just
+ * makes the same rule visible before a click is wasted on it.
+ */
+const STAGE_LABEL: Record<ReturnStageStatus, string> = {
+  return_requested: "Return Requested",
+  payment_required: "Payment Required",
+  payment_submitted: "Payment Submitted",
+  ready_for_approval: "Ready for Approval",
+  return_completed: "Return Completed",
+  rejected: "Rejected",
+};
+
 export default function ReturnDetailPage() {
   const { rentalId } = useParams<{ rentalId: string }>();
   const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useReturnDetail(rentalId);
+  const saveInspection = useSaveInspection();
   const approveSettlement = useApproveReturnSettlement();
   const moveToMaintenance = useMoveRideToMaintenance();
   const rejectReturn = useRejectReturn();
 
   const [damageItems, setDamageItems] = useState<DamageItemForm[]>([]);
   const [inspectedClean, setInspectedClean] = useState(false);
-  const [lateFeeOverride, setLateFeeOverride] = useState("");
   const [otherCharges, setOtherCharges] = useState<OtherChargeForm[]>([]);
   const [outcome, setOutcome] = useState<"available" | "maintenance">("available");
   const [maintenanceNotes, setMaintenanceNotes] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [reviewingPayment, setReviewingPayment] = useState(false);
+
+  const paymentReview = usePaymentReview(rentalId, reviewingPayment);
+  const verifyPayment = useVerifyReturnPayment();
 
   if (isLoading) {
     return (
@@ -52,9 +81,12 @@ export default function ReturnDetailPage() {
   }
   if (isError || !data) return <ErrorState message="Return not found." onRetry={() => refetch()} />;
 
-  const { rental, deposit, latePreview } = data;
+  const { rental, deposit, stage } = data;
   const settlement = data.settlement;
   const alreadySettled = rental.status === "completed";
+  const stageStatus: ReturnStageStatus = alreadySettled
+    ? "return_completed"
+    : stage?.status ?? "return_requested";
 
   const itemValid = (item: DamageItemForm) => Number(item.amount) > 0 && item.description.trim().length >= 3;
   const hasDamageItems = damageItems.length > 0;
@@ -64,18 +96,15 @@ export default function ReturnDetailPage() {
   const otherChargeValid = (c: OtherChargeForm) => c.label.trim().length >= 2 && Number(c.amount) > 0;
   const otherChargesValid = otherCharges.every(otherChargeValid);
 
-  const hasLateFeeOverride = lateFeeOverride.trim().length > 0;
-  const lateFeeOverrideValid = !hasLateFeeOverride
-    || (!Number.isNaN(Number(lateFeeOverride)) && Number(lateFeeOverride) >= 0);
-
-  // Live settlement preview — mirrors the backend's exact formula
-  // (deposit - late fee - damage - other charges) so admin sees the real
-  // number before submitting.
-  const previewLateFee = hasLateFeeOverride ? Number(lateFeeOverride) : latePreview.penaltyAmount;
+  // Live preview — mirrors saveInspection's exact formula so the button
+  // label (Approve Return vs Request Payment from Rider) is right BEFORE
+  // the click, not just after. No late fee here: it's already collected
+  // upfront in the rider app (Overdue Rider → Late Fee Payment → Return
+  // gate), not charged again at inspection.
   const previewDamageFee = damageItems.filter(itemValid).reduce((sum, i) => sum + Number(i.amount), 0);
   const previewOtherCharges = otherCharges.filter(otherChargeValid).reduce((sum, c) => sum + Number(c.amount), 0);
   const depositAmount = deposit?.amount ?? 0;
-  const previewTotalCharges = previewLateFee + previewDamageFee + previewOtherCharges;
+  const previewTotalCharges = previewDamageFee + previewOtherCharges;
   const previewNet = depositAmount - previewTotalCharges;
   const previewRefund = Math.max(0, previewNet);
   const previewDue = Math.max(0, -previewNet);
@@ -92,6 +121,43 @@ export default function ReturnDetailPage() {
   const removeOtherCharge = (index: number) => setOtherCharges((items) => items.filter((_, i) => i !== index));
   const updateOtherCharge = (index: number, patch: Partial<OtherChargeForm>) =>
     setOtherCharges((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+
+  const handleSaveInspection = () => {
+    if (!rentalId) return;
+    setFormError(null);
+    saveInspection.mutate(
+      {
+        rentalId,
+        input: {
+          damageItems: damageItems.filter(itemValid).map((i) => ({
+            amount: Number(i.amount), description: i.description.trim(), photoPaths: [],
+          })),
+          otherCharges: otherCharges.filter(otherChargeValid).map((c) => ({ label: c.label.trim(), amount: Number(c.amount) })),
+        },
+      },
+      {
+        onSuccess: (result) => {
+          toastSuccess(
+            result.stage && result.stage.additionalDue > 0
+              ? "Inspection saved — payment requested from rider"
+              : "Inspection saved",
+          );
+        },
+        onError: (err) => {
+          setFormError(err instanceof ApiError ? err.message : "Something went wrong.");
+          toastError(err, "Could not save inspection");
+        },
+      },
+    );
+  };
+
+  const handleVerifyPayment = () => {
+    if (!rentalId) return;
+    verifyPayment.mutate(rentalId, {
+      onSuccess: () => toastSuccess("Payment verified — return ready for approval"),
+      onError: (err) => toastError(err, "Could not verify payment"),
+    });
+  };
 
   const handleApprove = () => {
     if (!rentalId) return;
@@ -116,16 +182,7 @@ export default function ReturnDetailPage() {
     }
 
     approveSettlement.mutate(
-      {
-        rentalId,
-        input: {
-          damageItems: damageItems.filter(itemValid).map((i) => ({
-            amount: Number(i.amount), description: i.description.trim(), photoPaths: [],
-          })),
-          lateFeeOverride: hasLateFeeOverride ? Number(lateFeeOverride) : undefined,
-          otherCharges: otherCharges.filter(otherChargeValid).map((c) => ({ label: c.label.trim(), amount: Number(c.amount) })),
-        },
-      },
+      { rentalId, input: {} },
       {
         onSuccess: () => toastSuccess("Return approved and settled"),
         onError: (err) => {
@@ -150,7 +207,8 @@ export default function ReturnDetailPage() {
     );
   };
 
-  const isPending = approveSettlement.isPending || moveToMaintenance.isPending || rejectReturn.isPending;
+  const isPending = saveInspection.isPending || approveSettlement.isPending || moveToMaintenance.isPending
+    || rejectReturn.isPending || verifyPayment.isPending;
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -168,20 +226,21 @@ export default function ReturnDetailPage() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          {/* Two SEPARATE statuses — never merge scooter-return state with financial settlement state. */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[0.6875rem] text-muted-foreground">Scooter Return:</span>
-            <StatusBadge status={alreadySettled ? "completed" : "return_requested"} />
+            <span className="text-[0.6875rem] text-muted-foreground">Return Status:</span>
+            <StageBadge status={stageStatus} />
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-[0.6875rem] text-muted-foreground">Financial Settlement:</span>
-            <StatusBadge status={settlement?.status ?? "pending_refund"} />
+            {alreadySettled
+              ? <StatusBadge status={settlement?.status ?? "pending_refund"} />
+              : <span className="text-xs font-medium">{financialSettlementLabel(stageStatus, stage?.additionalDue ?? 0)}</span>}
           </div>
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Left — Charges */}
+        {/* Left — Charges (the inspection form itself, only while it hasn't been saved yet) */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Charges / Adjustments</CardTitle>
@@ -196,14 +255,15 @@ export default function ReturnDetailPage() {
               <span className="font-semibold">{formatCurrency(depositAmount)}</span>
             </div>
 
-            {alreadySettled ? (
-              settlement && (
-                <div className="space-y-1.5 text-sm">
-                  {settlement.late_fee_amount > 0 && <SettledLine label="Late Fee" amount={settlement.late_fee_amount} />}
-                  {settlement.damage_fee_amount > 0 && <SettledLine label="Damage Fee" amount={settlement.damage_fee_amount} />}
-                  {settlement.other_charges.map((c, i) => <SettledLine key={i} label={c.label} amount={c.amount} />)}
-                </div>
-              )
+            {stageStatus !== "return_requested" ? (
+              <div className="space-y-1.5 text-sm">
+                {(alreadySettled ? settlement?.damage_fee_amount : stage?.damageAmount ?? 0)! > 0 && (
+                  <SettledLine label="Damage Fee" amount={(alreadySettled ? settlement?.damage_fee_amount : stage?.damageAmount) ?? 0} />
+                )}
+                {alreadySettled
+                  ? settlement?.other_charges.map((c, i) => <SettledLine key={i} label={c.label} amount={c.amount} />)
+                  : (stage?.otherChargesAmount ?? 0) > 0 && <SettledLine label="Other charges" amount={stage!.otherChargesAmount} />}
+              </div>
             ) : (
               <>
                 <div className="space-y-3 rounded-lg border border-border p-3">
@@ -241,21 +301,6 @@ export default function ReturnDetailPage() {
                   )}
                 </div>
 
-                <div className="space-y-2 rounded-lg border border-border p-3">
-                  <Label className="text-xs font-semibold">Late fee</Label>
-                  <p className="text-xs text-muted-foreground">
-                    {latePreview.daysLate > 0
-                      ? `System-computed: ${formatCurrency(latePreview.penaltyAmount)} (${latePreview.daysLate} day${latePreview.daysLate === 1 ? "" : "s"} late).`
-                      : "No late fee was computed for this return."}{" "}
-                    Leave blank to use the computed amount, or enter a custom figure.
-                  </p>
-                  <Input
-                    type="number" min={0} value={lateFeeOverride}
-                    placeholder={String(latePreview.penaltyAmount)}
-                    onChange={(e) => setLateFeeOverride(e.target.value)}
-                  />
-                </div>
-
                 <div className="space-y-3 rounded-lg border border-border p-3">
                   <Label className="text-xs font-semibold">Other charges</Label>
                   {otherCharges.map((c, index) => (
@@ -282,7 +327,7 @@ export default function ReturnDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Right — Settlement */}
+        {/* Right — Settlement + stage-specific action */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Final Settlement</CardTitle>
@@ -296,57 +341,31 @@ export default function ReturnDetailPage() {
                 refund={settlement.refund_amount}
                 due={settlement.due_amount}
               />
-            ) : (
+            ) : stageStatus === "return_requested" ? (
               <SettlementSummary
                 depositAmount={depositAmount}
                 totalCharges={previewTotalCharges}
                 refund={previewRefund}
                 due={previewDue}
               />
+            ) : (
+              <SettlementSummary
+                depositAmount={stage!.depositAmount}
+                totalCharges={stage!.totalCharges}
+                refund={stage!.refundDue}
+                due={stage!.additionalDue}
+              />
             )}
 
-            {!alreadySettled && (
+            {!alreadySettled && stageStatus === "return_requested" && (
               <>
-                <div className="space-y-2 pt-2">
-                  <Label className="text-xs font-semibold">Approve return — vehicle goes to</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button" onClick={() => setOutcome("available")}
-                      className={cn(
-                        "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-sm",
-                        outcome === "available" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
-                      )}
-                    >
-                      <CheckCircle2 className="h-5 w-5" /> Available
-                    </button>
-                    <button
-                      type="button" onClick={() => setOutcome("maintenance")}
-                      className={cn(
-                        "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-sm",
-                        outcome === "maintenance" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
-                      )}
-                    >
-                      <Wrench className="h-5 w-5" /> Maintenance
-                    </button>
-                  </div>
-                  {outcome === "maintenance" && (
-                    <Textarea
-                      value={maintenanceNotes} rows={2}
-                      placeholder="e.g. Front brake noise reported by rider"
-                      onChange={(e) => setMaintenanceNotes(e.target.value)}
-                    />
-                  )}
-                  <Button
-                    className="w-full"
-                    disabled={
-                      isPending || !damageValid || !hasInspection || !lateFeeOverrideValid || !otherChargesValid
-                      || (outcome === "maintenance" && maintenanceNotes.trim().length < 3)
-                    }
-                    onClick={handleApprove}
-                  >
-                    Approve Return
-                  </Button>
-                </div>
+                <Button
+                  className="w-full"
+                  disabled={isPending || !damageValid || !hasInspection || !otherChargesValid}
+                  onClick={handleSaveInspection}
+                >
+                  {previewDue > 0 ? "Request Payment from Rider" : "Approve Return"}
+                </Button>
 
                 <div className="space-y-2 border-t border-border pt-3">
                   <Label className="text-xs font-semibold">Reject return — reason</Label>
@@ -363,13 +382,149 @@ export default function ReturnDetailPage() {
                     <XCircle className="h-4 w-4" /> Reject Return
                   </Button>
                 </div>
-
-                {formError && <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{formError}</p>}
               </>
             )}
+
+            {!alreadySettled && stageStatus === "payment_required" && (
+              <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
+                <div className="mb-1 flex items-center gap-2 text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  <span className="font-semibold">Waiting on the rider</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  The rider has been notified. This page updates once they pay — no action needed here yet.
+                </p>
+              </div>
+            )}
+
+            {!alreadySettled && stageStatus === "payment_submitted" && (
+              <>
+                <Button className="w-full" onClick={() => setReviewingPayment(true)}>
+                  <CreditCard className="h-4 w-4" /> Review Payment
+                </Button>
+                {reviewingPayment && (
+                  <PaymentReviewPanel
+                    review={paymentReview.data}
+                    isLoading={paymentReview.isLoading}
+                    onVerify={handleVerifyPayment}
+                    verifying={verifyPayment.isPending}
+                  />
+                )}
+              </>
+            )}
+
+            {!alreadySettled && stageStatus === "ready_for_approval" && (
+              <div className="space-y-2 pt-2">
+                <Label className="text-xs font-semibold">Approve return — vehicle goes to</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button" onClick={() => setOutcome("available")}
+                    className={cn(
+                      "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-sm",
+                      outcome === "available" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
+                    )}
+                  >
+                    <CheckCircle2 className="h-5 w-5" /> Available
+                  </button>
+                  <button
+                    type="button" onClick={() => setOutcome("maintenance")}
+                    className={cn(
+                      "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-sm",
+                      outcome === "maintenance" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
+                    )}
+                  >
+                    <Wrench className="h-5 w-5" /> Maintenance
+                  </button>
+                </div>
+                {outcome === "maintenance" && (
+                  <Textarea
+                    value={maintenanceNotes} rows={2}
+                    placeholder="e.g. Front brake noise reported by rider"
+                    onChange={(e) => setMaintenanceNotes(e.target.value)}
+                  />
+                )}
+                <Button
+                  className="w-full"
+                  disabled={isPending || (outcome === "maintenance" && maintenanceNotes.trim().length < 3)}
+                  onClick={handleApprove}
+                >
+                  Approve Return
+                </Button>
+              </div>
+            )}
+
+            {formError && <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{formError}</p>}
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function financialSettlementLabel(status: ReturnStageStatus, additionalDue: number): string {
+  switch (status) {
+    case "payment_required": return `${formatCurrency(additionalDue)} Due`;
+    case "payment_submitted": return "Payment Review Required";
+    case "ready_for_approval": return additionalDue > 0 ? "Payment Verified" : "No Amount Due";
+    default: return "—";
+  }
+}
+
+function StageBadge({ status }: { status: ReturnStageStatus }) {
+  const tone: Record<ReturnStageStatus, string> = {
+    return_requested: "bg-muted text-muted-foreground",
+    payment_required: "bg-destructive/10 text-destructive",
+    payment_submitted: "bg-warning/10 text-warning",
+    ready_for_approval: "bg-success/10 text-success",
+    return_completed: "bg-success/10 text-success",
+    rejected: "bg-destructive/10 text-destructive",
+  };
+  return (
+    <span className={cn("rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold", tone[status])}>
+      {STAGE_LABEL[status]}
+    </span>
+  );
+}
+
+function PaymentReviewPanel({
+  review, isLoading, onVerify, verifying,
+}: {
+  review: import("@/types").PaymentReviewView | undefined;
+  isLoading: boolean;
+  onVerify: () => void;
+  verifying: boolean;
+}) {
+  if (isLoading || !review) {
+    return <Skeleton className="h-32 w-full" />;
+  }
+  return (
+    <div className="space-y-2 rounded-lg border border-border p-3 text-sm">
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">Amount</span>
+        <span className="font-semibold">{formatCurrency(review.amount)}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">Reference</span>
+        <span className="font-mono text-xs">{review.reference ?? "—"}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">Paid at</span>
+        <span>{review.paidAt ? formatDateTime(review.paidAt) : "—"}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">Status</span>
+        <span className="font-semibold capitalize">{review.status}</span>
+      </div>
+      {review.status === "paid" && (
+        <Button className="w-full" onClick={onVerify} disabled={verifying}>
+          {verifying ? "Verifying..." : "Verify Payment"}
+        </Button>
+      )}
+      {review.status === "unpaid" && (
+        <p className="text-xs text-destructive">
+          This payment has not been captured yet. The rider can retry payment from the app.
+        </p>
+      )}
     </div>
   );
 }

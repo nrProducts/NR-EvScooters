@@ -36,6 +36,12 @@ router.get(
 // "Scooter Returned Successfully" / "Amount Due" card. See returns.service.ts.
 router.get("/me/settlement", asyncHandler(c.mySettlementHandler));
 
+// Vehicle Return → Inspection → Payment Gate → Approve Return, from the
+// rider's own side — Payment Required/Submitted/Ready for Approval/
+// Completed. Same derivation the admin Return Detail page uses (returns
+// .service.ts's computeReturnStage), so the two can never disagree.
+router.get("/me/return-stage", asyncHandler(c.myReturnStageHandler));
+
 // Overdue Rider → Late Fee Payment → Scooter Return gate. GET is a pure
 // preview (safe on every screen load); POST creates/reuses the payable
 // invoice, which the rider then pays through the normal

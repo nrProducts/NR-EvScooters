@@ -948,12 +948,41 @@ export interface ReturnSettlement {
   processed_at: string | null;
 }
 
+/**
+ * Vehicle Return → Inspection → Payment Gate → Approve Return. Computed
+ * server-side — see apps/backend/src/modules/returns/returns.types.ts's
+ * ReturnStage for the full derivation.
+ */
+export type ReturnStageStatus =
+  | "return_requested" | "payment_required" | "payment_submitted"
+  | "ready_for_approval" | "return_completed" | "rejected";
+
+export interface ReturnStage {
+  status: ReturnStageStatus;
+  depositAmount: number;
+  damageAmount: number;
+  otherChargesAmount: number;
+  totalCharges: number;
+  additionalDue: number;
+  refundDue: number;
+  additionalDueInvoiceId: string | null;
+  paymentVerifiedAt: string | null;
+}
+
+export interface PaymentReviewView {
+  invoiceId: string;
+  amount: number;
+  reference: string | null;
+  paidAt: string | null;
+  status: "unpaid" | "paid" | "verified";
+}
+
 export interface ReturnDetail {
   rental: AdminRental;
   deposit: Deposit | null;
   damages: Damage[];
-  latePreview: { daysLate: number; penaltyAmount: number; feePerDay: number };
   settlement: ReturnSettlement | null;
+  stage: ReturnStage | null;
 }
 
 // ---------------------------------------------------------------------------

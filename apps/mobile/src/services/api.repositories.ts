@@ -5,7 +5,7 @@ import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
-    ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
+    ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, ListVehicleModelsParams,
     MaintenanceHistoryParams, Paginated, ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
 } from '../types/api';
@@ -221,6 +221,9 @@ export class ApiRentalRepository implements RentalRepository {
     }
     payOverdueLateFee(): Promise<ApiOverdueLateFeeInvoice> {
         return api.payMyOverdueLateFee();
+    }
+    returnStage(): Promise<ApiReturnStage | null> {
+        return api.myReturnStage();
     }
 }
 

@@ -2043,6 +2043,7 @@ export type Database = {
       }
       rental_returns: {
         Row: {
+          additional_due_invoice_id: string | null
           approved_at: string | null
           approved_by_user_id: string | null
           created_at: string
@@ -2050,6 +2051,10 @@ export type Database = {
           inspected_at: string | null
           inspected_by_user_id: string | null
           inspection_notes: string | null
+          late_fee_amount: number | null
+          other_charges_amount: number | null
+          payment_verified_at: string | null
+          payment_verified_by_user_id: string | null
           rejected_at: string | null
           rejected_by_user_id: string | null
           rejection_reason: string | null
@@ -2061,6 +2066,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          additional_due_invoice_id?: string | null
           approved_at?: string | null
           approved_by_user_id?: string | null
           created_at?: string
@@ -2068,6 +2074,10 @@ export type Database = {
           inspected_at?: string | null
           inspected_by_user_id?: string | null
           inspection_notes?: string | null
+          late_fee_amount?: number | null
+          other_charges_amount?: number | null
+          payment_verified_at?: string | null
+          payment_verified_by_user_id?: string | null
           rejected_at?: string | null
           rejected_by_user_id?: string | null
           rejection_reason?: string | null
@@ -2079,6 +2089,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          additional_due_invoice_id?: string | null
           approved_at?: string | null
           approved_by_user_id?: string | null
           created_at?: string
@@ -2086,6 +2097,10 @@ export type Database = {
           inspected_at?: string | null
           inspected_by_user_id?: string | null
           inspection_notes?: string | null
+          late_fee_amount?: number | null
+          other_charges_amount?: number | null
+          payment_verified_at?: string | null
+          payment_verified_by_user_id?: string | null
           rejected_at?: string | null
           rejected_by_user_id?: string | null
           rejection_reason?: string | null
@@ -2098,6 +2113,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "rental_returns_additional_due_invoice_id_fkey"
+            columns: ["additional_due_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "rental_returns_approved_by_user_id_fkey"
             columns: ["approved_by_user_id"]
             isOneToOne: false
@@ -2107,6 +2129,13 @@ export type Database = {
           {
             foreignKeyName: "rental_returns_inspected_by_user_id_fkey"
             columns: ["inspected_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_returns_payment_verified_by_user_id_fkey"
+            columns: ["payment_verified_by_user_id"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]

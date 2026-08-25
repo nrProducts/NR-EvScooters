@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, View } from 'react-native';
 import { COLORS } from '../constants/theme';
 import { rentalRepository } from '../services';
+import { useAuthStore } from '../store/useAuthStore';
 import { LateFeePaymentModal } from './LateFeePaymentModal';
 import { ReturnScooterModal } from './ReturnScooterModal';
 import type { ApiOverdueLateFee, ApiRental } from '../types/api';
@@ -69,7 +70,19 @@ export const ReturnGate: React.FC<ReturnGateProps> = ({ visible, rental, onClose
         rental={rental}
         lateFee={lateFee}
         onClose={onClose}
-        onPaid={() => setLateFee({ ...lateFee, isSettled: true })}
+        onPaid={() => {
+          setLateFee({ ...lateFee, isSettled: true });
+          // The local patch above only unblocks THIS gate's own next step
+          // (revealing the return form). Elsewhere in the app — the plan
+          // status badge, the "Overdue"/vehicle-lock banner on Home and
+          // Billing — nothing else knows the late fee was just paid until
+          // something refetches rental/profile state. onSubmitted is wired
+          // to the caller's full reload (home.tsx's loadRental, my-scooter
+          // .tsx's reload()) for exactly this "something changed, refresh
+          // everything" purpose, not only for an actual return submission.
+          void useAuthStore.getState().refreshProfile();
+          onSubmitted?.();
+        }}
       />
     );
   }

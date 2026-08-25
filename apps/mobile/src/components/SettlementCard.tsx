@@ -73,6 +73,11 @@ export function SettlementCard({
         theme: { color: COLORS.primary },
       });
       await billingRepository.verifyPayment(verifyPayload);
+      // onPaid() (loadSettlement) alone only refreshes this card's own data.
+      // The return status card sitting right next to it, and any
+      // has_active_rental-driven badge elsewhere, need their own refresh —
+      // same reasoning as the late-fee gate's onPaid handler.
+      void useAuthStore.getState().refreshProfile();
       onPaid();
     } catch (err) {
       if (err instanceof PaymentCancelledError || err instanceof PaymentUnavailableError) {

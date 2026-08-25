@@ -101,7 +101,7 @@ async function findAdhocInvoice(
  * rolls over to a new fiscal year and then fail outright, so this looks up
  * whichever series is actually active instead.
  */
-async function activeInvoiceSeriesCode(): Promise<string> {
+export async function activeInvoiceSeriesCode(): Promise<string> {
     const { data, error } = await supabaseAdmin
         .from("invoice_series")
         .select("code")

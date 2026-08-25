@@ -1128,9 +1128,33 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
         return;
     }
 
+    // The rider must be told what the payment was actually FOR — "your
+    // rental is active" is only true for a rental/renewal payment. An
+    // overdue-late-fee payment ('adhoc' — see overdueLateFee.ts) and a
+    // return-settlement payment ('settlement' — the additional amount due
+    // from damage/other charges, see returns.service.ts) are both still
+    // mid-return: the rider is waiting on something else to happen next,
+    // not riding. Reusing the generic copy for those told a rider mid-return
+    // that their rental was "active" while they were actually waiting on
+    // admin to verify a payment and complete the return.
+    const paymentSuccessCopy = invoice?.purpose === "adhoc"
+        ? {
+            title: "Late Fee Payment Successful",
+            body: "Your late fee has been paid successfully. Your return is being processed.",
+        }
+        : invoice?.purpose === "settlement"
+            ? {
+                title: "Payment Successful",
+                body: "Your additional return amount has been paid successfully. Your vehicle return is awaiting admin verification.",
+            }
+            : {
+                title: "Payment Successful",
+                body: "Payment successful. Your rental is active.",
+            };
+
     await notifyUser(order.user_id, {
-        template: "payment_success", title: "Payment Successful",
-        body: "Payment successful. Your rental is active.", screen: "payments",
+        template: "payment_success", title: paymentSuccessCopy.title,
+        body: paymentSuccessCopy.body, screen: "payments",
     });
 
     await notify({

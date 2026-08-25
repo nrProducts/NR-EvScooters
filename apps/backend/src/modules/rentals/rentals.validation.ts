@@ -19,15 +19,8 @@ export const listRentalsQuery = z.object({
     recoveryRequired: z.coerce.boolean().optional(),
 });
 
-/**
- * `late_fee_override` lets staff customise the settled late fee instead of
- * accepting computeLateReturnPenalty's flat per-day amount — e.g. waiving it
- * (0) for a rider-side extenuating circumstance, or charging more for a
- * repeat offender. Omitted entirely, the computed amount applies unchanged.
- */
 export const completeRideBody = z.object({
     end_battery_pct: z.coerce.number().min(0).max(100).optional(),
-    late_fee_override: z.coerce.number().min(0).max(100_000).optional(),
     // Confirms a clean physical inspection when no damage was recorded —
     // required whenever a held deposit exists and inspected_at isn't already
     // stamped by recordDamage. See assertInspected() in rentals.service.ts.
@@ -37,7 +30,6 @@ export const completeRideBody = z.object({
 export const moveToMaintenanceBody = z.object({
     description: z.string().trim().min(3, "Describe the issue.").max(1000),
     end_battery_pct: z.coerce.number().min(0).max(100).optional(),
-    late_fee_override: z.coerce.number().min(0).max(100_000).optional(),
     inspected: z.boolean().optional(),
 });
 

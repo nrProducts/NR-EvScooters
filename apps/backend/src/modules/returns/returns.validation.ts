@@ -13,10 +13,14 @@ const otherChargeSchema = z.object({
     amount: z.number().positive("Charge amount must be greater than 0."),
 });
 
-export const approveReturnSettlementBody = z.object({
+/** Admin Inspection — "Save Inspection" / "Request Payment from Rider". */
+export const saveInspectionBody = z.object({
     damageItems: z.array(damageItemSchema).default([]),
-    lateFeeOverride: z.number().min(0).optional(),
     otherCharges: z.array(otherChargeSchema).default([]),
+});
+export type SaveInspectionBody = z.infer<typeof saveInspectionBody>;
+
+export const approveReturnSettlementBody = z.object({
     endBatteryPct: z.number().min(0).max(100).optional(),
 });
 export type ApproveReturnSettlementBody = z.infer<typeof approveReturnSettlementBody>;

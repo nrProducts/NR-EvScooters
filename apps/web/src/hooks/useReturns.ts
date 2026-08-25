@@ -9,6 +9,37 @@ export function useReturnDetail(rentalId: string | undefined) {
   });
 }
 
+export function useSaveInspection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rentalId, input }: { rentalId: string; input: api.SaveInspectionInput }) =>
+      api.saveInspection(rentalId, input),
+    onSuccess: (_data, { rentalId }) => {
+      qc.invalidateQueries({ queryKey: ["return-detail", rentalId] });
+      qc.invalidateQueries({ queryKey: ["pickup-queue"] });
+    },
+  });
+}
+
+export function usePaymentReview(rentalId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["return-payment", rentalId],
+    queryFn: () => api.fetchPaymentReview(rentalId!),
+    enabled: !!rentalId && enabled,
+  });
+}
+
+export function useVerifyReturnPayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rentalId: string) => api.verifyReturnPayment(rentalId),
+    onSuccess: (_data, rentalId) => {
+      qc.invalidateQueries({ queryKey: ["return-detail", rentalId] });
+      qc.invalidateQueries({ queryKey: ["return-payment", rentalId] });
+    },
+  });
+}
+
 export function useApproveReturnSettlement() {
   const qc = useQueryClient();
   return useMutation({

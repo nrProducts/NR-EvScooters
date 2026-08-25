@@ -155,14 +155,12 @@ export interface ListRentalsFilters {
 
 export interface CompleteRideInput {
     end_battery_pct?: number;
-    /** Staff-customised late fee; omitted means "use the computed amount". */
-    late_fee_override?: number;
     /** Confirms a clean physical inspection when no damage was recorded. See assertInspected(). */
     inspected?: boolean;
     /**
-     * Ad-hoc charges the full return review adds on top of late fee and
-     * damage (cleaning, a missing helmet). Only the return-settlement path
-     * supplies it; a plain completeRide leaves it zero.
+     * Ad-hoc charges the full return review adds on top of damage (cleaning,
+     * a missing helmet). Only the return-settlement path supplies it; a
+     * plain completeRide leaves it zero.
      */
     other_charges_amount?: number;
 }
@@ -170,6 +168,5 @@ export interface CompleteRideInput {
 export interface MoveToMaintenanceInput {
     description: string;
     end_battery_pct?: number;
-    late_fee_override?: number;
     inspected?: boolean;
 }

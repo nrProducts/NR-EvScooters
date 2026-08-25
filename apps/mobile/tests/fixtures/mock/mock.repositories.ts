@@ -8,7 +8,7 @@ import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
     ApiAvailability, ApiBooking, ApiDocument, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
-    ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl,
+    ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl,
     ApiStation, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, BookingRefundStatus, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
     KycStatus, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
@@ -1124,6 +1124,12 @@ export class MockRentalRepository implements RentalRepository {
 
     async payOverdueLateFee(): Promise<ApiOverdueLateFeeInvoice> {
         throw new Error('payOverdueLateFee: mock mode never has an overdue late fee to pay.');
+    }
+
+    // Mock mode never simulates a return going through admin inspection.
+    async returnStage(): Promise<ApiReturnStage | null> {
+        await delay(100);
+        return null;
     }
 }
 

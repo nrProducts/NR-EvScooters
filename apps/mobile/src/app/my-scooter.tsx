@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Spinner } from '../components/Spinner';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -66,7 +66,11 @@ export default function MyScooterScreen() {
   );
 
   // Same settlement card Home shows — fetched here too so a rider who lands
-  // straight on My Scooter after a return still sees it, not just an empty state.
+  // straight on My Scooter after a return still sees it, not just an empty
+  // state. Always fetched, not just when state.kind === 'none': a return in
+  // Payment Required/Submitted keeps the rental (state.kind === 'rental')
+  // active until Approve Return completes it, so gating this on "no rental"
+  // was clearing the very settlement it needed to show.
   const [settlement, setSettlement] = useState<ApiReturnSettlement | null>(null);
   const loadSettlement = () => {
     void rentalRepository.settlement().then(setSettlement).catch(() => {
@@ -74,9 +78,26 @@ export default function MyScooterScreen() {
     });
   };
   useEffect(() => {
-    if (state.kind === 'none') loadSettlement();
-    else setSettlement(null);
+    loadSettlement();
   }, [state.kind]);
+
+  // Neither reload() (via state.kind changing) nor loadSettlement re-fires on
+  // its own on every focus — only when has_active_rental/state.kind actually
+  // change, which they don't throughout Payment Required/Submitted (the
+  // rental stays active the whole time). Without this, a rider sitting on
+  // this screen while admin's inspection creates the outstanding-amount
+  // invoice never sees it. Refs sidestep the stale-closure trap billing.tsx's
+  // reloadRef also solves.
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  const loadSettlementRef = useRef(loadSettlement);
+  loadSettlementRef.current = loadSettlement;
+  useFocusEffect(
+    useCallback(() => {
+      void reloadRef.current();
+      loadSettlementRef.current();
+    }, []),
+  );
 
   // Catalog artwork, reused from the same zustand singleton Home populates —
   // the rental payload carries no image of its own. Loading here covers a
@@ -205,6 +226,13 @@ export default function MyScooterScreen() {
                   tone={RENTAL_STATUS_TONE[state.rental.status]}
                 />,
               )}
+
+              {/* A return in Payment Required/Submitted keeps the rental (and
+                  vehicle) with the rider until Approve Return completes it —
+                  so this can't wait for the "no active rental" branch below. */}
+              {shouldShowSettlement(settlement) ? (
+                <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
+              ) : null}
 
               <View
                 className="rounded-2xl border overflow-hidden"

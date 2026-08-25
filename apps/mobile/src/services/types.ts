@@ -2,7 +2,7 @@ import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
-    ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
+    ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, KycDocType,
     ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
     UpdateUserPayload, VerifyPaymentPayload,
@@ -142,6 +142,8 @@ export interface RentalRepository {
     overdueLateFee(): Promise<ApiOverdueLateFee>;
     /** Creates (or reuses) the payable invoice for the overdue late fee — pay it via billingRepository.createOrderForInvoice. */
     payOverdueLateFee(): Promise<ApiOverdueLateFeeInvoice>;
+    /** Vehicle Return → Inspection → Payment Gate → Approve Return, from the rider's own side. Null once there's no return to report on. */
+    returnStage(): Promise<ApiReturnStage | null>;
 }
 
 export interface MaintenanceRepository {

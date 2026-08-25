@@ -32,6 +32,7 @@ export type AuditAction =
     | "notification.broadcast" | "notification_setting.updated"
     | "invoice.refunded"
     | "rental.completed" | "rental.moved_to_maintenance" | "rental.return_requested" | "rental.return_rejected"
+    | "return.inspected" | "return.payment_verified"
     | "referral.redeemed" | "referral.qualified"
     | "payment.order_created" | "payment.verified" | "payment.failed" | "payment.webhook_received"
     // Added with the payment hardening work. `unallocated_surplus` and

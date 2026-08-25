@@ -49,6 +49,7 @@ const RETURN_EMBED = `
     rental_returns(
         requested_at, requested_reason, rider_notes, due_back_at, status,
         approved_at, inspected_at,
+        late_fee_amount, other_charges_amount, additional_due_invoice_id, payment_verified_at,
         approved_by:users!approved_by_user_id(id, full_name),
         inspected_by:users!inspected_by_user_id(id, full_name)
     )
@@ -211,6 +212,10 @@ interface RawReturn {
     status: string;
     approved_at: string | null;
     inspected_at: string | null;
+    late_fee_amount: number | string | null;
+    other_charges_amount: number | string | null;
+    additional_due_invoice_id: string | null;
+    payment_verified_at: string | null;
     approved_by: unknown;
     inspected_by: unknown;
 }
@@ -713,6 +718,23 @@ async function assertInspected(before: RawRentalRow, input: { inspected?: boolea
 }
 
 /**
+ * Damage summed from the incidents raised against this rental. Disputed
+ * damage is excluded — it is not yet a charge anyone owes. Exported so
+ * returns.service.ts's saveInspection/getReturnDetail compute the exact same
+ * figure settleReturn will ultimately charge, rather than a number that can
+ * drift from it.
+ */
+export async function damageAmountFor(rentalId: string): Promise<number> {
+    const { data: damageRows, error } = await supabaseAdmin
+        .from("damages")
+        .select("assessed_amount, status, incidents!inner(rental_id)")
+        .eq("incidents.rental_id", rentalId)
+        .neq("status", "disputed");
+    if (error) throw error;
+    return Math.round((damageRows ?? []).reduce((sum, d) => sum + Number(d.assessed_amount), 0) * 100) / 100;
+}
+
+/**
  * Closes the open return and writes the settlement.
  *
  * Shared by completeRide and moveRideToMaintenance so the two can't drift —
@@ -726,18 +748,30 @@ async function assertInspected(before: RawRentalRow, input: { inspected?: boolea
  */
 async function settleReturn(
     before: RawRentalRow,
-    input: { late_fee_override?: number; inspected?: boolean; other_charges_amount?: number },
+    input: { inspected?: boolean; other_charges_amount?: number },
     actor: AuthContext,
     settledAt: Date,
-): Promise<{ charge: LateReturnCharge; overridden: boolean }> {
+): Promise<void> {
     const ret = openReturn(before.rental_returns);
-    const dueAt = effectiveDueAt({
-        return_due_at: ret?.due_back_at ?? null,
-        expires_at: before.due_back_at,
-    });
-    const { max_late_fee_days, late_fee_per_day } = await getReturnRecoverySettings();
-    const charge = computeLateReturnPenalty({ returnDueAt: dueAt, maxDays: max_late_fee_days, feePerDay: late_fee_per_day });
-    const lateFee = input.late_fee_override ?? charge.penaltyAmount;
+
+    // Critical Validation (Overdue Rider → Return spec): a return with a
+    // staged additional-amount-due invoice cannot be approved until that
+    // invoice is paid AND an admin has explicitly verified it — the invoice
+    // being merely paid is not enough on its own. Enforced here, not just in
+    // returns.service.ts, so completeRide can never be used as a side door
+    // around the gate.
+    if (ret?.additional_due_invoice_id && !ret.payment_verified_at) {
+        throw businessRule(
+            "The rider's outstanding additional amount must be paid and verified before this return can be approved.",
+        );
+    }
+
+    // The return-LATENESS fee (the scooter itself coming back late) is
+    // deliberately not charged here — the rider-facing renewal late fee
+    // (Overdue Rider → Late Fee Payment → Return gate, overdueLateFee.ts) is
+    // now the only late fee this system collects; removed per admin request
+    // rather than double-charging for lateness two different ways.
+    const lateFee = 0;
 
     if (ret) {
         const { error } = await supabaseAdmin
@@ -755,21 +789,15 @@ async function settleReturn(
         if (error) throw error;
     }
 
-    // Damage is summed from the incidents raised against this rental, not
-    // passed in: whichever path settles the return — a plain completeRide or
-    // the full review in returns.service.ts — must produce the same figure.
-    // Disputed damage is excluded; it is not yet a charge anyone owes.
-    const { data: damageRows, error: damageError } = await supabaseAdmin
-        .from("damages")
-        .select("assessed_amount, status, incidents!inner(rental_id)")
-        .eq("incidents.rental_id", before.id)
-        .neq("status", "disputed");
-    if (damageError) throw damageError;
-    const damageAmount = Math.round(
-        (damageRows ?? []).reduce((sum, d) => sum + Number(d.assessed_amount), 0) * 100,
-    ) / 100;
+    const damageAmount = await damageAmountFor(before.id);
 
-    const otherCharges = input.other_charges_amount ?? 0;
+    // Inspection (returns.service.ts's saveInspection) stages other_charges_amount
+    // on the return row itself once it has run; that value wins over whatever
+    // completeRide was called with directly, since the review flow is
+    // authoritative once it has happened.
+    const otherCharges = ret?.other_charges_amount != null
+        ? Number(ret.other_charges_amount)
+        : input.other_charges_amount ?? 0;
 
     const deposit = await getDepositForSubscriptionOrNull(before.subscription_id);
     const depositAmount = deposit?.amount ?? 0;
@@ -787,12 +815,14 @@ async function settleReturn(
         total_charges_amount: totalCharges,
         net_amount: netAmount,
         outcome: netAmount > 0 ? "refund_due" : netAmount < 0 ? "amount_due" : "balanced",
+        // The due invoice was already raised (and, per the gate above, paid
+        // and verified) at inspection time — reuse it rather than minting a
+        // second one for the same debt.
+        invoice_id: netAmount < 0 ? ret?.additional_due_invoice_id ?? null : null,
     });
     if (settlementError && (settlementError as { code?: string }).code !== "23505") {
         throw settlementError;
     }
-
-    return { charge: { ...charge, penaltyAmount: lateFee }, overridden: input.late_fee_override !== undefined };
 }
 
 /**
@@ -826,7 +856,7 @@ export async function completeRide(
     await assertInspected(before, input);
 
     const endedAt = new Date();
-    const { charge, overridden } = await settleReturn(before, input, actor, endedAt);
+    await settleReturn(before, input, actor, endedAt);
 
     const { error } = await supabaseAdmin
         .from("rentals")
@@ -867,22 +897,14 @@ export async function completeRide(
         entityType: "rental",
         entityId: id,
         before: { status: "active" },
-        after: {
-            status: "completed",
-            days_late: charge.daysLate,
-            late_penalty_amount: charge.penaltyAmount,
-            late_fee_overridden: overridden,
-            had_deadline: charge.hadDeadline,
-        },
+        after: { status: "completed" },
     });
 
     if (rider) {
         await notifyUser(rider.id, {
             template: "rental_completed",
             title: "Ride Completed",
-            body: charge.penaltyAmount > 0
-                ? `Thanks for returning your scooter. It came back ${charge.daysLate} day(s) late, so a ₹${charge.penaltyAmount} late fee was recorded.`
-                : "Thanks for returning your scooter. No late fee was applied.",
+            body: "Thanks for returning your scooter.",
             screen: "booking-history",
         });
     }
@@ -909,7 +931,7 @@ export async function moveRideToMaintenance(
     await assertInspected(before, input);
 
     const endedAt = new Date();
-    const { charge, overridden } = await settleReturn(before, input, actor, endedAt);
+    await settleReturn(before, input, actor, endedAt);
 
     const { error: rentalError } = await supabaseAdmin
         .from("rentals")
@@ -953,10 +975,6 @@ export async function moveRideToMaintenance(
             status: "completed",
             maintenance_ticket_id: ticket.id,
             description: input.description,
-            days_late: charge.daysLate,
-            late_penalty_amount: charge.penaltyAmount,
-            late_fee_overridden: overridden,
-            had_deadline: charge.hadDeadline,
         },
     });
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
@@ -258,20 +258,39 @@ export default function HomeScreen() {
 
   useEffect(loadRental, [profile?.has_active_rental]);
 
-  // Only relevant once there's no active rental to show instead (a return
-  // just happened, or one is still being paid off) — fetched alongside the
-  // rental so the settlement card and the rental card never show together.
+  // Always fetched, active rental or not: a return's additional-amount-due
+  // (Payment Required / Payment Submitted) exists WHILE the rental is still
+  // active — the vehicle stays with the rider until Approve Return actually
+  // completes it — so this can no longer be skipped just because
+  // has_active_rental is true. Only a completed-settlement refund summary
+  // was ever exclusive with an active rental; an outstanding amount is not.
   const loadSettlement = () => {
-    if (profile?.has_active_rental) {
-      setSettlement(null);
-      return;
-    }
     void rentalRepository.settlement().then(setSettlement).catch(() => {
       // Non-critical: the rest of Home renders fine without the settlement.
     });
   };
 
   useEffect(loadSettlement, [profile?.has_active_rental]);
+
+  // Neither loadRental nor loadSettlement re-runs on its own once
+  // has_active_rental is already true and stays true — exactly the case
+  // throughout Payment Required/Submitted, where the rental stays active
+  // the whole time. Without this, a rider who has Home open (or returns to
+  // it) while admin's inspection creates the outstanding-amount invoice
+  // never sees it until something unrelated flips has_active_rental. Refs
+  // sidestep the stale-closure trap `reloadRef` also solves in billing.tsx:
+  // an empty-deps callback would freeze the FIRST render's loadRental/
+  // loadSettlement forever.
+  const loadRentalRef = useRef(loadRental);
+  loadRentalRef.current = loadRental;
+  const loadSettlementRef = useRef(loadSettlement);
+  loadSettlementRef.current = loadSettlement;
+  useFocusEffect(
+    useCallback(() => {
+      loadRentalRef.current();
+      loadSettlementRef.current();
+    }, []),
+  );
 
   const handleCancelBooking = async () => {
     if (!pendingBooking) return;
@@ -441,14 +460,22 @@ export default function HomeScreen() {
           />
         ) : null}
 
+        {/* Outstanding-amount and refund/settlement status both live here,
+            independent of whether the rental itself is still active — a
+            return in Payment Required keeps the rental (and the vehicle)
+            with the rider until Approve Return actually completes it, so
+            this can't be gated behind "no active rental" the way the
+            post-completion refund summary used to be. */}
+        {shouldShowSettlement(settlement) ? (
+          <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
+        ) : null}
+
         {activeRental ? (
           <PlanStatusCard
             rental={activeRental}
             onRenew={() => router.push('/billing')}
             onReturn={() => setShowReturn(true)}
           />
-        ) : shouldShowSettlement(settlement) ? (
-          <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
         ) : null}
 
         {/* One slot, two audiences: discovery for a rider who can still book,

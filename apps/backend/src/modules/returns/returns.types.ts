@@ -66,13 +66,46 @@ export interface ReturnSettlementRow {
     processed_at: string | null;
 }
 
+/**
+ * Vehicle Return → Inspection → Payment Gate → Approve Return.
+ *
+ * Computed server-side, layered on top of the existing `rental_returns
+ * .status` enum (requested/inspected/approved/rejected) rather than a new
+ * stored column — everything needed to derive it (inspected_at, the staged
+ * late_fee_amount/other_charges_amount, additional_due_invoice_id,
+ * payment_verified_at, and whether that invoice is actually paid) already
+ * exists once inspection has been saved.
+ */
+export type ReturnStageStatus =
+    | "return_requested"
+    | "payment_required"
+    | "payment_submitted"
+    | "ready_for_approval"
+    | "return_completed"
+    | "rejected";
+
+export interface ReturnStage {
+    status: ReturnStageStatus;
+    depositAmount: number;
+    damageAmount: number;
+    otherChargesAmount: number;
+    totalCharges: number;
+    /** > 0 only once inspected and charges exceed the deposit. */
+    additionalDue: number;
+    /** > 0 only once inspected and the deposit exceeds charges. */
+    refundDue: number;
+    additionalDueInvoiceId: string | null;
+    paymentVerifiedAt: string | null;
+}
+
 /** Everything the admin Return Detail page needs in one call. */
 export interface ReturnDetailView {
     rental: AdminRentalRow;
     deposit: DepositRow | null;
     damages: DamageRow[];
-    latePreview: { daysLate: number; penaltyAmount: number; feePerDay: number };
     settlement: ReturnSettlementRow | null;
+    /** Null once there is no return at all (nothing ever requested). */
+    stage: ReturnStage | null;
 }
 
 export interface DamageItemInput {
@@ -81,10 +114,26 @@ export interface DamageItemInput {
     photoPaths: string[];
 }
 
-export interface ApproveReturnSettlementInput {
+/**
+ * Admin Inspection — "Save Inspection" / "Request Payment from Rider" are
+ * the SAME action; which one the button is labelled is a live preview the
+ * frontend computes from these same numbers before submitting.
+ */
+export interface SaveInspectionInput {
     damageItems: DamageItemInput[];
-    lateFeeOverride?: number;
     otherCharges: OtherCharge[];
+}
+
+export interface PaymentReviewView {
+    invoiceId: string;
+    amount: number;
+    /** Gateway payment id — the transaction/reference id the spec asks to display. */
+    reference: string | null;
+    paidAt: string | null;
+    status: "unpaid" | "paid" | "verified";
+}
+
+export interface ApproveReturnSettlementInput {
     endBatteryPct?: number;
 }
 
