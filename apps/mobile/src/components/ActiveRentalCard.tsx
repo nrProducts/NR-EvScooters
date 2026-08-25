@@ -53,6 +53,7 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
   // regardless; disabling here is just so a rider isn't let into the return
   // form only to be rejected at submit.
   const canReturn = canReturnYet(rental.next_due_at);
+  const lateReturnFeePerDay = rental.late_return_fee_per_day ?? LATE_RETURN_FEE_PER_DAY;
 
   return (
     <View
@@ -135,8 +136,8 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
             </View>
             <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed">
               {expiry!.daysLeft < 0
-                ? `A ₹${LATE_RETURN_FEE_PER_DAY}/day late fee is building up, and will be charged when our team confirms the handover.`
-                : `Return it by then, or a ₹${LATE_RETURN_FEE_PER_DAY}/day late fee applies.`}
+                ? `A ₹${lateReturnFeePerDay}/day late fee is building up, and will be charged when our team confirms the handover.`
+                : `Return it by then, or a ₹${lateReturnFeePerDay}/day late fee applies.`}
             </Text>
           </View>
         ) : null}

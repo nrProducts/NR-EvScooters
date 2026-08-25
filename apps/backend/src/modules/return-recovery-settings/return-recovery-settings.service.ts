@@ -6,10 +6,11 @@ import { AuthContext } from "../../types";
 import { ReturnRecoverySettingsRow, UpdateReturnRecoverySettingsInput } from "./return-recovery-settings.types";
 
 /**
- * The return late-fee day cap — "how many days past the due date does a late
- * fee accrue for before the rental instead gets flagged for physical
- * recovery." Singleton table, `return_recovery_settings`
- * (supabase/v2/migrations/20260824100000_return_recovery_policy.sql).
+ * The RETURN late-fee rate and its day cap — "how much per day, and how many
+ * days past the due date, before the rental instead gets flagged for
+ * physical recovery." Singleton table, `return_recovery_settings`
+ * (supabase/v2/migrations/20260824100000_return_recovery_policy.sql,
+ * late_fee_per_day added in 20260825100000_return_recovery_late_fee_per_day.sql).
  *
  * Distinct from plan-renewal-settings (`pricing_rules` code `late_fee`),
  * which is the RENEWAL/payment late fee — a subscription payment running
@@ -19,7 +20,7 @@ import { ReturnRecoverySettingsRow, UpdateReturnRecoverySettingsInput } from "./
  * the same table.
  */
 
-const COLUMNS = "id, max_late_fee_days, updated_at";
+const COLUMNS = "id, max_late_fee_days, late_fee_per_day, updated_at";
 
 export async function getSettings(): Promise<ReturnRecoverySettingsRow> {
     const { data, error } = await supabaseAdmin
@@ -43,7 +44,7 @@ export async function updateSettings(
     const existing = await getSettings();
     const { data, error } = await supabaseAdmin
         .from("return_recovery_settings")
-        .update({ max_late_fee_days: input.max_late_fee_days })
+        .update({ max_late_fee_days: input.max_late_fee_days, late_fee_per_day: input.late_fee_per_day })
         .eq("id", existing.id)
         .select(COLUMNS)
         .maybeSingle();
@@ -56,7 +57,7 @@ export async function updateSettings(
         action: "return_recovery_settings.updated",
         entityType: "return_recovery_setting",
         entityId: data.id,
-        after: { max_late_fee_days: input.max_late_fee_days },
+        after: { max_late_fee_days: input.max_late_fee_days, late_fee_per_day: input.late_fee_per_day },
         req,
     });
 

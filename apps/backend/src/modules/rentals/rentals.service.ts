@@ -14,6 +14,10 @@ import {
 import { LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS } from "./returnPolicy.constants";
 import { businessToday } from "../../common/dates";
 import { getSettings as getReturnRecoverySettings } from "../return-recovery-settings/return-recovery-settings.service";
+import {
+    ensureOverdueLateFeeInvoice, isOverdueLateFeeSettled, OverdueLateFeeInvoiceResult, overdueLateFeeStatusFor,
+    previewOverdueLateFee,
+} from "./overdueLateFee";
 
 /**
  * Rentals.
@@ -146,8 +150,10 @@ export function computeLateReturnPenalty(input: {
     now?: Date;
     /** Admin-configured cap (return_recovery_settings.max_late_fee_days). Defaults to MAX_LATE_PENALTY_DAYS when omitted, so every existing call site and test keeps compiling unchanged. */
     maxDays?: number;
+    /** Admin-configured rate (return_recovery_settings.late_fee_per_day). Defaults to LATE_RETURN_FEE_PER_DAY when omitted, same reasoning as maxDays. */
+    feePerDay?: number;
 }): LateReturnCharge {
-    const feePerDay = LATE_RETURN_FEE_PER_DAY;
+    const feePerDay = input.feePerDay ?? LATE_RETURN_FEE_PER_DAY;
     const cap = input.maxDays ?? MAX_LATE_PENALTY_DAYS;
 
     if (!input.returnDueAt) {
@@ -294,7 +300,7 @@ async function periodsFor(subscriptionIds: string[]): Promise<Map<string, {
 
 type PeriodInfo = { currentStart: string | null; nextDue: string | null; scheduledStart: string | null };
 
-function toReturnFields(row: RawRentalRow) {
+function toReturnFields(row: RawRentalRow, feePerDay: number) {
     const ret = latestReturn(row.rental_returns);
     const settlement = unwrap<{ late_fee_amount: number | string; settled_at: string }>(row.rental_settlements);
     const lateFee = settlement ? Number(settlement.late_fee_amount) : null;
@@ -307,10 +313,13 @@ function toReturnFields(row: RawRentalRow) {
         return_approved_at: ret?.approved_at ?? null,
         // days_late is not stored — the settlement records the money, and the
         // day count is that money divided by the rate. Recomputing it keeps
-        // one source of truth rather than two that can disagree.
-        days_late: lateFee === null ? null : Math.round(lateFee / LATE_RETURN_FEE_PER_DAY),
+        // one source of truth rather than two that can disagree. Uses
+        // today's configured rate, same caveat as elsewhere: a rate change
+        // after settlement would recompute an old settlement's days_late
+        // wrong — accepted, same as the admin-configured cap already was.
+        days_late: lateFee === null ? null : Math.round(lateFee / feePerDay),
         late_penalty_amount: lateFee,
-        late_fee_per_day: lateFee === null ? null : LATE_RETURN_FEE_PER_DAY,
+        late_fee_per_day: lateFee === null ? null : feePerDay,
     };
 }
 
@@ -328,7 +337,12 @@ function narrowPlanStatus(status: string | undefined): RentalView["plan_status"]
     return status === "active" || status === "past_due" || status === "paused" ? status : null;
 }
 
-function toRentalView(row: RawRentalRow, periods: Map<string, PeriodInfo>, maxLateFeeDays: number): RentalView {
+function toRentalView(
+    row: RawRentalRow,
+    periods: Map<string, PeriodInfo>,
+    maxLateFeeDays: number,
+    lateReturnFeePerDay: number,
+): RentalView {
     const subscription = unwrap<SubscriptionSlice>(row.subscriptions);
     const plan = subscription ? unwrap<{ id: string; name: string; billing_period: string }>(subscription.plans) : null;
     const booking = subscription ? unwrap<{ hubs: unknown }>(subscription.bookings) : null;
@@ -357,14 +371,21 @@ function toRentalView(row: RawRentalRow, periods: Map<string, PeriodInfo>, maxLa
         scheduled_start_date: period?.scheduledStart ?? null,
         recovery_flagged_at: row.recovery_flagged_at,
         max_late_fee_days: maxLateFeeDays,
-        ...toReturnFields(row),
+        late_return_fee_per_day: lateReturnFeePerDay,
+        ...toReturnFields(row, lateReturnFeePerDay),
         ...toPlanFields(subscription, row),
     };
 }
 
-function toAdminRentalRow(row: RawRentalRow, periods: Map<string, PeriodInfo>): AdminRentalRow {
+function toAdminRentalRow(
+    row: RawRentalRow,
+    periods: Map<string, PeriodInfo>,
+    lateReturnFeePerDay: number,
+    overdueLateFees: Map<string, { isLate: boolean; daysLate: number; lateFee: number; isSettled: boolean }>,
+): AdminRentalRow {
     const subscription = unwrap<SubscriptionSlice>(row.subscriptions);
     const ret = latestReturn(row.rental_returns);
+    const overdue = subscription ? overdueLateFees.get(subscription.id) ?? null : null;
 
     return {
         id: row.id,
@@ -381,7 +402,10 @@ function toAdminRentalRow(row: RawRentalRow, periods: Map<string, PeriodInfo>): 
         inspected_at: ret?.inspected_at ?? null,
         inspected_by: ret ? unwrap<{ id: string; full_name: string }>(ret.inspected_by) : null,
         recovery_flagged_at: row.recovery_flagged_at,
-        ...toReturnFields(row),
+        overdue_late_fee: overdue
+            ? { isLate: overdue.isLate, daysLate: overdue.daysLate, lateFee: overdue.lateFee, isSettled: overdue.isSettled }
+            : null,
+        ...toReturnFields(row, lateReturnFeePerDay),
         ...toPlanFields(subscription, row),
     };
 }
@@ -398,6 +422,35 @@ async function withPeriods(rows: RawRentalRow[]): Promise<Map<string, PeriodInfo
 // Rider
 // ---------------------------------------------------------------------------
 
+async function getMyActiveSubscriptionId(userId: string): Promise<string> {
+    const { data, error } = await supabaseAdmin
+        .from("rentals")
+        .select("subscription_id")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .order("picked_up_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw notFound("No active rental found.");
+    return data.subscription_id;
+}
+
+/** Pure preview for the Return-flow warning — see overdueLateFee.ts. Safe on every screen load. */
+export async function getMyOverdueLateFee(userId: string) {
+    const subscriptionId = await getMyActiveSubscriptionId(userId);
+    const [preview, isSettled] = await Promise.all([
+        previewOverdueLateFee(subscriptionId),
+        isOverdueLateFeeSettled(subscriptionId),
+    ]);
+    return { ...preview, isSettled };
+}
+
+/** Creates (or reuses) the payable invoice — see overdueLateFee.ts. Mobile pays it through the normal invoice-order flow. */
+export async function payMyOverdueLateFee(userId: string): Promise<OverdueLateFeeInvoiceResult> {
+    return ensureOverdueLateFeeInvoice(await getMyActiveSubscriptionId(userId), userId);
+}
+
 /** The rider's own currently-active rental — what post-booking-dashboard renders. */
 export async function getMyCurrentRental(userId: string): Promise<RentalView> {
     const { data, error } = await supabaseAdmin
@@ -413,8 +466,8 @@ export async function getMyCurrentRental(userId: string): Promise<RentalView> {
     if (!data) throw notFound("No active rental found.");
 
     const row = data as unknown as RawRentalRow;
-    const { max_late_fee_days } = await getReturnRecoverySettings();
-    return toRentalView(row, await withPeriods([row]), max_late_fee_days);
+    const { max_late_fee_days, late_fee_per_day } = await getReturnRecoverySettings();
+    return toRentalView(row, await withPeriods([row]), max_late_fee_days, late_fee_per_day);
 }
 
 /**
@@ -465,6 +518,19 @@ export async function requestReturn(
             `You can return your scooter once your current plan period ends on ${period.nextDue}.`,
         );
     }
+
+    // An overdue rider (past their plan's due date, unpaid) owes the same
+    // renewal late fee a late RENEWAL would charge — see overdueLateFee.ts.
+    // Enforced here, not just hidden in the UI, so a direct API call cannot
+    // skip it (Final Requirement: "backend-enforced payment gate").
+    if (subscription) {
+        const settled = await isOverdueLateFeeSettled(subscription.id);
+        if (!settled) {
+            throw businessRule("Late fee payment required before vehicle return.");
+        }
+    }
+
+    const { late_fee_per_day } = await getReturnRecoverySettings();
 
     const now = new Date();
     // Clamped to the rental's own deadline: a rider already days past it would
@@ -523,7 +589,7 @@ export async function requestReturn(
     await notifyUser(actor.id, {
         template: "rental_return_requested",
         title: "Return Requested",
-        body: `Hand your scooter in by ${dueAt.toLocaleDateString()} 11:59 PM. Our team will confirm the handover. A late fee of ₹${LATE_RETURN_FEE_PER_DAY} per day applies after that.`,
+        body: `Hand your scooter in by ${dueAt.toLocaleDateString()} 11:59 PM. Our team will confirm the handover. A late fee of ₹${late_fee_per_day} per day applies after that.`,
         screen: "post-booking-dashboard",
     });
 
@@ -562,8 +628,12 @@ export async function getMyRentalHistory(
     if (error) throw error;
     const rows = (data ?? []) as unknown as RawRentalRow[];
     const periods = await withPeriods(rows);
-    const { max_late_fee_days } = await getReturnRecoverySettings();
-    return paginate(rows.map((r) => toRentalView(r, periods, max_late_fee_days)), count ?? 0, filters);
+    const { max_late_fee_days, late_fee_per_day } = await getReturnRecoverySettings();
+    return paginate(
+        rows.map((r) => toRentalView(r, periods, max_late_fee_days, late_fee_per_day)),
+        count ?? 0,
+        filters,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -584,7 +654,15 @@ export async function listRentals(filters: ListRentalsFilters): Promise<Paginate
 
     const rows = (data ?? []) as unknown as RawRentalRow[];
     const periods = await withPeriods(rows);
-    return paginate(rows.map((r) => toAdminRentalRow(r, periods)), count ?? 0, filters);
+    const { late_fee_per_day } = await getReturnRecoverySettings();
+    const overdueLateFees = await overdueLateFeeStatusFor(
+        rows.map((r) => unwrap<SubscriptionSlice>(r.subscriptions)?.id).filter((id): id is string => !!id),
+    );
+    return paginate(
+        rows.map((r) => toAdminRentalRow(r, periods, late_fee_per_day, overdueLateFees)),
+        count ?? 0,
+        filters,
+    );
 }
 
 export async function getRentalById(id: string): Promise<AdminRentalRow> {
@@ -596,7 +674,10 @@ export async function getRentalById(id: string): Promise<AdminRentalRow> {
     if (error) throw error;
     if (!data) throw notFound("Rental not found.");
     const row = data as unknown as RawRentalRow;
-    return toAdminRentalRow(row, await withPeriods([row]));
+    const { late_fee_per_day } = await getReturnRecoverySettings();
+    const subscriptionId = unwrap<SubscriptionSlice>(row.subscriptions)?.id;
+    const overdueLateFees = await overdueLateFeeStatusFor(subscriptionId ? [subscriptionId] : []);
+    return toAdminRentalRow(row, await withPeriods([row]), late_fee_per_day, overdueLateFees);
 }
 
 async function requireActiveRental(id: string): Promise<RawRentalRow> {
@@ -654,8 +735,8 @@ async function settleReturn(
         return_due_at: ret?.due_back_at ?? null,
         expires_at: before.due_back_at,
     });
-    const { max_late_fee_days } = await getReturnRecoverySettings();
-    const charge = computeLateReturnPenalty({ returnDueAt: dueAt, maxDays: max_late_fee_days });
+    const { max_late_fee_days, late_fee_per_day } = await getReturnRecoverySettings();
+    const charge = computeLateReturnPenalty({ returnDueAt: dueAt, maxDays: max_late_fee_days, feePerDay: late_fee_per_day });
     const lateFee = input.late_fee_override ?? charge.penaltyAmount;
 
     if (ret) {

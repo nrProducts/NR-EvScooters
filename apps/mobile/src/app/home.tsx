@@ -17,7 +17,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
 import { bookingRepository, maintenanceRepository, rentalRepository } from '../services';
 import { useCancelBooking } from '../hooks/useCancelBooking';
-import { ReturnScooterModal } from '../components/ReturnScooterModal';
+import { ReturnGate } from '../components/ReturnGate';
 import { canReturnYet, getRenewalEligibility } from '../lib/returnPolicy';
 import { buildMapsUrl, buildWebMapsUrl } from '../lib/maps';
 import { notifyError } from '../lib/confirm';
@@ -433,7 +433,7 @@ export default function HomeScreen() {
         ) : null}
 
         {activeRental ? (
-          <ReturnScooterModal
+          <ReturnGate
             visible={showReturn}
             rental={activeRental}
             onClose={() => setShowReturn(false)}

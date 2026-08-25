@@ -2422,18 +2422,21 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          late_fee_per_day: number
           max_late_fee_days: number
           updated_at: string | null
         }
         Insert: {
           created_at?: string
           id?: string
+          late_fee_per_day?: number
           max_late_fee_days?: number
           updated_at?: string | null
         }
         Update: {
           created_at?: string
           id?: string
+          late_fee_per_day?: number
           max_late_fee_days?: number
           updated_at?: string | null
         }

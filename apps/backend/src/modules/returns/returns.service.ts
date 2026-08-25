@@ -156,13 +156,14 @@ export async function getReturnDetail(rentalId: string): Promise<ReturnDetailVie
     const openReturn = (Array.isArray(raw.rental_returns) ? raw.rental_returns : [])
         .find((r) => r.status === "requested" || r.status === "inspected");
 
-    const { max_late_fee_days } = await getReturnRecoverySettings();
+    const { max_late_fee_days, late_fee_per_day } = await getReturnRecoverySettings();
     const latePreview = computeLateReturnPenalty({
         returnDueAt: effectiveDueAt({
             return_due_at: openReturn?.due_back_at ?? null,
             expires_at: raw.due_back_at,
         }),
         maxDays: max_late_fee_days,
+        feePerDay: late_fee_per_day,
     });
 
     return {

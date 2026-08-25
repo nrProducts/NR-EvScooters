@@ -36,6 +36,14 @@ router.get(
 // "Scooter Returned Successfully" / "Amount Due" card. See returns.service.ts.
 router.get("/me/settlement", asyncHandler(c.mySettlementHandler));
 
+// Overdue Rider → Late Fee Payment → Scooter Return gate. GET is a pure
+// preview (safe on every screen load); POST creates/reuses the payable
+// invoice, which the rider then pays through the normal
+// POST /payments/invoices/:id/order + /payments/verify flow — see
+// overdueLateFee.ts for why this reuses the existing payment pipeline.
+router.get("/me/overdue-late-fee", asyncHandler(c.myOverdueLateFeeHandler));
+router.post("/me/overdue-late-fee", asyncHandler(c.payMyOverdueLateFeeHandler));
+
 // Rider-initiated post-pickup return REQUEST. Scoped to the caller's own
 // rental inside the service, so no requireStaff. Does not end the ride —
 // staff close it via POST /:id/complete below, which settles any late fee.

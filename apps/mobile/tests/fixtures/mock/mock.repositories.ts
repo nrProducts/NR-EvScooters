@@ -1,11 +1,14 @@
 ﻿import { ApiError } from '../../../src/lib/ApiError';
 import { isValidStartDay } from '../../../src/lib/bookingDays';
 import { computeCancellationCharge } from '../../../src/lib/cancellationPolicy';
-import { MAX_LATE_PENALTY_DAYS, planExpiryFor, returnDeadlineFor } from '../../../src/lib/returnPolicy';
+import {
+    LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS, planExpiryFor, returnDeadlineFor,
+} from '../../../src/lib/returnPolicy';
 import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
     ApiAvailability, ApiBooking, ApiDocument, ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
+    ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl,
     ApiStation, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, BookingRefundStatus, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
     KycStatus, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
@@ -856,6 +859,7 @@ function toApiRental(row: MockRentalRow): ApiRental {
         // Mock mode doesn't simulate vehicle-recovery-sweep — never flagged.
         recovery_flagged_at: null,
         max_late_fee_days: MAX_LATE_PENALTY_DAYS,
+        late_return_fee_per_day: LATE_RETURN_FEE_PER_DAY,
     };
 }
 
@@ -1109,6 +1113,17 @@ export class MockRentalRepository implements RentalRepository {
     async settlement(): Promise<ApiReturnSettlement | null> {
         await delay(100);
         return null;
+    }
+
+    // Mock mode never simulates an overdue rider — every fixture rental is
+    // current on its plan, so the Return flow is never gated behind a fee.
+    async overdueLateFee(): Promise<ApiOverdueLateFee> {
+        await delay(100);
+        return { isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: null, isSettled: true };
+    }
+
+    async payOverdueLateFee(): Promise<ApiOverdueLateFeeInvoice> {
+        throw new Error('payOverdueLateFee: mock mode never has an overdue late fee to pay.');
     }
 }
 

@@ -659,6 +659,34 @@ export interface ApiRental {
     recovery_flagged_at: string | null;
     /** return_recovery_settings.max_late_fee_days — pass into computeLateReturnPenalty as maxDays. */
     max_late_fee_days: number;
+    /** return_recovery_settings.late_fee_per_day — admin-configured ₹/day rate, always present (unlike late_fee_per_day above, which is settlement-only). Pass into computeLateReturnPenalty as feePerDay. */
+    late_return_fee_per_day: number;
+}
+
+// ---------------------------------------------------------------------------
+// Overdue Rider → Late Fee Payment → Scooter Return
+//
+// Distinct from RentalReturnFields above: this is the RENEWAL late fee
+// (pricing_rules code='late_fee') for a plan that lapsed without ever being
+// renewed, not the return-lateness fee for a scooter coming back late after
+// a return was already requested. See apps/backend/src/modules/rentals/
+// overdueLateFee.ts for the full explanation.
+// ---------------------------------------------------------------------------
+
+export interface ApiOverdueLateFee {
+    isLate: boolean;
+    daysLate: number;
+    feePerDay: number;
+    lateFee: number;
+    dueOn: string | null;
+    /** True once paid (or if nothing was ever owed) — the Return flow is unblocked. */
+    isSettled: boolean;
+}
+
+export interface ApiOverdueLateFeeInvoice {
+    invoiceId: string;
+    amount: number;
+    isPaid: boolean;
 }
 
 // ---------------------------------------------------------------------------

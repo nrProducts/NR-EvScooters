@@ -160,8 +160,10 @@ export function computeLateReturnPenalty(input: {
   now?: Date;
   /** Admin-configured cap (return_recovery_settings.max_late_fee_days, delivered on the rental). Defaults to MAX_LATE_PENALTY_DAYS when omitted. */
   maxDays?: number;
+  /** Admin-configured rate (return_recovery_settings.late_fee_per_day, delivered on the rental as late_return_fee_per_day). Defaults to LATE_RETURN_FEE_PER_DAY when omitted — that constant is now only a pre-fetch display fallback, not the real rate. */
+  feePerDay?: number;
 }): LateReturnCharge {
-  const feePerDay = LATE_RETURN_FEE_PER_DAY;
+  const feePerDay = input.feePerDay ?? LATE_RETURN_FEE_PER_DAY;
   const cap = input.maxDays ?? MAX_LATE_PENALTY_DAYS;
 
   if (!input.returnDueAt) {

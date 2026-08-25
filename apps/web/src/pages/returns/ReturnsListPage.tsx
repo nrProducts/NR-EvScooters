@@ -140,6 +140,21 @@ export default function ReturnsListPage() {
       key: "flagged",
       render: (r) => (r.recovery_flagged_at ? formatDateTime(r.recovery_flagged_at) : "—"),
     },
+    {
+      // Distinct from "Days late" above (return-lateness): this is the
+      // RENEWAL late fee — owed when the plan itself lapsed unpaid, blocking
+      // requestReturn until settled. See overdueLateFee.ts.
+      header: "Renewal Late Fee",
+      key: "overdue_late_fee",
+      render: (r) => {
+        const fee = r.overdue_late_fee;
+        if (!fee || !fee.isLate || fee.lateFee <= 0) return <span className="text-muted-foreground">—</span>;
+        return fee.isSettled
+          ? <span className="text-success">{formatCurrency(fee.lateFee)} Paid</span>
+          : <span className="text-destructive">{formatCurrency(fee.lateFee)} Due</span>;
+      },
+      hideOnMobile: true,
+    },
     { header: "Status", key: "status", render: () => <StatusBadge status="vehicle_recovery_required" /> },
     {
       header: "Actions",

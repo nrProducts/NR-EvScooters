@@ -59,6 +59,7 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const deadline = deadlineFor(rental);
+  const lateReturnFeePerDay = rental.late_return_fee_per_day ?? LATE_RETURN_FEE_PER_DAY;
 
   const reset = () => {
     setReason('');
@@ -184,8 +185,8 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
               </View>
               <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed">
                 {deadline.alreadyOverdue
-                  ? `A ₹${LATE_RETURN_FEE_PER_DAY}/day late fee has already been accruing since then, and will be charged when our team confirms the handover.`
-                  : `Each day after that adds a ₹${LATE_RETURN_FEE_PER_DAY} late fee, charged when our team confirms the handover.`}
+                  ? `A ₹${lateReturnFeePerDay}/day late fee has already been accruing since then, and will be charged when our team confirms the handover.`
+                  : `Each day after that adds a ₹${lateReturnFeePerDay} late fee, charged when our team confirms the handover.`}
               </Text>
             </View>
 

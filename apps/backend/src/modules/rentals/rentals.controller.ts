@@ -25,6 +25,14 @@ export async function mySettlementHandler(req: AuthedRequest, res: Response) {
     res.json(await getMySettlement(req.user!.id));
 }
 
+export async function myOverdueLateFeeHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.getMyOverdueLateFee(req.user!.id));
+}
+
+export async function payMyOverdueLateFeeHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.payMyOverdueLateFee(req.user!.id));
+}
+
 export async function requestReturnHandler(req: AuthedRequest, res: Response) {
     const body = req.body as RequestReturnBody;
     res.json(await service.requestReturn(req.params.id as string, body, req.user!));

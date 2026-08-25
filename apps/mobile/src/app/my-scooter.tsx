@@ -15,7 +15,7 @@ import { SkeletonList } from '../components/ui/Skeleton';
 import { pullToRefresh, useRefresh } from '../components/ui/PullToRefresh';
 import { MaintenanceCard, MAINTENANCE_FILTERS } from '../components/MaintenanceCard';
 import { VehicleDocumentsCard } from '../components/VehicleDocumentsCard';
-import { ReturnScooterModal } from '../components/ReturnScooterModal';
+import { ReturnGate } from '../components/ReturnGate';
 import { ReturnStatusCard } from '../components/ReturnStatusCard';
 import { VehicleStage } from '../components/VehicleStage';
 import { COLORS } from '../constants/theme';
@@ -309,7 +309,7 @@ export default function MyScooterScreen() {
                 </Text>
               </TouchableOpacity>
 
-              <ReturnScooterModal
+              <ReturnGate
                 visible={showReturn}
                 rental={state.rental}
                 onClose={() => setShowReturn(false)}

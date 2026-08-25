@@ -98,6 +98,8 @@ export interface RentalView extends RentalReturnFields, RentalPlanPeriodFields {
     recovery_flagged_at: string | null;
     /** `return_recovery_settings.max_late_fee_days` — the cap the rider's own late-fee display should use. */
     max_late_fee_days: number;
+    /** `return_recovery_settings.late_fee_per_day` — the admin-configured ₹/day rate, always present (unlike late_fee_per_day above, which is settlement-only). */
+    late_return_fee_per_day: number;
 }
 
 export interface RequestReturnInput {
@@ -135,6 +137,8 @@ export interface AdminRentalRow extends RentalReturnFields, RentalPlanPeriodFiel
     inspected_by: { id: string; full_name: string } | null;
     /** `rentals.recovery_flagged_at` — set once by vehicle-recovery-sweep; never cleared. */
     recovery_flagged_at: string | null;
+    /** Overdue-renewal late fee (see overdueLateFee.ts) — null when there's no subscription to be overdue against. */
+    overdue_late_fee: { isLate: boolean; daysLate: number; lateFee: number; isSettled: boolean } | null;
 }
 
 export interface RejectReturnInput {

@@ -12,6 +12,7 @@ import type {
     ApiInvoice, ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
     ApiExportResult, ApiNominee, ApiPrivacyRequest, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
+    ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
     ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
@@ -436,6 +437,13 @@ export const api = {
         }),
 
     myRentalSettlement: () => request<ApiReturnSettlement | null>('/rentals/me/settlement'),
+
+    // Overdue Rider → Late Fee Payment → Scooter Return gate. GET is a pure
+    // preview; POST creates/reuses the payable invoice, then the normal
+    // createPaymentOrderForInvoice / verifyPayment pair pays it.
+    myOverdueLateFee: () => request<ApiOverdueLateFee>('/rentals/me/overdue-late-fee'),
+    payMyOverdueLateFee: () =>
+        request<ApiOverdueLateFeeInvoice>('/rentals/me/overdue-late-fee', { method: 'POST' }),
 
     // --- maintenance ---------------------------------------------------
     maintenanceHistory: (params: MaintenanceHistoryParams = {}) =>

@@ -3,7 +3,8 @@ import { ApiError } from '../lib/ApiError';
 import { getSupabase } from '../lib/supabase';
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
     ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, ListVehicleModelsParams,
     MaintenanceHistoryParams, Paginated, ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
@@ -214,6 +215,12 @@ export class ApiRentalRepository implements RentalRepository {
     }
     settlement(): Promise<ApiReturnSettlement | null> {
         return api.myRentalSettlement();
+    }
+    overdueLateFee(): Promise<ApiOverdueLateFee> {
+        return api.myOverdueLateFee();
+    }
+    payOverdueLateFee(): Promise<ApiOverdueLateFeeInvoice> {
+        return api.payMyOverdueLateFee();
     }
 }
 

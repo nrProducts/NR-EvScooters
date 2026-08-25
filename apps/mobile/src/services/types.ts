@@ -1,6 +1,7 @@
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
     ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, KycDocType,
     ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
@@ -137,6 +138,10 @@ export interface RentalRepository {
     requestReturn(rentalId: string, payload: ReturnRequestPayload): Promise<ApiRental>;
     /** The rider's most recent return settlement, or null if none exists. Powers the Home/My Scooter settlement card. */
     settlement(): Promise<ApiReturnSettlement | null>;
+    /** Pure preview of the overdue renewal late fee — safe on every screen load, creates nothing. */
+    overdueLateFee(): Promise<ApiOverdueLateFee>;
+    /** Creates (or reuses) the payable invoice for the overdue late fee — pay it via billingRepository.createOrderForInvoice. */
+    payOverdueLateFee(): Promise<ApiOverdueLateFeeInvoice>;
 }
 
 export interface MaintenanceRepository {

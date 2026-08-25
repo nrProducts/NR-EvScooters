@@ -26,6 +26,8 @@ export interface AdminRentalRow {
   inspected_by: { id: string; full_name: string } | null;
   /** Set once by vehicle-recovery-sweep; never cleared. */
   recovery_flagged_at: string | null;
+  /** RENEWAL late fee for a lapsed, unpaid plan — the "pay before returning" gate. Distinct from late_fee_per_day above (the RETURN-lateness fee). Null when there's no subscription to be overdue against. */
+  overdue_late_fee: { isLate: boolean; daysLate: number; lateFee: number; isSettled: boolean } | null;
 }
 
 export interface RentalFilters {
