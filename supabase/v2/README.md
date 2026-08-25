@@ -87,7 +87,6 @@ Files are timestamp-ordered and must run in filename order. `20260819101500` dep
    | `profile-photos` | no | 10 MB | jpeg, png |
    | `vehicle-photos` | no | 10 MB | jpeg, png |
    | `damage-photos` | no | 10 MB | jpeg, png |
-   | `data-exports` | no | 25 MB | json |
    | `vehicle-model-images` | **yes** | 10 MB | jpeg, png, webp |
 
    An earlier draft of this list said `user-photos`; the code default is

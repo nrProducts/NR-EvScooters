@@ -7,7 +7,9 @@ const ROOT = join(__dirname, "../../..");
 const V2 = join(ROOT, "supabase/v2/migrations");
 
 const SEED_SQL = readFileSync(join(V2, "20260819102400_realtime_and_seed.sql"), "utf8");
-const EXPORTS_SQL = readFileSync(join(V2, "20260819102800_retention_data_exports.sql"), "utf8");
+const DROP_EXPORTS_SQL = readFileSync(
+    join(V2, "20260825100000_drop_data_exports.sql"), "utf8",
+);
 const FUNCTIONS_SQL = readFileSync(join(V2, "20260819102600_operational_functions.sql"), "utf8");
 const CRON_SQL = readFileSync(join(V2, "20260819102900_scheduled_jobs.sql"), "utf8");
 const PURGE_FN = readFileSync(
@@ -17,9 +19,10 @@ const PURGE_FN = readFileSync(
 /**
  * (category, retain_days, action) parsed out of the seeded VALUES lists.
  *
- * Two files now: the bulk of the schedule ships with the reference seed, and
- * `data_exports` was added afterwards — the bundle every rider is told is
- * deleted after 30 days had no policy row enforcing that.
+ * One file again. `data_exports` was added by a later migration and removed
+ * by ...100000_drop_data_exports.sql when access requests stopped producing a
+ * file — see the "the export policy is gone" block below, which asserts the
+ * row does not come back.
  */
 function seededPolicies(): { category: string; retainDays: number; action: string }[] {
     const blocks = [
@@ -27,7 +30,6 @@ function seededPolicies(): { category: string; retainDays: number; action: strin
             SEED_SQL.indexOf("insert into public.retention_policies"),
             SEED_SQL.indexOf("insert into public.invoice_series"),
         ),
-        EXPORTS_SQL,
     ];
     return blocks.flatMap((block) => [
         ...block.matchAll(
@@ -267,3 +269,46 @@ describe("the job is scheduled", () => {
         }
     });
 });
+
+describe("the export policy is gone with the export", () => {
+    // The purge job drives itself entirely from retention_policies and has no
+    // data_exports handler any more. A policy row for a category nothing can
+    // service would make the job fail on it every run.
+    it("has no data_exports policy in the constants", () => {
+        expect(RETENTION_POLICIES.map((p) => p.category)).not.toContain("data_exports");
+    });
+
+    // DISABLED, not deleted. retention_runs.retention_policy_category
+    // references the row, and those rows are the audit trail of every purge
+    // ever run — destroying compliance evidence to tidy a config row is the
+    // wrong trade. The job selects `where is_enabled = true`, so a disabled
+    // policy never reaches the handler lookup.
+    it("disables the policy instead of deleting it", () => {
+        expect(DROP_EXPORTS_SQL).toMatch(/update public\.retention_policies/);
+        expect(DROP_EXPORTS_SQL).toMatch(/is_enabled\s*=\s*false/);
+        expect(DROP_EXPORTS_SQL).toMatch(/where category = 'data_exports'/);
+    });
+
+    it("does not delete the policy row, which retention_runs references", () => {
+        expect(DROP_EXPORTS_SQL).not.toMatch(/delete from public\.retention_policies/);
+    });
+
+    // Postgres refuses a direct DELETE on storage.objects
+    // (storage.protect_delete), so the object teardown cannot live in SQL. The
+    // migration has to say where it went instead of silently omitting it.
+    it("does not attempt a direct delete on the storage tables", () => {
+        expect(DROP_EXPORTS_SQL).not.toMatch(/delete from storage\./);
+        expect(DROP_EXPORTS_SQL).toMatch(/Storage API/);
+    });
+
+    it("drops the pointer column, which nothing can write now", () => {
+        expect(DROP_EXPORTS_SQL).toMatch(/drop column if exists export_storage_path/);
+    });
+
+    it("leaves the purge job with no export handler or bucket", () => {
+        expect(PURGE_FN).not.toContain("data_exports");
+        expect(PURGE_FN).not.toContain("EXPORT_BUCKET");
+        expect(PURGE_FN).not.toContain("export_storage_path");
+    });
+});
+

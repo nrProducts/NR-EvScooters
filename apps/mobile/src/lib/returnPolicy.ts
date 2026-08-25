@@ -18,7 +18,12 @@
  * `return_due_at`, never the locally guessed one.
  */
 
-/** Flat fee, in rupees, per WHOLE CALENDAR DAY past the deadline. */
+/**
+ * Fallback rate, in rupees per WHOLE CALENDAR DAY past the deadline, for when
+ * the server has not told us the configured one (the mock repository, an
+ * older payload). The real rate is `pricing_rules.late_fee`, delivered as
+ * ApiRental.late_fee_per_day — always prefer that.
+ */
 export const LATE_RETURN_FEE_PER_DAY = 100;
 
 /**
@@ -160,7 +165,16 @@ export function computeLateReturnPenalty(input: {
   now?: Date;
   /** Admin-configured cap (return_recovery_settings.max_late_fee_days, delivered on the rental). Defaults to MAX_LATE_PENALTY_DAYS when omitted. */
   maxDays?: number;
-  /** Admin-configured rate (return_recovery_settings.late_fee_per_day, delivered on the rental as late_return_fee_per_day). Defaults to LATE_RETURN_FEE_PER_DAY when omitted — that constant is now only a pre-fetch display fallback, not the real rate. */
+  /**
+   * Admin-configured rate (return_recovery_settings.late_fee_per_day,
+   * delivered on the rental as `late_return_fee_per_day`). Defaults to
+   * LATE_RETURN_FEE_PER_DAY when omitted — that constant is now only a
+   * pre-fetch display fallback, not the real rate.
+   *
+   * It never really was a constant: the console writes the rate, and while
+   * this file said ₹100 the console could say anything, so the rider read one
+   * number on the home card and was charged another at handover.
+   */
   feePerDay?: number;
 }): LateReturnCharge {
   const feePerDay = input.feePerDay ?? LATE_RETURN_FEE_PER_DAY;

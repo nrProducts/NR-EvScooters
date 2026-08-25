@@ -31,6 +31,10 @@ export type AuditAction =
     | "maintenance.created" | "maintenance.updated" | "maintenance.outcome_set"
     | "notification.broadcast" | "notification_setting.updated"
     | "invoice.refunded"
+    // The late fee, at the moment it becomes a line on the bill rather than
+    // an unattributed surplus. is_financial_audit_action() matches it on
+    // "invoice", so it inherits the financial retention period.
+    | "invoice.late_fee_charged"
     | "rental.completed" | "rental.moved_to_maintenance" | "rental.return_requested" | "rental.return_rejected"
     | "return.inspected" | "return.payment_verified"
     | "referral.redeemed" | "referral.qualified"

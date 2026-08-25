@@ -10,7 +10,7 @@ import type {
     ApiAvailability, ApiBooking, ApiBookingWithPlan, ApiConsentHistoryItem, ApiConsentNotice,
     ApiConsentState, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiErrorBody,
     ApiInvoice, ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
-    ApiExportResult, ApiNominee, ApiPrivacyRequest, ConsentPurpose, CorrectableField,
+    ApiNominee, ApiPrivacyRequest, ApiPrivacySummary, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
     ApiOverdueLateFee, ApiOverdueLateFeeInvoice, ApiReturnStage,
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
@@ -284,12 +284,8 @@ export const api = {
     cancelPrivacyRequest: (id: string) =>
         request<ApiPrivacyRequest>(`/users/me/privacy/requests/${id}/cancel`, { method: 'POST' }),
 
-    /** Generates the bundle and returns a short-lived download link. */
-    requestDataExport: () =>
-        request<ApiExportResult>('/users/me/privacy/export', { method: 'POST' }),
-
-    exportUrl: (requestId: string) =>
-        request<ApiSignedUrl>(`/users/me/privacy/export/${requestId}/url`),
+    /** The rider's s.11 summary: what we hold, why, and who else receives it. */
+    privacySummary: () => request<ApiPrivacySummary>('/users/me/privacy/summary'),
 
     myNominee: () => request<ApiNominee>('/users/me/privacy/nominee'),
 

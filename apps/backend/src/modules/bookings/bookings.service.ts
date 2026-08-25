@@ -10,7 +10,10 @@ import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { getDepositForSubscriptionOrNull } from "../deposits/deposits.service";
 import { initiateCancellationRefund } from "../refunds/refunds.service";
 import { generatePeriodInvoice } from "../billing/billing.service";
-import { computeLateRenewalFee, lateFeeOverrideCode, lateFeeReferenceDate } from "../payments/renewalFee";
+import {
+    computeLateRenewalFee, lateFeeOverrideCode, lateFeeRateFor, lateFeeReferenceDate,
+} from "../payments/renewalFee";
+import { paidPeriodIds } from "../payments/renewalPeriod";
 import { setLateFeeOverride as setSubscriptionLateFeeOverride } from "../subscriptions/subscriptions.service";
 import { AuthContext, Paginated } from "../../types";
 import {
@@ -92,6 +95,12 @@ interface BookingContext {
     scheduledStartDate: string | null;
     scheduledDurationDays: number | null;
     lateFeeOverride: number | null;
+    /**
+     * The GLOBAL per-day late-fee rate (`pricing_rules.late_fee`), so a view
+     * rendered synchronously can still quote the configured number rather
+     * than a hard-coded one. `lateFeeOverride` wins where it is set.
+     */
+    lateFeePerDay: number;
     referralDiscountAmount: number | null;
     cancelledAt: string | null;
     cancellationReason: string | null;
@@ -120,7 +129,8 @@ const EMPTY_CONTEXT: BookingContext = {
     subscriptionId: null, planStatus: null, subscriptionEnded: false, planActivatedAt: null,
     planDurationDays: null, currentPeriodStart: null, nextDueAt: null, pausedAt: null,
     pausedDaysTotal: 0, renewalStatus: "none", scheduledStartDate: null,
-    scheduledDurationDays: null, lateFeeOverride: null, referralDiscountAmount: null,
+    scheduledDurationDays: null, lateFeeOverride: null, lateFeePerDay: 0,
+    referralDiscountAmount: null,
     cancelledAt: null, cancellationReason: null, cancellationPenaltyAmount: null,
     refundAmount: null, refundStatus: null, refundInitiatedAt: null, refundCompletedAt: null,
     refundTransactionId: null, activeRental: null, currentVehicle: null,
@@ -197,7 +207,7 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
             subscriptionIds.length
                 ? supabaseAdmin
                     .from("subscription_periods")
-                    .select("subscription_id, status, starts_on, ends_on, due_on")
+                    .select("id, subscription_id, status, starts_on, ends_on, due_on")
                     .in("subscription_id", subscriptionIds)
                     .in("status", ["current", "scheduled"])
                 : Promise.resolve({ data: [], error: null } as const),
@@ -256,13 +266,25 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
         return bookingId ? contexts.get(bookingId) : undefined;
     };
 
+    // A `scheduled` row is only a RENEWAL once it has been paid for. The
+    // renewal preview creates the row up front so the invoice has something
+    // to hang off, so treating its existence as proof would tell a rider who
+    // abandoned checkout that their renewal was already scheduled — and then
+    // refuse to let them renew, because requestEarlyRecharge rejects a
+    // subscription that already has one.
+    const paidPeriods = await paidPeriodIds(
+        (periodsRes.data ?? [])
+            .filter((period) => period.status === "scheduled")
+            .map((period) => period.id),
+    );
+
     for (const period of periodsRes.data ?? []) {
         const ctx = ctxFor(period.subscription_id);
         if (!ctx) continue;
         if (period.status === "current") {
             ctx.currentPeriodStart = period.starts_on;
             ctx.nextDueAt = period.due_on;
-        } else {
+        } else if (paidPeriods.has(period.id)) {
             ctx.renewalStatus = "scheduled";
             ctx.scheduledStartDate = period.starts_on;
             ctx.scheduledDurationDays = inclusiveDays(period.starts_on, period.ends_on);
@@ -317,6 +339,9 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
             : null;
     }
 
+    const globalLateFeePerDay = await lateFeeRateFor(null);
+    for (const ctx of contexts.values()) ctx.lateFeePerDay = globalLateFeePerDay;
+
     for (const rule of overridesRes.data ?? []) {
         const ctx = ctxFor(rule.scope_ref_id);
         if (ctx) ctx.lateFeeOverride = Number(rule.amount);
@@ -359,9 +384,16 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
  * pending return were approved right now — the same helper the settlement
  * uses, just not written anywhere.
  */
-function toReturnLateFeePreview(activeRental: BookingActiveRental | null): BookingView["return_late_fee_preview"] {
+function toReturnLateFeePreview(ctx: BookingContext): BookingView["return_late_fee_preview"] {
+    const activeRental = ctx.activeRental;
     if (!activeRental?.return_requested_at) return null;
-    const charge = computeLateReturnPenalty({ returnDueAt: activeRental.return_due_at });
+    const charge = computeLateReturnPenalty({
+        returnDueAt: activeRental.return_due_at,
+        // The configured rate — this preview is what the console quotes staff
+        // before they approve a return, so it has to be the number the
+        // settlement will actually charge.
+        feePerDay: ctx.lateFeeOverride ?? ctx.lateFeePerDay,
+    });
     return { days_late: charge.daysLate, penalty_amount: charge.penaltyAmount, fee_per_day: charge.feePerDay };
 }
 
@@ -450,7 +482,7 @@ export function toBookingView(row: RawBookingRow, ctx: BookingContext = EMPTY_CO
         scheduled_duration_days: ctx.scheduledDurationDays,
         late_fee_override: ctx.lateFeeOverride,
         active_rental: ctx.activeRental,
-        return_late_fee_preview: toReturnLateFeePreview(ctx.activeRental),
+        return_late_fee_preview: toReturnLateFeePreview(ctx),
     };
 }
 
@@ -1071,6 +1103,13 @@ export interface EarlyRechargeResult {
  * Rider-initiated "Renew Plan" — mints (or reuses) the invoice for the
  * upcoming period at any time, not just the day before it is due.
  *
+ * WHICH period that is comes from resolveRenewalTarget (renewalPeriod.ts):
+ * the NEXT one, because every period on this platform is paid for in advance
+ * and the current one was therefore settled before it began. Asking for the
+ * current period's invoice — what this did — returned the rider's own
+ * checkout receipt, deposit and welcome discount included, with nothing left
+ * to pay on it.
+ *
  * Reuses `generate_period_invoice()` via billing.service.ts — the same
  * function the overdue sweep calls. That function is idempotent at the
  * invoice level (checks `invoices.subscription_period_id` before applying
@@ -1107,6 +1146,11 @@ export async function requestEarlyRecharge(bookingId: string, actor: AuthContext
     }
     if (!context.nextDueAt) throw businessRule("This booking has no billing period to renew.");
 
+    // Which period this bills — the next one, once the current one is settled
+    // — is resolveInvoiceablePeriod's job inside generatePeriodInvoice. Both
+    // halves of this merge fixed the same bug there; that is the surviving
+    // implementation, and lateFeeReferenceDate below is what keeps the fee
+    // anchored to the right date once it has advanced.
     const { invoiceId } = await generatePeriodInvoice(context.subscriptionId);
     if (!invoiceId) {
         throw new Error(
@@ -1147,8 +1191,11 @@ export async function requestEarlyRecharge(bookingId: string, actor: AuthContext
     }));
 
     // `invoice.due_on` is not always the right "how late is this" reference
-    // date — see lateFeeReferenceDate. Shared with createOrderForInvoice so
-    // the preview and the actual charge can never compute a different fee.
+    // date — see lateFeeReferenceDate. It is measured from the day the
+    // CURRENT plan ran out, never from the invoice's own due date, because
+    // the invoice is for the period being BOUGHT, which by definition has not
+    // ended yet. Shared with createOrderForInvoice so the preview and the
+    // actual charge can never compute a different fee.
     const referenceDate = await lateFeeReferenceDate(
         context.subscriptionId, invoice.subscription_period_id, invoice.due_on,
     );
@@ -1363,10 +1410,16 @@ async function resolveSubscriptionFilterIds(filters: PickupQueueFilters): Promis
     if (filters.renewalStatus === "scheduled") {
         const { data: scheduled, error: scheduledError } = await supabaseAdmin
             .from("subscription_periods")
-            .select("subscription_id")
+            .select("id, subscription_id")
             .eq("status", "scheduled");
         if (scheduledError) throw scheduledError;
-        const withScheduled = new Set((scheduled ?? []).map((p) => p.subscription_id));
+        // Paid ones only — an unpaid `scheduled` row is a renewal the rider
+        // opened and walked away from, not one the console should list as
+        // booked in. Same gate as loadBookingContext.
+        const paid = await paidPeriodIds((scheduled ?? []).map((p) => p.id));
+        const withScheduled = new Set(
+            (scheduled ?? []).filter((p) => paid.has(p.id)).map((p) => p.subscription_id),
+        );
         candidates = candidates.filter((s) => withScheduled.has(s.id));
     }
 

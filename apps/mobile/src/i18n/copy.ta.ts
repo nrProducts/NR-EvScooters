@@ -134,12 +134,23 @@ export const ta: Copy = {
     'privacy.consent.required.note':
         'இவை ஸ்கூட்டர் வாடகைக்குத் தேவை; தனித்தனியாக அணைக்க முடியாது.',
     'privacy.data.heading': 'உங்கள் தரவு',
-    'privacy.data.export': 'உங்கள் தரவின் நகலைப் பதிவிறக்கவும்',
-    'privacy.data.export.help':
-        'உங்களைப் பற்றி நாங்கள் வைத்திருக்கும் அனைத்தையும் கொண்ட கோப்பைத் தயாரிப்போம்.',
-    'privacy.data.export.preparing': 'உங்கள் கோப்பு தயாராகிறது...',
-    'privacy.data.export.ready':
-        'உங்கள் கோப்பு தயார். இந்த இணைப்பு 5 நிமிடங்களுக்கு மட்டும் செயல்படும்.',
+    'privacy.summary': 'உங்களைப் பற்றி நாங்கள் அறிந்தவை',
+    'privacy.summary.help':
+        'உங்களைப் பற்றி நாங்கள் வைத்திருக்கும் தரவு, அதை எவ்வளவு காலம் வைத்திருக்கிறோம், வேறு யாருக்கு அது செல்கிறது என்பதன் சுருக்கம்.',
+    'privacy.summary.identity': 'உங்கள் விவரங்கள்',
+    'privacy.summary.name': 'பெயர்',
+    'privacy.summary.phone': 'தொலைபேசி',
+    'privacy.summary.email': 'மின்னஞ்சல்',
+    'privacy.summary.dob': 'பிறந்த தேதி',
+    'privacy.summary.address': 'முகவரி',
+    'privacy.summary.correctCta': 'இதில் ஏதேனும் தவறா? திருத்தச் சொல்லுங்கள்',
+    'privacy.summary.categories': 'நாங்கள் வைத்திருப்பவை',
+    'privacy.summary.records': '{count} பதிவுகள்',
+    'privacy.summary.none': 'இதுவரை எதுவும் இல்லை',
+    'privacy.summary.consents': 'உங்கள் தேர்வுகள்',
+    'privacy.summary.shared': 'உங்கள் தரவைப் பெறும் மற்றவர்கள்',
+    'privacy.summary.notHeld': 'நாங்கள் வைத்திருக்காதவை',
+    'privacy.summary.generated': '{date} நிலவரப்படி',
     'privacy.data.correct': 'ஏதேனும் திருத்தச் சொல்லுங்கள்',
     'privacy.data.correct.help':
         'சரிபார்ப்புக்குப் பிறகு உங்கள் பெயர் போன்ற, நீங்களே திருத்த முடியாத விவரங்களுக்கு.',

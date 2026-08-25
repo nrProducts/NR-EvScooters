@@ -1,7 +1,6 @@
 import { supabaseAdmin } from "../../config/supabase";
 import { env } from "../../config/env";
 import { businessRule } from "../../common/AppError";
-import { removeExportObjects } from "./privacy.export";
 
 /**
  * Personal-data columns on `users` that erasure must clear.
@@ -70,7 +69,6 @@ export const RETAINED_TABLES: Readonly<Record<string, string>> = {
 interface StoragePaths {
     kyc: string[];
     photos: string[];
-    exports: string[];
 }
 
 /**
@@ -96,21 +94,10 @@ async function gatherStoragePaths(userId: string): Promise<StoragePaths> {
 
     const photo = (user as { photo_storage_path: string | null } | null)?.photo_storage_path;
 
-    // Anything previously generated for an access request is itself a
-    // complete copy of the rider's data and must go with the rest.
-    const { data: exports } = await supabaseAdmin
-        .from("data_principal_requests")
-        .select("export_storage_path")
-        .eq("user_id", userId)
-        .not("export_storage_path", "is", null);
-
-    return {
-        kyc,
-        photos: photo ? [photo] : [],
-        exports: (exports ?? [])
-            .map((r) => (r as { export_storage_path: string | null }).export_storage_path)
-            .filter((p): p is string => !!p),
-    };
+    // There is no third bucket to sweep. Access requests are answered with
+    // an on-screen summary now; nothing is generated and nothing is stored,
+    // so an erasure has no export objects left to chase.
+    return { kyc, photos: photo ? [photo] : [] };
 }
 
 /**
@@ -189,8 +176,6 @@ export async function eraseUser(userId: string, requestId: string | null): Promi
     let removed = 0;
     removed += await removeFrom(env.kycBucket, paths.kyc);
     removed += await removeFrom(env.profilePhotoBucket, paths.photos);
-    await removeExportObjects(paths.exports);
-    removed += paths.exports.length;
 
     // vehicle-photos and damage-photos are NOT removed: they are evidence of
     // a vehicle's condition tied to a financial dispute, not rider identity.

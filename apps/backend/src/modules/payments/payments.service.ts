@@ -5,7 +5,7 @@ import { env } from "../../config/env";
 import { badRequest, businessRule, conflict, notFound } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
 import { addDays, businessToday } from "../../common/dates";
-import { computeLateRenewalFee, lateFeeReferenceDate } from "./renewalFee";
+import { computeInvoiceLateFee, lateFeeRuleFor } from "./renewalFee";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { applyRefundWebhookResult } from "../refunds/refunds.service";
@@ -336,16 +336,13 @@ async function createOrderForInvoiceInternal(
 
     // A late fee applies to a period renewal only, computed fresh every time
     // so a toggled setting takes effect immediately. `invoice.due_on` is not
-    // always the right reference date — see lateFeeReferenceDate.
-    let lateFee = 0;
-    if (invoice.purpose === "subscription_period" && invoice.due_on) {
-        const referenceDate = await lateFeeReferenceDate(
-            invoice.subscription_id, invoice.subscription_period_id, invoice.due_on,
-        );
-        if (referenceDate) {
-            ({ lateFee } = await computeLateRenewalFee(invoice.subscription_id, referenceDate));
-        }
-    }
+    // always the right reference date — computeInvoiceLateFee resolves that
+    // through lateFeeReferenceDate, because a renewal invoice belongs to the
+    // period being bought and its own due_on is a future date that would
+    // score every late rider as early. It also nets off any part of the fee
+    // already charged onto the bill (recordLateFeeCharge), so a part-paid
+    // invoice cannot be asked for the same fee twice.
+    const { lateFee } = await computeInvoiceLateFee(invoice);
 
     const amount = round2(Number(balance?.balance_amount ?? 0) + lateFee);
     if (amount <= 0) throw conflict("This invoice has already been paid.");
@@ -1043,7 +1040,23 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
 
     // No balance row means no invoice, which the FK makes impossible — fall
     // back to the total rather than allocating an unbounded amount.
-    const owed = Number(balance?.balance_amount ?? invoice?.total_amount ?? input.amount);
+    const balanceDue = Number(balance?.balance_amount ?? invoice?.total_amount ?? input.amount);
+
+    // The late fee is money the invoice does not know about.
+    //
+    // createOrderForInvoiceInternal sizes the order as `balance + lateFee`,
+    // but the fee was never written anywhere on the bill — so the allocation,
+    // capped at the balance, left the fee stranded as an "unallocated
+    // surplus" audit row. Every late renewal produced one: real money
+    // captured, no invoice line behind it, reconciliation by hand.
+    //
+    // It is recorded here, at capture, rather than at order time: the amount
+    // that actually arrived is what decides it, so a superseded checkout
+    // sheet paid at yesterday's (larger) price cannot inflate the fee, and an
+    // abandoned checkout never puts a charge on a bill nobody paid.
+    const owed = round2(
+        balanceDue + await recordLateFeeCharge(order.invoice_id, input.amount - balanceDue),
+    );
     const allocated = round2(Math.min(input.amount, owed));
 
     // A fully-settled invoice paid again (a duplicate order, a manual retry
@@ -1204,6 +1217,121 @@ async function getPeriodSequenceNumber(periodId: string): Promise<number | null>
     return data?.sequence_number ?? null;
 }
 
+/**
+ * Put the late fee on the bill it was charged against.
+ *
+ * Returns how much was added to the invoice total, so the caller can allocate
+ * the captured money against it. 0 whenever there is nothing to record — not
+ * a renewal, not late, the fee already recorded, or no surplus over the
+ * balance (an on-time payment).
+ *
+ * The fee becomes a `subscription_adjustments` row as well as an invoice
+ * line, which is the point: it is a charge like any other, and this is what
+ * makes an overdue rider's late fee visible to the same reporting that
+ * already shows their transaction fee. The partial unique index
+ * `uq_subscription_adjustments_rule_period` is what makes a second call — a
+ * redelivered webhook, a retry after a part-payment — a no-op instead of a
+ * second fee.
+ *
+ * `surplus` caps it deliberately. A rider holding a superseded checkout sheet
+ * may pay MORE than the current price for reasons that have nothing to do
+ * with lateness; only money that actually arrived above the balance can be
+ * attributed to the fee, and anything left over still lands in the
+ * unallocated-surplus audit trail for a human.
+ */
+async function recordLateFeeCharge(invoiceId: string, surplus: number): Promise<number> {
+    if (surplus <= 0) return 0;
+
+    const { data: invoice, error } = await supabaseAdmin
+        .from("invoices")
+        .select("id, purpose, status, due_on, subscription_id, subscription_period_id, subtotal_amount, total_amount")
+        .eq("id", invoiceId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!invoice?.subscription_period_id) return 0;
+    // A voided bill is not a bill. Money against one is a surplus for a human
+    // to decide about, which is where it already ends up.
+    if (invoice.status === "void") return 0;
+
+    const { isLate, lateFee, daysLate, feePerDay } = await computeInvoiceLateFee(invoice);
+    if (!isLate || lateFee <= 0) return 0;
+
+    const rule = await lateFeeRuleFor(invoice.subscription_id);
+    if (!rule) return 0;
+
+    const amount = round2(Math.min(lateFee, surplus));
+    if (amount <= 0) return 0;
+
+    const { data: adjustment, error: adjustmentError } = await supabaseAdmin
+        .from("subscription_adjustments")
+        .insert({
+            subscription_id: invoice.subscription_id,
+            subscription_period_id: invoice.subscription_period_id,
+            pricing_rule_id: rule.id,
+            kind: "charge",
+            code_snapshot: rule.code,
+            name_snapshot: rule.name,
+            amount,
+            status: "invoiced",
+        })
+        .select("id")
+        .maybeSingle();
+    if (adjustmentError) {
+        // Already recorded for this period — the invoice total already
+        // includes it, so there is nothing to add.
+        if ((adjustmentError as { code?: string }).code === "23505") return 0;
+        throw adjustmentError;
+    }
+
+    const { data: lastItem } = await supabaseAdmin
+        .from("invoice_items")
+        .select("line_number")
+        .eq("invoice_id", invoiceId)
+        .order("line_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    const description = `${rule.name} — ${daysLate} day${daysLate === 1 ? "" : "s"} × ₹${feePerDay}`;
+
+    const { error: itemError } = await supabaseAdmin.from("invoice_items").insert({
+        invoice_id: invoiceId,
+        line_number: (lastItem?.line_number ?? 0) + 1,
+        item_type: "adjustment",
+        subscription_adjustment_id: adjustment!.id,
+        description,
+        quantity: 1,
+        unit_amount: amount,
+        amount,
+    });
+    if (itemError) {
+        // Undo the adjustment rather than leaving one with no line behind it:
+        // the unique index would otherwise make every retry a no-op and the
+        // fee could never be recorded at all.
+        await supabaseAdmin.from("subscription_adjustments").delete().eq("id", adjustment!.id);
+        throw itemError;
+    }
+
+    const { error: totalError } = await supabaseAdmin
+        .from("invoices")
+        .update({
+            subtotal_amount: round2(Number(invoice.subtotal_amount) + amount),
+            total_amount: round2(Number(invoice.total_amount) + amount),
+        })
+        .eq("id", invoiceId);
+    if (totalError) throw totalError;
+
+    await writeAudit({
+        actorId: null, targetUserId: null, action: "invoice.late_fee_charged",
+        entityType: "invoice", entityId: invoiceId,
+        after: {
+            amount, days_late: daysLate, fee_per_day: feePerDay,
+            pricing_rule_code: rule.code, subscription_adjustment_id: adjustment!.id,
+        },
+    });
+
+    return amount;
+}
+
 /** Confirms the booking and holds the deposit. */
 async function applyInitialSuccess(subscriptionId: string, userId: string): Promise<void> {
     const { data: subscription, error } = await supabaseAdmin
@@ -1270,6 +1398,10 @@ async function applyInitialSuccess(subscriptionId: string, userId: string): Prom
  * Guarded to be a no-op if the period isn't 'scheduled' any more (a second
  * webhook delivery for the same payment, or a race with the sweep already
  * having promoted it).
+ *
+ * Everything that READS a scheduled period — the sweep, the rider's own
+ * screens, the admin filter — checks its invoice is paid before calling it a
+ * renewal, for the same reason: see paidPeriodIds in renewalPeriod.ts.
  */
 async function applyRenewalSuccess(
     subscriptionId: string,
@@ -1279,7 +1411,7 @@ async function applyRenewalSuccess(
 
     const { data: subscription, error } = await supabaseAdmin
         .from("subscriptions")
-        .select("id, user_id, status")
+        .select("id, user_id, status, duration_days_snapshot")
         .eq("id", subscriptionId)
         .maybeSingle();
     if (error) throw error;
@@ -1316,6 +1448,21 @@ async function applyRenewalSuccess(
         });
         return;
     }
+
+    // Re-anchored at PAYMENT time, not trusted from preview time.
+    // advanceToNextPeriod stamped these dates when the rider opened Review &
+    // Renew — a rider who previews on Monday and pays on Thursday would
+    // otherwise be sold a week that started three days ago. Only the
+    // activate-now path needs it: a period paid ahead of schedule is anchored
+    // to the end of the period still running, which has not moved.
+    const startsOn = businessToday();
+    const endsOn = addDays(startsOn, subscription.duration_days_snapshot - 1);
+    const { error: reanchorError } = await supabaseAdmin
+        .from("subscription_periods")
+        .update({ starts_on: startsOn, ends_on: endsOn, due_on: endsOn })
+        .eq("id", paidPeriod.id)
+        .eq("status", "scheduled");
+    if (reanchorError) throw reanchorError;
 
     if (current) {
         const { error: closeError } = await supabaseAdmin

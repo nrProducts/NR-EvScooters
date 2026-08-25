@@ -74,28 +74,5 @@ export function usePrivacyRequests() {
         }
     }, []);
 
-    /**
-     * Generates the bundle and returns a download link valid for five
-     * minutes. The link is deliberately not persisted anywhere on the device:
-     * it is a signed URL to a complete copy of the rider's record.
-     */
-    const requestExport = useCallback(async () => {
-        setSubmitting(true);
-        setError(null);
-        try {
-            const result = await api.requestDataExport();
-            setRequests((prev) => [result.request, ...prev]);
-            return { ok: true as const, url: result.url };
-        } catch (err) {
-            const message = err instanceof ApiError
-                ? err.message
-                : 'Could not prepare your data.';
-            setError(message);
-            return { ok: false as const, message };
-        } finally {
-            setSubmitting(false);
-        }
-    }, []);
-
-    return { requests, loading, submitting, error, reload: load, create, cancel, requestExport };
+    return { requests, loading, submitting, error, reload: load, create, cancel };
 }

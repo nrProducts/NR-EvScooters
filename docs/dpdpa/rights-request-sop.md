@@ -45,14 +45,21 @@ is irreversible.
 
 ## By type
 
-### Access / copy of data
-Riders self-serve from the app; most never reach the queue. For an off-app
-request use **`POST /privacy/users/:userId/export`**, which needs the
-`pii_exporter` capability and is logged to `pii_access_log` as a read of the
-rider's entire record — because that is what it is.
+### Access / summary of data
+Riders self-serve from the app — **Privacy & data → What we know about you** —
+and most never reach the queue. Nothing is generated and nothing is stored, so
+there is no file to chase, expire or purge.
 
-The bundle is limited to 1 per rider per 24 h and is deleted after 30 days.
-See [dsar-export-schema.md](dsar-export-schema.md).
+For an off-app request use **`GET /privacy/users/:userId/summary`**, which
+needs the `privacy.export` permission and is logged to `pii_access_log` as a
+read of the rider's entire record — because that is what it is. Read the
+summary back to them; do not screenshot it into an email.
+
+s.11 is a right to a **summary**, not to a copy: India dropped data
+portability from the 2019 Bill and the DPDP Rules 2025 prescribe no format.
+A rider who asks for an actual file has no statutory right to one — if you
+grant it anyway, log it as an `access_export` request and verify identity
+first. See [s11-access-summary.md](s11-access-summary.md).
 
 ### Correction
 Only for fields the rider cannot edit themselves — name after verification,

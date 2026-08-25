@@ -104,9 +104,9 @@ export default function PrivacyHubScreen() {
                         <Heading>{t('privacy.data.heading')}</Heading>
 
                         <LinkRow
-                            title={t('privacy.data.export')}
-                            help={t('privacy.data.export.help')}
-                            onPress={() => router.push('/privacy/requests?type=access_export' as never)}
+                            title={t('privacy.summary')}
+                            help={t('privacy.summary.help')}
+                            onPress={() => router.push('/privacy/summary' as never)}
                         />
                         <LinkRow
                             title={t('privacy.data.correct')}

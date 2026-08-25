@@ -86,6 +86,13 @@ export default function BillingPage() {
 //                          sitting on the scooter past its due-back date).
 //                          Used both in the rider's pre-submit warning
 //                          (Return Scooter screen) and at actual settlement.
+//
+// NEITHER is a compile-time constant any more. The return fee used to be a
+// hard-coded ₹100 in three places (backend constants, the mobile app, the
+// plan-expiry push) while this screen wrote a different number, so the rider
+// was quoted one rate and charged another. Both now come from here, and both
+// accept 0 as "no fee" — the rider-facing copy drops the sentence entirely
+// rather than quoting ₹0/day.
 //   Recovery after (days) — return_recovery_settings.max_late_fee_days. Once
 //                          a scooter is this many days past its RETURN due
 //                          date, the fee freezes and the rental is flagged
