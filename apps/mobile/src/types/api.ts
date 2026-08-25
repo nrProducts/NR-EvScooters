@@ -650,6 +650,12 @@ export interface ApiRental {
     return_due_at: string | null;
     days_late: number | null;
     late_penalty_amount: number | null;
+    /**
+     * The rate a SETTLED late-return fee was charged at — null until there is
+     * a settlement. For the rate in force (what the rider's warning copy has
+     * to quote before anything is settled) read `late_return_fee_per_day`
+     * below, which is always present.
+     */
     late_fee_per_day: number | null;
 
     // --- return recovery (20260824100000) -----------------------------------
@@ -920,8 +926,34 @@ export interface ApiNominee {
     updated_at: string | null;
 }
 
-export interface ApiExportResult {
-    request: ApiPrivacyRequest;
-    url: string;
-    expires_in: number;
+/**
+ * The rider's DPDPA s.11 summary.
+ *
+ * A summary, not a copy: `categories` carries counts rather than rows, and
+ * `shared_with` is s.11(1)(b) — the processors the data reaches, which is not
+ * derivable from the rider's own records.
+ */
+export interface ApiPrivacySummary {
+    generated_at: string;
+    controller: string;
+    identity: {
+        full_name: string | null;
+        email: string | null;
+        phone: string | null;
+        date_of_birth: string | null;
+        gender: string | null;
+        address: string | null;
+        kyc_status: string | null;
+        identity_documents: { document_type: string; last4: string | null; status: string }[];
+    };
+    categories: {
+        key: string;
+        label: string;
+        what: string;
+        count: number;
+        retention: string;
+    }[];
+    consents: { purpose: string; granted: boolean; decided_at: string | null }[];
+    shared_with: { name: string; receives: string; why: string }[];
+    not_held: string[];
 }

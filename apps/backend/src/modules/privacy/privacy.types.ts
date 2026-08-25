@@ -36,7 +36,6 @@ export interface PrivacyRequestView {
 /** The staff view: everything above plus the workflow fields. */
 export interface PrivacyRequestAdminView extends PrivacyRequestView {
     channel: DpRequestChannel;
-    export_storage_path: string | null;
     rider: { id: string; full_name: string; phone: string | null; email: string | null } | null;
     assigned_to: { id: string; full_name: string } | null;
     /** Convenience for the queue: past due and not yet closed. */

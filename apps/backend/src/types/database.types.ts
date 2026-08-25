@@ -474,7 +474,6 @@ export type Database = {
           completed_at: string | null
           created_at: string
           details: string | null
-          export_storage_path: string | null
           grace_ends_at: string | null
           id: string
           reference: string
@@ -493,7 +492,6 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           details?: string | null
-          export_storage_path?: string | null
           grace_ends_at?: string | null
           id?: string
           reference: string
@@ -512,7 +510,6 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           details?: string | null
-          export_storage_path?: string | null
           grace_ends_at?: string | null
           id?: string
           reference?: string

@@ -45,9 +45,17 @@ vi.mock("../src/modules/notifications/notify.service", () => ({ notify: vi.fn(as
 vi.mock("../src/modules/refunds/refunds.service", () => ({
     applyRefundWebhookResult: vi.fn(async () => {}),
 }));
+const NO_LATE_FEE = { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0 };
+
 vi.mock("../src/modules/payments/renewalFee", () => ({
-    computeLateRenewalFee: async () => ({ isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0 }),
-    lateFeeOverrideCode: (id: string) => `late_fee:${id}`,
+    // computeInvoiceLateFee is what the order path calls now: it resolves
+    // WHICH date the invoice is late against before doing the arithmetic,
+    // because a renewal invoice belongs to the period being bought.
+    computeInvoiceLateFee: async () => NO_LATE_FEE,
+    computeLateRenewalFee: async () => NO_LATE_FEE,
+    lateFeeRuleFor: async () => null,
+    lateFeeRateFor: async () => 0,
+    lateFeeOverrideCode: (id: string) => `late_fee_${id.replace(/-/g, "_")}`,
 }));
 
 // Imported dynamically, AFTER the process.env assignments above. A static

@@ -48,7 +48,6 @@ import { adminClient, isConfigured, json, type Admin } from "../_shared/client.t
 
 const KYC_BUCKET = Deno.env.get("KYC_BUCKET") ?? "kyc-documents";
 const PHOTO_BUCKET = Deno.env.get("PROFILE_PHOTO_BUCKET") ?? "profile-photos";
-const EXPORT_BUCKET = "data-exports";
 
 const SOURCE = "data-retention-purge";
 
@@ -210,38 +209,6 @@ const HANDLERS: Record<string, (cutoff: string) => Promise<number>> = {
         return count;
     },
 
-    /**
-     * The rights-export bundles.
-     *
-     * Every rider who requests a copy of their data is told in writing that
-     * the file is deleted after 30 days; migration 31 is the policy row that
-     * makes that true. The pointer is cleared in the same pass, so a request
-     * row never names an object that is no longer there.
-     */
-    async data_exports(cutoff) {
-        const { data, error } = await admin
-            .from("data_principal_requests")
-            .select("id, export_storage_path")
-            .not("export_storage_path", "is", null)
-            .lt("created_at", cutoff);
-        if (error) throw new Error(error.message);
-
-        const rows = (data as { id: string; export_storage_path: string }[] | null) ?? [];
-        if (rows.length === 0) return 0;
-
-        const { error: removeError } = await admin.storage
-            .from(EXPORT_BUCKET)
-            .remove(rows.map((r) => r.export_storage_path));
-        if (removeError) throw new Error(removeError.message);
-
-        await admin
-            .from("data_principal_requests")
-            .update({ export_storage_path: null })
-            .in("id", rows.map((r) => r.id));
-
-        return rows.length;
-    },
-
     // Present so the category is explicitly accounted for rather than
     // silently missing a handler. Its action is 'retain'; it never gets here.
     financial_records() {
@@ -289,17 +256,12 @@ async function deleteKycDocumentsFor(userId: string): Promise<number> {
  * copy of everything this erasure is destroying.
  */
 async function eraseUser(userId: string, requestId: string | null): Promise<void> {
-    const [{ data: docs }, { data: user }, { data: exports }] = await Promise.all([
+    const [{ data: docs }, { data: user }] = await Promise.all([
         admin
             .from("kyc_documents")
             .select("front_storage_path, back_storage_path")
             .eq("user_id", userId),
         admin.from("users").select("photo_storage_path").eq("id", userId).maybeSingle(),
-        admin
-            .from("data_principal_requests")
-            .select("export_storage_path")
-            .eq("user_id", userId)
-            .not("export_storage_path", "is", null),
     ]);
 
     const kycPaths = ((docs as
@@ -307,9 +269,6 @@ async function eraseUser(userId: string, requestId: string | null): Promise<void
         .flatMap((d) => [d.front_storage_path, d.back_storage_path])
         .filter((p): p is string => !!p);
     const photo = (user as { photo_storage_path: string | null } | null)?.photo_storage_path;
-    const exportPaths = ((exports as { export_storage_path: string | null }[] | null) ?? [])
-        .map((r) => r.export_storage_path)
-        .filter((p): p is string => !!p);
 
     const { error } = await admin.rpc("anonymise_user", {
         p_user_id: userId,
@@ -319,7 +278,8 @@ async function eraseUser(userId: string, requestId: string | null): Promise<void
 
     if (kycPaths.length > 0) await admin.storage.from(KYC_BUCKET).remove(kycPaths);
     if (photo) await admin.storage.from(PHOTO_BUCKET).remove([photo]);
-    if (exportPaths.length > 0) await admin.storage.from(EXPORT_BUCKET).remove(exportPaths);
+    // No export bucket to sweep: access requests are answered with an
+    // on-screen summary and generate no file.
 
     // Scrub the Auth identity too — auth.users holds the phone independently
     // of public.users, and it is where an OTP login reads it from.

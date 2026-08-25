@@ -41,6 +41,28 @@ const PURPOSE_LABEL: Record<string, string> = {
   settlement: 'Return Settlement', adhoc: 'Payment',
 };
 
+/**
+ * What to call one invoice.
+ *
+ * `purpose` alone gets the FIRST one wrong. chk_invoices_purpose_period
+ * forces every period invoice — the opening one included — to be
+ * 'subscription_period', so the rider's very first payment, the one that
+ * carried the deposit and the welcome discount, showed up in Payment History
+ * as "Plan Renewal" before they had ever renewed anything.
+ *
+ * The deposit line is what distinguishes it: the deposit is billed once,
+ * alongside period 1, and never again.
+ */
+function invoiceLabel(invoice: ApiInvoice): string {
+  if (
+    invoice.purpose === 'subscription_period'
+    && invoice.items.some((item) => item.item_type === 'deposit')
+  ) {
+    return PURPOSE_LABEL.initial;
+  }
+  return PURPOSE_LABEL[invoice.purpose] ?? 'Payment';
+}
+
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -143,6 +165,12 @@ export default function BillingScreen() {
   // attempt that was cancelled mid-payment) — Outstanding below covers that.
   const canRechargeEarly = renewalEligibility.canRenew && outstandingInvoices.length === 0;
   const planEndsToday = !!booking?.next_due_at && booking.next_due_at <= todayStr();
+  // Late renewals read RED here exactly as they do on the home card — a rider
+  // who taps a red "Renew Plan" must not land on a green bill and lose the
+  // signal that a late fee is in it. The server's verdict wins once the
+  // preview is loaded; before that, the local estimate stands in.
+  const renewalIsLate = rechargePreview?.isLate ?? renewalEligibility.isLate;
+  const renewAccent = renewalIsLate ? COLORS.danger : COLORS.primary;
 
   const payInvoice = async (invoice: ApiInvoice) => {
     setPayError(null);
@@ -156,7 +184,7 @@ export default function BillingScreen() {
         amount: Math.round(order.amount * 100),
         currency: order.currency,
         order_id: order.gatewayOrderId,
-        description: PURPOSE_LABEL[invoice.purpose] ?? 'Payment',
+        description: invoiceLabel(invoice),
         prefill: {
           email: profile?.email ?? undefined,
           contact: profile?.phone ?? undefined,
@@ -292,7 +320,11 @@ export default function BillingScreen() {
               </View>
               <View className="items-end">
                 <Text className="text-white/60 text-[10px] font-bold uppercase tracking-wider">Ends</Text>
-                <Text className="text-white text-xs font-bold mt-0.5">{formatDate(booking?.next_due_at ?? null)}</Text>
+                {/* Past its end date the plan card stays brand-green, but the
+                    date itself must not read as business-as-usual. */}
+                <Text className="text-white text-xs font-bold mt-0.5">
+                  {formatDate(booking?.next_due_at ?? null)}{renewalIsLate ? ' · expired' : ''}
+                </Text>
               </View>
             </View>
           </View>
@@ -346,18 +378,18 @@ export default function BillingScreen() {
           {canRechargeEarly ? (
             <View
               className="rounded-2xl p-4 mb-6"
-              style={{ backgroundColor: COLORS.primary + '0F', borderWidth: 1, borderColor: COLORS.primary + '40' }}
+              style={{ backgroundColor: renewAccent + '0F', borderWidth: 1, borderColor: renewAccent + '40' }}
             >
               <View className="flex-row items-start mb-3">
-                <Zap size={16} color={COLORS.primary} style={{ marginTop: 1 }} />
+                <Zap size={16} color={renewAccent} style={{ marginTop: 1 }} />
                 <View className="flex-1 ml-3">
-                  <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold">
-                    {renewalEligibility.isLate
+                  <Text style={{ color: renewalIsLate ? COLORS.danger : COLORS.textPrimary }} className="text-xs font-extrabold">
+                    {renewalIsLate
                       ? 'Your plan has expired'
                       : planEndsToday ? 'Your plan ends today' : `Plan ends ${formatDate(booking?.next_due_at ?? null)}`}
                   </Text>
                   <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-1 leading-relaxed">
-                    {renewalEligibility.isLate
+                    {renewalIsLate
                       ? 'Renew now — a late fee applies, shown below before you pay.'
                       : 'Renew now to keep riding without interruption. Your next plan starts the moment this one ends.'}
                   </Text>
@@ -404,7 +436,7 @@ export default function BillingScreen() {
                     <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
                     <View className="flex-row items-center justify-between">
                       <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Total payable</Text>
-                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
+                      <Text style={{ color: renewAccent }} className="text-sm font-extrabold">
                         ₹{rechargePreview.total.toFixed(0)}
                       </Text>
                     </View>
@@ -422,7 +454,7 @@ export default function BillingScreen() {
                       onPress={handleConfirmRecharge}
                       disabled={recharging}
                       className="flex-1 py-3 rounded-xl items-center flex-row justify-center"
-                      style={{ backgroundColor: COLORS.primary, opacity: recharging ? 0.6 : 1 }}
+                      style={{ backgroundColor: renewAccent, opacity: recharging ? 0.6 : 1 }}
                     >
                       {recharging ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                       <Text className="text-white text-xs font-bold ml-2">
@@ -436,7 +468,7 @@ export default function BillingScreen() {
                   onPress={handleStartRecharge}
                   disabled={previewLoading}
                   className="py-3 rounded-xl items-center flex-row justify-center"
-                  style={{ backgroundColor: COLORS.primary, opacity: previewLoading ? 0.6 : 1 }}
+                  style={{ backgroundColor: renewAccent, opacity: previewLoading ? 0.6 : 1 }}
                 >
                   {previewLoading ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                   <Text className="text-white text-xs font-bold ml-2">
@@ -479,7 +511,7 @@ export default function BillingScreen() {
                       <View className="flex-row items-center">
                         <Receipt size={13} color={COLORS.danger} />
                         <Text style={{ color: COLORS.danger }} className="text-xs font-extrabold ml-2">
-                          {PURPOSE_LABEL[inv.purpose] ?? 'Payment'}
+                          {invoiceLabel(inv)}
                         </Text>
                       </View>
                       <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-semibold">
@@ -639,7 +671,7 @@ export default function BillingScreen() {
                     >
                       <View>
                         <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">
-                          {PURPOSE_LABEL[inv.purpose] ?? 'Payment'}
+                          {invoiceLabel(inv)}
                         </Text>
                         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
                           {formatDate(inv.paid_at ?? inv.due_on)}

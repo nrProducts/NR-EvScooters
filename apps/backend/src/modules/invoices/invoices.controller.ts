@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
-import { computeLateRenewalFee } from "../payments/renewalFee";
+import { computeInvoiceLateFee } from "../payments/renewalFee";
 import * as service from "./invoices.service";
 import { ListInvoicesFilters } from "./invoices.types";
 
@@ -35,12 +35,14 @@ export async function myInvoicesHandler(req: AuthedRequest, res: Response) {
         // Even had the column existed, it would have looked up a late-fee
         // override keyed on the wrong entity and silently found none.
         if (invoice.purpose !== "subscription_period") return invoice;
-        if (invoice.payment_state === "paid" || !invoice.due_on) return invoice;
+        if (invoice.payment_state === "paid") return invoice;
 
-        const { isLate, lateFee, daysLate } = await computeLateRenewalFee(
-            invoice.subscription_id,
-            invoice.due_on,
-        );
+        // computeInvoiceLateFee, not computeLateRenewalFee(invoice.due_on):
+        // a RENEWAL invoice is for the period being bought, whose due date is
+        // in the future, so measuring against it reported every overdue rider
+        // as on time. The anchor is the current period's due date — the day
+        // their plan ran out. See lateFeeAnchorFor.
+        const { isLate, lateFee, daysLate } = await computeInvoiceLateFee(invoice);
         if (!isLate) return invoice;
         return {
             ...invoice,

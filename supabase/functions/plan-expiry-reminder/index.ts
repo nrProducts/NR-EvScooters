@@ -38,11 +38,33 @@ import { notifyStaff } from "../_shared/notifyStaff.ts";
 const SOURCE = "plan-expiry-reminder";
 
 /**
- * Mirrors LATE_RETURN_FEE_PER_DAY in
- * apps/backend/src/modules/rentals/returnPolicy.constants.ts. Duplicated
- * because Deno cannot import the backend's modules — keep the two in step.
+ * The late fee is CONFIGURED, not compiled in.
+ *
+ * This used to be `const LATE_RETURN_FEE_PER_DAY = 100`, a copy of the
+ * backend constant kept in step by hand — and nothing kept it in step, so a
+ * push told riders ₹100/day for a fee the admin console had set to something
+ * else entirely. Read from the one place that decides it instead.
+ *
+ * This warning is about handing the SCOOTER back late, so the rate is
+ * `return_recovery_settings.late_fee_per_day` — the same row that already
+ * supplies max_late_fee_days — and not `pricing_rules.late_fee`, which is
+ * the plan-RENEWAL fee. Two different events, two different rates, both
+ * edited on the console's "Late Fee & Recovery Policy" card.
+ *
+ * 0 means the fee is switched off, and the sentence is left off entirely.
  */
-const LATE_RETURN_FEE_PER_DAY = 100;
+async function lateFeePerDay(admin: Admin): Promise<number> {
+    const { data, error } = await admin
+        .from("return_recovery_settings")
+        .select("late_fee_per_day")
+        .limit(1)
+        .maybeSingle();
+    if (error) {
+        console.error(`[${SOURCE}] could not read the late return fee rate`, error);
+        return 0;
+    }
+    return data ? Number(data.late_fee_per_day) : 0;
+}
 
 /** How far ahead of the due date to warn. */
 const WARN_DAYS_BEFORE = 2;
@@ -78,6 +100,8 @@ Deno.serve(async (_req) => {
         return json({ error: "Query failed." }, 500);
     }
 
+    const feePerDay = await lateFeePerDay(admin);
+
     let logged = 0;
     let sent = 0;
     let skippedReturning = 0;
@@ -96,7 +120,9 @@ Deno.serve(async (_req) => {
             subjectId: row.id,
             title: "Your Plan Ends Soon",
             body: `Your plan for ${vehicleName ?? "your scooter"} ends in ${WARN_DAYS_BEFORE} days. `
-                + `Return it by then or a ₹${LATE_RETURN_FEE_PER_DAY}/day late fee applies.`,
+                + (feePerDay > 0
+                    ? `Renew or return it by then, or a ₹${feePerDay}/day late fee applies.`
+                    : "Renew or return it by then."),
             screen: "home",
             payload: { due_back_at: row.due_back_at },
         });

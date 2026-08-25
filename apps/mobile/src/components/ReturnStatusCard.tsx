@@ -29,6 +29,7 @@ export const ReturnStatusCard: React.FC<ReturnStatusCardProps> = ({ rental, comp
   const charge = computeLateReturnPenalty({
     returnDueAt: rental.return_due_at,
     maxDays: rental.max_late_fee_days,
+    // The configured rate the server sent, not this app's fallback constant.
     feePerDay: rental.late_return_fee_per_day,
   });
   const recoveryRequired = !!rental.recovery_flagged_at;

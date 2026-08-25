@@ -31,16 +31,13 @@ export const SLA_DAYS: Record<DpRequestType, number> = {
  */
 export const ERASURE_GRACE_DAYS = 7;
 
-/** One self-serve export per rider per day. Each bundle is concentrated PII. */
-export const EXPORT_RATE_LIMIT_HOURS = 24;
-
-/** Lifetime of a signed URL for a generated export bundle. */
-export const EXPORT_URL_TTL_SECONDS = 300;
-
 /**
  * Mirrors the seeded rows in
- * supabase/v2/migrations/20260819102400_realtime_and_seed.sql, plus the
- * `data_exports` row added by migration 31.
+ * supabase/v2/migrations/20260819102400_realtime_and_seed.sql.
+ *
+ * `data_exports` was here until access requests stopped producing a file.
+ * Its migration is reverted by ...101000_drop_data_exports.sql; a policy row
+ * for a bucket that no longer exists invites someone to recreate the bucket.
  *
  * Duplicated on purpose: the database is the source of truth at run time (ops
  * can change a period without a deploy), and retention.test.ts asserts these
@@ -85,7 +82,6 @@ export const RETENTION_POLICIES: readonly RetentionPolicySeed[] = [
     { category: "pii_access_log", retainDays: 730, action: "delete" },
     { category: "inactive_riders", retainDays: 1095, action: "anonymise" },
     { category: "kyc_abandoned", retainDays: 90, action: "delete" },
-    { category: "data_exports", retainDays: 30, action: "delete" },
     // Retained, never purged by the job. Present so the schedule is complete
     // and so nobody adds a purge for one by accident.
     { category: "audit_logs_financial", retainDays: 2920, action: "retain" },

@@ -53,6 +53,8 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
   // regardless; disabling here is just so a rider isn't let into the return
   // form only to be rejected at submit.
   const canReturn = canReturnYet(rental.next_due_at);
+  // return_recovery_settings.late_fee_per_day, resolved server-side. Falls
+  // back to the shipped default only when an older payload omits it.
   const lateReturnFeePerDay = rental.late_return_fee_per_day ?? LATE_RETURN_FEE_PER_DAY;
 
   return (
@@ -135,9 +137,17 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
               </Text>
             </View>
             <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed">
-              {expiry!.daysLeft < 0
-                ? `A ₹${lateReturnFeePerDay}/day late fee is building up, and will be charged when our team confirms the handover.`
-                : `Return it by then, or a ₹${lateReturnFeePerDay}/day late fee applies.`}
+              {/* The rate comes from the server, never a constant compiled
+                  in here — this used to read a hard-coded ₹100 whatever the
+                  console had been set to. 0 is a legal setting (the fee
+                  switched off), and quoting "₹0/day" would be nonsense. */}
+              {lateReturnFeePerDay <= 0
+                ? expiry!.daysLeft < 0
+                  ? 'Renew your plan to keep riding, or hand the scooter back to our team.'
+                  : 'Renew or return it by then.'
+                : expiry!.daysLeft < 0
+                  ? `A ₹${lateReturnFeePerDay}/day late fee is building up, and will be charged when our team confirms the handover.`
+                  : `Return it by then, or a ₹${lateReturnFeePerDay}/day late fee applies.`}
             </Text>
           </View>
         ) : null}

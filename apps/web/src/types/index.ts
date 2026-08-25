@@ -1345,7 +1345,6 @@ export interface PrivacyRequest {
    * column. A privacy request IS the ticket; the field was a pointer to a
    * support ticket that duplicated it.
    */
-  export_storage_path: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string | null;

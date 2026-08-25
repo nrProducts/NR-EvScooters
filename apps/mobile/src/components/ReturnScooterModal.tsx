@@ -59,6 +59,8 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const deadline = deadlineFor(rental);
+  // The configured rate the server sent with the rental — never this app's
+  // fallback constant, which had drifted from what the console was showing.
   const lateReturnFeePerDay = rental.late_return_fee_per_day ?? LATE_RETURN_FEE_PER_DAY;
 
   const reset = () => {
@@ -184,9 +186,13 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
                 </Text>
               </View>
               <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed">
-                {deadline.alreadyOverdue
-                  ? `A ₹${lateReturnFeePerDay}/day late fee has already been accruing since then, and will be charged when our team confirms the handover.`
-                  : `Each day after that adds a ₹${lateReturnFeePerDay} late fee, charged when our team confirms the handover.`}
+                {lateReturnFeePerDay <= 0
+                  ? deadline.alreadyOverdue
+                    ? 'Hand the scooter back to our team to close your plan.'
+                    : 'Our team will confirm the handover at the station.'
+                  : deadline.alreadyOverdue
+                    ? `A ₹${lateReturnFeePerDay}/day late fee has already been accruing since then, and will be charged when our team confirms the handover.`
+                    : `Each day after that adds a ₹${lateReturnFeePerDay} late fee, charged when our team confirms the handover.`}
               </Text>
             </View>
 

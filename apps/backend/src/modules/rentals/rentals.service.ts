@@ -12,6 +12,7 @@ import {
     RequestReturnInput,
 } from "./rentals.types";
 import { LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS } from "./returnPolicy.constants";
+import { paidPeriodIds } from "../payments/renewalPeriod";
 import { businessToday } from "../../common/dates";
 import { getSettings as getReturnRecoverySettings } from "../return-recovery-settings/return-recovery-settings.service";
 import {
@@ -150,7 +151,16 @@ export function computeLateReturnPenalty(input: {
     now?: Date;
     /** Admin-configured cap (return_recovery_settings.max_late_fee_days). Defaults to MAX_LATE_PENALTY_DAYS when omitted, so every existing call site and test keeps compiling unchanged. */
     maxDays?: number;
-    /** Admin-configured rate (return_recovery_settings.late_fee_per_day). Defaults to LATE_RETURN_FEE_PER_DAY when omitted, same reasoning as maxDays. */
+    /**
+     * Admin-configured rate (return_recovery_settings.late_fee_per_day).
+     * Defaults to LATE_RETURN_FEE_PER_DAY when omitted, same reasoning as
+     * maxDays — and that default is now only the tests and the mock
+     * repository.
+     *
+     * It used to BE the constant, unconditionally, which is how the rider
+     * ended up being quoted ₹100/day on the home screen for a fee the admin
+     * console had set to something else entirely.
+     */
     feePerDay?: number;
 }): LateReturnCharge {
     const feePerDay = input.feePerDay ?? LATE_RETURN_FEE_PER_DAY;
@@ -279,10 +289,17 @@ async function periodsFor(subscriptionIds: string[]): Promise<Map<string, {
 
     const { data, error } = await supabaseAdmin
         .from("subscription_periods")
-        .select("subscription_id, status, starts_on, due_on")
+        .select("id, subscription_id, status, starts_on, due_on")
         .in("subscription_id", subscriptionIds)
         .in("status", ["current", "scheduled"]);
     if (error) throw error;
+
+    // Only a PAID scheduled period is a renewal — the renewal preview writes
+    // the row before any money arrives. Without this the rider's own screen
+    // would report "renewal scheduled" the moment they opened the bill.
+    const paid = await paidPeriodIds(
+        (data ?? []).filter((row) => row.status === "scheduled").map((row) => row.id),
+    );
 
     for (const row of data ?? []) {
         const entry = map.get(row.subscription_id)
@@ -290,7 +307,7 @@ async function periodsFor(subscriptionIds: string[]): Promise<Map<string, {
         if (row.status === "current") {
             entry.currentStart = row.starts_on;
             entry.nextDue = row.due_on;
-        } else {
+        } else if (paid.has(row.id)) {
             entry.scheduledStart = row.starts_on;
         }
         map.set(row.subscription_id, entry);
@@ -317,7 +334,9 @@ function toReturnFields(row: RawRentalRow, feePerDay: number) {
         // today's configured rate, same caveat as elsewhere: a rate change
         // after settlement would recompute an old settlement's days_late
         // wrong — accepted, same as the admin-configured cap already was.
-        days_late: lateFee === null ? null : Math.round(lateFee / feePerDay),
+        // Zero is a legal rate (the fee switched off), and dividing by it
+        // would yield Infinity, so it reports no day count instead.
+        days_late: lateFee === null || feePerDay <= 0 ? null : Math.round(lateFee / feePerDay),
         late_penalty_amount: lateFee,
         late_fee_per_day: lateFee === null ? null : feePerDay,
     };
@@ -337,6 +356,11 @@ function narrowPlanStatus(status: string | undefined): RentalView["plan_status"]
     return status === "active" || status === "past_due" || status === "paused" ? status : null;
 }
 
+/**
+ * Both admin-configured return numbers travel with every rental view: the day
+ * cap and the per-day rate, so the rider's screens quote the same figures the
+ * settlement will charge instead of a constant compiled into the app.
+ */
 function toRentalView(
     row: RawRentalRow,
     periods: Map<string, PeriodInfo>,
@@ -586,10 +610,14 @@ export async function requestReturn(
         },
     });
 
+    // `late_fee_per_day` is read above, off return_recovery_settings — the
+    // configured rate rather than the constant, so the rider is never quoted a
+    // number the settlement will not charge.
     await notifyUser(actor.id, {
         template: "rental_return_requested",
         title: "Return Requested",
-        body: `Hand your scooter in by ${dueAt.toLocaleDateString()} 11:59 PM. Our team will confirm the handover. A late fee of ₹${late_fee_per_day} per day applies after that.`,
+        body: `Hand your scooter in by ${dueAt.toLocaleDateString()} 11:59 PM. Our team will confirm the handover.`
+            + (late_fee_per_day > 0 ? ` A late fee of ₹${late_fee_per_day} per day applies after that.` : ""),
         screen: "post-booking-dashboard",
     });
 
@@ -736,7 +764,11 @@ async function settleReturn(
         expires_at: before.due_back_at,
     });
     const { max_late_fee_days, late_fee_per_day } = await getReturnRecoverySettings();
-    const charge = computeLateReturnPenalty({ returnDueAt: dueAt, maxDays: max_late_fee_days, feePerDay: late_fee_per_day });
+    const charge = computeLateReturnPenalty({
+        returnDueAt: dueAt,
+        maxDays: max_late_fee_days,
+        feePerDay: late_fee_per_day,
+    });
     const lateFee = input.late_fee_override ?? charge.penaltyAmount;
 
     if (ret) {

@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
-    View, Text, ScrollView, TouchableOpacity, Linking, TextInput,
+    View, Text, ScrollView, TouchableOpacity, TextInput,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronRight, Download, ShieldAlert } from 'lucide-react-native';
+import { ChevronRight, ShieldAlert } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { ChipSelect } from '../../components/ui/ChipSelect';
@@ -18,6 +18,9 @@ import { COLORS } from '../../constants/theme';
 import { formatDate } from '../../constants/status';
 import type { CorrectableField, DpRequestType } from '../../types/api';
 
+/** Statuses we still owe the rider an answer on. Mirrors the backend's list. */
+const OPEN_STATUSES = ['open', 'in_progress', 'awaiting_principal'];
+
 const CORRECTABLE: { key: CorrectableField; label: string }[] = [
     { key: 'full_name', label: 'My name' },
     { key: 'date_of_birth', label: 'My date of birth' },
@@ -30,15 +33,16 @@ const CORRECTABLE: { key: CorrectableField; label: string }[] = [
  * Rights requests: the list, and the forms for raising a new one.
  *
  * `?type=` opens straight into the right form, so the entries on the privacy
- * hub each land where they promised rather than on a menu.
+ * hub each land where they promised rather than on a menu. There is no
+ * `access_export` form: s.11 access is answered on /privacy/summary without a
+ * request row, and only historical export rows still appear in the list.
  */
 export default function PrivacyRequestsScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { type } = useLocalSearchParams<{ type?: DpRequestType }>();
     const { t } = useT();
-    const { requests, loading, submitting, error, reload, create, cancel, requestExport } =
-        usePrivacyRequests();
+    const { requests, loading, submitting, error, reload, create } = usePrivacyRequests();
 
     const [mode, setMode] = useState<DpRequestType | null>(null);
     const [details, setDetails] = useState('');
@@ -49,18 +53,6 @@ export default function PrivacyRequestsScreen() {
     useEffect(() => {
         if (type) setMode(type);
     }, [type]);
-
-    // --- export -----------------------------------------------------------
-    const runExport = async () => {
-        const result = await requestExport();
-        if (!result.ok) {
-            notify('Could not prepare your data', result.message);
-            return;
-        }
-        notify(t('privacy.data.export.ready'), '');
-        void Linking.openURL(result.url);
-        setMode(null);
-    };
 
     // --- erasure ----------------------------------------------------------
     const runErasure = async () => {
@@ -110,21 +102,14 @@ export default function PrivacyRequestsScreen() {
         router.setParams({ type: undefined as never });
     };
 
+    const nextDue = requests
+        .filter((r) => OPEN_STATUSES.includes(r.status))
+        .map((r) => r.sla_due_at)
+        .sort()[0];
+
     return (
         <AppShell title={t('privacy.requests.heading')}>
             <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 32 }}>
-                {mode === 'access_export' ? (
-                    <Card title={t('privacy.data.export')} help={t('privacy.data.export.help')}>
-                        <PrimaryButton
-                            label={submitting ? t('privacy.data.export.preparing') : t('privacy.data.export')}
-                            icon={<Download size={16} color="#FFF" />}
-                            busy={submitting}
-                            onPress={() => void runExport()}
-                        />
-                        <SecondaryButton label={t('common.cancel')} onPress={reset} />
-                    </Card>
-                ) : null}
-
                 {mode === 'correction' ? (
                     <Card title={t('privacy.data.correct')} help={t('privacy.data.correct.help')}>
                         <ChipSelect<CorrectableField>
@@ -264,12 +249,16 @@ export default function PrivacyRequestsScreen() {
                     ))
                 )}
 
-                {requests.length > 0 ? (
+                {/* The promise only applies to a request we still owe an
+                    answer on, and to the SOONEST of those — not to whichever
+                    happens to be newest, which for a completed export left
+                    "we will respond by" sitting under a request marked Done. */}
+                {nextDue ? (
                     <Text
                         style={{ color: COLORS.textSecondary }}
                         className="text-[10px] font-medium mt-2"
                     >
-                        {t('request.due', { date: formatDate(requests[0].sla_due_at) })}
+                        {t('request.due', { date: formatDate(nextDue) })}
                     </Text>
                 ) : null}
             </ScrollView>

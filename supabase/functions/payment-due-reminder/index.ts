@@ -15,10 +15,14 @@
 // rider mid-plan owes what they agreed to, so a price rise published today
 // must not change the figure in tonight's reminder.
 //
-// A period that has already been paid is skipped. The old version could not
-// tell — `bookings.plan_status` said 'active' whether or not the cycle's
-// invoice was settled — so a rider who paid early still got nagged. Paid-ness
-// now comes from v_invoice_balances, which derives it from the allocations.
+// A rider who has already RENEWED is skipped. The old version could not tell
+// — `bookings.plan_status` said 'active' whether or not the cycle's invoice
+// was settled — so a rider who paid early still got nagged. Paid-ness now
+// comes from v_invoice_balances, which derives it from the allocations.
+//
+// Which INVOICE that is matters: see isRenewalPaid. Periods are paid for in
+// advance, so "is the current period paid?" is true for everyone and skipped
+// the reminder for every rider in good standing.
 //
 // Offsets are counted from business_today(), so "due in 1 day" means the
 // business day, not whatever day it is in UTC.
@@ -39,6 +43,7 @@ const REMINDER_DAYS: number[] = (Deno.env.get("PAYMENT_DUE_REMINDER_DAYS") ?? "3
 interface PeriodRow {
     id: string;
     subscription_id: string;
+    sequence_number: number;
     due_on: string;
     base_amount_snapshot: number;
     subscriptions: { id: string; user_id: string; status: string } | null;
@@ -83,7 +88,7 @@ Deno.serve(async (_req) => {
         const { data: periods, error } = await admin
             .from("subscription_periods")
             .select(
-                "id, subscription_id, due_on, base_amount_snapshot, subscriptions(id, user_id, status)",
+                "id, subscription_id, sequence_number, due_on, base_amount_snapshot, subscriptions(id, user_id, status)",
             )
             .eq("status", "current")
             .eq("due_on", addDays(today, offsetDays));
@@ -103,7 +108,7 @@ Deno.serve(async (_req) => {
             if (subscription.status !== "active" && subscription.status !== "past_due") continue;
             matched++;
 
-            if (await isPeriodPaid(admin, period.id)) {
+            if (await isRenewalPaid(admin, period)) {
                 skippedPaid++;
                 continue;
             }
@@ -127,16 +132,32 @@ Deno.serve(async (_req) => {
 });
 
 /**
- * Has the invoice for this period been settled?
+ * Has the rider already RENEWED — i.e. paid for the period after this one?
  *
- * A period with no invoice yet is not paid — generate_period_invoice has
- * simply not run for it, which is the sweep's job rather than this one's.
+ * This used to ask whether the CURRENT period's own invoice was settled,
+ * which sounds equivalent and is not. Periods are billed in ADVANCE: the
+ * period now running was paid for before it began, so that question answers
+ * "yes" for every rider in good standing, every time — and the reminder that
+ * their plan is about to run out was skipped for exactly the people who
+ * needed it. Only a rider already in arrears got told anything.
+ *
+ * What is due three days before the plan ends is the NEXT period. A period
+ * with no row yet has certainly not been paid for.
  */
-async function isPeriodPaid(admin: Admin, periodId: string): Promise<boolean> {
+async function isRenewalPaid(admin: Admin, period: PeriodRow): Promise<boolean> {
+    const { data: next } = await admin
+        .from("subscription_periods")
+        .select("id")
+        .eq("subscription_id", period.subscription_id)
+        .eq("sequence_number", period.sequence_number + 1)
+        .maybeSingle();
+    if (!next) return false;
+
     const { data: invoice } = await admin
         .from("invoices")
         .select("id")
-        .eq("subscription_period_id", periodId)
+        .eq("subscription_period_id", next.id)
+        .neq("status", "void")
         .maybeSingle();
     if (!invoice) return false;
 

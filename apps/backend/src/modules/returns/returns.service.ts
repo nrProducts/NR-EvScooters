@@ -163,6 +163,7 @@ export async function getReturnDetail(rentalId: string): Promise<ReturnDetailVie
             expires_at: raw.due_back_at,
         }),
         maxDays: max_late_fee_days,
+        // The same rate settleReturn will charge at.
         feePerDay: late_fee_per_day,
     });
 

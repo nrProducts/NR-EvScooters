@@ -3,12 +3,15 @@
 //
 // Once a subscription period's due date passes, this does ONE of two things:
 //
-//   - a `scheduled` next period exists (the rider already paid ahead — see
+//   - a PAID `scheduled` next period exists (the rider renewed ahead — see
 //     applyRenewalSuccess in apps/backend/src/modules/payments/payments
 //     .service.ts): PROMOTE it. Close the lapsed period, make the scheduled
 //     one `current`, and the plan simply carries on.
-//   - otherwise: mark the subscription `past_due` and make sure the invoice
-//     for the period they owe actually exists.
+//   - otherwise: mark the subscription `past_due`.
+//
+// "PAID" is doing real work in that first line — see findScheduledPeriod.
+// The row alone is no longer evidence of a renewal, because the renewal
+// preview creates it before the rider has paid anything.
 //
 // ── What the new schema changed ──────────────────────────────────────────
 //
@@ -21,10 +24,10 @@
 // renewal_status to reset and no dates to recompute, because the scheduled
 // row already carries them.
 //
-// Invoice generation is still delegated to a Postgres function, now
-// generate_period_invoice(period_id) rather than fn_generate_weekly_invoice
-// (booking_id). It is idempotent — one invoice per period — so a re-run of
-// the sweep cannot mint a duplicate bill.
+// This sweep no longer generates invoices at all. Periods are billed in
+// ADVANCE — the current one was paid for before it started — so the bill a
+// lapsed rider owes is for the NEXT period, which the renewal path raises.
+// See markPastDue.
 //
 // Every date comparison goes through business_today(). The old todayIso()
 // read the Deno clock, which is UTC: between 18:30 and midnight IST it
@@ -124,10 +127,18 @@ async function closePeriod(admin: Admin, periodId: string): Promise<void> {
 }
 
 /**
- * The next period, if the rider paid ahead — but its existence alone is no
- * longer proof of that (see this file's header). A 'scheduled' row with no
- * settled invoice is an abandoned renewal preview, not a paid-ahead one, and
- * must not be promoted.
+ * The next period, if the rider PAID AHEAD — its existence alone is no longer
+ * proof of that (see this file's header).
+ *
+ * It used to be: applyRenewalSuccess only inserted the row once a capture had
+ * been applied. The renewal preview creates it up front now, because the
+ * invoice the rider is about to pay has to hang off a period, so promoting on
+ * existence alone would renew a plan for free the moment a rider opened the
+ * renewal screen and closed the app. A 'scheduled' row with no settled
+ * invoice is an abandoned preview, not a paid-ahead renewal.
+ *
+ * `is_paid` comes from v_invoice_balances, i.e. from money actually
+ * allocated — the same authority everything else uses.
  */
 async function findScheduledPeriod(
     admin: Admin,
@@ -166,7 +177,9 @@ async function findScheduledPeriod(
         });
         return null;
     }
-    if (!balance?.is_paid) return null; // Previewed, never paid — leave it scheduled, not promotable.
+    // Unpaid — an abandoned preview, not a pre-paid renewal. The rider is
+    // behind, and markPastDue below is the right answer.
+    if (!balance?.is_paid) return null;
 
     return { id: data.id, starts_on: data.starts_on, ends_on: data.ends_on };
 }
@@ -268,29 +281,20 @@ async function markPastDue(
     subscription: { id: string; user_id: string; status: string },
     today: string,
 ): Promise<boolean> {
-    // The bill has to exist before anyone can be told it is overdue.
-    // Idempotent by contract — one invoice per period.
-    const { error: invoiceError } = await admin.rpc("generate_period_invoice", {
-        p_subscription_period_id: period.id,
-    });
-    if (invoiceError) {
-        console.error(`[${SOURCE}] invoice generation failed`, {
-            periodId: period.id,
-            error: invoiceError,
-        });
-    }
-
-    // Paid-ness is read, never written: v_invoice_balances derives it from
-    // payment_allocations, so a rider who settled after the due date is not
-    // marked past_due by a sweep that ran later the same day.
-    const { data: balances } = await admin
-        .from("v_invoice_balances")
-        .select("is_paid")
-        .eq("subscription_id", subscription.id)
-        .eq("is_paid", false)
-        .limit(1);
-    if ((balances ?? []).length === 0) return false;
-
+    // No invoice is generated here any more, and that is the correction.
+    //
+    // Periods are billed IN ADVANCE on this platform: the current period was
+    // paid for before it began, so `generate_period_invoice` on it either
+    // handed back that settled invoice or — worse — billed the rider a second
+    // time for a week they had already bought. The bill that is actually owed
+    // is for the NEXT period, and the renewal path raises that one.
+    //
+    // The old unpaid-invoice gate went with it. It asked "does this
+    // subscription have ANY unpaid invoice?", which for a rider whose cycles
+    // are all settled is no — so a plan that lapsed with nothing outstanding
+    // was never marked past_due at all, and sat reading `active` days after
+    // it had expired. Lapsing IS the condition: the period ran out and no
+    // paid renewal exists (findScheduledPeriod above already checked that).
     if (subscription.status !== "active") return false;
 
     const { data: updated, error } = await admin

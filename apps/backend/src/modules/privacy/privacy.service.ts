@@ -7,13 +7,9 @@ import { writeAudit } from "../../common/audit";
 import { logPiiAccess } from "../../common/piiAccess";
 import type { AuthContext, Paginated } from "../../types";
 import type { Database } from "../../types/database.types";
-import {
-    buildExportBundle, createExportSignedUrl, storeExportBundle,
-} from "./privacy.export";
+import { buildPrivacySummary, type PrivacySummary } from "./privacy.summary";
 import { assertErasable, eraseUser } from "./privacy.erasure";
-import {
-    EXPORT_RATE_LIMIT_HOURS, EXPORT_URL_TTL_SECONDS, graceEndsAt, slaDueAt,
-} from "./retention.constants";
+import { graceEndsAt, slaDueAt } from "./retention.constants";
 import type {
     DpRequestStatus, DpRequestType, ListPrivacyRequestsFilters, NomineeView,
     PrivacyRequestAdminView, PrivacyRequestView,
@@ -32,7 +28,7 @@ const RIDER_COLUMNS = `
 `;
 
 const ADMIN_COLUMNS = `
-    ${RIDER_COLUMNS}, channel, export_storage_path,
+    ${RIDER_COLUMNS}, channel,
     rider:users!data_principal_requests_user_id_fkey(id, full_name, phone, email),
     assignee:users!data_principal_requests_assigned_to_user_id_fkey(id, full_name)
 `;
@@ -205,132 +201,49 @@ export async function cancelMyRequest(
 }
 
 // ---------------------------------------------------------------------------
-// Rider: data export (DPDPA s.11)
+// Rider: access summary (DPDPA s.11)
 // ---------------------------------------------------------------------------
 
 /**
- * Generates the bundle synchronously.
+ * The rider reading their own s.11 summary.
  *
- * A rider's footprint is hundreds of rows; a queue would need a worker for
- * one use case, and "we'll email it to you" is a worse experience than a
- * two-second wait. If p95 ever goes bad, the request row already models the
- * asynchronous case.
+ * No request row, no rate limit and no audit entry: this is a person looking
+ * at their own record, which is the thing the right exists to permit. A
+ * queue entry per view would turn an instant answer into a 30-day SLA, and
+ * logging a rider's reads of themselves records nothing anyone can act on.
+ *
+ * A STAFF member reading it is a different act entirely — see
+ * summaryForUser(), which logs.
  */
-export async function generateExport(
+export async function getMySummary(userId: string): Promise<PrivacySummary> {
+    return buildPrivacySummary(userId);
+}
+
+/**
+ * Staff reading a rider's summary, for a request that arrived off-app.
+ *
+ * Logged to pii_access_log as a read of the rider's whole record, because
+ * that is what it is. The SOP requires the requester's identity to be
+ * verified before this is used — an access request is exactly how a
+ * social-engineering attempt on someone else's data begins.
+ */
+export async function summaryForUser(
     userId: string,
     actor: AuthContext,
     req?: Request,
-): Promise<{ request: PrivacyRequestView; url: string; expires_in: number }> {
-    await assertExportNotRateLimited(userId);
+): Promise<PrivacySummary> {
+    const summary = await buildPrivacySummary(userId);
 
-    const now = new Date();
-    const { data: created, error: createError } = await supabaseAdmin
-        .from("data_principal_requests")
-        .insert({
-            user_id: userId,
-            reference: newReference(now),
-            request_type: "access_export",
-            status: "in_progress",
-            sla_due_at: slaDueAt("access_export", now),
-            channel: "app",
-        })
-        .select(RIDER_COLUMNS)
-        .single();
-    if (createError) throw createError;
-
-    const request = created as unknown as PrivacyRequestView;
-
-    const bundle = await buildExportBundle(userId);
-    const stored = await storeExportBundle(userId, request.id, bundle);
-
-    const { data: completed, error: completeError } = await supabaseAdmin
-        .from("data_principal_requests")
-        .update({
-            status: "completed",
-            completed_at: new Date().toISOString(),
-            export_storage_path: stored.path,
-            resolution_notes:
-                "A copy of your data was generated and made available for download. " +
-                "The file is deleted from our servers after 30 days.",
-        })
-        .eq("id", request.id)
-        .select(RIDER_COLUMNS)
-        .single();
-    if (completeError) throw completeError;
-
-    await writeAudit({
-        actorId: actor.id,
-        targetUserId: userId,
-        action: "privacy.export_generated",
-        entityType: "privacy_request",
-        entityId: request.id,
-        after: { reference: request.reference, by_staff: actor.id !== userId },
-        req,
-    });
-
-    // A staff-generated export is a read of the rider's entire record — the
-    // single largest one possible — so it is logged as such.
     await logPiiAccess({
         actor,
         targetUserId: userId,
         resource: "data_export",
-        resourceId: request.id,
         fields: ["complete_record"],
         reason: "rights_request",
-        contextRef: request.reference,
         req,
     });
 
-    return {
-        request: completed as unknown as PrivacyRequestView,
-        url: stored.url,
-        expires_in: stored.expires_in,
-    };
-}
-
-/** Re-mints the signed URL; the bundle itself is not regenerated. */
-export async function getExportUrl(
-    userId: string,
-    requestId: string,
-): Promise<{ url: string; expires_in: number }> {
-    const request = await getMyRequest(userId, requestId);
-    const { data, error } = await supabaseAdmin
-        .from("data_principal_requests")
-        .select("export_storage_path")
-        .eq("id", request.id)
-        .single();
-    if (error) throw error;
-
-    const path = (data as { export_storage_path: string | null }).export_storage_path;
-    if (!path) {
-        throw notFound(
-            "This request has no download. It may have expired — exports are deleted " +
-            "after 30 days. Request a new copy.",
-        );
-    }
-
-    return { url: await createExportSignedUrl(path), expires_in: EXPORT_URL_TTL_SECONDS };
-}
-
-async function assertExportNotRateLimited(userId: string): Promise<void> {
-    const since = new Date(Date.now() - EXPORT_RATE_LIMIT_HOURS * 3600_000).toISOString();
-    const { data, error } = await supabaseAdmin
-        .from("data_principal_requests")
-        .select("id, created_at")
-        .eq("user_id", userId)
-        .eq("request_type", "access_export")
-        .gte("created_at", since)
-        .limit(1);
-    if (error) throw error;
-
-    if (data && data.length > 0) {
-        // Each bundle is the most concentrated PII artefact the system
-        // produces; generating them on a loop is both a cost and a risk.
-        throw conflict(
-            `You can download a copy of your data once every ${EXPORT_RATE_LIMIT_HOURS} hours. ` +
-            "Your most recent copy is still available from your requests list.",
-        );
-    }
+    return summary;
 }
 
 // ---------------------------------------------------------------------------
@@ -723,7 +636,6 @@ function toAdminView(row: Record<string, unknown>): PrivacyRequestAdminView {
         created_at: row.created_at as string,
         updated_at: (row.updated_at as string | null) ?? null,
         channel: row.channel as PrivacyRequestAdminView["channel"],
-        export_storage_path: (row.export_storage_path as string | null) ?? null,
         rider: unwrap(row.rider),
         assigned_to: unwrap(row.assignee),
         is_overdue: !isClosed(status) && new Date(row.sla_due_at as string) < new Date(),

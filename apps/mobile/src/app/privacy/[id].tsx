@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Spinner } from '../../components/Spinner';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Download } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { confirmAction, notify } from '../../lib/confirm';
@@ -25,6 +24,7 @@ import type { ApiPrivacyRequest } from '../../types/api';
  */
 export default function PrivacyRequestDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
+    const router = useRouter();
     const insets = useSafeAreaInsets();
     const { t } = useT();
 
@@ -62,22 +62,6 @@ export default function PrivacyRequestDetailScreen() {
             setRequest(await api.cancelPrivacyRequest(request.id));
         } catch (err) {
             notify('Could not cancel', err instanceof ApiError ? err.message : 'Please try again.');
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    const download = async () => {
-        if (!request) return;
-        setBusy(true);
-        try {
-            const { url } = await api.exportUrl(request.id);
-            void Linking.openURL(url);
-        } catch (err) {
-            notify(
-                'Download unavailable',
-                err instanceof ApiError ? err.message : 'Please request a new copy.',
-            );
         } finally {
             setBusy(false);
         }
@@ -162,17 +146,19 @@ export default function PrivacyRequestDetailScreen() {
                             />
                         ) : null}
 
-                        {request.type === 'access_export' && request.status === 'completed' ? (
+                        {/* A historical export request. The file it produced is
+                            gone and nothing can mint a link to it — access is
+                            answered on /privacy/summary now. The row stays
+                            because it is the record of a request we answered. */}
+                        {request.type === 'access_export' ? (
                             <TouchableOpacity
-                                onPress={() => void download()}
-                                disabled={busy}
+                                onPress={() => router.push('/privacy/summary' as never)}
                                 accessibilityRole="button"
-                                style={{ backgroundColor: COLORS.primary, opacity: busy ? 0.6 : 1 }}
+                                style={{ backgroundColor: COLORS.primary }}
                                 className="w-full py-3.5 rounded-2xl flex-row justify-center items-center mt-2"
                             >
-                                <Download size={16} color="#FFF" />
-                                <Text className="text-white font-bold text-sm ml-2">
-                                    {t('privacy.data.export')}
+                                <Text className="text-white font-bold text-sm">
+                                    {t('privacy.summary')}
                                 </Text>
                             </TouchableOpacity>
                         ) : null}
