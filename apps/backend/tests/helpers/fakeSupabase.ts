@@ -26,6 +26,8 @@ export interface QueryRecord {
     filters: Array<[string, string, unknown]>;
     /** True when the chain ended in .single() or .maybeSingle(). */
     single: boolean;
+    /** The column list passed to .select(), so a test can assert on embeds (e.g. `!inner`). */
+    select?: string;
 }
 
 export type QueryHandler = (q: QueryRecord) => { data?: unknown; error?: unknown };
@@ -57,14 +59,20 @@ export function createFakeSupabase(
         const builder: Record<string, unknown> = {};
 
         // Terminal-but-still-chainable filters and modifiers.
-        for (const method of ["eq", "neq", "in", "gt", "gte", "lt", "lte", "not", "or", "order", "limit", "range"]) {
+        for (const method of [
+            "eq", "neq", "in", "is", "gt", "gte", "lt", "lte", "not", "like", "ilike",
+            "or", "order", "limit", "range",
+        ]) {
             builder[method] = (a?: unknown, b?: unknown) => {
                 record.filters.push([method, String(a), b]);
                 return builder;
             };
         }
 
-        builder.select = (_columns?: string) => builder;
+        builder.select = (columns?: string) => {
+            if (columns !== undefined) record.select = columns;
+            return builder;
+        };
 
         for (const [method, op] of [["insert", "insert"], ["update", "update"], ["upsert", "insert"]] as const) {
             builder[method] = (payload: Record<string, unknown>) => {
