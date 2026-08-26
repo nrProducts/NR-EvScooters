@@ -202,14 +202,19 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
           >
             <Menu size={20} color={COLORS.textPrimary} />
           </TouchableOpacity>
-          <View className="flex-1">
-            <Text style={{ color: COLORS.textPrimary }} className="text-base font-extrabold" numberOfLines={1}>
+          <View className="flex-1 flex-row items-center">
+            <Text style={{ color: COLORS.textPrimary }} className="text-base font-extrabold shrink" numberOfLines={1}>
               {title}
             </Text>
             {rentalDay != null ? (
-              <Text style={{ color: COLORS.primaryPressed }} className="text-[11px] font-semibold mt-0.5">
-                Day {rentalDay} of your rental
-              </Text>
+              <View
+                className="ml-2 rounded-full px-2 py-0.5"
+                style={{ backgroundColor: COLORS.primary + '14' }}
+              >
+                <Text style={{ color: COLORS.primaryPressed }} className="text-[10px] font-bold">
+                  Day {rentalDay}
+                </Text>
+              </View>
             ) : null}
           </View>
         </View>
