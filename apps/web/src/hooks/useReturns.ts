@@ -21,6 +21,30 @@ export function useSaveInspection() {
   });
 }
 
+export function useAddDamageCharge() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rentalId, input }: { rentalId: string; input: api.AddDamageChargeInput }) =>
+      api.addDamageCharge(rentalId, input),
+    onSuccess: (_data, { rentalId }) => {
+      qc.invalidateQueries({ queryKey: ["return-detail", rentalId] });
+      qc.invalidateQueries({ queryKey: ["pickup-queue"] });
+    },
+  });
+}
+
+export function useRemoveDamageCharge() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rentalId, damageId }: { rentalId: string; damageId: string }) =>
+      api.removeDamageCharge(rentalId, damageId),
+    onSuccess: (_data, { rentalId }) => {
+      qc.invalidateQueries({ queryKey: ["return-detail", rentalId] });
+      qc.invalidateQueries({ queryKey: ["pickup-queue"] });
+    },
+  });
+}
+
 export function usePaymentReview(rentalId: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: ["return-payment", rentalId],

@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Spinner } from '../components/Spinner';
 import { useFocusEffect } from 'expo-router';
@@ -16,7 +16,7 @@ import { billingRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
 import { getRenewalEligibility } from '../lib/returnPolicy';
 import { ApiError } from '../lib/ApiError';
-import type { ApiEarlyRecharge, ApiInvoice, InvoicePaymentState, PlanStatus } from '../types/api';
+import type { ApiEarlyRecharge, ApiInvoice, ApiPaymentOrder, ApiPlanQuote, InvoicePaymentState, PlanStatus } from '../types/api';
 
 const CYCLE_LABEL: Record<string, string> = {
   daily: 'Day', weekly: 'Week', monthly: 'Month', yearly: 'Year',
@@ -106,6 +106,14 @@ export default function BillingScreen() {
   const profile = useAuthStore((s) => s.profile);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
+  const [completingBookingPayment, setCompletingBookingPayment] = useState(false);
+  const [bookingPaymentError, setBookingPaymentError] = useState<string | null>(null);
+  // The real bill (deposit + transaction fee + any welcome discount) —
+  // plan.price alone is only the rental line, same reasoning as
+  // booking/billing.tsx's own quote. Either the pre-checkout quote or the
+  // created order carry the same { lines, amount } shape; the order (once
+  // created) wins, since it's what Razorpay will actually charge.
+  const [bookingQuote, setBookingQuote] = useState<ApiPaymentOrder | ApiPlanQuote | null>(null);
   // Two-step Recharge Now: tapping the teaser fetches the breakdown
   // (rechargePreview) without charging anything — only Confirm & Pay
   // actually opens the payment sheet. previewLoading covers step 1,
@@ -145,6 +153,22 @@ export default function BillingScreen() {
   );
 
   const plan = booking?.plan;
+  const isPendingBookingPayment = booking?.status === 'pending_payment';
+
+  // Read-only: fetches the itemized breakdown (deposit, transaction fee,
+  // any welcome discount) for a booking whose first payment never went
+  // through, so the card below can show the REAL total rather than just
+  // the rental price — mirrors booking/billing.tsx's own quotePlan() call.
+  useEffect(() => {
+    if (!isPendingBookingPayment || !plan?.id || bookingQuote) return;
+    let cancelled = false;
+    billingRepository
+      .quotePlan(plan.id, booking?.start_day ?? undefined)
+      .then((q) => { if (!cancelled) setBookingQuote(q); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [isPendingBookingPayment, plan?.id, booking?.start_day, bookingQuote]);
+
   // Anything not fully covered by allocations, voided invoices excluded.
   // `partial` counts: half-paid is still owed.
   const outstandingInvoices = invoices.filter(
@@ -204,6 +228,51 @@ export default function BillingScreen() {
       }
     } finally {
       setPayingInvoiceId(null);
+    }
+  };
+
+  // Resumes a booking whose FIRST payment never went through — e.g. the
+  // rider backed out of Razorpay, lost connectivity, or killed the app
+  // before checkout finished. That booking has no subscription/invoice yet
+  // (createOrderForBooking creates both), so the Outstanding section above
+  // has nothing to show; this is the only way to get back into checkout
+  // after leaving the booking-creation screen (Home's "Complete Payment"
+  // card links here with no params, expecting this screen to handle it).
+  const handleCompleteBookingPayment = async () => {
+    if (!bookingId) return;
+    setBookingPaymentError(null);
+    setCompletingBookingPayment(true);
+    try {
+      const order = await billingRepository.createOrderForBooking(bookingId);
+      // The real, authoritative lines — same reasoning as booking/billing.tsx:
+      // if the rider cancels Checkout and lands back here, the breakdown
+      // redraws with the server's actual rows instead of the plan-only quote.
+      setBookingQuote(order);
+      const verifyPayload = await openRazorpayCheckout({
+        key: order.keyId,
+        amount: Math.round(order.amount * 100),
+        currency: order.currency,
+        order_id: order.gatewayOrderId,
+        description: plan?.name ?? 'Scooter Booking',
+        prefill: {
+          email: profile?.email ?? undefined,
+          contact: profile?.phone ?? undefined,
+          name: profile?.full_name,
+        },
+        theme: { color: COLORS.primary },
+      });
+      await billingRepository.verifyPayment(verifyPayload);
+      reload();
+    } catch (err) {
+      if (err instanceof PaymentCancelledError || err instanceof PaymentUnavailableError) {
+        setBookingPaymentError(err.message);
+      } else if (err instanceof ApiError) {
+        setBookingPaymentError(err.message);
+      } else {
+        setBookingPaymentError('Payment failed. Please try again.');
+      }
+    } finally {
+      setCompletingBookingPayment(false);
     }
   };
 
@@ -328,6 +397,89 @@ export default function BillingScreen() {
               </View>
             </View>
           </View>
+
+          {/* Booking payment never completed — no subscription/invoice exists
+              yet, so the Outstanding section below has nothing to show. This
+              is the only way back into checkout after leaving the
+              booking-creation screen. */}
+          {isPendingBookingPayment ? (
+            <View
+              className="rounded-2xl border mb-6 overflow-hidden"
+              style={{ backgroundColor: COLORS.card, borderColor: COLORS.danger + '55' }}
+            >
+              <View
+                className="flex-row items-center px-4 py-3"
+                style={{ backgroundColor: COLORS.danger + '14' }}
+              >
+                <Receipt size={13} color={COLORS.danger} />
+                <Text style={{ color: COLORS.danger }} className="text-xs font-extrabold ml-2">
+                  Booking Payment Pending
+                </Text>
+              </View>
+              <View className="px-4 pt-3 pb-4">
+                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mb-3 leading-relaxed">
+                  Your last payment attempt didn't go through. Your reservation is still held — complete the
+                  payment to confirm your booking.
+                </Text>
+
+                {bookingQuote ? (
+                  /* The real bill — deposit and transaction fee included, not
+                     just the rental line. Every row comes from invoice_items,
+                     so what's shown here is exactly what Razorpay charges. */
+                  bookingQuote.lines.map((line, i) => (
+                    <View key={i} className="flex-row items-center justify-between mb-2">
+                      <Text
+                        style={{ color: line.amount < 0 ? COLORS.success : COLORS.textSecondary }}
+                        className="text-xs font-medium flex-1 pr-3"
+                      >
+                        {line.description}
+                      </Text>
+                      <Text
+                        style={{ color: line.amount < 0 ? COLORS.success : COLORS.textPrimary }}
+                        className="text-xs font-semibold"
+                      >
+                        {line.amount < 0 ? '-' : ''}₹{Math.abs(line.amount).toFixed(0)}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <>
+                    <BillLine label="Rental plan amount" amount={plan?.price ?? 0} />
+                    <BillLine label="Security deposit" amount={plan?.deposit_amount ?? 0} />
+                  </>
+                )}
+                <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
+                <View className="flex-row items-center justify-between mb-3">
+                  <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Amount Due</Text>
+                  <Text style={{ color: COLORS.danger }} className="text-lg font-black">
+                    ₹{(bookingQuote?.amount ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)).toFixed(0)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => void handleCompleteBookingPayment()}
+                  disabled={completingBookingPayment}
+                  className="py-3 rounded-xl items-center flex-row justify-center"
+                  style={{ backgroundColor: COLORS.primary, opacity: completingBookingPayment ? 0.6 : 1 }}
+                >
+                  {completingBookingPayment ? (
+                    <Spinner size={16} color="#FFF" />
+                  ) : (
+                    <CreditCard size={14} color="#FFF" />
+                  )}
+                  <Text className="text-white text-xs font-bold ml-2">
+                    {completingBookingPayment
+                      ? 'Processing…'
+                      : `Pay ₹${(bookingQuote?.amount ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)).toFixed(0)}`}
+                  </Text>
+                </TouchableOpacity>
+                {bookingPaymentError ? (
+                  <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mt-3">
+                    {bookingPaymentError}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
 
           {/* Vehicle-lock warning — shown whenever the plan is overdue,
               regardless of whether an outstanding invoice happens to be

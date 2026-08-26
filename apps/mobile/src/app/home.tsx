@@ -24,7 +24,7 @@ import { notifyError } from '../lib/confirm';
 import { COLORS } from '../constants/theme';
 import { VEHICLE_STATUS_LABEL, VEHICLE_STATUS_TONE } from '../constants/status';
 import type { ApiBooking, ApiMaintenanceNotice, ApiRental, ApiReturnSettlement } from '../types/api';
-import { SettlementCard, shouldShowSettlement } from '../components/SettlementCard';
+import { SettlementCard, shouldShowSettlementOnHome } from '../components/SettlementCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function formatDay(dateStr: string): string {
@@ -460,13 +460,15 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {/* Outstanding-amount and refund/settlement status both live here,
-            independent of whether the rental itself is still active — a
-            return in Payment Required keeps the rental (and the vehicle)
-            with the rider until Approve Return actually completes it, so
-            this can't be gated behind "no active rental" the way the
-            post-completion refund summary used to be. */}
-        {shouldShowSettlement(settlement) ? (
+        {/* Outstanding-amount lives here, independent of whether the rental
+            itself is still active — a return in Payment Required keeps the
+            rental (and the vehicle) with the rider until Approve Return
+            actually completes it, so this can't be gated behind "no active
+            rental". Only shown here while money is actually due — once the
+            return resolves, the push notification plus Booking History
+            already cover it, so Home doesn't also hold a resolved
+            confirmation card. */}
+        {shouldShowSettlementOnHome(settlement) ? (
           <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
         ) : null}
 

@@ -1,11 +1,9 @@
 import { z } from "zod";
 
 export const rentalIdParam = z.object({ id: z.string().uuid("A valid rental id is required.") });
-
-const damageItemSchema = z.object({
-    amount: z.number().positive("Damage amount must be greater than 0."),
-    description: z.string().trim().min(3, "Describe the damage in at least 3 characters."),
-    photoPaths: z.array(z.string()).default([]),
+export const rentalDamageIdParam = z.object({
+    id: z.string().uuid("A valid rental id is required."),
+    damageId: z.string().uuid("A valid damage id is required."),
 });
 
 const otherChargeSchema = z.object({
@@ -15,8 +13,8 @@ const otherChargeSchema = z.object({
 
 /** Admin Inspection — "Save Inspection" / "Request Payment from Rider". */
 export const saveInspectionBody = z.object({
-    damageItems: z.array(damageItemSchema).default([]),
     otherCharges: z.array(otherChargeSchema).default([]),
+    confirmNoDamage: z.boolean().default(false),
 });
 export type SaveInspectionBody = z.infer<typeof saveInspectionBody>;
 

@@ -4,9 +4,12 @@ import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
 export const rentalIdParam = z.object({ id: z.string().uuid("A valid rental id is required.") });
 export const damageIdParam = z.object({ id: z.string().uuid("A valid damage id is required.") });
 
+export const damageCategory = z.enum(["body", "panel", "battery", "tyre", "brake", "electrical", "other"]);
+
 export const recordDamageBody = z.object({
     amount: z.coerce.number().min(0, "Amount can't be negative."),
     description: z.string().trim().min(3, "Describe the damage in at least 3 characters.").max(2000),
+    damage_category: damageCategory.optional(),
 });
 
 export const disputeDamageBody = z.object({

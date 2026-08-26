@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { Spinner } from "../components/Spinner";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -113,6 +113,14 @@ export default function RootLayout() {
 
   const router = useRouter();
   const segments = useSegments();
+  // The navigator (the <Stack> below) isn't attached yet on the very first
+  // render — most visibly right after a Fast Refresh, when zustand's stores
+  // keep their in-memory state across the remount, so this effect's guards
+  // (initialising/profile/etc.) are already satisfied before expo-router's
+  // root navigation container exists. Calling replace() before that throws
+  // "Attempted to navigate before mounting the Root Layout" — `key` is only
+  // set once the container has actually mounted.
+  const navigationState = useRootNavigationState();
 
   useEffect(() => {
     // Every path below reaches Supabase, which needs the env vars.
@@ -191,6 +199,7 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    if (!navigationState?.key) return;
     if (initialising || !onboardingHydrated) return;
 
     const segs = segments as unknown as string[];
@@ -252,7 +261,10 @@ export default function RootLayout() {
     if (atAuthScreen || current === "profile-setup" || !RIDER_ROUTES.includes(current)) {
       router.replace("/home");
     }
-  }, [initialising, onboardingHydrated, hasSeenOnboarding, session, profile, hasSeenKycIntro, segments, router]);
+  }, [
+    navigationState?.key, initialising, onboardingHydrated, hasSeenOnboarding, session, profile,
+    hasSeenKycIntro, segments, router,
+  ]);
 
   if (missing.length > 0) return <MisconfiguredScreen missing={missing} />;
 

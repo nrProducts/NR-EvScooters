@@ -23,7 +23,7 @@ function isTerminal(status: ApiReturnSettlement['status']): boolean {
 }
 
 /**
- * Whether the settlement is still worth showing on Home/My Scooter — always
+ * Whether the settlement is still worth showing on My Scooter — always
  * while unresolved, and for a brief confirmation window after it resolves
  * (no backend "expiry" concept, purely a client display window).
  */
@@ -32,6 +32,17 @@ export function shouldShowSettlement(settlement: ApiReturnSettlement | null): bo
   if (!isTerminal(settlement.status)) return true;
   const resolvedAt = settlement.processed_at ? new Date(settlement.processed_at).getTime() : 0;
   return Date.now() - resolvedAt < 48 * 60 * 60 * 1000;
+}
+
+/**
+ * Home only surfaces the settlement while money is actually due — once it
+ * resolves (paid, refunded, or nothing owed either way), the push
+ * notification plus Booking History already cover it, so the post-return
+ * "Scooter Returned Successfully" confirmation card has no reason to keep
+ * occupying Home.
+ */
+export function shouldShowSettlementOnHome(settlement: ApiReturnSettlement | null): boolean {
+  return !!settlement && settlement.due_amount > 0 && settlement.status === 'amount_due';
 }
 
 /**

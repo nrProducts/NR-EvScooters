@@ -174,6 +174,15 @@ export interface BookingActiveRental {
     /** `COALESCE(rental_returns.due_back_at, rentals.due_back_at)`. */
     return_due_at: string | null;
     return_approved_at: string | null;
+    /**
+     * Vehicle Return → Inspection → Payment Gate summary — set only on the
+     * Returns list's Pending tab (see returnStageSummaryFor in
+     * returns.service.ts); undefined everywhere else loadBookingContext is
+     * used, so as not to add the extra query to every booking-context read.
+     */
+    charges?: number;
+    amount_due?: number;
+    payment_status?: "not_required" | "pending" | "paid";
 }
 
 export interface PickupQueueFilters {

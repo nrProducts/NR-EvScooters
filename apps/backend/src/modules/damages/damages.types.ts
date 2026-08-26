@@ -14,6 +14,8 @@
  */
 export type DamageStatus = "assessed" | "disputed" | "settled" | "waived";
 
+export type DamageCategory = "body" | "panel" | "battery" | "tyre" | "brake" | "electrical" | "other";
+
 export interface DamageRow {
     id: string;
     /** Resolved through the incident's rental → subscription → booking. */
@@ -26,6 +28,8 @@ export interface DamageRow {
     amount: number;
     /** `incidents.description`; `damages.notes` when the assessor added detail. */
     description: string;
+    /** `damages.damage_category` — null for damage recorded before this field existed. */
+    damage_category: DamageCategory | null;
     /** Signed URLs from `incidents.photo_paths`, minted fresh on every read. */
     photo_urls: string[];
     /**
@@ -59,6 +63,7 @@ export interface DamageRow {
 export interface RecordDamageInput {
     amount: number;
     description: string;
+    damage_category?: DamageCategory;
 }
 
 export interface DisputeDamageInput {

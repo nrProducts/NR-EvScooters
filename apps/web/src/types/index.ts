@@ -376,6 +376,10 @@ export interface PickupBookingActiveRental {
   return_feedback: string | null;
   return_due_at: string | null;
   return_approved_at: string | null;
+  /** Set only on the Returns list's Pending tab, once a return has been requested. */
+  charges?: number;
+  amount_due?: number;
+  payment_status?: "not_required" | "pending" | "paid";
 }
 
 export interface PickupBooking {
@@ -841,6 +845,8 @@ export interface Deposit {
  */
 export type DamageStatus = "assessed" | "disputed" | "settled" | "waived";
 
+export type DamageCategory = "body" | "panel" | "battery" | "tyre" | "brake" | "electrical" | "other";
+
 export interface Damage {
   id: string;
   /** Resolved through the incident's rental → subscription → booking. */
@@ -849,6 +855,7 @@ export interface Damage {
   reported_by: { id: string; full_name: string } | null;
   amount: number;
   description: string;
+  damage_category: DamageCategory | null;
   photo_urls: string[];
   deposit_deduction: number;
   outstanding_amount: number;
@@ -1195,6 +1202,9 @@ export interface AdminRental {
   /** Stamped the moment staff settle a rental that had a pending return request — i.e. approve it. */
   return_approved_at: string | null;
   return_approved_by: { id: string; full_name: string } | null;
+  /** `rental_returns.inspected_at` — gates deposit-refund eligibility. */
+  inspected_at: string | null;
+  inspected_by: { id: string; full_name: string } | null;
   days_late: number | null;
   late_penalty_amount: number | null;
   late_fee_per_day: number | null;

@@ -46,7 +46,7 @@ export type AuditAction =
     | "payment.order_superseded" | "payment.webhook_signature_invalid"
     | "payment.unallocated_surplus" | "payment.partial"
     | "deposit.held" | "deposit.refund_initiated" | "deposit.refunded" | "deposit.forfeited"
-    | "damage.created" | "damage.disputed" | "damage.resolved"
+    | "damage.created" | "damage.disputed" | "damage.resolved" | "damage.waived"
     | "refund.initiated" | "refund.submitted" | "refund.processed" | "refund.failed"
     // The `plan.*` names are kept even though the state they describe moved
     // from bookings to `subscriptions`: the events are the same events, and

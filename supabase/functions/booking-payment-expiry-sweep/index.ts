@@ -23,10 +23,11 @@
 //    forces the subscription, its deposit, period #1 and the opening invoice
 //    to exist before a payment can be taken at all — see the header of
 //    apps/backend/src/modules/payments/payments.service.ts. So an abandoned
-//    checkout leaves an `active` subscription behind, because
-//    `subscription_status` has no `pending` value. Expiring the booking
-//    without cancelling it would leave a rider with a live plan they never
-//    paid for. This is the caller that payments.service.ts's
+//    checkout leaves a `pending_payment` subscription behind (that status
+//    exists specifically for this — applyInitialSuccess is the only thing
+//    that ever advances it to `active`, on verified capture). Expiring the
+//    booking without cancelling it would leave a rider with a live plan they
+//    never paid for. This is the caller that payments.service.ts's
 //    cancelAbandonedSubscription() was written for; its logic is
 //    re-implemented below, Deno being unable to import it.
 // =========================================================================
@@ -193,8 +194,9 @@ async function hasSettledPayment(admin: Admin, bookingId: string): Promise<boole
  * Cancels the subscription an abandoned checkout left behind.
  *
  * Mirrors cancelAbandonedSubscription() in payments.service.ts, including
- * its guard: only a subscription still `active` with nothing ever allocated
- * against it is cancelled. Anything else is a real plan.
+ * its guard: only a subscription still `pending_payment` (never captured)
+ * with nothing ever allocated against it is cancelled. Anything else —
+ * `active` included — is a real plan.
  */
 async function cancelAbandonedSubscription(admin: Admin, bookingId: string): Promise<boolean> {
     const { data: subscription, error } = await admin
@@ -202,7 +204,7 @@ async function cancelAbandonedSubscription(admin: Admin, bookingId: string): Pro
         .select("id, status, user_id")
         .eq("booking_id", bookingId)
         .maybeSingle();
-    if (error || !subscription || subscription.status !== "active") return false;
+    if (error || !subscription || subscription.status !== "pending_payment") return false;
 
     const { data: allocated } = await admin
         .from("payment_allocations")
@@ -215,7 +217,7 @@ async function cancelAbandonedSubscription(admin: Admin, bookingId: string): Pro
         .from("subscriptions")
         .update({ status: "cancelled", ended_at: new Date().toISOString() })
         .eq("id", subscription.id)
-        .eq("status", "active")
+        .eq("status", "pending_payment")
         .select("id")
         .maybeSingle();
     if (cancelError || !cancelled) {

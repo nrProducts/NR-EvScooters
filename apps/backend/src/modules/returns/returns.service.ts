@@ -4,7 +4,7 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { AuthContext, Paginated } from "../../types";
 import { completeRide, damageAmountFor, getRentalById } from "../rentals/rentals.service";
-import { recordDamage } from "../damages/damages.service";
+import { listDamagesForRental } from "../damages/damages.service";
 import { getDepositForSubscriptionOrNull } from "../deposits/deposits.service";
 import { processRefund } from "../refunds/refunds.service";
 import { notifyUser } from "../notifications/notifications.service";
@@ -275,17 +275,29 @@ export async function computeReturnStage(rentalId: string, subscriptionId: strin
             totalCharges: 0, additionalDue: 0, refundDue: 0, additionalDueInvoiceId: null, paymentVerifiedAt: null,
         };
     }
-    if (!row.inspected_at) {
+    // Damage can now be recorded incrementally, ahead of the final "Save
+    // Inspection" submit — recordDamage stamps `inspected_at` the moment the
+    // FIRST one is added, well before the admin is done. So `inspected_at`
+    // is no longer the right signal for "has this return moved past the
+    // inspection step" — `status` is: it only leaves "requested" when
+    // saveInspection explicitly finalizes it. Charges already staged are
+    // still surfaced live (damageAmount/otherChargesAmount/totalCharges), so
+    // the settlement panel can show a running total as items are added —
+    // additionalDue/refundDue stay at their pre-finalization defaults so
+    // nothing downstream (the rider's own view, an invoice) reacts before
+    // the admin actually finishes.
+    const damageAmount = await damageAmountFor(rentalId);
+    const otherChargesAmount = Number(row.other_charges_amount ?? 0);
+    const totalCharges = round2(damageAmount + otherChargesAmount);
+
+    if (row.status === "requested") {
         return {
-            status: "return_requested", depositAmount, damageAmount: 0, otherChargesAmount: 0,
-            totalCharges: 0, additionalDue: 0, refundDue: depositAmount,
+            status: "return_requested", depositAmount, damageAmount, otherChargesAmount, totalCharges,
+            additionalDue: 0, refundDue: depositAmount,
             additionalDueInvoiceId: null, paymentVerifiedAt: null,
         };
     }
 
-    const damageAmount = await damageAmountFor(rentalId);
-    const otherChargesAmount = Number(row.other_charges_amount ?? 0);
-    const totalCharges = round2(damageAmount + otherChargesAmount);
     const additionalDue = round2(Math.max(0, totalCharges - depositAmount));
     const refundDue = round2(Math.max(0, depositAmount - totalCharges));
 
@@ -319,24 +331,10 @@ export async function getReturnDetail(rentalId: string): Promise<ReturnDetailVie
 
     const deposit = await getDepositForSubscriptionOrNull(raw.subscription_id);
 
-    // Damage hangs off the incident now, so this is a join rather than a
-    // `booking_id` filter — and it is scoped to THIS rental, which the old
-    // booking-level filter was not.
-    const { data: damageRows, error: damageError } = await supabaseAdmin
-        .from("damages")
-        .select(`
-            id, assessed_amount, assessed_at, notes, status, created_at,
-            assessed_by:users!assessed_by_user_id(id, full_name),
-            incidents!inner(id, rental_id, description, photo_paths, reported_at, vehicle_id)
-        `)
-        .eq("incidents.rental_id", rentalId)
-        .order("created_at", { ascending: true });
-    if (damageError) throw damageError;
-
     return {
         rental,
         deposit,
-        damages: (damageRows ?? []) as unknown as ReturnDetailView["damages"],
+        damages: await listDamagesForRental(rentalId),
         settlement: await getSettlementByRentalId(rentalId),
         stage: await computeReturnStage(rentalId, raw.subscription_id),
     };
@@ -344,14 +342,21 @@ export async function getReturnDetail(rentalId: string): Promise<ReturnDetailVie
 
 /**
  * Admin Inspection — "Save Inspection" / "Request Payment from Rider" are one
- * action: record damage, stage other charges, and — only if they leave an
- * additional amount due — raise the payable invoice and tell the rider. No
- * late fee here: the renewal late fee is already collected upfront in the
- * rider app (Overdue Rider → Late Fee Payment → Return gate), so charging
- * one again at inspection would double it up under the same name. Nothing
- * here touches the rental's own status, releases the vehicle, or ends the
- * subscription; that is Approve Return's job, and it stays blocked until
- * this return reaches ready_for_approval.
+ * action: stage other charges and — only if they leave an additional amount
+ * due — raise the payable invoice and tell the rider. No late fee here: the
+ * renewal late fee is already collected upfront in the rider app (Overdue
+ * Rider → Late Fee Payment → Return gate), so charging one again at
+ * inspection would double it up under the same name. Nothing here touches
+ * the rental's own status, releases the vehicle, or ends the subscription;
+ * that is Approve Return's job, and it stays blocked until this return
+ * reaches ready_for_approval.
+ *
+ * Damage itself is no longer submitted here — each damage charge is recorded
+ * immediately as it's added (see addReturnDamage), complete with its photos,
+ * so it shows up as its own card right away instead of waiting on this final
+ * submit. `inspected_at` is stamped the moment the first one is recorded; if
+ * none ever was, the admin must explicitly confirm a clean inspection via
+ * `confirmNoDamage`.
  */
 export async function saveInspection(
     rentalId: string,
@@ -360,26 +365,21 @@ export async function saveInspection(
 ): Promise<ReturnDetailView> {
     const { data: before, error: beforeError } = await supabaseAdmin
         .from("rentals")
-        .select("id, user_id, status, subscription_id, rental_returns(status)")
+        .select("id, user_id, status, subscription_id, rental_returns(status, inspected_at)")
         .eq("id", rentalId)
         .maybeSingle();
     if (beforeError) throw beforeError;
     if (!before) throw notFound("Rental not found.");
     if (before.status !== "active") throw businessRule("This ride is not active.");
 
-    const ret = unwrap<{ status: string }>(before.rental_returns);
+    const ret = unwrap<{ status: string; inspected_at: string | null }>(before.rental_returns);
     if (!ret || ret.status === "rejected" || ret.status === "approved") {
         throw businessRule("No return has been requested for this rental.");
     }
     if (ret.status === "inspected") throw conflict("This return has already been inspected.");
-
-    for (const item of input.damageItems) {
-        await recordDamage(
-            rentalId,
-            { amount: item.amount, description: item.description },
-            item.photoPaths,
-            actor,
-            { skipInvoice: true },
+    if (!ret.inspected_at && !input.confirmNoDamage) {
+        throw businessRule(
+            "Record the vehicle inspection — add a damage charge, or confirm none — before saving.",
         );
     }
 
@@ -758,6 +758,17 @@ export async function listSettlements(
  * verification) rather than keep offering to pay again.
  */
 export async function getMySettlement(userId: string): Promise<ReturnSettlementRow | null> {
+    // An unresolved payment gate on the rider's CURRENT return — checked
+    // first, and ahead of any historical completed settlement below. A rider
+    // on their second (or later) rental already has an old, genuinely
+    // completed settlement from a PRIOR one; without this ordering, that old
+    // row would always win (being the only `rental_settlements` row that
+    // exists) and shadow the new return's actual outstanding amount — Home
+    // would show nothing due, and My Scooter would say "Returned
+    // Successfully" for a return that hasn't even been paid for yet.
+    const pendingSettlement = await getMyPendingSettlement(userId);
+    if (pendingSettlement) return pendingSettlement;
+
     const { data, error } = await supabaseAdmin
         .from("rental_settlements")
         .select(SETTLEMENT_COLUMNS)
@@ -766,8 +777,31 @@ export async function getMySettlement(userId: string): Promise<ReturnSettlementR
         .limit(1)
         .maybeSingle();
     if (error) throw error;
-    if (data) return toSettlementRow(data as unknown as RawSettlementRow);
+    if (data) {
+        const row = toSettlementRow(data as unknown as RawSettlementRow);
+        // Same self-heal as getSettlementByRentalId (admin view): the STORED
+        // row can never say "the amount due was pre-paid via the payment
+        // gate before completion" — chk_rental_settlements_net still shows
+        // the raw deposit-vs-charges shortfall even though that shortfall
+        // was already collected and verified beforehand. Without this, the
+        // rider keeps seeing a due amount on an already-closed return.
+        if (row.status === "amount_due" && row.due_invoice_id && await isInvoicePaid(row.due_invoice_id)) {
+            return { ...row, status: "settlement_completed", due_amount: 0 };
+        }
+        return row;
+    }
+    return null;
+}
 
+/**
+ * The rider's own in-progress return with an outstanding (unpaid, or paid
+ * but not yet admin-verified) additional-amount-due invoice — synthesized
+ * into the same ReturnSettlementRow shape as a real `rental_settlements` row
+ * so the existing rider-app SettlementCard renders it unchanged. Null once
+ * there is no such return, or its invoice is actually paid (Payment
+ * Submitted, awaiting verification, is deliberately not "due" any more).
+ */
+async function getMyPendingSettlement(userId: string): Promise<ReturnSettlementRow | null> {
     const { data: pending, error: pendingError } = await supabaseAdmin
         .from("rental_returns")
         .select(`
@@ -847,4 +881,41 @@ export async function getMyReturnStage(userId: string): Promise<ReturnStage | nu
     if (!rental) return null;
 
     return computeReturnStage(ret.rental_id, rental.subscription_id);
+}
+
+export interface ReturnStageSummary {
+    charges: number;
+    amountDue: number;
+    paymentStatus: "not_required" | "pending" | "paid";
+}
+
+/**
+ * Batch version of computeReturnStage for the Returns list's Pending tab —
+ * same "compute one summary per admin row" shape as overdueLateFeeStatusFor
+ * in overdueLateFee.ts, just for the inspection/payment stage instead of the
+ * renewal late fee. Rentals with no return request at all (or none matching)
+ * are simply absent from the returned map.
+ */
+export async function returnStageSummaryFor(rentalIds: string[]): Promise<Map<string, ReturnStageSummary>> {
+    const result = new Map<string, ReturnStageSummary>();
+    if (rentalIds.length === 0) return result;
+
+    const { data, error } = await supabaseAdmin
+        .from("rentals")
+        .select("id, subscription_id")
+        .in("id", rentalIds);
+    if (error) throw error;
+
+    for (const row of data ?? []) {
+        const stage = await computeReturnStage(row.id, row.subscription_id);
+        if (!stage) continue;
+        const paymentStatus: ReturnStageSummary["paymentStatus"] =
+            stage.status === "payment_required" ? "pending"
+                : stage.status === "payment_submitted" || stage.status === "ready_for_approval"
+                    || stage.status === "return_completed" ? "paid"
+                    : "not_required";
+        result.set(row.id, { charges: stage.totalCharges, amountDue: stage.additionalDue, paymentStatus });
+    }
+
+    return result;
 }

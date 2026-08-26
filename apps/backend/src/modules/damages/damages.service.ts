@@ -29,7 +29,7 @@ import { businessToday } from "../../common/dates";
  */
 
 const DAMAGE_COLUMNS = `
-    id, assessed_amount, notes, status, created_at,
+    id, assessed_amount, notes, damage_category, status, created_at,
     incidents!inner(
         id, rental_id, description, photo_paths, reported_at,
         reported_by:users!reported_by_user_id(id, full_name),
@@ -45,6 +45,7 @@ interface RawDamageRow {
     id: string;
     assessed_amount: number | string;
     notes: string | null;
+    damage_category: DamageRow["damage_category"];
     status: DamageRow["status"];
     created_at: string;
     incidents: unknown;
@@ -80,6 +81,7 @@ async function toDamageRow(row: RawDamageRow, deduction?: DamageDeduction): Prom
         amount,
         // The assessor's note when there is one, otherwise what was reported.
         description: row.notes ?? incident?.description ?? "",
+        damage_category: row.damage_category,
         photo_urls: await Promise.all(
             (incident?.photo_paths ?? []).map((p) => createSignedDamagePhotoUrl(p)),
         ),
@@ -238,6 +240,7 @@ export async function recordDamage(
             assessed_amount: input.amount,
             assessed_by_user_id: actor.id,
             notes: input.description,
+            damage_category: input.damage_category ?? null,
             status: "assessed",
         })
         .select(DAMAGE_COLUMNS)
@@ -341,6 +344,41 @@ async function raiseDamageInvoice(
         status: "invoiced",
     });
     if (adjustmentError) throw adjustmentError;
+}
+
+/**
+ * Removes a damage charge added by mistake — Remove-only for now (no Edit):
+ * fixing a wrong amount/reason means waiving this one and adding a corrected
+ * one, same as `resolveDispute` treats a rejected dispute. Reuses the
+ * existing `waived` terminal status, so `deductionsFor`'s read-time math
+ * already excludes it without any further change.
+ */
+export async function waiveDamage(id: string, actor: AuthContext): Promise<DamageRow> {
+    const row = await requireDamage(id);
+    if (row.status !== "assessed") {
+        throw conflict("Only an assessed damage charge can be removed.");
+    }
+    const { subscriptionId, userId } = await damageContext(row);
+
+    const { data: updated, error } = await supabaseAdmin
+        .from("damages")
+        .update({ status: "waived" })
+        .eq("id", id)
+        .eq("status", "assessed")
+        .select(DAMAGE_COLUMNS)
+        .maybeSingle();
+    if (error) throw error;
+    if (!updated) throw conflict("Only an assessed damage charge can be removed.");
+
+    await recomputeDepositStatusForSubscription(subscriptionId);
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: userId, action: "damage.waived",
+        entityType: "damage", entityId: id, before: { amount: Number(row.assessed_amount) },
+    });
+
+    const [result] = await toDamageRows([updated as unknown as RawDamageRow]);
+    return result;
 }
 
 async function requireDamage(id: string): Promise<RawDamageRow> {
@@ -532,6 +570,22 @@ export async function resolveDispute(
     });
 
     return damage;
+}
+
+/**
+ * All damage charges for one rental, in the same fully-hydrated shape
+ * (signed photo URLs, deposit-deduction split) as every other read here —
+ * used by the Return Detail page, which previously read `damages` with an
+ * ad-hoc select that never resolved `photo_paths` into signed URLs at all.
+ */
+export async function listDamagesForRental(rentalId: string): Promise<DamageRow[]> {
+    const { data, error } = await supabaseAdmin
+        .from("damages")
+        .select(DAMAGE_COLUMNS)
+        .eq("incidents.rental_id", rentalId)
+        .order("created_at", { ascending: true });
+    if (error) throw error;
+    return toDamageRows((data ?? []) as unknown as RawDamageRow[]);
 }
 
 export async function listDamages(filters: ListDamagesFilters): Promise<Paginated<DamageRow>> {

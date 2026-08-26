@@ -61,8 +61,14 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   past_due: "warning",
   return_requested: "warning",
   vehicle_recovery_required: "destructive",
+  // ReturnStageStatus (Vehicle Return → Inspection → Payment Gate → Approve Return)
+  payment_required: "destructive",
+  payment_submitted: "warning",
+  ready_for_approval: "info",
+  return_completed: "success",
   // booking cancellation refund_status (distinct from refunds.status above)
   processed: "success",
+  // Payment Status column on the Returns list's Pending tab (returnStageSummaryFor)
   not_required: "muted",
   // return_settlements.status
   pending_refund: "warning",

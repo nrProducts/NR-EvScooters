@@ -76,6 +76,28 @@ export default function ReturnsListPage() {
       key: "return_requested",
       render: (b) => (b.active_rental?.return_requested_at ? formatDateTime(b.active_rental.return_requested_at) : "—"),
     },
+    {
+      header: "Charges",
+      key: "charges",
+      render: (b) => (b.active_rental?.charges != null ? formatCurrency(b.active_rental.charges) : "—"),
+      hideOnMobile: true,
+    },
+    {
+      header: "Amount Due",
+      key: "amount_due",
+      render: (b) => (
+        b.active_rental?.amount_due != null
+          ? (b.active_rental.amount_due > 0
+            ? <span className="font-semibold text-destructive">{formatCurrency(b.active_rental.amount_due)}</span>
+            : <span className="text-muted-foreground">₹0</span>)
+          : "—"
+      ),
+    },
+    {
+      header: "Payment Status",
+      key: "payment_status",
+      render: (b) => <StatusBadge status={b.active_rental?.payment_status ?? "not_required"} />,
+    },
     { header: "Status", key: "status", render: () => <StatusBadge status="return_requested" /> },
     {
       header: "Actions",

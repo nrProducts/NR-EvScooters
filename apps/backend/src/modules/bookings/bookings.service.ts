@@ -6,6 +6,7 @@ import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { hasActiveRentalForUser } from "../users/users.service";
 import { computeLateReturnPenalty } from "../rentals/rentals.service";
+import { returnStageSummaryFor } from "../returns/returns.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { getDepositForSubscriptionOrNull } from "../deposits/deposits.service";
 import { initiateCancellationRefund } from "../refunds/refunds.service";
@@ -1391,6 +1392,24 @@ export async function listPickupQueue(filters: PickupQueueFilters): Promise<Pagi
         ...toBookingView(row, contexts.get(row.id)),
         rider: unwrap(row.users) as PickupBookingView["rider"],
     }));
+
+    // Charges/Amount Due/Payment Status columns (Returns list, Pending tab) —
+    // only meaningful once a return has actually been requested, so this
+    // skips the extra work for every other pickup-queue view.
+    const returnRentalIds = items
+        .filter((b) => b.active_rental?.return_requested_at)
+        .map((b) => b.active_rental!.id);
+    if (returnRentalIds.length > 0) {
+        const summaries = await returnStageSummaryFor(returnRentalIds);
+        for (const item of items) {
+            const summary = item.active_rental && summaries.get(item.active_rental.id);
+            if (summary && item.active_rental) {
+                item.active_rental.charges = summary.charges;
+                item.active_rental.amount_due = summary.amountDue;
+                item.active_rental.payment_status = summary.paymentStatus;
+            }
+        }
+    }
 
     return paginate(items, count ?? 0, filters);
 }

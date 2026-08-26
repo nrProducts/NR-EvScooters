@@ -422,6 +422,7 @@ export type Database = {
           assessed_at: string
           assessed_by_user_id: string | null
           created_at: string
+          damage_category: string | null
           id: string
           incident_id: string
           notes: string | null
@@ -433,6 +434,7 @@ export type Database = {
           assessed_at?: string
           assessed_by_user_id?: string | null
           created_at?: string
+          damage_category?: string | null
           id?: string
           incident_id: string
           notes?: string | null
@@ -444,6 +446,7 @@ export type Database = {
           assessed_at?: string
           assessed_by_user_id?: string | null
           created_at?: string
+          damage_category?: string | null
           id?: string
           incident_id?: string
           notes?: string | null
@@ -3984,6 +3987,7 @@ export type Database = {
         | "subscription"
       settlement_outcome: "refund_due" | "amount_due" | "balanced"
       subscription_status:
+        | "pending_payment"
         | "active"
         | "paused"
         | "past_due"
@@ -4273,6 +4277,7 @@ export const Constants = {
       ],
       settlement_outcome: ["refund_due", "amount_due", "balanced"],
       subscription_status: [
+        "pending_payment",
         "active",
         "paused",
         "past_due",

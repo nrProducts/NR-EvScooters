@@ -1,0 +1,11 @@
+-- Fixes the deviation documented in payments.service.ts's header comment:
+-- the FK chain (payment_orders.invoice_id -> invoices.subscription_id, both
+-- NOT NULL) forces a subscription row to exist before a payment can be
+-- taken, so it used to be created with status='active' the instant checkout
+-- started -- before any money moved. This is exactly why the admin
+-- Bookings list could show "Pending Payment" and "Active" on the same row.
+--
+-- 'pending_payment' is the missing pre-capture state: ensureSubscription now
+-- inserts it here instead of 'active', and applyInitialSuccess flips it to
+-- 'active' only once payment is actually verified as captured.
+alter type public.subscription_status add value 'pending_payment' before 'active';

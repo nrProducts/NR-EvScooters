@@ -108,20 +108,20 @@ export interface ReturnDetailView {
     stage: ReturnStage | null;
 }
 
-export interface DamageItemInput {
-    amount: number;
-    description: string;
-    photoPaths: string[];
-}
-
 /**
  * Admin Inspection — "Save Inspection" / "Request Payment from Rider" are
  * the SAME action; which one the button is labelled is a live preview the
  * frontend computes from these same numbers before submitting.
+ *
+ * Damage itself is no longer part of this input — each damage charge is
+ * recorded immediately as it's added (POST /returns/:id/damage), complete
+ * with its photos. `confirmNoDamage` is the explicit "I inspected this
+ * vehicle and found nothing" signal, required when no damage was ever
+ * recorded for this return.
  */
 export interface SaveInspectionInput {
-    damageItems: DamageItemInput[];
     otherCharges: OtherCharge[];
+    confirmNoDamage?: boolean;
 }
 
 export interface PaymentReviewView {

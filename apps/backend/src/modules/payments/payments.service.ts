@@ -33,15 +33,17 @@ import { CreateOrderResult, OrderLine, VerifyPaymentInput } from "./payments.typ
  *
  * To take a payment you need an order; an order needs an invoice; an invoice
  * needs a subscription. So the subscription, its deposit, period #1 and the
- * opening invoice are all created when CHECKOUT STARTS, and capture is what
- * CONFIRMS them — booking to `confirmed`, deposit to `held`, and the
- * allocation written.
+ * opening invoice are all created when CHECKOUT STARTS — but `pending_payment`
+ * (added specifically for this), not `active`: nothing downstream should read
+ * a checkout-in-progress as a live plan. Capture is what CONFIRMS them —
+ * booking to `confirmed`, subscription to `active`, deposit to `held`, and
+ * the allocation written (applyInitialSuccess).
  *
- * That leaves one thing to be aware of: an abandoned checkout leaves an
- * `active` subscription with an unpaid invoice behind it, because
- * `subscription_status` has no `pending` value. The booking-expiry sweep
- * (Stage 9) has to cancel those alongside releasing the vehicle hold —
- * `cancelAbandonedSubscription` below is what it should call.
+ * An abandoned checkout leaves a `pending_payment` subscription with an
+ * unpaid invoice behind it. The booking-expiry sweep (re-implemented in Deno
+ * at supabase/functions/booking-payment-expiry-sweep, which cannot import
+ * this) cancels those alongside releasing the vehicle hold —
+ * `cancelAbandonedSubscription` below is the Node equivalent of that logic.
  */
 
 function unwrap<T>(raw: unknown): T | null {
@@ -169,7 +171,13 @@ async function ensureSubscription(
             deposit_amount_snapshot: Number(booking.deposit_amount_snapshot),
             billing_period_snapshot: plan.billing_period,
             started_on: booking.requested_start_on,
-            status: "active",
+            // Not 'active' yet — this exists only because the FK chain
+            // (payment_orders.invoice_id -> invoices.subscription_id, both
+            // NOT NULL) requires a subscription before an order can be
+            // created. applyInitialSuccess flips this to 'active' once
+            // payment actually captures; until then nothing should read
+            // this row as a live plan.
+            status: "pending_payment",
         })
         .select("id")
         .single();
@@ -1352,6 +1360,16 @@ async function applyInitialSuccess(subscriptionId: string, userId: string): Prom
     if (bookingError) throw bookingError;
     if (!updated) return; // Already confirmed by a prior delivery.
 
+    // The subscription existed only to satisfy the FK chain that let this
+    // payment happen at all (see ensureSubscription) — this is the moment it
+    // becomes a real, live plan.
+    const { error: subscriptionError } = await supabaseAdmin
+        .from("subscriptions")
+        .update({ status: "active" })
+        .eq("id", subscriptionId)
+        .eq("status", "pending_payment");
+    if (subscriptionError) throw subscriptionError;
+
     // Only now — payment settled and the booking is genuinely 'confirmed' —
     // does a specific vehicle get held against it. Best-effort: a booking
     // with nothing free yet still confirms, and staff allocate one manually
@@ -1504,8 +1522,11 @@ async function applyRenewalSuccess(
  * Cancels the subscription behind an abandoned checkout.
  *
  * See the header: the FK chain forces the subscription to exist before a
- * payment can be taken, so a booking that expires unpaid leaves one behind.
- * The booking-expiry sweep must call this alongside releasing the hold.
+ * payment can be taken, so a booking that expires unpaid leaves one behind
+ * — still `pending_payment`, since applyInitialSuccess is the only thing
+ * that ever advances it to `active`. The booking-expiry sweep must call this
+ * alongside releasing the hold (re-implemented in Deno at
+ * supabase/functions/booking-payment-expiry-sweep, which cannot import this).
  */
 export async function cancelAbandonedSubscription(bookingId: string): Promise<void> {
     const { data: subscription, error } = await supabaseAdmin
@@ -1514,7 +1535,7 @@ export async function cancelAbandonedSubscription(bookingId: string): Promise<vo
         .eq("booking_id", bookingId)
         .maybeSingle();
     if (error) throw error;
-    if (!subscription || subscription.status !== "active") return;
+    if (!subscription || subscription.status !== "pending_payment") return;
 
     // Only if nothing was ever actually paid against it.
     const { data: paid, error: paidError } = await supabaseAdmin
@@ -1529,7 +1550,7 @@ export async function cancelAbandonedSubscription(bookingId: string): Promise<vo
         .from("subscriptions")
         .update({ status: "cancelled", ended_at: new Date().toISOString() })
         .eq("id", subscription.id)
-        .eq("status", "active");
+        .eq("status", "pending_payment");
     if (cancelError) throw cancelError;
 
     await writeAudit({

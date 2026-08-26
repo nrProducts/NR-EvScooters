@@ -1,6 +1,7 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
 import type {
-  OtherCharge, PaginatedResult, PaymentReviewView, ReturnDetail, ReturnSettlement, ReturnSettlementStatus,
+  DamageCategory, OtherCharge, PaginatedResult, PaymentReviewView, ReturnDetail, ReturnSettlement,
+  ReturnSettlementStatus,
 } from "@/types";
 
 /** GET /returns/:rentalId — requireAction("returns","view"). Everything the Return Detail page needs in one call. */
@@ -9,20 +10,48 @@ export async function fetchReturnDetail(rentalId: string): Promise<ReturnDetail>
 }
 
 export interface SaveInspectionInput {
-  damageItems: { amount: number; description: string; photoPaths: string[] }[];
   otherCharges: OtherCharge[];
+  /** Required when no damage charge has ever been added for this return. */
+  confirmNoDamage?: boolean;
 }
 
 /**
- * POST /returns/:rentalId/inspect — Admin Inspection. Records damage, stages
- * the late fee/other charges, and — only if they leave an additional amount
- * due — raises the payable invoice and notifies the rider. This is what the
- * "Save Inspection" / "Request Payment from Rider" button calls; which
- * label it shows is a live client-side preview of the same math, not a
+ * POST /returns/:rentalId/inspect — Admin Inspection. Stages other charges
+ * and — only if they leave an additional amount due — raises the payable
+ * invoice and notifies the rider. Damage itself is added separately, one
+ * charge at a time (see addDamageCharge), before this is called. This is
+ * what the "Save Inspection" / "Request Payment from Rider" button calls;
+ * which label it shows is a live client-side preview of the same math, not a
  * different endpoint.
  */
 export async function saveInspection(rentalId: string, input: SaveInspectionInput): Promise<ReturnDetail> {
   return apiClient.post<ReturnDetail>(`/returns/${rentalId}/inspect`, input);
+}
+
+export interface AddDamageChargeInput {
+  amount: number;
+  description: string;
+  damageCategory: DamageCategory;
+  photos: File[];
+}
+
+/**
+ * POST /returns/:rentalId/damage — adds one damage charge immediately, with
+ * its photos, so it appears as its own card right away rather than waiting
+ * on the final inspection submit.
+ */
+export async function addDamageCharge(rentalId: string, input: AddDamageChargeInput): Promise<ReturnDetail> {
+  const form = new FormData();
+  form.set("amount", String(input.amount));
+  form.set("description", input.description);
+  form.set("damage_category", input.damageCategory);
+  for (const photo of input.photos) form.append("photos", photo);
+  return apiClient.postForm<ReturnDetail>(`/returns/${rentalId}/damage`, form);
+}
+
+/** POST /returns/:rentalId/damage/:damageId/remove — Remove-only; waives a mistakenly-added damage charge. */
+export async function removeDamageCharge(rentalId: string, damageId: string): Promise<ReturnDetail> {
+  return apiClient.post<ReturnDetail>(`/returns/${rentalId}/damage/${damageId}/remove`, {});
 }
 
 /** GET /returns/:rentalId/payment — "Review Payment": amount, reference, date, status. */

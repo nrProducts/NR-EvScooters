@@ -5,6 +5,7 @@ import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./returns.controller";
 import * as v from "./returns.validation";
+import { damagePhotoUpload } from "../damages/damages.photo.upload";
 
 /**
  * Staff/admin-only — reviewing and settling a return has no rider
@@ -43,6 +44,24 @@ router.post(
     requireAction("returns", "approve"),
     validate({ params: v.rentalIdParam, body: v.saveInspectionBody }),
     asyncHandler(c.saveInspectionHandler),
+);
+
+// Adds one damage charge (with photos) immediately, ahead of the final
+// inspection submit — see returns.controller.ts's addReturnDamageHandler.
+router.post(
+    "/:id/damage",
+    requireAction("returns", "approve"),
+    validate({ params: v.rentalIdParam }),
+    damagePhotoUpload,
+    asyncHandler(c.addReturnDamageHandler),
+);
+
+// Remove-only: waives a mistakenly-added damage charge.
+router.post(
+    "/:id/damage/:damageId/remove",
+    requireAction("returns", "approve"),
+    validate({ params: v.rentalDamageIdParam }),
+    asyncHandler(c.removeReturnDamageHandler),
 );
 
 // Review Payment — amount, reference, date, status for the staged
