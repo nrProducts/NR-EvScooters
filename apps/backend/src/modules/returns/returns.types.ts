@@ -33,7 +33,9 @@ export interface ReturnSettlementRow {
     rental_id: string;
     booking_id: string | null;
     user_id: string;
+    rider_name: string | null;
     vehicle_id: string | null;
+    vehicle: { id: string; name: string; registration_number: string } | null;
     /** `deposit_amount_snapshot`. */
     deposit_amount: number;
     late_fee_amount: number;
@@ -55,6 +57,14 @@ export interface ReturnSettlementRow {
     net_settlement: number;
     refund_amount: number;
     due_amount: number;
+    /**
+     * What the rider paid directly (beyond the deposit) toward
+     * total_charges. Survives due_amount being zeroed out by the read-time
+     * self-heal (see getSettlementByRentalId/listSettlements) once that
+     * payment is confirmed — otherwise the money the rider actually sent
+     * has nowhere to show up once the row stops reading as "due".
+     */
+    paid_by_rider_amount: number;
     status: ReturnSettlementStatus;
     refund_id: string | null;
     /** `invoice_id` — the invoice raised when the rider owes money. */

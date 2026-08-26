@@ -937,7 +937,9 @@ export interface ReturnSettlement {
   rental_id: string;
   booking_id: string;
   user_id: string;
-  vehicle_id: string;
+  rider_name: string | null;
+  vehicle_id: string | null;
+  vehicle: { id: string; name: string; registration_number: string } | null;
   deposit_amount: number;
   late_fee_amount: number;
   damage_fee_amount: number;
@@ -947,6 +949,8 @@ export interface ReturnSettlement {
   net_settlement: number;
   refund_amount: number;
   due_amount: number;
+  /** What the rider paid directly (beyond the deposit) toward total_charges — survives due_amount reading 0 once that payment is confirmed. */
+  paid_by_rider_amount: number;
   status: ReturnSettlementStatus;
   refund_id: string | null;
   due_invoice_id: string | null;

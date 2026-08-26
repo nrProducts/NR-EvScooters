@@ -278,7 +278,14 @@ export default function ReturnDetailPage() {
     <div className="space-y-4 animate-fade-in">
       <div className="space-y-3">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/returns")}>
+          <Button
+            variant="ghost" size="icon"
+            // Browser back, not a hardcoded "/returns" — that always reset
+            // the list to its default Pending tab, even when this page was
+            // opened from Settled (ReturnsListPage now keeps its tab in the
+            // URL precisely so going back restores it).
+            onClick={() => navigate(-1)}
+          >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0 flex-1">
@@ -459,6 +466,7 @@ export default function ReturnDetailPage() {
                   totalCharges={settlement.total_charges}
                   refund={settlement.refund_amount}
                   due={settlement.due_amount}
+                  paidByRider={settlement.paid_by_rider_amount}
                 />
               ) : stageStatus === "return_requested" ? (
                 <SettlementBreakdown
@@ -469,6 +477,7 @@ export default function ReturnDetailPage() {
                   totalCharges={previewTotalCharges}
                   refund={Math.max(0, depositAmount - previewTotalCharges)}
                   due={previewDue}
+                  paidByRider={0}
                 />
               ) : (
                 <SettlementBreakdown
@@ -479,6 +488,11 @@ export default function ReturnDetailPage() {
                   totalCharges={stage!.totalCharges}
                   refund={stage!.refundDue}
                   due={stage!.additionalDue}
+                  // Payment verified but the return not yet approved — the
+                  // rider's money has already landed even though the final
+                  // rental_settlements row (and its due_amount=0 self-heal)
+                  // doesn't exist until Complete Return actually runs.
+                  paidByRider={stage!.paymentVerifiedAt ? stage!.additionalDue : 0}
                 />
               )}
             </CardContent>
@@ -682,7 +696,7 @@ function PaymentStatusPanel({
 }
 
 function SettlementBreakdown({
-  depositAmount, lateFee, damageFee, otherCharges, totalCharges, refund, due,
+  depositAmount, lateFee, damageFee, otherCharges, totalCharges, refund, due, paidByRider,
 }: {
   depositAmount: number;
   lateFee: number;
@@ -691,6 +705,8 @@ function SettlementBreakdown({
   totalCharges: number;
   refund: number;
   due: number;
+  /** What the rider paid directly, beyond the deposit — so Total Charges visibly reconciles to Deposit Used + Paid by Rider (+ Due, if anything is still outstanding). */
+  paidByRider: number;
 }) {
   return (
     <div className="space-y-2 text-sm">
@@ -701,6 +717,9 @@ function SettlementBreakdown({
       <div className="h-px bg-border" />
       <Row label="Total Charges" value={formatCurrency(totalCharges)} bold />
       <Row label="Deposit Used" value={formatCurrency(Math.min(depositAmount, totalCharges))} />
+      {paidByRider > 0 && (
+        <Row label="Paid by Rider" value={formatCurrency(paidByRider)} />
+      )}
       <div className="h-px bg-border" />
       {due > 0 ? (
         <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-3">

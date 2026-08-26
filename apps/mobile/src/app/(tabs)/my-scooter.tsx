@@ -29,6 +29,7 @@ import { rentalRepository } from '../../services';
 import { SettlementCard, shouldShowSettlement } from '../../components/SettlementCard';
 import type { ApiReturnSettlement } from '../../types/api';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
  * Everything about the scooter the rider currently has: identity, plan,
@@ -48,6 +49,7 @@ export default function MyScooterScreen() {
   // pads its own scroll tail — otherwise the Android nav/gesture bar covers
   // the last rows. Same treatment as Home.
   const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
 
   // Without this, a rider sitting on this screen when admin approves their
   // return keeps seeing the stale pre-return rental (Renew/Return buttons
@@ -157,7 +159,7 @@ export default function MyScooterScreen() {
       ) : (
         <ScrollView
           className="flex-1 px-5 pt-5"
-          contentContainerStyle={{ paddingBottom: tabBarHeight + 24 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
           {state.kind === 'rental' && state.rental.vehicle ? (

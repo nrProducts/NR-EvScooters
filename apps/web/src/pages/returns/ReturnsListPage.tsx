@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
@@ -43,7 +43,21 @@ function RecoveryPolicyNote() {
 
 export default function ReturnsListPage() {
   const navigate = useNavigate();
-  const [view, setView] = useState<ReturnsView>("pending");
+  // Kept in the URL, not plain component state — the Return Detail page's
+  // back button uses browser history (navigate(-1)) to land here, which only
+  // restores which tab was open if that tab is actually part of the URL this
+  // page remounts from. Plain useState defaulted back to "pending" every
+  // time, even coming back from a settlement opened from the Settled tab.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawView = searchParams.get("tab");
+  const view: ReturnsView = rawView === "settled" || rawView === "recovery" ? rawView : "pending";
+  const setView = (next: ReturnsView) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      params.set("tab", next);
+      return params;
+    });
+  };
   const [page, setPage] = useState(1);
 
   const pending = usePickupQueue(
@@ -116,6 +130,17 @@ export default function ReturnsListPage() {
       key: "created_at",
       render: (s) => formatDateTime(s.created_at),
     },
+    { header: "Rider", key: "rider", render: (s) => s.rider_name ?? "—" },
+    {
+      header: "Vehicle",
+      key: "vehicle",
+      render: (s) => (
+        <div>
+          <p className="font-medium">{s.vehicle?.registration_number ?? "—"}</p>
+          <p className="text-xs text-muted-foreground">{s.vehicle?.name ?? "—"}</p>
+        </div>
+      ),
+    },
     { header: "Deposit", key: "deposit_amount", render: (s) => formatCurrency(s.deposit_amount) },
     { header: "Total charges", key: "total_charges", render: (s) => formatCurrency(s.total_charges), hideOnMobile: true },
     {
@@ -126,7 +151,14 @@ export default function ReturnsListPage() {
           ? <span className="text-success">Refund {formatCurrency(s.refund_amount)}</span>
           : s.due_amount > 0
             ? <span className="text-destructive">Due {formatCurrency(s.due_amount)}</span>
-            : <span className="text-muted-foreground">Fully adjusted</span>
+            // Charges exceeded the deposit but the rider already paid the
+            // difference — distinct from a plain balanced settlement
+            // (deposit alone covered everything), which paid_by_rider_amount
+            // is 0 for. Both used to render as the same "Fully adjusted",
+            // hiding that money actually changed hands on this one.
+            : s.paid_by_rider_amount > 0
+              ? <span className="text-muted-foreground">Rider Paid {formatCurrency(s.paid_by_rider_amount)}</span>
+              : <span className="text-muted-foreground">Fully adjusted</span>
       ),
     },
     { header: "Status", key: "status", render: (s) => <StatusBadge status={s.status} /> },

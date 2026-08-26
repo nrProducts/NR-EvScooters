@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Spinner } from '../../components/Spinner';
 import { useFocusEffect } from 'expo-router';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CreditCard, ShieldCheck, Receipt } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -124,6 +125,7 @@ function AttentionNote({ label }: { label: string }) {
 
 export default function BillingScreen() {
   const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
   const { bookingId, booking, deposit, damages, invoices, loading, error, reload } = useMyBilling();
   const { refreshing, onRefresh } = useRefresh(() => reload(true));
   // Excludes disputed damages, mirroring refundableAmountForBooking on the
@@ -432,7 +434,7 @@ export default function BillingScreen() {
         // a return should see what happened, not a generic "No active plan."
         <ScrollView
           className="flex-1 px-5 pt-5"
-          contentContainerStyle={{ paddingBottom: tabBarHeight + 24 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
           <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Rental Returned</Text>
@@ -458,6 +460,13 @@ export default function BillingScreen() {
             {pastSettlement.other_charges.map((c, i) => (
               <BillLine key={i} label={c.label} amount={-c.amount} />
             ))}
+            {/* Charges exceeded the deposit and the rider paid the
+                difference — without this, that payment has no line of its
+                own and the deposit + damage figures above don't add up to
+                the total below. */}
+            {pastSettlement.paid_by_rider_amount > 0 ? (
+              <BillLine label="Paid by You" amount={pastSettlement.paid_by_rider_amount} />
+            ) : null}
             <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
 
             <View className="flex-row items-center justify-between mb-3">
@@ -491,7 +500,7 @@ export default function BillingScreen() {
       ) : (
         <ScrollView
           className="flex-1 px-5 pt-5"
-          contentContainerStyle={{ paddingBottom: tabBarHeight + 24 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
           {/* Current plan — a quiet, sophisticated surface rather than a

@@ -35,7 +35,11 @@ const SETTLEMENT_COLUMNS = `
     other_charges_amount, total_charges_amount, net_amount, outcome,
     refund_id, invoice_id, created_at,
     settled_by:users!settled_by_user_id(id, full_name),
-    rentals(user_id, subscriptions(booking_id)),
+    rentals(
+        user_id, subscriptions(booking_id),
+        rider:users(id, full_name),
+        rental_vehicle_assignments(vehicle_id, vehicles(id, display_name, registration_number))
+    ),
     refunds(status)
 `;
 
@@ -81,10 +85,20 @@ function toStatus(
 }
 
 function toSettlementRow(row: RawSettlementRow): ReturnSettlementRow {
-    const rental = unwrap<{ user_id: string; subscriptions: unknown }>(row.rentals);
+    const rental = unwrap<{
+        user_id: string; subscriptions: unknown; rider: unknown; rental_vehicle_assignments: unknown;
+    }>(row.rentals);
     const subscription = rental ? unwrap<{ booking_id: string }>(rental.subscriptions) : null;
+    const rider = rental ? unwrap<{ id: string; full_name: string }>(rental.rider) : null;
+    const assignment = rental
+        ? unwrap<{ vehicle_id: string; vehicles: unknown }>(rental.rental_vehicle_assignments)
+        : null;
+    const vehicle = assignment
+        ? unwrap<{ id: string; display_name: string | null; registration_number: string }>(assignment.vehicles)
+        : null;
     const refund = unwrap<{ status: string }>(row.refunds);
     const net = Number(row.net_amount);
+    const dueAmount = Math.max(0, -net);
 
     return {
         // The table is keyed by rental_id — there is no separate settlement id.
@@ -92,9 +106,11 @@ function toSettlementRow(row: RawSettlementRow): ReturnSettlementRow {
         rental_id: row.rental_id,
         booking_id: subscription?.booking_id ?? null,
         user_id: rental?.user_id ?? "",
-        // Which vehicle came back is the assignment's business, not the
-        // settlement's; the Return Detail page reads it off the rental.
-        vehicle_id: null,
+        rider_name: rider?.full_name ?? null,
+        vehicle_id: assignment?.vehicle_id ?? null,
+        vehicle: vehicle
+            ? { id: vehicle.id, name: vehicle.display_name ?? "", registration_number: vehicle.registration_number }
+            : null,
         deposit_amount: Number(row.deposit_amount_snapshot),
         late_fee_amount: Number(row.late_fee_amount),
         damage_fee_amount: Number(row.damage_amount),
@@ -103,7 +119,14 @@ function toSettlementRow(row: RawSettlementRow): ReturnSettlementRow {
         total_charges: Number(row.total_charges_amount),
         net_settlement: net,
         refund_amount: Math.max(0, net),
-        due_amount: Math.max(0, -net),
+        due_amount: dueAmount,
+        // What the rider paid directly (beyond the deposit) toward
+        // total_charges. Kept separate from due_amount because due_amount
+        // gets zeroed out by the self-heal below/in listSettlements once the
+        // invoice is confirmed paid — this is what lets the settlement panel
+        // still show that money, instead of the charges just silently
+        // "disappearing" once the due amount reads as settled.
+        paid_by_rider_amount: row.outcome === "amount_due" ? dueAmount : 0,
         status: toStatus(row.outcome, refund?.status ?? null),
         refund_id: row.refund_id,
         due_invoice_id: row.invoice_id,
@@ -747,6 +770,36 @@ export async function approveReturnSettlement(
  * to filter on. At this console's scale that is the honest trade — the
  * alternative is reintroducing the mirrored status column the schema removed.
  */
+/**
+ * Batch version of getSettlementByRentalId's self-heal: an "amount_due" row
+ * whose invoice was actually paid afterward (checked live against
+ * v_invoice_balances, same as everywhere else in this file) reports as
+ * settled here too. Without this, a settlement the rider already paid off
+ * through the app — like the Kavi/TN22AB0004 return, paid via the return
+ * payment gate — stayed stuck showing "Amount Due" forever on the Settled
+ * list, even though getSettlementByRentalId already corrected it on the
+ * Return Detail page for that exact same rental.
+ */
+async function healAmountDueRows(rows: ReturnSettlementRow[]): Promise<ReturnSettlementRow[]> {
+    const dueInvoiceIds = rows
+        .filter((r): r is ReturnSettlementRow & { due_invoice_id: string } => r.status === "amount_due" && !!r.due_invoice_id)
+        .map((r) => r.due_invoice_id);
+    if (dueInvoiceIds.length === 0) return rows;
+
+    const { data, error } = await supabaseAdmin
+        .from("v_invoice_balances")
+        .select("invoice_id, is_paid")
+        .in("invoice_id", dueInvoiceIds);
+    if (error) throw error;
+
+    const paidIds = new Set((data ?? []).filter((r) => r.is_paid).map((r) => r.invoice_id));
+    return rows.map((r) =>
+        r.status === "amount_due" && r.due_invoice_id && paidIds.has(r.due_invoice_id)
+            ? { ...r, status: "settlement_completed" as const, due_amount: 0 }
+            : r,
+    );
+}
+
 export async function listSettlements(
     filters: ListSettlementsFilters,
 ): Promise<Paginated<ReturnSettlementRow>> {
@@ -762,7 +815,7 @@ export async function listSettlements(
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const rows = ((data ?? []) as unknown as RawSettlementRow[]).map(toSettlementRow);
+    const rows = await healAmountDueRows(((data ?? []) as unknown as RawSettlementRow[]).map(toSettlementRow));
 
     if (!filters.status) return paginate(rows, count ?? 0, filters);
 
@@ -858,7 +911,12 @@ async function getMyPendingSettlement(userId: string): Promise<ReturnSettlementR
         rental_id: pending.rental_id,
         booking_id: null,
         user_id: rental.user_id,
+        // Rider-facing synthesized row — the rider already knows who they
+        // are and which scooter they have; this shape exists to feed the
+        // SettlementCard's due-amount display, not an admin list.
+        rider_name: null,
         vehicle_id: null,
+        vehicle: null,
         deposit_amount: depositAmount,
         late_fee_amount: 0,
         damage_fee_amount: damageAmount,
@@ -868,6 +926,7 @@ async function getMyPendingSettlement(userId: string): Promise<ReturnSettlementR
         net_settlement: -dueAmount,
         refund_amount: 0,
         due_amount: dueAmount,
+        paid_by_rider_amount: 0,
         status: "amount_due",
         refund_id: null,
         due_invoice_id: pending.additional_due_invoice_id,

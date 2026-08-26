@@ -18,7 +18,7 @@ export default function ProfileScreen() {
     <AppShell title="Profile">
       <ScrollView
         className="flex-1 px-5 pt-5"
-        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, tabBarHeight) + 24 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
       >
         <ProfileContent />
       </ScrollView>

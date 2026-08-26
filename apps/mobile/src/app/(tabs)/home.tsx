@@ -25,6 +25,7 @@ import { VEHICLE_STATUS_LABEL, VEHICLE_STATUS_TONE } from '../../constants/statu
 import type { ApiBooking, ApiMaintenanceNotice, ApiRental, ApiReturnSettlement } from '../../types/api';
 import { ScooterStatusCard } from '../../components/ScooterStatusCard';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function formatDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -70,6 +71,7 @@ export default function HomeScreen() {
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const [refreshing, setRefreshing] = useState(false);
   const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
 
   // has_active_booking/has_active_rental can change server-side without any
   // action the rider took here — an admin releasing a vehicle that was still
@@ -216,7 +218,7 @@ export default function HomeScreen() {
     <AppShell title="Home">
       <ScrollView
         className="flex-1 px-5 pt-5"
-        contentContainerStyle={{ paddingBottom: tabBarHeight + 24 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
         refreshControl={pullToRefresh(refreshing, () => void handleRefresh())}
       >
         <Text style={{ color: COLORS.textPrimary }} className="text-xl font-black mb-5 text-center">

@@ -17,6 +17,7 @@ import { Calendar, Bike, MapPin, History, XCircle } from 'lucide-react-native';
 import { useCancelBooking } from '../../hooks/useCancelBooking';
 import type { ApiBooking } from '../../types/api';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
  * Bookings only. Maintenance used to live here in a second tab — it now
@@ -27,6 +28,7 @@ export default function BookingHistoryScreen() {
   // pads its own scroll tail — otherwise the Android nav/gesture bar covers
   // the last rows.
   const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
   const [bookings, setBookings] = useState<ApiBooking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
   const [bookingsError, setBookingsError] = useState<string | null>(null);
@@ -73,7 +75,7 @@ export default function BookingHistoryScreen() {
       ) : (
         <ScrollView
           className="flex-1 px-5 pt-4"
-          contentContainerStyle={{ paddingBottom: tabBarHeight + 24 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
           <View className="gap-3">
