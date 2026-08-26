@@ -30,12 +30,31 @@ import {
  * then the money movement the settlement implies.
  */
 
+/**
+ * `rentals!inner`, and the `!inner` is load-bearing.
+ *
+ * PostgREST applies a filter on an embedded column to the EMBED, not to the
+ * parent — unless the embed is inner. Without it, getMySettlement's
+ * `.eq("rentals.user_id", userId)` did not restrict `rental_settlements` at
+ * all: it nulled the `rentals` object out on non-matching rows and returned
+ * every settlement in the table, so `.order(settled_at desc).limit(1)`
+ * handed back THE NEWEST SETTLEMENT IN THE SYSTEM to whoever asked. A rider
+ * 25 days into an active rental, who had never requested a return, was shown
+ * "Scooter Returned Successfully" carrying another rider's deposit and
+ * damage figures.
+ *
+ * Nothing is lost by making it inner: `rental_settlements.rental_id` is the
+ * primary key and a NOT NULL foreign key, so every settlement has exactly
+ * one rental. The admin list and the by-rental read below return the same
+ * rows either way — and any ownership filter added later now actually
+ * filters.
+ */
 const SETTLEMENT_COLUMNS = `
     rental_id, settled_at, deposit_amount_snapshot, late_fee_amount, damage_amount,
     other_charges_amount, total_charges_amount, net_amount, outcome,
     refund_id, invoice_id, created_at,
     settled_by:users!settled_by_user_id(id, full_name),
-    rentals(user_id, subscriptions(booking_id)),
+    rentals!inner(user_id, subscriptions(booking_id)),
     refunds(status)
 `;
 
@@ -803,6 +822,12 @@ export async function getMySettlement(userId: string): Promise<ReturnSettlementR
     if (error) throw error;
     if (data) {
         const row = toSettlementRow(data as unknown as RawSettlementRow);
+        // Belt and braces over the `!inner` embed above. Ownership on this
+        // endpoint rests on an embedded filter, which is one keyword away
+        // from silently matching everyone — and the failure is invisible in
+        // the response, because toSettlementRow reads a nulled embed as
+        // `user_id: ""`. Whoever the row belongs to, it goes only to them.
+        if (row.user_id !== userId) return null;
         // Same self-heal as getSettlementByRentalId (admin view): the STORED
         // row can never say "the amount due was pre-paid via the payment
         // gate before completion" — chk_rental_settlements_net still shows
