@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  ArrowLeft, CheckCircle2, Plus, ShieldCheck, Wrench, XCircle, Clock, CreditCard, CircleCheck, Circle,
+  ArrowLeft, CheckCircle2, Plus, ShieldCheck, Wrench, XCircle, Clock, CreditCard, CircleCheck,
+  AlertTriangle, Image as ImageIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/common/ErrorState";
 import {
   useReturnDetail, useSaveInspection, usePaymentReview, useVerifyReturnPayment, useApproveReturnSettlement,
+  useAddDamageCharge,
 } from "@/hooks/useReturns";
 import { useMoveRideToMaintenance, useRejectReturn } from "@/hooks/useRentals";
 import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
@@ -23,12 +25,68 @@ import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
 import { ReturnStageStepper } from "./ReturnStageStepper";
 import { DamageChargeCard } from "./DamageChargeCard";
-import { AddDamageChargeModal } from "./AddDamageChargeModal";
-import type { Damage, PaymentReviewView, ReturnStageStatus } from "@/types";
+import { AddDamageChargeModal, type DamageDraft } from "./AddDamageChargeModal";
+import type { DamageCategory, ReturnStageStatus } from "@/types";
 
 interface OtherChargeForm {
   label: string;
   amount: string;
+}
+
+const DAMAGE_TYPE_LABEL: Record<DamageCategory, string> = {
+  body: "Body Damage",
+  panel: "Panel Damage",
+  battery: "Battery Damage",
+  tyre: "Tyre Damage",
+  brake: "Brake Damage",
+  electrical: "Electrical Damage",
+  other: "Other Damage",
+};
+
+/**
+ * Pre-fills the maintenance ticket description from the damage charges
+ * already recorded on this return, so the admin isn't re-typing what's
+ * already on screen — they can still edit it before completing the return.
+ */
+function buildMaintenanceNotesFromDamages(damages: { damage_category: DamageCategory | null; description: string; status: string }[]): string {
+  return damages
+    .filter((d) => d.status !== "waived")
+    .map((d) => `${d.damage_category ? DAMAGE_TYPE_LABEL[d.damage_category] : "Damage"}: ${d.description}`)
+    .join("; ");
+}
+
+/** A staged damage draft, not yet saved — rendered like a real damage card but removable locally, no API call. */
+function StagedDamageCard({ draft, onRemove }: { draft: DamageDraft; onRemove: () => void }) {
+  return (
+    <div className="rounded-xl border border-dashed border-border bg-card p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 text-destructive">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span className="text-sm font-semibold">{DAMAGE_TYPE_LABEL[draft.damageType]}</span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[0.625rem] font-medium text-muted-foreground">
+            Not yet saved
+          </span>
+        </div>
+        <span className="shrink-0 text-sm font-bold text-destructive">{formatCurrency(draft.amount)}</span>
+      </div>
+      <p className="mt-1.5 text-sm text-foreground/90">{draft.description}</p>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
+          {draft.photos.length > 0 && (
+            <>
+              <ImageIcon className="h-3.5 w-3.5" /> {draft.photos.length} photo{draft.photos.length > 1 ? "s" : ""}
+            </>
+          )}
+        </span>
+        <Button
+          variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+          onClick={onRemove}
+        >
+          Remove
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -45,6 +103,7 @@ export default function ReturnDetailPage() {
   const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useReturnDetail(rentalId);
   const saveInspection = useSaveInspection();
+  const addDamageCharge = useAddDamageCharge();
   const approveSettlement = useApproveReturnSettlement();
   const moveToMaintenance = useMoveRideToMaintenance();
   const rejectReturn = useRejectReturn();
@@ -55,6 +114,11 @@ export default function ReturnDetailPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [addDamageOpen, setAddDamageOpen] = useState(false);
+  // Entered but not yet saved — POSTed one at a time only when Save
+  // Inspection is clicked, instead of each Add Damage Charge click firing
+  // its own immediate save.
+  const [stagedDamages, setStagedDamages] = useState<DamageDraft[]>([]);
+  const [savingDamages, setSavingDamages] = useState(false);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [outcome, setOutcome] = useState<"available" | "maintenance">("available");
   const [maintenanceNotes, setMaintenanceNotes] = useState("");
@@ -81,14 +145,15 @@ export default function ReturnDetailPage() {
   }
   if (isError || !data || !rental) return <ErrorState message="Return not found." onRetry={() => refetch()} />;
 
-  const hasDamage = (damages ?? []).some((d) => d.status !== "waived");
+  const hasDamage = (damages ?? []).some((d) => d.status !== "waived") || stagedDamages.length > 0;
   const otherChargeValid = (c: OtherChargeForm) => c.label.trim().length >= 2 && Number(c.amount) > 0;
   const otherChargesValid = otherCharges.every(otherChargeValid);
   const canSaveInspection = hasDamage || confirmNoDamage;
 
   const depositAmount = deposit?.amount ?? 0;
   const previewOtherCharges = otherCharges.filter(otherChargeValid).reduce((sum, c) => sum + Number(c.amount), 0);
-  const previewDamageAmount = stage?.damageAmount ?? 0;
+  const stagedDamagesAmount = stagedDamages.reduce((sum, d) => sum + d.amount, 0);
+  const previewDamageAmount = (stage?.damageAmount ?? 0) + stagedDamagesAmount;
   const previewTotalCharges = previewDamageAmount + previewOtherCharges;
   const previewDue = Math.max(0, previewTotalCharges - depositAmount);
 
@@ -97,31 +162,57 @@ export default function ReturnDetailPage() {
   const updateOtherCharge = (index: number, patch: Partial<OtherChargeForm>) =>
     setOtherCharges((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
 
-  const handleSaveInspection = () => {
+  // No separate "Save Inspection" step any more — damages and other charges
+  // can be added/removed freely at any point while the return is still
+  // return_requested, and this one click both finalizes them (staged
+  // damages, one POST per draft, then the inspection itself) and, if
+  // nothing further is owed, immediately opens the outcome dialog to finish
+  // the return in the same click. Only a genuine payment gate (additionalDue
+  // > 0) stops it short — the return can't complete until the rider pays.
+  const handleCompleteReturnClick = async () => {
     if (!rentalId) return;
     setFormError(null);
-    saveInspection.mutate(
-      {
+
+    if (stagedDamages.length > 0) {
+      setSavingDamages(true);
+      try {
+        for (const draft of stagedDamages) {
+          await addDamageCharge.mutateAsync({
+            rentalId,
+            input: {
+              amount: draft.amount, description: draft.description,
+              damageCategory: draft.damageType, photos: draft.photos,
+            },
+          });
+        }
+        setStagedDamages([]);
+      } catch (err) {
+        setFormError(err instanceof ApiError ? err.message : "Something went wrong.");
+        toastError(err, "Could not save damage charges");
+        return;
+      } finally {
+        setSavingDamages(false);
+      }
+    }
+
+    try {
+      const result = await saveInspection.mutateAsync({
         rentalId,
         input: {
           otherCharges: otherCharges.filter(otherChargeValid).map((c) => ({ label: c.label.trim(), amount: Number(c.amount) })),
           confirmNoDamage,
         },
-      },
-      {
-        onSuccess: (result) => {
-          toastSuccess(
-            result.stage && result.stage.additionalDue > 0
-              ? "Inspection saved — payment requested from rider"
-              : "Inspection saved",
-          );
-        },
-        onError: (err) => {
-          setFormError(err instanceof ApiError ? err.message : "Something went wrong.");
-          toastError(err, "Could not save inspection");
-        },
-      },
-    );
+      });
+      if (result.stage?.status === "ready_for_approval") {
+        toastSuccess("Inspection complete — choose the return outcome to finish.");
+        setCompleteDialogOpen(true);
+      } else {
+        toastSuccess("Payment requested from rider — this return will be ready to complete once they pay.");
+      }
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : "Something went wrong.");
+      toastError(err, "Could not complete return");
+    }
   };
 
   const handleConfirmPayment = () => {
@@ -181,7 +272,7 @@ export default function ReturnDetailPage() {
   };
 
   const isPending = saveInspection.isPending || approveSettlement.isPending || moveToMaintenance.isPending
-    || rejectReturn.isPending || verifyPayment.isPending;
+    || rejectReturn.isPending || verifyPayment.isPending || savingDamages;
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -211,7 +302,7 @@ export default function ReturnDetailPage() {
         )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         {/* Left — Vehicle Inspection */}
         <Card>
           <CardHeader>
@@ -252,19 +343,27 @@ export default function ReturnDetailPage() {
                   </Button>
                 )}
               </div>
-              {(damages ?? []).filter((d) => d.status !== "waived").length === 0 ? (
+              {(damages ?? []).filter((d) => d.status !== "waived").length === 0 && stagedDamages.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
                   No damage charges recorded.
                 </p>
               ) : (
-                (damages ?? [])
-                  .filter((d) => d.status !== "waived")
-                  .map((d) => (
-                    <DamageChargeCard
-                      key={d.id} rentalId={rentalId!} damage={d}
-                      canRemove={stageStatus === "return_requested"}
+                <>
+                  {(damages ?? [])
+                    .filter((d) => d.status !== "waived")
+                    .map((d) => (
+                      <DamageChargeCard
+                        key={d.id} rentalId={rentalId!} damage={d}
+                        canRemove={stageStatus === "return_requested"}
+                      />
+                    ))}
+                  {stagedDamages.map((draft, i) => (
+                    <StagedDamageCard
+                      key={i} draft={draft}
+                      onRemove={() => setStagedDamages((prev) => prev.filter((_, idx) => idx !== i))}
                     />
-                  ))
+                  ))}
+                </>
               )}
             </div>
 
@@ -280,37 +379,47 @@ export default function ReturnDetailPage() {
                   </label>
                 )}
 
-                <div className="space-y-3 rounded-lg border border-border p-3">
-                  <Label className="text-xs font-semibold">Other charges</Label>
-                  {otherCharges.map((c, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <Input
-                        value={c.label} placeholder="Label" className="flex-1"
-                        onChange={(e) => updateOtherCharge(index, { label: e.target.value })}
-                      />
-                      <Input
-                        type="number" min={0} value={c.amount} placeholder="₹" className="w-28"
-                        onChange={(e) => updateOtherCharge(index, { amount: e.target.value })}
-                      />
-                      <button
-                        type="button" onClick={() => removeOtherCharge(index)}
-                        className="text-muted-foreground hover:text-destructive" aria-label="Remove"
-                      >
-                        <XCircle className="h-3.5 w-3.5" />
-                      </button>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold">Other Charges</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addOtherCharge}>
+                      <Plus className="h-3.5 w-3.5" /> Add Charge
+                    </Button>
+                  </div>
+                  {otherCharges.length > 0 && (
+                    <div className="space-y-2 rounded-lg border border-border p-3">
+                      {otherCharges.map((c, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <Input
+                            value={c.label} placeholder="Label" className="flex-1"
+                            onChange={(e) => updateOtherCharge(index, { label: e.target.value })}
+                          />
+                          <Input
+                            type="number" min={0} value={c.amount} placeholder="₹" className="w-28"
+                            onChange={(e) => updateOtherCharge(index, { amount: e.target.value })}
+                          />
+                          <button
+                            type="button" onClick={() => removeOtherCharge(index)}
+                            className="text-muted-foreground hover:text-destructive" aria-label="Remove"
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                  <Button type="button" variant="outline" size="sm" onClick={addOtherCharge}>
-                    <Plus className="h-3.5 w-3.5" /> Add charge
-                  </Button>
+                  )}
                 </div>
 
                 <Button
                   className="w-full"
                   disabled={isPending || !canSaveInspection || !otherChargesValid}
-                  onClick={handleSaveInspection}
+                  onClick={() => void handleCompleteReturnClick()}
                 >
-                  {previewDue > 0 ? "Save Inspection — Request Payment from Rider" : "Save Inspection"}
+                  {savingDamages
+                    ? "Saving damage charges..."
+                    : saveInspection.isPending
+                      ? "Completing..."
+                      : previewDue > 0 ? "Complete Return — Request Payment from Rider" : "Complete Return"}
                 </Button>
 
                 <div className="space-y-2 border-t border-border pt-3">
@@ -391,11 +500,13 @@ export default function ReturnDetailPage() {
             </Card>
           )}
 
-          {/* Sticky next-action panel */}
-          <div className="sticky bottom-4">
-            <Card className="border-primary/30">
-              <CardContent className="space-y-3 p-4">
-                {alreadySettled ? (
+          {/* Next-action panel. Not sticky — on a right column this short,
+              `sticky bottom-4` stuck it near the viewport's bottom edge well
+              before the page actually scrolled that far, overlapping the
+              Payment Status card sitting above it in normal flow. */}
+          <Card className="border-primary/30">
+            <CardContent className="space-y-3 p-4">
+              {alreadySettled ? (
                   <div className="flex items-center gap-2 text-success">
                     <CircleCheck className="h-5 w-5" />
                     <div>
@@ -438,30 +549,17 @@ export default function ReturnDetailPage() {
                     </Button>
                   </>
                 ) : null}
-                {formError && <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{formError}</p>}
-              </CardContent>
-            </Card>
-          </div>
+              {formError && <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{formError}</p>}
+            </CardContent>
+          </Card>
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Return Activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ReturnActivityTimeline
-            returnRequestedAt={rental.return_requested_at}
-            inspectedAt={rental.inspected_at}
-            damages={damages ?? []}
-            paymentReview={stageStatus === "payment_submitted" || stageStatus === "ready_for_approval" ? paymentReview.data : undefined}
-            returnApprovedAt={rental.return_approved_at}
-          />
-        </CardContent>
-      </Card>
-
       {rentalId && (
-        <AddDamageChargeModal rentalId={rentalId} open={addDamageOpen} onOpenChange={setAddDamageOpen} />
+        <AddDamageChargeModal
+          open={addDamageOpen} onOpenChange={setAddDamageOpen}
+          onAdd={(draft) => setStagedDamages((prev) => [...prev, draft])}
+        />
       )}
 
       <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
@@ -470,37 +568,48 @@ export default function ReturnDetailPage() {
             <DialogTitle>Complete Vehicle Return</DialogTitle>
             <DialogDescription>What should happen to this vehicle?</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button" onClick={() => setOutcome("available")}
-              className={cn(
-                "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-sm",
-                outcome === "available" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
-              )}
-            >
-              <CheckCircle2 className="h-5 w-5" />
-              Available
-              <span className="text-[0.6875rem] font-normal text-muted-foreground">Ready for another rider.</span>
-            </button>
-            <button
-              type="button" onClick={() => setOutcome("maintenance")}
-              className={cn(
-                "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-sm",
-                outcome === "maintenance" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
-              )}
-            >
-              <Wrench className="h-5 w-5" />
-              Maintenance
-              <span className="text-[0.6875rem] font-normal text-muted-foreground">Needs work before rental.</span>
-            </button>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button" onClick={() => setOutcome("available")}
+                className={cn(
+                  "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-center text-sm",
+                  outcome === "available" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
+                )}
+              >
+                <CheckCircle2 className="h-5 w-5" />
+                Available
+                <span className="text-[0.6875rem] font-normal text-muted-foreground">Ready for another rider.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOutcome("maintenance");
+                  if (!maintenanceNotes.trim()) {
+                    setMaintenanceNotes(buildMaintenanceNotesFromDamages(damages ?? []));
+                  }
+                }}
+                className={cn(
+                  "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-center text-sm",
+                  outcome === "maintenance" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
+                )}
+              >
+                <Wrench className="h-5 w-5" />
+                Maintenance
+                <span className="text-[0.6875rem] font-normal text-muted-foreground">Needs work before rental.</span>
+              </button>
+            </div>
+            {outcome === "maintenance" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Maintenance notes</Label>
+                <Textarea
+                  value={maintenanceNotes} rows={3}
+                  placeholder="e.g. Front brake noise reported by rider"
+                  onChange={(e) => setMaintenanceNotes(e.target.value)}
+                />
+              </div>
+            )}
           </div>
-          {outcome === "maintenance" && (
-            <Textarea
-              value={maintenanceNotes} rows={2}
-              placeholder="e.g. Front brake noise reported by rider"
-              onChange={(e) => setMaintenanceNotes(e.target.value)}
-            />
-          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCompleteDialogOpen(false)}>Cancel</Button>
             <Button
@@ -604,65 +713,6 @@ function SettlementBreakdown({
           <span className="text-xl font-black text-success">{refund > 0 ? formatCurrency(refund) : "Fully Adjusted"}</span>
         </div>
       )}
-    </div>
-  );
-}
-
-interface TimelineEntry {
-  label: string;
-  detail?: string;
-  at: string | null;
-}
-
-/**
- * Assembled client-side from fields already on the page — no new backend
- * timeline table. Entries with no timestamp yet (`at: null`) render as the
- * next pending step rather than being dropped.
- */
-function ReturnActivityTimeline({
-  returnRequestedAt, inspectedAt, damages, paymentReview, returnApprovedAt,
-}: {
-  returnRequestedAt: string | null;
-  inspectedAt: string | null;
-  damages: Damage[];
-  paymentReview: PaymentReviewView | undefined;
-  returnApprovedAt: string | null;
-}) {
-  const entries: TimelineEntry[] = [
-    { label: "Return requested", at: returnRequestedAt },
-    { label: "Vehicle inspection completed", at: inspectedAt },
-  ];
-
-  for (const d of damages.filter((d) => d.status !== "waived")) {
-    entries.push({ label: "Damage charge added", detail: formatCurrency(d.amount), at: d.created_at });
-  }
-
-  if (paymentReview) {
-    entries.push({
-      label: "Payment received", detail: formatCurrency(paymentReview.amount), at: paymentReview.paidAt,
-    });
-    if (paymentReview.status === "verified") {
-      entries.push({ label: "Payment confirmed by admin", at: paymentReview.paidAt });
-    }
-  }
-
-  entries.push({ label: "Return completed", at: returnApprovedAt });
-
-  return (
-    <div className="space-y-3">
-      {entries.map((entry, i) => (
-        <div key={i} className="flex items-start gap-2.5 text-sm">
-          {entry.at
-            ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-            : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
-          <div>
-            <p className={cn("font-medium", !entry.at && "text-muted-foreground")}>
-              {entry.label}{entry.detail ? ` — ${entry.detail}` : ""}
-            </p>
-            {entry.at && <p className="text-xs text-muted-foreground">{formatDateTime(entry.at)}</p>}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }

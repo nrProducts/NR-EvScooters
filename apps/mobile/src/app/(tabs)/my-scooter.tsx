@@ -1,38 +1,34 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
-import { Spinner } from '../components/Spinner';
+import { Spinner } from '../../components/Spinner';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
   Bike, Calendar, CalendarClock, CreditCard, Hash, LifeBuoy, MapPin, PackageCheck, RefreshCw, Wrench,
 } from 'lucide-react-native';
-import { AppShell } from '../components/AppShell';
-import { Badge } from '../components/ui/Badge';
-import { ChipSelect } from '../components/ui/ChipSelect';
-import { DetailRow } from '../components/ui/DetailRow';
-import { EmptyState } from '../components/ui/EmptyState';
-import { ErrorState } from '../components/ui/ErrorState';
-import { SkeletonList } from '../components/ui/Skeleton';
-import { pullToRefresh, useRefresh } from '../components/ui/PullToRefresh';
-import { MaintenanceCard, MAINTENANCE_FILTERS } from '../components/MaintenanceCard';
-import { VehicleDocumentsCard } from '../components/VehicleDocumentsCard';
-import { ReturnGate } from '../components/ReturnGate';
-import { ReturnStatusCard } from '../components/ReturnStatusCard';
-import { VehicleStage } from '../components/VehicleStage';
-import { COLORS } from '../constants/theme';
+import { AppShell } from '../../components/AppShell';
+import { Badge } from '../../components/ui/Badge';
+import { DetailRow } from '../../components/ui/DetailRow';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ErrorState } from '../../components/ui/ErrorState';
+import { pullToRefresh, useRefresh } from '../../components/ui/PullToRefresh';
+import { VehicleDocumentsCard } from '../../components/VehicleDocumentsCard';
+import { ReturnGate } from '../../components/ReturnGate';
+import { ReturnStatusCard } from '../../components/ReturnStatusCard';
+import { VehicleStage } from '../../components/VehicleStage';
+import { COLORS } from '../../constants/theme';
 import {
   BILLING_CYCLE_LABEL, RENTAL_STATUS_LABEL, RENTAL_STATUS_TONE, VEHICLE_STATUS_LABEL,
   VEHICLE_STATUS_TONE, formatDate,
-} from '../constants/status';
-import { describeExpiry, rentalDayNumber } from '../lib/rentalTiming';
-import { canReturnYet, getRenewalEligibility } from '../lib/returnPolicy';
-import { useCurrentRideOrBooking } from '../hooks/useCurrentRideOrBooking';
-import { useMaintenanceHistory, type MaintenanceStatusFilter } from '../hooks/useMaintenanceHistory';
-import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
-import { useAuthStore } from '../store/useAuthStore';
-import { rentalRepository } from '../services';
-import { SettlementCard, shouldShowSettlement } from '../components/SettlementCard';
-import type { ApiReturnSettlement } from '../types/api';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+} from '../../constants/status';
+import { describeExpiry, rentalDayNumber } from '../../lib/rentalTiming';
+import { canReturnYet, getRenewalEligibility } from '../../lib/returnPolicy';
+import { useCurrentRideOrBooking } from '../../hooks/useCurrentRideOrBooking';
+import { useVehicleCatalogStore } from '../../store/useVehicleCatalogStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { rentalRepository } from '../../services';
+import { SettlementCard, shouldShowSettlement } from '../../components/SettlementCard';
+import type { ApiReturnSettlement } from '../../types/api';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 /**
  * Everything about the scooter the rider currently has: identity, plan,
@@ -51,7 +47,7 @@ export default function MyScooterScreen() {
   // AppShell insets its drawer sheet but not screen content, so each screen
   // pads its own scroll tail — otherwise the Android nav/gesture bar covers
   // the last rows. Same treatment as Home.
-  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
 
   // Without this, a rider sitting on this screen when admin approves their
   // return keeps seeing the stale pre-return rental (Renew/Return buttons
@@ -108,10 +104,6 @@ export default function MyScooterScreen() {
   }, [loadFeatured]);
   const imageUrl = featured?.image_url ?? null;
 
-  const vehicle = state.kind === 'rental' ? state.rental.vehicle
-    : state.kind === 'booking' ? state.booking.vehicle
-      : null;
-  const maintenance = useMaintenanceHistory(vehicle?.id ?? null);
   // Riders can't back out mid-period — only once their current committed
   // week is up (bookings.next_due_at). The server re-enforces this
   // regardless; disabling here just avoids letting a rider into the return
@@ -126,8 +118,11 @@ export default function MyScooterScreen() {
 
   const renderHero = (title: string, badge: React.ReactNode) => (
     <View
-      className="rounded-3xl mb-4 overflow-hidden"
-      style={{ backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }}
+      className="rounded-3xl mb-5 overflow-hidden"
+      style={{
+        backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
+        shadowColor: COLORS.black, shadowOpacity: 0.05, shadowRadius: 18, shadowOffset: { width: 0, height: 5 }, elevation: 2,
+      }}
     >
       {/* `compact` keeps this a restrained banner — a detail screen shouldn't
           lead with the full showroom treatment and push the actual details
@@ -145,61 +140,9 @@ export default function MyScooterScreen() {
             <Bike size={30} color={COLORS.primary} />
           </View>
         )}
-        <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">{title}</Text>
+        <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold">{title}</Text>
         <View className="mt-2">{badge}</View>
       </View>
-    </View>
-  );
-
-  const renderMaintenance = () => (
-    <View className="mt-6">
-        <View className="flex-row items-center mb-3">
-          <Wrench size={15} color={COLORS.textPrimary} />
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold ml-2">
-            Maintenance History
-          </Text>
-        </View>
-
-        <ChipSelect<MaintenanceStatusFilter>
-          options={MAINTENANCE_FILTERS}
-          value={maintenance.status}
-          onChange={maintenance.setStatus}
-        />
-
-        {maintenance.loading ? (
-          <SkeletonList count={2} />
-        ) : maintenance.error ? (
-          <ErrorState message={maintenance.error} onRetry={maintenance.reload} />
-        ) : maintenance.items.length === 0 ? (
-          <EmptyState
-            icon={Wrench}
-            title="No maintenance yet"
-            subtitle={
-              maintenance.status === 'all'
-                ? "This scooter hasn't needed any work since you picked it up."
-                : 'No tickets match this filter.'
-            }
-          />
-        ) : (
-          <>
-            <View className="gap-3">
-              {maintenance.items.map((m) => <MaintenanceCard key={m.id} record={m} />)}
-            </View>
-            {maintenance.hasMore ? (
-              <TouchableOpacity
-                onPress={maintenance.loadMore}
-                disabled={maintenance.loadingMore}
-                accessibilityRole="button"
-                className="items-center justify-center rounded-2xl py-3 mt-3 border"
-                style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
-              >
-                <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-bold">
-                  {maintenance.loadingMore ? 'Loading…' : 'Load more'}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-        </>
-      )}
     </View>
   );
 
@@ -214,7 +157,7 @@ export default function MyScooterScreen() {
       ) : (
         <ScrollView
           className="flex-1 px-5 pt-5"
-          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          contentContainerStyle={{ paddingBottom: tabBarHeight + 24 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
           {state.kind === 'rental' && state.rental.vehicle ? (
@@ -235,8 +178,11 @@ export default function MyScooterScreen() {
               ) : null}
 
               <View
-                className="rounded-2xl border overflow-hidden"
-                style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
+                className="rounded-2xl border overflow-hidden mb-5"
+                style={{
+                  backgroundColor: COLORS.card, borderColor: COLORS.border,
+                  shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1,
+                }}
               >
                 <DetailRow
                   icon={Hash}
@@ -296,7 +242,7 @@ export default function MyScooterScreen() {
                     <TouchableOpacity
                       onPress={() => router.push('/billing')}
                       accessibilityRole="button"
-                      className="flex-row items-center justify-center rounded-xl py-3 mt-3"
+                      className="flex-row items-center justify-center rounded-2xl py-3 mt-3"
                       style={{ backgroundColor: COLORS.primary }}
                     >
                       <RefreshCw size={15} color="#FFF" />
@@ -309,7 +255,7 @@ export default function MyScooterScreen() {
                     onPress={() => setShowReturn(true)}
                     disabled={!canReturn}
                     accessibilityRole="button"
-                    className="flex-row items-center justify-center rounded-xl py-3 mt-3"
+                    className="flex-row items-center justify-center rounded-2xl py-3 mt-3"
                     style={{ backgroundColor: COLORS.primary + '14', opacity: canReturn ? 1 : 0.5 }}
                   >
                     <PackageCheck size={15} color={COLORS.primaryPressed} />
@@ -328,7 +274,7 @@ export default function MyScooterScreen() {
               <TouchableOpacity
                 onPress={() => router.push('/support')}
                 accessibilityRole="button"
-                className="flex-row items-center justify-center rounded-xl py-3 mt-2 border"
+                className="flex-row items-center justify-center rounded-2xl py-3 mt-2 border"
                 style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
               >
                 <LifeBuoy size={14} color={COLORS.textSecondary} />
@@ -345,8 +291,6 @@ export default function MyScooterScreen() {
               />
 
               <VehicleDocumentsCard />
-
-              {renderMaintenance()}
             </>
           ) : state.kind === 'booking' ? (
             <>
@@ -365,7 +309,10 @@ export default function MyScooterScreen() {
               {state.booking.vehicle ? (
                 <View
                   className="rounded-2xl border overflow-hidden"
-                  style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
+                  style={{
+                    backgroundColor: COLORS.card, borderColor: COLORS.border,
+                    shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1,
+                  }}
                 >
                   <DetailRow
                     icon={Hash}

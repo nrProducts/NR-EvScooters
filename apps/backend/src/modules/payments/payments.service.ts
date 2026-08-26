@@ -369,6 +369,19 @@ async function createOrderForInvoiceInternal(
     // has one collectable price at a time.
     await supersedeOpenOrders(invoiceId, amount);
 
+    // idempotency_key is `invoice:{id}:{amount}` — immutable and unique, so a
+    // PRIOR order at this exact amount that has since gone dead (its TTL
+    // passed with nobody paying, or it was superseded) still occupies that
+    // key forever. That is fine for an amount that changes daily (a growing
+    // late fee), but an invoice whose amount never moves (e.g. a flat return
+    // settlement) hits the SAME key on every retry — findReusableOrder
+    // correctly refuses to reuse a dead row, but a fresh INSERT then fails
+    // with 23505 against that same dead row. Reopening it (new gateway
+    // order, fresh TTL, same row) is the only way a rider can ever pay this
+    // invoice again once that happens.
+    const reopened = await reopenDeadOrder(invoiceId, amount, invoice.purpose, lateFee);
+    if (reopened) return reopened;
+
     const expiresAt = new Date(Date.now() + env.paymentOrderTtlMinutes * 60_000);
 
     const gatewayOrder = await createGatewayOrder({
@@ -405,6 +418,8 @@ async function createOrderForInvoiceInternal(
         if ((orderError as { code?: string }).code === "23505") {
             const reused = await findReusableOrder(invoiceId, amount, lateFee);
             if (reused) return reused;
+            const reopenedAfterRace = await reopenDeadOrder(invoiceId, amount, invoice.purpose, lateFee);
+            if (reopenedAfterRace) return reopenedAfterRace;
         }
         throw orderError;
     }
@@ -440,6 +455,56 @@ async function findReusableOrder(
     if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) return null;
 
     return toOrderResult(data, await orderLinesFor(invoiceId, lateFee));
+}
+
+/**
+ * Reopens the one row `idempotency_key = invoice:{id}:{amount}` can ever
+ * refer to, once it's gone dead (expired or failed) with nobody having paid
+ * it — rather than trying (and failing on 23505) to insert a second row at
+ * the same key. Only reachable once findReusableOrder has already said no,
+ * so any row found here is by definition not `created`/`attempted` within
+ * its TTL; still re-checked defensively before touching it.
+ */
+async function reopenDeadOrder(
+    invoiceId: string,
+    amount: number,
+    purpose: string,
+    lateFee: number,
+): Promise<CreateOrderResult | null> {
+    const { data: existing, error } = await supabaseAdmin
+        .from("payment_orders")
+        .select("id, status, expires_at")
+        .eq("invoice_id", invoiceId)
+        .eq("amount", amount)
+        .maybeSingle();
+    if (error) throw error;
+    if (!existing) return null;
+
+    const isLive = ["created", "attempted"].includes(existing.status)
+        && (!existing.expires_at || new Date(existing.expires_at).getTime() >= Date.now());
+    if (isLive) return null;
+
+    const expiresAt = new Date(Date.now() + env.paymentOrderTtlMinutes * 60_000);
+    const gatewayOrder = await createGatewayOrder({
+        amount: rupeesToPaise(amount),
+        currency: "INR",
+        receipt: `invoice_${invoiceId}`.slice(0, 40),
+        notes: { invoice_id: invoiceId, purpose },
+    });
+
+    const { data: reopened, error: updateError } = await supabaseAdmin
+        .from("payment_orders")
+        .update({
+            gateway_order_id: gatewayOrder.id,
+            status: "created",
+            expires_at: expiresAt.toISOString(),
+        })
+        .eq("id", existing.id)
+        .select("id, gateway_order_id, amount, currency, expires_at")
+        .single();
+    if (updateError) throw updateError;
+
+    return toOrderResult(reopened, await orderLinesFor(invoiceId, lateFee));
 }
 
 /**

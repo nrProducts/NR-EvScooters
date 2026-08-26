@@ -3,24 +3,29 @@ import { supabaseAdmin } from "../../config/supabase";
 import { notFound } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
 import { AuthContext } from "../../types";
+import { lateFeeRateFor } from "../payments/renewalFee";
 import { ReturnRecoverySettingsRow, UpdateReturnRecoverySettingsInput } from "./return-recovery-settings.types";
 
 /**
- * The RETURN late-fee rate and its day cap — "how much per day, and how many
- * days past the due date, before the rental instead gets flagged for
- * physical recovery." Singleton table, `return_recovery_settings`
- * (supabase/v2/migrations/20260824100000_return_recovery_policy.sql,
- * late_fee_per_day added in 20260825100000_return_recovery_late_fee_per_day.sql).
+ * The day cap before a rental instead gets flagged for physical recovery —
+ * `return_recovery_settings.max_late_fee_days`
+ * (supabase/v2/migrations/20260824100000_return_recovery_policy.sql).
  *
- * Distinct from plan-renewal-settings (`pricing_rules` code `late_fee`),
- * which is the RENEWAL/payment late fee — a subscription payment running
- * late. This one is the RETURN/physical-custody late fee — the scooter
- * itself running late. The two are unrelated concepts that happen to share
- * the word "late fee"; this module and that one intentionally do not touch
- * the same table.
+ * The RATE itself is deliberately not a second column here any more.
+ * `return_recovery_settings.late_fee_per_day` was added in
+ * 20260825100000_return_recovery_late_fee_per_day.sql as its own
+ * admin-settable number, which re-created exactly the split
+ * `lateFeeRateFor`'s own doc comment (payments/renewalFee.ts) warns
+ * against: "a rider whose plan has expired is simultaneously late renewing
+ * and late returning ... charging them ₹450/day at the renewal screen and
+ * ₹100/day at the return screen is not two policies, it is one policy with
+ * two answers." `getSettings` below resolves the rate live from that same
+ * global rule instead, so there is exactly one number an admin configures
+ * and it's what every surface — renewal invoices, the return-lateness
+ * preview, push-notification copy — shows.
  */
 
-const COLUMNS = "id, max_late_fee_days, late_fee_per_day, updated_at";
+const COLUMNS = "id, max_late_fee_days, updated_at";
 
 export async function getSettings(): Promise<ReturnRecoverySettingsRow> {
     const { data, error } = await supabaseAdmin
@@ -29,7 +34,8 @@ export async function getSettings(): Promise<ReturnRecoverySettingsRow> {
         .maybeSingle();
     if (error) throw error;
     if (!data) throw notFound("Return recovery settings not configured.");
-    return data;
+    const lateFeePerDay = await lateFeeRateFor(null);
+    return { ...data, late_fee_per_day: lateFeePerDay };
 }
 
 export async function updateSettings(
@@ -44,7 +50,7 @@ export async function updateSettings(
     const existing = await getSettings();
     const { data, error } = await supabaseAdmin
         .from("return_recovery_settings")
-        .update({ max_late_fee_days: input.max_late_fee_days, late_fee_per_day: input.late_fee_per_day })
+        .update({ max_late_fee_days: input.max_late_fee_days })
         .eq("id", existing.id)
         .select(COLUMNS)
         .maybeSingle();
@@ -57,9 +63,10 @@ export async function updateSettings(
         action: "return_recovery_settings.updated",
         entityType: "return_recovery_setting",
         entityId: data.id,
-        after: { max_late_fee_days: input.max_late_fee_days, late_fee_per_day: input.late_fee_per_day },
+        after: { max_late_fee_days: input.max_late_fee_days },
         req,
     });
 
-    return data;
+    const lateFeePerDay = await lateFeeRateFor(null);
+    return { ...data, late_fee_per_day: lateFeePerDay };
 }

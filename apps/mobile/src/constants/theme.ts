@@ -1,7 +1,12 @@
 export const COLORS = {
   // --- New Fleet Management light theme (Phase 1) ---
-  primary: '#4CAF50',
-  primaryPressed: '#3F9142',
+  // Matched to the admin web console's brand green (apps/web/src/index.css
+  // --primary/--primary-hover, #22C55E/#16A34A, 142°) — the two apps'
+  // greens were deliberately allowed to diverge in that redesign, with the
+  // web file's own comment flagging that rejoining them is a separate,
+  // explicit change to this file. This is that change.
+  primary: '#22C55E',
+  primaryPressed: '#16A34A',
   secondary: '#81C784',
   background: '#F8FAFC',
   card: '#FFFFFF',

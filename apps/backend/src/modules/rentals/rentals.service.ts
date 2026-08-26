@@ -4,7 +4,6 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
-import { pauseSubscription } from "../subscriptions/subscriptions.service";
 import { getDepositForSubscriptionOrNull, setDepositRefundEligible } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
 import {
@@ -947,6 +946,18 @@ export async function completeRide(
  * The vehicle reaches `maintenance` because the open ticket exists, not
  * because this writes a status. That is the same derivation
  * `recompute_vehicle_status()` applies everywhere else.
+ *
+ * This is a GENUINE final return exactly like completeRide — the only
+ * difference is what happens to the vehicle afterwards. The rider's own
+ * subscription must end here too (not pause), and the rider should hear
+ * nothing more than "your return is complete": pausing the subscription and
+ * notifying the rider about the maintenance ticket both belong to the
+ * separate mid-ride breakdown flow (a rider still on an active plan, reported
+ * via a support ticket, who needs a temp vehicle and their plan paused until
+ * one is assigned — see maintenance.service.ts's updateMaintenanceTicket).
+ * That flow keeps the rental running and calls pauseSubscription itself; this
+ * one is reached only from completing a return (rentals.controller.ts), where
+ * the rider isn't getting a replacement — their plan is simply over.
  */
 export async function moveRideToMaintenance(
     id: string,
@@ -986,10 +997,17 @@ export async function moveRideToMaintenance(
         .single();
     if (ticketError) throw ticketError;
 
-    // Pause the rider's billing — they must not lose days or be charged while
-    // the vehicle they were assigned is unavailable.
+    // Same as completeRide: start the deposit's refund-eligibility clock and
+    // end the subscription outright — this rider is not getting a
+    // replacement vehicle, their plan is over.
     if (subscription) {
-        await pauseSubscription(subscription.id, ticket.id, actor);
+        await setDepositRefundEligible(subscription.id, endedAt);
+        const { error: subError } = await supabaseAdmin
+            .from("subscriptions")
+            .update({ status: "ended", ended_at: endedAt.toISOString() })
+            .eq("id", subscription.id)
+            .in("status", ["active", "past_due", "paused"]);
+        if (subError) throw subError;
     }
 
     await writeAudit({
@@ -1006,6 +1024,20 @@ export async function moveRideToMaintenance(
         },
     });
 
+    // Rider-facing: just "your return is complete", same as completeRide —
+    // the maintenance ticket is this vehicle's business, not theirs.
+    if (rider) {
+        await notifyUser(rider.id, {
+            template: "rental_completed",
+            title: "Ride Completed",
+            body: "Thanks for returning your scooter.",
+            screen: "booking-history",
+        });
+    }
+
+    // Staff/admin fan-out only (notify() never reaches the rider — see its
+    // own doc comment) — this is what tells maintenance staff a new ticket
+    // needs triage.
     const vehicle = currentVehicle(before.rental_vehicle_assignments);
     await notify({
         notificationType: "maintenance_ticket_created",

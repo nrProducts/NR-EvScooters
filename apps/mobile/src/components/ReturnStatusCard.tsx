@@ -72,7 +72,12 @@ export const ReturnStatusCard: React.FC<ReturnStatusCardProps> = ({ rental, comp
     feePerDay: rental.late_return_fee_per_day,
   });
   const recoveryRequired = !!rental.recovery_flagged_at;
-  const overdue = charge.isLate;
+  // A return already requested is informational, not a warning — the rider
+  // has already acted, so "Overdue by N days" here would just be alarming
+  // noise on top of the return-stage panel below that already explains
+  // what's happening. Lateness only reads as a warning before the rider has
+  // requested a return at all.
+  const overdue = charge.isLate && !rental.return_requested_at;
   const tint = recoveryRequired || overdue ? COLORS.danger : COLORS.warning;
   const Icon = recoveryRequired || overdue ? AlertTriangle : Clock;
 
@@ -98,7 +103,9 @@ export const ReturnStatusCard: React.FC<ReturnStatusCardProps> = ({ rental, comp
               ? `A ₹${charge.penaltyAmount} late fee applies (capped at ${rental.max_late_fee_days} day${rental.max_late_fee_days > 1 ? 's' : ''}) and our team is on the way to collect the scooter. Please make it available for pickup.`
               : overdue
                 ? `A ₹${charge.penaltyAmount} late fee has built up so far, and will be charged when our team confirms the handover.`
-                : `Hand your scooter in by ${describeReturnDeadline(rental.return_due_at)}. Our team will confirm the handover — the scooter stays yours until then.`}
+                : rental.return_requested_at
+                  ? 'Your scooter is waiting for staff confirmation. It stays yours until then.'
+                  : `Hand your scooter in by ${describeReturnDeadline(rental.return_due_at)}. Our team will confirm the handover — the scooter stays yours until then.`}
           </Text>
         </View>
       ) : null}

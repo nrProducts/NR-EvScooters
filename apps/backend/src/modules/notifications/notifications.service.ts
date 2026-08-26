@@ -28,7 +28,13 @@ const MESSAGE_COLUMNS = `
     notification_events(notification_type_code, subject_type, subject_id, payload)
 `;
 
-const ADMIN_MESSAGE_COLUMNS = `${MESSAGE_COLUMNS}, users(id, full_name)`;
+// !inner — this log is rider notification history, not staff's own inbox.
+// notify()'s staff fan-out (notify.service.ts) writes into these same three
+// tables with a staff/admin user_id, so without this join+filter, a "Sent to
+// Riders" or dashboard "recent alerts" list would mix in messages meant for
+// staff (e.g. "Maintenance Ticket Opened", sent to whoever's subscribed in
+// Notification Manager) right alongside actual rider notifications.
+const ADMIN_MESSAGE_COLUMNS = `${MESSAGE_COLUMNS}, users!inner(id, full_name, role)`;
 
 function unwrap<T>(raw: unknown): T | null {
     const v = Array.isArray(raw) ? raw[0] : raw;
@@ -262,7 +268,8 @@ export async function listAllNotifications(
 
     let query = supabaseAdmin
         .from("notification_messages")
-        .select(select, { count: "exact" });
+        .select(select, { count: "exact" })
+        .eq("users.role", "rider");
 
     if (filters.userId) query = query.eq("user_id", filters.userId);
     if (filters.status) query = query.eq("notification_deliveries.status", filters.status);

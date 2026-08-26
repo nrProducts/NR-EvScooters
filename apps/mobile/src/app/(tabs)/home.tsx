@@ -2,156 +2,33 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
-  ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, Zap, RefreshCw, Undo2, CreditCard,
+  ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, CreditCard,
 } from 'lucide-react-native';
-import { AppShell } from '../components/AppShell';
-import { KycBanner } from '../components/KycBanner';
-import { MaintenanceNoticeBanner } from '../components/MaintenanceNoticeBanner';
-import { ActiveRentalCard } from '../components/ActiveRentalCard';
-import { FeaturedScooterCard } from '../components/FeaturedScooterCard';
-import { Badge } from '../components/ui/Badge';
-import { SkeletonList } from '../components/ui/Skeleton';
-import { pullToRefresh } from '../components/ui/PullToRefresh';
-import { ErrorState } from '../components/ui/ErrorState';
-import { useAuthStore } from '../store/useAuthStore';
-import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
-import { bookingRepository, maintenanceRepository, rentalRepository } from '../services';
-import { useCancelBooking } from '../hooks/useCancelBooking';
-import { ReturnGate } from '../components/ReturnGate';
-import { canReturnYet, getRenewalEligibility } from '../lib/returnPolicy';
-import { buildMapsUrl, buildWebMapsUrl } from '../lib/maps';
-import { notifyError } from '../lib/confirm';
-import { COLORS } from '../constants/theme';
-import { VEHICLE_STATUS_LABEL, VEHICLE_STATUS_TONE } from '../constants/status';
-import type { ApiBooking, ApiMaintenanceNotice, ApiRental, ApiReturnSettlement } from '../types/api';
-import { SettlementCard, shouldShowSettlementOnHome } from '../components/SettlementCard';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppShell } from '../../components/AppShell';
+import { KycBanner } from '../../components/KycBanner';
+import { MaintenanceNoticeBanner } from '../../components/MaintenanceNoticeBanner';
+import { ActiveRentalCard } from '../../components/ActiveRentalCard';
+import { FeaturedScooterCard } from '../../components/FeaturedScooterCard';
+import { Badge } from '../../components/ui/Badge';
+import { SkeletonList } from '../../components/ui/Skeleton';
+import { pullToRefresh } from '../../components/ui/PullToRefresh';
+import { ErrorState } from '../../components/ui/ErrorState';
+import { useAuthStore } from '../../store/useAuthStore';
+import { useVehicleCatalogStore } from '../../store/useVehicleCatalogStore';
+import { bookingRepository, maintenanceRepository, rentalRepository } from '../../services';
+import { useCancelBooking } from '../../hooks/useCancelBooking';
+import { ReturnGate } from '../../components/ReturnGate';
+import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
+import { notifyError } from '../../lib/confirm';
+import { COLORS } from '../../constants/theme';
+import { VEHICLE_STATUS_LABEL, VEHICLE_STATUS_TONE } from '../../constants/status';
+import type { ApiBooking, ApiMaintenanceNotice, ApiRental, ApiReturnSettlement } from '../../types/api';
+import { ScooterStatusCard } from '../../components/ScooterStatusCard';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 function formatDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-}
-
-function daysRemaining(nextDueAt: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(`${nextDueAt}T00:00:00`);
-  return Math.round((due.getTime() - today.getTime()) / 86_400_000);
-}
-
-/**
- * Current-plan status + Renew/Return actions, right on Home so a rider never
- * has to go looking for them. Mirrors the states billing.tsx shows in more
- * detail — this is the "at a glance, act in one tap" summary of the same
- * getRenewalEligibility/canReturnYet rules.
- */
-function PlanStatusCard({
-  rental, onRenew, onReturn,
-}: {
-  rental: ApiRental;
-  onRenew: () => void;
-  onReturn: () => void;
-}) {
-  const eligibility = getRenewalEligibility(rental.plan_status, rental.next_due_at, rental.renewal_status);
-  const canReturn = canReturnYet(rental.next_due_at);
-
-  if (rental.renewal_status === 'scheduled') {
-    return (
-      <View
-        className="rounded-2xl p-4 mb-4 flex-row items-center"
-        style={{ backgroundColor: COLORS.success + '14', borderWidth: 1, borderColor: COLORS.success + '55' }}
-      >
-        <RefreshCw size={16} color={COLORS.success} />
-        <View className="flex-1 ml-3">
-          <Text style={{ color: COLORS.success }} className="text-xs font-extrabold">
-            Renewal scheduled{rental.scheduled_start_date ? ` — starts ${formatDay(rental.scheduled_start_date)}` : ''}
-          </Text>
-          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-            Your current plan stays active until then.
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (rental.return_requested_at) {
-    return (
-      <View
-        className="rounded-2xl p-4 mb-4 flex-row items-center"
-        style={{ backgroundColor: COLORS.warning + '14', borderWidth: 1, borderColor: COLORS.warning + '55' }}
-      >
-        <Undo2 size={16} color={COLORS.warning} />
-        <View className="flex-1 ml-3">
-          <Text style={{ color: COLORS.warning }} className="text-xs font-extrabold">
-            Return requested — awaiting staff confirmation
-          </Text>
-          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-            Your scooter stays yours until our team confirms the handover.
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (!eligibility.canRenew && !canReturn) return null;
-
-  const remaining = rental.next_due_at ? daysRemaining(rental.next_due_at) : null;
-
-  return (
-    <View
-      className="rounded-2xl p-4 mb-4"
-      style={{
-        backgroundColor: (eligibility.isLate ? COLORS.danger : COLORS.primary) + '14',
-        borderWidth: 1,
-        borderColor: (eligibility.isLate ? COLORS.danger : COLORS.primary) + '55',
-      }}
-    >
-      <View className="flex-row items-center mb-1">
-        <Zap size={16} color={eligibility.isLate ? COLORS.danger : COLORS.primary} />
-        <Text
-          style={{ color: eligibility.isLate ? COLORS.danger : COLORS.textPrimary }}
-          className="text-xs font-extrabold ml-2"
-        >
-          {eligibility.isLate
-            ? 'Plan Expired — Renew Now'
-            : remaining === 0
-              ? 'Your plan ends today'
-              : rental.next_due_at
-                ? `Plan ends ${formatDay(rental.next_due_at)}${remaining != null && remaining > 0 ? ` · ${remaining} day${remaining === 1 ? '' : 's'} left` : ''}`
-                : 'Your plan'}
-        </Text>
-      </View>
-      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mb-3">
-        {eligibility.isLate
-          ? 'A late fee applies — shown before you pay.'
-          : 'Renew any time before your plan ends — your current plan stays active until then.'}
-      </Text>
-      <View className="flex-row" style={{ gap: 8 }}>
-        {eligibility.canRenew ? (
-          <TouchableOpacity
-            onPress={onRenew}
-            accessibilityRole="button"
-            className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center"
-            style={{ backgroundColor: eligibility.isLate ? COLORS.danger : COLORS.primary }}
-          >
-            <RefreshCw size={13} color="#FFF" />
-            <Text className="text-white text-xs font-bold ml-2">Renew Plan</Text>
-          </TouchableOpacity>
-        ) : null}
-        {canReturn ? (
-          <TouchableOpacity
-            onPress={onReturn}
-            accessibilityRole="button"
-            className="flex-1 py-2.5 rounded-xl items-center flex-row justify-center border"
-            style={{ borderColor: COLORS.border }}
-          >
-            <Undo2 size={13} color={COLORS.textPrimary} />
-            <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2">Return Scooter</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    </View>
-  );
 }
 
 /**
@@ -192,7 +69,7 @@ export default function HomeScreen() {
   const { cancelling, cancelBooking } = useCancelBooking();
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const [refreshing, setRefreshing] = useState(false);
-  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
 
   // has_active_booking/has_active_rental can change server-side without any
   // action the rider took here — an admin releasing a vehicle that was still
@@ -339,10 +216,10 @@ export default function HomeScreen() {
     <AppShell title="Home">
       <ScrollView
         className="flex-1 px-5 pt-5"
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        contentContainerStyle={{ paddingBottom: tabBarHeight + 24 }}
         refreshControl={pullToRefresh(refreshing, () => void handleRefresh())}
       >
-        <Text style={{ color: COLORS.textPrimary }} className="text-xl font-black mb-5">
+        <Text style={{ color: COLORS.textPrimary }} className="text-xl font-black mb-5 text-center">
           {greeting}, {firstName}
         </Text>
 
@@ -358,25 +235,25 @@ export default function HomeScreen() {
 
         <MaintenanceNoticeBanner notice={maintenanceNotice} />
 
-        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Your Scooter</Text>
+        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Your Scooter</Text>
 
         {pendingBooking ? (
           <View
-            className="rounded-2xl p-4 mb-4"
-            style={awaitingPayment
-              ? { backgroundColor: COLORS.warning + '0A', borderWidth: 1, borderColor: COLORS.warning + '44' }
-              : { backgroundColor: COLORS.primary + '0A', borderWidth: 1, borderColor: COLORS.primary + '33' }}
+            className="rounded-2xl p-5 mb-5 border"
+            style={{
+              backgroundColor: COLORS.card, borderColor: COLORS.border,
+              shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1,
+            }}
           >
-            <View className="flex-row items-center justify-between mb-2">
-              <View className="flex-row items-center">
-                <Clock size={16} color={awaitingPayment ? COLORS.warning : COLORS.primary} />
-                <Text
-                  style={{ color: awaitingPayment ? COLORS.warning : COLORS.primaryPressed }}
-                  className="text-sm font-extrabold ml-2"
-                >
-                  {awaitingPayment ? 'Payment Pending' : 'Pickup Scheduled'}
-                </Text>
-              </View>
+            <View className="flex-row items-center justify-between mb-3">
+              {awaitingPayment ? (
+                <View className="flex-row items-center">
+                  <View className="w-1.5 h-1.5 rounded-full mr-2" style={{ backgroundColor: COLORS.warning }} />
+                  <Text style={{ color: COLORS.warning }} className="text-[11px] font-bold uppercase tracking-wide">Payment Pending</Text>
+                </View>
+              ) : (
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Pickup Scheduled</Text>
+              )}
               {pendingBooking.vehicle ? (
                 <Badge
                   label={VEHICLE_STATUS_LABEL[pendingBooking.vehicle.status]}
@@ -384,26 +261,26 @@ export default function HomeScreen() {
                 />
               ) : null}
             </View>
-            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold mb-1">
+            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold mb-2">
               {pendingBooking.vehicle?.registration_number ?? pendingBooking.vehicle_model?.name ?? 'Your scooter'}
             </Text>
             <View className="flex-row items-center mb-1">
               <Calendar size={13} color={COLORS.textSecondary} />
-              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-2">
+              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium ml-2">
                 {formatDay(pendingBooking.start_day)}
               </Text>
             </View>
             {pendingBooking.station ? (
               <View className="flex-row items-center">
                 <MapPin size={13} color={COLORS.textSecondary} />
-                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-2">
+                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium ml-2">
                   {pendingBooking.station.name}
                 </Text>
               </View>
             ) : null}
             <Text
-              style={{ color: awaitingPayment ? COLORS.warning : COLORS.textSecondary }}
-              className="text-[11px] font-medium mt-2.5"
+              style={{ color: COLORS.textSecondary }}
+              className="text-[11px] font-medium mt-3 leading-relaxed"
             >
               {awaitingPayment
                 ? `This booking is not confirmed yet — complete payment to secure it.${holdCountdown ? ` Held for ${holdCountdown}.` : ''}`
@@ -415,8 +292,8 @@ export default function HomeScreen() {
               <TouchableOpacity
                 onPress={() => router.push('/billing' as any)}
                 accessibilityRole="button"
-                className="flex-row items-center justify-center rounded-xl py-2.5 mt-3"
-                style={{ backgroundColor: COLORS.warning }}
+                className="flex-row items-center justify-center rounded-2xl py-3 mt-3"
+                style={{ backgroundColor: COLORS.primary }}
               >
                 <CreditCard size={14} color="#FFF" />
                 <Text className="text-white text-xs font-bold ml-2">Complete Payment</Text>
@@ -425,8 +302,8 @@ export default function HomeScreen() {
             {!awaitingPayment && pendingBooking.station ? (
               <TouchableOpacity
                 onPress={() => handleGetDirections(pendingBooking.station!)}
-                className="flex-row items-center justify-center rounded-xl py-2.5 mt-3"
-                style={{ backgroundColor: COLORS.primary + '14' }}
+                className="flex-row items-center justify-center rounded-2xl py-3 mt-3"
+                style={{ backgroundColor: COLORS.primary + '0F' }}
               >
                 <Navigation size={14} color={COLORS.primaryPressed} />
                 <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-bold ml-2">
@@ -435,13 +312,15 @@ export default function HomeScreen() {
               </TouchableOpacity>
             ) : null}
             {/* Outside the station conditional above — a booking with no
-                station must still be cancellable. */}
+                station must still be cancellable. A genuinely destructive
+                action, so the light red tint stays — unlike a merely
+                "attention" state, this really does end the booking. */}
             <TouchableOpacity
               onPress={() => void handleCancelBooking()}
               disabled={cancelling}
               accessibilityRole="button"
-              className="flex-row items-center justify-center rounded-xl py-2.5 mt-2"
-              style={{ backgroundColor: COLORS.danger + '14', opacity: cancelling ? 0.6 : 1 }}
+              className="flex-row items-center justify-center rounded-2xl py-3 mt-2"
+              style={{ backgroundColor: COLORS.danger + '0F', opacity: cancelling ? 0.6 : 1 }}
             >
               <XCircle size={14} color={COLORS.danger} />
               <Text style={{ color: COLORS.danger }} className="text-xs font-bold ml-2">
@@ -457,26 +336,6 @@ export default function HomeScreen() {
             rental={activeRental}
             onClose={() => setShowReturn(false)}
             onSubmitted={loadRental}
-          />
-        ) : null}
-
-        {/* Outstanding-amount lives here, independent of whether the rental
-            itself is still active — a return in Payment Required keeps the
-            rental (and the vehicle) with the rider until Approve Return
-            actually completes it, so this can't be gated behind "no active
-            rental". Only shown here while money is actually due — once the
-            return resolves, the push notification plus Booking History
-            already cover it, so Home doesn't also hold a resolved
-            confirmation card. */}
-        {shouldShowSettlementOnHome(settlement) ? (
-          <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
-        ) : null}
-
-        {activeRental ? (
-          <PlanStatusCard
-            rental={activeRental}
-            onRenew={() => router.push('/billing')}
-            onReturn={() => setShowReturn(true)}
           />
         ) : null}
 
@@ -499,8 +358,24 @@ export default function HomeScreen() {
           <FeaturedScooterCard model={featured} />
         ) : null}
 
+        {/* The one combined "what's happening, what do I do" area — an
+            outstanding return payment, a return awaiting staff confirmation,
+            an overdue/recovery warning, or a renewal reminder, in priority
+            order; never more than one box. Independent of whether the
+            rental itself is still active — a return in Payment Required
+            keeps the rental (and the vehicle) with the rider until Approve
+            Return actually completes it. */}
+        {activeRental ? (
+          <ScooterStatusCard
+            rental={activeRental}
+            settlement={settlement}
+            onSettlementPaid={loadSettlement}
+            onRenew={() => router.push('/billing')}
+          />
+        ) : null}
+
         <View className="flex-row items-center justify-between mb-3">
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Available Scooters</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Available Scooters</Text>
           <TouchableOpacity onPress={() => router.push('/browse-vehicles')} className="flex-row items-center">
             <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">See All</Text>
             <ChevronRight size={14} color={COLORS.primary} />
@@ -510,7 +385,13 @@ export default function HomeScreen() {
         {loadingList && list.length === 0 ? (
           <SkeletonList count={2} />
         ) : (
-          <View className="rounded-2xl border overflow-hidden mb-5" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+          <View
+            className="rounded-2xl border overflow-hidden mb-5"
+            style={{
+              backgroundColor: COLORS.card, borderColor: COLORS.border,
+              shadowColor: COLORS.black, shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 1,
+            }}
+          >
             {list.map((model, i) => (
               <View
                 key={model.id}

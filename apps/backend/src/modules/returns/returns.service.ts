@@ -302,10 +302,34 @@ export async function computeReturnStage(rentalId: string, subscriptionId: strin
     const refundDue = round2(Math.max(0, depositAmount - totalCharges));
 
     let status: ReturnStageStatus;
-    if (additionalDue <= 0 || row.payment_verified_at) {
+    let paymentVerifiedAt = row.payment_verified_at;
+    if (additionalDue <= 0 || paymentVerifiedAt) {
         status = "ready_for_approval";
     } else if (row.additional_due_invoice_id && await isInvoicePaid(row.additional_due_invoice_id)) {
-        status = "payment_submitted";
+        // Auto-verify: once the gateway has actually captured the payment
+        // (isInvoicePaid, not just an order placed), there's nothing left for
+        // a human to confirm — waiting on an explicit admin click here just
+        // stalls a return that's already fully paid. Written here, not just
+        // reflected in the returned status, because settleReturn's own gate
+        // checks the STORED payment_verified_at column directly — Approve
+        // Return would otherwise reject a return this page just told the
+        // admin was "Ready to Complete."
+        paymentVerifiedAt = new Date().toISOString();
+        const { error: verifyError } = await supabaseAdmin
+            .from("rental_returns")
+            .update({ payment_verified_at: paymentVerifiedAt })
+            .eq("rental_id", rentalId)
+            .is("payment_verified_at", null);
+        if (verifyError) throw verifyError;
+        await writeAudit({
+            actorId: null,
+            targetUserId: null,
+            action: "return.payment_verified",
+            entityType: "rental_return",
+            entityId: rentalId,
+            after: { invoice_id: row.additional_due_invoice_id },
+        });
+        status = "ready_for_approval";
     } else {
         status = "payment_required";
     }
@@ -313,7 +337,7 @@ export async function computeReturnStage(rentalId: string, subscriptionId: strin
     return {
         status, depositAmount, damageAmount, otherChargesAmount, totalCharges,
         additionalDue, refundDue,
-        additionalDueInvoiceId: row.additional_due_invoice_id, paymentVerifiedAt: row.payment_verified_at,
+        additionalDueInvoiceId: row.additional_due_invoice_id, paymentVerifiedAt,
     };
 }
 

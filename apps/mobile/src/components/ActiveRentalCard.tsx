@@ -2,15 +2,14 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  Calendar, CalendarClock, CreditCard, Hash, LifeBuoy, PackageCheck, AlertTriangle,
+  Calendar, CalendarClock, CreditCard, Hash, LifeBuoy, PackageCheck,
 } from 'lucide-react-native';
 import { Badge } from './ui/Badge';
 import { DetailRow } from './ui/DetailRow';
-import { ReturnStatusCard } from './ReturnStatusCard';
 import { VehicleStage } from './VehicleStage';
 import { COLORS } from '../constants/theme';
 import { BILLING_CYCLE_LABEL, RENTAL_STATUS_LABEL, RENTAL_STATUS_TONE, formatDate } from '../constants/status';
-import { LATE_RETURN_FEE_PER_DAY, canReturnYet } from '../lib/returnPolicy';
+import { canReturnYet } from '../lib/returnPolicy';
 import { describeExpiry, rentalDayNumber } from '../lib/rentalTiming';
 import type { ApiRental } from '../types/api';
 
@@ -42,20 +41,17 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
 
   // Server-authoritative (rentals.expires_at, frozen at pickup). Null only
   // when the rental has no plan to expire, in which case there is nothing
-  // honest to show and the row is dropped rather than guessed.
+  // honest to show and the row is dropped rather than guessed. The expiry
+  // NUDGE (late-fee warning) itself now lives in ScooterStatusCard, which
+  // sits directly under this card on Home — this stays purely informational.
   const expiry = describeExpiry(rental.expires_at);
   const returnRequested = Boolean(rental.return_requested_at);
-  // Once a return is requested, ReturnStatusCard owns the deadline messaging.
-  const showNudge = expiry != null && expiry.tone !== 'neutral' && !returnRequested;
   const nudgeTint = expiry?.tone === 'danger' ? COLORS.danger : COLORS.warning;
   // Riders can't back out mid-period — only once their current committed
   // week is up (bookings.next_due_at). The server re-enforces this
   // regardless; disabling here is just so a rider isn't let into the return
   // form only to be rejected at submit.
   const canReturn = canReturnYet(rental.next_due_at);
-  // return_recovery_settings.late_fee_per_day, resolved server-side. Falls
-  // back to the shipped default only when an older payload omits it.
-  const lateReturnFeePerDay = rental.late_return_fee_per_day ?? LATE_RETURN_FEE_PER_DAY;
 
   return (
     <View
@@ -86,7 +82,7 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
           <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-bold tracking-widest mb-3">
             YOUR SCOOTER
           </Text>
-          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">
+          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold">
             {vehicle?.name ?? 'Your scooter'}
           </Text>
           <View className="mt-2">
@@ -125,39 +121,10 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
           ) : null}
         </View>
 
-        {showNudge ? (
-          <View
-            className="rounded-2xl p-3 mt-3"
-            style={{ backgroundColor: nudgeTint + '14', borderWidth: 1, borderColor: nudgeTint + '33' }}
-          >
-            <View className="flex-row items-center mb-1">
-              <AlertTriangle size={14} color={nudgeTint} />
-              <Text style={{ color: nudgeTint }} className="text-xs font-extrabold ml-2">
-                {expiry!.headline}
-              </Text>
-            </View>
-            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed">
-              {/* The rate comes from the server, never a constant compiled
-                  in here — this used to read a hard-coded ₹100 whatever the
-                  console had been set to. 0 is a legal setting (the fee
-                  switched off), and quoting "₹0/day" would be nonsense. */}
-              {lateReturnFeePerDay <= 0
-                ? expiry!.daysLeft < 0
-                  ? 'Renew your plan to keep riding, or hand the scooter back to our team.'
-                  : 'Renew or return it by then.'
-                : expiry!.daysLeft < 0
-                  ? `A ₹${lateReturnFeePerDay}/day late fee is building up, and will be charged when our team confirms the handover.`
-                  : `Return it by then, or a ₹${lateReturnFeePerDay}/day late fee applies.`}
-            </Text>
-          </View>
-        ) : null}
-
-        {/* Once a return is requested the button is REPLACED, not disabled —
-            the rental stays active and the only way out is staff confirming
-            the handover. Same rule as /my-scooter. */}
-        {returnRequested ? (
-          <ReturnStatusCard rental={rental} compact />
-        ) : (
+        {/* Once a return is requested there's nothing left to tap here —
+            ScooterStatusCard right below covers what's happening and what,
+            if anything, the rider needs to do next. */}
+        {!returnRequested ? (
           <>
             <TouchableOpacity
               onPress={onReturn}
@@ -175,7 +142,7 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
               </Text>
             ) : null}
           </>
-        )}
+        ) : null}
 
         <View className="mt-3">
           <TouchableOpacity

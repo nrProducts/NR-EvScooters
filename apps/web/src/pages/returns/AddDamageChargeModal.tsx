@@ -8,9 +8,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAddDamageCharge } from "@/hooks/useReturns";
-import { toastError, toastSuccess } from "@/lib/toastHelpers";
 import type { DamageCategory } from "@/types";
+
+/**
+ * A damage charge the admin has entered but not yet saved — held in
+ * ReturnDetailPage's state and only POSTed to the server (one call per
+ * draft) when "Save Inspection" is clicked. Nothing here calls the API.
+ */
+export interface DamageDraft {
+  damageType: DamageCategory;
+  amount: number;
+  description: string;
+  photos: File[];
+}
 
 const DAMAGE_TYPE_OPTIONS: { value: DamageCategory; label: string }[] = [
   { value: "body", label: "Body Damage" },
@@ -25,17 +35,16 @@ const DAMAGE_TYPE_OPTIONS: { value: DamageCategory; label: string }[] = [
 const MAX_PHOTOS = 6;
 
 interface AddDamageChargeModalProps {
-  rentalId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onAdd: (draft: DamageDraft) => void;
 }
 
-export function AddDamageChargeModal({ rentalId, open, onOpenChange }: AddDamageChargeModalProps) {
+export function AddDamageChargeModal({ open, onOpenChange, onAdd }: AddDamageChargeModalProps) {
   const [damageType, setDamageType] = useState<DamageCategory | "">("");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
-  const addDamageCharge = useAddDamageCharge();
 
   const reset = () => {
     setDamageType("");
@@ -53,20 +62,9 @@ export function AddDamageChargeModal({ rentalId, open, onOpenChange }: AddDamage
 
   const handleSubmit = () => {
     if (!valid || !damageType) return;
-    addDamageCharge.mutate(
-      {
-        rentalId,
-        input: { amount: Number(amount), description: description.trim(), damageCategory: damageType, photos },
-      },
-      {
-        onSuccess: () => {
-          toastSuccess("Damage charge added");
-          reset();
-          onOpenChange(false);
-        },
-        onError: (err) => toastError(err, "Could not add damage charge"),
-      },
-    );
+    onAdd({ damageType, amount: Number(amount), description: description.trim(), photos });
+    reset();
+    onOpenChange(false);
   };
 
   return (
@@ -143,9 +141,7 @@ export function AddDamageChargeModal({ rentalId, open, onOpenChange }: AddDamage
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={!valid || addDamageCharge.isPending} onClick={handleSubmit}>
-            {addDamageCharge.isPending ? "Adding..." : "Add Damage Charge"}
-          </Button>
+          <Button disabled={!valid} onClick={handleSubmit}>Add Damage Charge</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

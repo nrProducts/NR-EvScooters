@@ -202,9 +202,14 @@ export default function RootLayout() {
     if (!navigationState?.key) return;
     if (initialising || !onboardingHydrated) return;
 
-    const segs = segments as unknown as string[];
-    const current = segs[0] ?? "index";
-    const atAuthScreen = segs.length === 0 || AUTH_ROUTES.includes(current);
+    // The (tabs) group wraps Home/Booking History/My Scooter/Billing/Profile
+    // for the bottom tab bar, and doesn't affect any route's URL — but
+    // useSegments() DOES include the group name literally (["(tabs)","home"],
+    // not ["home"]), so this unwraps it before comparing against
+    // RIDER_ROUTES/AUTH_ROUTES, exactly as if the group didn't exist.
+    const rawSegs = segments as unknown as string[];
+    const current = rawSegs[0] === "(tabs)" ? (rawSegs[1] ?? "home") : (rawSegs[0] ?? "index");
+    const atAuthScreen = rawSegs.length === 0 || AUTH_ROUTES.includes(current);
 
     // Device has never completed onboarding — takes priority over everything
     // else, signed in or not, so a brand-new install always sees it first.

@@ -70,37 +70,31 @@ export default function BillingPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Late Fee & Recovery Policy — one card, two settings that used to live on
-// two different pages (this one, and the Returns page's Recovery tab),
-// which was confusing since admins think of them as "the late fee stuff."
-// They're still two different backend concepts and stay that way:
+// Late Fee & Recovery Policy — ONE late-fee rate (₹/day), shared by both the
+// events it used to price separately: a rider's plan renewal running
+// overdue, and the scooter itself coming back late. Those two events can
+// happen to the same rider on the same day, and charging ₹450/day at the
+// renewal screen while quoting ₹100/day at the return screen was never two
+// policies — it was one policy with two answers. There is exactly one number
+// an admin configures here (pricing_rules code 'late_fee', via
+// plan-renewal-settings) and every surface — renewal invoices, the return
+// screen's pre-submit warning, push-notification copy — reads that same
+// number. return-recovery-settings now only owns the day cap below, and
+// resolves its own late_fee_per_day live from this same rule rather than
+// storing a second one.
 //
-//   Renewal fee amount (₹/day) — pricing_rules code 'late_fee', via
-//                          plan-renewal-settings. Charged when a rider pays
-//                          their plan renewal after next_due_at has passed —
-//                          total = days late × rate, computed fresh each time.
-//   Return fee amount (₹/day) — return_recovery_settings.late_fee_per_day.
-//                          Charged when the rider hands the SCOOTER ITSELF
-//                          back late (a different event from a plan renewal —
-//                          the rider can be current on payment and still be
-//                          sitting on the scooter past its due-back date).
-//                          Used both in the rider's pre-submit warning
-//                          (Return Scooter screen) and at actual settlement.
-//
-// NEITHER is a compile-time constant any more. The return fee used to be a
-// hard-coded ₹100 in three places (backend constants, the mobile app, the
-// plan-expiry push) while this screen wrote a different number, so the rider
-// was quoted one rate and charged another. Both now come from here, and both
-// accept 0 as "no fee" — the rider-facing copy drops the sentence entirely
-// rather than quoting ₹0/day.
+//   Late fee (₹ per day) — pricing_rules code 'late_fee'. Charged when a
+//                          rider pays their plan renewal late (days late ×
+//                          rate), and quoted as the same rate for a scooter
+//                          returned late.
 //   Recovery after (days) — return_recovery_settings.max_late_fee_days. Once
 //                          a scooter is this many days past its RETURN due
 //                          date, the fee freezes and the rental is flagged
 //                          "Vehicle Recovery Required" (Returns → Recovery
 //                          tab) — staff are notified automatically.
 //
-// One Save button commits all three, so there's a single place to configure
-// "the late fee" instead of three.
+// One Save button commits both, so there's a single place to configure
+// "the late fee" instead of two.
 // ---------------------------------------------------------------------------
 
 function LateRenewalFeeCard() {
@@ -111,7 +105,6 @@ function LateRenewalFeeCard() {
 
   const [enabled, setEnabled] = useState(false);
   const [amount, setAmount] = useState("0");
-  const [returnFeePerDay, setReturnFeePerDay] = useState("0");
   const [recoveryDays, setRecoveryDays] = useState("30");
   const [error, setError] = useState<string | null>(null);
 
@@ -124,7 +117,6 @@ function LateRenewalFeeCard() {
   useEffect(() => {
     if (!recoverySettings) return;
     setRecoveryDays(String(recoverySettings.max_late_fee_days));
-    setReturnFeePerDay(String(recoverySettings.late_fee_per_day));
   }, [recoverySettings]);
 
   const isLoading = feeLoading || recoveryLoading;
@@ -133,16 +125,13 @@ function LateRenewalFeeCard() {
   }
 
   const parsedAmount = Number(amount);
-  const parsedReturnFeePerDay = Number(returnFeePerDay);
   const parsedRecoveryDays = Number(recoveryDays);
   const dirty = enabled !== feeSettings.late_fee_enabled
     || parsedAmount !== feeSettings.late_fee_amount
-    || parsedReturnFeePerDay !== recoverySettings.late_fee_per_day
     || parsedRecoveryDays !== recoverySettings.max_late_fee_days;
   const amountInvalid = Number.isNaN(parsedAmount) || parsedAmount < 0;
-  const returnFeeInvalid = Number.isNaN(parsedReturnFeePerDay) || parsedReturnFeePerDay < 0;
   const recoveryDaysInvalid = !Number.isInteger(parsedRecoveryDays) || parsedRecoveryDays < 1;
-  const invalid = amountInvalid || returnFeeInvalid || recoveryDaysInvalid;
+  const invalid = amountInvalid || recoveryDaysInvalid;
   const isPending = updateFeeSettings.isPending || updateRecoverySettings.isPending;
 
   const handleSave = async () => {
@@ -153,11 +142,7 @@ function LateRenewalFeeCard() {
           ? updateFeeSettings.mutateAsync({ late_fee_enabled: enabled, late_fee_amount: parsedAmount })
           : Promise.resolve(),
         recoverySettings.max_late_fee_days !== parsedRecoveryDays
-          || recoverySettings.late_fee_per_day !== parsedReturnFeePerDay
-          ? updateRecoverySettings.mutateAsync({
-            max_late_fee_days: parsedRecoveryDays,
-            late_fee_per_day: parsedReturnFeePerDay,
-          })
+          ? updateRecoverySettings.mutateAsync({ max_late_fee_days: parsedRecoveryDays })
           : Promise.resolve(),
       ]);
       toastSuccess("Late fee & recovery policy saved");
@@ -173,24 +158,23 @@ function LateRenewalFeeCard() {
         <div>
           <CardTitle className="text-base">Late Fee & Recovery Policy</CardTitle>
           <CardDescription>
-            Two separate late fees: a rider's plan renewal running overdue, and the scooter itself coming back late —
-            both charged as days late × their own rate below. Once a scooter is past its return date by the day limit
-            below, its fee stops growing and the rental is flagged for our team to go recover it; admins are notified
-            automatically.
+            One late fee rate, charged as days late × rate — whether it's a plan renewal paid late or a scooter
+            returned late. Once a scooter is past its return date by the day limit below, its fee stops growing and
+            the rental is flagged for our team to go recover it; admins are notified automatically.
           </CardDescription>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
           <div>
-            <Label className="text-sm font-normal">Enable late renewal fee</Label>
-            <p className="text-xs text-muted-foreground">When off, a late plan renewal costs nothing extra.</p>
+            <Label className="text-sm font-normal">Enable late fee</Label>
+            <p className="text-xs text-muted-foreground">When off, running late costs nothing extra.</p>
           </div>
           <Switch checked={enabled} onCheckedChange={(v) => { setError(null); setEnabled(v); }} />
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1.5">
-            <Label>Late renewal fee (₹ per day)</Label>
+            <Label>Late fee (₹ per day)</Label>
             <Input
               type="number"
               min={0}
@@ -198,16 +182,6 @@ function LateRenewalFeeCard() {
               onChange={(e) => { setError(null); setAmount(e.target.value); }}
               className="w-40"
               disabled={!enabled}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Late scooter return fee (₹ per day)</Label>
-            <Input
-              type="number"
-              min={0}
-              value={returnFeePerDay}
-              onChange={(e) => { setError(null); setReturnFeePerDay(e.target.value); }}
-              className="w-40"
             />
           </div>
           <div className="space-y-1.5">
@@ -224,8 +198,7 @@ function LateRenewalFeeCard() {
             {isPending ? "Saving..." : "Save"}
           </Button>
         </div>
-        {amountInvalid && <p className="text-xs text-destructive">Enter a valid, non-negative renewal fee amount.</p>}
-        {returnFeeInvalid && <p className="text-xs text-destructive">Enter a valid, non-negative return fee amount.</p>}
+        {amountInvalid && <p className="text-xs text-destructive">Enter a valid, non-negative late fee amount.</p>}
         {recoveryDaysInvalid && <p className="text-xs text-destructive">Enter a whole number of at least 1 day.</p>}
         {error && <p className="text-xs text-destructive">{error}</p>}
       </CardContent>

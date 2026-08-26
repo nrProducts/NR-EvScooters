@@ -42,7 +42,7 @@ export const VehicleDocumentsCard: React.FC = () => (
     <View className="flex-row items-center justify-between mb-3">
       <View className="flex-row items-center">
         <FileText size={15} color={COLORS.textPrimary} />
-        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold ml-2">
+        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold ml-2">
           Vehicle Documents
         </Text>
       </View>

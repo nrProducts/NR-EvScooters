@@ -46,25 +46,19 @@ export function shouldShowSettlementOnHome(settlement: ApiReturnSettlement | nul
 }
 
 /**
- * Post-return settlement summary — deposit/late-fee/damage breakdown plus
- * either the refund status or a "Pay ₹X" action for an outstanding due
- * amount. Reuses the exact same order-creation/checkout/verify sequence
- * billing.tsx already uses for every other invoice payment on this app.
+ * The order-creation/checkout/verify sequence for paying off a return
+ * settlement's outstanding amount — the same one billing.tsx uses for every
+ * other invoice payment on this app. Extracted so both the full
+ * `SettlementCard` (My Scooter) and the compact consolidated status card
+ * (Home) trigger the exact same payment flow rather than two copies that
+ * can drift.
  */
-export function SettlementCard({
-  settlement, onPaid,
-}: {
-  settlement: ApiReturnSettlement;
-  onPaid: () => void;
-}) {
+export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => void) {
   const profile = useAuthStore((s) => s.profile);
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
 
-  const isDue = settlement.due_amount > 0 && settlement.status === 'amount_due';
-  const isRefund = settlement.refund_amount > 0;
-
-  const handlePay = async () => {
+  const pay = async () => {
     if (!settlement.due_invoice_id) return;
     setPayError(null);
     setPaying(true);
@@ -103,6 +97,26 @@ export function SettlementCard({
     }
   };
 
+  return { pay, paying, payError };
+}
+
+/**
+ * Post-return settlement summary — deposit/late-fee/damage breakdown plus
+ * either the refund status or a "Pay ₹X" action for an outstanding due
+ * amount. Reuses the exact same order-creation/checkout/verify sequence
+ * billing.tsx already uses for every other invoice payment on this app.
+ */
+export function SettlementCard({
+  settlement, onPaid,
+}: {
+  settlement: ApiReturnSettlement;
+  onPaid: () => void;
+}) {
+  const { pay, paying, payError } = usePaySettlement(settlement, onPaid);
+
+  const isDue = settlement.due_amount > 0 && settlement.status === 'amount_due';
+  const isRefund = settlement.refund_amount > 0;
+
   if (isDue) {
     return (
       <View
@@ -122,7 +136,7 @@ export function SettlementCard({
           Additional amount due — please pay this to complete your return process.
         </Text>
         <TouchableOpacity
-          onPress={() => void handlePay()}
+          onPress={() => void pay()}
           disabled={paying}
           className="py-3 rounded-xl items-center flex-row justify-center"
           style={{ backgroundColor: COLORS.danger, opacity: paying ? 0.6 : 1 }}

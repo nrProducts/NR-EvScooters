@@ -27,8 +27,43 @@ import type { MyNotification, NotificationDeliveryStatus, NotificationLogEntry }
 
 const STATUS_OPTIONS: (NotificationDeliveryStatus | "all")[] = ["all", "sent", "pending", "failed"];
 
+/**
+ * Every rider-facing template a `notifyUser()` call in the backend can raise
+ * (grepped from every `template: "..."` literal outside notify.service.ts's
+ * staff fan-out) — "admin_broadcast" excluded, that's its own tab. Labels are
+ * just for the filter dropdown and the Type badge; the raw code still shows
+ * as a fallback for anything added here later and not yet listed.
+ */
+const RIDER_NOTIFICATION_TYPE_LABEL: Record<string, string> = {
+  vehicle_assigned: "Vehicle Assigned",
+  rental_return_requested: "Return Requested",
+  rental_completed: "Rental Completed",
+  rental_return_rejected: "Return Rejected",
+  kyc_approved: "KYC Approved",
+  kyc_rejected: "KYC Rejected",
+  payment_failed: "Payment Failed",
+  payment_success: "Payment Successful",
+  maintenance_plan_paused: "Plan Paused",
+  vehicle_available_again: "Vehicle Available Again",
+  refund_initiated: "Refund Initiated",
+  refund_completed: "Refund Completed",
+  damage_added: "Damage Charge Added",
+  damage_dispute_resolved: "Damage Dispute Resolved",
+  support_status_updated: "Support Ticket Updated",
+  return_payment_required: "Return Payment Due",
+  booking_cancelled: "Booking Cancelled",
+  pickup_confirmed: "Pickup Confirmed",
+  maintenance_quick_fix: "Maintenance — Quick Fix",
+  maintenance_temp_vehicle: "Maintenance — Temp Vehicle",
+  maintenance_vehicle_returned: "Maintenance — Vehicle Returned",
+};
+
+function riderNotificationTypeLabel(template: string): string {
+  return RIDER_NOTIFICATION_TYPE_LABEL[template] ?? template;
+}
+
 export default function NotificationsPage() {
-  const [tab, setTab] = useState<"admin" | "rider">("admin");
+  const [tab, setTab] = useState<"admin" | "riderLog" | "rider">("admin");
   const { data: unread } = useUnreadCount();
 
   usePageSubtitle("What you've sent to riders, and what riders' activity has sent to you.");
@@ -38,6 +73,7 @@ export default function NotificationsPage() {
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
         <TabsList>
           <TabsTrigger value="admin">Sent by Admin</TabsTrigger>
+          <TabsTrigger value="riderLog">Sent to Riders</TabsTrigger>
           <TabsTrigger value="rider">
             From Riders
             {!!unread && <Badge variant="destructive" className="ml-1.5 px-1.5 py-0 text-[0.625rem]">{unread}</Badge>}
@@ -46,6 +82,7 @@ export default function NotificationsPage() {
       </Tabs>
 
       {tab === "admin" && <AdminBroadcastTab />}
+      {tab === "riderLog" && <RiderNotificationLogTab />}
       {tab === "rider" && <RiderActivityTab />}
     </div>
   );
@@ -176,6 +213,103 @@ function AdminBroadcastTab() {
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
       </Card>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sent to Riders — every system-generated notification a rider actually
+// received (payment successful, payment/return amount due, return rejected,
+// KYC decision, maintenance updates...), not just manual broadcasts. Same
+// fleet-wide log endpoint as "Sent by Admin", just without pinning
+// notificationType to "admin_broadcast".
+// ---------------------------------------------------------------------------
+
+const RIDER_NOTIFICATION_TYPES = Object.keys(RIDER_NOTIFICATION_TYPE_LABEL);
+
+function RiderNotificationLogTab() {
+  const [status, setStatus] = useState<NotificationDeliveryStatus | "all">("all");
+  const [notificationType, setNotificationType] = useState<string | "all">("all");
+  const [page, setPage] = useState(1);
+
+  const { sort, onSortChange } = useTableSort("created_at", "desc");
+  const { data, isLoading, isError, refetch } = useNotificationLog({
+    status,
+    notificationType: notificationType === "all" ? undefined : notificationType,
+    page, pageSize: 8, sortBy: "created_at", sortDir: sort.dir,
+  });
+
+  const columns: DataTableColumn<NotificationLogEntry>[] = [
+    {
+      header: "Type",
+      key: "type",
+      render: (n) => <Badge variant="secondary">{riderNotificationTypeLabel(n.template)}</Badge>,
+    },
+    {
+      header: "Message",
+      key: "message",
+      render: (n) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium">{n.payload?.title ?? n.template}</p>
+          <p className="truncate text-xs text-muted-foreground">{n.payload?.body ?? ""}</p>
+        </div>
+      ),
+    },
+    { header: "Rider", key: "rider", render: (n) => n.rider?.full_name ?? "—" },
+    { header: "Channel", key: "channel", render: (n) => <span className="capitalize">{n.channel}</span>, hideOnMobile: true },
+    { header: "Status", key: "status", render: (n) => <StatusBadge status={n.status} /> },
+    { header: "Sent", key: "sent_at", sortKey: "created_at", render: (n) => (n.sent_at ? formatDateTime(n.sent_at) : "—"), hideOnMobile: true },
+  ];
+
+  return (
+    <Card>
+      <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm font-medium">{data?.total ?? 0} notifications sent to riders</p>
+        <div className="flex gap-2">
+          <Select
+            value={notificationType}
+            onValueChange={(v) => { setNotificationType(v); setPage(1); }}
+          >
+            <SelectTrigger className="w-52">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              {RIDER_NOTIFICATION_TYPES.map((t) => (
+                <SelectItem key={t} value={t}>{riderNotificationTypeLabel(t)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={status}
+            onValueChange={(v) => { setStatus(v as NotificationDeliveryStatus | "all"); setPage(1); }}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s} className="capitalize">
+                  {s === "all" ? "All statuses" : s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <DataTable
+        columns={columns}
+        data={data?.data ?? []}
+        isLoading={isLoading}
+        isError={isError}
+        onRetry={() => refetch()}
+        emptyTitle="No notifications sent to riders yet"
+        sort={sort}
+        onSortChange={onSortChange}
+      />
+
+      {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+    </Card>
   );
 }
 
