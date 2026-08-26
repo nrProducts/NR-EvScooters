@@ -1,6 +1,7 @@
 import { Menu, Sun, Moon, LogOut, Settings as SettingsIcon } from "lucide-react";
 import { GlobalSearch } from "@/components/common/GlobalSearch";
 import { NotificationBell } from "@/components/common/NotificationBell";
+import { PendingApprovalsBell } from "@/components/common/PendingApprovalsBell";
 import { HeaderAttendanceControl } from "@/components/common/HeaderAttendanceControl";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -78,6 +79,8 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
         </Button>
 
         <HeaderAttendanceControl role={user?.role} />
+
+        <PendingApprovalsBell />
 
         <NotificationBell />
 

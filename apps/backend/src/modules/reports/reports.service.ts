@@ -3,7 +3,7 @@ import { KYC_STATUSES, KycStatus } from "../../types";
 import { VEHICLE_STATUSES, VehicleStatus } from "../vehicles/vehicles.types";
 import { MAINTENANCE_STATUSES, MaintenanceStatus } from "../maintenance/maintenance.types";
 import { businessToday, isWeeklyOff } from "../../common/dates";
-import { ReportsSummary } from "./reports.types";
+import { PendingApprovalsSummary, ReportsSummary } from "./reports.types";
 
 function zeroed<T extends string>(keys: readonly T[]): Record<T, number> {
     return Object.fromEntries(keys.map((k) => [k, 0])) as Record<T, number>;
@@ -330,5 +330,53 @@ export async function getReportsSummary(): Promise<ReportsSummary> {
         attendance: hrmsStats.attendance,
         leave: hrmsStats.leave,
         trends: { revenue: revenueTrendData, bookings: bookingsTrendData, maintenance: maintenanceTrendData },
+    };
+}
+
+/**
+ * Everything currently awaiting an admin decision, fleet-wide — the header's
+ * "Pending Approvals" bell. Six count-only queries, no row data, no trends:
+ * this is fetched on every admin screen (unlike getReportsSummary, which is
+ * Dashboard-only), so it has to stay cheap.
+ */
+export async function getPendingApprovals(): Promise<PendingApprovalsSummary> {
+    const [kycPending, returnsPending, supportOpen, maintenanceCounts, refundsPending, leaveCounts] = await Promise.all([
+        supabaseAdmin
+            .from("users")
+            .select("id, rider_profiles!inner(kyc_status)", { count: "exact", head: true })
+            .eq("role", "rider")
+            .is("deleted_at", null)
+            .eq("rider_profiles.kyc_status", "pending"),
+        supabaseAdmin
+            .from("rental_returns")
+            .select("rental_id", { count: "exact", head: true })
+            .in("status", ["requested", "inspected"]),
+        supabaseAdmin
+            .from("support_tickets")
+            .select("id", { count: "exact", head: true })
+            .in("status", ["open", "in_progress"]),
+        maintenanceStatusCounts(),
+        supabaseAdmin
+            .from("refunds")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "pending"),
+        supabaseAdmin
+            .from("leave_requests")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "pending"),
+    ]);
+    if (kycPending.error) throw kycPending.error;
+    if (returnsPending.error) throw returnsPending.error;
+    if (supportOpen.error) throw supportOpen.error;
+    if (refundsPending.error) throw refundsPending.error;
+    if (leaveCounts.error) throw leaveCounts.error;
+
+    return {
+        kyc_pending: kycPending.count ?? 0,
+        returns_pending: returnsPending.count ?? 0,
+        support_open: supportOpen.count ?? 0,
+        maintenance_pending: maintenanceCounts.reported + maintenanceCounts.in_progress,
+        refunds_pending: refundsPending.count ?? 0,
+        leave_pending: leaveCounts.count ?? 0,
     };
 }

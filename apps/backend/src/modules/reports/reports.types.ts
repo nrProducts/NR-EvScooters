@@ -55,3 +55,19 @@ export interface ReportsSummary {
         maintenance: Array<{ month: string; count: number }>;
     };
 }
+
+/**
+ * The header's "Pending Approvals" bell — everything currently awaiting an
+ * admin decision, across every module, in one cheap call (count-only queries,
+ * no rows, no trends). Deliberately separate from ReportsSummary: that one's
+ * heavy (6 months of trend data) and is only ever fetched on the Dashboard
+ * page; this is fetched on every admin screen, so it stays lean.
+ */
+export interface PendingApprovalsSummary {
+    kyc_pending: number;
+    returns_pending: number;
+    support_open: number;
+    maintenance_pending: number;
+    refunds_pending: number;
+    leave_pending: number;
+}

@@ -1160,6 +1160,16 @@ export interface ReportsSummary {
   };
 }
 
+/** GET /reports/pending-approvals — the header's "Pending Approvals" bell. */
+export interface PendingApprovalsSummary {
+  kyc_pending: number;
+  returns_pending: number;
+  support_open: number;
+  maintenance_pending: number;
+  refunds_pending: number;
+  leave_pending: number;
+}
+
 // ---------------------------------------------------------------------------
 // Audit logs (admin)
 // ---------------------------------------------------------------------------
