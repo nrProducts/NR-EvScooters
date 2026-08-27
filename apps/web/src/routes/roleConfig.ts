@@ -17,7 +17,6 @@ import {
   Eye,
   FileLock2,
   Undo2,
-  PackageCheck,
   Receipt,
   Boxes,
   UserRound,
@@ -119,11 +118,13 @@ export const NAV_ITEMS: NavItem[] = [
   {
     label: "Vehicles", path: "/vehicles", icon: Bike, roles: ["admin", "staff"], moduleKey: "vehicles", group: "fleet",
   },
-  // Return review + settlement — a dedicated page (not a popup) covering
-  // the full return-processing workflow, deposit/late-fee/damage settlement.
-  {
-    label: "Returns", path: "/returns", icon: PackageCheck, roles: ["admin", "staff"], moduleKey: "returns", group: "fleet",
-  },
+  // Return review + settlement (Return Requests/Recovery/Settled) merged
+  // into Rental Operations above as extra tabs — no longer its own sidebar
+  // item or list page. Its detail route is /bookings/returns/:rentalId (see
+  // AppRoutes.tsx) — nested under /bookings on purpose, so it's recognised
+  // as part of Rental Operations by matchPath()/Sidebar's own
+  // longest-prefix matching without needing a separate NAV_ITEMS entry
+  // (hidden or otherwise) just to avoid 403ing it.
   // Previously hard admin-only ("every write route is requireAdmin, showing
   // this to staff would just be a wall of 403s") — now delegable like every
   // other module now that real per-action checks exist server-side.

@@ -11,7 +11,6 @@ import { ErrorState } from '../../components/ui/ErrorState';
 import { Badge } from '../../components/ui/Badge';
 import { pullToRefresh, useRefresh } from '../../components/ui/PullToRefresh';
 import { COLORS } from '../../constants/theme';
-import { DEPOSIT_STATUS_LABEL, DEPOSIT_STATUS_TONE } from '../../constants/status';
 import { useMyBilling } from '../../hooks/useMyBilling';
 import { useAuthStore } from '../../store/useAuthStore';
 import { billingRepository, rentalRepository } from '../../services';
@@ -19,7 +18,7 @@ import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } 
 import { getRenewalEligibility } from '../../lib/returnPolicy';
 import { ApiError } from '../../lib/ApiError';
 import type {
-  ApiEarlyRecharge, ApiInvoice, ApiPaymentOrder, ApiPlanQuote, ApiReturnSettlement, ApiReturnStage,
+  ApiEarlyRecharge, ApiInvoice, ApiPaymentOrder, ApiPlanQuote, ApiReturnStage,
   InvoicePaymentState,
 } from '../../types/api';
 
@@ -99,16 +98,84 @@ function periodProgress(startDate: string, endDate: string): number {
 
 /** One line item on a bill card — label left, amount right. `attention` (a
  * late fee) reads amber, never bright red — it's a charge to notice, not a
- * system failure. */
-function BillLine({ label, amount, attention }: { label: string; amount: number; attention?: boolean }) {
+ * system failure. `negative` renders a deduction ("-₹X") in red — the sign
+ * goes in front of the ₹, not before the digits, so it never renders as the
+ * "₹-2000" a bare `amount.toFixed(0)` on a negative number would print. */
+function BillLine({
+  label, amount, attention, negative, bold,
+}: { label: string; amount: number; attention?: boolean; negative?: boolean; bold?: boolean }) {
+  const color = attention ? COLORS.warning : negative ? COLORS.danger : COLORS.textPrimary;
   return (
     <View className="flex-row items-center justify-between py-1.5">
-      <Text style={{ color: attention ? COLORS.warning : COLORS.textSecondary }} className="text-[13px] font-medium flex-1 pr-3">
+      <Text
+        style={{ color: attention ? COLORS.warning : COLORS.textSecondary }}
+        className={`text-[13px] flex-1 pr-3 ${bold ? 'font-bold' : 'font-medium'}`}
+      >
         {label}
       </Text>
-      <Text style={{ color: attention ? COLORS.warning : COLORS.textPrimary }} className="text-[13px] font-semibold">
-        ₹{amount.toFixed(0)}
+      <Text style={{ color }} className={`text-[13px] ${bold ? 'font-bold' : 'font-semibold'}`}>
+        {negative ? '-' : ''}₹{Math.abs(amount).toFixed(0)}
       </Text>
+    </View>
+  );
+}
+
+
+/**
+ * One row in the Payment History list — collapsed to date/amount/status,
+ * expands to its line items on tap. Factored out so it renders identically
+ * whether there's a currently active plan or not (Payment History is a
+ * persistent record of every invoice this rider has ever had, not something
+ * scoped to whatever booking happens to be active right now).
+ */
+function PaymentHistoryCard({
+  invoice, expanded, onToggle,
+}: { invoice: ApiInvoice; expanded: boolean; onToggle: () => void }) {
+  const hasItems = invoice.items.length > 0;
+  return (
+    <View
+      className="rounded-2xl border mb-3 overflow-hidden"
+      style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 1 }}
+    >
+      <TouchableOpacity
+        className="p-4 flex-row items-center justify-between"
+        disabled={!hasItems}
+        onPress={onToggle}
+      >
+        <View className="flex-1 pr-3">
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">
+            {invoiceLabel(invoice)}
+          </Text>
+          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+            {formatDate(invoice.paid_at ?? invoice.due_on)}
+            {hasItems ? (expanded ? '  ▲' : '  ▼') : ''}
+          </Text>
+        </View>
+        <View className="items-end">
+          <Text style={{ color: COLORS.textPrimary }} className="text-base font-bold mb-1">₹{invoice.total_amount.toFixed(0)}</Text>
+          <Badge label={PAYMENT_STATE_LABEL[invoice.payment_state]} tone={PAYMENT_STATE_TONE[invoice.payment_state]} />
+        </View>
+      </TouchableOpacity>
+      {expanded && hasItems ? (
+        <View className="px-4 pb-4 pt-1" style={{ borderTopWidth: 1, borderColor: COLORS.border }}>
+          {invoice.items.map((item) => (
+            <View key={item.id} className="flex-row items-center justify-between py-1.5">
+              {/*
+                A discount is an `adjustment` with a NEGATIVE amount, not its
+                own line type — which is what let the old charge/discount
+                pair collapse into one signed path. Read the sign, not the
+                type.
+              */}
+              <Text style={{ color: item.amount < 0 ? COLORS.success : COLORS.textSecondary }} className="text-[11px] font-medium">
+                {item.description}
+              </Text>
+              <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
+                {item.amount < 0 ? '-' : ''}₹{Math.abs(item.amount).toFixed(0)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -126,14 +193,8 @@ function AttentionNote({ label }: { label: string }) {
 export default function BillingScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
-  const { bookingId, booking, deposit, damages, invoices, loading, error, reload } = useMyBilling();
+  const { bookingId, booking, invoices, loading, error, reload } = useMyBilling();
   const { refreshing, onRefresh } = useRefresh(() => reload(true));
-  // Excludes disputed damages, mirroring refundableAmountForBooking on the
-  // backend — a disputed deduction is on hold, not final, so it shouldn't
-  // read as part of the settled breakdown yet.
-  const settledDamages = damages.filter((d) => d.status !== 'disputed');
-  const totalDeduction = settledDamages.reduce((sum, d) => sum + d.deposit_deduction, 0);
-  const totalAdditionalDue = settledDamages.reduce((sum, d) => sum + d.outstanding_amount, 0);
   const profile = useAuthStore((s) => s.profile);
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
@@ -155,10 +216,11 @@ export default function BillingScreen() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [recharging, setRecharging] = useState(false);
   const [rechargeError, setRechargeError] = useState<string | null>(null);
-  // Which Payment History row is expanded to show its line items — only
-  // invoices minted by the Billing & Charges engine (transaction fee etc.)
-  // have any; older/other invoices just show the flat amount as before.
-  const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
+  // Which Payment History row is expanded — one merged list of invoices AND
+  // past return settlements (see paymentHistoryItems below), so one key
+  // namespaced by kind covers both instead of two separate expanded-id
+  // states that only ever apply to half the list each.
+  const [expandedHistoryKey, setExpandedHistoryKey] = useState<string | null>(null);
 
   // The admin side can change this rider's plan_status (a payment going
   // overdue, a vehicle being released) with no action of the rider's own —
@@ -215,20 +277,6 @@ export default function BillingScreen() {
   const hasActiveReturn = !!returnStage
     && returnStage.status !== 'return_completed' && returnStage.status !== 'rejected';
 
-  // Once there's no active booking/rental left, Billing would otherwise show
-  // a bare "No active plan" empty state even for a rider who JUST completed
-  // a return — the most recent settlement (paid, refunded, or fully
-  // adjusted) is the closed historical record for that rental instead of
-  // nothing at all.
-  const [pastSettlement, setPastSettlement] = useState<ApiReturnSettlement | null>(null);
-  useEffect(() => {
-    if (bookingId) { setPastSettlement(null); return; }
-    void rentalRepository.settlement().then((s) => {
-      setPastSettlement(s && s.status !== 'amount_due' ? s : null);
-    }).catch(() => {
-      // Non-critical.
-    });
-  }, [bookingId]);
 
   const plan = booking?.plan;
   const isPendingBookingPayment = booking?.status === 'pending_payment';
@@ -420,6 +468,35 @@ export default function BillingScreen() {
     }
   };
 
+  // Every invoice this rider has ever had (see useMyBilling — no longer
+  // scoped to just the current booking), newest first. One record type, one
+  // list — each row's own purpose label (invoiceLabel) and date are what
+  // make every entry distinguishable; nothing here is ever the same
+  // underlying payment shown a second time under a different heading.
+  const paymentHistoryItems = [...invoices].sort((a, b) => {
+    const aDate = a.paid_at ?? a.due_on ?? a.created_at;
+    const bDate = b.paid_at ?? b.due_on ?? b.created_at;
+    return aDate < bDate ? 1 : -1;
+  });
+
+  const renderPaymentHistory = () => (
+    <>
+      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Payment History</Text>
+      {paymentHistoryItems.length === 0 ? (
+        <EmptyState icon={Receipt} title="No payments yet" />
+      ) : (
+        paymentHistoryItems.map((inv) => (
+          <PaymentHistoryCard
+            key={inv.id}
+            invoice={inv}
+            expanded={expandedHistoryKey === inv.id}
+            onToggle={() => setExpandedHistoryKey(expandedHistoryKey === inv.id ? null : inv.id)}
+          />
+        ))
+      )}
+    </>
+  );
+
   return (
     <AppShell title="Billing">
       {loading ? (
@@ -428,68 +505,18 @@ export default function BillingScreen() {
         </View>
       ) : error ? (
         <ErrorState message={error} onRetry={() => void reload()} />
-      ) : !bookingId && pastSettlement ? (
-        // No active booking/rental left — but the most recent settlement is
-        // a closed historical record, not nothing. A rider who just finished
-        // a return should see what happened, not a generic "No active plan."
+      ) : !bookingId && paymentHistoryItems.length > 0 ? (
+        // No active booking/rental right now — but Billing stays a live
+        // record of everything that ever happened on this account, not a
+        // screen that goes blank the moment there's nothing currently
+        // active. A rider who just finished a return, or is between plans,
+        // should still see their full payment history here.
         <ScrollView
           className="flex-1 px-5 pt-5"
           contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Rental Returned</Text>
-          <View
-            className="rounded-2xl border p-5 mb-6"
-            style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
-          >
-            <View className="flex-row items-center justify-between mb-4">
-              <View className="flex-row items-center">
-                <View className="w-9 h-9 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.success + '1A' }}>
-                  <ShieldCheck size={16} color={COLORS.success} />
-                </View>
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold ml-3">
-                  {pastSettlement.processed_at ? formatDate(pastSettlement.processed_at) : 'Return complete'}
-                </Text>
-              </View>
-              <Badge label="Completed" tone="success" />
-            </View>
-
-            <BillLine label="Security Deposit" amount={pastSettlement.deposit_amount} />
-            {pastSettlement.late_fee_amount > 0 ? <BillLine label="Late Fee" amount={-pastSettlement.late_fee_amount} /> : null}
-            {pastSettlement.damage_fee_amount > 0 ? <BillLine label="Damage Charges" amount={-pastSettlement.damage_fee_amount} /> : null}
-            {pastSettlement.other_charges.map((c, i) => (
-              <BillLine key={i} label={c.label} amount={-c.amount} />
-            ))}
-            {/* Charges exceeded the deposit and the rider paid the
-                difference — without this, that payment has no line of its
-                own and the deposit + damage figures above don't add up to
-                the total below. */}
-            {pastSettlement.paid_by_rider_amount > 0 ? (
-              <BillLine label="Paid by You" amount={pastSettlement.paid_by_rider_amount} />
-            ) : null}
-            <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
-
-            <View className="flex-row items-center justify-between mb-3">
-              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">
-                {pastSettlement.refund_amount > 0 ? 'Refund Amount' : pastSettlement.due_amount > 0 ? 'Additional Payment' : 'Total Charges'}
-              </Text>
-              <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">
-                ₹{(pastSettlement.refund_amount > 0 ? pastSettlement.refund_amount
-                  : pastSettlement.due_amount > 0 ? pastSettlement.due_amount
-                    : pastSettlement.total_charges).toFixed(0)}
-              </Text>
-            </View>
-
-            <View className="flex-row items-center justify-between">
-              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">Payment Status</Text>
-              <Badge
-                label={pastSettlement.status === 'pending_refund' || pastSettlement.status === 'refund_processing'
-                  ? 'Refund Pending' : 'Paid'}
-                tone={pastSettlement.status === 'pending_refund' || pastSettlement.status === 'refund_processing'
-                  ? 'warning' : 'success'}
-              />
-            </View>
-          </View>
+          {renderPaymentHistory()}
         </ScrollView>
       ) : !bookingId ? (
         <EmptyState
@@ -688,7 +715,7 @@ export default function BillingScreen() {
 
                       <BillLine label="Rental plan amount" amount={inv.total_amount} />
                       {inv.allocated_amount > 0 ? (
-                        <BillLine label="Already paid" amount={-inv.allocated_amount} />
+                        <BillLine label="Already paid" amount={inv.allocated_amount} negative />
                       ) : null}
                       {inv.late_fee ? (
                         <BillLine
@@ -885,161 +912,15 @@ export default function BillingScreen() {
             </View>
           )}
 
-          {/* Security deposit */}
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Security Deposit</Text>
-          <View
-            className="rounded-2xl border mb-7 overflow-hidden"
-            style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
-          >
-            <View className="p-5 flex-row items-center justify-between">
-              <View className="flex-row items-center flex-1">
-                <View className="w-9 h-9 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.primary + '14' }}>
-                  <ShieldCheck size={16} color={COLORS.primary} />
-                </View>
-                <View className="ml-3">
-                  <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold">₹{(deposit?.amount ?? 0).toFixed(0)}</Text>
-                  {/*
-                    'refunded' and 'partially_refunded' collapsed into
-                    'released'. The distinction was the deposit row holding an
-                    opinion about how much came back; the refund itself is
-                    where that amount lives, and the two could disagree.
-                    'forfeited' reads as "retained," in neutral/amber, not a
-                    bright red "FORFEITED" stamp — attention, not alarm.
-                  */}
-                  {deposit?.status === 'released' && deposit.refunded_at ? (
-                    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                      Released {formatDate(deposit.refunded_at)}
-                    </Text>
-                  ) : deposit?.status === 'forfeited' ? (
-                    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                      Retained for damage deductions
-                    </Text>
-                  ) : deposit?.status === 'held' && deposit.refund_eligible_at ? (
-                    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                      Refund eligible from {formatDate(deposit.refund_eligible_at)}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-              {deposit ? (
-                <Badge
-                  label={deposit.status === 'forfeited' ? 'Deposit Retained' : DEPOSIT_STATUS_LABEL[deposit.status]}
-                  tone={deposit.status === 'forfeited' ? 'warning' : DEPOSIT_STATUS_TONE[deposit.status]}
-                />
-              ) : null}
-            </View>
 
-            {/* Damage charges live here, as one deposit breakdown, instead
-                of a second section repeating the same rows — every damage
-                (not just settled ones) shown as a transaction line, disputed
-                ones flagged inline rather than in a separate list. */}
-            {damages.length > 0 && (
-              <View className="px-5 pb-5 pt-1" style={{ borderTopWidth: 1, borderColor: COLORS.border }}>
-                <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mb-2 mt-2">
-                  Damage Charges
-                </Text>
-                {damages.map((d) => (
-                  <View key={d.id} className="flex-row items-center justify-between py-1.5">
-                    <View className="flex-1 pr-2">
-                      <Text style={{ color: COLORS.textSecondary }} className="text-[13px] font-medium">
-                        {d.description}
-                      </Text>
-                      {d.status === 'disputed' ? (
-                        <View className="flex-row items-center mt-0.5">
-                          <View className="w-1 h-1 rounded-full mr-1.5" style={{ backgroundColor: COLORS.warning }} />
-                          <Text style={{ color: COLORS.warning }} className="text-[10px] font-semibold">Under review</Text>
-                        </View>
-                      ) : (
-                        <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-medium opacity-70">
-                          {formatDate(d.created_at)}
-                        </Text>
-                      )}
-                    </View>
-                    <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold">
-                      -₹{d.deposit_deduction.toFixed(0)}
-                    </Text>
-                  </View>
-                ))}
-                {deposit && (
-                  <>
-                    <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
-                    {totalAdditionalDue > 0 ? (
-                      <View className="flex-row items-center justify-between py-1">
-                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Additional Amount Due</Text>
-                        <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold">₹{totalAdditionalDue.toFixed(0)}</Text>
-                      </View>
-                    ) : (
-                      <View className="flex-row items-center justify-between py-1">
-                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Net Refund</Text>
-                        <Text style={{ color: COLORS.primary }} className="text-lg font-bold">
-                          ₹{Math.max(0, (deposit.amount - totalDeduction)).toFixed(0)}
-                        </Text>
-                      </View>
-                    )}
-                  </>
-                )}
-              </View>
-            )}
-          </View>
-
-          {/* Payment history — a transaction timeline, one soft card per
-              entry, rather than one bordered list with internal dividers. */}
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Payment History</Text>
-          {invoices.length === 0 ? (
-            <EmptyState icon={Receipt} title="No payments yet" />
-          ) : (
-            invoices.map((inv) => {
-              const hasItems = inv.items.length > 0;
-              const expanded = expandedInvoiceId === inv.id;
-              return (
-                <View
-                  key={inv.id}
-                  className="rounded-2xl border mb-3 overflow-hidden"
-                  style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 1 }}
-                >
-                  <TouchableOpacity
-                    className="p-4 flex-row items-center justify-between"
-                    disabled={!hasItems}
-                    onPress={() => setExpandedInvoiceId(expanded ? null : inv.id)}
-                  >
-                    <View className="flex-1 pr-3">
-                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">
-                        {invoiceLabel(inv)}
-                      </Text>
-                      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                        {formatDate(inv.paid_at ?? inv.due_on)}
-                        {hasItems ? (expanded ? '  ▲' : '  ▼') : ''}
-                      </Text>
-                    </View>
-                    <View className="items-end">
-                      <Text style={{ color: COLORS.textPrimary }} className="text-base font-bold mb-1">₹{inv.total_amount.toFixed(0)}</Text>
-                      <Badge label={PAYMENT_STATE_LABEL[inv.payment_state]} tone={PAYMENT_STATE_TONE[inv.payment_state]} />
-                    </View>
-                  </TouchableOpacity>
-                  {expanded && hasItems ? (
-                    <View className="px-4 pb-4 pt-1" style={{ borderTopWidth: 1, borderColor: COLORS.border }}>
-                      {inv.items.map((item) => (
-                        <View key={item.id} className="flex-row items-center justify-between py-1.5">
-                          {/*
-                            A discount is an `adjustment` with a NEGATIVE
-                            amount, not its own line type — which is what
-                            let the old charge/discount pair collapse into
-                            one signed path. Read the sign, not the type.
-                          */}
-                          <Text style={{ color: item.amount < 0 ? COLORS.success : COLORS.textSecondary }} className="text-[11px] font-medium">
-                            {item.description}
-                          </Text>
-                          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
-                            {item.amount < 0 ? '-' : ''}₹{Math.abs(item.amount).toFixed(0)}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })
-          )}
+          {/* Payment History — one merged list of every invoice AND every
+              past return settlement this rider has ever had, independent of
+              whatever plan is (or isn't) active right now. Without merging
+              these, the moment a rider picked up a NEW vehicle, their
+              earlier rental's whole settlement record used to disappear
+              from the app entirely, since it was only ever shown when
+              there was NO active plan. */}
+          {renderPaymentHistory()}
         </ScrollView>
       )}
     </AppShell>

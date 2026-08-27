@@ -541,7 +541,7 @@ export async function listRefunds(filters: ListRefundsFilters): Promise<Paginate
             .maybeSingle();
         if (subError) throw subError;
         if (!sub) return paginate([], 0, filters);
-        query = query.eq("payment_transactions.payment_orders.subscription_id", sub.id);
+        query = query.eq("payment_transactions.payment_orders.invoices.subscription_id", sub.id);
     }
 
     const [from, to] = toRange(filters);

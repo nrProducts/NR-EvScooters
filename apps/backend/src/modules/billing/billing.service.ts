@@ -410,11 +410,34 @@ async function updateRule(
  * that (by definition) doesn't exist to trace back to. Scoped by `kind` so
  * the discount-rules screen can't delete a charge rule by id collision.
  */
+/**
+ * The global late-fee rule (code `late_fee`) backs `GET /plan-renewal-
+ * settings`, which resolves it by code with `.maybeSingle()` and 404s if the
+ * row is gone — that has already twice left the Billing & Charges admin page
+ * stuck on "Loading late fee settings…" forever after this same hard delete
+ * removed it (see 20260824100700_restore_late_fee_pricing_rule.sql and
+ * 20260827100000_restore_late_fee_pricing_rule_again.sql). Editing it still
+ * works via PUT /plan-renewal-settings — only the delete is blocked.
+ */
+const PROTECTED_CODES = new Set(["late_fee"]);
+
 async function deleteRule(
     id: string,
     kind: "charge" | "discount",
     actor: AuthContext,
 ): Promise<void> {
+    const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("pricing_rules")
+        .select("code")
+        .eq("id", id)
+        .eq("kind", kind)
+        .maybeSingle();
+    if (fetchError) throw fetchError;
+    if (!existing) throw notFound(kind === "charge" ? "Charge rule not found." : "Discount rule not found.");
+    if (PROTECTED_CODES.has(existing.code)) {
+        throw businessRule("This is a global system rule and can't be deleted. Edit it from Billing & Charges instead.");
+    }
+
     const { data, error } = await supabaseAdmin
         .from("pricing_rules")
         .delete()

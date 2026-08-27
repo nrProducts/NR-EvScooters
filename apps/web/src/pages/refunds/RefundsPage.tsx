@@ -164,7 +164,7 @@ export default function RefundsPage() {
     <div className="space-y-4 animate-fade-in">
       <div className="flex justify-end">
         <Button variant="outline" size="sm" asChild>
-          <Link to="/returns">Returns &amp; Settlements</Link>
+          <Link to="/bookings?tab=settled">Returns &amp; Settlements</Link>
         </Button>
       </div>
 

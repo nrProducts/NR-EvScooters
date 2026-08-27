@@ -98,9 +98,9 @@ export default function BillingPage() {
 // ---------------------------------------------------------------------------
 
 function LateRenewalFeeCard() {
-  const { data: feeSettings, isLoading: feeLoading } = usePlanRenewalSettings();
+  const { data: feeSettings, isLoading: feeLoading, isError: feeErrored, error: feeError } = usePlanRenewalSettings();
   const updateFeeSettings = useUpdatePlanRenewalSettings();
-  const { data: recoverySettings, isLoading: recoveryLoading } = useReturnRecoverySettings();
+  const { data: recoverySettings, isLoading: recoveryLoading, isError: recoveryErrored, error: recoveryError } = useReturnRecoverySettings();
   const updateRecoverySettings = useUpdateReturnRecoverySettings();
 
   const [enabled, setEnabled] = useState(false);
@@ -120,6 +120,16 @@ function LateRenewalFeeCard() {
   }, [recoverySettings]);
 
   const isLoading = feeLoading || recoveryLoading;
+  if (feeErrored || recoveryErrored) {
+    const err = feeError ?? recoveryError;
+    return (
+      <Card className="p-4">
+        <p className="text-sm text-destructive">
+          Couldn't load late fee settings: {err instanceof ApiError ? err.message : "Something went wrong. Please try again."}
+        </p>
+      </Card>
+    );
+  }
   if (isLoading || !feeSettings || !recoverySettings) {
     return <Card className="p-4"><p className="text-sm text-muted-foreground">Loading late fee settings…</p></Card>;
   }

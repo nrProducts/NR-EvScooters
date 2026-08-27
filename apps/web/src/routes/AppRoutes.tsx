@@ -16,7 +16,6 @@ import UserListPage from "@/pages/users/UserListPage";
 import UserDetailPage from "@/pages/users/UserDetailPage";
 import KycQueuePage from "@/pages/kyc/KycQueuePage";
 import BookingListPage from "@/pages/bookings/BookingListPage";
-import ReturnsListPage from "@/pages/returns/ReturnsListPage";
 import ReturnDetailPage from "@/pages/returns/ReturnDetailPage";
 import MaintenancePage from "@/pages/maintenance/MaintenancePage";
 import SupportTicketsPage from "@/pages/support/SupportTicketsPage";
@@ -78,9 +77,14 @@ export function AppRoutes() {
         <Route path="/users/:id" element={<UserDetailPage />} />
 
         <Route path="/kyc" element={<KycQueuePage />} />
+        {/* Returns no longer has its own list page — the full return-review
+            workflow (Return Requests/Recovery/Settled) now lives inside
+            Rental Operations (/bookings); the detail page is nested under
+            /bookings too (not a bare /returns/:id) so it's recognised as
+            part of Rental Operations by nav highlighting/matchPath without
+            needing a separate (and previously hidden) NAV_ITEMS entry. */}
         <Route path="/bookings" element={<BookingListPage />} />
-        <Route path="/returns" element={<ReturnsListPage />} />
-        <Route path="/returns/:rentalId" element={<ReturnDetailPage />} />
+        <Route path="/bookings/returns/:rentalId" element={<ReturnDetailPage />} />
         <Route path="/maintenance" element={<MaintenancePage />} />
         <Route path="/support" element={<SupportTicketsPage />} />
 

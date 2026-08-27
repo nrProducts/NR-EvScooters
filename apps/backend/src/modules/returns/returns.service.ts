@@ -597,9 +597,22 @@ export async function approveReturnSettlement(
         .maybeSingle();
     if (beforeError) throw beforeError;
     if (!before) throw notFound("Rental not found.");
-    if (before.status !== "active") throw businessRule("This ride is not active.");
 
     const ret = unwrap<{ status: string }>(before.rental_returns);
+
+    if (before.status !== "active") {
+        // A duplicate submission (double-click/double-tap firing this mutation
+        // twice) landing after the first request already approved the same
+        // return should hand back what was just created, not error — the
+        // admin's screen shows the return as complete either way, so a second
+        // request finding it already approved is not a real conflict.
+        if (ret?.status === "approved") {
+            const existing = await getSettlementByRentalId(rentalId);
+            if (existing) return existing;
+        }
+        throw businessRule("This ride is not active.");
+    }
+
     if (!ret || (ret.status !== "requested" && ret.status !== "inspected")) {
         throw businessRule("No return has been requested for this rental.");
     }
@@ -648,8 +661,8 @@ export async function approveReturnSettlement(
         // originating payment could never be reconciled with the gateway.
         const { data: payment, error: paymentError } = await supabaseAdmin
             .from("payment_transactions")
-            .select("id, payment_orders!inner(subscription_id)")
-            .eq("payment_orders.subscription_id", before.subscription_id)
+            .select("id, payment_orders!inner(invoices!inner(subscription_id))")
+            .eq("payment_orders.invoices.subscription_id", before.subscription_id)
             .eq("status", "succeeded")
             .order("created_at", { ascending: false })
             .limit(1)
@@ -840,6 +853,37 @@ export async function listSettlements(
 
     const matching = rows.filter((r) => r.status === filters.status);
     return paginate(matching.slice(from, to + 1), matching.length, filters);
+}
+
+/**
+ * Every past settlement for this rider, newest first — GET
+ * /rentals/me/settlements. Plural and distinct from getMySettlement
+ * (singular — "what's due right now, if anything"): this is the rider's own
+ * billing HISTORY. Before this existed, Billing showed only the rider's
+ * single most recent settlement, gated behind "no active booking/rental" —
+ * so the moment a rider picked up a NEW vehicle, their previous rental's
+ * whole payment record disappeared from the app instead of just moving into
+ * a history list.
+ */
+export async function getMySettlementHistory(
+    userId: string,
+    filters: { page: number; pageSize: number },
+): Promise<Paginated<ReturnSettlementRow>> {
+    const [from, to] = toRange(filters);
+    const { data, error, count } = await supabaseAdmin
+        .from("rental_settlements")
+        .select(SETTLEMENT_COLUMNS, { count: "exact" })
+        .eq("rentals.user_id", userId)
+        .order("settled_at", { ascending: false })
+        .range(from, to);
+    if (error) throw error;
+
+    // Belt and braces over the `!inner` embed, same reasoning as
+    // getMySettlement: an ownership filter that rests entirely on an
+    // embedded join is one keyword away from silently matching everyone.
+    const rows = (await healAmountDueRows(((data ?? []) as unknown as RawSettlementRow[]).map(toSettlementRow)))
+        .filter((r) => r.user_id === userId);
+    return paginate(rows, count ?? 0, filters);
 }
 
 /**

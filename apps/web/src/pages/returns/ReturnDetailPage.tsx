@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, CheckCircle2, Plus, ShieldCheck, Wrench, XCircle, Clock, CreditCard, CircleCheck,
@@ -122,6 +122,12 @@ export default function ReturnDetailPage() {
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [outcome, setOutcome] = useState<"available" | "maintenance">("available");
   const [maintenanceNotes, setMaintenanceNotes] = useState("");
+  // A ref, not state: `isPending` below only reflects the mutation's status
+  // as of the last render, so a second click landing before that render
+  // flushes (a fast double-click/double-tap on the dialog's Complete Return
+  // button) would still see `disabled={false}` and fire a real duplicate
+  // request. This flag flips synchronously inside the click handler itself.
+  const completingReturn = useRef(false);
 
   const { rental, deposit, stage, damages } = data ?? {};
   const settlement = data?.settlement;
@@ -130,9 +136,15 @@ export default function ReturnDetailPage() {
     ? "return_completed"
     : stage?.status ?? "return_requested";
 
+  // Only a return that actually raised a payable invoice has anything to
+  // review here — a clean, nothing-owed return reaches "ready_for_approval"
+  // too, but GET /returns/:id/payment 404s for it (no additional_due_invoice_id),
+  // and the panel below has no way to distinguish "still loading" from "there
+  // was never a payment to check" if this query runs anyway.
+  const hasPaymentToReview = !!stage?.additionalDueInvoiceId;
   const paymentReview = usePaymentReview(
     rentalId,
-    stageStatus === "payment_submitted" || stageStatus === "ready_for_approval",
+    hasPaymentToReview && (stageStatus === "payment_submitted" || stageStatus === "ready_for_approval"),
   );
 
   if (isLoading) {
@@ -204,8 +216,12 @@ export default function ReturnDetailPage() {
         },
       });
       if (result.stage?.status === "ready_for_approval") {
-        toastSuccess("Inspection complete — choose the return outcome to finish.");
-        setCompleteDialogOpen(true);
+        // Don't auto-open the outcome dialog here — the Financial Settlement
+        // card's own "Complete Return" button (which appears now that the
+        // inspection is saved) is the one and only place that opens it, so
+        // there's never a moment with two different buttons both able to
+        // trigger the same popup.
+        toastSuccess("Inspection saved — complete the return from the Financial Settlement panel.");
       } else {
         toastSuccess("Payment requested from rider — this return will be ready to complete once they pay.");
       }
@@ -224,19 +240,24 @@ export default function ReturnDetailPage() {
   };
 
   const handleCompleteReturn = () => {
-    if (!rentalId) return;
+    if (!rentalId || completingReturn.current) return;
+    completingReturn.current = true;
     setFormError(null);
+
+    const done = () => { completingReturn.current = false; };
 
     if (outcome === "maintenance") {
       if (maintenanceNotes.trim().length < 3) {
         setFormError("Describe why this vehicle needs maintenance (at least 3 characters).");
+        done();
         return;
       }
       moveToMaintenance.mutate(
         { id: rentalId, input: { description: maintenanceNotes.trim(), inspected: true } },
         {
-          onSuccess: () => { toastSuccess("Return completed — vehicle sent to maintenance"); setCompleteDialogOpen(false); },
+          onSuccess: () => { done(); toastSuccess("Return completed — vehicle sent to maintenance"); setCompleteDialogOpen(false); },
           onError: (err) => {
+            done();
             setFormError(err instanceof ApiError ? err.message : "Something went wrong.");
             toastError(err, "Could not complete return");
           },
@@ -248,8 +269,9 @@ export default function ReturnDetailPage() {
     approveSettlement.mutate(
       { rentalId, input: {} },
       {
-        onSuccess: () => { toastSuccess("Return completed"); setCompleteDialogOpen(false); },
+        onSuccess: () => { done(); toastSuccess("Return completed"); setCompleteDialogOpen(false); },
         onError: (err) => {
+          done();
           setFormError(err instanceof ApiError ? err.message : "Something went wrong.");
           toastError(err, "Could not complete return");
         },
@@ -264,7 +286,9 @@ export default function ReturnDetailPage() {
       {
         onSuccess: () => {
           toastSuccess("Return rejected");
-          navigate("/returns");
+          // Returns no longer has its own page — the "Return Requests" tab
+          // on Rental Operations is where this rental was reviewed from.
+          navigate("/bookings?tab=return_requests");
         },
         onError: (err) => toastError(err, "Could not reject return"),
       },
@@ -280,10 +304,10 @@ export default function ReturnDetailPage() {
         <div className="flex items-center gap-3">
           <Button
             variant="ghost" size="icon"
-            // Browser back, not a hardcoded "/returns" — that always reset
-            // the list to its default Pending tab, even when this page was
-            // opened from Settled (ReturnsListPage now keeps its tab in the
-            // URL precisely so going back restores it).
+            // Browser back, not a hardcoded path — Returns no longer has its
+            // own page; this could have been opened from any of Rental
+            // Operations' Return Requests/Recovery/Settled tabs, which keep
+            // their tab in the URL precisely so going back restores it.
             onClick={() => navigate(-1)}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -425,8 +449,8 @@ export default function ReturnDetailPage() {
                   {savingDamages
                     ? "Saving damage charges..."
                     : saveInspection.isPending
-                      ? "Completing..."
-                      : previewDue > 0 ? "Complete Return — Request Payment from Rider" : "Complete Return"}
+                      ? "Saving..."
+                      : previewDue > 0 ? "Save Inspection — Request Payment from Rider" : "Save Inspection"}
                 </Button>
 
                 <div className="space-y-2 border-t border-border pt-3">
@@ -498,7 +522,7 @@ export default function ReturnDetailPage() {
             </CardContent>
           </Card>
 
-          {!alreadySettled && (stageStatus === "payment_submitted" || stageStatus === "ready_for_approval") && (
+          {!alreadySettled && hasPaymentToReview && (stageStatus === "payment_submitted" || stageStatus === "ready_for_approval") && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Payment Status</CardTitle>

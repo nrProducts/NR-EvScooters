@@ -1,6 +1,6 @@
 import { useState } from "react";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { PackageCheck } from "lucide-react";
-import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { RentalOperationsSummaryCards } from "@/components/bookings/RentalOperationsSummaryCards";
 import { usePickupQueue, useAvailableVehicles, useConfirmPickup } from "@/hooks/useBookings";
+import { useReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import type { PickupQueueFilters } from "@/services/api/bookings";
@@ -46,59 +47,122 @@ function RefundStatusBadge({ status }: { status: BookingRefundStatus }) {
 }
 
 /**
- * Admin-facing view, one tab per stage of the full rental lifecycle:
- *   Payment successful -> Pending (confirmed) -> Admin confirms -> pickup
- *   opens the rental -> Active/Due (fulfilled, split by plan_status) -> rider
- *   requests a return -> Return Requests -> staff approve/reject -> Completed.
- * Distinct from BookingStatus/PickupQueueFilters — several of these views
- * (Active, Due, Return Requests) are the SAME status filtered further, and
- * "All" is deliberately no filter at all, so this can't just be the raw
- * status type.
- *
- * There used to be an "Assigned" tab here too (status=fulfilled, no
- * plan_status filter) — dropped because a booking's plan_status is set the
- * instant it becomes fulfilled, so "Assigned" was never a distinct stage: it
- * was just Active + Due (+ paused, which has no tab) shown together, which
- * read as a duplicate of Active whenever nothing happened to be overdue.
+ * Was the booking's own "Status" plus a separate "Return Status" column —
+ * two columns for what is really one lifecycle position. Collapsed to the
+ * plain four-stage flow: Booked -> Active -> Return Requested -> Completed.
+ * `b.status` already carries the backend's derived "completed" value
+ * (fulfilled + subscription ended), so no new data is needed here — this is
+ * a display simplification, not a new source of truth. "Plan Status"
+ * (Active/Past Due/Paused — the subscription's independent billing state)
+ * stays its own separate column; only Status + Return Status merge.
  */
-type RentalOpsView =
-  | "pending" | "active" | "due" | "scheduled_renewals"
-  | "completed" | "cancelled" | "expired" | "all";
+function lifecycleStatus(b: PickupBooking): { label: string; tone: "success" | "warning" | "info" | "destructive" } {
+  if (b.status === "cancelled") return { label: "Cancelled", tone: "destructive" };
+  if (b.status === "expired") return { label: "Expired", tone: "destructive" };
+  // "completed" must win over "return requested": return_requested_at is a
+  // historical timestamp that's never cleared once set, so a booking whose
+  // return was requested AND has since been approved (the booking's own
+  // status has already flipped to the backend's derived "completed") would
+  // otherwise show "Return Requested" forever.
+  if (b.status === "completed") return { label: "Completed", tone: "success" };
+  if (b.active_rental?.return_requested_at) return { label: "Return Requested", tone: "warning" };
+  if (b.status === "fulfilled") return { label: "Active", tone: "success" };
+  return { label: "Booked", tone: "info" }; // pending_payment or confirmed
+}
+
+/**
+ * Read-only summary of return_recovery_settings.max_late_fee_days — the
+ * actual editing happens on Billing & Charges now, in the same card as the
+ * late-fee amount, so there's one place to configure "the late fee" instead
+ * of two. This just surfaces the current value here with a shortcut to it.
+ */
+function RecoveryPolicyNote() {
+  const navigate = useNavigate();
+  const { data: settings } = useReturnRecoverySettings();
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm">
+      <p className="text-muted-foreground">
+        A scooter is flagged for recovery{" "}
+        <span className="font-medium text-foreground">{settings ? settings.max_late_fee_days : "…"} days</span>{" "}
+        past its return due date.
+      </p>
+      <Button variant="ghost" size="sm" onClick={() => navigate("/billing")}>
+        Edit in Billing & Charges
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * Admin-facing view, one tab per stage of the full rental lifecycle:
+ *   Payment successful -> Pending (confirmed) -> Admin confirms pickup ->
+ *   Active (fulfilled — Plan Status/Renewal columns show past-due/paused/
+ *   scheduled-renewal without needing their own tabs) -> rider requests a
+ *   return -> Return Requests -> staff review/inspect/settle -> Completed.
+ * Distinct from BookingStatus/PickupQueueFilters — "Active" and "Return
+ * Requests" are the SAME raw status filtered further, and "All" is
+ * deliberately no filter at all, so this can't just be the raw status type.
+ *
+ * Deliberately few tabs: what used to be split into Due, Scheduled
+ * Renewals, Recovery, Settled and Expired tabs is still fully visible —
+ * via the Plan Status/Renewal columns on Active, via Status + the
+ * per-row Review/View Return action on Return Requests/Completed, or via
+ * All + search — just not as separate top-level filters for something
+ * that's a variant of an existing stage, not a new one.
+ *
+ * Return Requests used to live on its own page ("Returns", /returns) —
+ * merged in here so the whole lifecycle, booking through settlement, is
+ * managed from one place. Only the actual return-processing detail
+ * workflow (/bookings/returns/:rentalId — inspection, charges, payment,
+ * Complete Return) stays a separate page, nested under /bookings so nav
+ * highlighting/matchPath recognise it as part of Rental Operations; every
+ * row below still navigates there exactly as it did on the old Returns page.
+ */
+type RentalOpsView = "pending" | "active" | "return_requests" | "completed" | "cancelled" | "all";
 
 const VIEW_TABS: { value: RentalOpsView; label: string }[] = [
   { value: "pending", label: "Pending Bookings" },
   { value: "active", label: "Active" },
-  { value: "due", label: "Due" },
-  // Upcoming/scheduled renewals — a rider already paid ahead, current plan
-  // stays active until scheduled_start_date, kept separate from Active so
-  // staff can see who's already renewed vs. who hasn't.
-  { value: "scheduled_renewals", label: "Scheduled Renewals" },
+  // Merged in from the old standalone Returns page.
+  { value: "return_requests", label: "Return Requests" },
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
   { value: "all", label: "All" },
-  // Not part of the required tab set, but existing functionality — keeping
-  // it rather than losing visibility into expired reservations.
-  { value: "expired", label: "Expired" },
 ];
 
 function filtersForView(
   view: RentalOpsView,
-): Pick<PickupQueueFilters, "status" | "planStatus" | "renewalStatus" | "returnRequested"> {
+): Pick<PickupQueueFilters, "status" | "returnRequested"> {
   switch (view) {
     case "pending": return { status: "confirmed" };
-    case "active": return { status: "fulfilled", planStatus: "active" };
-    case "due": return { status: "fulfilled", planStatus: "past_due" };
-    case "scheduled_renewals": return { status: "fulfilled", renewalStatus: "scheduled" };
+    case "active": return { status: "fulfilled" };
+    case "return_requests": return { status: "fulfilled", returnRequested: true };
     case "completed": return { status: "completed" };
     case "cancelled": return { status: "cancelled" };
-    case "expired": return { status: "expired" };
     case "all": return {};
   }
 }
 
 export default function BookingListPage() {
   const user = useAuthStore((s) => s.user);
-  const [view, setView] = useState<RentalOpsView>("pending");
+  const navigate = useNavigate();
+  // Kept in the URL, not plain component state — the Return Detail page's
+  // back button uses browser history (navigate(-1)), which only restores
+  // the tab that was open if that tab is actually part of the URL this page
+  // remounts from. A plain useState here would reset to "Pending Bookings"
+  // every time an admin came back from reviewing a return, even one opened
+  // from Return Requests/Recovery/Settled.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawView = searchParams.get("tab");
+  const view: RentalOpsView = VIEW_TABS.some((t) => t.value === rawView) ? (rawView as RentalOpsView) : "pending";
+  const setView = (next: RentalOpsView) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      params.set("tab", next);
+      return params;
+    });
+  };
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
@@ -139,15 +203,20 @@ export default function BookingListPage() {
     {
       header: "Status",
       key: "status",
-      render: (b) => (
-        <div className="flex flex-wrap gap-1">
-          <StatusBadge status={b.status} />
-          {/* plan_status is only meaningful once fulfilled (still riding) —
-              null before pickup and after a genuine completion. */}
-          {b.plan_status ? <StatusBadge status={b.plan_status} /> : null}
-          {b.active_rental?.return_requested_at ? <StatusBadge status="return_requested" /> : null}
-        </div>
-      ),
+      render: (b) => {
+        const { label, tone } = lifecycleStatus(b);
+        return <Badge variant={tone}>{label}</Badge>;
+      },
+    },
+    {
+      // Separate from the booking's lifecycle status: plan_status is the
+      // subscription's billing state (active/past_due/paused), only
+      // meaningful once fulfilled (still riding) — null before pickup and
+      // after a genuine completion. An independent fact about the same
+      // booking, not a variant of its status.
+      header: "Plan Status",
+      key: "plan_status",
+      render: (b) => (b.plan_status ? <StatusBadge status={b.plan_status} /> : <span className="text-muted-foreground">—</span>),
     },
     {
       header: "Payment due",
@@ -193,6 +262,29 @@ export default function BookingListPage() {
       header: "Actions",
       key: "actions",
       render: (b) => {
+        const rentalId = b.active_rental?.id;
+        // Checked before "return requested" for the same reason
+        // lifecycleStatus() does: return_requested_at is a historical
+        // timestamp that never clears, so an already-completed return would
+        // otherwise still show the in-progress "Review Return" action
+        // instead of a plain link back to its (now read-only) settlement.
+        if (b.status === "completed" && rentalId) {
+          return (
+            <Button size="sm" variant="outline" onClick={() => navigate(`/bookings/returns/${rentalId}`)}>
+              View Return
+            </Button>
+          );
+        }
+        // A return in progress outranks Confirm Pickup — mutually exclusive
+        // in practice anyway, since return_requested_at only ever applies to
+        // a fulfilled booking, which can't simultaneously be "confirmed".
+        if (b.active_rental?.return_requested_at && rentalId) {
+          return (
+            <Button size="sm" onClick={() => navigate(`/bookings/returns/${rentalId}`)}>
+              Review Return
+            </Button>
+          );
+        }
         if (b.status === "confirmed" && hasAction(user, "bookings", "edit")) {
           return (
             <Button
@@ -285,13 +377,77 @@ export default function BookingListPage() {
     },
   ];
 
-  const columns = view === "cancelled" ? cancelledColumns : baseColumns;
+  /** Ported from the old Returns page's "Pending" tab — return-requested rentals awaiting inspection. */
+  const returnRequestColumns: DataTableColumn<PickupBooking>[] = [
+    { header: "Rider", key: "rider", render: (b) => b.rider.full_name },
+    {
+      header: "Vehicle",
+      key: "vehicle",
+      render: (b) => (
+        <div>
+          <p className="font-medium">{b.vehicle?.registration_number ?? "—"}</p>
+          <p className="text-xs text-muted-foreground">{b.vehicle_model?.name ?? "—"}</p>
+        </div>
+      ),
+    },
+    {
+      header: "Rental started",
+      key: "started",
+      render: (b) => (b.active_rental ? formatDate(b.active_rental.started_at) : "—"),
+      hideOnMobile: true,
+    },
+    {
+      header: "Return requested",
+      key: "return_requested",
+      render: (b) => (b.active_rental?.return_requested_at ? formatDateTime(b.active_rental.return_requested_at) : "—"),
+    },
+    {
+      header: "Charges",
+      key: "charges",
+      render: (b) => (b.active_rental?.charges != null ? formatCurrency(b.active_rental.charges) : "—"),
+      hideOnMobile: true,
+    },
+    {
+      header: "Amount Due",
+      key: "amount_due",
+      render: (b) => (
+        b.active_rental?.amount_due != null
+          ? (b.active_rental.amount_due > 0
+            ? <span className="font-semibold text-destructive">{formatCurrency(b.active_rental.amount_due)}</span>
+            : <span className="text-muted-foreground">₹0</span>)
+          : "—"
+      ),
+    },
+    {
+      header: "Payment Status",
+      key: "payment_status",
+      render: (b) => <StatusBadge status={b.active_rental?.payment_status ?? "not_required"} />,
+    },
+    { header: "Status", key: "status", render: () => <StatusBadge status="return_requested" /> },
+    {
+      header: "Actions",
+      key: "actions",
+      render: (b) => (
+        <Button size="sm" onClick={() => b.active_rental && navigate(`/bookings/returns/${b.active_rental.id}`)}>
+          Review Return
+        </Button>
+      ),
+    },
+  ];
+
+  const columns = view === "cancelled"
+    ? cancelledColumns
+    : view === "return_requests"
+      ? returnRequestColumns
+      : baseColumns;
 
   usePageSubtitle("Manage the full rental lifecycle, from booking to return.");
 
   return (
     <div className="space-y-4 animate-fade-in">
       <RentalOperationsSummaryCards />
+
+      <RecoveryPolicyNote />
 
       <Tabs value={view} onValueChange={(v) => { setView(v as RentalOpsView); setPage(1); }}>
         <TabsList className="flex-wrap">
@@ -324,7 +480,6 @@ export default function BookingListPage() {
           sort={sort}
           onSortChange={onSortChange}
         />
-
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
       </Card>
 

@@ -36,6 +36,15 @@ router.get(
 // "Scooter Returned Successfully" / "Amount Due" card. See returns.service.ts.
 router.get("/me/settlement", asyncHandler(c.mySettlementHandler));
 
+// Every past settlement, paginated — the rider's own Billing "Past Rentals"
+// history, distinct from the singular /me/settlement above. See
+// getMySettlementHistory in returns.service.ts for why this exists.
+router.get(
+    "/me/settlements",
+    validate({ query: v.rentalHistoryQuery }),
+    asyncHandler(c.mySettlementHistoryHandler),
+);
+
 // Vehicle Return → Inspection → Payment Gate → Approve Return, from the
 // rider's own side — Payment Required/Submitted/Ready for Approval/
 // Completed. Same derivation the admin Return Detail page uses (returns

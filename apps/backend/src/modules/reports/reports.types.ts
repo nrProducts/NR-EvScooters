@@ -70,4 +70,6 @@ export interface PendingApprovalsSummary {
     maintenance_pending: number;
     refunds_pending: number;
     leave_pending: number;
+    /** Paid, confirmed bookings still waiting on staff to confirm the physical pickup. */
+    bookings_awaiting_pickup: number;
 }

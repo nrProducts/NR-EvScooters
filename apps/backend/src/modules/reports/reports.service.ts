@@ -340,7 +340,9 @@ export async function getReportsSummary(): Promise<ReportsSummary> {
  * Dashboard-only), so it has to stay cheap.
  */
 export async function getPendingApprovals(): Promise<PendingApprovalsSummary> {
-    const [kycPending, returnsPending, supportOpen, maintenanceCounts, refundsPending, leaveCounts] = await Promise.all([
+    const [
+        kycPending, returnsPending, supportOpen, maintenanceCounts, refundsPending, leaveCounts, bookingsAwaitingPickup,
+    ] = await Promise.all([
         supabaseAdmin
             .from("users")
             .select("id, rider_profiles!inner(kyc_status)", { count: "exact", head: true })
@@ -364,12 +366,23 @@ export async function getPendingApprovals(): Promise<PendingApprovalsSummary> {
             .from("leave_requests")
             .select("id", { count: "exact", head: true })
             .eq("status", "pending"),
+        // A paid, confirmed booking still needs a staff member to physically
+        // hand the vehicle over and tap "Confirm pickup" — exactly the
+        // Bookings page's own "Pending Bookings" tab default filter
+        // (bookings.service.ts's filtersForView("pending")). Distinct from
+        // pendingBookingCount() above, which counts unpaid
+        // 'pending_payment' bookings — a rider-side wait, not a staff task.
+        supabaseAdmin
+            .from("bookings")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "confirmed"),
     ]);
     if (kycPending.error) throw kycPending.error;
     if (returnsPending.error) throw returnsPending.error;
     if (supportOpen.error) throw supportOpen.error;
     if (refundsPending.error) throw refundsPending.error;
     if (leaveCounts.error) throw leaveCounts.error;
+    if (bookingsAwaitingPickup.error) throw bookingsAwaitingPickup.error;
 
     return {
         kyc_pending: kycPending.count ?? 0,
@@ -378,5 +391,6 @@ export async function getPendingApprovals(): Promise<PendingApprovalsSummary> {
         maintenance_pending: maintenanceCounts.reported + maintenanceCounts.in_progress,
         refunds_pending: refundsPending.count ?? 0,
         leave_pending: leaveCounts.count ?? 0,
+        bookings_awaiting_pickup: bookingsAwaitingPickup.count ?? 0,
     };
 }

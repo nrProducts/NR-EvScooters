@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { ClipboardCheck, IdCard, Undo2, LifeBuoy, Wrench, Wallet, CalendarClock } from "lucide-react";
+import { ClipboardCheck, IdCard, Undo2, LifeBuoy, Wrench, Wallet, CalendarClock, PackageCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
@@ -15,8 +15,9 @@ interface PendingItem {
 }
 
 const PENDING_ITEMS: PendingItem[] = [
+  { key: "bookings_awaiting_pickup", label: "Bookings awaiting pickup", path: "/bookings", icon: PackageCheck },
   { key: "kyc_pending", label: "KYC reviews", path: "/kyc", icon: IdCard },
-  { key: "returns_pending", label: "Returns awaiting action", path: "/returns", icon: Undo2 },
+  { key: "returns_pending", label: "Returns awaiting action", path: "/bookings?tab=return_requests", icon: Undo2 },
   { key: "support_open", label: "Open support tickets", path: "/support", icon: LifeBuoy },
   { key: "maintenance_pending", label: "Maintenance tickets", path: "/maintenance", icon: Wrench },
   { key: "refunds_pending", label: "Refunds pending", path: "/refunds", icon: Wallet },
