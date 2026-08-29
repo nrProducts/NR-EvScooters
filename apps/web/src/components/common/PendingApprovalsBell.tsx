@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { ClipboardCheck, IdCard, Undo2, LifeBuoy, Wrench, Wallet, CalendarClock, PackageCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
@@ -43,16 +44,23 @@ export function PendingApprovalsBell() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" aria-label="Pending approvals">
-          <ClipboardCheck className="h-[1.125rem] w-[1.125rem]" />
-          {total > 0 && (
-            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[0.625rem] font-semibold leading-none text-warning-foreground">
-              {total > 99 ? "99+" : total}
-            </span>
-          )}
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative" aria-label="Pending approvals">
+              <ClipboardCheck className="h-[1.125rem] w-[1.125rem]" />
+              {total > 0 && (
+                <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[0.625rem] font-semibold leading-none text-warning-foreground">
+                  {total > 99 ? "99+" : total}
+                </span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {total > 0 ? `Pending approvals (${total})` : "Pending approvals"}
+        </TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align="end" className="w-72">
         <DropdownMenuLabel>Pending Approvals</DropdownMenuLabel>
         <DropdownMenuSeparator />

@@ -135,7 +135,7 @@ Deno.serve(async (_req) => {
             subjectId: rental.id,
             title: "Vehicle Recovery Required",
             body: "A rental is now past the late-fee window — go recover the scooter and contact the rider.",
-            screen: "/returns?tab=recovery",
+            screen: `/bookings/returns/${rental.id}`,
             payload: { rental_id: rental.id, rider_id: rental.user_id, days_late: daysLate },
         });
     }

@@ -4,6 +4,7 @@ import { NotificationBell } from "@/components/common/NotificationBell";
 import { PendingApprovalsBell } from "@/components/common/PendingApprovalsBell";
 import { HeaderAttendanceControl } from "@/components/common/HeaderAttendanceControl";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -30,9 +31,15 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur-md sm:px-6">
-      <Button variant="ghost" size="icon" className="md:hidden" onClick={onOpenMobileNav}>
+      <IconButton
+        variant="ghost"
+        label="Open navigation menu"
+        tooltipSide="bottom"
+        className="md:hidden"
+        onClick={onOpenMobileNav}
+      >
         <Menu className="h-5 w-5" />
-      </Button>
+      </IconButton>
 
       <div className="flex flex-1 min-w-0 items-baseline gap-2">
         {/*
@@ -74,9 +81,14 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
         <span className="hidden h-4 w-px bg-border lg:inline" />
         <span className="hidden text-xs text-muted-foreground lg:inline">{formatDate(new Date())}</span>
 
-        <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
+        <IconButton
+          variant="ghost"
+          onClick={toggleTheme}
+          label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+          tooltipSide="bottom"
+        >
           {theme === "light" ? <Moon className="h-[1.125rem] w-[1.125rem]" /> : <Sun className="h-[1.125rem] w-[1.125rem]" />}
-        </Button>
+        </IconButton>
 
         <HeaderAttendanceControl role={user?.role} />
 

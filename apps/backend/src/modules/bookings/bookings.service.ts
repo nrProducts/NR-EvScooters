@@ -15,7 +15,14 @@ import {
     computeLateRenewalFee, lateFeeOverrideCode, lateFeeRateFor, lateFeeReferenceDate,
 } from "../payments/renewalFee";
 import { paidPeriodIds } from "../payments/renewalPeriod";
-import { setLateFeeOverride as setSubscriptionLateFeeOverride } from "../subscriptions/subscriptions.service";
+import {
+    ensureBookingInvoice, recordOfflinePayment, setInvoiceTotal, stripPricingCodes,
+} from "../payments/payments.service";
+import {
+    cancelSubscriptionForBooking,
+    setLateFeeOverride as setSubscriptionLateFeeOverride,
+} from "../subscriptions/subscriptions.service";
+import { getCancellationTiers } from "../cancellation-tiers/cancellation-tiers.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     ACTIVE_BOOKING_STATUSES, AvailableVehicleView, BookingActiveRental, BookingHistoryFilters,
@@ -25,7 +32,7 @@ import {
 import { businessToday, endOfBusinessDay } from "../../common/dates";
 import { env } from "../../config/env";
 import {
-    FREE_CANCELLATION_GRACE_MINUTES, FREE_CANCELLATION_NOTICE_DAYS, LATE_CANCELLATION_PENALTY_RATE,
+    BEYOND_LAST_TIER_PENALTY_PERCENT, DEFAULT_CANCELLATION_TIERS, type CancellationTier,
 } from "./cancellation.constants";
 
 /**
@@ -515,75 +522,64 @@ export function isValidStartDay(dateStr: string): boolean {
 }
 
 export interface CancellationCharge {
-    /** Whole calendar days from today to start_day; negative once start_day has passed. */
-    daysUntilPickup: number;
-    isLate: boolean;
-    /** True when the booking is still inside its post-creation grace period. */
-    withinGrace: boolean;
-    /** Plan price minus any referral discount — what the rider would actually have owed. */
-    chargeableAmount: number;
-    /** Penalty on the rental portion only — the deposit is never the rider's "fault" money. */
+    /** Whole minutes between the booking's creation and the cancellation. */
+    elapsedMinutes: number;
+    /** The resolved tier's percent, or BEYOND_LAST_TIER_PENALTY_PERCENT when past every tier. */
+    penaltyPercent: number;
+    /** What the rider paid toward the plan itself (captured total minus the deposit), never negative. */
+    planPaid: number;
+    /** planPaid × penaltyPercent%, kept by the business. */
     penaltyAmount: number;
     /** The security deposit actually paid — always refunded in full pre-pickup, never penalized. */
     depositRefund: number;
-    /** (chargeableAmount - penaltyAmount) + depositRefund. */
+    /** (planPaid − penaltyAmount) + depositRefund. */
     refundAmount: number;
 }
 
 /**
- * Cancelling is free when EITHER of these holds:
- *   1. The booking was created within FREE_CANCELLATION_GRACE_MINUTES, or
- *   2. start_day is FREE_CANCELLATION_NOTICE_DAYS or more calendar days out.
- * Otherwise LATE_CANCELLATION_PENALTY_RATE of the net plan price is kept back.
+ * Pre-pickup cancellation charge, TIER-based.
  *
- * The grace period matters because the notice rule alone only asks how close
- * pickup is: a booking made FOR tomorrow is born inside the penalty window and
- * would otherwise be charged seconds after it was created.
+ * The tier is chosen by how many minutes elapsed between the booking being
+ * created and the cancellation. Within a tier the rider keeps back
+ * `penalty_percent` of the plan amount they actually paid (captured total
+ * minus the deposit). Past the largest tier, 100% is kept. The deposit is
+ * always refunded in full — no damage is possible before pickup.
  *
- * The penalty applies to the NET price (after any referral discount) — charging
- * a fee on an amount the rider was never going to owe would be wrong. The
- * security deposit is never subject to this penalty: no damage is possible
- * before pickup, so it is always refunded in full.
- *
- * Unchanged by the migration, and exported so the service and the tests
- * exercise the same rule. `now` is injectable for deterministic tests; like
- * isValidStartDay this works in server-local time, never UTC.
+ * `tiers` come from `cancellation_tiers`; the caller passes
+ * DEFAULT_CANCELLATION_TIERS when the table is empty. Exported (with the
+ * shared fixtures) so the service, the tests and the mobile mirror all agree.
+ * `now` is injectable for deterministic tests.
  */
 export function computeCancellationCharge(input: {
-    startDay: string;
-    planPrice: number | null;
-    discountAmount?: number | null;
-    /** The deposit for this booking — omit (or 0) if it was never paid. */
+    /** What the rider paid toward the plan (captured minus deposit). 0 for an unpaid booking. */
+    planPaid: number | null;
+    /** The deposit actually paid — omit (or 0) if none. */
     depositAmount?: number | null;
     createdAt?: string | null;
     now?: Date;
+    tiers?: readonly CancellationTier[];
 }): CancellationCharge {
+    const tiers = [...(input.tiers ?? DEFAULT_CANCELLATION_TIERS)]
+        .filter((t) => t.upto_minutes > 0)
+        .sort((a, b) => a.upto_minutes - b.upto_minutes);
+
     const nowMs = (input.now ? new Date(input.now) : new Date()).getTime();
-
-    const start = new Date(`${input.startDay}T00:00:00`);
-    const today = input.now ? new Date(input.now) : new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Math.round rather than floor: a DST shift makes the gap 23 or 25 hours,
-    // which would otherwise slide the boundary by a whole day.
-    const daysUntilPickup = Number.isNaN(start.getTime())
-        ? 0
-        : Math.round((start.getTime() - today.getTime()) / 86_400_000);
-
     const createdMs = input.createdAt ? new Date(input.createdAt).getTime() : NaN;
-    const withinGrace = !Number.isNaN(createdMs)
-        && nowMs - createdMs <= FREE_CANCELLATION_GRACE_MINUTES * 60_000
-        // A clock skew that puts creation in the future must not silently
-        // extend the grace window indefinitely.
-        && nowMs >= createdMs;
+    // Unknown/future creation → treat as 0 elapsed (most generous tier), never
+    // let a clock skew push the rider into a worse tier than they earned.
+    const elapsedMinutes = Number.isNaN(createdMs) || nowMs < createdMs
+        ? 0
+        : Math.floor((nowMs - createdMs) / 60_000);
 
-    const isLate = !withinGrace && daysUntilPickup < FREE_CANCELLATION_NOTICE_DAYS;
-    const chargeableAmount = round2(Math.max(0, (input.planPrice ?? 0) - (input.discountAmount ?? 0)));
-    const penaltyAmount = isLate ? round2(chargeableAmount * LATE_CANCELLATION_PENALTY_RATE) : 0;
+    const tier = tiers.find((t) => elapsedMinutes <= t.upto_minutes);
+    const penaltyPercent = tier ? tier.penalty_percent : BEYOND_LAST_TIER_PENALTY_PERCENT;
+
+    const planPaid = round2(Math.max(0, input.planPaid ?? 0));
+    const penaltyAmount = round2(planPaid * (penaltyPercent / 100));
     const depositRefund = round2(Math.max(0, input.depositAmount ?? 0));
-    const refundAmount = round2(Math.max(0, chargeableAmount - penaltyAmount) + depositRefund);
+    const refundAmount = round2(Math.max(0, planPaid - penaltyAmount) + depositRefund);
 
-    return { daysUntilPickup, isLate, withinGrace, chargeableAmount, penaltyAmount, depositRefund, refundAmount };
+    return { elapsedMinutes, penaltyPercent, planPaid, penaltyAmount, depositRefund, refundAmount };
 }
 
 // ---------------------------------------------------------------------------
@@ -736,6 +732,152 @@ export async function createBooking(
 }
 
 // ---------------------------------------------------------------------------
+// Admin-created booking
+// ---------------------------------------------------------------------------
+
+export interface AdminCreateBookingInput {
+    user_id: string;
+    plan_id: string;
+    vehicle_model_id: string;
+    station_id: string;
+    start_day: string;
+    /** Override the plan's duration (from the end date the admin chose). */
+    duration_days?: number;
+    payment?: {
+        method: "upi" | "card" | "netbanking" | "wallet" | "cash";
+        /** `paid` confirms the booking, `pending` leaves it awaiting payment. */
+        status: "paid" | "pending";
+        /** Default true. False → remove the auto transaction-fee line. */
+        apply_transaction_fee?: boolean;
+        /** Default true. False → remove the auto welcome-discount line. */
+        apply_welcome_discount?: boolean;
+        /** Exact amount collected — reconciled onto the invoice as a manual adjustment. */
+        amount?: number;
+    };
+}
+
+/**
+ * Staff creates a booking on a rider's behalf, optionally recording the
+ * payment (cash at the hub, a confirmed UPI transfer, …) in the same call.
+ * The same eligibility rules as a rider self-booking apply — KYC verified,
+ * no existing active booking/rental, plan on sale for the model, a unit free
+ * at the station. When a payment is recorded it runs through the ordinary
+ * `applyPaymentSuccess` core, so the booking confirms and the plan activates
+ * exactly as an in-app payment would.
+ */
+export async function adminCreateBooking(
+    input: AdminCreateBookingInput,
+    actor: AuthContext,
+): Promise<BookingView> {
+    const { data: rider, error: riderError } = await supabaseAdmin
+        .from("users")
+        .select("id, role, deleted_at, rider_profiles(kyc_status)")
+        .eq("id", input.user_id)
+        .maybeSingle();
+    if (riderError) throw riderError;
+    if (!rider || rider.deleted_at) throw notFound("Rider not found.");
+    if (rider.role !== "rider") throw businessRule("Bookings can only be created for rider accounts.");
+    const kycStatus = unwrap<{ kyc_status: string }>(rider.rider_profiles)?.kyc_status;
+    if (kycStatus !== "verified") {
+        throw businessRule("This rider's KYC is not verified — they can't be assigned a scooter yet.");
+    }
+
+    const [alreadyBooked, alreadyRenting] = await Promise.all([
+        hasActiveBookingForUser(input.user_id),
+        hasActiveRentalForUser(input.user_id),
+    ]);
+    if (alreadyBooked || alreadyRenting) {
+        throw conflict("This rider already has an active booking or rental.");
+    }
+
+    const [plan] = await Promise.all([
+        requireBookablePlan(input.plan_id, input.vehicle_model_id),
+        assertVehicleAvailable(input.vehicle_model_id, input.station_id),
+    ]);
+
+    const durationDays = input.duration_days ?? Number(plan.duration_days);
+    if (!Number.isInteger(durationDays) || durationDays < 1) {
+        throw businessRule("The booking duration must be at least one day.");
+    }
+
+    const { data: booking, error } = await supabaseAdmin
+        .from("bookings")
+        .insert({
+            user_id: input.user_id,
+            hub_id: input.station_id,
+            plan_id: input.plan_id,
+            requested_start_on: input.start_day,
+            plan_price_snapshot: plan.price_amount,
+            duration_days_snapshot: durationDays,
+            deposit_amount_snapshot: plan.deposit_amount,
+            status: "pending_payment",
+            hold_expires_at: new Date(Date.now() + env.bookingPaymentGraceMinutes * 60_000).toISOString(),
+        })
+        .select("id")
+        .single();
+    if (error) {
+        if (error.code === "23514" || error.code === "P0001") {
+            throw businessRule("This booking could not be created — check the pickup day and try again.");
+        }
+        throw error;
+    }
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: input.user_id,
+        action: "booking.created",
+        entityType: "booking",
+        entityId: booking.id,
+        after: {
+            created_by: "admin",
+            vehicle_model_id: input.vehicle_model_id,
+            hub_id: input.station_id,
+            plan_id: input.plan_id,
+            requested_start_on: input.start_day,
+        },
+    });
+
+    await qualifyReferralIfApplicable(input.user_id, actor);
+
+    if (input.payment) {
+        try {
+            const invoiceId = await ensureBookingInvoice(booking.id, input.user_id, actor.id);
+            const strip: string[] = [];
+            if (input.payment.apply_transaction_fee === false) strip.push("transaction_fee");
+            if (input.payment.apply_welcome_discount === false) strip.push("welcome_discount");
+            await stripPricingCodes(invoiceId, strip, actor);
+            if (typeof input.payment.amount === "number") {
+                await setInvoiceTotal(invoiceId, input.payment.amount, actor);
+            }
+            if (input.payment.status === "paid") {
+                await recordOfflinePayment(invoiceId, input.payment.method, actor);
+            }
+        } catch (err) {
+            // No DB transaction spans the fan-out above, so on failure the
+            // booking must not be left half-built and blocking the rider from
+            // rebooking. Roll it (and its just-created subscription) back to
+            // cancelled, then surface the original error.
+            try {
+                await cancelSubscriptionForBooking(booking.id, "admin booking payment failed", actor);
+                await supabaseAdmin
+                    .from("bookings")
+                    .update({ status: "cancelled", held_vehicle_id: null, hold_expires_at: null })
+                    .eq("id", booking.id)
+                    .eq("status", "pending_payment");
+            } catch (cleanupErr) {
+                console.error("[bookings] adminCreateBooking cleanup failed", {
+                    bookingId: booking.id,
+                    error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+                });
+            }
+            throw err;
+        }
+    }
+
+    return getBookingById(booking.id);
+}
+
+// ---------------------------------------------------------------------------
 // Read
 // ---------------------------------------------------------------------------
 
@@ -831,6 +973,24 @@ export async function hasActiveBookingForUser(userId: string): Promise<boolean> 
  * "approve"). Failure to open it is logged, not thrown — a DB hiccup must not
  * fail the rider's cancel request.
  */
+/**
+ * Total money actually captured against a subscription — the sum of payment
+ * allocations to its invoices. This is the honest ceiling on any cancellation
+ * refund: `computeCancellationCharge` works from the plan-price and deposit
+ * SNAPSHOTS, which drift from what was really charged the moment a discount
+ * (welcome, promo) or a partial payment is involved. Refunding the snapshot
+ * figure then trips the `assert_refund_within_payment` DB guard and the whole
+ * refund silently fails (SwapNgo bug-fix backlog, item 4).
+ */
+async function capturedAmountForSubscription(subscriptionId: string): Promise<number> {
+    const { data, error } = await supabaseAdmin
+        .from("payment_allocations")
+        .select("amount, invoices!inner(subscription_id)")
+        .eq("invoices.subscription_id", subscriptionId);
+    if (error) throw error;
+    return (data ?? []).reduce((sum, a) => sum + Number(a.amount), 0);
+}
+
 async function recordCancellation(input: {
     bookingId: string;
     subscriptionId: string | null;
@@ -839,6 +999,12 @@ async function recordCancellation(input: {
     reason: string | null;
     actor: AuthContext;
 }): Promise<void> {
+    // End the plan the moment the booking is cancelled — otherwise a rider
+    // who cancels a paid booking keeps a `plan_status = 'active'` plan
+    // fleet-wide (SwapNgo bug-fix backlog, item 4). Safe/idempotent, and a
+    // no-op for a booking that never had a subscription.
+    await cancelSubscriptionForBooking(input.bookingId, input.reason, input.actor);
+
     let refundId: string | null = null;
 
     if (input.refundAmount > 0 && input.subscriptionId) {
@@ -909,16 +1075,25 @@ export async function cancelMyBooking(
         ? await getDepositForSubscriptionOrNull(context.subscriptionId)
         : null;
 
+    // Everything is computed from what was ACTUALLY captured, not the
+    // plan-price snapshot — a discounted booking paid less than the snapshot,
+    // and refunding the snapshot trips the DB's over-refund guard.
+    const capturedTotal = wasPaid && context.subscriptionId
+        ? await capturedAmountForSubscription(context.subscriptionId)
+        : 0;
+    const depositAmount = deposit?.amount ?? 0;
+    const planPaid = Math.max(0, capturedTotal - depositAmount);
+
+    const tiers = await getCancellationTiers();
     const charge = computeCancellationCharge({
-        startDay: existing.requested_start_on,
-        planPrice: Number(existing.plan_price_snapshot),
-        discountAmount: context.referralDiscountAmount,
-        depositAmount: deposit?.amount ?? 0,
+        planPaid,
+        depositAmount,
         createdAt: existing.created_at,
+        tiers,
     });
 
     const penaltyAmount = wasPaid ? charge.penaltyAmount : 0;
-    const refundAmount = wasPaid ? charge.refundAmount : 0;
+    const refundAmount = wasPaid ? Math.max(0, Math.min(charge.refundAmount, capturedTotal - penaltyAmount)) : 0;
 
     const { data: updated, error } = await supabaseAdmin
         .from("bookings")
@@ -964,8 +1139,9 @@ export async function cancelMyBooking(
         },
         after: {
             status: "cancelled",
-            days_until_pickup: charge.daysUntilPickup,
-            chargeable_amount: charge.chargeableAmount,
+            elapsed_minutes: charge.elapsedMinutes,
+            penalty_percent: charge.penaltyPercent,
+            plan_paid: charge.planPaid,
             penalty_amount: penaltyAmount,
             deposit_refund: charge.depositRefund,
             refund_amount: refundAmount,
@@ -1022,18 +1198,12 @@ export async function adminCancelBooking(
 
     const context = (await loadBookingContext([bookingId])).get(bookingId) ?? EMPTY_CONTEXT;
 
-    // What was actually collected, from the payments themselves rather than an
-    // invoice status column — `invoices.payment_status` is gone, and the sum
-    // of allocations is the honest answer to "how much did they pay".
-    let refundAmount = 0;
-    if (context.subscriptionId) {
-        const { data: allocations, error: allocationError } = await supabaseAdmin
-            .from("payment_allocations")
-            .select("amount, invoices!inner(subscription_id)")
-            .eq("invoices.subscription_id", context.subscriptionId);
-        if (allocationError) throw allocationError;
-        refundAmount = (allocations ?? []).reduce((sum, a) => sum + Number(a.amount), 0);
-    }
+    // What was actually collected — the sum of allocations is the honest
+    // answer to "how much did they pay". No staff-cancel penalty, so the
+    // whole captured amount goes back.
+    const refundAmount = context.subscriptionId
+        ? await capturedAmountForSubscription(context.subscriptionId)
+        : 0;
 
     const { data: updated, error } = await supabaseAdmin
         .from("bookings")

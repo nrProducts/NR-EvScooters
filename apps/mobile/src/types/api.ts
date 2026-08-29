@@ -515,6 +515,8 @@ export interface ApiInvoice {
     /** Was `payment_status`. Derived, not stored. */
     payment_state: InvoicePaymentState;
     paid_at: string | null;
+    /** How it was paid — `payment_transactions.method`. Null until paid. */
+    payment_method: 'upi' | 'card' | 'netbanking' | 'wallet' | 'cash' | null;
     created_at: string;
     items: ApiInvoiceItem[];
     /** Only ever set on GET /invoices/me for an unpaid PERIOD invoice that is late — see the backend's InvoiceRow.late_fee doc comment. */

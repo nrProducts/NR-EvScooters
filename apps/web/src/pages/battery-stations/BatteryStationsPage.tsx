@@ -104,7 +104,7 @@ export default function BatteryStationsPage() {
           <SearchBar
             value={search}
             onChange={resetToFirstPage(setSearch)}
-            placeholder="Search by station name or QIS ID..."
+            placeholder="Search stations…"
             className="lg:max-w-xs"
           />
 

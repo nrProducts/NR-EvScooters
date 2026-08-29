@@ -63,6 +63,15 @@ router.get(
     asyncHandler(c.pickupQueueHandler),
 );
 
+// Staff creates a booking for a rider, optionally recording an offline
+// payment (cash/UPI/…) in the same request.
+router.post(
+    "/admin-create",
+    requireAction("bookings", "edit"),
+    validate({ body: v.adminCreateBookingBody }),
+    asyncHandler(c.adminCreateBookingHandler),
+);
+
 router.get(
     "/:id/available-vehicles",
     requireAction("bookings", "view"),

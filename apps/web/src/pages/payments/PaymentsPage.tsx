@@ -1,21 +1,22 @@
-import { useState } from "react";
-import { Eye, MoreHorizontal, Undo2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Eye, Undo2, Banknote } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { Link, useSearchParams } from "react-router-dom";
-import { useInvoices, useInvoice, useRefundInvoice } from "@/hooks/usePayments";
+import { useInvoices, useInvoice, useRefundInvoice, useRecordInvoicePayment } from "@/hooks/usePayments";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
@@ -23,7 +24,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { useAuthStore } from "@/store/authStore";
-import type { Invoice, InvoiceStatus, InvoicePaymentState, InvoicePurpose } from "@/types";
+import { paymentMethodLabel, PAYMENT_METHOD_LABEL, type Invoice, type InvoiceStatus, type InvoicePaymentState, type InvoicePurpose } from "@/types";
 
 /**
  * `invoice_status` has THREE values. "paid" and "overdue" were never invoice
@@ -60,6 +61,7 @@ export default function PaymentsPage() {
   const [page, setPage] = useState(1);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [refundTarget, setRefundTarget] = useState<Invoice | null>(null);
+  const [recordTarget, setRecordTarget] = useState<Invoice | null>(null);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useInvoices({
@@ -107,6 +109,12 @@ export default function PaymentsPage() {
     { header: "Status", key: "status", render: (inv) => <StatusBadge status={inv.status} /> },
     { header: "Payment", key: "payment_state", render: (inv) => <StatusBadge status={inv.payment_state} /> },
     {
+      header: "Payment Type",
+      key: "payment_method",
+      render: (inv) => <span className="text-sm">{paymentMethodLabel(inv.payment_method)}</span>,
+      hideOnMobile: true,
+    },
+    {
       header: "Due",
       key: "due_on",
       sortKey: "due_on",
@@ -119,11 +127,7 @@ export default function PaymentsPage() {
       key: "actions",
       render: (inv) => (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
+          <RowActionsButton label="Payment actions" onClick={(e) => e.stopPropagation()} />
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={() => setDetailId(inv.id)}>
               <Eye className="mr-2 h-4 w-4" /> View details
@@ -131,6 +135,11 @@ export default function PaymentsPage() {
             {inv.payment_state === "paid" && canRefund && (
               <DropdownMenuItem onClick={() => setRefundTarget(inv)}>
                 <Undo2 className="mr-2 h-4 w-4" /> Refund
+              </DropdownMenuItem>
+            )}
+            {inv.status !== "void" && inv.payment_state !== "paid" && canRefund && (
+              <DropdownMenuItem onClick={() => setRecordTarget(inv)}>
+                <Banknote className="mr-2 h-4 w-4" /> Record payment
               </DropdownMenuItem>
             )}
             {/*
@@ -269,6 +278,7 @@ export default function PaymentsPage() {
       />
 
       <RefundDialog invoice={refundTarget} onOpenChange={(o) => !o && setRefundTarget(null)} />
+      <RecordPaymentDialog invoice={recordTarget} onOpenChange={(o) => !o && setRecordTarget(null)} />
     </div>
   );
 }
@@ -328,7 +338,7 @@ function InvoiceDetailDialog({
             <Row label="Payment state" value={<StatusBadge status={invoice.payment_state} />} />
             <Row label="Allocated" value={formatCurrency(invoice.allocated_amount)} />
             <Row label="Outstanding" value={formatCurrency(invoice.balance_amount)} />
-            <Row label="Payment method" value={invoice.payment_method ?? "—"} />
+            <Row label="Payment Type" value={paymentMethodLabel(invoice.payment_method)} />
             <Row label="Gateway reference" value={invoice.gateway_ref ?? "—"} />
             <Row label="Due date" value={invoice.due_on ? formatDate(invoice.due_on) : "—"} />
             <Row label="Paid at" value={invoice.paid_at ? formatDate(invoice.paid_at) : "—"} />
@@ -412,6 +422,67 @@ function RefundDialog({ invoice, onOpenChange }: { invoice: Invoice | null; onOp
             }}
           >
             {refund.isPending ? "Please wait..." : "Refund"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RecordPaymentDialog({ invoice, onOpenChange }: { invoice: Invoice | null; onOpenChange: (open: boolean) => void }) {
+  const record = useRecordInvoicePayment();
+  const [method, setMethod] = useState<"upi" | "card" | "netbanking" | "wallet" | "cash">("cash");
+
+  useEffect(() => { if (invoice) setMethod("cash"); }, [invoice]);
+
+  const owed = invoice ? invoice.balance_amount || invoice.total_amount : 0;
+
+  return (
+    <Dialog open={!!invoice} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Record payment of {formatCurrency(owed)}</DialogTitle>
+          <DialogDescription>
+            For money collected outside the app — cash at the hub, a confirmed UPI transfer, etc. This settles the
+            invoice and confirms/renews the plan exactly as an in-app payment would. The exact amount (incl. any late
+            fee) is computed on confirm.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">Payment type</Label>
+          <Select value={method} onValueChange={(v) => setMethod(v as typeof method)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {(Object.keys(PAYMENT_METHOD_LABEL) as (keyof typeof PAYMENT_METHOD_LABEL)[]).map((m) => (
+                <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABEL[m]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {record.isError && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {record.error instanceof ApiError ? record.error.message : "Something went wrong."}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            disabled={record.isPending}
+            onClick={() => {
+              if (!invoice) return;
+              record.mutate(
+                { id: invoice.id, method },
+                {
+                  onSuccess: () => { toastSuccess("Payment recorded"); onOpenChange(false); },
+                  onError: (err) => toastError(err, "Could not record the payment"),
+                },
+              );
+            }}
+          >
+            {record.isPending ? "Recording…" : "Record Payment"}
           </Button>
         </DialogFooter>
       </DialogContent>

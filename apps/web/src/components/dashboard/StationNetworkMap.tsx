@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { Map as MapLibreMap, Marker as MapLibreMarker } from "maplibre-gl";
 import { MapPinOff } from "lucide-react";
 import { Spinner } from "@/components/common/Spinner";
-import { CHENNAI_CENTER, DEFAULT_MAP_ZOOM, MAP_STYLE_URL, isMapConfigured } from "@/lib/mapConfig";
+import { CHENNAI_CENTER, DEFAULT_MAP_ZOOM, isMapConfigured, mapStyleForTheme, tuneDarkMapLabels } from "@/lib/mapConfig";
+import { useUiStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
 import type { BatteryStation, StationStatus } from "@/types/batteryStation";
 
@@ -33,6 +34,9 @@ export function StationNetworkMap({
   const markersRef = useRef<MapLibreMarker[]>([]);
   const libRef = useRef<typeof import("maplibre-gl") | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
+  const theme = useUiStore((s) => s.theme);
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
 
   useEffect(() => {
     if (!isMapConfigured()) return;
@@ -49,13 +53,18 @@ export function StationNetworkMap({
         libRef.current = lib;
         const map = new lib.Map({
           container: containerRef.current,
-          style: MAP_STYLE_URL,
+          style: mapStyleForTheme(themeRef.current),
           center: [CHENNAI_CENTER.longitude, CHENNAI_CENTER.latitude],
           zoom: DEFAULT_MAP_ZOOM,
           attributionControl: { compact: true },
           interactive: true,
         });
         map.addControl(new lib.NavigationControl({ showCompass: false }), "top-right");
+        // Fires on the first style and again after every setStyle — the one
+        // place both the initial dark load and a later theme switch land.
+        map.on("style.load", () => {
+          if (themeRef.current === "dark") tuneDarkMapLabels(map);
+        });
         mapRef.current = map;
         setStatus("ready");
       } catch {
@@ -71,6 +80,14 @@ export function StationNetworkMap({
       mapRef.current = null;
     };
   }, []);
+
+  // Swap the tile style when the console theme is toggled. HTML markers are
+  // DOM overlays and survive setStyle, so only the base map needs reloading.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (status !== "ready" || !map) return;
+    map.setStyle(mapStyleForTheme(theme));
+  }, [theme, status]);
 
   useEffect(() => {
     const map = mapRef.current;

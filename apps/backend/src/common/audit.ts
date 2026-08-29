@@ -30,7 +30,7 @@ export type AuditAction =
     | "vehicle.created" | "vehicle.updated" | "vehicle.scrapped" | "vehicle.assigned"
     | "maintenance.created" | "maintenance.updated" | "maintenance.outcome_set"
     | "notification.broadcast" | "notification_setting.updated"
-    | "invoice.refunded"
+    | "invoice.refunded" | "invoice.adjusted" | "invoice.charge_added"
     // The late fee, at the moment it becomes a line on the bill rather than
     // an unattributed surplus. is_financial_audit_action() matches it on
     // "invoice", so it inherits the financial retention period.
@@ -48,12 +48,14 @@ export type AuditAction =
     | "deposit.held" | "deposit.refund_initiated" | "deposit.refunded" | "deposit.forfeited"
     | "damage.created" | "damage.disputed" | "damage.resolved" | "damage.waived"
     | "refund.initiated" | "refund.submitted" | "refund.processed" | "refund.failed"
+    | "refund.reviewed" | "refund.rejected"
     // The `plan.*` names are kept even though the state they describe moved
     // from bookings to `subscriptions`: the events are the same events, and
     // renaming them would split the history in two.
     | "plan.activated" | "plan.paused" | "plan.resumed" | "plan.due" | "plan.updated" | "plan.renewed"
     | "plan_renewal_settings.updated"
     | "return_recovery_settings.updated"
+    | "cancellation_tiers.updated"
     | "settlement.created" | "settlement.refund_issued" | "settlement.due_created" | "settlement.completed"
     | "battery_station.created" | "battery_station.updated" | "battery_station.shown"
     | "battery_station.hidden" | "battery_station.soft_deleted"
@@ -98,7 +100,7 @@ export interface AuditEntry {
         | "payment_webhook_event" | "deposit" | "refund" | "plan" | "pricing_rule"
         | "incident" | "damage" | "damage_dispute" | "support_ticket"
         | "notification_broadcast" | "notification_setting" | "notification_message"
-        | "return_recovery_setting"
+        | "return_recovery_setting" | "cancellation_tier"
         | "consent_record" | "consent_notice" | "privacy_request" | "retention_run"
         | "referral"
         | "attendance_record" | "leave_request" | "holiday";

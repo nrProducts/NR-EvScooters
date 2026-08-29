@@ -9,12 +9,16 @@ const TooltipTrigger = TooltipPrimitive.Trigger;
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
->(({ className, sideOffset = 4, ...props }, ref) => (
+>(({ className, sideOffset = 6, ...props }, ref) => (
   <TooltipPrimitive.Content
     ref={ref}
     sideOffset={sideOffset}
     className={cn(
-      "z-50 overflow-hidden rounded-md bg-foreground px-3 py-1.5 text-xs text-background shadow-soft animate-fade-in",
+      // Matches the DropdownMenu panel — same surface, border, radius and
+      // shadow as every other floating element in the console.
+      "z-50 max-w-xs rounded-lg border border-border bg-popover px-2.5 py-1.5",
+      "text-xs font-medium leading-snug text-popover-foreground shadow-card",
+      "animate-fade-in",
       className,
     )}
     {...props}

@@ -1,104 +1,89 @@
 /**
  * Client-side mirror of the pre-pickup cancellation rule so the rider can be
- * shown the exact fee and refund BEFORE confirming, and so the mock repository
- * behaves like the real API.
+ * shown an estimated fee and refund BEFORE confirming, and so the mock
+ * repository behaves like the real API.
  *
  * SOURCE OF TRUTH is the backend:
  *   apps/backend/src/modules/bookings/cancellation.constants.ts
  *   apps/backend/src/modules/bookings/bookings.service.ts -> computeCancellationCharge
  *
- * The server always recomputes authoritatively; this is only an estimate for
- * the confirmation dialog. tests/bookingCancellation.test.ts runs the same
- * fixture table as the backend suite, so any drift between the two fails a test.
+ * The model is TIER-based: minutes elapsed since the booking was CREATED pick
+ * a tier, and the rider keeps back `penalty_percent` of the plan amount they
+ * paid (the deposit is always refunded in full). Past the last tier, 100% is
+ * kept. The live tiers come from GET /cancellation-tiers; this file only
+ * carries the shipped defaults for the estimate + the mock. The server always
+ * recomputes authoritatively.
  */
 
-/**
- * start_day is a DATE with no time, so pickup is treated as 00:00 on that day
- * and "more than 24h notice" is expressed in whole days: free when start_day is
- * this many calendar days out or more.
- */
-export const FREE_CANCELLATION_NOTICE_DAYS = 2;
+export interface CancellationTier {
+  /** Cancelling at ≤ this many minutes after booking falls in this tier. */
+  upto_minutes: number;
+  /** Percent of the plan amount paid kept back (0–100). */
+  penalty_percent: number;
+}
 
-/** Share of the net plan price kept back when cancelling inside the free window. */
-export const LATE_CANCELLATION_PENALTY_RATE = 0.25;
+export const DEFAULT_CANCELLATION_TIERS: readonly CancellationTier[] = [
+  { upto_minutes: 30, penalty_percent: 25 },
+  { upto_minutes: 60, penalty_percent: 50 },
+] as const;
 
-/**
- * Grace period from booking creation during which cancelling is always free,
- * however close pickup is. Without it a booking made FOR tomorrow is born
- * inside the notice window and would be charged seconds after creation.
- */
-export const FREE_CANCELLATION_GRACE_MINUTES = 60;
+/** Kept back once a cancellation is past every configured tier. */
+export const BEYOND_LAST_TIER_PENALTY_PERCENT = 100;
 
 export interface CancellationCharge {
-  /** Whole calendar days from today to start_day; negative once start_day has passed. */
-  daysUntilPickup: number;
-  isLate: boolean;
-  /** True when the booking is still inside its post-creation grace period. */
-  withinGrace: boolean;
-  /** Plan price minus any referral discount — what the rider would actually have owed. */
-  chargeableAmount: number;
-  /** Penalty on the rental portion only — the deposit is never the rider's "fault" money. */
+  /** Whole minutes between the booking's creation and now. */
+  elapsedMinutes: number;
+  /** The resolved tier's percent, or BEYOND_LAST_TIER_PENALTY_PERCENT past every tier. */
+  penaltyPercent: number;
+  /** What the rider paid toward the plan (captured minus deposit), never negative. */
+  planPaid: number;
+  /** planPaid × penaltyPercent%. */
   penaltyAmount: number;
-  /** The security deposit actually paid — always refunded in full pre-pickup, never penalized. */
+  /** The security deposit actually paid — always refunded in full pre-pickup. */
   depositRefund: number;
-  /** (chargeableAmount - penaltyAmount) + depositRefund. */
+  /** (planPaid − penaltyAmount) + depositRefund. */
   refundAmount: number;
 }
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
-/**
- * Free when EITHER the booking was created within
- * FREE_CANCELLATION_GRACE_MINUTES, OR pickup is 2+ calendar days out:
- *
- *   +2 days or more -> free  |  +1 (tomorrow), today, or past -> penalty
- *
- * The penalty applies to the NET price (after any referral discount) — charging
- * a fee on an amount the rider was never going to owe would be wrong. The
- * security deposit (if any was actually paid — pass depositAmount only for a
- * 'confirmed' booking) is never subject to this penalty: no damage is
- * possible before pickup, so it's always refunded in full.
- */
 export function computeCancellationCharge(input: {
-  startDay: string;
-  planPrice: number | null;
-  discountAmount?: number | null;
+  /** What the rider paid toward the plan itself (plan price minus any discount). 0 for an unpaid booking. */
+  planPaid: number | null;
   /** The security deposit actually paid — omit (or 0) if the booking was never paid. */
   depositAmount?: number | null;
   /** bookings.created_at — omit only where it genuinely isn't known. */
   createdAt?: string | null;
   now?: Date;
+  tiers?: readonly CancellationTier[];
 }): CancellationCharge {
+  const tiers = [...(input.tiers ?? DEFAULT_CANCELLATION_TIERS)]
+    .filter((t) => t.upto_minutes > 0)
+    .sort((a, b) => a.upto_minutes - b.upto_minutes);
+
   const nowMs = (input.now ? new Date(input.now) : new Date()).getTime();
-
-  const start = new Date(`${input.startDay}T00:00:00`);
-  const today = input.now ? new Date(input.now) : new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Math.round rather than floor: a DST shift makes the gap 23 or 25 hours,
-  // which would otherwise slide the boundary by a whole day.
-  const daysUntilPickup = Number.isNaN(start.getTime())
-    ? 0
-    : Math.round((start.getTime() - today.getTime()) / 86_400_000);
-
   const createdMs = input.createdAt ? new Date(input.createdAt).getTime() : NaN;
-  const withinGrace = !Number.isNaN(createdMs)
-    && nowMs - createdMs <= FREE_CANCELLATION_GRACE_MINUTES * 60_000
-    && nowMs >= createdMs;
+  const elapsedMinutes = Number.isNaN(createdMs) || nowMs < createdMs
+    ? 0
+    : Math.floor((nowMs - createdMs) / 60_000);
 
-  const isLate = !withinGrace && daysUntilPickup < FREE_CANCELLATION_NOTICE_DAYS;
-  const chargeableAmount = round2(Math.max(0, (input.planPrice ?? 0) - (input.discountAmount ?? 0)));
-  const penaltyAmount = isLate ? round2(chargeableAmount * LATE_CANCELLATION_PENALTY_RATE) : 0;
+  const tier = tiers.find((t) => elapsedMinutes <= t.upto_minutes);
+  const penaltyPercent = tier ? tier.penalty_percent : BEYOND_LAST_TIER_PENALTY_PERCENT;
+
+  const planPaid = round2(Math.max(0, input.planPaid ?? 0));
+  const penaltyAmount = round2(planPaid * (penaltyPercent / 100));
   const depositRefund = round2(Math.max(0, input.depositAmount ?? 0));
-  const refundAmount = round2(Math.max(0, chargeableAmount - penaltyAmount) + depositRefund);
+  const refundAmount = round2(Math.max(0, planPaid - penaltyAmount) + depositRefund);
 
-  return { daysUntilPickup, isLate, withinGrace, chargeableAmount, penaltyAmount, depositRefund, refundAmount };
+  return { elapsedMinutes, penaltyPercent, planPaid, penaltyAmount, depositRefund, refundAmount };
 }
 
-/** "today" / "tomorrow" / "already past" — for the confirmation dialog copy. */
-export function describePickupTiming(daysUntilPickup: number): string {
-  if (daysUntilPickup < 0) return 'already past';
-  if (daysUntilPickup === 0) return 'today';
-  if (daysUntilPickup === 1) return 'tomorrow';
-  return `in ${daysUntilPickup} days`;
+/** Human phrasing of how long ago the booking was made — for the confirmation dialog. */
+export function describeElapsed(elapsedMinutes: number): string {
+  if (elapsedMinutes < 1) return 'just now';
+  if (elapsedMinutes < 60) return `${elapsedMinutes} min ago`;
+  const hours = Math.floor(elapsedMinutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
 }

@@ -150,12 +150,6 @@ export const NAV_ITEMS: NavItem[] = [
   {
     label: "Payments", path: "/payments", icon: CreditCard, roles: ["admin", "staff"], moduleKey: "payments", group: "finance",
   },
-  // Configurable charge rules (transaction fee, etc.) and their materialized
-  // rider charges — see 20260817100000_billing_charge_engine.sql.
-  // Delegable for the same reason as Refunds below.
-  {
-    label: "Billing & Charges", path: "/billing", icon: Receipt, roles: ["admin", "staff"], moduleKey: "billing", group: "finance",
-  },
   // Deposit refunds and (as of the approval-gate change) booking-cancellation
   // refunds both need staff to actually see and approve them, not just reach
   // them via the "Refunds" button buried on the Payments page.
@@ -166,6 +160,12 @@ export const NAV_ITEMS: NavItem[] = [
   // match: `refunds.view` opens the section, `refunds.approve` moves money.
   {
     label: "Refunds", path: "/refunds", icon: Undo2, roles: ["admin", "staff"], moduleKey: "refunds", group: "finance",
+  },
+  // Configurable charge rules (transaction fee, etc.) and their materialized
+  // rider charges — see 20260817100000_billing_charge_engine.sql.
+  // Delegable for the same reason as Refunds above.
+  {
+    label: "Billing & Charges", path: "/billing", icon: Receipt, roles: ["admin", "staff"], moduleKey: "billing", group: "finance",
   },
   {
     label: "Plans", path: "/plans", icon: Layers, roles: ["admin", "staff"], moduleKey: "plans", group: "finance",

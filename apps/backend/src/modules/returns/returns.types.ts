@@ -141,6 +141,14 @@ export interface PaymentReviewView {
     reference: string | null;
     paidAt: string | null;
     status: "unpaid" | "paid" | "verified";
+    /**
+     * How the rider paid — `payment_transactions.method`
+     * (upi/card/netbanking/wallet/cash). Null until a payment is captured, or
+     * when the gateway didn't report a method. Kept as its own field so the
+     * Rental Operation screen can show Payment Type distinctly from Payment
+     * Status (see the SwapNgo bug-fix backlog, items 2 & 7).
+     */
+    method: "upi" | "card" | "netbanking" | "wallet" | "cash" | null;
 }
 
 export interface ApproveReturnSettlementInput {

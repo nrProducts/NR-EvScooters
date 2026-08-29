@@ -57,3 +57,23 @@ export async function fetchInvoiceById(id: string): Promise<InvoiceDetail> {
 export async function refundInvoice(id: string, reason?: string): Promise<Invoice> {
   return apiClient.post<Invoice>(`/invoices/${id}/refund`, { reason });
 }
+
+/** POST /invoices/:id/record-payment — records an offline payment (cash/UPI/…) against an unpaid invoice. */
+export async function recordInvoicePayment(
+  id: string,
+  method: "upi" | "card" | "netbanking" | "wallet" | "cash",
+): Promise<Invoice> {
+  return apiClient.post<Invoice>(`/invoices/${id}/record-payment`, { method });
+}
+
+export interface AdhocChargeInput {
+  user_id: string;
+  description: string;
+  amount: number;
+  payment?: { method: "upi" | "card" | "netbanking" | "wallet" | "cash"; status: "paid" | "pending" };
+}
+
+/** POST /invoices/adhoc — raises a one-off charge against a rider (lost key, cleaning fee, fine, …). */
+export async function addAdhocCharge(input: AdhocChargeInput): Promise<Invoice> {
+  return apiClient.post<Invoice>("/invoices/adhoc", input);
+}

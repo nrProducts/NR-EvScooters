@@ -3,10 +3,7 @@ import { bookingRepository } from '../services';
 import { useAuthStore } from '../store/useAuthStore';
 import { ApiError } from '../lib/ApiError';
 import { confirmAction, notify } from '../lib/confirm';
-import {
-  FREE_CANCELLATION_GRACE_MINUTES, LATE_CANCELLATION_PENALTY_RATE,
-  computeCancellationCharge, describePickupTiming,
-} from '../lib/cancellationPolicy';
+import { computeCancellationCharge, describeElapsed } from '../lib/cancellationPolicy';
 import type { ApiBooking } from '../types/api';
 
 /**
@@ -23,10 +20,11 @@ export function useCancelBooking() {
     // Only a 'confirmed' booking was actually paid for — nothing to refund
     // (or charge a fee against) for one still awaiting payment.
     const wasPaid = booking.status === 'confirmed';
+    const planPaid = wasPaid
+      ? Math.max(0, (booking.plan?.price ?? 0) - (booking.referral_discount_amount ?? 0))
+      : 0;
     const charge = computeCancellationCharge({
-      startDay: booking.start_day,
-      planPrice: booking.plan?.price ?? null,
-      discountAmount: booking.referral_discount_amount,
+      planPaid,
       depositAmount: wasPaid ? booking.plan?.deposit_amount ?? 0 : 0,
       createdAt: booking.created_at,
     });
@@ -35,19 +33,13 @@ export function useCancelBooking() {
       ? "\n\nWe'll send this back to your original payment method after a quick review, generally the same day."
       : '';
 
-    const freeReason = charge.withinGrace
-      // Worth saying explicitly — otherwise a rider who booked for tomorrow
-      // can't tell why this one is free when the policy text says otherwise.
-      ? `You booked this less than ${FREE_CANCELLATION_GRACE_MINUTES} minutes ago, so there's no cancellation fee.`
-      : "You're cancelling more than a day before pickup, so there's no cancellation fee.";
-
     const message = !wasPaid
       ? "This booking hasn't been paid for yet, so there's nothing to charge or refund."
-      : charge.isLate
-        ? `Your pickup is ${describePickupTiming(charge.daysUntilPickup)}. Cancelling now applies a ${Math.round(
-            LATE_CANCELLATION_PENALTY_RATE * 100,
-          )}% late-cancellation fee of ₹${charge.penaltyAmount} on the ₹${charge.chargeableAmount} plan price, leaving a refund of ₹${charge.refundAmount}.${refundNote}`
-        : `${freeReason} You'll be refunded ₹${charge.refundAmount}.${refundNote}`;
+      : charge.penaltyAmount > 0
+        ? `You booked this ${describeElapsed(charge.elapsedMinutes)}. Cancelling now keeps back ${charge.penaltyPercent}% (₹${charge.penaltyAmount}) of the ₹${charge.planPaid} plan amount, leaving a refund of ₹${charge.refundAmount}${
+            charge.depositRefund > 0 ? ` (includes your ₹${charge.depositRefund} deposit)` : ''
+          }.${refundNote}`
+        : `You booked this ${describeElapsed(charge.elapsedMinutes)}, so there's no cancellation fee. You'll be refunded ₹${charge.refundAmount}.${refundNote}`;
 
     const confirmed = await confirmAction({
       title: 'Cancel Booking?',

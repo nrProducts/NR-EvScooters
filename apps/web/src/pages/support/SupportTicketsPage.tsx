@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { MoreHorizontal, PlayCircle, CheckCircle2, XCircle } from "lucide-react";
+import { PlayCircle, CheckCircle2, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -111,11 +111,7 @@ export default function SupportTicketsPage() {
         }
         return (
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
+            <RowActionsButton label="Ticket actions" onClick={(e) => e.stopPropagation()} />
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
               {t.status !== "in_progress" && t.status !== "resolved" && (
                 <DropdownMenuItem onClick={() => handleStatusChange(t, "in_progress")}>

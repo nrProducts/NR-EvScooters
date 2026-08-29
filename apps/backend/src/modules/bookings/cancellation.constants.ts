@@ -1,26 +1,30 @@
 /**
- * Single source of truth for pre-pickup cancellation tuning — imported by
- * bookings.service.ts and its tests. Mirrored (deliberately, with a pointer
- * comment) in apps/mobile/src/lib/cancellationPolicy.ts so the rider can be
- * shown the fee before confirming; shared test fixtures guard against drift.
+ * Compile-time fallback for the pre-pickup cancellation policy — used only
+ * when `cancellation_tiers` is empty (or unreachable). The live policy is a
+ * table an admin edits on Billing & Charges.
+ *
+ * Mirrored (deliberately, with a pointer comment) in
+ * apps/mobile/src/lib/cancellationPolicy.ts so the rider can be shown what
+ * they'd get back before confirming; shared test fixtures guard against drift.
+ *
+ * The model: minutes elapsed since the booking was CREATED decide the tier.
+ * A cancellation keeps `penaltyPercent` of the plan amount the rider actually
+ * paid (captured total minus the deposit). The deposit is always refunded in
+ * full — no damage is possible before pickup. Past the largest tier, 100% is
+ * kept (no plan refund).
  */
 
-/**
- * bookings.start_day is a DATE with no time, so pickup is treated as 00:00 on
- * that day and "more than 24h notice" has to be expressed in whole days:
- * free when start_day is this many calendar days out or more. 2 guarantees at
- * least a full day of real notice no matter what hour pickup happens.
- */
-export const FREE_CANCELLATION_NOTICE_DAYS = 2;
+export interface CancellationTier {
+    /** Cancelling at ≤ this many minutes after booking falls in this tier. */
+    upto_minutes: number;
+    /** Percent of the plan amount paid that is kept back (0–100). */
+    penalty_percent: number;
+}
 
-/** Share of the net plan price kept back when cancelling inside the free window. */
-export const LATE_CANCELLATION_PENALTY_RATE = 0.25;
+export const DEFAULT_CANCELLATION_TIERS: readonly CancellationTier[] = [
+    { upto_minutes: 30, penalty_percent: 25 },
+    { upto_minutes: 60, penalty_percent: 50 },
+] as const;
 
-/**
- * Grace period from booking creation during which cancelling is always free,
- * however close pickup is. Without this a booking made FOR tomorrow is born
- * inside the notice window and would be charged seconds after it was created —
- * the notice rule alone only asks how close pickup is, never how recently the
- * rider booked.
- */
-export const FREE_CANCELLATION_GRACE_MINUTES = 60;
+/** Kept back once a cancellation is past every configured tier. */
+export const BEYOND_LAST_TIER_PENALTY_PERCENT = 100;

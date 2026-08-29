@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, MoreHorizontal, UserCog, UserMinus, KeyRound,
+  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, UserCog, UserMinus, KeyRound,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,10 +20,10 @@ import {
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import {
   useUsers, useDeleteUser, useChangeUserStatus, useChangeUserRole,
 } from "@/hooks/useUsers";
@@ -31,7 +31,7 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
-import { initials, formatDate } from "@/lib/utils";
+import { initials, formatDate, formatCurrency } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "pending", "partially_verified", "verified", "rejected"];
@@ -69,14 +69,11 @@ export default function UserListPage() {
   // someone click into a guaranteed error.
   const currentUserId = useAuthStore((s) => s.user?.id);
 
-  // next_due_at is the current period's due_on — a value <= today means due
-  // today or already overdue, regardless of whether the overdue sweep has
-  // flipped the subscription to 'past_due' yet (it only runs the day after).
-  // 'paused'/pre-pickup states are excluded: nothing is actively due on those.
-  const isDueOrOverdue = (u: AppUser) =>
-    !!u.next_due_at
-    && u.next_due_at <= new Date().toISOString().slice(0, 10)
-    && (u.payment_status === "active" || u.payment_status === "past_due");
+  // The rider genuinely owes money right now — a real unpaid invoice balance,
+  // not a guess from a plan's due date. Stays false for a rider whose plan
+  // has ended and whose bills (including any return settlement) are all paid,
+  // even while the completed rental's records still exist.
+  const isDueOrOverdue = (u: AppUser) => u.outstanding_amount > 0;
 
   // A demotion to `rider`, not the removal of one entry from a role array:
   // `users.role` holds exactly one value.
@@ -173,17 +170,20 @@ export default function UserListPage() {
       render: (u) => (u.next_due_at ? formatDate(u.next_due_at) : "—"),
       hideOnMobile: true,
     },
+    {
+      header: "Outstanding",
+      key: "outstanding_amount",
+      render: (u) => (u.outstanding_amount > 0
+        ? <span className="font-semibold text-destructive">{formatCurrency(u.outstanding_amount)}</span>
+        : <span className="text-muted-foreground">₹0</span>),
+    },
     { header: "Joined", key: "created_at", sortKey: "created_at", render: (u) => formatDate(u.created_at), hideOnMobile: true },
     {
       header: "Actions",
       key: "actions",
       render: (u) => (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
+          <RowActionsButton label="Rider actions" onClick={(e) => e.stopPropagation()} />
           {/*
             onClick here (not just on the trigger) matters: DropdownMenuContent
             renders in a portal, but React re-parents portalled content into the
@@ -299,7 +299,7 @@ export default function UserListPage() {
             setSearch(v);
             setPage(1);
           }}
-          placeholder="Search by name, email or phone..."
+          placeholder="Search name, email or phone…"
           className="sm:max-w-xs"
         />
       </div>

@@ -6,6 +6,7 @@ import { buildNavTree, navForUser, type NavItem } from "@/routes/roleConfig";
 import type { StaffUser } from "@/types";
 import { useUiStore } from "@/store/uiStore";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import logoMark from "@/assets/logo-mark.svg";
 import logoWordmark from "@/assets/logo-wordmark.svg";
 import logoWordmarkDark from "@/assets/logo-wordmark-dark.svg";
@@ -25,7 +26,7 @@ function NavItemLink({
   collapsed?: boolean;
   onNavigate?: () => void;
 }) {
-  return (
+  const link = (
     <NavLink
       to={item.path}
       onClick={onNavigate}
@@ -38,11 +39,20 @@ function NavItemLink({
           collapsed && "justify-center px-0",
         )
       }
-      title={collapsed ? item.label : undefined}
     >
       <item.icon className="h-[1.125rem] w-[1.125rem] shrink-0" strokeWidth={1.75} />
       {!collapsed && <span className="truncate">{item.label}</span>}
     </NavLink>
+  );
+
+  // In the collapsed icon rail there's no room for the module name, so surface
+  // it as a hover tooltip instead.
+  if (!collapsed) return link;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{link}</TooltipTrigger>
+      <TooltipContent side="right">{item.label}</TooltipContent>
+    </Tooltip>
   );
 }
 

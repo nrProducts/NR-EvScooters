@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Spinner } from "@/components/common/Spinner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,12 +61,18 @@ export default function HolidaysPage() {
       render: (h) =>
         canManage ? (
           <div className="flex gap-1.5">
-            <Button size="sm" variant="ghost" onClick={() => openEdit(h)}>
+            <IconButton size="sm" variant="ghost" label="Edit holiday" onClick={() => openEdit(h)}>
               <Pencil className="h-3.5 w-3.5" />
-            </Button>
-            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteTarget(h)}>
+            </IconButton>
+            <IconButton
+              size="sm"
+              variant="ghost"
+              label="Delete holiday"
+              className="text-destructive"
+              onClick={() => setDeleteTarget(h)}
+            >
               <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            </IconButton>
           </div>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>

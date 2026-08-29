@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, MoreHorizontal, Zap, ChevronDown, ChevronRight,
+  BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, Zap, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,9 @@ import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Spinner } from "@/components/common/Spinner";
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistoryDialog } from "@/components/vehicles/VehicleHistoryDialog";
 import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
@@ -161,11 +162,7 @@ export default function VehicleListPage() {
       key: "actions",
       render: (v) => (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
+          <RowActionsButton label="Vehicle actions" onClick={(e) => e.stopPropagation()} />
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={() => navigate(`/vehicles/${v.id}`)}>
               <Eye className="mr-2 h-4 w-4" /> View details
@@ -217,7 +214,7 @@ export default function VehicleListPage() {
               setSearch(v);
               setPage(1);
             }}
-            placeholder="Search by name, registration or VIN..."
+            placeholder="Search name, reg. or VIN…"
             className="sm:max-w-xs"
           />
           <Select

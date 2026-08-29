@@ -59,6 +59,22 @@ router.get(
     asyncHandler(c.getRefundSettlementHandler),
 );
 
+// Review — adjust deductions and mark reviewed. The money-decision gate is
+// `refunds.approve`, same as approval itself.
+router.post(
+    "/:id/review",
+    requireAction("refunds", "approve"),
+    validate({ params: v.refundIdParam, body: v.reviewRefundBody }),
+    asyncHandler(c.reviewRefundHandler),
+);
+
+router.post(
+    "/:id/reject",
+    requireAction("refunds", "approve"),
+    validate({ params: v.refundIdParam, body: v.rejectRefundBody }),
+    asyncHandler(c.rejectRefundHandler),
+);
+
 // A retry re-attempts a gateway payout. Same authority as initiating one.
 router.post(
     "/:id/retry",

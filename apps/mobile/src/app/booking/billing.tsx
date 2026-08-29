@@ -11,7 +11,7 @@ import { ApiError } from '../../lib/ApiError';
 import type { ApiPaymentOrder, ApiPlanQuote } from '../../types/api';
 import { COLORS } from '../../constants/theme';
 import {
-  FREE_CANCELLATION_GRACE_MINUTES, LATE_CANCELLATION_PENALTY_RATE,
+  DEFAULT_CANCELLATION_TIERS,
 } from '../../lib/cancellationPolicy';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -308,8 +308,9 @@ export default function BillingScreen() {
           Your booking is confirmed only after payment succeeds. An admin then confirms the booking and assigns your scooter.
         </Text>
         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-2">
-          Free cancellation within {FREE_CANCELLATION_GRACE_MINUTES} minutes of booking. After that a{' '}
-          {Math.round(LATE_CANCELLATION_PENALTY_RATE * 100)}% fee applies, since your plan starts right away.
+          Cancel within {DEFAULT_CANCELLATION_TIERS[0].upto_minutes} min of booking and{' '}
+          {DEFAULT_CANCELLATION_TIERS[0].penalty_percent}% of the plan amount is kept back; the fee rises the longer
+          you wait. Your security deposit is always refunded in full.
         </Text>
       </ScrollView>
     </View>

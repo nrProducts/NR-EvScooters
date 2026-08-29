@@ -17,6 +17,18 @@ export function useAvailableVehicles(bookingId: string | undefined) {
   });
 }
 
+export function useAdminCreateBooking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: api.AdminCreateBookingInput) => api.adminCreateBooking(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pickup-queue"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["vehicles"] });
+    },
+  });
+}
+
 export function useConfirmPickup() {
   const qc = useQueryClient();
   return useMutation({

@@ -3,6 +3,9 @@ import { businessRule, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { businessToday } from "../../common/dates";
+import { notifyUser } from "../notifications/notifications.service";
+import { activeInvoiceSeriesCode } from "../rentals/overdueLateFee";
+import { recordOfflinePayment } from "../payments/payments.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     InvoiceDetail, InvoicePaymentState, InvoiceRow, ListInvoicesFilters,
@@ -248,6 +251,109 @@ export async function listInvoices(filters: ListInvoicesFilters): Promise<Pagina
     return paginate(((data ?? []) as unknown as RawInvoiceRow[]).map(toInvoiceRow), count ?? 0, filters);
 }
 
+export interface AddAdhocChargeInput {
+    userId: string;
+    description: string;
+    amount: number;
+    /** Record the payment straight away — `paid` settles the charge, otherwise it's left owing. */
+    payment?: { method: "upi" | "card" | "netbanking" | "wallet" | "cash"; status: "paid" | "pending" };
+}
+
+/**
+ * Raises a one-off charge against a rider outside their plan — a lost key, a
+ * replacement lock, a cleaning fee, a fine. It's a standalone `adhoc` invoice
+ * (the same mechanism the overdue late fee uses), so it flows through every
+ * existing surface: the Payments grid, the rider's Outstanding balance, the
+ * mobile billing history, and — if it ever needs reversing — the refund flow.
+ *
+ * `invoices.subscription_id` is NOT NULL, so the rider must have had at least
+ * one subscription; the most recent one is used as the anchor.
+ */
+export async function addAdhocCharge(
+    input: AddAdhocChargeInput,
+    actor: AuthContext,
+): Promise<InvoiceDetail> {
+    const amount = Math.round(input.amount * 100) / 100;
+    if (!(amount > 0)) throw businessRule("Enter a charge amount greater than zero.");
+    const description = input.description.trim();
+    if (description.length < 2) throw businessRule("Describe what the charge is for.");
+
+    const { data: rider, error: riderError } = await supabaseAdmin
+        .from("users")
+        .select("id, role, deleted_at")
+        .eq("id", input.userId)
+        .maybeSingle();
+    if (riderError) throw riderError;
+    if (!rider || rider.deleted_at) throw notFound("Rider not found.");
+    if (rider.role !== "rider") throw businessRule("Charges can only be added to rider accounts.");
+
+    const { data: sub, error: subError } = await supabaseAdmin
+        .from("subscriptions")
+        .select("id")
+        .eq("user_id", input.userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (subError) throw subError;
+    if (!sub) throw businessRule("This rider has never had a plan, so a charge can't be attached yet.");
+
+    const today = businessToday();
+    const seriesCode = await activeInvoiceSeriesCode();
+
+    const { data: invoice, error: invoiceError } = await supabaseAdmin
+        .from("invoices")
+        .insert({
+            user_id: input.userId,
+            subscription_id: sub.id,
+            purpose: "adhoc",
+            status: "issued",
+            subtotal_amount: amount,
+            total_amount: amount,
+            issued_on: today,
+            due_on: today,
+            invoice_series_code: seriesCode,
+            invoice_number: "",
+        })
+        .select("id")
+        .single();
+    if (invoiceError) throw invoiceError;
+
+    const { error: itemError } = await supabaseAdmin.from("invoice_items").insert({
+        invoice_id: invoice.id,
+        item_type: "adjustment",
+        description,
+        line_number: 1,
+        quantity: 1,
+        unit_amount: amount,
+        amount,
+    });
+    if (itemError) throw itemError;
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: input.userId,
+        action: "invoice.charge_added",
+        entityType: "invoice",
+        entityId: invoice.id,
+        after: { description, amount, paid: input.payment?.status === "paid" },
+    });
+
+    if (input.payment?.status === "paid") {
+        await recordOfflinePayment(invoice.id, input.payment.method, actor);
+    }
+
+    await notifyUser(input.userId, {
+        template: "adhoc_charge_added",
+        title: "New Charge Added",
+        body: input.payment?.status === "paid"
+            ? `A charge of ₹${amount} was added and recorded as paid: ${description}.`
+            : `A charge of ₹${amount} was added to your account: ${description}.`,
+        screen: "billing",
+    });
+
+    return getInvoiceById(invoice.id);
+}
+
 export async function getInvoiceById(id: string): Promise<InvoiceDetail> {
     const { data, error } = await supabaseAdmin
         .from("invoices")
@@ -312,10 +418,12 @@ export async function refundInvoice(
     const order = unwrap<{ user_id: string }>(txn?.payment_orders);
     if (!order) throw businessRule("The payment against this invoice has no payer on record.");
 
+    const goodwillAmount = Number(balance.allocated_amount ?? allocation.amount);
     const { error: refundError } = await supabaseAdmin.from("refunds").insert({
         user_id: order.user_id,
         payment_transaction_id: allocation.payment_transaction_id,
-        amount: Number(balance.allocated_amount ?? allocation.amount),
+        amount: goodwillAmount,
+        gross_amount: goodwillAmount,
         // Staff refunding a settled bill outright is a discretionary act;
         // `goodwill` is the reason the enum has for exactly that.
         reason: "goodwill",

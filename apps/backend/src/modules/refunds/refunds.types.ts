@@ -2,7 +2,18 @@
  * `refund_status` uses `succeeded`, matching `payment_status` — the old
  * `success` was the odd one out across the two tables.
  */
-export type RefundStatus = "pending" | "processing" | "succeeded" | "failed";
+export type RefundStatus = "pending" | "processing" | "succeeded" | "failed" | "rejected";
+
+/**
+ * The itemised deductions an admin can apply during review — subtracted from
+ * `gross_amount` to arrive at the payable `amount`. See the refund review
+ * flow (SwapNgo bug-fix backlog, item 5).
+ */
+export interface RefundDeductions {
+    transaction_fee: number;
+    other_charges: number;
+    cancellation_charge: number;
+}
 
 /**
  * `refund_reason`. Was `refund_type` with two values; there are four now, and
@@ -42,8 +53,20 @@ export interface RefundRow {
     /** Resolved through the payment's order → subscription → booking. */
     booking_id: string | null;
     user_id: string;
+    /** Payable amount — always `gross_amount` minus the sum of `deductions`. */
     amount: number;
+    /** The pre-deduction amount, frozen at creation. */
+    gross_amount: number;
+    deductions: RefundDeductions;
+    deduction_total: number;
     status: RefundStatus;
+    /** Set once an admin has reviewed (and possibly adjusted) the refund. Approval is blocked until then. */
+    reviewed_at: string | null;
+    reviewed_by: { id: string; full_name: string } | null;
+    review_note: string | null;
+    rejected_at: string | null;
+    rejected_by: { id: string; full_name: string } | null;
+    rejection_reason: string | null;
     /** `refunds.reason`. */
     refund_type: RefundType;
     gateway_refund_id: string | null;
@@ -72,4 +95,13 @@ export interface ListRefundsFilters {
     bookingId?: string;
     sortBy: "created_at" | "amount";
     sortDir: "asc" | "desc";
+}
+
+export interface ReviewRefundInput {
+    deductions: RefundDeductions;
+    note?: string | null;
+}
+
+export interface RejectRefundInput {
+    reason: string;
 }

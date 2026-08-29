@@ -91,6 +91,13 @@ export interface UserListItem extends UserProfile {
      * whether or not the overdue sweep has flipped the status yet.
      */
     next_due_at: string | null;
+    /**
+     * Sum of every unpaid, non-void invoice balance for this rider — the real
+     * money owed RIGHT NOW, from `v_invoice_balances`, not inferred from a
+     * plan's due date. 0 once every bill (including any return settlement) is
+     * paid, even while a completed rental's records still exist.
+     */
+    outstanding_amount: number;
 }
 
 export interface UserDetail extends UserListItem {

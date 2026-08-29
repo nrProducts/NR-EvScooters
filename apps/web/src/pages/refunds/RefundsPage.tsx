@@ -1,8 +1,11 @@
-import { useState } from "react";
-import { CheckCircle2, RotateCcw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle2, RotateCcw, Search, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -10,7 +13,11 @@ import {
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { useRefunds, useRefundSettlement, useRetryRefund } from "@/hooks/useRefunds";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
+import {
+  useRefunds, useRetryRefund, useReviewRefund, useRejectRefund,
+} from "@/hooks/useRefunds";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -18,7 +25,9 @@ import { ApiError } from "@/services/api/httpClient";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import type { Refund, RefundStatus, RefundType } from "@/types";
 
-const STATUS_OPTIONS: (RefundStatus | "all")[] = ["all", "pending", "processing", "succeeded", "failed"];
+const STATUS_OPTIONS: (RefundStatus | "all")[] = [
+  "all", "pending", "processing", "succeeded", "failed", "rejected",
+];
 const REFUND_TYPE_OPTIONS: (RefundType | "all")[] = [
   "all", "deposit_release", "booking_cancellation", "settlement", "goodwill",
 ];
@@ -26,8 +35,6 @@ const REFUND_TYPE_LABEL: Record<RefundType, string> = {
   deposit_release: "Deposit Release",
   booking_cancellation: "Booking Cancellation",
   settlement: "Return Settlement",
-  // New: a discretionary refund had no expression at all before, so one was
-  // recorded as whichever of the other two fitted least badly.
   goodwill: "Goodwill",
 };
 
@@ -35,7 +42,9 @@ export default function RefundsPage() {
   const [status, setStatus] = useState<RefundStatus | "all">("all");
   const [refundType, setRefundType] = useState<RefundType | "all">("all");
   const [page, setPage] = useState(1);
+  const [reviewTarget, setReviewTarget] = useState<Refund | null>(null);
   const [approveTarget, setApproveTarget] = useState<Refund | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<Refund | null>(null);
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useRefunds({
     status, refundType, page, pageSize: 8, sortBy: sort.by as "created_at" | "amount", sortDir: sort.dir,
@@ -49,19 +58,6 @@ export default function RefundsPage() {
       render: (r) => <span className="text-sm">{REFUND_TYPE_LABEL[r.refund_type]}</span>,
     },
     {
-      header: "Booking",
-      key: "booking_id",
-      render: (r) => (
-        <Link
-          to={`/payments?bookingId=${r.booking_id}`}
-          className="text-sm underline"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {r.booking_id.slice(0, 8)}…
-        </Link>
-      ),
-    },
-    {
       header: "Rider",
       key: "rider",
       render: (r) => (
@@ -70,6 +66,21 @@ export default function RefundsPage() {
           <p className="truncate text-xs text-muted-foreground">{r.booking?.rider_phone ?? ""}</p>
         </div>
       ),
+    },
+    {
+      header: "Booking",
+      key: "booking_id",
+      render: (r) => (r.booking_id ? (
+        <Link
+          to={`/payments?bookingId=${r.booking_id}`}
+          className="text-sm underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {r.booking_id.slice(0, 8)}…
+        </Link>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      )),
       hideOnMobile: true,
     },
     {
@@ -83,29 +94,49 @@ export default function RefundsPage() {
       ),
       hideOnMobile: true,
     },
-    { header: "Amount", key: "amount", sortKey: "amount", render: (r) => formatCurrency(r.amount) },
     {
-      header: "Cancellation fee",
-      key: "cancellation_penalty_amount",
-      render: (r) => (r.booking?.cancellation_penalty_amount != null ? formatCurrency(r.booking.cancellation_penalty_amount) : "—"),
+      header: "Original Amount",
+      key: "gross_amount",
+      sortKey: "amount",
+      render: (r) => formatCurrency(r.gross_amount),
+    },
+    {
+      header: "Deduction",
+      key: "deduction_total",
+      render: (r) => (r.deduction_total > 0
+        ? <span className="text-destructive">-{formatCurrency(r.deduction_total)}</span>
+        : <span className="text-muted-foreground">—</span>),
       hideOnMobile: true,
     },
     {
-      header: "Cancelled",
-      key: "cancelled_at",
-      render: (r) => (r.booking?.cancelled_at ? formatDate(r.booking.cancelled_at) : "—"),
-      hideOnMobile: true,
+      header: "Refund Amount",
+      key: "amount",
+      render: (r) => <span className="font-semibold">{formatCurrency(r.amount)}</span>,
     },
     {
-      header: "Cancellation reason",
-      key: "cancellation_reason",
-      render: (r) => <span className="text-xs text-muted-foreground">{r.booking?.cancellation_reason ?? "—"}</span>,
+      header: "Reason",
+      key: "reason",
+      render: (r) => (
+        <span className="text-xs text-muted-foreground">
+          {r.rejection_reason ?? r.booking?.cancellation_reason ?? r.review_note ?? "—"}
+        </span>
+      ),
       hideOnMobile: true,
     },
     { header: "Status", key: "status", render: (r) => <StatusBadge status={r.status} /> },
-    { header: "Attempts", key: "attempt_count", render: (r) => r.attempt_count, hideOnMobile: true },
-    { header: "Initiated", key: "initiated_at", sortKey: "created_at", render: (r) => formatDate(r.initiated_at) },
-    { header: "Completed", key: "processed_at", render: (r) => (r.processed_at ? formatDate(r.processed_at) : "—"), hideOnMobile: true },
+    {
+      header: "Reviewed By",
+      key: "reviewed_by",
+      render: (r) => (
+        <span className="text-xs">
+          {r.reviewed_by?.full_name ?? "—"}
+          {r.reviewed_at ? <span className="block text-muted-foreground">{formatDate(r.reviewed_at)}</span> : null}
+        </span>
+      ),
+      hideOnMobile: true,
+    },
+    { header: "Initiated", key: "initiated_at", sortKey: "created_at", render: (r) => formatDate(r.initiated_at), hideOnMobile: true },
+    { header: "Approved / Done", key: "processed_at", render: (r) => (r.processed_at ? formatDate(r.processed_at) : "—"), hideOnMobile: true },
     {
       header: "Transaction ID",
       key: "gateway_refund_id",
@@ -113,52 +144,50 @@ export default function RefundsPage() {
       hideOnMobile: true,
     },
     {
-      header: "Failure reason",
-      key: "failure_reason",
-      render: (r) => <span className="text-xs text-destructive">{r.failure_reason ?? "—"}</span>,
-      hideOnMobile: true,
-    },
-    {
       header: "Actions",
       key: "actions",
+      className: "text-right",
       render: (r) => {
-        if (r.status === "pending") {
-          return (
-            <Button
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                setApproveTarget(r);
-              }}
-            >
-              <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Approve
-            </Button>
-          );
-        }
-        if (r.status === "failed") {
-          return (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={retry.isPending}
-              onClick={(e) => {
-                e.stopPropagation();
-                retry.mutate(r.id, {
-                  onSuccess: () => toastSuccess("Refund retried"),
-                  onError: (err) => toastError(err, "Could not retry refund"),
-                });
-              }}
-            >
-              <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Retry
-            </Button>
-          );
-        }
-        return <span className="text-xs text-muted-foreground">—</span>;
+        const hasActions = r.status === "pending" || r.status === "failed";
+        if (!hasActions) return <span className="text-xs text-muted-foreground">—</span>;
+        return (
+          <DropdownMenu>
+            <RowActionsButton label="Refund actions" onClick={(e) => e.stopPropagation()} />
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              {r.status === "pending" && (
+                <>
+                  <DropdownMenuItem onClick={() => setReviewTarget(r)}>
+                    <Search className="mr-2 h-4 w-4" /> {r.reviewed_at ? "Adjust amount" : "Review"}
+                  </DropdownMenuItem>
+                  {r.reviewed_at && (
+                    <DropdownMenuItem onClick={() => setApproveTarget(r)}>
+                      <CheckCircle2 className="mr-2 h-4 w-4 text-success" /> Approve &amp; pay
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem className="text-destructive" onClick={() => setRejectTarget(r)}>
+                    <XCircle className="mr-2 h-4 w-4" /> Reject
+                  </DropdownMenuItem>
+                </>
+              )}
+              {r.status === "failed" && (
+                <DropdownMenuItem
+                  disabled={retry.isPending}
+                  onClick={() => retry.mutate(r.id, {
+                    onSuccess: () => toastSuccess("Refund retried"),
+                    onError: (err) => toastError(err, "Could not retry refund"),
+                  })}
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" /> Retry payout
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
       },
     },
   ];
 
-  usePageSubtitle(`${data?.total ?? 0} refunds — security deposits and cancelled bookings`);
+  usePageSubtitle(`${data?.total ?? 0} refunds — review, approve or reject each one`);
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -172,10 +201,7 @@ export default function RefundsPage() {
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
           <Select
             value={refundType}
-            onValueChange={(v) => {
-              setRefundType(v as RefundType | "all");
-              setPage(1);
-            }}
+            onValueChange={(v) => { setRefundType(v as RefundType | "all"); setPage(1); }}
           >
             <SelectTrigger className="sm:w-56">
               <SelectValue placeholder="Source" />
@@ -190,10 +216,7 @@ export default function RefundsPage() {
           </Select>
           <Select
             value={status}
-            onValueChange={(v) => {
-              setStatus(v as RefundStatus | "all");
-              setPage(1);
-            }}
+            onValueChange={(v) => { setStatus(v as RefundStatus | "all"); setPage(1); }}
           >
             <SelectTrigger className="sm:w-48">
               <SelectValue placeholder="Status" />
@@ -222,73 +245,178 @@ export default function RefundsPage() {
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
       </Card>
 
+      <ReviewRefundDialog refund={reviewTarget} onOpenChange={(o) => !o && setReviewTarget(null)} />
       <ApproveRefundDialog refund={approveTarget} onOpenChange={(o) => !o && setApproveTarget(null)} />
+      <RejectRefundDialog refund={rejectTarget} onOpenChange={(o) => !o && setRejectTarget(null)} />
     </div>
   );
 }
 
-function ApproveRefundDialog({
-  refund,
-  onOpenChange,
-}: {
-  refund: Refund | null;
-  onOpenChange: (open: boolean) => void;
-}) {
+// ---------------------------------------------------------------------------
+// Review — itemise deductions, then mark reviewed.
+// ---------------------------------------------------------------------------
+
+const DEDUCTION_REASONS = [
+  { value: "transaction_fee", label: "Transaction / gateway fee" },
+  { value: "cancellation_charge", label: "Cancellation / late charge" },
+  { value: "other_charges", label: "Other charge" },
+] as const;
+type DeductionReason = (typeof DEDUCTION_REASONS)[number]["value"];
+
+function ReviewRefundDialog({ refund, onOpenChange }: { refund: Refund | null; onOpenChange: (open: boolean) => void }) {
+  const review = useReviewRefund();
+
+  const [payInput, setPayInput] = useState("");
+  const [reason, setReason] = useState<DeductionReason>("other_charges");
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (!refund) return;
+    // Prefill with the current payable, and whichever bucket already carries a deduction.
+    setPayInput(String(refund.amount));
+    const existing = (Object.keys(refund.deductions) as DeductionReason[]).find((k) => refund.deductions[k] > 0);
+    setReason(existing ?? "other_charges");
+    setNote(refund.review_note ?? "");
+  }, [refund]);
+
+  const gross = refund?.gross_amount ?? 0;
+  const pay = Number(payInput);
+  const payValid = payInput.trim() !== "" && Number.isFinite(pay);
+  const withheld = payValid ? Math.round((gross - pay) * 100) / 100 : 0;
+  const invalid = !payValid || pay < 0 || pay > gross;
+  const wouldBeZero = payValid && pay <= 0;
+
+  return (
+    <Dialog open={!!refund} onOpenChange={(o) => !o && onOpenChange(false)}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto scrollbar-thin">
+        <DialogHeader>
+          <DialogTitle>Review refund — {refund?.booking?.rider_name ?? "rider"}</DialogTitle>
+          <DialogDescription>
+            {REFUND_TYPE_LABEL[refund?.refund_type ?? "goodwill"]}
+            {refund?.booking?.cancelled_at ? ` · cancelled ${formatDate(refund.booking.cancelled_at)}` : ""}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 text-sm">
+          <Row label="Original amount" value={formatCurrency(gross)} strong />
+
+          <div className="space-y-1">
+            <Label className="text-xs">Refund amount to pay the rider (₹)</Label>
+            <Input
+              type="number" min={0} max={gross} value={payInput}
+              onChange={(e) => setPayInput(e.target.value)}
+            />
+          </div>
+
+          {withheld > 0 && (
+            <div className="space-y-1">
+              <Label className="text-xs">Withhold {formatCurrency(withheld)} as</Label>
+              <Select value={reason} onValueChange={(v) => setReason(v as DeductionReason)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DEDUCTION_REASONS.map((d) => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <Label className="text-xs">Note {withheld > 0 ? "(why part is withheld)" : "(optional)"}</Label>
+            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. UPI gateway fee is non-refundable" />
+          </div>
+
+          <div className="rounded-lg bg-secondary/40 p-3">
+            <Row label="Withheld" value={formatCurrency(Math.max(0, withheld))} />
+            <Row label="Rider receives" value={formatCurrency(Math.max(0, payValid ? pay : gross))} strong />
+          </div>
+
+          {invalid && !wouldBeZero && (
+            <p className="text-xs text-destructive">
+              Enter an amount between {formatCurrency(0)} and {formatCurrency(gross)}.
+            </p>
+          )}
+          {wouldBeZero && (
+            <p className="text-xs text-destructive">Nothing would be paid — use Reject instead.</p>
+          )}
+        </div>
+
+        {review.isError && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {review.error instanceof ApiError ? review.error.message : "Something went wrong."}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            disabled={review.isPending || invalid || !refund}
+            onClick={() => {
+              if (!refund) return;
+              const deductions = { transaction_fee: 0, other_charges: 0, cancellation_charge: 0 };
+              if (withheld > 0) deductions[reason] = withheld;
+              review.mutate(
+                { id: refund.id, input: { deductions, note: note.trim() || undefined } },
+                {
+                  onSuccess: () => { toastSuccess("Refund reviewed — ready for approval"); onOpenChange(false); },
+                  onError: (err) => toastError(err, "Could not save review"),
+                },
+              );
+            }}
+          >
+            {review.isPending ? "Saving…" : "Save & Mark Reviewed"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Approve — send the reviewed net amount to the gateway.
+// ---------------------------------------------------------------------------
+
+function ApproveRefundDialog({ refund, onOpenChange }: { refund: Refund | null; onOpenChange: (open: boolean) => void }) {
   const retry = useRetryRefund();
-  const isDeposit = refund?.refund_type === "deposit_release";
-  const settlement = useRefundSettlement(isDeposit ? refund?.id : undefined);
 
   return (
     <Dialog open={!!refund} onOpenChange={(o) => !o && onOpenChange(false)}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Approve refund of {refund ? formatCurrency(refund.amount) : ""}?</DialogTitle>
-          {!isDeposit && (
-            <DialogDescription>
-              {refund?.booking?.rider_name ?? "This rider"} — booking cancelled
-              {refund?.booking?.cancelled_at ? ` on ${formatDate(refund.booking.cancelled_at)}` : ""}
-              {refund?.booking?.cancellation_reason ? `: ${refund.booking.cancellation_reason}` : ""}
-            </DialogDescription>
-          )}
+          <DialogDescription>
+            {refund?.booking?.rider_name ?? "This rider"} — {REFUND_TYPE_LABEL[refund?.refund_type ?? "goodwill"]}
+          </DialogDescription>
         </DialogHeader>
 
-        {isDeposit ? (
-          settlement.isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading settlement…</p>
-          ) : settlement.data ? (
-            <div className="space-y-2 rounded-lg border border-border p-3 text-sm">
-              <Row label="Security deposit" value={formatCurrency(settlement.data.depositAmount)} />
-              {settlement.data.lines.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No damage recorded — full deposit refundable.</p>
-              ) : (
-                settlement.data.lines.map((line) => (
-                  <Row
-                    key={line.id}
-                    label={line.description}
-                    value={`-${formatCurrency(line.deposit_deduction)}`}
-                    muted
-                  />
-                ))
-              )}
-              <div className="h-px bg-border" />
-              <Row label="Total deduction" value={formatCurrency(settlement.data.totalDeduction)} />
-              <Row label="Net Refund" value={formatCurrency(settlement.data.netRefund)} strong />
-              {settlement.data.additionalAmountDue > 0 && (
-                <p className="rounded-md bg-warning/10 px-2 py-1.5 text-xs text-warning">
-                  Additional Amount Due: {formatCurrency(settlement.data.additionalAmountDue)} — deductions exceeded
-                  the deposit; billed separately.
-                </p>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-destructive">Couldn&apos;t load the settlement breakdown.</p>
-          )
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            This sends {refund ? formatCurrency(refund.amount) : "the refund"} to the rider&apos;s original payment
-            method via Razorpay right away. This can&apos;t be undone.
-          </p>
+        {refund && (
+          <div className="space-y-1.5 rounded-lg border border-border p-3 text-sm">
+            <Row label="Original amount" value={formatCurrency(refund.gross_amount)} />
+            {refund.deductions.transaction_fee > 0 && (
+              <Row label="Transaction fee" value={`-${formatCurrency(refund.deductions.transaction_fee)}`} muted />
+            )}
+            {refund.deductions.other_charges > 0 && (
+              <Row label="Other charges" value={`-${formatCurrency(refund.deductions.other_charges)}`} muted />
+            )}
+            {refund.deductions.cancellation_charge > 0 && (
+              <Row label="Cancellation charge" value={`-${formatCurrency(refund.deductions.cancellation_charge)}`} muted />
+            )}
+            <div className="h-px bg-border" />
+            <Row label="Net refund" value={formatCurrency(refund.amount)} strong />
+            {refund.reviewed_by && (
+              <p className="pt-1 text-[0.6875rem] text-muted-foreground">
+                Reviewed by {refund.reviewed_by.full_name}
+                {refund.reviewed_at ? ` on ${formatDate(refund.reviewed_at)}` : ""}
+                {refund.review_note ? ` — ${refund.review_note}` : ""}
+              </p>
+            )}
+          </div>
         )}
+
+        <p className="text-sm text-muted-foreground">
+          {refund?.source_gateway_payment_id?.startsWith("manual_")
+            ? `The original payment was collected offline, so this records ${refund ? formatCurrency(refund.amount) : "the refund"} as paid back in cash at the hub — no gateway transfer. This can't be undone.`
+            : `This sends ${refund ? formatCurrency(refund.amount) : "the refund"} to the rider's original payment method via Razorpay. This can't be undone.`}
+        </p>
 
         {retry.isError && (
           <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -296,34 +424,81 @@ function ApproveRefundDialog({
           </p>
         )}
 
-        <DialogFooter className="sm:justify-between">
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            {isDeposit && refund && (
-              <Button variant="outline" asChild>
-                <Link to={`/damages?bookingId=${refund.booking_id}`} onClick={() => onOpenChange(false)}>
-                  Edit Charges
-                </Link>
-              </Button>
-            )}
-          </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             disabled={retry.isPending}
             onClick={() => {
-              if (refund) {
-                retry.mutate(refund.id, {
-                  onSuccess: () => {
-                    toastSuccess("Refund approved and processed");
-                    onOpenChange(false);
-                  },
-                  onError: (err) => toastError(err, "Could not process refund"),
-                });
-              }
+              if (!refund) return;
+              retry.mutate(refund.id, {
+                onSuccess: () => { toastSuccess("Refund approved and processed"); onOpenChange(false); },
+                onError: (err) => toastError(err, "Could not process refund"),
+              });
             }}
           >
-            {retry.isPending ? "Approving..." : "Approve & Process Refund"}
+            {retry.isPending
+              ? "Approving…"
+              : refund?.source_gateway_payment_id?.startsWith("manual_")
+                ? "Approve — Cash Refunded"
+                : "Approve & Process Refund"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reject
+// ---------------------------------------------------------------------------
+
+function RejectRefundDialog({ refund, onOpenChange }: { refund: Refund | null; onOpenChange: (open: boolean) => void }) {
+  const reject = useRejectRefund();
+  const [reason, setReason] = useState("");
+
+  useEffect(() => { if (refund) setReason(""); }, [refund]);
+
+  return (
+    <Dialog open={!!refund} onOpenChange={(o) => !o && onOpenChange(false)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Reject this {formatCurrency(refund?.amount ?? 0)} refund?</DialogTitle>
+          <DialogDescription>
+            No money moves. The refund is closed as <b>Rejected</b>,
+            {" "}{refund?.booking?.rider_name ?? "the rider"} is notified with your reason, and any held deposit stays
+            held. Use this when the refund isn&apos;t owed — to pay a smaller amount instead, use Review. This is final
+            (a new refund would have to be raised to reverse it).
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Reason (at least 3 characters) — the rider sees this</Label>
+          <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Cancellation outside the free window — fee retained per policy" />
+        </div>
+
+        {reject.isError && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {reject.error instanceof ApiError ? reject.error.message : "Something went wrong."}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Keep</Button>
+          <Button
+            variant="destructive"
+            disabled={reject.isPending || reason.trim().length < 3}
+            onClick={() => {
+              if (!refund) return;
+              reject.mutate(
+                { id: refund.id, reason: reason.trim() },
+                {
+                  onSuccess: () => { toastSuccess("Refund rejected"); onOpenChange(false); },
+                  onError: (err) => toastError(err, "Could not reject refund"),
+                },
+              );
+            }}
+          >
+            {reject.isPending ? "Rejecting…" : "Reject Refund"}
           </Button>
         </DialogFooter>
       </DialogContent>

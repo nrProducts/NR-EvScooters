@@ -34,3 +34,25 @@ export function useRetryRefund() {
     },
   });
 }
+
+export function useReviewRefund() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: api.ReviewRefundInput }) => api.reviewRefund(id, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["refunds"] });
+      qc.invalidateQueries({ queryKey: ["refund-settlement"] });
+    },
+  });
+}
+
+export function useRejectRefund() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => api.rejectRefund(id, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["refunds"] });
+      qc.invalidateQueries({ queryKey: ["deposits"] });
+    },
+  });
+}

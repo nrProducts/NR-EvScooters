@@ -36,6 +36,9 @@ const PAYMENT_STATE_TONE: Record<InvoicePaymentState, 'success' | 'warning' | 'd
 const PAYMENT_STATE_LABEL: Record<InvoicePaymentState, string> = {
   paid: 'Paid', partial: 'Partially Paid', overdue: 'Due', unpaid: 'Due',
 };
+const PAYMENT_METHOD_LABEL: Record<NonNullable<ApiInvoice['payment_method']>, string> = {
+  upi: 'UPI', card: 'Card', netbanking: 'Net Banking', wallet: 'Wallet', cash: 'Cash',
+};
 
 /**
  * An invoice is raised for a REASON now, not for a payment kind. The old
@@ -66,6 +69,10 @@ function invoiceLabel(invoice: ApiInvoice): string {
     && invoice.items.some((item) => item.item_type === 'deposit')
   ) {
     return PURPOSE_LABEL.initial;
+  }
+  // An ad-hoc charge (lost key, cleaning fee, …) — name it by what it's for.
+  if (invoice.purpose === 'adhoc') {
+    return invoice.items[0]?.description || 'Additional charge';
   }
   return PURPOSE_LABEL[invoice.purpose] ?? 'Payment';
 }
@@ -148,6 +155,7 @@ function PaymentHistoryCard({
           </Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
             {formatDate(invoice.paid_at ?? invoice.due_on)}
+            {invoice.payment_method ? `  ·  ${PAYMENT_METHOD_LABEL[invoice.payment_method]}` : ''}
             {hasItems ? (expanded ? '  ▲' : '  ▼') : ''}
           </Text>
         </View>
@@ -479,6 +487,92 @@ export default function BillingScreen() {
     return aDate < bDate ? 1 : -1;
   });
 
+  // Outstanding invoices with a Pay button. Rendered inside the "Amount Due"
+  // section when there's an active plan, and also standalone when there
+  // isn't one (e.g. an ad-hoc charge raised by an admin against a rider
+  // with no current rental — it still has to be payable).
+  const renderOutstandingInvoices = () => (
+    <>
+      <AttentionNote label="Payment required" />
+      {/* Consequence of plan_status='past_due' — a quiet note, not a
+          red banner: attention, not alarm. */}
+      {isDue ? (
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3 -mt-2">
+          Your scooter won't start until this is paid.
+        </Text>
+      ) : null}
+      {outstandingInvoices.length > 1 ? (
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold mb-2">
+          ₹{outstandingTotal.toFixed(0)} total across {outstandingInvoices.length} invoices
+        </Text>
+      ) : null}
+
+      {outstandingInvoices.map((inv) => {
+        const perDay = inv.late_fee && inv.days_late ? inv.late_fee / inv.days_late : 0;
+        const total = inv.total_due ?? inv.balance_amount;
+        return (
+          <View
+            key={inv.id}
+            className="rounded-2xl border mb-4 overflow-hidden"
+            style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
+          >
+            <View className="p-5">
+              <View className="flex-row items-center justify-between mb-3">
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">
+                  {invoiceLabel(inv)}
+                </Text>
+                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
+                  Due {formatDate(inv.due_on)}
+                </Text>
+              </View>
+
+              <BillLine
+                label={inv.purpose === 'adhoc'
+                  ? (inv.items[0]?.description || 'Additional charge')
+                  : 'Rental plan amount'}
+                amount={inv.total_amount}
+              />
+              {inv.allocated_amount > 0 ? (
+                <BillLine label="Already paid" amount={inv.allocated_amount} negative />
+              ) : null}
+              {inv.late_fee ? (
+                <BillLine
+                  label={`Late fee (${inv.days_late} day${inv.days_late === 1 ? '' : 's'} × ₹${perDay.toFixed(0)}/day)`}
+                  amount={inv.late_fee}
+                  attention
+                />
+              ) : null}
+              <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
+              <View className="flex-row items-center justify-between pb-1">
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Total</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">₹{total.toFixed(0)}</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => payInvoice(inv)}
+              disabled={payingInvoiceId === inv.id}
+              className="mx-5 mb-5 py-3.5 rounded-2xl items-center flex-row justify-center"
+              style={{ backgroundColor: COLORS.primary, opacity: payingInvoiceId === inv.id ? 0.6 : 1 }}
+            >
+              {payingInvoiceId === inv.id ? (
+                <Spinner size={16} color="#FFF" />
+              ) : (
+                <CreditCard size={16} color="#FFF" />
+              )}
+              <Text className="text-white text-sm font-bold ml-2">
+                {payingInvoiceId === inv.id ? 'Processing…' : `Pay ₹${total.toFixed(0)}`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+      {payError ? (
+        <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mb-3">{payError}</Text>
+      ) : null}
+    </>
+  );
+
   const renderPaymentHistory = () => (
     <>
       <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Payment History</Text>
@@ -505,18 +599,27 @@ export default function BillingScreen() {
         </View>
       ) : error ? (
         <ErrorState message={error} onRetry={() => void reload()} />
-      ) : !bookingId && paymentHistoryItems.length > 0 ? (
+      ) : !bookingId && (outstandingInvoices.length > 0 || paymentHistoryItems.length > 0) ? (
         // No active booking/rental right now — but Billing stays a live
         // record of everything that ever happened on this account, not a
         // screen that goes blank the moment there's nothing currently
-        // active. A rider who just finished a return, or is between plans,
-        // should still see their full payment history here.
+        // active. A rider between plans still sees their full payment
+        // history here, AND any invoice they still owe on — e.g. an ad-hoc
+        // charge an admin raised against them (lost key, fine) while they
+        // have no rental. That still has to be payable.
         <ScrollView
           className="flex-1 px-5 pt-5"
           contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
-          {renderPaymentHistory()}
+          {outstandingInvoices.length > 0 ? (
+            <>
+              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Amount Due</Text>
+              {renderOutstandingInvoices()}
+              <View className="h-4" />
+            </>
+          ) : null}
+          {paymentHistoryItems.length > 0 ? renderPaymentHistory() : null}
         </ScrollView>
       ) : !bookingId ? (
         <EmptyState
@@ -679,80 +782,7 @@ export default function BillingScreen() {
               </View>
             </View>
           ) : outstandingInvoices.length > 0 ? (
-            <>
-              <AttentionNote label="Payment required" />
-              {/* Consequence of plan_status='past_due' — a quiet note, not a
-                  red banner: attention, not alarm. */}
-              {isDue ? (
-                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3 -mt-2">
-                  Your scooter won't start until this is paid.
-                </Text>
-              ) : null}
-              {outstandingInvoices.length > 1 ? (
-                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold mb-2">
-                  ₹{outstandingTotal.toFixed(0)} total across {outstandingInvoices.length} invoices
-                </Text>
-              ) : null}
-
-              {outstandingInvoices.map((inv) => {
-                const perDay = inv.late_fee && inv.days_late ? inv.late_fee / inv.days_late : 0;
-                const total = inv.total_due ?? inv.balance_amount;
-                return (
-                  <View
-                    key={inv.id}
-                    className="rounded-2xl border mb-4 overflow-hidden"
-                    style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
-                  >
-                    <View className="p-5">
-                      <View className="flex-row items-center justify-between mb-3">
-                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">
-                          {invoiceLabel(inv)}
-                        </Text>
-                        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
-                          Due {formatDate(inv.due_on)}
-                        </Text>
-                      </View>
-
-                      <BillLine label="Rental plan amount" amount={inv.total_amount} />
-                      {inv.allocated_amount > 0 ? (
-                        <BillLine label="Already paid" amount={inv.allocated_amount} negative />
-                      ) : null}
-                      {inv.late_fee ? (
-                        <BillLine
-                          label={`Late fee (${inv.days_late} day${inv.days_late === 1 ? '' : 's'} × ₹${perDay.toFixed(0)}/day)`}
-                          amount={inv.late_fee}
-                          attention
-                        />
-                      ) : null}
-                      <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
-                      <View className="flex-row items-center justify-between pb-1">
-                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Total</Text>
-                        <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">₹{total.toFixed(0)}</Text>
-                      </View>
-                    </View>
-
-                    <TouchableOpacity
-                      onPress={() => payInvoice(inv)}
-                      disabled={payingInvoiceId === inv.id}
-                      className="mx-5 mb-5 py-3.5 rounded-2xl items-center flex-row justify-center"
-                      style={{ backgroundColor: COLORS.primary, opacity: payingInvoiceId === inv.id ? 0.6 : 1 }}
-                    >
-                      {payingInvoiceId === inv.id ? (
-                        <Spinner size={16} color="#FFF" />
-                      ) : (
-                        <CreditCard size={16} color="#FFF" />
-                      )}
-                      <Text className="text-white text-sm font-bold ml-2">
-                        {payingInvoiceId === inv.id ? 'Processing…' : `Pay ₹${total.toFixed(0)}`}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
-              {payError ? (
-                <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mb-3">{payError}</Text>
-              ) : null}
-            </>
+            renderOutstandingInvoices()
           ) : hasActiveReturn ? (
             // A return is mid-flight for this rental — Renew/Review/Plan
             // Expired never make sense here (see hasActiveReturn above), so

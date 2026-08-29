@@ -1,5 +1,5 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
-import type { PaginatedResult, Refund, RefundStatus, RefundType } from "@/types";
+import type { PaginatedResult, Refund, RefundDeductions, RefundStatus, RefundType } from "@/types";
 
 export interface RefundFilters {
   status?: RefundStatus | "all";
@@ -55,7 +55,22 @@ export async function fetchRefundSettlement(id: string): Promise<RefundSettlemen
   return apiClient.get<RefundSettlement>(`/refunds/${id}/settlement`);
 }
 
-/** POST /refunds/:id/retry — approves a pending refund (either refund_type) or re-attempts a failed one. */
+/** POST /refunds/:id/retry — approves a REVIEWED pending refund (either refund_type) or re-attempts a failed one. */
 export async function retryRefund(id: string): Promise<Refund> {
   return apiClient.post<Refund>(`/refunds/${id}/retry`);
+}
+
+export interface ReviewRefundInput {
+  deductions: RefundDeductions;
+  note?: string;
+}
+
+/** POST /refunds/:id/review — itemise deductions and mark the refund reviewed. Must run before approval. */
+export async function reviewRefund(id: string, input: ReviewRefundInput): Promise<Refund> {
+  return apiClient.post<Refund>(`/refunds/${id}/review`, input);
+}
+
+/** POST /refunds/:id/reject — the refund is not owed. Terminal. */
+export async function rejectRefund(id: string, reason: string): Promise<Refund> {
+  return apiClient.post<Refund>(`/refunds/${id}/reject`, { reason });
 }

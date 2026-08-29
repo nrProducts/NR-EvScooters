@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "../../config/supabase";
 import { getRazorpay } from "../../config/razorpay";
 import { businessRule, conflict, notFound } from "../../common/AppError";
@@ -9,7 +10,10 @@ import {
     getDepositForSubscription, getDepositForSubscriptionOrNull, refundableAmountForSubscription,
 } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
-import { ListRefundsFilters, RefundBookingSummary, RefundRow, RefundType } from "./refunds.types";
+import {
+    ListRefundsFilters, RefundBookingSummary, RefundRow, RefundType,
+    ReviewRefundInput, RejectRefundInput,
+} from "./refunds.types";
 import { businessToday } from "../../common/dates";
 
 /**
@@ -31,7 +35,11 @@ import { businessToday } from "../../common/dates";
  */
 
 const REFUND_COLUMNS = `
-    id, user_id, payment_transaction_id, amount, status, reason,
+    id, user_id, payment_transaction_id, amount, gross_amount, status, reason,
+    deduction_transaction_fee, deduction_other_charges, deduction_cancellation_charge,
+    reviewed_at, review_note, rejected_at, rejection_reason,
+    reviewed_by:users!refunds_reviewed_by_user_id_fkey(id, full_name),
+    rejected_by:users!refunds_rejected_by_user_id_fkey(id, full_name),
     gateway_refund_id, attempt_count, last_attempted_at, failure_reason,
     initiated_at, completed_at, created_at,
     payment_transactions(
@@ -80,8 +88,18 @@ interface RawRefundRow {
     user_id: string;
     payment_transaction_id: string;
     amount: number | string;
+    gross_amount: number | string;
     status: RefundRow["status"];
     reason: RefundType;
+    deduction_transaction_fee: number | string;
+    deduction_other_charges: number | string;
+    deduction_cancellation_charge: number | string;
+    reviewed_at: string | null;
+    review_note: string | null;
+    rejected_at: string | null;
+    rejection_reason: string | null;
+    reviewed_by: unknown;
+    rejected_by: unknown;
     gateway_refund_id: string | null;
     attempt_count: number;
     last_attempted_at: string | null;
@@ -139,13 +157,30 @@ function toRefundBookingSummary(row: RawRefundRow): RefundBookingSummary | null 
 
 function toRefundRow(row: RawRefundRow, depositId: string | null = null): RefundRow {
     const { txn, booking } = chainOf(row);
+    const deductions = {
+        transaction_fee: Number(row.deduction_transaction_fee ?? 0),
+        other_charges: Number(row.deduction_other_charges ?? 0),
+        cancellation_charge: Number(row.deduction_cancellation_charge ?? 0),
+    };
+    const deductionTotal = round2(
+        deductions.transaction_fee + deductions.other_charges + deductions.cancellation_charge,
+    );
     return {
         id: row.id,
         deposit_id: depositId,
         booking_id: booking?.id ?? null,
         user_id: row.user_id,
         amount: Number(row.amount),
+        gross_amount: Number(row.gross_amount ?? row.amount),
+        deductions,
+        deduction_total: deductionTotal,
         status: row.status,
+        reviewed_at: row.reviewed_at,
+        reviewed_by: unwrap<{ id: string; full_name: string }>(row.reviewed_by),
+        review_note: row.review_note,
+        rejected_at: row.rejected_at,
+        rejected_by: unwrap<{ id: string; full_name: string }>(row.rejected_by),
+        rejection_reason: row.rejection_reason,
         refund_type: row.reason,
         gateway_refund_id: row.gateway_refund_id,
         source_gateway_payment_id: txn?.gateway_payment_id ?? null,
@@ -161,29 +196,55 @@ function toRefundRow(row: RawRefundRow, depositId: string | null = null): Refund
 }
 
 /**
- * The captured payment to refund against.
+ * The captured payment a refund should reverse.
  *
- * Chosen at CREATION time now, not at gateway time. The most recent succeeded
- * payment on the subscription is the right answer for every case this system
- * has: the initial capture pays both the plan fee and the deposit in one
- * Razorpay payment, and a renewal is its own payment.
+ * `refunds.payment_transaction_id` is NOT NULL and `assert_refund_within_payment`
+ * rejects any refund that would take a single transaction past what it
+ * captured — so "most recent payment" is wrong once a subscription has more
+ * than one (an initial capture that held the deposit, plus renewals). This
+ * picks the succeeded transaction with the most remaining refundable
+ * headroom that still covers `minHeadroom`; if none does, the roomiest one
+ * (the DB then rejects with a clear message rather than a silent mispick).
+ *
+ * The payer is read off the ORDER, not the transaction — the transaction
+ * only records what the gateway did.
  */
-async function latestCapturedPayment(subscriptionId: string): Promise<{ id: string; userId: string } | null> {
+export async function paymentForRefund(
+    subscriptionId: string,
+    minHeadroom = 0,
+): Promise<{ id: string; userId: string } | null> {
     const { data, error } = await supabaseAdmin
         .from("payment_transactions")
-        .select("id, payment_orders!inner(user_id, invoices!inner(subscription_id))")
+        .select("id, amount, payment_orders!inner(user_id, invoices!inner(subscription_id))")
         .eq("payment_orders.invoices.subscription_id", subscriptionId)
         .eq("status", "succeeded")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .order("amount", { ascending: false });
     if (error) throw error;
-    if (!data) return null;
+    if (!data || data.length === 0) return null;
 
-    // The payer is on the ORDER, not the transaction — a transaction records
-    // what the gateway did, and only the order knows whose checkout it was.
-    const order = unwrap<{ user_id: string }>(data.payment_orders);
-    return order ? { id: data.id, userId: order.user_id } : null;
+    const ids = data.map((d) => d.id);
+    const { data: refs, error: refError } = await supabaseAdmin
+        .from("refunds")
+        .select("payment_transaction_id, amount")
+        .in("payment_transaction_id", ids)
+        .neq("status", "failed");
+    if (refError) throw refError;
+
+    const refundedBy = new Map<string, number>();
+    for (const r of refs ?? []) {
+        refundedBy.set(
+            r.payment_transaction_id,
+            round2((refundedBy.get(r.payment_transaction_id) ?? 0) + Number(r.amount)),
+        );
+    }
+
+    const ranked = data
+        .map((d) => ({ d, headroom: round2(Number(d.amount) - (refundedBy.get(d.id) ?? 0)) }))
+        .sort((a, b) => b.headroom - a.headroom);
+    const pick = ranked.find((x) => x.headroom >= minHeadroom - 0.01) ?? ranked[0];
+
+    const order = unwrap<{ user_id: string }>(pick.d.payment_orders);
+    return order ? { id: pick.d.id, userId: order.user_id } : null;
 }
 
 async function readRefund(id: string): Promise<RawRefundRow | null> {
@@ -238,7 +299,7 @@ export async function initiateRefund(depositId: string, actor: AuthContext | nul
     const amount = await refundableAmountForSubscription(deposit.subscription_id, Number(deposit.amount));
     if (amount <= 0) throw businessRule("Nothing is left to refund on this deposit.");
 
-    const payment = await latestCapturedPayment(deposit.subscription_id);
+    const payment = await paymentForRefund(deposit.subscription_id, amount);
     if (!payment) throw businessRule("No captured payment found to refund against.");
 
     const { data, error: insertError } = await supabaseAdmin
@@ -247,6 +308,7 @@ export async function initiateRefund(depositId: string, actor: AuthContext | nul
             user_id: payment.userId,
             payment_transaction_id: payment.id,
             amount,
+            gross_amount: amount,
             reason: "deposit_release",
             status: "pending",
         })
@@ -302,7 +364,7 @@ export async function initiateCancellationRefund(
     const existing = await existingRefund(subscriptionId, "booking_cancellation");
     if (existing) return existing.id;
 
-    const payment = await latestCapturedPayment(subscriptionId);
+    const payment = await paymentForRefund(subscriptionId, amount);
     if (!payment) throw businessRule("No captured payment found to refund against.");
 
     const { data, error: insertError } = await supabaseAdmin
@@ -311,6 +373,7 @@ export async function initiateCancellationRefund(
             user_id: payment.userId,
             payment_transaction_id: payment.id,
             amount,
+            gross_amount: amount,
             reason: "booking_cancellation",
             status: "pending",
         })
@@ -339,6 +402,109 @@ export async function initiateCancellationRefund(
     });
 
     return refund.id;
+}
+
+/**
+ * Admin review — itemise the deductions (transaction fee, other charges,
+ * cancellation charge) against the frozen gross amount and stamp
+ * `reviewed_at`. Approval (processRefund) is blocked until this has run.
+ * A refund whose deductions wipe out the whole amount should be REJECTED,
+ * not reviewed to ₹0.
+ */
+export async function reviewRefund(
+    refundId: string,
+    input: ReviewRefundInput,
+    actor: AuthContext,
+): Promise<RefundRow> {
+    const refund = await readRefund(refundId);
+    if (!refund) throw notFound("Refund not found.");
+    if (refund.status !== "pending") {
+        throw conflict(`This refund is ${refund.status} and can no longer be reviewed.`);
+    }
+
+    const d = input.deductions;
+    if (d.transaction_fee < 0 || d.other_charges < 0 || d.cancellation_charge < 0) {
+        throw businessRule("Deductions cannot be negative.");
+    }
+    const gross = Number(refund.gross_amount ?? refund.amount);
+    const total = round2(d.transaction_fee + d.other_charges + d.cancellation_charge);
+    if (total > gross) {
+        throw businessRule(`Deductions (₹${total}) cannot exceed the refund amount (₹${gross}).`);
+    }
+    const netAmount = round2(gross - total);
+    if (netAmount <= 0) {
+        throw businessRule("Nothing would be left to refund — reject the refund instead.");
+    }
+
+    const { error } = await supabaseAdmin
+        .from("refunds")
+        .update({
+            amount: netAmount,
+            deduction_transaction_fee: round2(d.transaction_fee),
+            deduction_other_charges: round2(d.other_charges),
+            deduction_cancellation_charge: round2(d.cancellation_charge),
+            reviewed_at: new Date().toISOString(),
+            reviewed_by_user_id: actor.id,
+            review_note: input.note?.trim() || null,
+        })
+        .eq("id", refundId)
+        .eq("status", "pending");
+    if (error) throw error;
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: refund.user_id, action: "refund.reviewed",
+        entityType: "refund", entityId: refundId,
+        after: { gross_amount: gross, deductions: d, net_amount: netAmount, note: input.note ?? null },
+    });
+
+    const after = await readRefund(refundId);
+    return toRefundRow(after ?? refund);
+}
+
+/**
+ * Admin reject — the refund is not owed (or is disputed). Terminal: status
+ * 'rejected', with a reason. The rider is told. A held deposit stays held;
+ * a cancelled booking's plan stays cancelled.
+ */
+export async function rejectRefund(
+    refundId: string,
+    input: RejectRefundInput,
+    actor: AuthContext,
+): Promise<RefundRow> {
+    const refund = await readRefund(refundId);
+    if (!refund) throw notFound("Refund not found.");
+    if (refund.status !== "pending") {
+        throw conflict(`This refund is ${refund.status} and can no longer be rejected.`);
+    }
+    const reason = input.reason.trim();
+    if (reason.length < 3) throw businessRule("Give a reason for rejecting this refund.");
+
+    const { error } = await supabaseAdmin
+        .from("refunds")
+        .update({
+            status: "rejected",
+            rejected_at: new Date().toISOString(),
+            rejected_by_user_id: actor.id,
+            rejection_reason: reason,
+        })
+        .eq("id", refundId)
+        .eq("status", "pending");
+    if (error) throw error;
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: refund.user_id, action: "refund.rejected",
+        entityType: "refund", entityId: refundId, after: { reason },
+    });
+
+    await notifyUser(refund.user_id, {
+        template: "refund_rejected",
+        title: "Refund Not Approved",
+        body: `Your refund request was reviewed and not approved: ${reason}. Contact support if you have questions.`,
+        screen: refund.reason === "booking_cancellation" ? "booking-history" : "my-plan",
+    });
+
+    const after = await readRefund(refundId);
+    return toRefundRow(after ?? refund);
 }
 
 async function markRefundFailed(refundId: string, reason: string): Promise<void> {
@@ -370,6 +536,13 @@ export async function processRefund(
     if (!refund) throw notFound("Refund not found.");
     if (refund.status === "succeeded") return toRefundRow(refund);
     if (refund.status === "processing") throw conflict("This refund is already being processed.");
+    if (refund.status === "rejected") throw conflict("This refund was rejected and can't be processed.");
+    // The review gate: a pending refund must be reviewed before it can be
+    // approved. Settlement refunds are stamped reviewed_at at creation (the
+    // admin reviewed the settlement itself), so they still auto-process.
+    if (refund.status === "pending" && !refund.reviewed_at) {
+        throw businessRule("Review this refund before approving it.");
+    }
 
     const { txn, subscription } = chainOf(refund);
     const sourcePaymentId = txn?.gateway_payment_id;
@@ -377,6 +550,48 @@ export async function processRefund(
         const message = "The payment this refund reverses has no gateway reference.";
         await markRefundFailed(refundId, message);
         throw businessRule(message);
+    }
+
+    // Cash / offline payments (recorded by staff — see recordOfflinePayment)
+    // mint a `manual_…` id. There is no gateway payout to make: the money goes
+    // back the same way it came in (cash at the hub), so the approval records
+    // the refund as settled directly.
+    if (sourcePaymentId.startsWith("manual_")) {
+        const nowIso = new Date().toISOString();
+        const { error: updErr } = await supabaseAdmin
+            .from("refunds")
+            .update({
+                status: "succeeded",
+                gateway_refund_id: `manual_refund_${randomUUID()}`,
+                completed_at: nowIso,
+                last_attempted_at: nowIso,
+                attempt_count: refund.attempt_count + 1,
+            })
+            .eq("id", refundId)
+            .neq("status", "succeeded");
+        if (updErr) throw updErr;
+
+        if (subscription) {
+            await releaseDepositIfFullyRefunded(subscription.id, Number(refund.amount));
+        }
+
+        await writeAudit({
+            actorId: actor?.id ?? null, targetUserId: refund.user_id, action: "refund.processed",
+            entityType: "refund", entityId: refundId,
+            after: { source: "manual_offline", amount: Number(refund.amount) },
+        });
+
+        await notifyUser(refund.user_id, {
+            template: "refund_completed",
+            title: "Refund Completed",
+            body: refund.reason === "booking_cancellation"
+                ? `Your refund of ₹${Number(refund.amount)} for the cancelled booking has been processed.`
+                : `Your refund of ₹${Number(refund.amount)} has been processed.`,
+            screen: refund.reason === "booking_cancellation" ? "booking-history" : "my-plan",
+        });
+
+        const after = await readRefund(refundId);
+        return toRefundRow(after ?? refund);
     }
 
     await supabaseAdmin

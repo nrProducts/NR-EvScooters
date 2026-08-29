@@ -267,6 +267,57 @@ export async function resumeSubscription(
 }
 
 /**
+ * Ends the subscription behind a booking that has just been cancelled.
+ *
+ * A booking cancellation used to leave the subscription untouched, so a
+ * rider who cancelled a paid booking still showed a `plan_status = 'active'`
+ * plan fleet-wide (see the SwapNgo bug-fix backlog, item 4). This closes it:
+ * any non-terminal subscription for the booking (`pending_payment`, `active`,
+ * `past_due`, `paused`) moves to `cancelled` with `ended_at` stamped.
+ *
+ * Idempotent and safe to call unconditionally — a no-op when there is no
+ * subscription, or it is already `ended`/`cancelled`. Deliberately does NOT
+ * touch `subscription_periods`: that mirrors the normal end-of-rental path
+ * (completeRide in rentals.service.ts), and the billing sweeps already skip
+ * `ended`/`cancelled` subscriptions.
+ */
+export async function cancelSubscriptionForBooking(
+    bookingId: string,
+    reason: string | null,
+    actor: AuthContext | null,
+): Promise<void> {
+    const { data: subscription, error } = await supabaseAdmin
+        .from("subscriptions")
+        .select("id, user_id, status")
+        .eq("booking_id", bookingId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!subscription) return;
+    if (subscription.status === "ended" || subscription.status === "cancelled") return;
+
+    const endedAt = new Date().toISOString();
+    const { data: updated, error: updateError } = await supabaseAdmin
+        .from("subscriptions")
+        .update({ status: "cancelled", ended_at: endedAt })
+        .eq("id", subscription.id)
+        .in("status", ["pending_payment", "active", "past_due", "paused"])
+        .select("id")
+        .maybeSingle();
+    if (updateError) throw updateError;
+    if (!updated) return; // Raced to a terminal state by a concurrent call — idempotent.
+
+    await writeAudit({
+        actorId: actor?.id ?? null,
+        targetUserId: subscription.user_id,
+        action: "plan.updated",
+        entityType: "subscription",
+        entityId: subscription.id,
+        before: { status: subscription.status },
+        after: { status: "cancelled", ended_at: endedAt, reason: reason ?? "booking cancelled" },
+    });
+}
+
+/**
  * Sets (or clears) a per-subscription late-fee rate.
  *
  * The successor to `bookings.late_fee_override`. Rather than a nullable column

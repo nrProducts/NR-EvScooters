@@ -7,7 +7,7 @@ import {
 } from './fixtures/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
 import {
-  FREE_CANCELLATION_GRACE_MINUTES, computeCancellationCharge,
+  computeCancellationCharge,
 } from '../src/lib/cancellationPolicy';
 
 const fmt = (d: Date): string => {
@@ -178,49 +178,38 @@ describe('MockBookingRepository.cancel', () => {
     expect((await users.me()).has_active_booking).toBe(false);
   });
 
-  it('records no fee and a full refund when cancelling well before pickup', async () => {
+  it('keeps back the first tier (25%) on a booking cancelled within 30 min — deposit refunded in full', async () => {
     await asVerifiedRider();
     const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(5) });
-
-    const cancelled = await bookings.cancel(created.id);
-    expect(cancelled.cancellation_penalty_amount).toBe(0);
-    // Mock mode has no real gateway, so a nonzero refund "completes" instantly.
-    expect(cancelled.refund_status).toBe('processed');
-    expect(cancelled.refund_amount).toBe((created.plan?.price ?? 0) + (created.plan?.deposit_amount ?? 0));
-  });
-
-  it('charges nothing for a booking cancelled right after it was made, even for tomorrow', async () => {
-    // The reported bug: booking FOR TOMORROW and cancelling minutes later was
-    // charged 25%, because the notice rule only asks how close pickup is.
-    await asVerifiedRider();
-    const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(1) });
-
-    const cancelled = await bookings.cancel(created.id);
-    expect(cancelled.cancellation_penalty_amount).toBe(0);
-    expect(cancelled.refund_amount).toBe((created.plan?.price ?? 0) + (created.plan?.deposit_amount ?? 0));
-  });
-
-  it('keeps back 25% on the rental only once the grace period has passed and pickup is imminent — the deposit is always refunded in full', async () => {
-    await asVerifiedRider();
-    // startDayIn(1) can land on a Sunday and be pushed to +2 (which is free),
-    // so assert against the rule's own verdict rather than a fixed amount.
-    const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(1) });
     const price = created.plan?.price ?? 0;
     const deposit = created.plan?.deposit_amount ?? 0;
 
-    // Age the booking past the grace window â€” otherwise a freshly created mock
-    // booking is always free and the late path is unreachable.
-    const createdAt = new Date(Date.now() - (FREE_CANCELLATION_GRACE_MINUTES + 5) * 60_000).toISOString();
+    const cancelled = await bookings.cancel(created.id);
+    const charge = computeCancellationCharge({ planPaid: price, depositAmount: deposit, createdAt: created.created_at });
+
+    expect(charge.penaltyPercent).toBe(25);
+    expect(cancelled.cancellation_penalty_amount).toBe(charge.penaltyAmount);
+    expect(cancelled.refund_amount).toBe(charge.refundAmount);
+    // Mock mode has no real gateway, so a nonzero refund "completes" instantly.
+    expect(cancelled.refund_status).toBe('processed');
+  });
+
+  it('keeps back 100% (no plan refund) once past every tier — deposit still refunded', async () => {
+    await asVerifiedRider();
+    const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(5) });
+    const deposit = created.plan?.deposit_amount ?? 0;
+
+    const createdAt = new Date(Date.now() - 120 * 60_000).toISOString(); // 2h ago — past 60-min tier
     backdateBooking(created.id, createdAt);
 
     const cancelled = await bookings.cancel(created.id);
     const charge = computeCancellationCharge({
-      startDay: created.start_day, planPrice: price, depositAmount: deposit, createdAt,
+      planPaid: created.plan?.price ?? 0, depositAmount: deposit, createdAt,
     });
 
+    expect(charge.penaltyPercent).toBe(100);
     expect(cancelled.cancellation_penalty_amount).toBe(charge.penaltyAmount);
-    expect(cancelled.refund_amount).toBe(charge.refundAmount);
-    if (charge.isLate) expect(cancelled.cancellation_penalty_amount).toBeGreaterThan(0);
+    expect(cancelled.refund_amount).toBe(deposit);
   });
 
   it('refuses a second cancellation', async () => {

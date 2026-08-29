@@ -2,8 +2,10 @@ import { Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import { computeInvoiceLateFee } from "../payments/renewalFee";
+import { recordOfflinePayment } from "../payments/payments.service";
 import * as service from "./invoices.service";
 import { ListInvoicesFilters } from "./invoices.types";
+import type { AdhocChargeBody } from "./invoices.validation";
 
 export async function listInvoicesHandler(req: AuthedRequest, res: Response) {
     const filters = validatedQuery<ListInvoicesFilters>(req);
@@ -65,4 +67,26 @@ export async function refundInvoiceHandler(req: AuthedRequest, res: Response) {
     const { reason } = req.body as { reason?: string };
     const invoice = await service.refundInvoice(req.params.id as string, reason, req.user!);
     res.json(invoice);
+}
+
+/**
+ * Records a payment collected offline (cash at the hub, a confirmed UPI
+ * transfer, …) against this invoice. Works for any unpaid invoice — an
+ * admin-created booking's first period, a renewal a rider paid at the hub,
+ * a return settlement, etc.
+ */
+export async function recordInvoicePaymentHandler(req: AuthedRequest, res: Response) {
+    const { method } = req.body as { method: "upi" | "card" | "netbanking" | "wallet" | "cash" };
+    await recordOfflinePayment(req.params.id as string, method, req.user!);
+    res.json(await service.getInvoiceById(req.params.id as string));
+}
+
+/** Raises a one-off charge against a rider (lost key, cleaning fee, fine, …). */
+export async function adhocChargeHandler(req: AuthedRequest, res: Response) {
+    const body = req.body as AdhocChargeBody;
+    const invoice = await service.addAdhocCharge(
+        { userId: body.user_id, description: body.description, amount: body.amount, payment: body.payment },
+        req.user!,
+    );
+    res.status(201).json(invoice);
 }

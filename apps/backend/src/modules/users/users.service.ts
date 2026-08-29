@@ -190,9 +190,10 @@ export async function listUsers(
 
     const rows = (data ?? []) as unknown as RawUserRow[];
     const userIds = rows.map((r) => r.id);
-    const [vehicles, plans] = await Promise.all([
+    const [vehicles, plans, outstanding] = await Promise.all([
         activeVehicleByUser(userIds),
         currentPlanByUser(userIds),
+        outstandingByUser(userIds),
     ]);
 
     const items: UserListItem[] = rows.map((row) => {
@@ -205,6 +206,7 @@ export async function listUsers(
             payment_status: planInfo?.payment_status ?? null,
             plan_started_at: planInfo?.plan_started_at ?? null,
             next_due_at: planInfo?.next_due_at ?? null,
+            outstanding_amount: outstanding.get(row.id) ?? 0,
         };
     });
 
@@ -230,11 +232,12 @@ export async function getUserById(id: string, actor: AuthContext): Promise<UserD
     // Deleted profiles are visible to admins only.
     if (row.deleted_at && actor.role !== "admin") throw notFound("User not found.");
 
-    const [vehicles, plans, documents, lastLoginAt] = await Promise.all([
+    const [vehicles, plans, documents, lastLoginAt, outstanding] = await Promise.all([
         activeVehicleByUser([id]),
         currentPlanByUser([id]),
         documentsForUser(id),
         lastLoginFor(id),
+        outstandingByUser([id]),
     ]);
     const planInfo = plans.get(id);
 
@@ -246,6 +249,7 @@ export async function getUserById(id: string, actor: AuthContext): Promise<UserD
         payment_status: planInfo?.payment_status ?? null,
         plan_started_at: planInfo?.plan_started_at ?? null,
         next_due_at: planInfo?.next_due_at ?? null,
+        outstanding_amount: outstanding.get(id) ?? 0,
         last_login_at: lastLoginAt,
         kyc_completion_percent: kycCompletionPercent(documents),
         // Storage paths are never included — see §2 "Do not expose confidential
@@ -1402,6 +1406,32 @@ async function currentPlanByUser(userIds: string[]): Promise<Map<string, {
         });
     }
 
+    return map;
+}
+
+/**
+ * Real money each rider owes right now — the sum of every unpaid, non-void
+ * invoice balance from `v_invoice_balances`. This is the honest answer to
+ * "is this rider due?", independent of whether a plan is still active: a
+ * fully-paid rider with a completed rental owes 0, and a rider with an
+ * unpaid return settlement owes that amount even after the plan has ended.
+ */
+async function outstandingByUser(userIds: string[]): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    if (userIds.length === 0) return map;
+
+    const { data, error } = await supabaseAdmin
+        .from("v_invoice_balances")
+        .select("user_id, balance_amount, is_paid, status")
+        .in("user_id", userIds);
+    if (error) throw error;
+
+    for (const row of data ?? []) {
+        if (!row.user_id || row.is_paid || row.status === "void") continue;
+        const balance = Number(row.balance_amount);
+        if (balance <= 0) continue;
+        map.set(row.user_id, Math.round(((map.get(row.user_id) ?? 0) + balance) * 100) / 100);
+    }
     return map;
 }
 

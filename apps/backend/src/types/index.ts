@@ -232,6 +232,8 @@ export type EmittedNotificationCode =
     | "refund_needs_approval"
     | "refund_initiated"
     | "refund_completed"
+    | "refund_rejected"
+    | "adhoc_charge_added"
     // Support and broadcasts.
     | "support_ticket_created"
     | "support_status_updated"
@@ -250,7 +252,8 @@ export const EMITTED_NOTIFICATION_CODES: readonly EmittedNotificationCode[] = [
     "maintenance_plan_paused", "maintenance_quick_fix",
     "maintenance_temp_vehicle", "maintenance_vehicle_returned",
     "damage_added", "damage_dispute_resolved",
-    "refund_needs_approval", "refund_initiated", "refund_completed",
+    "refund_needs_approval", "refund_initiated", "refund_completed", "refund_rejected",
+    "adhoc_charge_added",
     "support_ticket_created", "support_status_updated", "admin_broadcast",
 ] as const;
 

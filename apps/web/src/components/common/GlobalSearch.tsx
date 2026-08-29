@@ -46,7 +46,9 @@ export function GlobalSearch() {
         onChange={(e) => setValue(e.target.value)}
         onFocus={() => setOpen(true)}
         onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
-        placeholder="Search riders, vehicles..."
+        placeholder="Search riders & vehicles…"
+        title="Search riders and vehicles — type a name, email, phone number or vehicle registration"
+        aria-label="Search riders and vehicles"
         className="h-10 rounded-full border-border/60 bg-card-hover/60 pl-10 focus-visible:bg-background"
       />
 

@@ -1949,13 +1949,23 @@ export type Database = {
           attempt_count: number
           completed_at: string | null
           created_at: string
+          deduction_cancellation_charge: number
+          deduction_other_charges: number
+          deduction_transaction_fee: number
           failure_reason: string | null
           gateway_refund_id: string | null
+          gross_amount: number
           id: string
           initiated_at: string
           last_attempted_at: string | null
           payment_transaction_id: string
           reason: Database["public"]["Enums"]["refund_reason"]
+          rejected_at: string | null
+          rejected_by_user_id: string | null
+          rejection_reason: string | null
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by_user_id: string | null
           status: Database["public"]["Enums"]["refund_status"]
           updated_at: string | null
           user_id: string
@@ -1965,13 +1975,23 @@ export type Database = {
           attempt_count?: number
           completed_at?: string | null
           created_at?: string
+          deduction_cancellation_charge?: number
+          deduction_other_charges?: number
+          deduction_transaction_fee?: number
           failure_reason?: string | null
           gateway_refund_id?: string | null
+          gross_amount: number
           id?: string
           initiated_at?: string
           last_attempted_at?: string | null
           payment_transaction_id: string
           reason: Database["public"]["Enums"]["refund_reason"]
+          rejected_at?: string | null
+          rejected_by_user_id?: string | null
+          rejection_reason?: string | null
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by_user_id?: string | null
           status?: Database["public"]["Enums"]["refund_status"]
           updated_at?: string | null
           user_id: string
@@ -1981,13 +2001,23 @@ export type Database = {
           attempt_count?: number
           completed_at?: string | null
           created_at?: string
+          deduction_cancellation_charge?: number
+          deduction_other_charges?: number
+          deduction_transaction_fee?: number
           failure_reason?: string | null
           gateway_refund_id?: string | null
+          gross_amount?: number
           id?: string
           initiated_at?: string
           last_attempted_at?: string | null
           payment_transaction_id?: string
           reason?: Database["public"]["Enums"]["refund_reason"]
+          rejected_at?: string | null
+          rejected_by_user_id?: string | null
+          rejection_reason?: string | null
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by_user_id?: string | null
           status?: Database["public"]["Enums"]["refund_status"]
           updated_at?: string | null
           user_id?: string
@@ -1998,6 +2028,20 @@ export type Database = {
             columns: ["payment_transaction_id"]
             isOneToOne: false
             referencedRelation: "payment_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refunds_rejected_by_user_id_fkey"
+            columns: ["rejected_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refunds_reviewed_by_user_id_fkey"
+            columns: ["reviewed_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
           {
@@ -2446,6 +2490,30 @@ export type Database = {
             referencedColumns: ["category"]
           },
         ]
+      }
+      cancellation_tiers: {
+        Row: {
+          created_at: string
+          id: string
+          penalty_percent: number
+          updated_at: string | null
+          upto_minutes: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          penalty_percent: number
+          updated_at?: string | null
+          upto_minutes: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          penalty_percent?: number
+          updated_at?: string | null
+          upto_minutes?: number
+        }
+        Relationships: []
       }
       return_recovery_settings: {
         Row: {
@@ -3969,7 +4037,7 @@ export type Database = {
         | "booking_cancellation"
         | "settlement"
         | "goodwill"
-      refund_status: "pending" | "processing" | "succeeded" | "failed"
+      refund_status: "pending" | "processing" | "succeeded" | "failed" | "rejected"
       related_person_role: "nominee" | "emergency_contact"
       rental_status: "active" | "completed" | "force_ended"
       return_status: "requested" | "inspected" | "approved" | "rejected"
@@ -4257,7 +4325,7 @@ export const Constants = {
         "settlement",
         "goodwill",
       ],
-      refund_status: ["pending", "processing", "succeeded", "failed"],
+      refund_status: ["pending", "processing", "succeeded", "failed", "rejected"],
       related_person_role: ["nominee", "emergency_contact"],
       rental_status: ["active", "completed", "force_ended"],
       return_status: ["requested", "inspected", "approved", "rejected"],

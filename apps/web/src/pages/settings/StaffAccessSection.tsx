@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, KeyRound, UserMinus, Ban, CheckCircle2, RefreshCw, UserPlus, MoreHorizontal, Shield } from "lucide-react";
+import { Eye, KeyRound, UserMinus, Ban, CheckCircle2, RefreshCw, UserPlus, Shield } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -9,7 +9,8 @@ import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import {
   useUsers, useUserPermissions, useChangeUserStatus, useChangeUserRole, useUpdateUserPermissions,
 } from "@/hooks/useUsers";
@@ -75,9 +76,7 @@ export default function StaffAccessSection() {
     { header: "Last Login", key: "last", render: (u) => u.last_login_at ? formatDate(u.last_login_at) : "Never", hideOnMobile: true },
     { header: "Actions", key: "actions", render: (u) => (
       <DropdownMenu>
-        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
-        </DropdownMenuTrigger>
+        <RowActionsButton label="Staff member actions" onClick={(e) => e.stopPropagation()} />
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => navigate(`/users/${u.id}`)}>
             <Eye className="mr-2 h-4 w-4" /> View profile

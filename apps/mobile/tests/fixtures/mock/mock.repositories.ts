@@ -957,8 +957,7 @@ export class MockBookingRepository implements BookingRepository {
         // Mock bookings go straight to 'confirmed' on create (no payment
         // step — see create() above), so they're always "paid" here.
         const charge = computeCancellationCharge({
-            startDay: row.start_day,
-            planPrice: plan?.price ?? null,
+            planPaid: plan?.price ?? null,
             depositAmount: plan?.deposit_amount ?? 0,
             createdAt: row.created_at,
         });
@@ -966,7 +965,7 @@ export class MockBookingRepository implements BookingRepository {
         row.status = 'cancelled';
         row.cancelled_at = nowIso();
         row.cancellation_reason = reason ?? null;
-        row.plan_price_at_cancellation = charge.chargeableAmount;
+        row.plan_price_at_cancellation = charge.planPaid;
         row.cancellation_penalty_amount = charge.penaltyAmount;
         row.refund_amount = charge.refundAmount;
         // No real gateway in mock mode — a refund "completes" instantly,

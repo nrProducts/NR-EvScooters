@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Razorpay from "razorpay";
 import { supabaseAdmin } from "../../config/supabase";
 import { createGatewayOrder, fetchGatewayPayment } from "../../config/razorpay";
@@ -110,6 +111,22 @@ export async function createOrderForBooking(
     bookingId: string,
     actor: AuthContext,
 ): Promise<CreateOrderResult> {
+    const invoiceId = await ensureBookingInvoice(bookingId, actor.id, actor.id);
+    return createOrderForInvoiceInternal(invoiceId, actor);
+}
+
+/**
+ * Materialises the subscription + opening invoice for a `pending_payment`
+ * booking — the shared prerequisite for both the rider's gateway checkout and
+ * an admin's offline-payment recording. `expectedUserId` guards ownership:
+ * pass the caller's id for a rider self-checkout, or the booking's rider id
+ * for a staff-created booking.
+ */
+export async function ensureBookingInvoice(
+    bookingId: string,
+    expectedUserId: string,
+    actorId: string,
+): Promise<string> {
     const { data: booking, error } = await supabaseAdmin
         .from("bookings")
         .select(`
@@ -121,16 +138,182 @@ export async function createOrderForBooking(
         .maybeSingle();
     if (error) throw error;
     // 404 rather than 403 for someone else's booking, same convention as cancelMyBooking.
-    if (!booking || booking.user_id !== actor.id) throw notFound("Booking not found.");
+    if (!booking || booking.user_id !== expectedUserId) throw notFound("Booking not found.");
     if (booking.status !== "pending_payment") throw conflict("This booking is not awaiting payment.");
 
     const plan = unwrap<{ id: string; billing_period: "daily" | "weekly" | "monthly" }>(booking.plans);
     if (!plan) throw businessRule("This booking has no plan attached.");
 
     const subscriptionId = await ensureSubscription(booking, plan);
-    const invoiceId = await ensureInitialInvoice(subscriptionId, actor.id);
+    return ensureInitialInvoice(subscriptionId, actorId);
+}
 
-    return createOrderForInvoiceInternal(invoiceId, actor);
+async function recomputeInvoiceTotal(invoiceId: string): Promise<void> {
+    const { data: items, error } = await supabaseAdmin
+        .from("invoice_items").select("amount").eq("invoice_id", invoiceId);
+    if (error) throw error;
+    const total = round2((items ?? []).reduce((sum, i) => sum + Number(i.amount), 0));
+    const { error: updateError } = await supabaseAdmin
+        .from("invoices")
+        .update({ subtotal_amount: total, total_amount: total })
+        .eq("id", invoiceId);
+    if (updateError) throw updateError;
+}
+
+/**
+ * Removes the adjustment lines with the given pricing-rule codes from a
+ * freshly generated invoice — for an admin-created booking where the operator
+ * chose not to apply e.g. the transaction fee or the welcome discount. Voids
+ * the backing adjustments and recomputes the total.
+ */
+export async function stripPricingCodes(
+    invoiceId: string,
+    codes: string[],
+    actor: AuthContext,
+): Promise<void> {
+    if (codes.length === 0) return;
+
+    const { data: items, error } = await supabaseAdmin
+        .from("invoice_items")
+        .select("id, subscription_adjustment_id, subscription_adjustments(code_snapshot)")
+        .eq("invoice_id", invoiceId)
+        .eq("item_type", "adjustment");
+    if (error) throw error;
+
+    const toRemove = (items ?? []).filter((i) => {
+        const code = unwrap<{ code_snapshot: string }>(i.subscription_adjustments)?.code_snapshot;
+        return code != null && codes.includes(code);
+    });
+    if (toRemove.length === 0) return;
+
+    const { error: delError } = await supabaseAdmin
+        .from("invoice_items").delete().in("id", toRemove.map((i) => i.id));
+    if (delError) throw delError;
+
+    const adjIds = toRemove.map((i) => i.subscription_adjustment_id).filter((x): x is string => !!x);
+    if (adjIds.length > 0) {
+        const { error: voidError } = await supabaseAdmin
+            .from("subscription_adjustments")
+            .update({
+                status: "voided",
+                voided_at: new Date().toISOString(),
+                voided_by_user_id: actor.id,
+                void_reason: "Not applied on admin-created booking.",
+            })
+            .in("id", adjIds);
+        if (voidError) throw voidError;
+    }
+
+    await recomputeInvoiceTotal(invoiceId);
+}
+
+/**
+ * Adds a single manual adjustment line so the invoice total equals
+ * `targetAmount` — the amount an admin says was actually collected. Positive
+ * or negative; a no-op when it already matches.
+ */
+export async function setInvoiceTotal(
+    invoiceId: string,
+    targetAmount: number,
+    actor: AuthContext,
+): Promise<void> {
+    const { data: items, error } = await supabaseAdmin
+        .from("invoice_items").select("amount, line_number").eq("invoice_id", invoiceId);
+    if (error) throw error;
+
+    const current = round2((items ?? []).reduce((sum, i) => sum + Number(i.amount), 0));
+    const delta = round2(targetAmount - current);
+    if (Math.abs(delta) < 0.01) return;
+
+    const nextLine = Math.max(0, ...(items ?? []).map((i) => i.line_number)) + 1;
+    const { error: insError } = await supabaseAdmin.from("invoice_items").insert({
+        invoice_id: invoiceId,
+        line_number: nextLine,
+        item_type: "adjustment",
+        description: delta < 0 ? "Admin adjustment (discount)" : "Admin adjustment",
+        quantity: 1,
+        unit_amount: delta,
+        amount: delta,
+    });
+    if (insError) throw insError;
+
+    await recomputeInvoiceTotal(invoiceId);
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: null, action: "invoice.adjusted",
+        entityType: "invoice", entityId: invoiceId,
+        after: { manual_adjustment: delta, new_total: round2(current + delta) },
+    });
+}
+
+/**
+ * Records a payment collected OUTSIDE the gateway — cash at the hub, a UPI
+ * transfer an admin confirms, etc. Builds a `gateway = 'manual'` order and
+ * runs it through the same `applyPaymentSuccess` core as a real capture, so
+ * the booking confirms, the deposit is held, and the subscription activates
+ * exactly as if the rider had paid in-app. The admin's chosen `method` is
+ * stored verbatim on the transaction (SwapNgo bug-fix backlog, item 7).
+ */
+export async function recordOfflinePayment(
+    invoiceId: string,
+    method: "upi" | "card" | "netbanking" | "wallet" | "cash",
+    actor: AuthContext,
+): Promise<void> {
+    const { data: invoice, error } = await supabaseAdmin
+        .from("invoices")
+        .select("id, user_id, purpose, due_on, subscription_id, subscription_period_id")
+        .eq("id", invoiceId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!invoice) throw notFound("Invoice not found.");
+
+    const { data: balance, error: balanceError } = await supabaseAdmin
+        .from("v_invoice_balances")
+        .select("balance_amount")
+        .eq("invoice_id", invoiceId)
+        .maybeSingle();
+    if (balanceError) throw balanceError;
+
+    const { lateFee } = await computeInvoiceLateFee(invoice);
+    const amount = round2(Number(balance?.balance_amount ?? 0) + lateFee);
+    if (amount <= 0) throw conflict("This invoice has already been paid.");
+
+    await supersedeOpenOrders(invoiceId, amount);
+
+    const idempotencyKey = `manual:${invoiceId}:${amount}:${Date.now()}`;
+    const { data: order, error: orderError } = await supabaseAdmin
+        .from("payment_orders")
+        .insert({
+            invoice_id: invoiceId,
+            user_id: invoice.user_id,
+            gateway: "manual",
+            idempotency_key: idempotencyKey,
+            amount,
+            status: "attempted",
+        })
+        .select("id")
+        .single();
+    if (orderError) throw orderError;
+
+    const gatewayPaymentId = `manual_${randomUUID()}`;
+    await applyPaymentSuccess({
+        paymentOrderId: order.id,
+        gatewayPaymentId,
+        gatewaySignature: null,
+        amount,
+        method: null,
+        trustedMethod: method,
+        rawPayload: { source: "admin_offline", recorded_by: actor.id, method },
+    });
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: invoice.user_id,
+        action: "payment.verified",
+        entityType: "payment_order",
+        entityId: order.id,
+        after: { amount, method, source: "admin_offline", gateway_payment_id: gatewayPaymentId },
+    });
 }
 
 /**
@@ -1027,7 +1210,15 @@ interface ApplyPaymentSuccessInput {
     gatewayPaymentId: string;
     gatewaySignature: string | null;
     amount: number;
+    /** Raw gateway-reported method — mapped via mapGatewayMethod. */
     method: string | null;
+    /**
+     * A method the CALLER has already validated (an admin-recorded offline
+     * payment). Stored verbatim, bypassing mapGatewayMethod — which
+     * deliberately drops anything the gateway would never report, `cash`
+     * included.
+     */
+    trustedMethod?: "upi" | "card" | "netbanking" | "wallet" | "cash";
     rawPayload: unknown;
 }
 
@@ -1061,7 +1252,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
             gateway_signature: input.gatewaySignature,
             status: "succeeded",
             amount: input.amount,
-            method: mapGatewayMethod(input.method),
+            method: input.trustedMethod ?? mapGatewayMethod(input.method),
             raw_payload: input.rawPayload as never,
         })
         .select("id")
@@ -1223,10 +1414,28 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     // not riding. Reusing the generic copy for those told a rider mid-return
     // that their rental was "active" while they were actually waiting on
     // admin to verify a payment and complete the return.
-    const paymentSuccessCopy = invoice?.purpose === "adhoc"
+    //
+    // 'adhoc' covers TWO cases that read very differently to the rider: the
+    // overdue plan-renewal late fee (mid-return, see overdueLateFee.ts) and a
+    // standalone charge an admin raised — a lost key, a fine, a cleaning fee
+    // (addAdhocCharge in invoices.service.ts), which has nothing to do with a
+    // return. `purpose` alone can't tell them apart; the late-fee invoice is
+    // the one whose line item is the "Overdue plan renewal — late fee …" text
+    // that overdueLateFee.ts writes.
+    const adhocLabel = invoice?.purpose === "adhoc"
+        ? await firstInvoiceItemDescription(order.invoice_id)
+        : null;
+    const isOverdueLateFee = !!adhocLabel && /^overdue plan renewal/i.test(adhocLabel);
+
+    const paymentSuccessCopy = isOverdueLateFee
         ? {
             title: "Late Fee Payment Successful",
             body: "Your late fee has been paid successfully. Your return is being processed.",
+        }
+        : invoice?.purpose === "adhoc"
+        ? {
+            title: "Payment Successful",
+            body: `${adhocLabel ?? "Your charge"} has been paid successfully.`,
         }
         : invoice?.purpose === "settlement"
             ? {
@@ -1280,6 +1489,23 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
  * Null when the period has since been deleted, which is treated as "neither
  * activation nor renewal" — the allocation still stands, nothing advances.
  */
+/**
+ * The first line item's description — used only to tell an overdue-late-fee
+ * 'adhoc' invoice (written by overdueLateFee.ts) apart from a standalone
+ * admin charge ('adhoc' too), which need different rider-facing copy.
+ */
+async function firstInvoiceItemDescription(invoiceId: string): Promise<string | null> {
+    const { data, error } = await supabaseAdmin
+        .from("invoice_items")
+        .select("description")
+        .eq("invoice_id", invoiceId)
+        .order("line_number", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+    if (error) throw error;
+    return data?.description ?? null;
+}
+
 async function getPeriodSequenceNumber(periodId: string): Promise<number | null> {
     const { data, error } = await supabaseAdmin
         .from("subscription_periods")

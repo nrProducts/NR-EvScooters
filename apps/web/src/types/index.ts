@@ -206,6 +206,12 @@ export interface AppUser {
   plan_started_at: string | null;
   /** The current period's `due_on`. <= today means due today or overdue. */
   next_due_at: string | null;
+  /**
+   * Real money owed right now — the sum of every unpaid, non-void invoice
+   * balance. 0 once every bill is paid, even while a completed rental's
+   * records still exist. This is the truth for "is this rider due?".
+   */
+  outstanding_amount: number;
 }
 
 export interface AppUserDocument {
@@ -709,8 +715,21 @@ export interface MyNotification {
 
 export type InvoiceStatus = "draft" | "issued" | "paid" | "overdue" | "void";
 export type PaymentStatus = "pending" | "processing" | "succeeded" | "failed" | "refunded";
-export type PaymentMethod = "card" | "wallet" | "upi" | "cash";
+/** `payment_method` enum — matches apps/backend enums.sql. */
+export type PaymentMethod = "card" | "wallet" | "upi" | "netbanking" | "cash";
 export type PaymentType = "rental" | "deposit" | "damage" | "penalty" | "refund" | "other";
+
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  upi: "UPI",
+  card: "Card",
+  netbanking: "Net Banking",
+  wallet: "Wallet",
+  cash: "Cash",
+};
+
+/** Display label for a payment method, tolerant of null / unknown values. */
+export const paymentMethodLabel = (m: string | null | undefined): string =>
+  m ? PAYMENT_METHOD_LABEL[m as PaymentMethod] ?? m : "—";
 
 /** A single invoice line — see 20260817100000_billing_charge_engine.sql. Empty on every invoice minted before that migration. */
 export interface InvoiceItem {
@@ -874,7 +893,13 @@ export interface Damage {
 // ---------------------------------------------------------------------------
 
 /** `succeeded`, matching `payment_status` — `success` was the odd one out. */
-export type RefundStatus = "pending" | "processing" | "succeeded" | "failed";
+export type RefundStatus = "pending" | "processing" | "succeeded" | "failed" | "rejected";
+
+export interface RefundDeductions {
+  transaction_fee: number;
+  other_charges: number;
+  cancellation_charge: number;
+}
 
 /**
  * `refund_reason`. Was `refund_type` with three values; there are four now,
@@ -903,10 +928,22 @@ export interface RefundBookingSummary {
 
 export interface Refund {
   id: string;
-  deposit_id: string;
-  booking_id: string;
+  deposit_id: string | null;
+  booking_id: string | null;
+  /** Payable amount — always `gross_amount` minus the sum of `deductions`. */
   amount: number;
+  /** Pre-deduction amount, frozen at creation. */
+  gross_amount: number;
+  deductions: RefundDeductions;
+  deduction_total: number;
   status: RefundStatus;
+  /** Set once an admin has reviewed the refund. Approval is blocked until then. */
+  reviewed_at: string | null;
+  reviewed_by: { id: string; full_name: string } | null;
+  review_note: string | null;
+  rejected_at: string | null;
+  rejected_by: { id: string; full_name: string } | null;
+  rejection_reason: string | null;
   refund_type: RefundType;
   gateway_refund_id: string | null;
   source_gateway_payment_id: string | null;
@@ -986,6 +1023,8 @@ export interface PaymentReviewView {
   reference: string | null;
   paidAt: string | null;
   status: "unpaid" | "paid" | "verified";
+  /** How the rider paid — kept separate from `status` so the Rental Operation screen shows Payment Type distinctly. */
+  method: "upi" | "card" | "netbanking" | "wallet" | "cash" | null;
 }
 
 export interface ReturnDetail {
@@ -1000,23 +1039,34 @@ export interface ReturnDetail {
 // Billing & Charges (admin) — mirrors apps/backend/src/modules/billing/billing.types.ts
 // ---------------------------------------------------------------------------
 
-export type ChargeCode =
-  | "transaction_fee" | "late_payment_fee" | "late_return_fee" | "damage"
-  | "cleaning" | "cancellation" | "extension" | "other";
-export const CHARGE_CODES: readonly ChargeCode[] = [
-  "transaction_fee", "late_payment_fee", "late_return_fee", "damage",
-  "cleaning", "cancellation", "extension", "other",
+/** `pricing_rules.code` is free text; this is only the set the console offers. */
+export type ChargeCode = string;
+
+/**
+ * The charge types the "New charge rule" dropdown offers. There is ONE "late
+ * fee" — the same rate covers a plan renewal paid late and a scooter returned
+ * late (see the Late Fee & Recovery note). Cancellation charges are not here:
+ * they're configured as tiers on the Cancellation Policy tab.
+ */
+export const CHARGE_CODES: readonly string[] = [
+  "transaction_fee", "late_fee", "damage", "cleaning", "extension", "other",
 ];
-export const CHARGE_CODE_LABELS: Record<ChargeCode, string> = {
+
+export const CHARGE_CODE_LABELS: Record<string, string> = {
   transaction_fee: "Transaction Fee",
-  late_payment_fee: "Late Payment Fee",
-  late_return_fee: "Late Return Fee",
+  late_fee: "Late Fee",
   damage: "Damage Charge",
   cleaning: "Cleaning Charge",
-  cancellation: "Cancellation Charge",
   extension: "Extension Charge",
   other: "Other Charge",
+  // Legacy codes still on old rules — kept so their rows render a label.
+  late_payment_fee: "Late Fee",
+  late_return_fee: "Late Fee",
+  cancellation: "Cancellation Charge",
 };
+
+/** Label for any code, falling back to the raw code for anything unlisted. */
+export const chargeCodeLabel = (code: string): string => CHARGE_CODE_LABELS[code] ?? code;
 
 export type ChargeAmountType = "fixed" | "percentage";
 export type ChargeFrequencyType = "one_time" | "every_cycle" | "every_n_cycles" | "per_booking" | "per_day";
@@ -1080,17 +1130,20 @@ export interface RiderCharge {
 // apps/backend/src/modules/billing/billing.types.ts.
 // ---------------------------------------------------------------------------
 
-export type DiscountCode = "loyalty" | "promotional" | "seasonal" | "referral" | "other";
-export const DISCOUNT_CODES: readonly DiscountCode[] = [
-  "loyalty", "promotional", "seasonal", "referral", "other",
+/** `pricing_rules.code` for discounts — free text; this is only the shipped set. */
+export type DiscountCode = string;
+export const DISCOUNT_CODES: readonly string[] = [
+  "welcome_discount", "referral", "loyalty", "promotional", "other",
 ];
-export const DISCOUNT_CODE_LABELS: Record<DiscountCode, string> = {
+export const DISCOUNT_CODE_LABELS: Record<string, string> = {
+  welcome_discount: "Welcome Discount",
   loyalty: "Loyalty Discount",
   promotional: "Promotional Discount",
   seasonal: "Seasonal Discount",
   referral: "Referral Discount",
   other: "Other Discount",
 };
+export const discountCodeLabel = (code: string): string => DISCOUNT_CODE_LABELS[code] ?? code;
 
 /** "Duration: N Billing Cycles" (spec) applies to cycles 1..N — distinct from a charge's every_n_cycles (multiples of N). */
 export type DiscountFrequencyType = "one_time" | "every_cycle" | "first_n_cycles";
@@ -1224,6 +1277,12 @@ export interface AdminRental {
   days_late: number | null;
   late_penalty_amount: number | null;
   late_fee_per_day: number | null;
+  /**
+   * RENEWAL late fee for a lapsed, unpaid plan — the "pay before returning"
+   * gate, collected in the rider app separately from the deposit settlement.
+   * Null when there's no subscription to be overdue against.
+   */
+  overdue_late_fee: { isLate: boolean; daysLate: number; lateFee: number; isSettled: boolean } | null;
 }
 
 // ---------------------------------------------------------------------------

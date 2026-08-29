@@ -23,6 +23,22 @@ export const refundBody = z.object({
     reason: z.string().trim().min(3, "Give a reason for the refund.").max(500).optional(),
 });
 
+export const recordPaymentBody = z.object({
+    method: z.enum(["upi", "card", "netbanking", "wallet", "cash"]),
+});
+
+export const adhocChargeBody = z.object({
+    user_id: z.string().uuid("Select a rider."),
+    description: z.string().trim().min(2, "Describe what the charge is for.").max(200),
+    amount: z.number().positive("Enter an amount greater than zero.").max(10_000_000),
+    payment: z.object({
+        method: z.enum(["upi", "card", "netbanking", "wallet", "cash"]),
+        status: z.enum(["paid", "pending"]),
+    }).optional(),
+});
+
+export type AdhocChargeBody = z.infer<typeof adhocChargeBody>;
+
 export const myInvoicesQuery = z.object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),

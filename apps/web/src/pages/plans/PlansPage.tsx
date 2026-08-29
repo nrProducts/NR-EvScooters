@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Pencil, Plus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -70,9 +71,13 @@ export default function PlansPage() {
       key: "actions",
       render: (p) =>
         canEdit ? (
-          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setEditing(p); }}>
+          <IconButton
+            variant="ghost"
+            label="Edit plan"
+            onClick={(e) => { e.stopPropagation(); setEditing(p); }}
+          >
             <Pencil className="h-4 w-4" />
-          </Button>
+          </IconButton>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         ),

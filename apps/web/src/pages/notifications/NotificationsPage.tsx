@@ -22,6 +22,7 @@ import { ApiError } from "@/services/api/httpClient";
 import { formatDateTime, cn } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
+import { notificationLink } from "@/lib/notificationLink";
 import { useAuthStore } from "@/store/authStore";
 import type { MyNotification, NotificationDeliveryStatus, NotificationLogEntry } from "@/types";
 
@@ -332,7 +333,8 @@ function RiderActivityTab() {
 
   const handleSelect = (n: MyNotification) => {
     if (!n.read_at) markRead.mutate(n.id);
-    if (n.payload?.screen) navigate(n.payload.screen);
+    const target = notificationLink(n);
+    if (target) navigate(target);
   };
 
   const columns: DataTableColumn<MyNotification>[] = [

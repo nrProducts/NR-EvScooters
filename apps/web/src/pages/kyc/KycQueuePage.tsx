@@ -87,7 +87,7 @@ export default function KycQueuePage() {
           <SearchBar
             value={search}
             onChange={(v) => { setSearch(v); setPage(1); }}
-            placeholder="Search by name, email or phone..."
+            placeholder="Search name, email or phone…"
             className="sm:max-w-xs"
           />
           <Select value={sort} onValueChange={(v) => { setSort(v as typeof sort); setPage(1); }}>

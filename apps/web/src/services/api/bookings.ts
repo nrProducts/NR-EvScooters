@@ -57,3 +57,28 @@ export async function fetchAvailableVehicles(bookingId: string): Promise<Availab
 export async function confirmPickup(bookingId: string, vehicleId?: string) {
   return apiClient.post(`/bookings/${bookingId}/pickup`, { vehicle_id: vehicleId });
 }
+
+export interface AdminCreateBookingInput {
+  user_id: string;
+  vehicle_model_id: string;
+  station_id: string;
+  plan_id: string;
+  start_day: string;
+  /** Override the plan duration (derived from the end date). */
+  duration_days?: number;
+  payment?: {
+    method: "upi" | "card" | "netbanking" | "wallet" | "cash";
+    status: "paid" | "pending";
+    /** Default true. False removes the auto transaction-fee line. */
+    apply_transaction_fee?: boolean;
+    /** Default true. False removes the auto welcome-discount line. */
+    apply_welcome_discount?: boolean;
+    /** Exact amount collected. */
+    amount?: number;
+  };
+}
+
+/** POST /bookings/admin-create — staff creates a booking for a rider, optionally recording an offline payment. */
+export async function adminCreateBooking(input: AdminCreateBookingInput): Promise<PickupBooking> {
+  return apiClient.post<PickupBooking>("/bookings/admin-create", input);
+}

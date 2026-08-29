@@ -8,6 +8,7 @@ import { useToastStore } from "@/store/toastStore";
 import { ToastViewport } from "@/components/common/ToastViewport";
 import { ApprovalPopup, type ApprovalRequest } from "@/components/common/ApprovalPopup";
 import { useNotificationTypeSummaries } from "@/hooks/useNotificationSettings";
+import { returnFlowDeepLink } from "@/lib/notificationLink";
 
 /*
  * `APPROVAL_TEMPLATES` lived here — a two-entry map deciding which incoming
@@ -193,21 +194,41 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
         const row = payload.new as {
           notification_type_code?: string; title?: string; body?: string;
+          notification_event_id?: string;
         };
         const type = notificationTypes?.find(
           (t) => t.notification_type === row.notification_type_code,
         );
         if (!type?.requires_action) return;
 
-        setApproval({
-          title: row.title ?? type.label ?? "Approval needed",
-          message: row.body ?? "Something needs your review.",
-          // A type marked as needing action with nowhere to go is a catalogue
-          // mistake, not a reason to drop the popup — the dashboard is at
-          // least somewhere the person can start looking.
-          reviewPath: type.action_path ?? "/",
-          reviewLabel: "Review",
-        });
+        const code = row.notification_type_code ?? "";
+
+        // Resolve the deep link from the source EVENT (which carries
+        // subject_type / subject_id / payload.screen) so a return-flow popup
+        // lands on that specific return's detail page rather than the generic
+        // list `action_path` points at. Falls back to action_path if the
+        // lookup turns up nothing.
+        void (async () => {
+          let reviewPath = type.action_path ?? "/";
+          if (row.notification_event_id) {
+            const { data: event } = await supabase
+              .from("notification_events")
+              .select("subject_type, subject_id, payload")
+              .eq("id", row.notification_event_id)
+              .maybeSingle();
+            const screen = (event?.payload as { screen?: string } | null)?.screen;
+            reviewPath =
+              returnFlowDeepLink(code, event?.subject_type ?? null, event?.subject_id ?? null) ??
+              screen ??
+              reviewPath;
+          }
+          setApproval({
+            title: row.title ?? type.label ?? "Approval needed",
+            message: row.body ?? "Something needs your review.",
+            reviewPath,
+            reviewLabel: "Review",
+          });
+        })();
       },
     };
 

@@ -1,188 +1,109 @@
 import { describe, expect, it } from "vitest";
 import { computeCancellationCharge } from "../src/modules/bookings/bookings.service";
 import {
-    FREE_CANCELLATION_GRACE_MINUTES, FREE_CANCELLATION_NOTICE_DAYS, LATE_CANCELLATION_PENALTY_RATE,
+    DEFAULT_CANCELLATION_TIERS, BEYOND_LAST_TIER_PENALTY_PERCENT,
 } from "../src/modules/bookings/cancellation.constants";
 
-// Local-date formatting (NOT toISOString, which is UTC-based and can land on
-// the wrong calendar day depending on the runner's offset) — matches how
-// computeCancellationCharge parses its input.
-const fmt = (d: Date): string => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-};
+/** `createdAt` for a booking made `minutesAgo` minutes before `now`. */
+const createdMinutesAgo = (minutesAgo: number, now: Date): string =>
+    new Date(now.getTime() - minutesAgo * 60_000).toISOString();
 
-/** A start_day `offset` whole days from today, in local time. */
-const dayOffset = (offset: number): string => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + offset);
-    return fmt(d);
-};
+describe("computeCancellationCharge — tier resolution (default tiers 30→25%, 60→50%)", () => {
+    const now = new Date("2026-08-29T12:00:00Z");
 
-describe("computeCancellationCharge — free/late boundary", () => {
-    it("is free exactly at the notice boundary (start_day = today + 2)", () => {
-        const c = computeCancellationCharge({ startDay: dayOffset(FREE_CANCELLATION_NOTICE_DAYS), planPrice: 4000 });
-        expect(c.daysUntilPickup).toBe(2);
-        expect(c.isLate).toBe(false);
-        expect(c.penaltyAmount).toBe(0);
-        expect(c.refundAmount).toBe(4000);
-    });
-
-    it("charges a penalty one day inside the boundary (pickup tomorrow)", () => {
-        const c = computeCancellationCharge({ startDay: dayOffset(1), planPrice: 4000 });
-        expect(c.daysUntilPickup).toBe(1);
-        expect(c.isLate).toBe(true);
-        expect(c.penaltyAmount).toBe(1000);
-        expect(c.refundAmount).toBe(3000);
-    });
-
-    it("treats a pickup today as late", () => {
-        const c = computeCancellationCharge({ startDay: dayOffset(0), planPrice: 4000 });
-        expect(c.daysUntilPickup).toBe(0);
-        expect(c.isLate).toBe(true);
-    });
-
-    it("treats an already-passed pickup as late, with a negative day count", () => {
-        const c = computeCancellationCharge({ startDay: dayOffset(-1), planPrice: 4000 });
-        expect(c.daysUntilPickup).toBe(-1);
-        expect(c.isLate).toBe(true);
-    });
-
-    it("is free far in advance", () => {
-        const c = computeCancellationCharge({ startDay: dayOffset(30), planPrice: 4000 });
-        expect(c.isLate).toBe(false);
-        expect(c.refundAmount).toBe(4000);
-    });
-
-    it("is day-based, not clock-based — late evening on day -2 is still free", () => {
+    it("keeps 25% inside the first tier (10 min after booking)", () => {
         const c = computeCancellationCharge({
-            startDay: "2026-08-03",
-            planPrice: 4000,
-            now: new Date("2026-08-01T23:30:00"),
+            planPaid: 1000, depositAmount: 2000, createdAt: createdMinutesAgo(10, now), now,
         });
-        expect(c.daysUntilPickup).toBe(2);
-        expect(c.isLate).toBe(false);
-    });
-});
-
-describe("computeCancellationCharge — post-creation grace period", () => {
-    /**
-     * The regression this exists for: booking FOR TOMORROW and cancelling
-     * moments later. The notice rule alone only asks how close pickup is, so
-     * such a booking is born inside the penalty window and was charged 14
-     * minutes after it was created.
-     */
-    it("is free when a booking for tomorrow is cancelled minutes after creation", () => {
-        const now = new Date();
-        const createdAt = new Date(now.getTime() - 14 * 60_000).toISOString();
-
-        const c = computeCancellationCharge({ startDay: dayOffset(1), planPrice: 799, createdAt, now });
-        expect(c.withinGrace).toBe(true);
-        expect(c.isLate).toBe(false);
-        expect(c.penaltyAmount).toBe(0);
-        expect(c.refundAmount).toBe(799);
-    });
-
-    it("is still free one minute inside the window", () => {
-        const now = new Date();
-        const createdAt = new Date(now.getTime() - (FREE_CANCELLATION_GRACE_MINUTES - 1) * 60_000).toISOString();
-        expect(computeCancellationCharge({ startDay: dayOffset(0), planPrice: 4000, createdAt, now }).penaltyAmount)
-            .toBe(0);
-    });
-
-    it("charges once the window has passed", () => {
-        const now = new Date();
-        const createdAt = new Date(now.getTime() - (FREE_CANCELLATION_GRACE_MINUTES + 1) * 60_000).toISOString();
-
-        const c = computeCancellationCharge({ startDay: dayOffset(1), planPrice: 4000, createdAt, now });
-        expect(c.withinGrace).toBe(false);
-        expect(c.isLate).toBe(true);
-        expect(c.penaltyAmount).toBe(1000);
-    });
-
-    it("does not resurrect the grace window on a future-dated created_at", () => {
-        const now = new Date();
-        const createdAt = new Date(now.getTime() + 5 * 60 * 60_000).toISOString();
-        expect(computeCancellationCharge({ startDay: dayOffset(1), planPrice: 4000, createdAt, now }).withinGrace)
-            .toBe(false);
-    });
-
-    it("falls back to the notice rule when created_at is unknown", () => {
-        expect(computeCancellationCharge({ startDay: dayOffset(1), planPrice: 4000 }).isLate).toBe(true);
-        expect(computeCancellationCharge({ startDay: dayOffset(5), planPrice: 4000 }).isLate).toBe(false);
-    });
-
-    it("leaves a far-out booking free either way", () => {
-        const now = new Date();
-        const createdAt = new Date(now.getTime() - 48 * 60 * 60_000).toISOString();
-        expect(computeCancellationCharge({ startDay: dayOffset(10), planPrice: 4000, createdAt, now }).penaltyAmount)
-            .toBe(0);
-    });
-});
-
-describe("computeCancellationCharge — amounts", () => {
-    it("charges the penalty on the net price, after any referral discount", () => {
-        const c = computeCancellationCharge({ startDay: dayOffset(1), planPrice: 4000, discountAmount: 100 });
-        expect(c.chargeableAmount).toBe(3900);
-        expect(c.penaltyAmount).toBe(975);
-        expect(c.refundAmount).toBe(2925);
-    });
-
-    it("rounds to 2dp without float dust", () => {
-        const c = computeCancellationCharge({ startDay: dayOffset(1), planPrice: 999.99 });
-        expect(c.penaltyAmount).toBe(250);
-        expect(c.refundAmount).toBe(749.99);
-    });
-
-    it("treats a missing plan price as zero rather than NaN", () => {
-        const c = computeCancellationCharge({ startDay: dayOffset(1), planPrice: null });
-        expect(c.chargeableAmount).toBe(0);
-        expect(c.penaltyAmount).toBe(0);
-        expect(c.refundAmount).toBe(0);
-    });
-
-    it("clamps to zero when the discount exceeds the plan price — never negative", () => {
-        const c = computeCancellationCharge({ startDay: dayOffset(1), planPrice: 100, discountAmount: 500 });
-        expect(c.chargeableAmount).toBe(0);
-        expect(c.penaltyAmount).toBe(0);
-        expect(c.refundAmount).toBe(0);
-    });
-
-    it("applies the configured rate", () => {
-        const c = computeCancellationCharge({ startDay: dayOffset(0), planPrice: 1000 });
-        expect(c.penaltyAmount).toBe(1000 * LATE_CANCELLATION_PENALTY_RATE);
-    });
-
-    it("never returns a negative refund for a malformed start_day", () => {
-        const c = computeCancellationCharge({ startDay: "not-a-date", planPrice: 500 });
-        expect(c.refundAmount).toBeGreaterThanOrEqual(0);
-        expect(c.penaltyAmount).toBeGreaterThanOrEqual(0);
-    });
-
-    it("refunds the full deposit alongside a fee-free rental refund, within the grace period", () => {
-        const now = new Date();
-        const createdAt = new Date(now.getTime() - 5 * 60_000).toISOString();
-        const c = computeCancellationCharge({
-            startDay: dayOffset(1), planPrice: 799, depositAmount: 2000, createdAt, now,
-        });
-        expect(c.penaltyAmount).toBe(0);
-        expect(c.depositRefund).toBe(2000);
-        expect(c.refundAmount).toBe(2799);
-    });
-
-    it("still refunds the full deposit even when the rental portion is penalized", () => {
-        const c = computeCancellationCharge({ startDay: dayOffset(0), planPrice: 1000, depositAmount: 2000 });
+        expect(c.penaltyPercent).toBe(25);
         expect(c.penaltyAmount).toBe(250);
         expect(c.depositRefund).toBe(2000);
         expect(c.refundAmount).toBe(2750);
     });
 
-    it("treats a missing deposit amount as zero", () => {
-        const c = computeCancellationCharge({ startDay: dayOffset(5), planPrice: 4000 });
-        expect(c.depositRefund).toBe(0);
-        expect(c.refundAmount).toBe(4000);
+    it("keeps 25% exactly at the first tier boundary (30 min)", () => {
+        const c = computeCancellationCharge({ planPaid: 1000, createdAt: createdMinutesAgo(30, now), now });
+        expect(c.penaltyPercent).toBe(25);
+    });
+
+    it("keeps 50% in the second tier (45 min)", () => {
+        const c = computeCancellationCharge({ planPaid: 1000, createdAt: createdMinutesAgo(45, now), now });
+        expect(c.penaltyPercent).toBe(50);
+        expect(c.penaltyAmount).toBe(500);
+    });
+
+    it("keeps 100% past every tier (90 min) — no plan refund, deposit still returned", () => {
+        const c = computeCancellationCharge({
+            planPaid: 1000, depositAmount: 2000, createdAt: createdMinutesAgo(90, now), now,
+        });
+        expect(c.penaltyPercent).toBe(BEYOND_LAST_TIER_PENALTY_PERCENT);
+        expect(c.penaltyAmount).toBe(1000);
+        expect(c.refundAmount).toBe(2000);
+    });
+});
+
+describe("computeCancellationCharge — edge cases", () => {
+    const now = new Date("2026-08-29T12:00:00Z");
+
+    it("treats an unknown created_at as 0 elapsed (most generous tier)", () => {
+        const c = computeCancellationCharge({ planPaid: 1000, now });
+        expect(c.elapsedMinutes).toBe(0);
+        expect(c.penaltyPercent).toBe(25);
+    });
+
+    it("does not push the rider into a worse tier on a future-dated created_at", () => {
+        const c = computeCancellationCharge({
+            planPaid: 1000, createdAt: new Date(now.getTime() + 5 * 60_000).toISOString(), now,
+        });
+        expect(c.elapsedMinutes).toBe(0);
+        expect(c.penaltyPercent).toBe(25);
+    });
+
+    it("treats a missing planPaid as zero rather than NaN", () => {
+        const c = computeCancellationCharge({ planPaid: null, createdAt: createdMinutesAgo(90, now), now });
+        expect(c.planPaid).toBe(0);
+        expect(c.penaltyAmount).toBe(0);
+        expect(c.refundAmount).toBe(0);
+    });
+
+    it("never returns a negative refund", () => {
+        const c = computeCancellationCharge({ planPaid: -50, depositAmount: -10, createdAt: createdMinutesAgo(90, now), now });
+        expect(c.refundAmount).toBeGreaterThanOrEqual(0);
+        expect(c.penaltyAmount).toBeGreaterThanOrEqual(0);
+    });
+
+    it("rounds to 2dp without float dust", () => {
+        const c = computeCancellationCharge({ planPaid: 999.99, createdAt: createdMinutesAgo(10, now), now });
+        expect(c.penaltyAmount).toBe(250); // 999.99 * 0.25 = 249.9975 → 250.00
+        expect(c.refundAmount).toBe(749.99);
+    });
+
+    it("accepts a custom tier list", () => {
+        const c = computeCancellationCharge({
+            planPaid: 1000,
+            createdAt: createdMinutesAgo(3, now), now,
+            tiers: [{ upto_minutes: 5, penalty_percent: 0 }, { upto_minutes: 10, penalty_percent: 40 }],
+        });
+        expect(c.penaltyPercent).toBe(0);
+        expect(c.refundAmount).toBe(1000);
+    });
+
+    it("full deposit refund alongside a fee-free plan refund when a 0% tier applies", () => {
+        const c = computeCancellationCharge({
+            planPaid: 799, depositAmount: 2000,
+            createdAt: createdMinutesAgo(1, now), now,
+            tiers: [{ upto_minutes: 15, penalty_percent: 0 }],
+        });
+        expect(c.penaltyAmount).toBe(0);
+        expect(c.refundAmount).toBe(2799);
+    });
+});
+
+describe("DEFAULT_CANCELLATION_TIERS", () => {
+    it("is the shipped fallback: 30→25, 60→50", () => {
+        expect(DEFAULT_CANCELLATION_TIERS).toEqual([
+            { upto_minutes: 30, penalty_percent: 25 },
+            { upto_minutes: 60, penalty_percent: 50 },
+        ]);
     });
 });

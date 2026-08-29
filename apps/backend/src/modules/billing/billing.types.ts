@@ -21,8 +21,10 @@
  */
 export type ChargeCode = string;
 export const CHARGE_CODES: readonly string[] = [
-    "transaction_fee", "late_fee", "late_return_fee", "damage",
-    "cleaning", "cancellation", "extension", "other",
+    // ONE late fee — the same rate covers a late renewal and a late return.
+    // Cancellation charges are configured as tiers on the Cancellation Policy
+    // tab, not as a charge rule.
+    "transaction_fee", "late_fee", "damage", "cleaning", "extension", "other",
 ] as const;
 
 export type DiscountCode = string;

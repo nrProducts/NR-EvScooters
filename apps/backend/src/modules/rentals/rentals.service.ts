@@ -635,7 +635,9 @@ export async function requestReturn(
         referenceId: rentalId,
         title: "Return Requested",
         bodyFallback: "{rider} requested a return for {vehicle}.",
-        screen: "/bookings",
+        // Deep-link to THIS return's detail page, not the generic Rental
+        // Operations list — the "Review Return" popup must land on the record.
+        screen: `/bookings/returns/${rentalId}`,
         riderId: actor.id,
         vehicleId: assignments.find((a) => !a.released_at)?.vehicle_id,
         bookingId: subscription?.booking_id,

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Eye, MoreHorizontal } from "lucide-react";
+import { Eye } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,8 +12,9 @@ import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { useDamages, useDamage, useResolveDamageDispute } from "@/hooks/useDamages";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
@@ -48,11 +49,7 @@ export default function DamagesPage() {
       key: "actions",
       render: (d) => (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
+          <RowActionsButton label="Damage record actions" onClick={(e) => e.stopPropagation()} />
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => setDetailId(d.id)}>
               <Eye className="mr-2 h-4 w-4" /> View details

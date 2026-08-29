@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, CheckCircle2, PlayCircle, XCircle, MoreHorizontal, ClipboardCheck } from "lucide-react";
+import { Plus, CheckCircle2, PlayCircle, XCircle, ClipboardCheck } from "lucide-react";
 import { Spinner } from "@/components/common/Spinner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,8 +13,9 @@ import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { TriageDialog } from "@/components/maintenance/TriageDialog";
 import { useMaintenanceTickets, useCreateMaintenanceTicket, useUpdateMaintenanceTicket } from "@/hooks/useMaintenance";
 import { useTableSort } from "@/hooks/useTableSort";
@@ -121,11 +122,7 @@ export default function MaintenancePage() {
         }
         return (
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
+            <RowActionsButton label="Maintenance ticket actions" />
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
               {showTriage && (
                 <DropdownMenuItem onClick={() => setTriageTarget(t)}>

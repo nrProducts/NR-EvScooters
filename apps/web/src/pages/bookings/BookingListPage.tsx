@@ -14,6 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { RentalOperationsSummaryCards } from "@/components/bookings/RentalOperationsSummaryCards";
+import { AdminCreateBookingDialog } from "@/components/bookings/AdminCreateBookingDialog";
 import { usePickupQueue, useAvailableVehicles, useConfirmPickup } from "@/hooks/useBookings";
 import { useReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { useTableSort } from "@/hooks/useTableSort";
@@ -81,16 +82,14 @@ function RecoveryPolicyNote() {
   const { data: settings } = useReturnRecoverySettings();
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm">
-      <p className="text-muted-foreground">
-        A scooter is flagged for recovery{" "}
-        <span className="font-medium text-foreground">{settings ? settings.max_late_fee_days : "…"} days</span>{" "}
-        past its return due date.
-      </p>
-      <Button variant="ghost" size="sm" onClick={() => navigate("/billing")}>
-        Edit in Billing & Charges
-      </Button>
-    </div>
+    <p className="text-xs text-muted-foreground">
+      Recovery flagged{" "}
+      <span className="font-medium text-foreground">{settings ? settings.max_late_fee_days : "…"} days</span>{" "}
+      past return due ·{" "}
+      <button type="button" onClick={() => navigate("/billing")} className="underline hover:text-foreground">
+        edit
+      </button>
+    </p>
   );
 }
 
@@ -167,6 +166,7 @@ export default function BookingListPage() {
   const [page, setPage] = useState(1);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = usePickupQueue({
@@ -190,6 +190,7 @@ export default function BookingListPage() {
     {
       header: "Price",
       key: "price",
+      className: "text-right tabular-nums",
       render: (b) => (b.plan ? formatCurrency(b.plan.price) : "—"),
       hideOnMobile: true,
     },
@@ -216,7 +217,15 @@ export default function BookingListPage() {
       // booking, not a variant of its status.
       header: "Plan Status",
       key: "plan_status",
-      render: (b) => (b.plan_status ? <StatusBadge status={b.plan_status} /> : <span className="text-muted-foreground">—</span>),
+      render: (b) => {
+        if (b.plan_status) return <StatusBadge status={b.plan_status} />;
+        // A cancelled/expired/completed booking's plan is over — say so
+        // rather than showing a bare "—" that reads like "no plan".
+        if (b.status === "cancelled" || b.status === "expired" || b.status === "completed") {
+          return <Badge variant="muted">Ended</Badge>;
+        }
+        return <span className="text-muted-foreground">—</span>;
+      },
     },
     {
       header: "Payment due",
@@ -261,6 +270,7 @@ export default function BookingListPage() {
     {
       header: "Actions",
       key: "actions",
+      className: "text-right",
       render: (b) => {
         const rentalId = b.active_rental?.id;
         // Checked before "return requested" for the same reason
@@ -427,6 +437,7 @@ export default function BookingListPage() {
     {
       header: "Actions",
       key: "actions",
+      className: "text-right",
       render: (b) => (
         <Button size="sm" onClick={() => b.active_rental && navigate(`/bookings/returns/${b.active_rental.id}`)}>
           Review Return
@@ -447,27 +458,33 @@ export default function BookingListPage() {
     <div className="space-y-4 animate-fade-in">
       <RentalOperationsSummaryCards />
 
-      <RecoveryPolicyNote />
-
       <Tabs value={view} onValueChange={(v) => { setView(v as RentalOpsView); setPage(1); }}>
-        <TabsList className="flex-wrap">
-          {VIEW_TABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
-          ))}
-        </TabsList>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <TabsList className="flex-wrap">
+            {VIEW_TABS.map((t) => (
+              <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
+            ))}
+          </TabsList>
+          {hasAction(user, "bookings", "edit") && (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <PackageCheck className="h-3.5 w-3.5" /> New Booking
+            </Button>
+          )}
+        </div>
       </Tabs>
 
       <Card>
-        <div className="border-b border-border p-4">
+        <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
           <SearchBar
             value={search}
             onChange={(v) => {
               setSearch(v);
               setPage(1);
             }}
-            placeholder="Search by rider, vehicle, booking id or rental id..."
-            className="sm:max-w-sm"
+            placeholder="Search rider, vehicle or ID…"
+            className="w-full sm:max-w-xs"
           />
+          <RecoveryPolicyNote />
         </div>
 
         <DataTable
@@ -564,6 +581,8 @@ export default function BookingListPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AdminCreateBookingDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   );
 }

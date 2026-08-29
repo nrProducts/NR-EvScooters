@@ -26,7 +26,7 @@ import { ApiError } from "@/services/api/httpClient";
 import { ReturnStageStepper } from "./ReturnStageStepper";
 import { DamageChargeCard } from "./DamageChargeCard";
 import { AddDamageChargeModal, type DamageDraft } from "./AddDamageChargeModal";
-import type { DamageCategory, ReturnStageStatus } from "@/types";
+import { paymentMethodLabel, type DamageCategory, type ReturnStageStatus } from "@/types";
 
 interface OtherChargeForm {
   label: string;
@@ -491,6 +491,7 @@ export default function ReturnDetailPage() {
                   refund={settlement.refund_amount}
                   due={settlement.due_amount}
                   paidByRider={settlement.paid_by_rider_amount}
+                  renewalLateFee={rental.overdue_late_fee}
                 />
               ) : stageStatus === "return_requested" ? (
                 <SettlementBreakdown
@@ -502,6 +503,7 @@ export default function ReturnDetailPage() {
                   refund={Math.max(0, depositAmount - previewTotalCharges)}
                   due={previewDue}
                   paidByRider={0}
+                  renewalLateFee={rental.overdue_late_fee}
                 />
               ) : (
                 <SettlementBreakdown
@@ -517,6 +519,7 @@ export default function ReturnDetailPage() {
                   // rental_settlements row (and its due_amount=0 self-heal)
                   // doesn't exist until Complete Return actually runs.
                   paidByRider={stage!.paymentVerifiedAt ? stage!.additionalDue : 0}
+                  renewalLateFee={rental.overdue_late_fee}
                 />
               )}
             </CardContent>
@@ -695,6 +698,10 @@ function PaymentStatusPanel({
       </div>
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground">Payment Type</span>
+        <span>{paymentMethodLabel(review.method)}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">Charge</span>
         <span>Damage / Additional Return Charge</span>
       </div>
       <div className="flex items-center justify-between">
@@ -720,7 +727,7 @@ function PaymentStatusPanel({
 }
 
 function SettlementBreakdown({
-  depositAmount, lateFee, damageFee, otherCharges, totalCharges, refund, due, paidByRider,
+  depositAmount, lateFee, damageFee, otherCharges, totalCharges, refund, due, paidByRider, renewalLateFee,
 }: {
   depositAmount: number;
   lateFee: number;
@@ -731,11 +738,41 @@ function SettlementBreakdown({
   due: number;
   /** What the rider paid directly, beyond the deposit — so Total Charges visibly reconciles to Deposit Used + Paid by Rider (+ Due, if anything is still outstanding). */
   paidByRider: number;
+  /**
+   * The plan-renewal late fee, collected in the rider app BEFORE a return can
+   * be requested — a separate debt from the deposit settlement below (and
+   * from the return-lateness `lateFee`). Shown here for a complete picture of
+   * what the rider owed on this rental, kept visually apart so it's never
+   * confused with the deposit maths.
+   */
+  renewalLateFee: { isLate: boolean; lateFee: number; isSettled: boolean } | null;
 }) {
   return (
     <div className="space-y-2 text-sm">
+      {renewalLateFee?.isLate && renewalLateFee.lateFee > 0 && (
+        <>
+          <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              Plan Renewal Late Fee
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.5 text-[0.625rem] font-semibold",
+                  renewalLateFee.isSettled ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
+                )}
+              >
+                {renewalLateFee.isSettled ? "Paid in app" : "Unpaid"}
+              </span>
+            </span>
+            <span className="font-medium">{formatCurrency(renewalLateFee.lateFee)}</span>
+          </div>
+          <p className="px-1 text-[0.6875rem] text-muted-foreground">
+            Collected separately in the rider app — not part of the deposit settlement below.
+          </p>
+          <div className="h-px bg-border" />
+        </>
+      )}
       <Row icon={<ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />} label="Security Deposit" value={formatCurrency(depositAmount)} />
-      <Row label="Late Fee" value={formatCurrency(lateFee)} muted />
+      <Row label="Late Fee (return)" value={formatCurrency(lateFee)} muted />
       <Row label="Damage Fee" value={damageFee > 0 ? `-${formatCurrency(damageFee)}` : formatCurrency(0)} negative={damageFee > 0} />
       <Row label="Other Charges" value={otherCharges > 0 ? `-${formatCurrency(otherCharges)}` : formatCurrency(0)} negative={otherCharges > 0} />
       <div className="h-px bg-border" />

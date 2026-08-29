@@ -6,7 +6,7 @@ import { AuthContext, Paginated } from "../../types";
 import { completeRide, damageAmountFor, getRentalById } from "../rentals/rentals.service";
 import { listDamagesForRental } from "../damages/damages.service";
 import { getDepositForSubscriptionOrNull } from "../deposits/deposits.service";
-import { processRefund } from "../refunds/refunds.service";
+import { processRefund, paymentForRefund } from "../refunds/refunds.service";
 import { notifyUser } from "../notifications/notifications.service";
 import { businessToday } from "../../common/dates";
 import {
@@ -524,7 +524,7 @@ export async function getPaymentReview(rentalId: string): Promise<PaymentReviewV
 
     const { data: txn, error: txnError } = await supabaseAdmin
         .from("payment_transactions")
-        .select("amount, gateway_payment_id, captured_at, status, payment_orders!inner(invoice_id)")
+        .select("amount, gateway_payment_id, captured_at, status, method, payment_orders!inner(invoice_id)")
         .eq("payment_orders.invoice_id", ret.additional_due_invoice_id)
         .eq("status", "succeeded")
         .order("captured_at", { ascending: false })
@@ -538,6 +538,7 @@ export async function getPaymentReview(rentalId: string): Promise<PaymentReviewV
         reference: txn?.gateway_payment_id ?? null,
         paidAt: txn?.captured_at ?? null,
         status: ret.payment_verified_at ? "verified" : txn ? "paid" : "unpaid",
+        method: (txn?.method as PaymentReviewView["method"]) ?? null,
     };
 }
 
@@ -585,6 +586,85 @@ export async function verifyReturnPayment(rentalId: string, actor: AuthContext):
  * settleReturn (rentals.service.ts) enforces the same gate independently,
  * so this is not the only thing standing between an unpaid return and completion.
  */
+/**
+ * Creates (and tries to process) the deposit refund a settlement owes.
+ *
+ * Idempotent and self-healing: a no-op when nothing is owed or a refund is
+ * already linked, so re-approving a return whose refund failed to be issued
+ * the first time (e.g. the historical wrong-payment-transaction bug) issues
+ * it now. Never throws for the refund's sake — the rental closure and the
+ * settlement row must stand regardless; the refund stays pending/retryable.
+ */
+async function issueSettlementRefund(
+    rentalId: string,
+    subscriptionId: string,
+    userId: string,
+    settlement: ReturnSettlementRow,
+    actor: AuthContext,
+): Promise<void> {
+    if (settlement.refund_amount <= 0 || settlement.refund_id) return;
+
+    try {
+        const payment = await paymentForRefund(subscriptionId, settlement.refund_amount);
+        if (!payment) {
+            console.error("[returns] settlement owes a refund but no captured payment exists", {
+                rentalId, amount: settlement.refund_amount,
+            });
+            return;
+        }
+
+        const deposit = await getDepositForSubscriptionOrNull(subscriptionId);
+
+        const { data: refund, error: refundError } = await supabaseAdmin
+            .from("refunds")
+            .insert({
+                user_id: userId,
+                payment_transaction_id: payment.id,
+                amount: settlement.refund_amount,
+                gross_amount: settlement.refund_amount,
+                reason: "settlement",
+                status: "pending",
+                // Pre-reviewed: approving the settlement IS the review, so
+                // processRefund's review gate lets the payout below through.
+                reviewed_at: new Date().toISOString(),
+                reviewed_by_user_id: actor.id,
+                review_note: "Auto-reviewed on return settlement approval.",
+            })
+            .select("id")
+            .single();
+        if (refundError) throw refundError;
+
+        await supabaseAdmin
+            .from("rental_settlements")
+            .update({ refund_id: refund.id })
+            .eq("rental_id", rentalId);
+
+        await writeAudit({
+            actorId: actor.id, targetUserId: userId, action: "settlement.refund_issued",
+            entityType: "rental_settlement", entityId: rentalId,
+            after: { refund_id: refund.id, amount: settlement.refund_amount, deposit_id: deposit?.id ?? null },
+        });
+
+        try {
+            await processRefund(refund.id, actor);
+            await writeAudit({
+                actorId: actor.id, targetUserId: userId, action: "settlement.completed",
+                entityType: "rental_settlement", entityId: rentalId, after: { refund_id: refund.id },
+            });
+        } catch (err) {
+            console.error("[returns] refund processing failed", {
+                rentalId, refundId: refund.id,
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
+    } catch (err) {
+        console.error("[returns] could not issue settlement refund", {
+            rentalId, amount: settlement.refund_amount,
+            error: err instanceof Error ? err.message : String(err),
+        });
+    }
+}
+
 export async function approveReturnSettlement(
     rentalId: string,
     input: ApproveReturnSettlementInput,
@@ -608,7 +688,13 @@ export async function approveReturnSettlement(
         // request finding it already approved is not a real conflict.
         if (ret?.status === "approved") {
             const existing = await getSettlementByRentalId(rentalId);
-            if (existing) return existing;
+            if (existing) {
+                // Self-heal: the return is closed but its deposit refund was
+                // never issued (a first-attempt failure). Re-approving now
+                // issues it rather than silently returning the broken row.
+                await issueSettlementRefund(rentalId, before.subscription_id, before.user_id, existing, actor);
+                return await getSettlementByRentalId(rentalId) ?? existing;
+            }
         }
         throw businessRule("This ride is not active.");
     }
@@ -653,75 +739,7 @@ export async function approveReturnSettlement(
 
     // 3: refund, fired immediately — no waiting period, the admin just
     // inspected the vehicle and finalised every charge in this same review.
-    if (settlement.refund_amount > 0) {
-        const deposit = await getDepositForSubscriptionOrNull(before.subscription_id);
-
-        // A refund needs the payment it reverses: `refunds.payment_transaction_id`
-        // is NOT NULL, which is a real improvement — a refund with no
-        // originating payment could never be reconciled with the gateway.
-        const { data: payment, error: paymentError } = await supabaseAdmin
-            .from("payment_transactions")
-            .select("id, payment_orders!inner(invoices!inner(subscription_id))")
-            .eq("payment_orders.invoices.subscription_id", before.subscription_id)
-            .eq("status", "succeeded")
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        if (paymentError) throw paymentError;
-
-        if (!payment) {
-            console.error("[returns] settlement owes a refund but no captured payment exists", {
-                rentalId, amount: settlement.refund_amount,
-            });
-        } else {
-            const { data: refund, error: refundError } = await supabaseAdmin
-                .from("refunds")
-                .insert({
-                    user_id: before.user_id,
-                    payment_transaction_id: payment.id,
-                    amount: settlement.refund_amount,
-                    reason: "settlement",
-                    status: "pending",
-                })
-                .select("id")
-                .single();
-            if (refundError) throw refundError;
-
-            await supabaseAdmin
-                .from("rental_settlements")
-                .update({ refund_id: refund.id })
-                .eq("rental_id", rentalId);
-
-            await writeAudit({
-                actorId: actor.id,
-                targetUserId: before.user_id,
-                action: "settlement.refund_issued",
-                entityType: "rental_settlement",
-                entityId: rentalId,
-                after: { refund_id: refund.id, amount: settlement.refund_amount, deposit_id: deposit?.id ?? null },
-            });
-
-            try {
-                await processRefund(refund.id, actor);
-                await writeAudit({
-                    actorId: actor.id,
-                    targetUserId: before.user_id,
-                    action: "settlement.completed",
-                    entityType: "rental_settlement",
-                    entityId: rentalId,
-                    after: { refund_id: refund.id },
-                });
-            } catch (err) {
-                // Gateway call failed — the settlement and the rental closure
-                // must still stand. The refund stays pending and is retryable
-                // through POST /refunds/:id/retry, same as any other.
-                console.error("[returns] refund processing failed", {
-                    rentalId, refundId: refund.id,
-                    error: err instanceof Error ? err.message : String(err),
-                });
-            }
-        }
-    }
+    await issueSettlementRefund(rentalId, before.subscription_id, before.user_id, settlement, actor);
 
     // 4: a combined invoice for charges exceeding the deposit — but only as a
     // fallback. The normal path already has one: settleReturn attaches
