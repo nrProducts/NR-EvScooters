@@ -1,33 +1,31 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
-import { AppShell } from '../../components/AppShell';
-import { Badge } from '../../components/ui/Badge';
-import { SkeletonList } from '../../components/ui/Skeleton';
-import { ErrorState } from '../../components/ui/ErrorState';
-import { EmptyState } from '../../components/ui/EmptyState';
-import { pullToRefresh, useRefresh } from '../../components/ui/PullToRefresh';
-import { bookingRepository } from '../../services';
-import { ApiError } from '../../lib/ApiError';
+import { AppShell } from '../components/AppShell';
+import { Badge } from '../components/ui/Badge';
+import { SkeletonList } from '../components/ui/Skeleton';
+import { ErrorState } from '../components/ui/ErrorState';
+import { EmptyState } from '../components/ui/EmptyState';
+import { pullToRefresh, useRefresh } from '../components/ui/PullToRefresh';
+import { bookingRepository } from '../services';
+import { ApiError } from '../lib/ApiError';
 import {
   BOOKING_STATUS_LABEL, BOOKING_STATUS_TONE,
   REFUND_STATUS_LABEL, REFUND_STATUS_TONE, formatDate,
-} from '../../constants/status';
-import { COLORS } from '../../constants/theme';
+} from '../constants/status';
+import { COLORS } from '../constants/theme';
 import { Calendar, Bike, MapPin, History, XCircle } from 'lucide-react-native';
-import { useCancelBooking } from '../../hooks/useCancelBooking';
-import type { ApiBooking } from '../../types/api';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useCancelBooking } from '../hooks/useCancelBooking';
+import type { ApiBooking } from '../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
- * Bookings only. Maintenance used to live here in a second tab — it now
- * belongs to /my-scooter, scoped to the scooter the rider actually has.
+ * Bookings only — a full-page screen pushed from Home's "My Rides" (and
+ * booking-success deep links). Not a tab: it lives in the root stack so it
+ * gets AppShell's back arrow and no bottom bar, the same as browse-vehicles
+ * and support. Maintenance used to live here in a second tab — it now belongs
+ * to /my-scooter, scoped to the scooter the rider actually has.
  */
 export default function BookingHistoryScreen() {
-  // AppShell insets its drawer sheet but not screen content, so each screen
-  // pads its own scroll tail — otherwise the Android nav/gesture bar covers
-  // the last rows.
-  const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
   const [bookings, setBookings] = useState<ApiBooking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
@@ -75,7 +73,7 @@ export default function BookingHistoryScreen() {
       ) : (
         <ScrollView
           className="flex-1 px-5 pt-4"
-          contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 28 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
           <View className="gap-3">

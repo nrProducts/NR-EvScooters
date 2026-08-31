@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Spinner } from '../../components/Spinner';
 import { useFocusEffect } from 'expo-router';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CreditCard, ShieldCheck, Receipt } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
@@ -16,6 +15,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { billingRepository, rentalRepository } from '../../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
 import { getRenewalEligibility } from '../../lib/returnPolicy';
+import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
 import { ApiError } from '../../lib/ApiError';
 import type {
   ApiEarlyRecharge, ApiInvoice, ApiPaymentOrder, ApiPlanQuote, ApiReturnStage,
@@ -199,7 +199,6 @@ function AttentionNote({ label }: { label: string }) {
 }
 
 export default function BillingScreen() {
-  const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
   const { bookingId, booking, invoices, loading, error, reload } = useMyBilling();
   const { refreshing, onRefresh } = useRefresh(() => reload(true));
@@ -609,7 +608,7 @@ export default function BillingScreen() {
         // have no rental. That still has to be payable.
         <ScrollView
           className="flex-1 px-5 pt-5"
-          contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
           {outstandingInvoices.length > 0 ? (
@@ -630,7 +629,7 @@ export default function BillingScreen() {
       ) : (
         <ScrollView
           className="flex-1 px-5 pt-5"
-          contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
           {/* Current plan — a quiet, sophisticated surface rather than a

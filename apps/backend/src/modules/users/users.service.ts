@@ -877,31 +877,32 @@ export async function uploadMyPhoto(
  * arriving again just refreshes `last_seen_at`, and a rider with a phone and a
  * tablet keeps both — the send path fans out over live rows instead of
  * silently reaching whichever device logged in last.
+ *
+ * `push_token` is globally UNIQUE (a physical handset has exactly one Expo
+ * token), so this is an upsert on that key, not on (user_id, push_token): when
+ * the same device is handed to a different account — sign out, sign in as
+ * someone else — the row is re-pointed at the current user rather than
+ * colliding. The upsert is also what makes two near-simultaneous registrations
+ * (the app fires this on login AND on the next profile refresh) idempotent
+ * instead of racing into a 23505.
  */
 export async function registerPushToken(
     userId: string,
     token: string,
     platform: "ios" | "android" = "android",
 ): Promise<void> {
-    const { data: existing, error: readError } = await supabaseAdmin
+    const { error } = await supabaseAdmin
         .from("user_devices")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("push_token", token)
-        .maybeSingle();
-    if (readError) throw readError;
-
-    const { error } = existing
-        ? await supabaseAdmin
-            .from("user_devices")
-            .update({ last_seen_at: new Date().toISOString(), revoked_at: null })
-            .eq("id", existing.id)
-        : await supabaseAdmin.from("user_devices").insert({
-            user_id: userId,
-            push_token: token,
-            platform,
-            last_seen_at: new Date().toISOString(),
-        });
+        .upsert(
+            {
+                user_id: userId,
+                push_token: token,
+                platform,
+                last_seen_at: new Date().toISOString(),
+                revoked_at: null,
+            },
+            { onConflict: "push_token" },
+        );
 
     if (error) throw error;
 }

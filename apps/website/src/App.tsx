@@ -4,7 +4,7 @@ import { Hero } from "@/components/sections/Hero";
 import { HowItWorks } from "@/components/sections/HowItWorks";
 import { Impact } from "@/components/sections/Impact";
 import { Vehicles } from "@/components/sections/Vehicles";
-import { WhySwapngo } from "@/components/sections/WhySwapngo";
+import { WhySwapngo } from "@/components/sections/WhySwapNgo";
 import { Pricing } from "@/components/sections/Pricing";
 import { About } from "@/components/sections/About";
 import { Faq } from "@/components/sections/Faq";

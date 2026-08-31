@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, Image, AppState, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useSegments } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNotificationBadgeStore } from '../store/useNotificationBadgeStore';
 import { COLORS } from '../constants/theme';
@@ -16,10 +16,11 @@ interface AppShellProps {
 }
 
 /**
- * The shared screen frame: a header (optional back button and "Day N" rental
- * chip on the left, the centred Swapngo wordmark, the notifications bell and
- * the profile avatar on the right) plus the avatar-triggered Profile sheet.
- * `title` is no longer shown but is kept as the header's accessibility label.
+ * The shared screen frame: a header (optional back button, then a small
+ * left-aligned Swapngo wordmark and the "Day N" rental chip; the
+ * notifications bell and profile avatar on the right) plus the
+ * avatar-triggered Profile sheet. `title` is no longer shown but is kept as
+ * the header's accessibility label.
  *
  * The slide-out nav drawer is gone — the bottom tab bar is the whole
  * top-level nav now, and KYC / Support / Privacy & Data live inside the
@@ -32,7 +33,12 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   const [profileOpen, setProfileOpen] = useState(false);
   const unreadNotifications = useNotificationBadgeStore((s) => s.unreadCount);
   const insets = useSafeAreaInsets();
-  const canGoBack = router.canGoBack();
+  // A bottom-tab root (home/billing/my-scooter/profile) is reached by tapping
+  // the bar, never "back" to — even when there's history behind it (e.g. a
+  // redirect or a `router.navigate('/home')` from elsewhere left an entry).
+  // Only pushed screens (booking-history, browse-vehicles, …) show the arrow.
+  const segments = useSegments();
+  const canGoBack = segments[0] !== '(tabs)' && router.canGoBack();
 
   // profile.profile_photo_url is a private-bucket storage path, not a
   // fetchable URL (see users.types.ts) — it only tells us a photo exists.
@@ -94,32 +100,25 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
         style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, paddingTop: 52, paddingBottom: 14 }}
         accessibilityLabel={title}
       >
-        {/* Centred brand mark — absolutely positioned so it stays put
-            regardless of how wide the left/right clusters are. */}
-        <View
-          style={{ position: 'absolute', left: 0, right: 0, top: 52, bottom: 14, alignItems: 'center', justifyContent: 'center' }}
-          pointerEvents="none"
-        >
-          <Image
-            source={require('../../assets/images/logo-wordmark.png')}
-            accessibilityLabel="Swapngo"
-            style={{ height: 22, width: 104 }}
-            resizeMode="contain"
-          />
-        </View>
-
         <View className="flex-row items-center">
           {canGoBack ? (
             <TouchableOpacity
               onPress={() => router.back()}
               accessibilityRole="button"
               accessibilityLabel="Go back"
-              className="w-9 h-9 rounded-xl items-center justify-center"
+              className="w-9 h-9 rounded-xl items-center justify-center mr-2"
               style={{ backgroundColor: COLORS.background }}
             >
               <ChevronLeft size={20} color={COLORS.textPrimary} />
             </TouchableOpacity>
           ) : null}
+          {/* Brand mark, left-aligned. */}
+          <Image
+            source={require('../../assets/images/logo-wordmark.png')}
+            accessibilityLabel="Swapngo"
+            style={{ height: 16, width: 76 }}
+            resizeMode="contain"
+          />
           {rentalDay != null ? (
             <View className="ml-2 rounded-full px-2 py-0.5" style={{ backgroundColor: COLORS.primary + '14' }}>
               <Text style={{ color: COLORS.primaryPressed }} className="text-[10px] font-bold">

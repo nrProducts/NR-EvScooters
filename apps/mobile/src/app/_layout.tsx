@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { Spinner } from "../components/Spinner";
 import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
@@ -122,6 +122,26 @@ export default function RootLayout() {
   // set once the container has actually mounted.
   const navigationState = useRootNavigationState();
 
+  // Fast Refresh can re-run the routing effect below while
+  // useRootNavigationState() still reports the *previous* mount's key — the
+  // new root <Stack> hasn't attached yet, so router.replace() throws
+  // "Attempted to navigate before mounting the Root Layout" (expo-router then
+  // tries to recover with goBack(), which throws again). The effect re-runs
+  // with a valid state the moment the navigator mounts, so swallowing that
+  // one specific throw is safe and leaves routing correct.
+  const safeReplace = useCallback(
+    (href: string) => {
+      try {
+        router.replace(href as never);
+      } catch (err) {
+        if (__DEV__) {
+          console.warn("[routing] navigator not ready, will retry:", href, err);
+        }
+      }
+    },
+    [router],
+  );
+
   useEffect(() => {
     // Every path below reaches Supabase, which needs the env vars.
     if (missing.length > 0) return;
@@ -169,14 +189,23 @@ export default function RootLayout() {
 
   // Tapping a push notification navigates straight to the screen named in
   // its payload (falls back to the notification history screen).
+  //
+  // Gated on navigationState?.key for the same reason the routing effect below
+  // is: when the app is opened by tapping a notification, expo-notifications
+  // replays that response to a listener registered right after mount — which
+  // can be BEFORE the root <Stack> has attached. Navigating then throws
+  // "Attempted to navigate before mounting the Root Layout" (expo-router then
+  // tries to recover with goBack(), which throws again). Registering only once
+  // the navigator is ready still catches the buffered response.
   useEffect(() => {
+    if (!navigationState?.key) return;
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const screen = response.notification.request.content.data?.screen;
       console.log("[push] notification tapped:", response.notification.request.content.title, "-> screen:", screen);
       router.push(`/${typeof screen === "string" ? screen : "notifications"}` as never);
     });
     return () => sub.remove();
-  }, [router]);
+  }, [router, navigationState?.key]);
 
   // A notification landing while the app is foregrounded no longer shows the
   // OS banner (shouldShowBanner:false in pushNotifications.ts) — this is what
@@ -202,7 +231,7 @@ export default function RootLayout() {
     if (!navigationState?.key) return;
     if (initialising || !onboardingHydrated) return;
 
-    // The (tabs) group wraps Home/Booking History/My Scooter/Billing/Profile
+    // The (tabs) group wraps Home/My Scooter/Billing/Stations/Profile
     // for the bottom tab bar, and doesn't affect any route's URL — but
     // useSegments() DOES include the group name literally (["(tabs)","home"],
     // not ["home"]), so this unwraps it before comparing against
@@ -216,13 +245,13 @@ export default function RootLayout() {
     // Deliberately not folded into AUTH_ROUTES: see the comment on
     // RIDER_ROUTES's "onboarding" entry for the signed-in replay case.
     if (!hasSeenOnboarding) {
-      if (current !== "onboarding") router.replace("/onboarding");
+      if (current !== "onboarding") safeReplace("/onboarding");
       return;
     }
 
     if (!session) {
       // Signed out: allow the login surface (phone, OTP), bounce anything else.
-      if (!atAuthScreen) router.replace("/");
+      if (!atAuthScreen) safeReplace("/");
       return;
     }
 
@@ -235,7 +264,7 @@ export default function RootLayout() {
     // full_name alone can't tell "brand new" from "done onboarding".
     const needsProfile = !profile.profile_completed;
     if (needsProfile) {
-      if (current !== "profile-setup") router.replace("/profile-setup");
+      if (current !== "profile-setup") safeReplace("/profile-setup");
       return;
     }
 
@@ -247,7 +276,7 @@ export default function RootLayout() {
     // notice, and mid-flow screens are left alone.
     if (!profile.consent_up_to_date) {
       if (current !== "consent" && current !== "privacy") {
-        router.replace("/consent?next=/kyc-intro");
+        safeReplace("/consent?next=/kyc-intro");
       }
       return;
     }
@@ -259,16 +288,16 @@ export default function RootLayout() {
     // are never sent back here; only the untouched not_submitted state is.
     const kycIntroPending = profile.kyc_status === "not_submitted" && !hasSeenKycIntro;
     if (kycIntroPending) {
-      if (current !== "kyc-intro" && current !== "kyc") router.replace("/kyc-intro");
+      if (current !== "kyc-intro" && current !== "kyc") safeReplace("/kyc-intro");
       return;
     }
 
     if (atAuthScreen || current === "profile-setup" || !RIDER_ROUTES.includes(current)) {
-      router.replace("/home");
+      safeReplace("/home");
     }
   }, [
     navigationState?.key, initialising, onboardingHydrated, hasSeenOnboarding, session, profile,
-    hasSeenKycIntro, segments, router,
+    hasSeenKycIntro, segments, router, safeReplace,
   ]);
 
   if (missing.length > 0) return <MisconfiguredScreen missing={missing} />;
@@ -301,7 +330,7 @@ export default function RootLayout() {
           ) : (
             <>
               <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
-                Couldn't load your profile
+                Couldn&apos;t load your profile
               </Text>
               <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-3 leading-relaxed">
                 {profileError ?? "Something went wrong. Please try again."}

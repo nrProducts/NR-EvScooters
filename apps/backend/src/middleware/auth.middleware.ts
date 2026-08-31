@@ -7,7 +7,7 @@ import {
     isStaffRole,
     permissionKey,
 } from "../types";
-import { unauthenticated, forbidden } from "../common/AppError";
+import { unauthenticated, forbidden, serviceUnavailable } from "../common/AppError";
 
 export interface AuthedRequest extends Request {
     /**
@@ -37,11 +37,32 @@ export async function requireAuth(req: AuthedRequest, _res: Response, next: Next
         return next(unauthenticated("Missing access token."));
     }
 
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !data.user) {
+    let data: Awaited<ReturnType<typeof supabaseAdmin.auth.getUser>>["data"] | undefined;
+    let authError: unknown;
+    try {
+        const res = await supabaseAdmin.auth.getUser(token);
+        data = res.data;
+        authError = res.error;
+    } catch (err) {
+        authError = err;
+    }
+
+    // A network failure reaching Supabase to VERIFY the token is not the same
+    // as the token being bad. The mobile client force-signs-out on any 401, so
+    // returning 401 here would log every rider out on a transient blip talking
+    // to supabase.co. 503 tells the client "retry", not "your session died".
+    if (authError && isAuthInfraError(authError)) {
+        console.error("[auth] could not reach the auth service to verify the token", {
+            path: req.originalUrl,
+            reason: (authError as Error)?.message,
+        });
+        return next(serviceUnavailable("Authentication is temporarily unavailable. Please try again."));
+    }
+
+    if (authError || !data?.user) {
         console.warn("[auth] rejected: token invalid", {
             path: req.originalUrl,
-            reason: error?.message ?? "no user for token",
+            reason: (authError as Error)?.message ?? "no user for token",
         });
         return next(unauthenticated("Invalid or expired access token."));
     }
@@ -103,6 +124,28 @@ export async function requireAuth(req: AuthedRequest, _res: Response, next: Next
         isDeleted: false,
     };
     next();
+}
+
+/**
+ * True when an error from `supabase.auth.getUser` means "couldn't reach the
+ * auth service", not "the token is invalid". A genuine auth rejection carries
+ * an HTTP status (400/401/403); an infra failure is a thrown fetch error, a
+ * retryable error, or a 0/5xx status. Kept deliberately broad — the cost of a
+ * false positive is one 503 the client retries; a false negative logs the
+ * rider out.
+ */
+export function isAuthInfraError(err: unknown): boolean {
+    if (!err || typeof err !== "object") return false;
+    const e = err as {
+        name?: string; status?: number; code?: string; message?: string;
+        cause?: { code?: string; message?: string };
+    };
+    if (e.name === "AuthRetryableFetchError") return true;
+    if (typeof e.status === "number" && (e.status === 0 || e.status >= 500)) return true;
+    const codes = `${e.code ?? ""} ${e.cause?.code ?? ""}`;
+    if (/UND_ERR|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|CONNECT_TIMEOUT/i.test(codes)) return true;
+    const msg = `${e.message ?? ""} ${e.cause?.message ?? ""}`;
+    return /fetch failed|network request failed|timeout|socket hang up|und_err/i.test(msg);
 }
 
 /**

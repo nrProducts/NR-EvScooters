@@ -2,13 +2,17 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
-  ChevronRight, Clock, MapPin, Calendar, Navigation, XCircle, CreditCard,
+  ChevronRight, MapPin, Calendar, Navigation, XCircle, CreditCard,
 } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
 import { KycBanner } from '../../components/KycBanner';
 import { MaintenanceNoticeBanner } from '../../components/MaintenanceNoticeBanner';
 import { ActiveRentalCard } from '../../components/ActiveRentalCard';
 import { FeaturedScooterCard } from '../../components/FeaturedScooterCard';
+import { SettlementCard } from '../../components/SettlementCard';
+import { HomeHeroCard } from '../../components/home/HomeHeroCard';
+import { HomeQuickLinks } from '../../components/home/HomeQuickLinks';
+import { NeedHelpCard } from '../../components/home/NeedHelpCard';
 import { Badge } from '../../components/ui/Badge';
 import { SkeletonList } from '../../components/ui/Skeleton';
 import { pullToRefresh } from '../../components/ui/PullToRefresh';
@@ -17,14 +21,15 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useVehicleCatalogStore } from '../../store/useVehicleCatalogStore';
 import { bookingRepository, maintenanceRepository, rentalRepository } from '../../services';
 import { useCancelBooking } from '../../hooks/useCancelBooking';
+import { useRiderJourney } from '../../hooks/useRiderJourney';
 import { ReturnGate } from '../../components/ReturnGate';
 import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
 import { notifyError } from '../../lib/confirm';
 import { COLORS } from '../../constants/theme';
+import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
 import { VEHICLE_STATUS_LABEL, VEHICLE_STATUS_TONE } from '../../constants/status';
 import type { ApiBooking, ApiMaintenanceNotice, ApiRental, ApiReturnSettlement } from '../../types/api';
 import { ScooterStatusCard } from '../../components/ScooterStatusCard';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function formatDay(dateStr: string): string {
@@ -42,7 +47,7 @@ export default function HomeScreen() {
   const profile = useAuthStore((s) => s.profile);
   const {
     featured, loadingFeatured, featuredError, loadFeatured,
-    list, loadingList, loadList,
+    list, loadingList, listError, loadList,
   } = useVehicleCatalogStore();
   const [pendingBooking, setPendingBooking] = useState<ApiBooking | null>(null);
 
@@ -62,16 +67,16 @@ export default function HomeScreen() {
   })();
   const [activeRental, setActiveRental] = useState<ApiRental | null>(null);
   const [settlement, setSettlement] = useState<ApiReturnSettlement | null>(null);
-  // Without this, a rider with has_active_rental sees the booking card flash
-  // in the shared slot before rentalRepository.mine() resolves.
-  const [rentalLoading, setRentalLoading] = useState(false);
   const [maintenanceNotice, setMaintenanceNotice] = useState<ApiMaintenanceNotice | null>(null);
   const [showReturn, setShowReturn] = useState(false);
   const { cancelling, cancelBooking } = useCancelBooking();
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const [refreshing, setRefreshing] = useState(false);
-  const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
+
+  // The rider's place in the rental journey — drives which single primary card
+  // shows below and whether discovery / the Book action are offered.
+  const journey = useRiderJourney({ pendingBooking, activeRental, settlement });
 
   // has_active_booking/has_active_rental can change server-side without any
   // action the rider took here — an admin releasing a vehicle that was still
@@ -123,16 +128,13 @@ export default function HomeScreen() {
   const loadRental = () => {
     if (!profile?.has_active_rental) {
       setActiveRental(null);
-      setRentalLoading(false);
       return;
     }
-    setRentalLoading(true);
     void rentalRepository.mine()
       .then(setActiveRental)
       .catch(() => {
         // Non-critical: the rest of Home renders fine without the rental.
-      })
-      .finally(() => setRentalLoading(false));
+      });
   };
 
   useEffect(loadRental, [profile?.has_active_rental]);
@@ -210,21 +212,15 @@ export default function HomeScreen() {
 
   if (!profile) return null;
 
-  const firstName = profile.full_name ? profile.full_name.split(' ')[0] : 'there';
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+  const featuredRef = featured ? { id: featured.id, name: featured.name } : null;
 
   return (
     <AppShell title="Home">
       <ScrollView
         className="flex-1 px-5 pt-5"
-        contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
         refreshControl={pullToRefresh(refreshing, () => void handleRefresh())}
       >
-        <Text style={{ color: COLORS.textPrimary }} className="text-xl font-black mb-5 text-center">
-          {greeting}, {firstName}
-        </Text>
-
         {/*
           <ReferAndEarnBanner /> was here. It already rendered nothing —
           referralRepository.mine() now always rejects and the banner treats
@@ -237,9 +233,34 @@ export default function HomeScreen() {
 
         <MaintenanceNoticeBanner notice={maintenanceNotice} />
 
-        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Your Scooter</Text>
-
-        {pendingBooking ? (
+        {/* ---- Primary slot: exactly one card, chosen by the journey phase ---- */}
+        {journey.phase === 'active_rental' ? (
+          activeRental ? (
+            <>
+              <ReturnGate
+                visible={showReturn}
+                rental={activeRental}
+                onClose={() => setShowReturn(false)}
+                onSubmitted={loadRental}
+              />
+              <ActiveRentalCard rental={activeRental} onReturn={() => setShowReturn(true)} />
+              {/* The one "what's happening / what do I do" box — settlement due,
+                  return awaiting confirmation, overdue/recovery, or a renewal
+                  reminder, in priority order; never more than one. */}
+              <ScooterStatusCard
+                rental={activeRental}
+                settlement={settlement}
+                onSettlementPaid={loadSettlement}
+                onRenew={() => router.push('/billing')}
+              />
+            </>
+          ) : (
+            <View className="mb-5"><SkeletonList count={1} /></View>
+          )
+        ) : journey.phase === 'payment_pending' || journey.phase === 'pickup_scheduled' ? (
+          !pendingBooking ? (
+            <View className="mb-5"><SkeletonList count={1} /></View>
+          ) : (
           <View
             className="rounded-2xl p-5 mb-5 border"
             style={{
@@ -330,88 +351,75 @@ export default function HomeScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        ) : null}
-
-        {activeRental ? (
-          <ReturnGate
-            visible={showReturn}
-            rental={activeRental}
-            onClose={() => setShowReturn(false)}
-            onSubmitted={loadRental}
-          />
-        ) : null}
-
-        {/* One slot, two audiences: discovery for a rider who can still book,
-            and their own scooter once pickup is confirmed. Showing the
-            featured card mid-rental just renders a disabled CTA. */}
-        {activeRental ? (
-          <ActiveRentalCard
-            rental={activeRental}
-            onReturn={() => setShowReturn(true)}
-            imageUrl={featured?.image_url ?? null}
-          />
-        ) : rentalLoading ? (
+          )
+        ) : journey.phase === 'rental_completed' ? (
+          <>
+            {settlement ? <SettlementCard settlement={settlement} onPaid={loadSettlement} /> : null}
+            <HomeHeroCard phase="rental_completed" featured={featuredRef} />
+          </>
+        ) : journey.phase === 'loading' ? (
           <View className="mb-5"><SkeletonList count={1} /></View>
-        ) : loadingFeatured ? (
-          <View className="mb-5"><SkeletonList count={1} /></View>
-        ) : featuredError ? (
-          <ErrorState message={featuredError} onRetry={() => void loadFeatured()} />
-        ) : featured ? (
-          <FeaturedScooterCard model={featured} />
-        ) : null}
-
-        {/* The one combined "what's happening, what do I do" area — an
-            outstanding return payment, a return awaiting staff confirmation,
-            an overdue/recovery warning, or a renewal reminder, in priority
-            order; never more than one box. Independent of whether the
-            rental itself is still active — a return in Payment Required
-            keeps the rental (and the vehicle) with the rider until Approve
-            Return actually completes it. */}
-        {activeRental ? (
-          <ScooterStatusCard
-            rental={activeRental}
-            settlement={settlement}
-            onSettlementPaid={loadSettlement}
-            onRenew={() => router.push('/billing')}
-          />
-        ) : null}
-
-        <View className="flex-row items-center justify-between mb-3">
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Available Scooters</Text>
-          <TouchableOpacity onPress={() => router.push('/browse-vehicles')} className="flex-row items-center">
-            <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">See All</Text>
-            <ChevronRight size={14} color={COLORS.primary} />
-          </TouchableOpacity>
-        </View>
-
-        {loadingList && list.length === 0 ? (
-          <SkeletonList count={2} />
         ) : (
-          <View
-            className="rounded-2xl border overflow-hidden mb-5"
-            style={{
-              backgroundColor: COLORS.card, borderColor: COLORS.border,
-              shadowColor: COLORS.black, shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 1,
-            }}
-          >
-            {list.map((model, i) => (
-              <View
-                key={model.id}
-                className="flex-row items-center justify-between px-4 py-3"
-                style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
-              >
-                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold flex-1 mr-2" numberOfLines={1}>
-                  {[model.vendor?.name, model.name].filter(Boolean).join(' - ')}
-                  {model.battery_range_km != null ? ` / ${model.battery_range_km} km` : ''}
-                  {model.top_speed_kmph != null ? ` / ${model.top_speed_kmph} km/h` : ''}
-                </Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold">
-                  {model.availability.available_count}
-                </Text>
-              </View>
-            ))}
-          </View>
+          <HomeHeroCard phase={journey.phase} featured={featuredRef} />
         )}
+
+        {/* ---- Discovery: only while the rider can actually book ---- */}
+        {journey.phase === 'ready_to_book' ? (
+          <>
+            <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold uppercase tracking-wide mb-2">
+              Ready to ride?
+            </Text>
+            {loadingFeatured ? (
+              <View className="mb-5"><SkeletonList count={1} /></View>
+            ) : featuredError ? (
+              <ErrorState message={featuredError} onRetry={() => void loadFeatured()} />
+            ) : featured ? (
+              <FeaturedScooterCard model={featured} />
+            ) : null}
+
+            <View className="flex-row items-center justify-between mb-3">
+              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Available Scooters</Text>
+              <TouchableOpacity onPress={() => router.push('/browse-vehicles')} className="flex-row items-center">
+                <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">See All</Text>
+                <ChevronRight size={14} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
+
+            {loadingList && list.length === 0 ? (
+              <SkeletonList count={2} />
+            ) : listError && list.length === 0 ? (
+              <ErrorState message={listError} onRetry={() => void loadList()} />
+            ) : (
+              <View
+                className="rounded-2xl border overflow-hidden mb-5"
+                style={{
+                  backgroundColor: COLORS.card, borderColor: COLORS.border,
+                  shadowColor: COLORS.black, shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 1,
+                }}
+              >
+                {list.slice(0, 5).map((model, i) => (
+                  <View
+                    key={model.id}
+                    className="flex-row items-center justify-between px-4 py-3"
+                    style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
+                  >
+                    <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold flex-1 mr-2" numberOfLines={1}>
+                      {[model.vendor?.name, model.name].filter(Boolean).join(' - ')}
+                      {model.battery_range_km != null ? ` / ${model.battery_range_km} km` : ''}
+                      {model.top_speed_kmph != null ? ` / ${model.top_speed_kmph} km/h` : ''}
+                    </Text>
+                    <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold">
+                      {model.availability.available_count}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
+        ) : null}
+
+        <HomeQuickLinks />
+        <NeedHelpCard />
       </ScrollView>
     </AppShell>
   );

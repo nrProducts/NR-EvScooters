@@ -28,7 +28,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { rentalRepository } from '../../services';
 import { SettlementCard, shouldShowSettlement } from '../../components/SettlementCard';
 import type { ApiReturnSettlement } from '../../types/api';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
@@ -45,10 +45,6 @@ export default function MyScooterScreen() {
   const { state, loading, error, reload } = useCurrentRideOrBooking();
   const { refreshing, onRefresh } = useRefresh(() => reload(true));
   const [showReturn, setShowReturn] = useState(false);
-  // AppShell insets its drawer sheet but not screen content, so each screen
-  // pads its own scroll tail — otherwise the Android nav/gesture bar covers
-  // the last rows. Same treatment as Home.
-  const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
 
   // Without this, a rider sitting on this screen when admin approves their
@@ -159,7 +155,7 @@ export default function MyScooterScreen() {
       ) : (
         <ScrollView
           className="flex-1 px-5 pt-5"
-          contentContainerStyle={{ paddingBottom: insets.bottom + tabBarHeight + 24 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
           {state.kind === 'rental' && state.rental.vehicle ? (

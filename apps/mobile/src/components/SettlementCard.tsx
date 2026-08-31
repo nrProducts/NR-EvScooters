@@ -9,6 +9,10 @@ import { ApiError } from '../lib/ApiError';
 import { useAuthStore } from '../store/useAuthStore';
 import type { ApiReturnSettlement } from '../types/api';
 
+// The display predicates live in a pure, RN-free module so useRiderJourney can
+// share them; re-exported here so existing importers keep working unchanged.
+export { shouldShowSettlement } from '../lib/settlementDisplay';
+
 const STATUS_LABEL: Record<ApiReturnSettlement['status'], string> = {
   pending_refund: 'Refund Pending',
   refund_processing: 'Refund Processing',
@@ -17,22 +21,6 @@ const STATUS_LABEL: Record<ApiReturnSettlement['status'], string> = {
   amount_due: 'Amount Due',
   settlement_completed: 'Settlement Completed',
 };
-
-function isTerminal(status: ApiReturnSettlement['status']): boolean {
-  return status === 'refund_completed' || status === 'settlement_completed' || status === 'no_refund_required';
-}
-
-/**
- * Whether the settlement is still worth showing on My Scooter — always
- * while unresolved, and for a brief confirmation window after it resolves
- * (no backend "expiry" concept, purely a client display window).
- */
-export function shouldShowSettlement(settlement: ApiReturnSettlement | null): boolean {
-  if (!settlement) return false;
-  if (!isTerminal(settlement.status)) return true;
-  const resolvedAt = settlement.processed_at ? new Date(settlement.processed_at).getTime() : 0;
-  return Date.now() - resolvedAt < 48 * 60 * 60 * 1000;
-}
 
 /**
  * Home only surfaces the settlement while money is actually due — once it

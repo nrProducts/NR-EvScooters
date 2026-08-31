@@ -107,13 +107,33 @@ export async function checkAccountExists(identifier: string): Promise<boolean> {
 }
 
 /**
- * Global sign-out: revokes every refresh token for the user server-side, so a
- * stolen refresh token can't be used to mint new access tokens after logout.
+ * Global sign-out: revokes every refresh token for the caller server-side, so
+ * a stolen refresh token can't mint new access tokens after logout.
+ *
+ * auth-js's admin API has no "revoke by user id" — `admin.signOut` takes the
+ * caller's own ACCESS TOKEN (a JWT), not a user id. requireAuth has already
+ * verified that token, so it's passed straight through here. The previous
+ * version passed the user id and every logout 500'd with "token is malformed".
+ *
+ * Best-effort: the client drops its local session regardless, so a token that
+ * expired in the gap since requireAuth, or Supabase being unreachable, is
+ * logged and swallowed rather than failing the logout.
  */
-export async function revokeAllSessions(userId: string): Promise<void> {
-    const { error } = await supabaseAdmin.auth.admin.signOut(userId, "global");
-    // A user with no active sessions is not an error worth surfacing.
-    if (error && !/session/i.test(error.message)) throw error;
+export async function revokeAllSessions(accessToken: string): Promise<void> {
+    if (!accessToken) return;
+    try {
+        const { error } = await supabaseAdmin.auth.admin.signOut(accessToken, "global");
+        // A user with no active sessions is not an error worth surfacing.
+        if (error && !/session/i.test(error.message)) {
+            console.warn("[auth] server-side session revocation failed; client session still cleared", {
+                reason: error.message,
+            });
+        }
+    } catch (err) {
+        console.warn("[auth] server-side session revocation threw; client session still cleared", {
+            reason: err instanceof Error ? err.message : String(err),
+        });
+    }
 }
 
 /**

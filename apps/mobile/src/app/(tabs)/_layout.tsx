@@ -120,9 +120,6 @@ export default function TabsLayout() {
         name="profile"
         options={{ title: 'Profile', tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} Icon={User} /> }}
       />
-      {/* Still routable (booking success, notification deep links) but not a
-          bar item — it moved out of the primary nav. */}
-      <Tabs.Screen name="booking-history" options={{ href: null }} />
     </Tabs>
   );
 }

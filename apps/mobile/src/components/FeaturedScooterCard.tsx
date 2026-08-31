@@ -1,103 +1,139 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { BatteryFull, Gauge, Zap, Cpu } from 'lucide-react-native';
-import { Badge } from './ui/Badge';
-import { SpecRow } from './SpecRow';
-import { VehicleStage } from './VehicleStage';
+import { Image } from 'expo-image';
+import { ArrowRight, BatteryFull, Gauge, Route } from 'lucide-react-native';
 import { useBookingGate } from '../hooks/useBookingGate';
+import { SCOOTER_HERO } from '../lib/scooterImage';
 import { COLORS } from '../constants/theme';
-import type { ApiVehicleModelDetail } from '../types/api';
+import type { ApiVehicleModelDetail, VehicleCategory } from '../types/api';
 
 interface FeaturedScooterCardProps {
   model: ApiVehicleModelDetail;
 }
 
+// One soft ground for the whole card — nothing on it is boxed off in a
+// different colour; the tiles and spec strip are just barely-there white.
+const CARD_BG = '#E8F5EC';
+const PANEL = '#FFFFFFCC';
+
+const CLASS_LABEL: Record<VehicleCategory, string> = {
+  scooter: 'Electric Scooter',
+  bike: 'Electric Bike',
+  moped: 'Electric Moped',
+};
+
 /**
- * Premium hero card for the Home screen's single featured scooter. Since the
- * vehicle detail screen was removed, this card is the full pitch: artwork,
- * specification block and the only route into booking.
+ * The Home hero: identity, a large scooter and a spec strip on one soft ground
+ * with a single Book action. Every value comes from the vehicle-model detail
+ * payload.
  */
 export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model }) => {
-  const { startBooking, canRent, alreadyBookedOrRenting, ctaLabel, kycModal } = useBookingGate();
+  const { startBooking, alreadyBookedOrRenting, canRent, ctaLabel, kycModal } = useBookingGate();
+  const disabled = alreadyBookedOrRenting || !canRent;
+
+  const subtitle = model.tagline ?? CLASS_LABEL[model.category] ?? 'Electric Scooter';
+
+  const specs = [
+    model.battery_range_km != null
+      ? { icon: Route, label: 'Range', value: `${model.battery_range_km} km` }
+      : null,
+    model.top_speed_kmph != null
+      ? { icon: Gauge, label: 'Top Speed', value: `${model.top_speed_kmph} km/h` }
+      : null,
+    model.battery_capacity
+      ? { icon: BatteryFull, label: 'Battery', value: model.battery_capacity }
+      : model.charging_time_hours != null
+        ? { icon: BatteryFull, label: 'Charging', value: `${model.charging_time_hours} hrs` }
+        : null,
+  ].filter((s): s is { icon: typeof Route; label: string; value: string } => s !== null);
 
   return (
     <View
-      className="rounded-3xl overflow-hidden mb-5 border"
+      className="rounded-3xl mb-6 p-5"
       style={{
-        backgroundColor: COLORS.card,
-        borderColor: COLORS.border,
+        backgroundColor: CARD_BG,
         shadowColor: COLORS.black,
-        shadowOpacity: 0.06,
-        shadowRadius: 20,
-        shadowOffset: { width: 0, height: 6 },
-        elevation: 3,
+        shadowOpacity: 0.07,
+        shadowRadius: 22,
+        shadowOffset: { width: 0, height: 10 },
+        elevation: 4,
       }}
     >
-      <VehicleStage
-        imageUrl={model.image_url}
-        height={220}
-        imageWidth="100%"
-        accessibilityLabel={model.name}
-      />
-
-      <View className="p-5">
-        {/* No Available/Unavailable badge here — this card sits in the "Your
-            Scooter" section, and "Unavailable" reads as if the rider's own
-            scooter were unavailable rather than describing fleet-wide stock
-            of the featured model. Fleet availability lives in the "Available
-            Scooters" section below instead. */}
-        <Badge label="Featured" tone="primary" />
-
-        <Text style={{ color: COLORS.textPrimary }} className="text-xl font-black mt-2">{model.name}</Text>
-        {model.vendor ? (
-          <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold mt-0.5">{model.vendor.name}</Text>
-        ) : null}
-        {model.tagline ? (
-          <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-2 leading-relaxed">
-            {model.tagline}
-          </Text>
-        ) : null}
-
-        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mt-5 mb-3">
-          Specifications
+      {/* Identity */}
+      {model.vendor?.name ? (
+        <Text
+          style={{ color: COLORS.textSecondary, letterSpacing: 2 }}
+          className="text-[10px] font-bold uppercase"
+        >
+          {model.vendor.name}
         </Text>
-        <View
-          className="rounded-2xl p-4 border flex-row flex-wrap"
-          style={{ backgroundColor: COLORS.background, borderColor: COLORS.border, gap: 16 }}
-        >
-          {model.battery_range_km != null && (
-            <SpecRow icon={BatteryFull} label="Range" value={`${model.battery_range_km} km`} />
-          )}
-          {model.top_speed_kmph != null && (
-            <SpecRow icon={Gauge} label="Top Speed" value={`${model.top_speed_kmph} km/h`} />
-          )}
-          {model.charging_time_hours != null && (
-            <SpecRow icon={Zap} label="Charging Time" value={`${model.charging_time_hours} hrs`} />
-          )}
-          {model.motor_power_watts != null && (
-            <SpecRow icon={Cpu} label="Motor Power" value={`${model.motor_power_watts} W`} />
-          )}
-          {model.battery_capacity ? (
-            <SpecRow icon={BatteryFull} label="Battery" value={model.battery_capacity} />
-          ) : null}
-        </View>
+      ) : null}
+      <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black">
+        {model.name}
+      </Text>
+      <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-1">
+        {subtitle}
+      </Text>
 
-        {model.starting_price != null ? (
-          <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-extrabold mt-4">
-            From ₹{model.starting_price.toFixed(0)} / Week
-          </Text>
-        ) : null}
-
-        <TouchableOpacity
-          onPress={() => void startBooking(model.id, model.name)}
-          disabled={alreadyBookedOrRenting}
-          accessibilityRole="button"
-          className="py-3.5 rounded-2xl items-center mt-4"
-          style={{ backgroundColor: COLORS.primary, opacity: alreadyBookedOrRenting || !canRent ? 0.5 : 1 }}
-        >
-          <Text className="text-white text-sm font-bold">{ctaLabel}</Text>
-        </TouchableOpacity>
+      {/* Scooter — on its own white panel, split from the rest of the card */}
+      <View
+        className="rounded-2xl items-center justify-center my-4 py-3"
+        style={{ backgroundColor: COLORS.card }}
+      >
+        <Image
+          source={SCOOTER_HERO}
+          style={{ width: '100%', height: 150 }}
+          contentFit="contain"
+          cachePolicy="memory-disk"
+          transition={250}
+          accessibilityLabel={model.name}
+        />
       </View>
+
+      {/* Spec strip */}
+      {specs.length > 0 ? (
+        <View
+          className="flex-row items-center rounded-2xl px-4 py-3 mt-3"
+          style={{ backgroundColor: PANEL }}
+        >
+          {specs.map((s) => (
+            <View key={s.label} className="flex-row items-center flex-1">
+              <s.icon size={16} color={COLORS.primary} />
+              <View className="ml-2">
+                <Text style={{ color: COLORS.textSecondary }} className="text-[9px] font-semibold">
+                  {s.label}
+                </Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold">
+                  {s.value}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {/* Book */}
+      <TouchableOpacity
+        onPress={() => void startBooking(model.id, model.name)}
+        disabled={alreadyBookedOrRenting}
+        accessibilityRole="button"
+        activeOpacity={0.9}
+        className="flex-row items-center justify-between rounded-2xl pl-5 pr-2 py-2.5 mt-3"
+        style={{ backgroundColor: COLORS.primary, opacity: disabled ? 0.5 : 1 }}
+      >
+        <View>
+          <Text className="text-white text-[13px] font-bold">{ctaLabel}</Text>
+          <Text style={{ color: '#FFFFFFB3' }} className="text-[10px] font-medium mt-0.5">
+            Ride Smart. Ride Green.
+          </Text>
+        </View>
+        <View
+          className="items-center justify-center rounded-full"
+          style={{ width: 32, height: 32, backgroundColor: '#FFFFFF' }}
+        >
+          <ArrowRight size={16} color={COLORS.primary} />
+        </View>
+      </TouchableOpacity>
 
       {kycModal}
     </View>
