@@ -1,18 +1,17 @@
 export const COLORS = {
   // --- New Fleet Management light theme (Phase 1) ---
-  // Matched to the admin web console's brand green (apps/web/src/index.css
-  // --primary/--primary-hover, #22C55E/#16A34A, 142°) — the two apps'
-  // greens were deliberately allowed to diverge in that redesign, with the
-  // web file's own comment flagging that rejoining them is a separate,
-  // explicit change to this file. This is that change.
-  primary: '#22C55E',
-  primaryPressed: '#16A34A',
-  secondary: '#81C784',
+  // SwapNgo brand green: #21C45D (hsl 142 71% 45%) — the single primary green
+  // across mobile, admin/staff web (apps/web/src/index.css --primary), the
+  // website and all logo/icon assets. No shared package, so the value is
+  // mirrored here by hand; keep it in sync.
+  primary: '#21C45D',
+  primaryPressed: '#1AA34D', // darkened brand green
+  secondary: '#7ACD98', // light brand-green tint
   background: '#F8FAFC',
   card: '#FFFFFF',
   textPrimary: '#1F2937',
   textSecondary: '#6B7280',
-  success: '#22C55E',
+  success: '#21C45D',
   warning: '#F59E0B',
   danger: '#EF4444',
   border: '#E5E7EB',
@@ -32,7 +31,7 @@ export const COLORS = {
     900: '#111827',
   },
   status: {
-    green: '#22C55E',
+    green: '#21C45D',
     amber: '#F59E0B',
     red: '#EF4444',
   },
@@ -41,9 +40,9 @@ export const COLORS = {
   // Kept so the not-yet-migrated screens (billing, station-map, maintenance,
   // RadialProgress, Keypad) still compile. These will be removed once those
   // screens are rebuilt in a later phase.
-  primaryDark: '#2E6F40',
-  primaryLight: '#CFFFDC',
-  primaryMedium: '#68BA7F',
+  primaryDark: '#178A44', // dark brand green
+  primaryLight: '#CFF6DD', // light brand-green tint
+  primaryMedium: '#5FC489', // medium brand green
   forestDeep: '#253D2C',
 };
 

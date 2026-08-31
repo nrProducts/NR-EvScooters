@@ -260,7 +260,7 @@ function RequestDrawer({
                 <Input
                   value={ticketRef}
                   onChange={(e) => setTicketRef(e.target.value)}
-                  placeholder="e.g. SUP-1042"
+                  placeholder="Helpdesk reference"
                 />
               </div>
 

@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+export { createBookingBody as createBookingOrderBody } from "../bookings/bookings.validation";
+export type { CreateBookingBody as CreateBookingOrderBody } from "../bookings/bookings.validation";
+
 export const bookingIdParam = z.object({ id: z.string().uuid("A valid booking id is required.") });
 export const invoiceIdParam = z.object({ id: z.string().uuid("A valid invoice id is required.") });
 

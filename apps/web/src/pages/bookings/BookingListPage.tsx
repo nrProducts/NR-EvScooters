@@ -57,9 +57,13 @@ function RefundStatusBadge({ status }: { status: BookingRefundStatus }) {
  * (Active/Past Due/Paused — the subscription's independent billing state)
  * stays its own separate column; only Status + Return Status merge.
  */
-function lifecycleStatus(b: PickupBooking): { label: string; tone: "success" | "warning" | "info" | "destructive" } {
+function lifecycleStatus(b: PickupBooking): { label: string; tone: "success" | "warning" | "info" | "destructive" | "muted" } {
   if (b.status === "cancelled") return { label: "Cancelled", tone: "destructive" };
   if (b.status === "expired") return { label: "Expired", tone: "destructive" };
+  // Rider bookings are only created after payment now, so this is always an
+  // admin-created booking still awaiting its offline/online payment — never a
+  // confirmed booking.
+  if (b.status === "pending_payment") return { label: "Awaiting payment", tone: "muted" };
   // "completed" must win over "return requested": return_requested_at is a
   // historical timestamp that's never cleared once set, so a booking whose
   // return was requested AND has since been approved (the booking's own
@@ -68,7 +72,7 @@ function lifecycleStatus(b: PickupBooking): { label: string; tone: "success" | "
   if (b.status === "completed") return { label: "Completed", tone: "success" };
   if (b.active_rental?.return_requested_at) return { label: "Return Requested", tone: "warning" };
   if (b.status === "fulfilled") return { label: "Active", tone: "success" };
-  return { label: "Booked", tone: "info" }; // pending_payment or confirmed
+  return { label: "Booked", tone: "info" }; // confirmed
 }
 
 /**

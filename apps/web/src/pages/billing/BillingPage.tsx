@@ -894,7 +894,7 @@ function WaiveChargeDialog({
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Reason (at least 3 characters)</Label>
-            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="e.g. First-time late payment" />
+            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason" />
           </div>
         </div>
 
@@ -1524,7 +1524,7 @@ function CancelDiscountDialog({
 
         <div className="space-y-1">
           <Label className="text-xs">Reason (at least 3 characters)</Label>
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="e.g. Applied in error" />
+          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason" />
         </div>
 
         {cancel.isError && (

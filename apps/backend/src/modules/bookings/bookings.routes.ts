@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireAction, requireKycVerified } from "../../middleware/authorize.middleware";
+import { requireAction } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./bookings.controller";
@@ -28,12 +28,10 @@ router.get(
     asyncHandler(c.myBookingByIdHandler),
 );
 
-router.post(
-    "/",
-    requireKycVerified,
-    validate({ body: v.createBookingBody }),
-    asyncHandler(c.createBookingHandler),
-);
+// The rider self-book route (POST /bookings) is gone: a rider booking is now
+// created only after payment captures — see POST /payments/bookings/order and
+// payments.service.ts materializeBookingFromOrder. Staff still create bookings
+// via POST /bookings/admin-create below.
 
 // Rider-initiated pre-pickup cancellation, scoped to the caller's own booking
 // inside the service. Distinct from POST /:id/reject, which is staff-only and

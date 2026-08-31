@@ -14,7 +14,7 @@ import type {
     DpRequestType, GeocodeArea,
     ApiOverdueLateFee, ApiOverdueLateFeeInvoice, ApiReturnStage,
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
-    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
+    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
     ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
 } from '../types/api';
@@ -355,8 +355,14 @@ export const api = {
         request<ApiAvailability>(`/vehicle-models/${id}/availability`, { query: { stationId } }),
 
     // --- bookings -----------------------------------------------------
-    createBooking: (payload: CreateBookingPayload) =>
-        request<ApiBooking>('/bookings', { method: 'POST', body: payload }),
+    /**
+     * Pay-first checkout: creates a payment_orders "booking intent" only. No
+     * booking exists until this order's payment captures and the backend
+     * materialises it. Retrying with the same plan/date reuses the one open
+     * intent, so a cancelled payment does not block re-booking.
+     */
+    createBookingOrder: (payload: CreateBookingOrderPayload) =>
+        request<ApiPaymentOrder>('/payments/bookings/order', { method: 'POST', body: payload }),
 
     myCurrentBooking: () => request<ApiBookingWithPlan>('/bookings/me/current'),
 

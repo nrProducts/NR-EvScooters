@@ -1,0 +1,32 @@
+/**
+ * Ported verbatim from apps/mobile/src/lib/kycProgress.ts — keep in sync.
+ *
+ * Derives which KYC wizard step a rider should resume at, from data fetched
+ * on every mount (profile fields + documents).
+ */
+import type { ApiDocument } from '../types/api';
+
+export type KycStep = 0 | 1 | 2 | 3 | 4;
+
+interface ProfileProgressFields {
+  profile_photo_url: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+}
+
+interface KycProgressFields {
+  documents: ApiDocument[];
+}
+
+const isOnFile = (doc?: ApiDocument): boolean => !!doc && doc.verification_status !== 'rejected';
+
+export function computeInitialKycStep(
+  profile: ProfileProgressFields | null | undefined,
+  kyc: KycProgressFields | null | undefined,
+): KycStep {
+  if (!profile?.profile_photo_url) return 0;
+  if (!profile.emergency_contact_name || !profile.emergency_contact_phone) return 1;
+  if (!isOnFile(kyc?.documents.find((d) => d.document_type === 'aadhaar'))) return 2;
+  if (!isOnFile(kyc?.documents.find((d) => d.document_type === 'driving_licence'))) return 3;
+  return 4;
+}

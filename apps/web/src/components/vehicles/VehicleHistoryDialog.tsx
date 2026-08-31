@@ -258,7 +258,7 @@ export function VehicleHistoryDialog({
               <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. Brake noise reported by rider"
+                placeholder="Note"
                 rows={3}
               />
             </div>

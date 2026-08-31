@@ -612,7 +612,7 @@ export async function tryAllocateVehicle(bookingId: string): Promise<void> {
  * insert another rider could take the last one — but that narrow race is very
  * different from cheerfully confirming a booking against an empty hub.
  */
-async function assertVehicleAvailable(modelId: string, hubId: string): Promise<void> {
+export async function assertVehicleAvailable(modelId: string, hubId: string): Promise<void> {
     const { data, error } = await supabaseAdmin
         .from("v_vehicle_availability")
         .select("vehicle_count")
@@ -628,10 +628,10 @@ async function assertVehicleAvailable(modelId: string, hubId: string): Promise<v
 }
 
 /** The plan must belong to the booked model and still be on sale. */
-async function requireBookablePlan(planId: string, modelId: string) {
+export async function requireBookablePlan(planId: string, modelId: string) {
     const { data, error } = await supabaseAdmin
         .from("plans")
-        .select("id, is_active, vehicle_model_id, price_amount, duration_days, deposit_amount")
+        .select("id, is_active, vehicle_model_id, price_amount, duration_days, deposit_amount, billing_period")
         .eq("id", planId)
         .is("deleted_at", null)
         .maybeSingle();

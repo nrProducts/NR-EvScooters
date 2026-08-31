@@ -99,7 +99,7 @@ export default function AuditLogPage() {
         <Input
           value={action}
           onChange={(e) => { setAction(e.target.value); setPage(1); }}
-          placeholder="Filter by action, e.g. kyc.approved"
+          placeholder="Filter by action"
           className="w-64"
         />
         <Select value={entityType} onValueChange={(v) => { setEntityType(v); setPage(1); }}>

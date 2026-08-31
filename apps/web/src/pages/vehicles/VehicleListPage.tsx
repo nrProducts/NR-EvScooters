@@ -303,7 +303,7 @@ export default function VehicleListPage() {
             <Textarea
               value={issueDescription}
               onChange={(e) => setIssueDescription(e.target.value)}
-              placeholder="e.g. Front brake making a grinding noise"
+              placeholder="Issue"
               rows={3}
             />
           </div>

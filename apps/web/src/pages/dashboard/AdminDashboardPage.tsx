@@ -42,8 +42,8 @@ const NOTIFICATION_DOT: Record<string, string> = {
 };
 
 const VEHICLE_STATUS_COLORS: Record<"light" | "dark", Record<VehicleStatus, string>> = {
-  light: { available: "#16A34A", reserved: "#3B82F6", assigned: "#22C55E", maintenance: "#F59E0B", retired: "#94A3B8" },
-  dark: { available: "#22C55E", reserved: "#3B82F6", assigned: "#10B981", maintenance: "#F59E0B", retired: "#64748B" },
+  light: { available: "#16A34A", reserved: "#3B82F6", assigned: "#21C45D", maintenance: "#F59E0B", retired: "#94A3B8" },
+  dark: { available: "#21C45D", reserved: "#3B82F6", assigned: "#10B981", maintenance: "#F59E0B", retired: "#64748B" },
 };
 
 /** "2026-03" -> "Mar" — short enough to fit a quarter-width chart's x-axis. */

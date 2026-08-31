@@ -80,7 +80,7 @@ export function AddChargeDialog({
             <Input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. Replacement key"
+              placeholder="Reason"
               maxLength={200}
             />
             <div className="flex flex-wrap gap-1.5 pt-1">

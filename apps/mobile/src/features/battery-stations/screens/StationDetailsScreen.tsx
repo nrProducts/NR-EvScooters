@@ -50,7 +50,7 @@ export default function StationDetailsScreen() {
         <View className="flex-1" style={{ backgroundColor: COLORS.background, paddingTop: insets.top }}>
             <View className="flex-row items-center px-4 py-3 border-b" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
                 <TouchableOpacity
-                    onPress={() => router.back()}
+                    onPress={() => (router.canGoBack() ? router.back() : router.navigate('/battery-stations'))}
                     accessibilityRole="button"
                     accessibilityLabel="Go back"
                     className="w-10 h-10 rounded-xl items-center justify-center mr-2"

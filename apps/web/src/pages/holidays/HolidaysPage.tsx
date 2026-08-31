@@ -198,7 +198,7 @@ function HolidayFormDialog({
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Independence Day"
+              placeholder="Holiday name"
             />
           </div>
 

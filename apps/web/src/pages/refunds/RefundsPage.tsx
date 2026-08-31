@@ -322,7 +322,7 @@ function ReviewRefundDialog({ refund, onOpenChange }: { refund: Refund | null; o
 
           <div className="space-y-1">
             <Label className="text-xs">Note {withheld > 0 ? "(why part is withheld)" : "(optional)"}</Label>
-            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. UPI gateway fee is non-refundable" />
+            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note" />
           </div>
 
           <div className="rounded-lg bg-secondary/40 p-3">
@@ -473,7 +473,7 @@ function RejectRefundDialog({ refund, onOpenChange }: { refund: Refund | null; o
 
         <div className="space-y-1">
           <Label className="text-xs">Reason (at least 3 characters) — the rider sees this</Label>
-          <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Cancellation outside the free window — fee retained per policy" />
+          <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" />
         </div>
 
         {reject.isError && (

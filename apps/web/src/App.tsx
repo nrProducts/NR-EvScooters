@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { RealtimeProvider } from "@/providers/RealtimeProvider";
 import { BrandedLoader } from "@/components/common/BrandedLoader";
 import { fetchCurrentSession } from "@/services/api/staff";
+import { useRiderAuthStore } from "@/store/riderAuthStore";
 
 export default function App() {
   const theme = useUiStore((s) => s.theme);
@@ -32,6 +33,11 @@ export default function App() {
       if (cancelled) return;
       if (current) setUser(current);
       else if (user) logout();
+      // Reconcile the rider session too (no-op when there's no Supabase
+      // session or the account isn't a rider). Parallel to the staff path
+      // above and never touches authStore.
+      await useRiderAuthStore.getState().bootstrap();
+      if (cancelled) return;
       setCheckedSession(true);
     })();
     return () => {

@@ -62,7 +62,7 @@ export default function ForgotPasswordPage() {
             <Input
               id="email"
               type="email"
-              placeholder="you@swapngo.in"
+              placeholder="Email"
               {...register("email", { required: "Email is required" })}
             />
             {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}

@@ -143,7 +143,7 @@ export default function NomineeScreen() {
                             onChangeText={setRelationship}
                             required
                             error={fieldErrors.relationship}
-                            placeholder="e.g. Spouse, Father, Sister"
+                            placeholder="Relationship"
                         />
                         <FormField
                             label="Their phone number"
@@ -151,7 +151,7 @@ export default function NomineeScreen() {
                             onChangeText={setPhone}
                             keyboardType="phone-pad"
                             error={fieldErrors.phone}
-                            placeholder="+91..."
+                            placeholder="Phone number"
                         />
                         <FormField
                             label="Their email (optional)"
@@ -160,7 +160,7 @@ export default function NomineeScreen() {
                             keyboardType="email-address"
                             autoCapitalize="none"
                             error={fieldErrors.email}
-                            placeholder="name@example.com"
+                            placeholder="Email"
                         />
 
                         {/* The nominee never consented to being in our records.

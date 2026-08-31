@@ -3,7 +3,7 @@ import type {
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
     ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
-    ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, KycDocType,
+    ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload, KycDocType,
     ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
     UpdateUserPayload, VerifyPaymentPayload,
 } from '../types/api';
@@ -78,7 +78,6 @@ export interface HistoryParams {
 }
 
 export interface BookingRepository {
-    create(payload: CreateBookingPayload): Promise<ApiBooking>;
     /**
      * The rider's current in-progress booking, or null if none exists. The
      * real implementation's object actually carries the plan/billing fields
@@ -113,6 +112,14 @@ export interface BillingRepository {
      * The app cannot compute this: pricing rules live in the database.
      */
     quotePlan(planId: string, startDay?: string): Promise<ApiPlanQuote>;
+    /**
+     * Pay-first booking checkout. Creates ONLY a payment intent — no booking,
+     * subscription or invoice. The booking is materialised by the backend when
+     * this order's payment captures. Retrying with the same plan/date reuses
+     * the one open intent.
+     */
+    createBookingOrder(payload: CreateBookingOrderPayload): Promise<ApiPaymentOrder>;
+    /** Legacy — pays an admin-created `pending_payment` booking. */
     createOrderForBooking(bookingId: string): Promise<ApiPaymentOrder>;
     createOrderForInvoice(invoiceId: string): Promise<ApiPaymentOrder>;
     verifyPayment(payload: VerifyPaymentPayload): Promise<void>;

@@ -22,7 +22,7 @@ module.exports = {
       package: 'com.nrproducts.evscooters',
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
       adaptiveIcon: {
-        backgroundColor: '#2EAF4A',
+        backgroundColor: '#21C45D',
         foregroundImage: './assets/images/android-icon-foreground.png',
         backgroundImage: './assets/images/android-icon-background.png',
         monochromeImage: './assets/images/android-icon-monochrome.png',
@@ -38,7 +38,7 @@ module.exports = {
       [
         'expo-splash-screen',
         {
-          backgroundColor: '#2EAF4A',
+          backgroundColor: '#21C45D',
           android: {
             image: './assets/images/splash-icon.png',
             imageWidth: 140,
@@ -48,7 +48,7 @@ module.exports = {
       [
         'expo-notifications',
         {
-          color: '#2EAF4A',
+          color: '#21C45D',
         },
       ],
       '@maplibre/maplibre-react-native',

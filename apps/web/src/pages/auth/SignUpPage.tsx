@@ -82,7 +82,7 @@ export default function SignUpPage() {
             <Label htmlFor="full_name">Full name</Label>
             <Input
               id="full_name"
-              placeholder="e.g. Priya Kumar"
+              placeholder="Full name"
               {...register("full_name", { required: "Full name is required" })}
             />
             {errors.full_name && <p className="text-xs text-destructive">{errors.full_name.message}</p>}
@@ -93,7 +93,7 @@ export default function SignUpPage() {
             <Input
               id="email"
               type="email"
-              placeholder="you@swapngo.in"
+              placeholder="Email"
               {...register("email", { required: "Email is required" })}
             />
             {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
@@ -103,7 +103,7 @@ export default function SignUpPage() {
             <Label htmlFor="phone">Phone</Label>
             <Input
               id="phone"
-              placeholder="98765 43210"
+              placeholder="Phone"
               {...register("phone", { required: "Phone is required" })}
             />
             {errors.phone && <p className="text-xs text-destructive">{errors.phone.message}</p>}

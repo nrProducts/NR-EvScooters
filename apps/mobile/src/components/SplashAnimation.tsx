@@ -1,106 +1,130 @@
 import React, { useEffect } from 'react';
-import { View, Image, Dimensions } from 'react-native';
-import Svg, { Path, Circle, Line, G } from 'react-native-svg';
+import { View, Text, Dimensions } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import Animated, {
-  useSharedValue, useAnimatedStyle, useAnimatedProps, withTiming, withDelay, Easing,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withDelay,
+  withRepeat,
+  withSequence,
+  Easing,
 } from 'react-native-reanimated';
 import { COLORS } from '../constants/theme';
 
-const AnimatedG = Animated.createAnimatedComponent(G);
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const SCOOTER_WIDTH = Math.min(180, SCREEN_WIDTH * 0.45);
-const SCOOTER_HEIGHT = SCOOTER_WIDTH * (120 / 180);
+const MARK_SIZE = Math.min(150, SCREEN_WIDTH * 0.38);
+const RING_SIZE = MARK_SIZE * 1.9;
 
 /**
- * A lightweight scooter-ride-in animation shown while the app reads back the
- * session (initialising || !onboardingHydrated in _layout.tsx). It rides on
- * top of that existing gate rather than adding its own delay — as soon as the
- * gate clears, this unmounts with whatever screen replaces it.
+ * The SwapNgo brand mark (apps/web/src/assets/logo-mark.svg — the single green
+ * "swopngo" glyph incl. the scooter + leaf) as a single filled path, so this
+ * matches the real logo exactly instead of a hand-drawn approximation.
+ */
+const MARK_VIEWBOX = '0 -148.5 817 817';
+const MARK_PATH =
+  'M 662.00,293.00 L 639.00,301.00 L 624.00,310.00 L 612.00,320.00 L 596.00,341.00 L 588.00,358.00 L 583.00,380.00 L 583.00,403.00 L 586.00,416.00 L 594.00,436.00 L 604.00,451.00 L 614.00,462.00 L 637.00,478.00 L 657.00,486.00 L 672.00,489.00 L 700.00,489.00 L 727.00,482.00 L 749.00,470.00 L 772.00,446.00 L 780.00,431.00 L 785.00,415.00 L 786.00,388.00 L 783.00,382.00 L 779.00,378.00 L 772.00,375.00 L 693.00,375.00 L 686.00,378.00 L 680.00,385.00 L 680.00,399.00 L 687.00,408.00 L 691.00,410.00 L 745.00,410.00 L 746.00,414.00 L 736.00,431.00 L 721.00,444.00 L 701.00,452.00 L 676.00,453.00 L 661.00,449.00 L 651.00,444.00 L 639.00,435.00 L 630.00,424.00 L 621.00,401.00 L 621.00,382.00 L 625.00,368.00 L 633.00,354.00 L 646.00,341.00 L 668.00,330.00 L 678.00,328.00 L 695.00,328.00 L 705.00,330.00 L 720.00,336.00 L 738.00,351.00 L 743.00,351.00 L 775.00,330.00 L 777.00,327.00 L 755.00,310.00 L 738.00,301.00 L 721.00,295.00 L 700.00,291.00 L 674.00,291.00 Z M 94.00,304.00 L 85.00,314.00 L 78.00,327.00 L 75.00,339.00 L 75.00,358.00 L 84.00,381.00 L 96.00,394.00 L 115.00,404.00 L 129.00,407.00 L 218.00,407.00 L 226.00,410.00 L 232.00,416.00 L 234.00,421.00 L 233.00,429.00 L 226.00,438.00 L 219.00,441.00 L 35.00,441.00 L 30.00,445.00 L 30.00,449.00 L 33.00,453.00 L 61.00,459.00 L 74.00,478.00 L 86.00,483.00 L 223.00,483.00 L 248.00,475.00 L 267.00,459.00 L 277.00,438.00 L 278.00,415.00 L 271.00,395.00 L 256.00,378.00 L 244.00,371.00 L 225.00,366.00 L 136.00,366.00 L 123.00,359.00 L 120.00,353.00 L 120.00,344.00 L 128.00,333.00 L 135.00,330.00 L 271.00,329.00 L 280.00,323.00 L 284.00,315.00 L 284.00,304.00 L 277.00,293.00 L 266.00,288.00 L 134.00,288.00 L 114.00,292.00 Z M 131.00,250.00 L 133.00,251.00 L 139.00,251.00 L 140.00,252.00 L 146.00,252.00 L 147.00,253.00 L 152.00,253.00 L 153.00,254.00 L 160.00,254.00 L 161.00,255.00 L 166.00,255.00 L 167.00,256.00 L 173.00,256.00 L 174.00,257.00 L 180.00,257.00 L 181.00,258.00 L 188.00,258.00 L 189.00,259.00 L 195.00,259.00 L 196.00,260.00 L 202.00,260.00 L 203.00,261.00 L 209.00,261.00 L 210.00,262.00 L 217.00,262.00 L 218.00,263.00 L 224.00,263.00 L 225.00,264.00 L 232.00,264.00 L 233.00,265.00 L 240.00,265.00 L 241.00,266.00 L 248.00,266.00 L 249.00,267.00 L 256.00,267.00 L 257.00,268.00 L 272.00,269.00 L 273.00,270.00 L 280.00,270.00 L 281.00,271.00 L 288.00,271.00 L 289.00,272.00 L 296.00,272.00 L 297.00,273.00 L 306.00,273.00 L 307.00,274.00 L 315.00,274.00 L 316.00,275.00 L 325.00,275.00 L 326.00,276.00 L 337.00,276.00 L 338.00,277.00 L 344.00,277.00 L 345.00,278.00 L 351.00,279.00 L 357.00,282.00 L 373.00,295.00 L 375.00,294.00 L 375.00,291.00 L 377.00,286.00 L 377.00,282.00 L 378.00,281.00 L 378.00,274.00 L 379.00,273.00 L 379.00,257.00 L 378.00,256.00 L 378.00,251.00 L 377.00,250.00 L 377.00,247.00 L 375.00,244.00 L 375.00,242.00 L 372.00,237.00 L 365.00,230.00 L 359.00,227.00 L 352.00,226.00 L 351.00,225.00 L 319.00,225.00 L 318.00,224.00 L 310.00,224.00 L 309.00,223.00 L 304.00,223.00 L 303.00,222.00 L 293.00,221.00 L 292.00,220.00 L 287.00,220.00 L 286.00,219.00 L 281.00,219.00 L 280.00,218.00 L 274.00,218.00 L 273.00,217.00 L 261.00,216.00 L 260.00,215.00 L 248.00,214.00 L 247.00,213.00 L 241.00,213.00 L 240.00,212.00 L 235.00,212.00 L 234.00,211.00 L 228.00,211.00 L 227.00,210.00 L 221.00,210.00 L 220.00,209.00 L 200.00,207.00 L 199.00,206.00 L 194.00,206.00 L 193.00,205.00 L 188.00,205.00 L 187.00,204.00 L 172.00,204.00 L 171.00,205.00 L 168.00,205.00 L 167.00,206.00 L 162.00,207.00 L 160.00,209.00 L 157.00,210.00 L 146.00,221.00 L 141.00,230.00 L 139.00,232.00 Z M 689.00,129.00 L 679.00,124.00 L 660.00,125.00 L 609.00,138.00 L 603.00,109.00 L 577.00,76.00 L 576.00,63.00 L 567.00,46.00 L 545.00,31.00 L 528.00,33.00 L 520.00,46.00 L 520.00,56.00 L 525.00,67.00 L 539.00,76.00 L 570.00,82.00 L 586.00,100.00 L 595.00,119.00 L 594.00,144.00 L 580.00,145.00 L 572.00,154.00 L 534.00,155.00 L 528.00,162.00 L 528.00,168.00 L 536.00,176.00 L 573.00,174.00 L 579.00,182.00 L 593.00,182.00 L 596.00,199.00 L 618.00,249.00 L 592.00,261.00 L 572.00,275.00 L 552.00,295.00 L 538.00,315.00 L 520.00,363.00 L 516.00,422.00 L 353.00,297.00 L 341.00,292.00 L 324.00,296.00 L 315.00,313.00 L 315.00,465.00 L 322.00,479.00 L 333.00,484.00 L 343.00,483.00 L 353.00,475.00 L 356.00,468.00 L 357.00,356.00 L 522.00,481.00 L 540.00,484.00 L 552.00,478.00 L 558.00,467.00 L 559.00,376.00 L 567.00,348.00 L 581.00,323.00 L 607.00,297.00 L 636.00,281.00 L 667.00,273.00 L 704.00,273.00 L 665.00,217.00 L 635.00,186.00 L 640.00,183.00 L 681.00,187.00 L 690.00,181.00 L 695.00,150.00 Z M 673.00,133.00 L 680.00,133.00 L 684.00,137.00 L 685.00,141.00 L 686.00,142.00 L 686.00,146.00 L 687.00,147.00 L 687.00,166.00 L 686.00,167.00 L 686.00,170.00 L 685.00,171.00 L 684.00,175.00 L 679.00,179.00 L 675.00,179.00 L 671.00,177.00 L 669.00,175.00 L 666.00,169.00 L 666.00,166.00 L 665.00,165.00 L 665.00,146.00 L 666.00,145.00 L 666.00,143.00 L 667.00,142.00 L 668.00,138.00 Z';
+
+/**
+ * Branded splash shown while the app reads back the session
+ * (initialising || !onboardingHydrated in _layout.tsx). Rides on top of that
+ * existing gate — as soon as it clears, this unmounts.
  *
- * Built with react-native-svg + reanimated only — both already dependencies
- * elsewhere in the app, so this adds nothing new to the bundle.
+ * The mark scales + fades in with a soft overshoot, a green ripple pulses out
+ * behind it, the tagline rises in, then the mark keeps a gentle breathing
+ * pulse for as long as loading takes. react-native-svg + reanimated only — no
+ * new dependency.
  */
 export const SplashAnimation: React.FC = () => {
-  const scooterX = useSharedValue(-SCOOTER_WIDTH - 40);
-  const wheelSpin = useSharedValue(0);
-  const wordmarkOpacity = useSharedValue(0);
-  const wordmarkY = useSharedValue(8);
+  const markScale = useSharedValue(0.55);
+  const markOpacity = useSharedValue(0);
+  const ringScale = useSharedValue(0.35);
+  const ringOpacity = useSharedValue(0);
+  const taglineOpacity = useSharedValue(0);
+  const taglineY = useSharedValue(10);
 
   useEffect(() => {
-    scooterX.value = withTiming((SCREEN_WIDTH - SCOOTER_WIDTH) / 2, {
-      duration: 700,
-      easing: Easing.out(Easing.cubic),
-    });
-    wheelSpin.value = withTiming(360 * 2, { duration: 700, easing: Easing.linear });
-    wordmarkOpacity.value = withDelay(500, withTiming(1, { duration: 400 }));
-    wordmarkY.value = withDelay(500, withTiming(0, { duration: 400, easing: Easing.out(Easing.cubic) }));
-  }, [scooterX, wheelSpin, wordmarkOpacity, wordmarkY]);
+    markOpacity.value = withTiming(1, { duration: 380, easing: Easing.out(Easing.quad) });
+    markScale.value = withSequence(
+      withTiming(1.06, { duration: 460, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: 220, easing: Easing.inOut(Easing.quad) }),
+      // Gentle breathing while the load gate is still up.
+      withRepeat(
+        withSequence(
+          withTiming(1.035, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+      ),
+    );
 
-  const scooterStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: scooterX.value }],
+    ringOpacity.value = withDelay(
+      120,
+      withRepeat(
+        withSequence(
+          withTiming(0.28, { duration: 100 }),
+          withTiming(0, { duration: 1300, easing: Easing.out(Easing.quad) }),
+        ),
+        -1,
+      ),
+    );
+    ringScale.value = withDelay(
+      120,
+      withRepeat(withTiming(1.7, { duration: 1400, easing: Easing.out(Easing.quad) }), -1),
+    );
+
+    taglineOpacity.value = withDelay(440, withTiming(1, { duration: 420 }));
+    taglineY.value = withDelay(440, withTiming(0, { duration: 420, easing: Easing.out(Easing.cubic) }));
+  }, [markScale, markOpacity, ringScale, ringOpacity, taglineOpacity, taglineY]);
+
+  const markStyle = useAnimatedStyle(() => ({
+    opacity: markOpacity.value,
+    transform: [{ scale: markScale.value }],
   }));
 
-  const wordmarkStyle = useAnimatedStyle(() => ({
-    opacity: wordmarkOpacity.value,
-    transform: [{ translateY: wordmarkY.value }],
+  const ringStyle = useAnimatedStyle(() => ({
+    opacity: ringOpacity.value,
+    transform: [{ scale: ringScale.value }],
   }));
 
-  const rearWheelProps = useAnimatedProps(() => ({
-    rotation: wheelSpin.value,
-  }));
-  const frontWheelProps = useAnimatedProps(() => ({
-    rotation: wheelSpin.value,
+  const taglineStyle = useAnimatedStyle(() => ({
+    opacity: taglineOpacity.value,
+    transform: [{ translateY: taglineY.value }],
   }));
 
   return (
     <View className="flex-1 items-center justify-center" style={{ backgroundColor: COLORS.background }}>
-      <View style={{ height: SCOOTER_HEIGHT + 40, width: SCREEN_WIDTH, justifyContent: 'center' }}>
-        <Animated.View style={[{ position: 'absolute', width: SCOOTER_WIDTH, height: SCOOTER_HEIGHT }, scooterStyle]}>
-          <Svg width={SCOOTER_WIDTH} height={SCOOTER_HEIGHT} viewBox="0 0 180 120">
-            {/* Motion lines, trailing the scooter to sell the sense of motion. */}
-            <Line x1="0" y1="70" x2="28" y2="70" stroke={COLORS.border} strokeWidth={3} strokeLinecap="round" />
-            <Line x1="6" y1="82" x2="26" y2="82" stroke={COLORS.border} strokeWidth={3} strokeLinecap="round" />
-
-            {/* Body */}
-            <Path
-              d="M40 95 L40 60 Q40 50 55 50 L95 50 Q100 40 112 40 L128 40"
-              stroke={COLORS.primary}
-              strokeWidth={6}
-              strokeLinecap="round"
-              fill="none"
-            />
-            {/* Handlebar */}
-            <Path d="M128 40 L128 55" stroke={COLORS.primary} strokeWidth={6} strokeLinecap="round" />
-            <Path d="M118 55 L138 55" stroke={COLORS.primary} strokeWidth={6} strokeLinecap="round" />
-            {/* Seat */}
-            <Path d="M55 50 L70 50" stroke={COLORS.primary} strokeWidth={8} strokeLinecap="round" />
-            {/* Footboard */}
-            <Path d="M45 92 L100 92" stroke={COLORS.primary} strokeWidth={6} strokeLinecap="round" />
-
-            {/* Rear wheel — origin pins the rotation to the wheel's own center. */}
-            <AnimatedG animatedProps={rearWheelProps} origin="45, 95">
-              <Circle cx="45" cy="95" r="18" stroke={COLORS.textPrimary} strokeWidth={5} fill={COLORS.card} />
-              <Line x1="45" y1="80" x2="45" y2="110" stroke={COLORS.border} strokeWidth={2} />
-              <Line x1="30" y1="95" x2="60" y2="95" stroke={COLORS.border} strokeWidth={2} />
-            </AnimatedG>
-
-            {/* Front wheel */}
-            <AnimatedG animatedProps={frontWheelProps} origin="128, 95">
-              <Circle cx="128" cy="95" r="18" stroke={COLORS.textPrimary} strokeWidth={5} fill={COLORS.card} />
-              <Line x1="128" y1="80" x2="128" y2="110" stroke={COLORS.border} strokeWidth={2} />
-              <Line x1="113" y1="95" x2="143" y2="95" stroke={COLORS.border} strokeWidth={2} />
-            </AnimatedG>
+      <View style={{ width: RING_SIZE, height: RING_SIZE, alignItems: 'center', justifyContent: 'center' }}>
+        <Animated.View
+          style={[
+            {
+              position: 'absolute',
+              width: RING_SIZE,
+              height: RING_SIZE,
+              borderRadius: RING_SIZE / 2,
+              backgroundColor: COLORS.primary,
+            },
+            ringStyle,
+          ]}
+        />
+        <Animated.View style={markStyle}>
+          <Svg width={MARK_SIZE} height={MARK_SIZE} viewBox={MARK_VIEWBOX}>
+            <Path d={MARK_PATH} fill={COLORS.primary} fillRule="evenodd" />
           </Svg>
         </Animated.View>
       </View>
 
-      <Animated.View style={wordmarkStyle}>
-        <Image
-          source={require('../../assets/images/logo-lockup.png')}
-          accessibilityLabel="Swapngo — Swap. Ride. Go Green."
-          className="w-60 h-16"
-          resizeMode="contain"
-        />
+      <Animated.View style={[{ marginTop: 22 }, taglineStyle]}>
+        <Text
+          style={{
+            color: COLORS.textSecondary,
+            fontSize: 11,
+            fontWeight: '700',
+            letterSpacing: 3,
+          }}
+        >
+          SWAP · RIDE · GO GREEN
+        </Text>
       </Animated.View>
     </View>
   );

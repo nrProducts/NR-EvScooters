@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 import { Tabs } from 'expo-router';
-import { Home, History, Bike, CreditCard, User } from 'lucide-react-native';
+import { Home, Bike, CreditCard, User, BatteryCharging } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/theme';
@@ -24,10 +24,9 @@ function TabIcon({ focused, color, Icon }: { focused: boolean; color: string; Ic
 }
 
 /**
- * The five primary rider destinations. Everything else (Support, KYC,
- * Battery Stations, Privacy, Notifications...) stays reachable from
- * AppShell's drawer/avatar — this bar is deliberately not a duplicate nav
- * system, just the top-level shortcut for what a rider reaches for most.
+ * The five primary rider destinations. The nav drawer is gone — KYC, Support
+ * and Privacy & Data now live in the Profile sheet (ProfileContent), and
+ * Notifications is the header bell. This bar is the whole top-level nav.
  *
  * Route names here are the (tabs)-group-relative file names — the group
  * itself never appears in the URL, so `router.push('/billing')` etc.
@@ -102,25 +101,28 @@ export default function TabsLayout() {
           Home sits in the visual middle, the position a rider's thumb
           naturally lands on. */}
       <Tabs.Screen
-        name="booking-history"
-        options={{ title: 'Bookings', tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} Icon={History} /> }}
-      />
-      <Tabs.Screen
         name="my-scooter"
         options={{ title: 'Scooter', tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} Icon={Bike} /> }}
-      />
-      <Tabs.Screen
-        name="home"
-        options={{ title: 'Home', tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} Icon={Home} /> }}
       />
       <Tabs.Screen
         name="billing"
         options={{ title: 'Billing', tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} Icon={CreditCard} /> }}
       />
       <Tabs.Screen
+        name="home"
+        options={{ title: 'Home', tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} Icon={Home} /> }}
+      />
+      <Tabs.Screen
+        name="battery-stations"
+        options={{ title: 'Stations', tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} Icon={BatteryCharging} /> }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{ title: 'Profile', tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} Icon={User} /> }}
       />
+      {/* Still routable (booking success, notification deep links) but not a
+          bar item — it moved out of the primary nav. */}
+      <Tabs.Screen name="booking-history" options={{ href: null }} />
     </Tabs>
   );
 }

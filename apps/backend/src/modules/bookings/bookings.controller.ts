@@ -4,15 +4,9 @@ import { validatedQuery } from "../../middleware/validate.middleware";
 import * as service from "./bookings.service";
 import {
     AdminCreateBookingBody,
-    BookingHistoryQuery, CancelBookingBody, ConfirmPickupBody, CreateBookingBody, LateFeeOverrideBody,
+    BookingHistoryQuery, CancelBookingBody, ConfirmPickupBody, LateFeeOverrideBody,
     PickupQueueQuery, RejectBookingBody,
 } from "./bookings.validation";
-
-export async function createBookingHandler(req: AuthedRequest, res: Response) {
-    const body = req.body as CreateBookingBody;
-    const booking = await service.createBooking(body, req.user!);
-    res.status(201).json(booking);
-}
 
 export async function adminCreateBookingHandler(req: AuthedRequest, res: Response) {
     const body = req.body as AdminCreateBookingBody;

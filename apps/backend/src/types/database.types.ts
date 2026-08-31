@@ -161,6 +161,7 @@ export type Database = {
       bookings: {
         Row: {
           created_at: string
+          created_from_order_id: string | null
           deposit_amount_snapshot: number
           duration_days_snapshot: number
           held_vehicle_id: string | null
@@ -176,6 +177,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          created_from_order_id?: string | null
           deposit_amount_snapshot: number
           duration_days_snapshot: number
           held_vehicle_id?: string | null
@@ -191,6 +193,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          created_from_order_id?: string | null
           deposit_amount_snapshot?: number
           duration_days_snapshot?: number
           held_vehicle_id?: string | null
@@ -1499,6 +1502,7 @@ export type Database = {
       payment_orders: {
         Row: {
           amount: number
+          booking_intent: Json | null
           created_at: string
           currency: string
           expires_at: string | null
@@ -1506,13 +1510,15 @@ export type Database = {
           gateway_order_id: string | null
           id: string
           idempotency_key: string
-          invoice_id: string
+          invoice_id: string | null
+          purpose: string
           status: Database["public"]["Enums"]["payment_order_status"]
           updated_at: string | null
           user_id: string
         }
         Insert: {
           amount: number
+          booking_intent?: Json | null
           created_at?: string
           currency?: string
           expires_at?: string | null
@@ -1520,13 +1526,15 @@ export type Database = {
           gateway_order_id?: string | null
           id?: string
           idempotency_key: string
-          invoice_id: string
+          invoice_id?: string | null
+          purpose?: string
           status?: Database["public"]["Enums"]["payment_order_status"]
           updated_at?: string | null
           user_id: string
         }
         Update: {
           amount?: number
+          booking_intent?: Json | null
           created_at?: string
           currency?: string
           expires_at?: string | null
@@ -1534,7 +1542,8 @@ export type Database = {
           gateway_order_id?: string | null
           id?: string
           idempotency_key?: string
-          invoice_id?: string
+          invoice_id?: string | null
+          purpose?: string
           status?: Database["public"]["Enums"]["payment_order_status"]
           updated_at?: string | null
           user_id?: string
@@ -3874,6 +3883,7 @@ export type Database = {
         Returns: Database["public"]["Enums"]["user_role"]
       }
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
+      create_booking_from_order: { Args: { p_order_id: string }; Returns: string }
       expire_stale_payment_orders: { Args: never; Returns: number }
       quote_plan_first_period: {
         Args: { p_plan_id: string; p_starts_on?: string }

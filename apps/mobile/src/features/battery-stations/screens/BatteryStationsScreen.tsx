@@ -38,6 +38,13 @@ import type { AreaResult } from '../api/geocodeService';
  */
 export default function BatteryStationsScreen() {
     const router = useRouter();
+    // Stations is a bottom-tab root now, not a pushed screen — router.back()
+    // from here has nothing to pop and expo-router logs an unhandled GO_BACK.
+    // Fall back to Home (also covers a deep link that opened the map directly).
+    const goBack = () => {
+        if (router.canGoBack()) router.back();
+        else router.navigate('/home');
+    };
     const insets = useSafeAreaInsets();
     const mapRef = useRef<BatteryStationMapHandle>(null);
 
@@ -234,7 +241,7 @@ export default function BatteryStationsScreen() {
                     onRetry={() => void refetch()}
                 />
                 <TouchableOpacity
-                    onPress={() => router.back()}
+                    onPress={goBack}
                     accessibilityRole="button"
                     className="self-center mt-2 px-4 py-2"
                 >
@@ -262,7 +269,7 @@ export default function BatteryStationsScreen() {
                 pointerEvents="box-none"
             >
                 <View className="flex-row items-start" style={{ gap: 10 }}>
-                    <MapControlButton icon={ArrowLeft} label="Go back" onPress={() => router.back()} />
+                    <MapControlButton icon={ArrowLeft} label="Go back" onPress={goBack} />
                     <View className="flex-1">
                         <StationSearch
                             value={search}

@@ -648,7 +648,7 @@ const EmergencyContactStep: React.FC<{
           setPhone(t);
           if (error) setError('');
         }}
-        placeholder="+919876543210"
+        placeholder="Alternate phone number"
         keyboardType="phone-pad"
         error={error}
       />

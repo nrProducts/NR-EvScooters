@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import { User, Camera, Mail, Phone, ShieldCheck, ChevronRight, LogOut } from 'lucide-react-native';
+import {
+  User, Camera, Mail, Phone, ShieldCheck, ChevronRight, LogOut, LifeBuoy, Lock, HelpCircle,
+} from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import { Badge } from './ui/Badge';
 import { COLORS } from '../constants/theme';
@@ -20,8 +22,16 @@ import { notify } from '../lib/confirm';
  *
  * `onClose` is only passed by the sheet; the tab screen omits it, which is
  * what turns off the sheet-only affordances (its own header/X button) below.
+ *
+ * `compact` is passed by the AppShell header avatar sheet: it renders the
+ * rider's details only (photo, contact, plan tiles, KYC status) plus a
+ * shortcut into the full Profile tab. The menu rows (KYC Verification /
+ * Support / Privacy & Data) and Logout appear only on the full-page
+ * Profile tab (`compact` omitted).
  */
-export function ProfileContent({ onClose }: { onClose?: () => void } = {}) {
+export function ProfileContent(
+  { onClose, compact = false }: { onClose?: () => void; compact?: boolean } = {},
+) {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
   const signOut = useAuthStore((s) => s.signOut);
@@ -188,17 +198,57 @@ export function ProfileContent({ onClose }: { onClose?: () => void } = {}) {
         </TouchableOpacity>
       ) : null}
 
-      <TouchableOpacity
-        onPress={() => goTo('/onboarding?replay=1')}
-        accessibilityRole="button"
-        className="rounded-2xl p-3.5 flex-row items-center justify-between mb-6"
-        style={{ backgroundColor: COLORS.primary + '0F' }}
+      {compact ? (
+        <TouchableOpacity
+          onPress={() => goTo('/profile')}
+          accessibilityRole="button"
+          className="rounded-2xl p-3.5 flex-row items-center justify-between"
+          style={{ backgroundColor: COLORS.primary + '14' }}
+        >
+          <Text style={{ color: COLORS.primary }} className="text-sm font-bold">View full profile</Text>
+          <ChevronRight size={16} color={COLORS.primary} />
+        </TouchableOpacity>
+      ) : (
+        <>
+      {/* Menu — the destinations that used to live in the nav drawer. */}
+      <View
+        className="rounded-2xl border overflow-hidden mb-6"
+        style={{
+          backgroundColor: COLORS.card, borderColor: COLORS.border,
+          shadowColor: COLORS.black, shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 1,
+        }}
       >
-        <Text style={{ color: COLORS.primary }} className="text-[11px] font-bold flex-1 mr-2">
-          How Swapngo Works
-        </Text>
-        <ChevronRight size={16} color={COLORS.primary} />
-      </TouchableOpacity>
+        {[
+          { icon: ShieldCheck, label: 'KYC Verification', route: '/kyc' },
+          { icon: LifeBuoy, label: 'Support', route: '/support' },
+          // DPDPA: consent toggles, data export, correction, erasure, nominee
+          // and the grievance channel all live behind this one entry.
+          { icon: Lock, label: 'Privacy & Data', route: '/privacy' },
+          { icon: HelpCircle, label: 'How Swapngo Works', route: '/onboarding?replay=1' },
+        ].map((item, i) => {
+          const Icon = item.icon;
+          return (
+            <TouchableOpacity
+              key={item.route}
+              onPress={() => goTo(item.route)}
+              accessibilityRole="button"
+              className="flex-row items-center px-4 py-3.5"
+              style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
+            >
+              <View
+                className="w-8 h-8 rounded-lg items-center justify-center mr-3"
+                style={{ backgroundColor: COLORS.primary + '14' }}
+              >
+                <Icon size={16} color={COLORS.primary} />
+              </View>
+              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold flex-1">
+                {item.label}
+              </Text>
+              <ChevronRight size={16} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       <TouchableOpacity
         onPress={handleLogout}
@@ -208,6 +258,8 @@ export function ProfileContent({ onClose }: { onClose?: () => void } = {}) {
         <LogOut size={16} color={COLORS.danger} />
         <Text style={{ color: COLORS.danger }} className="font-bold text-sm ml-2">Logout</Text>
       </TouchableOpacity>
+        </>
+      )}
     </View>
   );
 }

@@ -300,6 +300,9 @@ export interface CreateBookingPayload {
     start_day: string; // YYYY-MM-DD
 }
 
+/** POST /payments/bookings/order — pay-first: creates a payment intent, not a booking. */
+export type CreateBookingOrderPayload = CreateBookingPayload;
+
 /**
  * `booked` is `reserved`, and `scrap` is `retired`.
  *

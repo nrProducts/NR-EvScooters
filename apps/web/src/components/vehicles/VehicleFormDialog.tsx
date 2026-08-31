@@ -118,7 +118,7 @@ export function VehicleFormDialog({
             <Input
               value={form.name ?? ""}
               onChange={(e) => set("name", e.target.value)}
-              placeholder="Scooter #14"
+              placeholder="Display name"
             />
           </Field>
           <Field label="Model">
@@ -142,20 +142,20 @@ export function VehicleFormDialog({
             <Input
               value={form.registration_number}
               onChange={(e) => set("registration_number", e.target.value)}
-              placeholder="TN00ZZ0000"
+              placeholder="Registration number"
             />
           </Field>
           <Field label="VIN">
-            <Input value={form.vin} onChange={(e) => set("vin", e.target.value)} placeholder="VIN12345" />
+            <Input value={form.vin} onChange={(e) => set("vin", e.target.value)} placeholder="VIN" />
           </Field>
           <Field label="Color">
-            <Input value={form.color ?? ""} onChange={(e) => set("color", e.target.value)} placeholder="Matte Black" />
+            <Input value={form.color ?? ""} onChange={(e) => set("color", e.target.value)} placeholder="Color" />
           </Field>
           <Field label="QR code">
-            <Input value={form.qr_code ?? ""} onChange={(e) => set("qr_code", e.target.value)} placeholder="QR-000042" />
+            <Input value={form.qr_code ?? ""} onChange={(e) => set("qr_code", e.target.value)} placeholder="QR code" />
           </Field>
           <Field label="IMEI / IoT device">
-            <Input value={form.imei ?? ""} onChange={(e) => set("imei", e.target.value)} placeholder="356938035643809" />
+            <Input value={form.imei ?? ""} onChange={(e) => set("imei", e.target.value)} placeholder="IMEI / IoT device" />
           </Field>
           <Field label="Purchase date">
             <Input type="date" value={form.purchase_date ?? ""} onChange={(e) => set("purchase_date", e.target.value)} />
@@ -164,7 +164,7 @@ export function VehicleFormDialog({
             <Input
               value={form.batch_number ?? ""}
               onChange={(e) => set("batch_number", e.target.value)}
-              placeholder="BATCH-2026-001"
+              placeholder="Batch number"
             />
           </Field>
         </div>

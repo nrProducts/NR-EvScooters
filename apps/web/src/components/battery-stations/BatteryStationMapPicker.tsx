@@ -138,7 +138,7 @@ export function BatteryStationMapPicker({
     if (markerRef.current) {
       markerRef.current.setLngLat(lngLat);
     } else {
-      markerRef.current = new lib.Marker({ color: "#22C55E" }).setLngLat(lngLat).addTo(map);
+      markerRef.current = new lib.Marker({ color: "#21C45D" }).setLngLat(lngLat).addTo(map);
     }
   }, [value, status]);
 

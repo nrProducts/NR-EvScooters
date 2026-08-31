@@ -39,11 +39,30 @@ import HolidaysPage from "@/pages/holidays/HolidaysPage";
 import NotFoundPage from "@/pages/errors/NotFoundPage";
 import ForbiddenPage from "@/pages/errors/ForbiddenPage";
 
+import { RiderProtectedRoute } from "./RiderProtectedRoute";
+import { RiderLayout } from "@/rider/layouts/RiderLayout";
+import RiderOtpPage from "@/rider/pages/RiderOtpPage";
+import RiderAuthCallback from "@/rider/pages/RiderAuthCallback";
+import RiderHome from "@/rider/pages/RiderHome";
+import RiderProfileSetup from "@/rider/pages/RiderProfileSetup";
+import RiderConsent from "@/rider/pages/RiderConsent";
+import RiderKycWizard from "@/rider/pages/RiderKycWizard";
+import RiderBrowseVehicles from "@/rider/pages/RiderBrowseVehicles";
+import RiderBookingSelect from "@/rider/pages/RiderBookingSelect";
+import RiderScooter from "@/rider/pages/RiderScooter";
+import RiderBilling from "@/rider/pages/RiderBilling";
+import RiderReturn from "@/rider/pages/RiderReturn";
+import RiderProfile from "@/rider/pages/RiderProfile";
+import RiderSupport from "@/rider/pages/RiderSupport";
+import RiderNotifications from "@/rider/pages/RiderNotifications";
+
 export function AppRoutes() {
   return (
     <Routes>
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
+        {/* Rider phone-OTP verification — same centered-card chrome as /login. */}
+        <Route path="/login/otp" element={<RiderOtpPage />} />
         <Route path="/signup" element={<SignUpPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -113,6 +132,53 @@ export function AppRoutes() {
         <Route path="/my-profile" element={<MyProfilePage />} />
 
         <Route path="/403" element={<ForbiddenPage />} />
+      </Route>
+
+      {/* --- Rider web (/rider/*) — separate shell, own auth store, gated by
+          RiderProtectedRoute (not roleConfig). Sign-in is the shared /login
+          page; these are post-auth continuations. Admin/staff routes above
+          are untouched. --- */}
+      <Route path="/rider/login" element={<Navigate to="/login" replace />} />
+      <Route path="/rider/otp" element={<Navigate to="/login" replace />} />
+      <Route path="/rider/auth/callback" element={<RiderAuthCallback />} />
+
+      {/* Onboarding steps — gated, but chrome-less (no nav drawer / top bar). */}
+      <Route
+        path="/rider/profile-setup"
+        element={
+          <RiderProtectedRoute>
+            <RiderProfileSetup />
+          </RiderProtectedRoute>
+        }
+      />
+      <Route
+        path="/rider/consent"
+        element={
+          <RiderProtectedRoute>
+            <RiderConsent />
+          </RiderProtectedRoute>
+        }
+      />
+
+      <Route
+        element={
+          <RiderProtectedRoute>
+            <RiderLayout />
+          </RiderProtectedRoute>
+        }
+      >
+        <Route path="/rider" element={<RiderHome />} />
+        <Route path="/rider/kyc" element={<RiderKycWizard />} />
+        <Route path="/rider/browse" element={<RiderBrowseVehicles />} />
+        <Route path="/rider/booking/:modelId" element={<RiderBookingSelect />} />
+        <Route path="/rider/booking/:modelId/pay" element={<Navigate to=".." replace relative="path" />} />
+        <Route path="/rider/scooter" element={<RiderScooter />} />
+        <Route path="/rider/billing" element={<RiderBilling />} />
+        <Route path="/rider/my-plan" element={<Navigate to="/rider/billing" replace />} />
+        <Route path="/rider/return" element={<RiderReturn />} />
+        <Route path="/rider/support" element={<RiderSupport />} />
+        <Route path="/rider/account" element={<RiderProfile />} />
+        <Route path="/rider/notifications" element={<RiderNotifications />} />
       </Route>
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -10,10 +10,15 @@ import { computeInvoiceLateFee, lateFeeRuleFor } from "./renewalFee";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { applyRefundWebhookResult } from "../refunds/refunds.service";
-import { tryAllocateVehicle } from "../bookings/bookings.service";
+import {
+    assertVehicleAvailable, hasActiveBookingForUser, requireBookablePlan, tryAllocateVehicle,
+} from "../bookings/bookings.service";
+import { hasActiveRentalForUser } from "../users/users.service";
+import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { AuthContext } from "../../types";
 import { Json } from "../../types/database.types";
 import { CreateOrderResult, OrderLine, VerifyPaymentInput } from "./payments.types";
+import type { CreateBookingOrderBody } from "./payments.validation";
 
 /**
  * Payments.
@@ -100,12 +105,12 @@ async function isInvoiceSettled(invoiceId: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 /**
- * Rider's initial checkout.
+ * Admin path only now: creates the whole commercial agreement for an
+ * ALREADY-EXISTING `pending_payment` booking (adminCreateBooking) —
+ * subscription, deposit, period #1, opening invoice — then one order against
+ * that invoice. Idempotent on re-entry.
  *
- * Creates the whole commercial agreement — subscription, deposit, period #1,
- * opening invoice — and then one order against that invoice. Everything here
- * is idempotent on re-entry, so a rider who abandons and returns reuses what
- * already exists rather than getting a second subscription.
+ * The rider self-book flow no longer touches this — see createBookingOrder.
  */
 export async function createOrderForBooking(
     bookingId: string,
@@ -113,6 +118,187 @@ export async function createOrderForBooking(
 ): Promise<CreateOrderResult> {
     const invoiceId = await ensureBookingInvoice(bookingId, actor.id, actor.id);
     return createOrderForInvoiceInternal(invoiceId, actor);
+}
+
+// ---------------------------------------------------------------------------
+// Pay-first rider checkout
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates ONLY a `payment_orders` "booking intent" row + a Razorpay order.
+ * No booking, no subscription, no invoice — those are materialised by
+ * `create_booking_from_order()` (see materializeBookingFromOrder) the moment
+ * the payment actually captures. An abandoned or failed checkout leaves
+ * nothing behind but the intent order, which `expire_stale_payment_orders`
+ * sweeps like any other.
+ *
+ * Runs the same eligibility guards `createBooking` used to. Idempotent: a
+ * retried "Pay" for the same plan/date reuses (or reopens) the one open
+ * booking order this rider may hold (uq_payment_orders_open_booking_per_user).
+ */
+export async function createBookingOrder(
+    input: CreateBookingOrderBody,
+    actor: AuthContext,
+): Promise<CreateOrderResult> {
+    const [alreadyBooked, alreadyRenting] = await Promise.all([
+        hasActiveBookingForUser(actor.id),
+        hasActiveRentalForUser(actor.id),
+    ]);
+    if (alreadyBooked || alreadyRenting) {
+        throw conflict(
+            "You already have an active booking or rental. Return your scooter or wait for pickup before booking another.",
+        );
+    }
+
+    const [plan] = await Promise.all([
+        requireBookablePlan(input.plan_id, input.vehicle_model_id),
+        assertVehicleAvailable(input.vehicle_model_id, input.station_id),
+    ]);
+
+    // Authoritative amount — resolved by the same pricing-rule path
+    // generate_period_invoice uses, so the quote and the invoice it becomes
+    // cannot drift.
+    const quote = await quotePlan(input.plan_id, input.start_day);
+    if (quote.amount <= 0) throw businessRule("This plan has no payable amount.");
+    const amount = quote.amount;
+
+    const idempotencyKey = `booking:${actor.id}:${input.plan_id}:${input.start_day}:${amount}`;
+
+    const reusable = await findReusableBookingOrder(actor.id, idempotencyKey, quote.lines);
+    if (reusable) return reusable;
+
+    // Any other open booking order for this rider (a different plan/date/amount)
+    // is now wrong and would trip uq_payment_orders_open_booking_per_user.
+    await supersedeOpenBookingOrders(actor.id, idempotencyKey);
+
+    const reopened = await reopenDeadBookingOrder(actor.id, idempotencyKey, quote.lines);
+    if (reopened) return reopened;
+
+    const bookingIntent = {
+        user_id: actor.id,
+        plan_id: input.plan_id,
+        vehicle_model_id: input.vehicle_model_id,
+        hub_id: input.station_id,
+        requested_start_on: input.start_day,
+        plan_price_snapshot: Number(plan.price_amount),
+        duration_days_snapshot: Number(plan.duration_days),
+        deposit_amount_snapshot: Number(plan.deposit_amount),
+        billing_period_snapshot: plan.billing_period,
+    } as unknown as Json;
+
+    const expiresAt = new Date(Date.now() + env.paymentOrderTtlMinutes * 60_000);
+    const gatewayOrder = await createGatewayOrder({
+        amount: rupeesToPaise(amount),
+        currency: "INR",
+        receipt: `booking_${actor.id}`.slice(0, 40),
+        notes: { purpose: "booking", user_id: actor.id, plan_id: input.plan_id, start_day: input.start_day },
+    });
+
+    const { data: order, error } = await supabaseAdmin
+        .from("payment_orders")
+        .insert({
+            purpose: "booking",
+            booking_intent: bookingIntent,
+            gateway_order_id: gatewayOrder.id,
+            user_id: actor.id,
+            amount,
+            currency: "INR",
+            status: "created",
+            idempotency_key: idempotencyKey,
+            expires_at: expiresAt.toISOString(),
+        })
+        .select("id, gateway_order_id, amount, currency, expires_at")
+        .single();
+    if (error) {
+        if ((error as { code?: string }).code === "23505") {
+            const raced =
+                (await findReusableBookingOrder(actor.id, idempotencyKey, quote.lines)) ??
+                (await reopenDeadBookingOrder(actor.id, idempotencyKey, quote.lines));
+            if (raced) return raced;
+        }
+        throw error;
+    }
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: actor.id, action: "payment.order_created",
+        entityType: "payment_order", entityId: order.id,
+        after: { purpose: "booking", plan_id: input.plan_id, start_day: input.start_day, amount },
+    });
+
+    return toOrderResult(order, quote.lines);
+}
+
+async function findReusableBookingOrder(
+    userId: string,
+    idempotencyKey: string,
+    lines: OrderLine[],
+): Promise<CreateOrderResult | null> {
+    const { data, error } = await supabaseAdmin
+        .from("payment_orders")
+        .select("id, gateway_order_id, amount, currency, expires_at, status")
+        .eq("user_id", userId)
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data || !["created", "attempted"].includes(data.status)) return null;
+    if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) return null;
+    return toOrderResult(data, lines);
+}
+
+/** Reopens the one row this idempotency key can refer to, once it has gone dead. */
+async function reopenDeadBookingOrder(
+    userId: string,
+    idempotencyKey: string,
+    lines: OrderLine[],
+): Promise<CreateOrderResult | null> {
+    const { data: existing, error } = await supabaseAdmin
+        .from("payment_orders")
+        .select("id, status, expires_at, amount")
+        .eq("user_id", userId)
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+    if (error) throw error;
+    if (!existing || existing.status === "paid") return null;
+
+    const isLive = ["created", "attempted"].includes(existing.status)
+        && (!existing.expires_at || new Date(existing.expires_at).getTime() >= Date.now());
+    if (isLive) return null;
+
+    const expiresAt = new Date(Date.now() + env.paymentOrderTtlMinutes * 60_000);
+    const gatewayOrder = await createGatewayOrder({
+        amount: rupeesToPaise(Number(existing.amount)),
+        currency: "INR",
+        receipt: `booking_${userId}`.slice(0, 40),
+        notes: { purpose: "booking", user_id: userId },
+    });
+
+    const { data: reopened, error: updateError } = await supabaseAdmin
+        .from("payment_orders")
+        .update({ gateway_order_id: gatewayOrder.id, status: "created", expires_at: expiresAt.toISOString() })
+        .eq("id", existing.id)
+        .select("id, gateway_order_id, amount, currency, expires_at")
+        .single();
+    if (updateError) throw updateError;
+    return toOrderResult(reopened, lines);
+}
+
+async function supersedeOpenBookingOrders(userId: string, keepKey: string): Promise<void> {
+    const { data, error } = await supabaseAdmin
+        .from("payment_orders")
+        .update({ status: "expired" })
+        .eq("user_id", userId)
+        .eq("purpose", "booking")
+        .neq("idempotency_key", keepKey)
+        .in("status", ["created", "attempted"])
+        .select("id");
+    if (error) throw error;
+    for (const superseded of data ?? []) {
+        await writeAudit({
+            actorId: null, targetUserId: userId, action: "payment.order_superseded",
+            entityType: "payment_order", entityId: superseded.id,
+            after: { reason: "booking details changed" },
+        });
+    }
 }
 
 /**
@@ -1233,7 +1419,7 @@ interface ApplyPaymentSuccessInput {
 export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Promise<void> {
     const { data: order, error: orderError } = await supabaseAdmin
         .from("payment_orders")
-        .select("id, user_id, invoice_id, invoices(purpose, subscription_id, subscription_period_id, total_amount)")
+        .select("id, user_id, invoice_id, purpose, invoices(purpose, subscription_id, subscription_period_id, total_amount)")
         .eq("id", input.paymentOrderId)
         .maybeSingle();
     if (orderError) throw orderError;
@@ -1278,6 +1464,24 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
         .eq("id", order.id)
         .neq("status", "paid");
 
+    // Pay-first booking: the capture is the trigger for creating the booking.
+    // Everything below (invoice balance, allocation, initial/renewal branch) is
+    // for orders that name an invoice; a booking-intent order has no invoice
+    // until materialize builds one.
+    if (order.purpose === "booking") {
+        await materializeBookingFromOrder(
+            { id: order.id, user_id: order.user_id },
+            txn!.id,
+            input.amount,
+        );
+        return;
+    }
+
+    // From here on the order names an invoice. The chk_payment_orders_purpose
+    // constraint guarantees invoice_id is set when purpose !== 'booking'.
+    const invoiceId = order.invoice_id;
+    if (!invoiceId) return;
+
     // The allocation IS the record that this invoice was paid.
     //
     // Capped at what is still OWED, not at the invoice total. A payment can
@@ -1298,7 +1502,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     const { data: balance, error: balanceError } = await supabaseAdmin
         .from("v_invoice_balances")
         .select("balance_amount")
-        .eq("invoice_id", order.invoice_id)
+        .eq("invoice_id", invoiceId)
         .maybeSingle();
     if (balanceError) throw balanceError;
 
@@ -1319,7 +1523,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     // sheet paid at yesterday's (larger) price cannot inflate the fee, and an
     // abandoned checkout never puts a charge on a bill nobody paid.
     const owed = round2(
-        balanceDue + await recordLateFeeCharge(order.invoice_id, input.amount - balanceDue),
+        balanceDue + await recordLateFeeCharge(invoiceId, input.amount - balanceDue),
     );
     const allocated = round2(Math.min(input.amount, owed));
 
@@ -1330,7 +1534,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     if (allocated > 0) {
         const { error: allocationError } = await supabaseAdmin.from("payment_allocations").insert({
             payment_transaction_id: txn!.id,
-            invoice_id: order.invoice_id,
+            invoice_id: invoiceId,
             amount: allocated,
         });
         if (allocationError && (allocationError as { code?: string }).code !== "23505") {
@@ -1348,7 +1552,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
             actorId: null, targetUserId: order.user_id, action: "payment.unallocated_surplus",
             entityType: "payment_transaction", entityId: txn!.id,
             after: {
-                invoice_id: order.invoice_id,
+                invoice_id: invoiceId,
                 captured: round2(input.amount),
                 allocated,
                 surplus: round2(input.amount - allocated),
@@ -1365,7 +1569,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     // that was defence in depth rather than a live hole. It is still the
     // wrong dependency: the state machine must not be correct only because
     // of a gateway setting made in a dashboard we do not control.
-    const settled = await isInvoiceSettled(order.invoice_id);
+    const settled = await isInvoiceSettled(invoiceId);
 
     // WHICH PERIOD is being paid, not what the invoice is labelled.
     //
@@ -1397,7 +1601,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     if (!settled) {
         await writeAudit({
             actorId: null, targetUserId: order.user_id, action: "payment.partial",
-            entityType: "invoice", entityId: order.invoice_id,
+            entityType: "invoice", entityId: invoiceId,
             after: { allocated, note: "invoice still has a balance; no state advanced" },
         });
         // Deliberately no success notification — telling a rider their rental
@@ -1423,7 +1627,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     // the one whose line item is the "Overdue plan renewal — late fee …" text
     // that overdueLateFee.ts writes.
     const adhocLabel = invoice?.purpose === "adhoc"
-        ? await firstInvoiceItemDescription(order.invoice_id)
+        ? await firstInvoiceItemDescription(invoiceId)
         : null;
     const isOverdueLateFee = !!adhocLabel && /^overdue plan renewal/i.test(adhocLabel);
 
@@ -1481,6 +1685,173 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
             bookingId: subscription?.booking_id ?? undefined,
         });
     }
+}
+
+// ---------------------------------------------------------------------------
+// Pay-first booking: materialise the real records on capture
+// ---------------------------------------------------------------------------
+
+/**
+ * Runs once per captured `purpose='booking'` order (guaranteed by the
+ * `payment_transactions.gateway_payment_id` UNIQUE gate above, plus
+ * `bookings.created_from_order_id` UNIQUE inside the RPC as a second guard).
+ *
+ * The booking + active subscription + period + held deposit are created in one
+ * transaction by `create_booking_from_order()`. The opening invoice + the
+ * allocation of this payment against it + the vehicle hold are done here,
+ * matching how `applyInitialSuccess` + `applyPaymentSuccess` already sequence
+ * those non-transactional steps.
+ */
+async function materializeBookingFromOrder(
+    order: { id: string; user_id: string },
+    transactionId: string,
+    capturedAmount: number,
+): Promise<void> {
+    const { data: existing, error: existingError } = await supabaseAdmin
+        .from("bookings")
+        .select("id")
+        .eq("created_from_order_id", order.id)
+        .maybeSingle();
+    if (existingError) throw existingError;
+
+    let bookingId: string;
+    if (existing) {
+        bookingId = existing.id;
+    } else {
+        const { data: created, error } = await supabaseAdmin.rpc("create_booking_from_order", {
+            p_order_id: order.id,
+        });
+        if (error) {
+            const message = (error as { message?: string }).message ?? "";
+            if ((error as { code?: string }).code === "P0001" && /active_booking_exists/.test(message)) {
+                await handleUnfulfillableBooking(order, transactionId, capturedAmount);
+                return;
+            }
+            throw error;
+        }
+        bookingId = created as string;
+    }
+
+    const { data: subscription, error: subError } = await supabaseAdmin
+        .from("subscriptions")
+        .select("id")
+        .eq("booking_id", bookingId)
+        .maybeSingle();
+    if (subError) throw subError;
+    if (!subscription) return; // defensive — RPC guarantees one
+
+    // Opening invoice — idempotent (generate_period_invoice checks the period).
+    const invoiceId = await ensureInitialInvoice(subscription.id, order.user_id);
+
+    const [{ data: invoice }, { data: balance }] = await Promise.all([
+        supabaseAdmin.from("invoices").select("total_amount").eq("id", invoiceId).single(),
+        supabaseAdmin.from("v_invoice_balances").select("balance_amount").eq("invoice_id", invoiceId).maybeSingle(),
+    ]);
+    const owed = Number(balance?.balance_amount ?? invoice?.total_amount ?? capturedAmount);
+    const allocated = round2(Math.min(capturedAmount, owed));
+    if (allocated > 0) {
+        const { error: allocError } = await supabaseAdmin.from("payment_allocations").insert({
+            payment_transaction_id: transactionId,
+            invoice_id: invoiceId,
+            amount: allocated,
+        });
+        if (allocError && (allocError as { code?: string }).code !== "23505") throw allocError;
+    }
+    if (allocated < round2(capturedAmount)) {
+        await writeAudit({
+            actorId: null, targetUserId: order.user_id, action: "payment.unallocated_surplus",
+            entityType: "payment_transaction", entityId: transactionId,
+            after: {
+                invoice_id: invoiceId, captured: round2(capturedAmount), allocated,
+                surplus: round2(capturedAmount - allocated),
+            },
+        });
+    }
+
+    // Hold a specific unit now — money in, booking exists. Best-effort.
+    await tryAllocateVehicle(bookingId);
+
+    await qualifyReferralIfApplicable(order.user_id, { id: order.user_id } as AuthContext);
+
+    await writeAudit({
+        actorId: null, targetUserId: order.user_id, action: "booking.created",
+        entityType: "booking", entityId: bookingId,
+        after: { status: "confirmed", via: "payment_capture", order_id: order.id },
+    });
+    await writeAudit({
+        actorId: null, targetUserId: order.user_id, action: "booking.payment_completed",
+        entityType: "booking", entityId: bookingId, after: { status: "confirmed" },
+    });
+    await writeAudit({
+        actorId: null, targetUserId: order.user_id, action: "deposit.held",
+        entityType: "deposit", entityId: subscription.id, after: { status: "held" },
+    });
+
+    await notifyUser(order.user_id, {
+        template: "payment_success",
+        title: "Payment Successful",
+        body: "Payment successful. Your rental is active.",
+        screen: "payments",
+    });
+    await notify({
+        notificationType: "payment_success",
+        referenceType: "payment_order",
+        referenceId: order.id,
+        title: "Payment Received",
+        bodyFallback: "{rider} completed a payment.",
+        screen: "/payments",
+        riderId: order.user_id,
+    });
+
+    const { data: heldBooking } = await supabaseAdmin
+        .from("bookings").select("held_vehicle_id").eq("id", bookingId).maybeSingle();
+    await notify({
+        notificationType: "booking_created",
+        referenceType: "booking",
+        referenceId: bookingId,
+        title: "New Booking Confirmed",
+        bodyFallback: "{rider} confirmed a booking for {vehicle}.",
+        screen: "/bookings",
+        riderId: order.user_id,
+        vehicleId: heldBooking?.held_vehicle_id ?? undefined,
+        bookingId,
+    });
+}
+
+/**
+ * A booking-intent payment captured, but the rider already held an active
+ * booking or rental by then (an admin created one for them in the window).
+ * Money is in and recorded; there is no booking to make. Flag it loudly for a
+ * manual refund rather than double-book or auto-move money.
+ */
+async function handleUnfulfillableBooking(
+    order: { id: string; user_id: string },
+    transactionId: string,
+    capturedAmount: number,
+): Promise<void> {
+    await writeAudit({
+        actorId: null, targetUserId: order.user_id, action: "payment.booking_unfulfillable",
+        entityType: "payment_transaction", entityId: transactionId,
+        after: {
+            order_id: order.id, captured: round2(capturedAmount),
+            reason: "rider already had an active booking/rental at capture",
+        },
+    });
+    await notifyUser(order.user_id, {
+        template: "payment_failed",
+        title: "Booking Could Not Be Completed",
+        body: "Your payment went through, but you already have an active booking or rental. Our team will refund this payment shortly.",
+        screen: "payments",
+    });
+    await notify({
+        notificationType: "payment_failed",
+        referenceType: "payment_order",
+        referenceId: order.id,
+        title: "Booking payment needs a manual refund",
+        bodyFallback: "{rider} paid for a booking they can't have (already active). Refund manually.",
+        screen: "/payments",
+        riderId: order.user_id,
+    });
 }
 
 /**

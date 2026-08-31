@@ -1,0 +1,15 @@
+{
+  "name": "SwapNgo Rider",
+  "short_name": "SwapNgo",
+  "description": "Book, ride and manage your SwapNgo scooter rental.",
+  "start_url": "/rider",
+  "scope": "/rider",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#21C45D",
+  "icons": [
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/favicon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

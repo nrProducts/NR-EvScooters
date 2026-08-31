@@ -152,7 +152,7 @@ export default function ProfileSetupScreen() {
               setFullName(t);
               if (error) setError('');
             }}
-            placeholder="Your name"
+            placeholder="Full name"
             placeholderTextColor={COLORS.textSecondary}
             autoCapitalize="words"
             accessibilityLabel="Full name"
@@ -181,7 +181,7 @@ export default function ProfileSetupScreen() {
                   setEmail(t);
                   if (error) setError('');
                 }}
-                placeholder="you@example.com"
+                placeholder="Email"
                 placeholderTextColor={COLORS.textSecondary}
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -210,7 +210,7 @@ export default function ProfileSetupScreen() {
                   setPhone(t);
                   if (error) setError('');
                 }}
-                placeholder="98765 43210"
+                placeholder="Phone"
                 placeholderTextColor={COLORS.textSecondary}
                 keyboardType="phone-pad"
                 autoComplete="tel"
@@ -252,7 +252,7 @@ export default function ProfileSetupScreen() {
           required
           value={addressLine1}
           onChangeText={setAddressLine1}
-          placeholder="House / street / area"
+          placeholder="Address"
           returnKeyType="next"
           onSubmitEditing={() => cityRef.current?.focus()}
         />
@@ -286,7 +286,7 @@ export default function ProfileSetupScreen() {
           required
           value={postalCode}
           onChangeText={setPostalCode}
-          placeholder="PIN code"
+          placeholder="Postal code"
           keyboardType="number-pad"
           returnKeyType="done"
           onSubmitEditing={() => void save()}

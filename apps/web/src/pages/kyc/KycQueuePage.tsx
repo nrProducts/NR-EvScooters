@@ -179,7 +179,7 @@ export default function KycQueuePage() {
             <Textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. Document image is blurred or expired"
+              placeholder="Reason"
               rows={3}
             />
           </div>
@@ -506,7 +506,7 @@ function AccessReasonDialog({
             <Input
               value={contextRef}
               onChange={(e) => setContextRef(e.target.value)}
-              placeholder="e.g. SUP-1042 or DPR-2026-000031"
+              placeholder="Ticket or case reference"
             />
           </div>
         </div>

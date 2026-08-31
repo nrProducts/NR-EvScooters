@@ -23,7 +23,7 @@ export function AuthLayout() {
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center gap-2">
           <img src={theme === "dark" ? logoWordmarkDark : logoWordmark} alt="Swapngo" className="h-9 w-auto" />
-          <p className="text-xs text-muted-foreground">Admin &amp; Staff Console</p>
+          <p className="text-xs text-muted-foreground">Sign in to continue</p>
         </div>
         <Outlet />
       </div>

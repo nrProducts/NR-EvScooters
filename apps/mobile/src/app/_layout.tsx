@@ -25,9 +25,9 @@ import "../../global.css";
  * that signs in here follows the rider flow, including staff ones; there is no
  * privileged surface left to gate.
  *
- * "booking" covers booking/[modelId] and booking/billing, and
- * "battery-stations" covers both its index and [id] — Expo Router reports a
- * route's top-level segment name, not the file's bracketed param.
+ * "booking" covers booking/[modelId] (the whole book+pay flow is one screen),
+ * and "battery-stations" covers both its index and [id] — Expo Router reports
+ * a route's top-level segment name, not the file's bracketed param.
  *
  * Any segment missing here is silently replace()d to /home by the guard below,
  * with no error — which is exactly how /billing stayed unreachable from the
@@ -36,7 +36,7 @@ import "../../global.css";
 const RIDER_ROUTES = [
   "home", "my-scooter", "my-plan", "billing", "support", "kyc", "kyc-intro",
   "browse-vehicles", "booking", "notifications", "booking-history",
-  "battery-stations",
+  "battery-stations", "profile",
   // DPDPA. "privacy" covers privacy/index, notice, requests, [id] and nominee.
   "consent", "privacy",
   // Replayed from Profile ("How Swapngo Works") while signed in — see the

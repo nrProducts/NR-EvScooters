@@ -104,7 +104,7 @@ export default function LoginScreen() {
                     setPhone(t);
                     if (error) setError('');
                   }}
-                  placeholder="98765 43210"
+                  placeholder="Mobile number"
                   placeholderTextColor={COLORS.textSecondary}
                   keyboardType="phone-pad"
                   autoComplete="tel"

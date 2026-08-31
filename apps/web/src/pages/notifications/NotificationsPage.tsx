@@ -137,7 +137,7 @@ function AdminBroadcastTab() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Title</Label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Monsoon safety advisory" />
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
             </div>
           </div>
           <div className="space-y-1.5">

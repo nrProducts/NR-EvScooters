@@ -3,4 +3,4 @@
  * src/features/battery-stations, so the map, its hooks and its service stay
  * together rather than being split across src/app.
  */
-export { default } from '../../features/battery-stations/screens/BatteryStationsScreen';
+export { default } from '../../../features/battery-stations/screens/BatteryStationsScreen';

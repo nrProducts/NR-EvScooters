@@ -171,7 +171,7 @@ export function TriageDialog({
                 <Textarea
                   value={scrapReason}
                   onChange={(e) => setScrapReason(e.target.value)}
-                  placeholder="e.g. Frame damage beyond repair"
+                  placeholder="Reason"
                   rows={3}
                 />
               </div>

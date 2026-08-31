@@ -129,15 +129,15 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label>Full name</Label>
-                  <Input value={form.full_name} onChange={(e) => set("full_name", e.target.value)} placeholder="e.g. Priya Kumar" />
+                  <Input value={form.full_name} onChange={(e) => set("full_name", e.target.value)} placeholder="Full name" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Email</Label>
-                  <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="priya@swapngo.in" />
+                  <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="Email" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Phone</Label>
-                  <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="98765 43210" />
+                  <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="Phone" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Role</Label>
@@ -154,7 +154,7 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
                 </div>
                 <div className="space-y-1.5">
                   <Label>Staff ID <span className="text-muted-foreground">(optional)</span></Label>
-                  <Input value={form.staff_code} onChange={(e) => set("staff_code", e.target.value)} placeholder="e.g. EMP-014" />
+                  <Input value={form.staff_code} onChange={(e) => set("staff_code", e.target.value)} placeholder="Staff code" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Status</Label>

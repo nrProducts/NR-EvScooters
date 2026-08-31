@@ -50,7 +50,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   // hard-coded — see the note where APPROVAL_TEMPLATES used to be. The
   // subscriber-free /types read, because this provider runs for staff too and
   // the full settings endpoint is admin-only.
-  const { data: notificationTypes } = useNotificationTypeSummaries();
+  const isStaffUser = user?.role === "admin" || user?.role === "staff";
+  const { data: notificationTypes } = useNotificationTypeSummaries(isStaffUser);
 
   useEffect(() => {
     // Staff and admin both.

@@ -1,4 +1,6 @@
-import { Menu, Sun, Moon, LogOut, Settings as SettingsIcon } from "lucide-react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Menu, Sun, Moon, LogOut, RotateCw, Settings as SettingsIcon } from "lucide-react";
 import { GlobalSearch } from "@/components/common/GlobalSearch";
 import { NotificationBell } from "@/components/common/NotificationBell";
 import { PendingApprovalsBell } from "@/components/common/PendingApprovalsBell";
@@ -28,6 +30,19 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const location = useLocation();
   const pageTitle = matchPath(location.pathname)?.label ?? "";
   const pageSubtitle = usePageHeaderStore((s) => s.subtitle);
+
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  // Refetch every query the current screen has mounted — the page's own hooks
+  // then re-render with fresh data, no per-page wiring needed.
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await queryClient.refetchQueries({ type: "active" });
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur-md sm:px-6">
@@ -80,6 +95,17 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
         )}
         <span className="hidden h-4 w-px bg-border lg:inline" />
         <span className="hidden text-xs text-muted-foreground lg:inline">{formatDate(new Date())}</span>
+
+        <IconButton
+          variant="ghost"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          label="Refresh this page"
+          tooltipSide="bottom"
+          className="bg-primary/10 text-primary hover:bg-primary/20"
+        >
+          <RotateCw className={cn("h-[1.125rem] w-[1.125rem]", refreshing && "animate-spin")} />
+        </IconButton>
 
         <IconButton
           variant="ghost"

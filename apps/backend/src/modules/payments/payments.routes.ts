@@ -24,6 +24,19 @@ router.get(
     asyncHandler(c.quotePlanHandler),
 );
 
+// Pay-first rider checkout. Declared before "/bookings/:id/order" so "order"
+// is never captured as a booking id. Creates a payment_orders "booking intent"
+// row only — the booking is materialised when this order's payment captures
+// (payments.service.ts materializeBookingFromOrder).
+router.post(
+    "/bookings/order",
+    requireKycVerified,
+    validate({ body: v.createBookingOrderBody }),
+    asyncHandler(c.createBookingOrderHandler),
+);
+
+// Legacy invoice-tied path — now only reachable for an admin-created
+// `pending_payment` booking that a rider (or admin) pays later.
 router.post(
     "/bookings/:id/order",
     requireKycVerified,

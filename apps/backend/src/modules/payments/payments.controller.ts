@@ -2,7 +2,16 @@ import { Request, Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
 import { badRequest } from "../../common/AppError";
 import * as service from "./payments.service";
-import { VerifyPaymentBody } from "./payments.validation";
+import { CreateBookingOrderBody, VerifyPaymentBody } from "./payments.validation";
+
+/**
+ * Pay-first rider checkout — creates a payment_orders "booking intent" only.
+ * The booking itself is created when this order's payment captures.
+ */
+export async function createBookingOrderHandler(req: AuthedRequest, res: Response) {
+    const result = await service.createBookingOrder(req.body as CreateBookingOrderBody, req.user!);
+    res.status(201).json(result);
+}
 
 export async function createOrderForBookingHandler(req: AuthedRequest, res: Response) {
     const result = await service.createOrderForBooking(req.params.id as string, req.user!);

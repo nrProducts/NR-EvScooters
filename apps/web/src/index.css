@@ -11,17 +11,15 @@
 }
 
 /*
- * Premium dark-first SaaS palette, brand green #22C55E family. Light mode is
+ * Premium dark-first SaaS palette, brand green #21C45D family. Light mode is
  * a complementary palette built from the same primary/radius/shadow
  * language, not an afterthought — the theme toggle in Header.tsx stays live.
  *
- * NOTE: apps/mobile/src/constants/theme.ts previously mirrored this file's
- * hex values by hand (no shared package, just matching literals — see the
- * mobile theme file's own header comment). This redesign intentionally
- * diverges the web admin console's brand green (#22C55E, 142Β°) from the
- * mobile rider app's green (#4CAF50, 122Β°); the two are no longer meant to
- * match hue-for-hue. If the rider app should follow, that's a separate,
- * explicit change to apps/mobile.
+ * BRAND GREEN: #21C45D (hsl 142 71% 45%) is the single SwapNgo primary green
+ * across every surface — admin web, staff web, rider mobile
+ * (apps/mobile/src/constants/theme.ts), the website (apps/website) and all
+ * logo/icon assets. There is no shared package, so the value is mirrored by
+ * hand in each theme file; keep them in sync.
  */
 @layer base {
   :root {
@@ -36,10 +34,10 @@
     --popover: 0 0% 100%;
     --popover-foreground: 215 28% 17%;
 
-    /* Brand green #22C55E */
+    /* Brand green #21C45D */
     --primary: 142 71% 45%;
-    --primary-hover: 142 76% 36%;
-    --primary-pressed: 142 76% 36%;
+    --primary-hover: 142 72% 37%; /* #1AA34D — darkened brand green */
+    --primary-pressed: 142 72% 37%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 142 40% 90%;
@@ -88,10 +86,10 @@
     --popover: 217 33% 17%;
     --popover-foreground: 0 0% 100%;
 
-    /* Brand green #22C55E */
+    /* Brand green #21C45D */
     --primary: 142 71% 45%;
-    --primary-hover: 142 76% 36%; /* #16A34A */
-    --primary-pressed: 142 76% 36%;
+    --primary-hover: 142 72% 37%; /* #1AA34D — darkened brand green */
+    --primary-pressed: 142 72% 37%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 142 25% 22%;
@@ -173,7 +171,7 @@
     height: 6px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: #bbf7d0; /* green-200 — even lighter green, all screens */
+    background-color: #bef4d2; /* light tint of brand green #21C45D */
     border-radius: 9999px;
   }
 
@@ -182,7 +180,7 @@
     width: 3px;
   }
   .scrollbar-nav::-webkit-scrollbar-thumb {
-    background-color: #bbf7d0; /* green-200 — even lighter green, matches .scrollbar-thin */
+    background-color: #bef4d2; /* light tint of brand green #21C45D */
     border-radius: 9999px;
   }
 

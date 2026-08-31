@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import type { BatteryStation, StationStatus } from "@/types/batteryStation";
 
 const STATUS_COLOR: Record<StationStatus, string> = {
-  WORKING: "#16A34A",
+  WORKING: "#21C45D", // SwapNgo brand green
   MAINTENANCE: "#F59E0B",
   NOT_WORKING: "#DC2626",
 };

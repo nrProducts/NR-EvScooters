@@ -457,7 +457,7 @@ export default function ReturnDetailPage() {
                   <Label className="text-xs font-semibold">Reject return — reason</Label>
                   <Textarea
                     value={rejectReason} rows={2}
-                    placeholder="e.g. Vehicle still due for the current billing period"
+                    placeholder="Reason"
                     onChange={(e) => setRejectReason(e.target.value)}
                   />
                   <Button
@@ -645,7 +645,7 @@ export default function ReturnDetailPage() {
                 <Label className="text-xs font-semibold">Maintenance notes</Label>
                 <Textarea
                   value={maintenanceNotes} rows={3}
-                  placeholder="e.g. Front brake noise reported by rider"
+                  placeholder="Maintenance notes"
                   onChange={(e) => setMaintenanceNotes(e.target.value)}
                 />
               </div>

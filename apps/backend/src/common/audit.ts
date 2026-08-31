@@ -45,6 +45,9 @@ export type AuditAction =
     // is the forged-webhook trail.
     | "payment.order_superseded" | "payment.webhook_signature_invalid"
     | "payment.unallocated_surplus" | "payment.partial"
+    // A booking-intent payment captured but the rider already held an active
+    // booking/rental by then — money in, no booking; needs a manual refund.
+    | "payment.booking_unfulfillable"
     | "deposit.held" | "deposit.refund_initiated" | "deposit.refunded" | "deposit.forfeited"
     | "damage.created" | "damage.disputed" | "damage.resolved" | "damage.waived"
     | "refund.initiated" | "refund.submitted" | "refund.processed" | "refund.failed"
