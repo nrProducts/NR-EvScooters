@@ -14,6 +14,7 @@ import { SparkStatCard } from "@/components/common/SparkStatCard";
 import { ChartCard } from "@/components/common/ChartCard";
 import { MotionCard } from "@/components/motion/MotionCard";
 import { FleetStatusCard, VEHICLE_STATUS_LABEL } from "@/components/dashboard/FleetStatusCard";
+import { RevenueOverview } from "@/components/revenue/RevenueOverview";
 import { HorizontalSummaryCard } from "@/components/dashboard/HorizontalSummaryCard";
 import { StationNetworkMap } from "@/components/dashboard/StationNetworkMap";
 import { StationStatusGauge } from "@/components/dashboard/StationStatusGauge";
@@ -31,6 +32,7 @@ import { useAuditLogs } from "@/hooks/useAudit";
 import { useNotificationLog } from "@/hooks/useNotifications";
 import { useAdminStations, useStationSummary } from "@/hooks/useBatteryStations";
 import { useUiStore } from "@/store/uiStore";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { cn, formatCurrency, formatDate, timeAgo } from "@/lib/utils";
 import type { PickupBooking, VehicleStatus } from "@/types";
 
@@ -74,6 +76,8 @@ export default function AdminDashboardPage() {
   const { data: stations, isLoading: stationsLoading } = useAdminStations({ page: 1, pageSize: 100 });
   const { data: stationSummary, isLoading: stationSummaryLoading } = useStationSummary();
 
+  usePageSubtitle("Fleet, rentals, revenue and staff — the whole operation at a glance.");
+
   const isLoading = summaryLoading || pendingLoading;
   const statusColors = VEHICLE_STATUS_COLORS[theme === "dark" ? "dark" : "light"];
   const pendingMaintenance = summary
@@ -113,6 +117,8 @@ export default function AdminDashboardPage() {
       {/* No full-screen loader — every section below renders its own skeleton
           while its query is in flight, so the dashboard fills in progressively
           instead of being blocked behind one overlay. */}
+
+      <RevenueOverview />
 
       {/* At-a-glance — Fleet Overview / Staff Attendance / Leave Management, side by side on larger
           screens. Stretched (the grid default) rather than items-start, so all three sit on the same

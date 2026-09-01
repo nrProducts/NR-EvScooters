@@ -23,13 +23,14 @@
  */
 @layer base {
   :root {
-    --background: 210 40% 98%;
+    /* SwapNgo design spec: page bg #F7F9F8, a faint green-gray. */
+    --background: 150 13% 97%;
     --foreground: 215 28% 17%;
 
     --card: 0 0% 100%;
     --card-foreground: 215 28% 17%;
     /* Subtle depth step used for row/card hover — one notch darker than card. */
-    --card-hover: 210 30% 96%;
+    --card-hover: 150 13% 96%;
 
     --popover: 0 0% 100%;
     --popover-foreground: 215 28% 17%;
@@ -49,22 +50,25 @@
     --accent: 142 45% 95%;
     --accent-foreground: 142 39% 26%;
 
-    --destructive: 0 84% 60%;
+    /* Danger #FF4D4F */
+    --destructive: 359 100% 65%;
     --destructive-foreground: 210 40% 98%;
 
     /* Accent green #10B981 — success chips, positive trend arrows. */
     --success: 160 84% 39%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
+    /* Warning #FFB020 */
+    --warning: 39 100% 56%;
     --warning-foreground: 26 40% 15%;
 
-    /* Blue Info #3B82F6 — the 4th status-chip color (in-progress/scheduled). */
-    --info: 217 91% 60%;
+    /* Blue Info #1677FF — the 4th status-chip color (in-progress/scheduled). */
+    --info: 215 100% 54%;
     --info-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
+    /* Spec border #E6ECE8 — a faint green-tinted hairline. */
+    --border: 146 13% 91%;
+    --input: 146 13% 91%;
     --ring: 142 71% 45%;
 
     /* Matches --card (table/panel background) — a whiter sidebar than before. */
@@ -72,7 +76,8 @@
     --sidebar-foreground: 215 28% 17%;
 
     --radius: 1.125rem;
-    --shadow-card: 0 8px 30px rgb(15 23 42 / 0.10);
+    /* Spec: "very subtle shadows, avoid heavy black shadows." */
+    --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 4px 12px rgb(16 24 40 / 0.05);
   }
 
   .dark {
@@ -101,18 +106,18 @@
     --accent: 142 25% 20%;
     --accent-foreground: 142 45% 85%;
 
-    --destructive: 0 84% 60%; /* #EF4444 */
+    --destructive: 359 100% 65%; /* #FF4D4F */
     --destructive-foreground: 0 0% 100%;
 
     /* Accent green #10B981 */
     --success: 160 84% 39%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%; /* #F59E0B */
+    --warning: 39 100% 56%; /* #FFB020 */
     --warning-foreground: 26 40% 10%;
 
-    /* Blue Info #3B82F6 */
-    --info: 217 91% 60%;
+    /* Blue Info #1677FF */
+    --info: 215 100% 54%;
     --info-foreground: 0 0% 100%;
 
     /* Flattened equivalent of rgba(255,255,255,.08) over #0F172A — the
@@ -126,7 +131,7 @@
     --sidebar: 217 33% 17%; /* #1E293B */
     --sidebar-foreground: 0 0% 100%;
 
-    --shadow-card: 0 8px 30px rgb(0 0 0 / 0.25);
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.24), 0 6px 16px rgb(0 0 0 / 0.28);
   }
 
   /*

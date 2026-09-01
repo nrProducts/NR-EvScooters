@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
+import { FilterBar } from "@/components/common/FilterBar";
 import { Pagination } from "@/components/common/Pagination";
 import { usePiiAccess } from "@/hooks/usePiiAccess";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
@@ -102,29 +103,32 @@ export default function PiiAccessPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-wrap gap-2">
-        <Select value={reason} onValueChange={(v) => { setReason(v as PiiAccessReason | "all"); setPage(1); }}>
-          <SelectTrigger className="w-56"><SelectValue placeholder="Any reason" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Any reason</SelectItem>
-            {Object.entries(REASON_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>{label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={resource} onValueChange={(v) => { setResource(v); setPage(1); }}>
-          <SelectTrigger className="w-56"><SelectValue placeholder="Any data" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Any data</SelectItem>
-            {Object.entries(RESOURCE_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>{label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       <Card>
+        <FilterBar
+          filters={
+            <>
+              <Select value={reason} onValueChange={(v) => { setReason(v as PiiAccessReason | "all"); setPage(1); }}>
+                <SelectTrigger className="w-full sm:w-56"><SelectValue placeholder="Any reason" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any reason</SelectItem>
+                  {Object.entries(REASON_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={resource} onValueChange={(v) => { setResource(v); setPage(1); }}>
+                <SelectTrigger className="w-full sm:w-56"><SelectValue placeholder="Any data" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any data</SelectItem>
+                  {Object.entries(RESOURCE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          }
+        />
         <CardContent className="p-0">
           <DataTable
             data={data?.data ?? []}

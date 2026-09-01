@@ -32,10 +32,10 @@ function NavItemLink({
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-smooth",
+          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-smooth",
           isActive
             ? "bg-primary text-primary-foreground shadow-[0_6px_16px_-4px_hsl(var(--primary)/0.5)]"
-            : "text-sidebar-foreground/70 hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground",
+            : "text-sidebar-foreground/70 hover:bg-primary/10 hover:text-primary",
           collapsed && "justify-center px-0",
         )
       }
@@ -156,7 +156,7 @@ export function Sidebar({
                 <AccordionItem key={entry.key} value={entry.key} className="border-0">
                   <AccordionTrigger
                     className={cn(
-                      "rounded-2xl px-3 py-2.5 text-sm font-medium transition-smooth hover:bg-sidebar-foreground/5 hover:text-sidebar-foreground hover:no-underline",
+                      "rounded-xl px-3 py-2.5 text-sm font-medium transition-smooth hover:bg-primary/10 hover:text-primary hover:no-underline",
                       // The active leaf already gets its own highlighted background —
                       // this is just enough to show its parent section at a glance too.
                       entry.key === activeItem?.group

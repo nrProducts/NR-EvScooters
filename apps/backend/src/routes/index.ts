@@ -22,6 +22,7 @@ import { adminRouter as adminDepositsRouter, riderRouter as riderDepositsRouter 
 import refundsRoutes from "../modules/refunds/refunds.routes";
 import billingRoutes from "../modules/billing/billing.routes";
 import reconciliationRoutes from "../modules/reconciliation/reconciliation.routes";
+import revenueRoutes from "../modules/revenue/revenue.routes";
 import { consentRouter, riderConsentRouter } from "../modules/consent/consent.routes";
 import geocodeRoutes from "../modules/geocode/geocode.routes";
 import { adminPrivacyRouter, riderPrivacyRouter } from "../modules/privacy/privacy.routes";
@@ -74,6 +75,7 @@ router.use("/maintenance", maintenanceRoutes);
 router.use("/invoices/me", riderInvoicesRouter);
 router.use("/invoices", invoicesRoutes);
 router.use("/reports", reportsRoutes);
+router.use("/revenue", revenueRoutes);
 router.use("/audit-logs", auditRoutes);
 router.use("/pii-access", piiAccessRouter);
 router.use("/referrals", referralsRoutes);

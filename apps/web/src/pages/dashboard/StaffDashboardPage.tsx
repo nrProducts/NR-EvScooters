@@ -15,6 +15,7 @@ import { useKycQueue } from "@/hooks/useKyc";
 import { useReportsSummary } from "@/hooks/useReports";
 import { useAdminStations, useStationSummary } from "@/hooks/useBatteryStations";
 import { hasAction } from "@/lib/permissions";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatDate, greetingForHour } from "@/lib/utils";
 
 export default function StaffDashboardPage() {
@@ -57,15 +58,12 @@ export default function StaffDashboardPage() {
     ),
   ].filter(Boolean);
 
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {greetingForHour(new Date().getHours())}, {user?.name?.split(" ")[0] ?? "there"} 👋
-        </h1>
-        <p className="text-sm text-muted-foreground">{formatDate(new Date())} · Today's operations</p>
-      </div>
+  usePageSubtitle(
+    `${greetingForHour(new Date().getHours())}, ${user?.name?.split(" ")[0] ?? "there"} — today's operations at a glance`,
+  );
 
+  return (
+    <div className="space-y-4 animate-fade-in">
       {statCards.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{statCards}</div>
       )}

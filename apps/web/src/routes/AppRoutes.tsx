@@ -25,6 +25,7 @@ import RefundsPage from "@/pages/refunds/RefundsPage";
 import BillingPage from "@/pages/billing/BillingPage";
 import PlansPage from "@/pages/plans/PlansPage";
 import ReconciliationPage from "@/pages/reconciliation/ReconciliationPage";
+import RevenuePage from "@/pages/revenue/RevenuePage";
 import NotificationsPage from "@/pages/notifications/NotificationsPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
 import PermissionMatrixPage from "@/pages/settings/PermissionMatrixPage";
@@ -107,6 +108,7 @@ export function AppRoutes() {
         <Route path="/maintenance" element={<MaintenancePage />} />
         <Route path="/support" element={<SupportTicketsPage />} />
 
+        <Route path="/revenue" element={<RevenuePage />} />
         <Route path="/payments" element={<PaymentsPage />} />
         <Route path="/damages" element={<DamagesPage />} />
         <Route path="/refunds" element={<RefundsPage />} />

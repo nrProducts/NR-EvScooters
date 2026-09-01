@@ -72,7 +72,7 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-4 animate-fade-in">
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="admin">Sent by Admin</TabsTrigger>
           <TabsTrigger value="riderLog">Sent to Riders</TabsTrigger>
           <TabsTrigger value="rider">

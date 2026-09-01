@@ -21,6 +21,7 @@ import {
   Boxes,
   UserRound,
   Wallet,
+  LineChart,
   Headset,
   ShieldAlert,
   UserCog,
@@ -147,6 +148,12 @@ export const NAV_ITEMS: NavItem[] = [
   },
 
   // --- Finance — money in, money out, and reconciling it against Razorpay ---
+  // Revenue is the group's analytical landing page. Gated on `dashboard.view`,
+  // the same grant that opens the dashboard revenue cards it drills into — no
+  // separate permission module.
+  {
+    label: "Revenue", path: "/revenue", icon: LineChart, roles: ["admin", "staff"], moduleKey: "dashboard", group: "finance",
+  },
   {
     label: "Payments", path: "/payments", icon: CreditCard, roles: ["admin", "staff"], moduleKey: "payments", group: "finance",
   },

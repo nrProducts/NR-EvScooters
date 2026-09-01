@@ -9,7 +9,8 @@ export interface StatCardProps {
   value: string | number;
   icon?: LucideIcon;
   trend?: { value: number; positive?: boolean };
-  tone?: "default" | "success" | "warning" | "destructive" | "info";
+  /** `purple` = a secondary operational state (per the SwapNgo spec's KPI colour set). */
+  tone?: "default" | "success" | "warning" | "destructive" | "info" | "purple";
 }
 
 const toneClasses: Record<NonNullable<StatCardProps["tone"]>, string> = {
@@ -18,12 +19,13 @@ const toneClasses: Record<NonNullable<StatCardProps["tone"]>, string> = {
   warning: "bg-warning/10 text-warning",
   destructive: "bg-destructive/10 text-destructive",
   info: "bg-info/10 text-info",
+  purple: "bg-[#7C3AED]/10 text-[#7C3AED]",
 };
 
 export function StatCard({ label, value, icon: Icon, trend, tone = "default" }: StatCardProps) {
   return (
-    <MotionCard className="bg-card/80 backdrop-blur-sm">
-      <CardContent className="flex items-center justify-between gap-2 p-3">
+    <MotionCard className="min-h-[4.5rem] bg-card/80 backdrop-blur-sm">
+      <CardContent className="flex h-full items-center justify-between gap-2 p-3.5">
         <div className="flex min-w-0 flex-col gap-1">
           <span className="truncate text-[0.6875rem] font-medium text-muted-foreground">{label}</span>
           <span className="text-lg font-semibold tracking-tight">{value}</span>
@@ -40,8 +42,8 @@ export function StatCard({ label, value, icon: Icon, trend, tone = "default" }: 
           )}
         </div>
         {Icon && (
-          <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", toneClasses[tone])}>
-            <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
+          <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", toneClasses[tone])}>
+            <Icon className="h-4 w-4" strokeWidth={1.75} />
           </div>
         )}
       </CardContent>

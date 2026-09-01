@@ -15,6 +15,7 @@ import {
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
+import { FilterBar } from "@/components/common/FilterBar";
 import { Pagination } from "@/components/common/Pagination";
 import { useHolidays, useCreateHoliday, useUpdateHoliday, useDeleteHoliday } from "@/hooks/useHolidays";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
@@ -84,25 +85,28 @@ export default function HolidaysPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center justify-between gap-3">
-        <Select value={scope} onValueChange={(v) => { setScope(v as "upcoming" | "all"); setPage(1); }}>
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="upcoming">Upcoming holidays</SelectItem>
-            <SelectItem value="all">All holidays</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {canManage && (
+      {canManage && (
+        <div className="flex justify-end">
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" /> Add holiday
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <Card>
+        <FilterBar
+          filters={
+            <Select value={scope} onValueChange={(v) => { setScope(v as "upcoming" | "all"); setPage(1); }}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="upcoming">Upcoming holidays</SelectItem>
+                <SelectItem value="all">All holidays</SelectItem>
+              </SelectContent>
+            </Select>
+          }
+        />
         <DataTable
           columns={columns}
           data={rows}
