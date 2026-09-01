@@ -71,6 +71,12 @@ export const listUsersQuery = z.object({
         .enum(["true", "false"])
         .default("false")
         .transform((v) => v === "true"),
+    // Rider-picker filter for "create booking": drop riders who already have an
+    // active booking or rental, since adminCreateBooking would reject them.
+    bookable: z
+        .enum(["true", "false"])
+        .default("false")
+        .transform((v) => v === "true"),
 });
 
 export const createUserBody = z.object({

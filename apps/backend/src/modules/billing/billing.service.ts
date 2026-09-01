@@ -321,10 +321,13 @@ async function createRule(
             description: input.description ?? null,
             kind,
             amount_type: input.amountType,
-            // Discounts are stored NEGATIVE. That is the whole point of the
-            // merge: one signed column means a period's adjustments sum
-            // directly, with nothing to remember to subtract.
-            amount: kind === "discount" ? -Math.abs(input.amount) : Math.abs(input.amount),
+            // `pricing_rules.amount` is MAGNITUDE ONLY (check: amount >= 0). The
+            // sign is applied when a rule is materialised into a
+            // subscription_adjustments row — apply_period_adjustments() does
+            //   `case when kind = 'discount' then -v_amount else v_amount end`.
+            // Storing it negative here both trips the check constraint and, if
+            // it got through, would flip a discount into a charge.
+            amount: Math.abs(input.amount),
             frequency: input.frequency,
             frequency_n: input.frequencyN ?? null,
             scope: input.scope,
@@ -869,8 +872,8 @@ export async function updateDiscountRule(
     if (patch.discount_name !== undefined) columns.name = patch.discount_name;
     if (patch.description !== undefined) columns.description = patch.description;
     if (patch.discount_type !== undefined) columns.amount_type = patch.discount_type;
-    // Stored negative — see createRule().
-    if (patch.value !== undefined) columns.amount = -Math.abs(patch.value);
+    // Magnitude only — see createRule(). The sign comes from `kind` at apply time.
+    if (patch.value !== undefined) columns.amount = Math.abs(patch.value);
     if (patch.frequency_type !== undefined) columns.frequency = patch.frequency_type;
     if (patch.frequency_n !== undefined) columns.frequency_n = patch.frequency_n;
     if (patch.effective_from !== undefined) columns.effective_from = patch.effective_from;

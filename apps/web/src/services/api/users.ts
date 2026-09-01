@@ -11,6 +11,8 @@ export interface UserFilters {
   role?: BackendRoleName | "all";
   /** Any staff-side role at once. Ignored when `role` is set. */
   staffOnly?: boolean;
+  /** Drop riders who already have an active booking or rental (the create-booking picker). */
+  bookable?: boolean;
   page?: number;
   pageSize?: number;
   sortBy?: "full_name" | "created_at" | "kyc_status";
@@ -19,7 +21,7 @@ export interface UserFilters {
 
 /** GET /users — requireStaff. See apps/backend/src/modules/users/users.routes.ts */
 export async function fetchUsers(filters: UserFilters = {}): Promise<PaginatedResult<AppUser>> {
-  const { search, kycStatus, accountStatus, role, staffOnly, page = 1, pageSize = 8, sortBy, sortDir } = filters;
+  const { search, kycStatus, accountStatus, role, staffOnly, bookable, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<AppUser>>("/users", {
     page,
     pageSize,
@@ -28,6 +30,7 @@ export async function fetchUsers(filters: UserFilters = {}): Promise<PaginatedRe
     accountStatus: accountStatus && accountStatus !== "all" ? accountStatus : undefined,
     role: role && role !== "all" ? role : undefined,
     staffOnly: staffOnly ? "true" : undefined,
+    bookable: bookable ? "true" : undefined,
     sortBy,
     sortDir,
   });

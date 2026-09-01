@@ -22,7 +22,6 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Timeline, type TimelineItem } from "@/components/common/Timeline";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BrandedLoader } from "@/components/common/BrandedLoader";
 import { useUsers } from "@/hooks/useUsers";
 import { usePickupQueue } from "@/hooks/useBookings";
 import { useReportsSummary } from "@/hooks/useReports";
@@ -111,7 +110,9 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      {isLoading && <BrandedLoader label="Loading dashboard…" />}
+      {/* No full-screen loader — every section below renders its own skeleton
+          while its query is in flight, so the dashboard fills in progressively
+          instead of being blocked behind one overlay. */}
 
       {/* At-a-glance — Fleet Overview / Staff Attendance / Leave Management, side by side on larger
           screens. Stretched (the grid default) rather than items-start, so all three sit on the same

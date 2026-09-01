@@ -32,6 +32,12 @@ export const adminCreateBookingBody = z.object({
         apply_transaction_fee: z.boolean().optional(),
         /** Default true. False removes the auto welcome-discount line from the bill. */
         apply_welcome_discount: z.boolean().optional(),
+        /**
+         * Pricing-rule codes the operator chose NOT to apply — each matching
+         * auto-generated adjustment line is voided off the invoice. Generalises
+         * the two booleans above to any active charge/discount rule.
+         */
+        exclude_pricing_codes: z.array(z.string().regex(/^[a-z][a-z0-9_]*$/).max(64)).max(50).optional(),
         /** Exact amount collected — a manual adjustment line reconciles the invoice to it. */
         amount: z.number().min(0).max(10_000_000).optional(),
     }).optional(),

@@ -25,6 +25,14 @@ const VEHICLE_STATUS_LABEL: Record<string, string> = {
 /** Only an available scooter can back a new booking. */
 const isBookable = (v: Vehicle) => v.status === "available";
 
+/** One toggleable pricing line resolved from the live billing config. */
+interface RuleLine {
+  code: string;
+  name: string;
+  /** Positive = charge (adds), negative = discount (subtracts). */
+  amount: number;
+}
+
 export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const create = useAdminCreateBooking();
 
@@ -37,8 +45,8 @@ export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean
   const [endTouched, setEndTouched] = useState(false);
   const [recordPayment, setRecordPayment] = useState(true);
   const [method, setMethod] = useState<PaymentMethod>("cash");
-  const [applyTxnFee, setApplyTxnFee] = useState(true);
-  const [applyWelcome, setApplyWelcome] = useState(true);
+  // Pricing-rule codes the operator switched OFF for this booking.
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [amountInput, setAmountInput] = useState("");
   const [amountTouched, setAmountTouched] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -47,22 +55,17 @@ export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean
     if (open) return;
     setRiderSearch(""); setRiderId(null); setVehicleId(null); setPlanId(null);
     setStartDay(""); setEndDay(""); setEndTouched(false);
-    setRecordPayment(true); setMethod("cash"); setApplyTxnFee(true); setApplyWelcome(true);
+    setRecordPayment(true); setMethod("cash"); setExcluded(new Set());
     setAmountInput(""); setAmountTouched(false); setFormError(null);
   }, [open]);
 
-  // The live billing config — the fee/discount checkboxes only exist when a
-  // matching active pricing rule does.
-  const { data: chargeRules } = useChargeRules({ chargeCode: "transaction_fee", active: true, page: 1, pageSize: 5 });
-  const { data: discountRules } = useDiscountRules({ discountCode: "welcome_discount", active: true, page: 1, pageSize: 5 });
-  const txnFeeRule = chargeRules?.data.find((r) => r.charge_code === "transaction_fee" && r.active) ?? null;
-  const welcomeRule = discountRules?.data.find((r) => r.discount_code === "welcome_discount" && r.active) ?? null;
+  // Every ACTIVE global charge / discount rule — nothing hard-coded. The admin
+  // gets a checkbox per rule; scoped (plan / model) rules still apply
+  // server-side but aren't operator-toggleable per booking.
+  const { data: chargeRules } = useChargeRules({ active: true, scope: "all", page: 1, pageSize: 50 });
+  const { data: discountRules } = useDiscountRules({ active: true, scope: "all", page: 1, pageSize: 50 });
 
-  // Enable each checkbox only when its rule is configured.
-  useEffect(() => { if (!txnFeeRule) setApplyTxnFee(false); }, [txnFeeRule]);
-  useEffect(() => { if (!welcomeRule) setApplyWelcome(false); }, [welcomeRule]);
-
-  const { data: riders } = useUsers({ search: riderSearch || undefined, role: "rider", page: 1, pageSize: 6 });
+  const { data: riders } = useUsers({ search: riderSearch || undefined, role: "rider", bookable: true, page: 1, pageSize: 6 });
   const { data: vehicles } = useVehicles({ status: "available", page: 1, pageSize: 50 });
   const vehicle = useMemo(
     () => vehicles?.data.find((v) => v.id === vehicleId) ?? null,
@@ -90,27 +93,46 @@ export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean
     : plan?.duration_days ?? 0;
   const durationInvalid = !!endDay && durationDays < 1;
 
-  // Best-effort estimates from the pricing rules, mirroring generate_period_invoice.
-  const feeEstimate = plan && txnFeeRule
-    ? (txnFeeRule.amount_type === "percentage"
-      ? Math.round(plan.price * txnFeeRule.amount) / 100
-      : txnFeeRule.amount)
-    : 0;
-  const discountEstimate = plan && welcomeRule
-    ? (welcomeRule.discount_type === "percentage"
-      ? Math.round(plan.price * welcomeRule.value) / 100
-      : welcomeRule.value)
-    : 0;
+  // Best-effort estimates from the pricing rules, mirroring apply_period_adjustments.
+  const ruleLines: RuleLine[] = useMemo(() => {
+    if (!plan) return [];
+    const days = durationDays || plan.duration_days;
+    const globalCharges = (chargeRules?.data ?? []).filter((r) => r.active && r.scope === "global");
+    const globalDiscounts = (discountRules?.data ?? []).filter((r) => r.active && r.scope === "global");
+    const lines: RuleLine[] = [];
+    for (const r of globalCharges) {
+      const amt = r.amount_type === "percentage"
+        ? Math.round(plan.price * r.amount) / 100
+        : r.frequency_type === "per_day" ? r.amount * days : r.amount;
+      if (amt > 0) lines.push({ code: r.charge_code, name: r.charge_name, amount: amt });
+    }
+    for (const r of globalDiscounts) {
+      const amt = r.discount_type === "percentage"
+        ? Math.round(plan.price * r.value) / 100
+        : r.value;
+      if (amt > 0) lines.push({ code: r.discount_code, name: r.discount_name, amount: -amt });
+    }
+    return lines;
+  }, [plan, durationDays, chargeRules, discountRules]);
+
+  const appliedLines = ruleLines.filter((l) => !excluded.has(l.code));
 
   const estimate = plan
-    ? Math.max(0, plan.price + plan.deposit_amount
-        + (applyTxnFee ? feeEstimate : 0)
-        - (applyWelcome ? discountEstimate : 0))
+    ? Math.max(0, plan.price + plan.deposit_amount + appliedLines.reduce((s, l) => s + l.amount, 0))
     : 0;
   useEffect(() => {
     if (amountTouched) return;
     setAmountInput(estimate ? String(Math.round(estimate * 100) / 100) : "");
   }, [estimate, amountTouched]);
+
+  const toggle = (code: string) => {
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code); else next.add(code);
+      return next;
+    });
+    setAmountTouched(false);
+  };
 
   const amount = Number(amountInput);
   const amountInvalid = amountInput.trim() !== "" && (!Number.isFinite(amount) || amount < 0);
@@ -131,8 +153,7 @@ export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean
         payment: {
           method,
           status: recordPayment ? "paid" : "pending",
-          apply_transaction_fee: applyTxnFee,
-          apply_welcome_discount: applyWelcome,
+          exclude_pricing_codes: [...excluded],
           amount: amountTouched && amountInput.trim() !== "" ? amount : undefined,
         },
       },
@@ -169,7 +190,9 @@ export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean
             {!riderId && riderSearch.trim().length >= 2 && (
               <div className="max-h-40 overflow-y-auto rounded-lg border border-border">
                 {(riders?.data ?? []).length === 0 ? (
-                  <p className="px-3 py-2 text-xs text-muted-foreground">No riders match.</p>
+                  <p className="px-3 py-2 text-xs text-muted-foreground">
+                    No riders available to book — everyone matching already has an active booking or rental.
+                  </p>
                 ) : (
                   riders!.data.map((r) => (
                     <button
@@ -288,38 +311,32 @@ export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className={cn("flex items-center gap-2 text-xs", !txnFeeRule && "opacity-50")}>
-                <input
-                  type="checkbox" className="h-3.5 w-3.5 accent-primary"
-                  disabled={!txnFeeRule}
-                  checked={applyTxnFee}
-                  onChange={(e) => { setApplyTxnFee(e.target.checked); setAmountTouched(false); }}
-                />
-                Apply transaction fee
-                {txnFeeRule
-                  ? <span className="text-muted-foreground">(+{formatCurrency(feeEstimate)})</span>
-                  : <span className="text-muted-foreground">(not configured)</span>}
-              </label>
-              <label className={cn("flex items-center gap-2 text-xs", !welcomeRule && "opacity-50")}>
-                <input
-                  type="checkbox" className="h-3.5 w-3.5 accent-primary"
-                  disabled={!welcomeRule}
-                  checked={applyWelcome}
-                  onChange={(e) => { setApplyWelcome(e.target.checked); setAmountTouched(false); }}
-                />
-                Apply welcome discount
-                {welcomeRule
-                  ? <span className="text-success">(−{formatCurrency(discountEstimate)})</span>
-                  : <span className="text-muted-foreground">(not configured)</span>}
-              </label>
-            </div>
+            {/* One checkbox per live pricing rule — resolved from the billing config, not hard-coded. */}
+            {ruleLines.length > 0 ? (
+              <div className="space-y-1.5">
+                {ruleLines.map((l) => (
+                  <label key={l.code} className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox" className="h-3.5 w-3.5 accent-primary"
+                      checked={!excluded.has(l.code)}
+                      onChange={() => toggle(l.code)}
+                    />
+                    Apply {l.name}
+                    <span className={l.amount < 0 ? "text-success" : "text-muted-foreground"}>
+                      ({l.amount < 0 ? "−" : "+"}{formatCurrency(Math.abs(l.amount))})
+                    </span>
+                  </label>
+                ))}
+              </div>
+            ) : plan ? (
+              <p className="text-[0.6875rem] text-muted-foreground">No optional charges or discounts configured.</p>
+            ) : null}
 
             {amountInvalid && <p className="text-[0.6875rem] text-destructive">Enter a valid, non-negative amount.</p>}
             <p className="text-[0.6875rem] text-muted-foreground">
               Plan {plan ? formatCurrency(plan.price) : "—"} + deposit {plan ? formatCurrency(plan.deposit_amount) : "—"}
-              {applyTxnFee && feeEstimate > 0 ? ` + fee ${formatCurrency(feeEstimate)}` : ""}
-              {applyWelcome && discountEstimate > 0 ? ` − discount ${formatCurrency(discountEstimate)}` : ""}
+              {appliedLines.filter((l) => l.amount > 0).map((l) => ` + ${l.name.toLowerCase()} ${formatCurrency(l.amount)}`).join("")}
+              {appliedLines.filter((l) => l.amount < 0).map((l) => ` − ${l.name.toLowerCase()} ${formatCurrency(Math.abs(l.amount))}`).join("")}
               {amountTouched && amountInput.trim() !== ""
                 ? `. The invoice total is set to exactly ${formatCurrency(amount || 0)}.`
                 : ". Exact figures are resolved from the billing config on confirm."}

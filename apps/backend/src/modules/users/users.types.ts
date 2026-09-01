@@ -136,4 +136,6 @@ export interface ListUsersFilters {
     sortBy: "full_name" | "created_at" | "kyc_status";
     sortDir: "asc" | "desc";
     includeDeleted: boolean;
+    /** Exclude riders who already have an active booking or rental. */
+    bookable?: boolean;
 }

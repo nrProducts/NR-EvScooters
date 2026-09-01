@@ -751,6 +751,8 @@ export interface AdminCreateBookingInput {
         apply_transaction_fee?: boolean;
         /** Default true. False → remove the auto welcome-discount line. */
         apply_welcome_discount?: boolean;
+        /** Pricing-rule codes to void off the invoice — any active charge/discount rule. */
+        exclude_pricing_codes?: string[];
         /** Exact amount collected — reconciled onto the invoice as a manual adjustment. */
         amount?: number;
     };
@@ -842,10 +844,10 @@ export async function adminCreateBooking(
     if (input.payment) {
         try {
             const invoiceId = await ensureBookingInvoice(booking.id, input.user_id, actor.id);
-            const strip: string[] = [];
-            if (input.payment.apply_transaction_fee === false) strip.push("transaction_fee");
-            if (input.payment.apply_welcome_discount === false) strip.push("welcome_discount");
-            await stripPricingCodes(invoiceId, strip, actor);
+            const strip = new Set<string>(input.payment.exclude_pricing_codes ?? []);
+            if (input.payment.apply_transaction_fee === false) strip.add("transaction_fee");
+            if (input.payment.apply_welcome_discount === false) strip.add("welcome_discount");
+            await stripPricingCodes(invoiceId, [...strip], actor);
             if (typeof input.payment.amount === "number") {
                 await setInvoiceTotal(invoiceId, input.payment.amount, actor);
             }

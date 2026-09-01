@@ -73,6 +73,8 @@ export interface AdminCreateBookingInput {
     apply_transaction_fee?: boolean;
     /** Default true. False removes the auto welcome-discount line. */
     apply_welcome_discount?: boolean;
+    /** Pricing-rule codes the operator chose not to apply (any active charge/discount rule). */
+    exclude_pricing_codes?: string[];
     /** Exact amount collected. */
     amount?: number;
   };

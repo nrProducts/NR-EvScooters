@@ -11,6 +11,7 @@ import {
     UserStatus, isStaffRole,
 } from "../../types";
 import { ListUsersFilters, UserDetail, UserListItem, UserProfile } from "./users.types";
+import { ACTIVE_BOOKING_STATUSES } from "../bookings/bookings.types";
 import { normaliseEmail, normalisePhone } from "./users.validation";
 import { applyPermissionProfile } from "./staff-permissions.service";
 import {
@@ -188,7 +189,29 @@ export async function listUsers(
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const rows = (data ?? []) as unknown as RawUserRow[];
+    let rows = (data ?? []) as unknown as RawUserRow[];
+
+    // `bookable`: drop anyone who already has an active booking or rental —
+    // adminCreateBooking rejects them, so they should never appear in the
+    // rider picker. Bounded lookups against just this page's ids; `count`
+    // stays the pre-filter total, which is fine for a search-driven picker.
+    if (filters.bookable && rows.length > 0) {
+        const pageIds = rows.map((r) => r.id);
+        const [activeBookings, activeRentals] = await Promise.all([
+            supabaseAdmin.from("bookings").select("user_id")
+                .in("user_id", pageIds).in("status", [...ACTIVE_BOOKING_STATUSES]),
+            supabaseAdmin.from("rentals").select("user_id")
+                .in("user_id", pageIds).eq("status", "active"),
+        ]);
+        if (activeBookings.error) throw activeBookings.error;
+        if (activeRentals.error) throw activeRentals.error;
+        const busy = new Set<string>([
+            ...(activeBookings.data ?? []).map((r) => r.user_id as string),
+            ...(activeRentals.data ?? []).map((r) => r.user_id as string),
+        ]);
+        rows = rows.filter((r) => !busy.has(r.id));
+    }
+
     const userIds = rows.map((r) => r.id);
     const [vehicles, plans, outstanding] = await Promise.all([
         activeVehicleByUser(userIds),
