@@ -1,16 +1,34 @@
 # Deploying to Render
 
-Three deployables live in this pnpm + Turborepo monorepo. Every one builds
-from the **repo root** using workspace filters — never set a Render "Root
-Directory" of `apps/...`.
+Three deployables live in this **one** pnpm monorepo. They deploy as three
+**separate Render services** — but you do **not** split the repo or point
+Render at a sub-folder.
 
-| App | Render type | Publishes | Needs |
+## Folder strategy — the one rule
+
+`pnpm install` must run at the **repo root** (that's where `pnpm-workspace.yaml`
+and `pnpm-lock.yaml` live). So for every service:
+
+- **Repository:** this repo (all three services connect to the same one)
+- **Root Directory:** *blank* — the repo root. **Never** set it to `apps/web`
+  etc.; a sub-folder `pnpm install` can't resolve the workspace or the lockfile.
+- **Build:** `pnpm --filter <name> build` — builds only that one app
+- **Output:** a different folder per service
+
+| App | Render type | Build | Serves / runs |
 |---|---|---|---|
-| `apps/backend` | Node web service | — | Supabase + Razorpay secrets |
-| `apps/web` (admin + rider) | Static site | `apps/web/dist` | backend URL, Supabase public keys |
-| `apps/website` (marketing) | Static site | `apps/website/dist` | web console URL |
+| `apps/backend` | Node web service | `pnpm --filter backend build` | `apps/backend/dist/server.js` (via `pnpm --filter backend start`) |
+| `apps/web` (admin + rider) | Static site | `pnpm --filter web build` | `apps/web/dist` |
+| `apps/website` (marketing) | Static site | `pnpm --filter website build` | `apps/website/dist` |
 
-`render.yaml` at the repo root defines all three.
+`render.yaml` at the repo root defines all three, including a **`buildFilter`**
+per service so a website-only commit doesn't redeploy the backend. (If you
+create the services by hand instead, set the same thing under
+**Settings → Build Filters** for each: include `apps/<name>/**` plus
+`package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.node-version`.)
+
+The `apps/mobile` (Expo) app is not deployed to Render — it ships through the
+app stores.
 
 ## Deploy order
 

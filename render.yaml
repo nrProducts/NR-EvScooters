@@ -3,9 +3,20 @@
 #   2. web      (apps/web)      — admin console + rider web app, static site (Vite)
 #   3. website  (apps/website)  — public marketing site, static site (Vite)
 #
-# This is a pnpm + Turborepo monorepo, so every service builds from the REPO
-# ROOT and uses pnpm workspace filters. Render picks up pnpm automatically
-# from the root package.json "packageManager" field via corepack.
+# FOLDER STRATEGY — do NOT split the repo, and do NOT set a Render "Root
+# Directory" to apps/<name>. This is a pnpm workspace: `pnpm install` must run
+# at the repo root, where pnpm-workspace.yaml + pnpm-lock.yaml live. So every
+# service:
+#   • points at this same repo, rootDir: "."  (the repo root)
+#   • builds ONLY its own app with `pnpm --filter <name> build`
+#   • publishes a different folder:
+#       backend  → runs apps/backend/dist/server.js  (Node service)
+#       web      → serves apps/web/dist              (static)
+#       website  → serves apps/website/dist          (static)
+#
+# `buildFilter` below means a service only rebuilds when its own apps/<name>/**
+# (or a shared root file) changes — a website-only commit won't redeploy the
+# backend.
 #
 # Secrets / cross-service URLs are `sync: false` — Render prompts for each on
 # first deploy and never stores them here. Deploy order matters for the URLs:
@@ -24,6 +35,14 @@ services:
     branch: main
     rootDir: .
     autoDeploy: true
+    buildFilter:
+      paths:
+        - apps/backend/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - .node-version
+        - render.yaml
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter backend build
     startCommand: pnpm --filter backend start
     healthCheckPath: /api/v1/health
@@ -89,6 +108,14 @@ services:
     branch: main
     rootDir: .
     autoDeploy: true
+    buildFilter:
+      paths:
+        - apps/web/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - .node-version
+        - render.yaml
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter web build
     staticPublishPath: apps/web/dist
     # BrowserRouter — every path must fall back to index.html.
@@ -119,6 +146,14 @@ services:
     branch: main
     rootDir: .
     autoDeploy: true
+    buildFilter:
+      paths:
+        - apps/website/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - .node-version
+        - render.yaml
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter website build
     staticPublishPath: apps/website/dist
     routes:
