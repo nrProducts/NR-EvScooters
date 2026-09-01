@@ -91,7 +91,10 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
               </Text>
               {totalDays ? (
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
-                  Day {Math.min(totalDays, totalDays - daysLeft + 1)} of {totalDays}
+                  {/* daysLeft is exclusive of today (calendarDaysBetween(now, due)),
+                      so on the first day of a 7-day period daysLeft is 6 and this
+                      is Day 1 — no +1. */}
+                  Day {Math.max(1, Math.min(totalDays, totalDays - daysLeft))} of {totalDays}
                 </Text>
               ) : null}
             </View>
