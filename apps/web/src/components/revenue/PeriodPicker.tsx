@@ -13,7 +13,7 @@ export interface PeriodState {
 
 const PRESETS: PeriodPreset[] = [
   "today", "yesterday", "this_week", "last_week",
-  "this_month", "last_month", "this_year", "last_year", "custom",
+  "this_month", "last_month", "this_quarter", "this_year", "last_year", "custom",
 ];
 
 /** Preset + custom-range + granularity control for the Revenue screen. */

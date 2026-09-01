@@ -9,18 +9,59 @@ import { useRevenueSummary } from "@/hooks/useRevenue";
 import { rangeForPreset, previousRange } from "@/lib/period";
 
 /**
- * The dashboard's Revenue Overview: a quick snapshot (this month, vs last
- * month) split into two clearly-separate blocks — Revenue and Deposits —
- * with a shortcut to the full Revenue screen. All figures come from the
- * shared /revenue/summary engine.
+ * The dashboard's revenue snapshot (this month, vs last month), split so the
+ * two blocks can sit in different parts of the dashboard:
+ *   part="revenue"  — headline revenue KPIs + shortcut to the Revenue screen
+ *   part="deposits" — security-deposit movements (rider money, not revenue)
+ * All figures come from the shared /revenue/summary engine.
  */
-export function RevenueOverview() {
+export function RevenueOverview({ part = "revenue" }: { part?: "revenue" | "deposits" }) {
   const range = rangeForPreset("this_month");
   const week = rangeForPreset("this_week");
   const year = rangeForPreset("this_year");
   const { data, isLoading } = useRevenueSummary(range, previousRange(range));
   const weekQ = useRevenueSummary(week);
   const yearQ = useRevenueSummary(year);
+
+  if (part === "deposits") {
+    return (
+      <section className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold text-foreground">Security Deposits</h2>
+          <span className="text-[0.6875rem] text-muted-foreground">Rider funds — held separately, never revenue</span>
+        </div>
+        {isLoading || !data ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <RevenueStatCard
+              label="Deposits Collected" icon={PiggyBank} tone="purple"
+              value={data.deposits.collected} deltaPct={data.deltaPct?.depositsCollected}
+              previous={data.previous?.deposits.collected}
+              tooltip="Security deposits taken this month. Never counted as revenue."
+            />
+            <RevenueStatCard
+              label="Deposits Refunded" icon={RotateCcw} tone="purple"
+              value={data.deposits.refunded} previous={data.previous?.deposits.refunded}
+              tooltip="Deposit money returned to riders (deposit release + settlement)."
+            />
+            <RevenueStatCard
+              label="Deposits Adjusted" icon={Landmark} tone="warning"
+              value={data.deposits.adjusted} previous={data.previous?.deposits.adjusted}
+              tooltip="Deposit consumed to cover charges. The charge itself is not counted in Gross Revenue (no separate payment was collected)."
+            />
+            <RevenueStatCard
+              label="Pending Refunds" icon={Wallet} tone="warning"
+              value={data.pendingRefunds} currency={false}
+              tooltip="Refunds awaiting review or gateway processing. Not yet deducted from Net Revenue."
+            />
+          </div>
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-3">
@@ -67,37 +108,6 @@ export function RevenueOverview() {
             value={data.net} deltaPct={data.deltaPct?.net} previous={data.previous?.net}
             emphasis
             tooltip="Gross Revenue − Completed Refunds."
-          />
-        </div>
-      )}
-
-      <h2 className="pt-1 text-sm font-semibold text-foreground">Deposits</h2>
-      {isLoading || !data ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <RevenueStatCard
-            label="Deposits Collected" icon={PiggyBank} tone="purple"
-            value={data.deposits.collected} deltaPct={data.deltaPct?.depositsCollected}
-            previous={data.previous?.deposits.collected}
-            tooltip="Security deposits taken this month. Never counted as revenue."
-          />
-          <RevenueStatCard
-            label="Deposits Refunded" icon={RotateCcw} tone="purple"
-            value={data.deposits.refunded} previous={data.previous?.deposits.refunded}
-            tooltip="Deposit money returned to riders (deposit release + settlement)."
-          />
-          <RevenueStatCard
-            label="Deposits Adjusted" icon={Landmark} tone="warning"
-            value={data.deposits.adjusted} previous={data.previous?.deposits.adjusted}
-            tooltip="Deposit consumed to cover charges. The charge itself is not counted in Gross Revenue (no separate payment was collected)."
-          />
-          <RevenueStatCard
-            label="Pending Refunds" icon={Wallet} tone="warning"
-            value={data.pendingRefunds} currency={false}
-            tooltip="Refunds awaiting review or gateway processing. Not yet deducted from Net Revenue."
           />
         </div>
       )}

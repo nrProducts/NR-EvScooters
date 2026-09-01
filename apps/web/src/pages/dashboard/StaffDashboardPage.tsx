@@ -1,4 +1,4 @@
-import { CalendarCheck, LifeBuoy, ShieldCheck, Bike, Wrench } from "lucide-react";
+import { CalendarCheck, LifeBuoy, ShieldCheck, Wrench } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/common/StatCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -40,6 +40,8 @@ export default function StaffDashboardPage() {
     ? summary.maintenance.by_status.reported + summary.maintenance.by_status.in_progress
     : 0;
 
+  // Task queues only — fleet composition (available / maintenance / …) is the
+  // Fleet Status card below, so it isn't repeated here.
   const statCards = [
     canViewBookings && (
       <StatCard key="pickups" label="Awaiting pickup" value={pickups?.total ?? 0} icon={CalendarCheck} />
@@ -50,11 +52,8 @@ export default function StaffDashboardPage() {
     canViewKyc && (
       <StatCard key="kyc" label="Pending KYC" value={kycQueue?.total ?? 0} icon={ShieldCheck} tone="warning" />
     ),
-    canViewVehicles && summary && (
-      <StatCard key="available" label="Available vehicles" value={summary.vehicles.by_status.available} icon={Bike} tone="success" />
-    ),
     canViewMaintenance && (
-      <StatCard key="maintenance" label="Pending maintenance" value={pendingMaintenance} icon={Wrench} tone="destructive" />
+      <StatCard key="maintenance" label="Open maintenance tickets" value={pendingMaintenance} icon={Wrench} tone="warning" />
     ),
   ].filter(Boolean);
 
