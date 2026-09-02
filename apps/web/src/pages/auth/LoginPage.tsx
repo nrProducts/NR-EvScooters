@@ -1,19 +1,17 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Phone, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, Mail, Lock, Check } from "lucide-react";
 import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
 import { useRiderAuthStore } from "@/store/riderAuthStore";
-import { requestOtp, signInWithGoogle } from "@/rider/services/riderAuth";
-import { isValidPhone } from "@/rider/lib/authValidation";
 
 interface LoginForm {
   identifier: string;
@@ -21,23 +19,21 @@ interface LoginForm {
 }
 
 /**
- * Single sign-in surface for all roles. Staff/admin use email or phone +
- * password; riders use phone OTP or Google (same as the mobile app — no
- * second auth system). After a session is established the role is resolved
- * from GET /auth/session and the user is routed to the console (/dashboard)
- * or the rider web app (/rider).
+ * Single sign-in surface for every role. Staff, admin and rider accounts are
+ * all one kind of account now — email + password — and the role is resolved
+ * from GET /auth/session after the session is established, routing the user to
+ * the console (/dashboard) or the rider web app (/rider).
+ *
+ * Rider phone-OTP / Google sign-in was removed from the web console; it lives
+ * only in the Expo mobile app. A new account self-registers here, lands as
+ * pending, and an admin approves it as staff or rider from Users → Awaiting
+ * approval.
  */
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
-
-  // Rider (OTP / Google) sub-flow.
-  const [riderMode, setRiderMode] = useState<"hidden" | "phone">("hidden");
-  const [phone, setPhone] = useState("");
-  const [riderBusy, setRiderBusy] = useState<"otp" | "google" | null>(null);
-  const [riderError, setRiderError] = useState("");
 
   const riderProfile = useRiderAuthStore((s) => s.profile);
   const riderInitialising = useRiderAuthStore((s) => s.initialising);
@@ -55,8 +51,14 @@ export default function LoginPage() {
 
   const onSubmit = (values: LoginForm) => {
     login.mutate(values, {
-      onError: (err) => {
+      onError: async (err) => {
         if (err instanceof ApiError && err.code === "RIDER_ACCOUNT") {
+          // A rider signed in on the console login form. Their Supabase
+          // session is live but the rider store bootstrapped at app mount
+          // with no session — pull the profile now so RiderProtectedRoute
+          // sees profile_completed / consent and routes to profile-setup
+          // instead of needing a manual reload.
+          await useRiderAuthStore.getState().bootstrap();
           navigate("/rider", { replace: true });
           return;
         }
@@ -65,81 +67,75 @@ export default function LoginPage() {
     });
   };
 
-  const sendOtp = async () => {
-    if (riderBusy) return;
-    if (!isValidPhone(phone)) {
-      setRiderError("Enter a valid mobile number.");
-      return;
-    }
-    setRiderError("");
-    setRiderBusy("otp");
-    try {
-      const e164 = await requestOtp(phone);
-      navigate("/login/otp", { state: { phone: e164 } });
-    } catch (err) {
-      setRiderError(err instanceof ApiError ? err.message : "Could not send the code. Please try again.");
-      setRiderBusy(null);
-    }
-  };
-
-  const continueWithGoogle = async () => {
-    if (riderBusy) return;
-    setRiderError("");
-    setRiderBusy("google");
-    try {
-      await signInWithGoogle(); // full-page redirect → /rider/auth/callback
-    } catch (err) {
-      setRiderError(err instanceof ApiError ? err.message : "Google sign-in failed. Please try again.");
-      setRiderBusy(null);
-    }
-  };
+  const fieldIcon = "pointer-events-none absolute left-3.5 top-1/2 h-[1.05rem] w-[1.05rem] -translate-y-1/2 text-muted-foreground";
 
   return (
-    <Card className="animate-fade-in">
-      <CardContent className="p-6 sm:p-8">
-        <h1 className="mb-1 text-xl font-semibold">Welcome back</h1>
-        <p className="mb-6 text-sm text-muted-foreground">Sign in to continue.</p>
+    <Card className="animate-fade-in border-border/80 shadow-card">
+      <CardContent className="p-7 sm:p-9">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Welcome back</h1>
+          <p className="text-sm text-muted-foreground">Sign in to access your Swapngo dashboard.</p>
+        </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="identifier">Email or phone</Label>
-            <Input
-              id="identifier"
-              placeholder="Email or phone"
-              {...register("identifier", { required: "Email or phone is required" })}
-            />
-            {errors.identifier && <p className="text-xs text-destructive">{errors.identifier.message}</p>}
+        <form onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="identifier">Email address</Label>
+            <div className="relative">
+              <Mail className={fieldIcon} />
+              <Input
+                id="identifier"
+                autoComplete="username"
+                placeholder="Enter your email address"
+                className={cn("h-12 rounded-[0.7rem] pl-10", errors.identifier && "border-destructive focus-visible:ring-destructive")}
+                {...register("identifier", { required: "Email address is required" })}
+              />
+            </div>
+            {errors.identifier && <p className="text-xs font-medium text-destructive">{errors.identifier.message}</p>}
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <div className="relative">
+              <Lock className={fieldIcon} />
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}
-                placeholder="••••••••"
-                className="pr-10"
+                autoComplete="current-password"
+                placeholder="Enter your password"
+                className={cn("h-12 rounded-[0.7rem] pl-10 pr-10", errors.password && "border-destructive focus-visible:ring-destructive")}
                 {...register("password", { required: "Password is required" })}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-smooth hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showPassword ? <EyeOff className="h-[1.05rem] w-[1.05rem]" /> : <Eye className="h-[1.05rem] w-[1.05rem]" />}
               </button>
             </div>
-            {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
+            {errors.password && <p className="text-xs font-medium text-destructive">{errors.password.message}</p>}
           </div>
 
-          <div className="flex items-center justify-between pt-1">
-            <label className="flex items-center gap-2 text-sm">
-              <Switch checked={rememberMe} onCheckedChange={setRememberMe} />
+          <div className="flex items-center justify-between">
+            <label className="flex cursor-pointer select-none items-center gap-2.5 text-sm text-foreground">
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={rememberMe}
+                onClick={() => setRememberMe((v) => !v)}
+                className={cn(
+                  "flex h-[1.15rem] w-[1.15rem] shrink-0 items-center justify-center rounded-[0.35rem] border transition-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
+                  rememberMe ? "border-primary bg-primary text-primary-foreground" : "border-input bg-background",
+                )}
+              >
+                {rememberMe && <Check className="h-3 w-3" strokeWidth={3} />}
+              </button>
               Remember me
             </label>
             <button
               type="button"
-              className="text-sm font-medium text-primary hover:underline"
+              className="text-sm font-semibold text-primary transition-smooth hover:text-primary-hover"
               onClick={() => navigate("/forgot-password")}
             >
               Forgot password?
@@ -147,81 +143,32 @@ export default function LoginPage() {
           </div>
 
           {login.isError && (
-            <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <p className="rounded-lg bg-destructive/10 px-3 py-2.5 text-xs font-medium text-destructive">
               {(login.error as Error)?.message ?? "Something went wrong."}
             </p>
           )}
 
-          <Button type="submit" className="w-full" disabled={login.isPending}>
-            {login.isPending && <Spinner className="h-4 w-4" />}
-            Login
+          <Button type="submit" className="h-12 w-full rounded-[0.7rem] text-[0.9rem] font-semibold" disabled={login.isPending}>
+            {login.isPending ? (
+              <>
+                <Spinner className="h-4 w-4" /> Signing in…
+              </>
+            ) : (
+              <>
+                Sign in <ArrowRight className="h-4 w-4" />
+              </>
+            )}
           </Button>
         </form>
 
-        {/* Rider sign-in — phone OTP / Google, same as the mobile app. */}
-        <div className="my-5 flex items-center gap-3">
-          <span className="h-px flex-1 bg-border" />
-          <span className="text-[11px] font-semibold uppercase text-muted-foreground">Rider sign-in</span>
-          <span className="h-px flex-1 bg-border" />
-        </div>
-
-        {riderMode === "phone" ? (
-          <div className="space-y-2">
-            <div className="relative">
-              <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="Phone"
-                className="pl-9"
-                value={phone}
-                onChange={(e) => {
-                  setPhone(e.target.value);
-                  if (riderError) setRiderError("");
-                }}
-                onKeyDown={(e) => e.key === "Enter" && sendOtp()}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              We&apos;ll text you a 6-digit code. Indian numbers can be typed without +91.
-            </p>
-            <Button className="w-full" onClick={sendOtp} disabled={riderBusy === "otp"}>
-              {riderBusy === "otp" ? <Spinner className="h-4 w-4" /> : <>Send code <ArrowRight className="h-4 w-4" /></>}
-            </Button>
-            <button
-              type="button"
-              className="w-full text-center text-xs text-muted-foreground hover:underline"
-              onClick={() => setRiderMode("hidden")}
-            >
-              Back
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <Button variant="outline" className="w-full" onClick={() => setRiderMode("phone")}>
-              <Phone className="h-4 w-4" /> Sign in with phone
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={continueWithGoogle}
-              disabled={riderBusy === "google"}
-            >
-              {riderBusy === "google" ? <Spinner className="h-4 w-4" /> : "Continue with Google"}
-            </Button>
-          </div>
-        )}
-        {riderError && <p className="mt-2 text-center text-xs text-destructive">{riderError}</p>}
-
-        <p className="mt-6 text-center text-xs text-muted-foreground">
+        <p className="mt-7 border-t border-border pt-5 text-center text-xs text-muted-foreground">
           New here?{" "}
           <button
             type="button"
-            className="font-medium text-primary hover:underline"
+            className="font-semibold text-primary transition-smooth hover:text-primary-hover"
             onClick={() => navigate("/signup")}
           >
-            Create a staff account
+            Create an account
           </button>
         </p>
       </CardContent>

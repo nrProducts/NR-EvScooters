@@ -13,6 +13,8 @@ export interface UserFilters {
   staffOnly?: boolean;
   /** Drop riders who already have an active booking or rental (the create-booking picker). */
   bookable?: boolean;
+  /** Only self-registered accounts awaiting an admin's approve/reject. Overrides `role`. */
+  pendingApproval?: boolean;
   page?: number;
   pageSize?: number;
   sortBy?: "full_name" | "created_at" | "kyc_status";
@@ -21,16 +23,17 @@ export interface UserFilters {
 
 /** GET /users — requireStaff. See apps/backend/src/modules/users/users.routes.ts */
 export async function fetchUsers(filters: UserFilters = {}): Promise<PaginatedResult<AppUser>> {
-  const { search, kycStatus, accountStatus, role, staffOnly, bookable, page = 1, pageSize = 8, sortBy, sortDir } = filters;
+  const { search, kycStatus, accountStatus, role, staffOnly, bookable, pendingApproval, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<AppUser>>("/users", {
     page,
     pageSize,
     search,
     kycStatus: kycStatus && kycStatus !== "all" ? kycStatus : undefined,
     accountStatus: accountStatus && accountStatus !== "all" ? accountStatus : undefined,
-    role: role && role !== "all" ? role : undefined,
+    role: role && role !== "all" && !pendingApproval ? role : undefined,
     staffOnly: staffOnly ? "true" : undefined,
     bookable: bookable ? "true" : undefined,
+    pendingApproval: pendingApproval ? "true" : undefined,
     sortBy,
     sortDir,
   });
@@ -91,6 +94,15 @@ export async function fetchUserRole(id: string): Promise<BackendRoleName> {
 export async function changeUserRole(id: string, role: BackendRoleName): Promise<BackendRoleName> {
   const res = await apiClient.put<{ role: BackendRoleName }>(`/users/${id}/roles`, { role });
   return res.role;
+}
+
+/**
+ * POST /users/:id/approve — requireAdmin. Approves a self-registered pending
+ * account and assigns its role (staff or rider) + activates it, in one
+ * server-side transaction-safe step. See users.service.ts approveSignup().
+ */
+export async function approveSignup(id: string, role: "staff" | "rider"): Promise<AppUserDetail> {
+  return apiClient.post<AppUserDetail>(`/users/${id}/approve`, { role });
 }
 
 /** GET /users/:id/permissions — requireAdmin. Module+action grants, not just module presence. */

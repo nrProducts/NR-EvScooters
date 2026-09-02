@@ -72,4 +72,6 @@ export interface PendingApprovalsSummary {
     leave_pending: number;
     /** Paid, confirmed bookings still waiting on staff to confirm the physical pickup. */
     bookings_awaiting_pickup: number;
+    /** Self-registered accounts awaiting an admin's approve/reject (Users → Awaiting approval). */
+    signups_pending: number;
 }

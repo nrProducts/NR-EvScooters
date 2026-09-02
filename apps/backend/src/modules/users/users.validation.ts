@@ -77,6 +77,12 @@ export const listUsersQuery = z.object({
         .enum(["true", "false"])
         .default("false")
         .transform((v) => v === "true"),
+    // Self-registered accounts an admin has not yet approved or rejected
+    // (Users → Awaiting approval). Overrides the role/accountStatus filters.
+    pendingApproval: z
+        .enum(["true", "false"])
+        .default("false")
+        .transform((v) => v === "true"),
 });
 
 export const createUserBody = z.object({
@@ -153,6 +159,11 @@ export const updateStatusBody = z
  * still accepted so the console keeps working until Stage 10 updates it;
  * anything longer than one element is rejected rather than silently truncated.
  */
+/** Body for POST /users/:id/approve — approve a pending self-signup as staff or rider. */
+export const approveSignupBody = z.object({
+    role: z.enum(["staff", "rider"]),
+});
+
 export const updateRolesBody = z
     .object({
         role: z.enum(USER_ROLES as [string, ...string[]]).optional(),

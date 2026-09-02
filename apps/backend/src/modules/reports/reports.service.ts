@@ -342,6 +342,7 @@ export async function getReportsSummary(): Promise<ReportsSummary> {
 export async function getPendingApprovals(): Promise<PendingApprovalsSummary> {
     const [
         kycPending, returnsPending, supportOpen, maintenanceCounts, refundsPending, leaveCounts, bookingsAwaitingPickup,
+        signupsPending,
     ] = await Promise.all([
         supabaseAdmin
             .from("users")
@@ -376,6 +377,15 @@ export async function getPendingApprovals(): Promise<PendingApprovalsSummary> {
             .from("bookings")
             .select("id", { count: "exact", head: true })
             .eq("status", "confirmed"),
+        // Self-registered accounts an admin has not yet approved/rejected —
+        // selfSignUpStaff() stamps this exact status_reason (Users → Awaiting
+        // approval). Approving or rejecting replaces it.
+        supabaseAdmin
+            .from("users")
+            .select("id", { count: "exact", head: true })
+            .is("deleted_at", null)
+            .eq("status", "inactive")
+            .ilike("status_reason", "%awaiting admin approval%"),
     ]);
     if (kycPending.error) throw kycPending.error;
     if (returnsPending.error) throw returnsPending.error;
@@ -383,6 +393,7 @@ export async function getPendingApprovals(): Promise<PendingApprovalsSummary> {
     if (refundsPending.error) throw refundsPending.error;
     if (leaveCounts.error) throw leaveCounts.error;
     if (bookingsAwaitingPickup.error) throw bookingsAwaitingPickup.error;
+    if (signupsPending.error) throw signupsPending.error;
 
     return {
         kyc_pending: kycPending.count ?? 0,
@@ -392,5 +403,6 @@ export async function getPendingApprovals(): Promise<PendingApprovalsSummary> {
         refunds_pending: refundsPending.count ?? 0,
         leave_pending: leaveCounts.count ?? 0,
         bookings_awaiting_pickup: bookingsAwaitingPickup.count ?? 0,
+        signups_pending: signupsPending.count ?? 0,
     };
 }

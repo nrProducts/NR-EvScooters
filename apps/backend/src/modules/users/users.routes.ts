@@ -110,6 +110,15 @@ router.put(
     asyncHandler(c.updateRolesHandler),
 );
 
+// Approve a self-registered pending account and assign it a role. Admin-only,
+// same as creating any non-rider account.
+router.post(
+    "/:id/approve",
+    requireAdmin,
+    validate({ params: v.uuidParam, body: v.approveSignupBody }),
+    asyncHandler(c.approveSignupHandler),
+);
+
 // --- module permissions (which console sections a staff account may open) --
 router.get(
     "/:id/permissions",

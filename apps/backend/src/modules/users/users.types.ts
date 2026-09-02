@@ -138,4 +138,6 @@ export interface ListUsersFilters {
     includeDeleted: boolean;
     /** Exclude riders who already have an active booking or rental. */
     bookable?: boolean;
+    /** Only self-registered accounts still awaiting an admin's approve/reject. */
+    pendingApproval?: boolean;
 }

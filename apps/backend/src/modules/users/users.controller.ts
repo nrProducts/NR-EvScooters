@@ -86,6 +86,11 @@ export async function getRolesHandler(req: AuthedRequest, res: Response) {
     res.json({ role, roles: [role] });
 }
 
+export async function approveSignupHandler(req: AuthedRequest, res: Response) {
+    const { role } = req.body as { role: "staff" | "rider" };
+    res.json(await service.approveSignup(req.params.id as string, role, req.user!, req));
+}
+
 export async function updateRolesHandler(req: AuthedRequest, res: Response) {
     // Accepts either shape: `{ role }` or the legacy `{ roles: [one] }`.
     const body = req.body as { role?: UserRole; roles?: UserRole[] };

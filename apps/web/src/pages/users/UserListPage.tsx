@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, UserCog, UserMinus, KeyRound,
+  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, UserMinus, KeyRound, UserCheck, Bike, XCircle,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import {
 import { RowActionsButton } from "@/components/ui/row-actions-button";
 import {
   useUsers, useDeleteUser, useChangeUserStatus, useChangeUserRole,
+  useApproveSignup, useRejectSignup,
 } from "@/hooks/useUsers";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
@@ -36,33 +37,59 @@ import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "pending", "partially_verified", "verified", "rejected"];
 
-/** "staff" joined "rider"/"admin" as a real, grantable role — see supabase/migrations/20260813*. */
-const ROLE_TABS: { value: BackendRoleName; label: string }[] = [
+/** The role tabs plus a cross-role queue of self-registered accounts awaiting approval. */
+type UserTab = BackendRoleName | "pending";
+const USER_TABS: { value: UserTab; label: string }[] = [
   { value: "rider", label: "Rider" },
   { value: "staff", label: "Staff" },
   { value: "admin", label: "Admin" },
+  { value: "pending", label: "Awaiting approval" },
 ];
 
 export default function UserListPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const role = useAuthStore((s) => s.user?.role);
+  const initialTab = ((): UserTab => {
+    const t = searchParams.get("tab");
+    return t === "pending" && role === "admin" ? "pending" : "rider";
+  })();
   const [search, setSearch] = useState("");
   const [kycStatus, setKycStatus] = useState<KycStatus | "all">("all");
-  const [roleFilter, setRoleFilter] = useState<BackendRoleName>("rider");
+  const [tab, setTab] = useState<UserTab>(initialTab);
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<AppUser | null>(null);
+  const isPendingTab = tab === "pending";
   const [suspendTarget, setSuspendTarget] = useState<AppUser | null>(null);
   const [reason, setReason] = useState("");
   const [roleError, setRoleError] = useState<string | null>(null);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useUsers({
-    search, kycStatus, role: roleFilter, page, pageSize: 8,
+    search,
+    kycStatus: isPendingTab ? "all" : kycStatus,
+    role: isPendingTab ? "all" : tab,
+    pendingApproval: isPendingTab,
+    page, pageSize: 8,
     sortBy: sort.by as "full_name" | "created_at" | "kyc_status", sortDir: sort.dir,
   });
   const deleteUser = useDeleteUser();
   const changeStatus = useChangeUserStatus();
   const changeRole = useChangeUserRole();
+  const approveSignup = useApproveSignup();
+  const rejectSignup = useRejectSignup();
+
+  const approve = (u: AppUser, role: "staff" | "rider") => {
+    setRoleError(null);
+    approveSignup.mutate(
+      { id: u.id, role },
+      {
+        onSuccess: () => toastSuccess(`${u.full_name || "Account"} approved as ${role}`),
+        onError: (err) => toastError(err, "Could not approve this account"),
+      },
+    );
+  };
 
   // Admin can never edit their own roles (backend refuses it outright — see
   // users.service.ts replaceRoles) — hide the actions rather than let
@@ -181,7 +208,26 @@ export default function UserListPage() {
     {
       header: "Actions",
       key: "actions",
-      render: (u) => (
+      render: (u) =>
+        isPendingTab ? (
+          <DropdownMenu>
+            <RowActionsButton label="Approval actions" onClick={(e) => e.stopPropagation()} />
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem onClick={() => navigate(`/users/${u.id}`)}>
+                <Eye className="mr-2 h-4 w-4" /> View profile
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={approveSignup.isPending} onClick={() => approve(u, "rider")}>
+                <Bike className="mr-2 h-4 w-4" /> Approve as rider
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={approveSignup.isPending} onClick={() => approve(u, "staff")}>
+                <UserCheck className="mr-2 h-4 w-4" /> Approve as staff
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-destructive" onClick={() => setRejectTarget(u)}>
+                <XCircle className="mr-2 h-4 w-4" /> Reject
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
         <DropdownMenu>
           <RowActionsButton label="Rider actions" onClick={(e) => e.stopPropagation()} />
           {/*
@@ -265,11 +311,15 @@ export default function UserListPage() {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-      ),
+        ),
     },
   ];
 
-  usePageSubtitle(`${data?.total ?? 0} registered users`);
+  usePageSubtitle(
+    isPendingTab
+      ? `${data?.total ?? 0} account${(data?.total ?? 0) === 1 ? "" : "s"} awaiting approval`
+      : `${data?.total ?? 0} registered users`,
+  );
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -281,14 +331,23 @@ export default function UserListPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs
-          value={roleFilter}
+          value={tab}
           onValueChange={(v) => {
-            setRoleFilter(v as BackendRoleName);
+            const next = v as UserTab;
+            setTab(next);
             setPage(1);
+            setSearchParams(
+              (prev) => {
+                if (next === "pending") prev.set("tab", "pending");
+                else prev.delete("tab");
+                return prev;
+              },
+              { replace: true },
+            );
           }}
         >
           <TabsList className="flex-wrap">
-            {ROLE_TABS.map((t) => (
+            {USER_TABS.filter((t) => t.value !== "pending" || role === "admin").map((t) => (
               <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
             ))}
           </TabsList>
@@ -305,26 +364,32 @@ export default function UserListPage() {
       </div>
 
       <Card>
-        <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
-          <Select
-            value={kycStatus}
-            onValueChange={(v) => {
-              setKycStatus(v as KycStatus | "all");
-              setPage(1);
-            }}
-          >
-            <SelectTrigger className="sm:w-52">
-              <SelectValue placeholder="KYC status" />
-            </SelectTrigger>
-            <SelectContent>
-              {KYC_OPTIONS.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s === "all" ? "All KYC statuses" : s.replace(/_/g, " ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {isPendingTab ? (
+          <div className="border-b border-border p-4 text-sm text-muted-foreground">
+            Self-registered accounts awaiting review. Approve as staff or rider, or reject to remove the request.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
+            <Select
+              value={kycStatus}
+              onValueChange={(v) => {
+                setKycStatus(v as KycStatus | "all");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="sm:w-52">
+                <SelectValue placeholder="KYC status" />
+              </SelectTrigger>
+              <SelectContent>
+                {KYC_OPTIONS.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s === "all" ? "All KYC statuses" : s.replace(/_/g, " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <DataTable
           columns={columns}
@@ -333,7 +398,7 @@ export default function UserListPage() {
           isError={isError}
           onRetry={() => refetch()}
           onRowClick={(u) => navigate(`/users/${u.id}`)}
-          emptyTitle="No users match your filters"
+          emptyTitle={isPendingTab ? "No accounts awaiting approval" : "No users match your filters"}
           sort={sort}
           onSortChange={onSortChange}
           rowClassName={(u) => (isDueOrOverdue(u) ? "border-l-4 border-l-destructive" : undefined)}
@@ -358,6 +423,27 @@ export default function UserListPage() {
                 setDeleteTarget(null);
               },
               onError: (err) => toastError(err, "Could not delete user"),
+            });
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!rejectTarget}
+        onOpenChange={(o) => !o && setRejectTarget(null)}
+        title={`Reject ${rejectTarget?.full_name || "this registration"}?`}
+        description="The account is removed (soft-deleted). They can register again later."
+        confirmLabel="Reject"
+        destructive
+        loading={rejectSignup.isPending}
+        onConfirm={() => {
+          if (rejectTarget) {
+            rejectSignup.mutate(rejectTarget.id, {
+              onSuccess: () => {
+                toastSuccess("Registration rejected");
+                setRejectTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not reject this account"),
             });
           }
         }}

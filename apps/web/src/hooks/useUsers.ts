@@ -69,6 +69,35 @@ export function useChangeUserRole() {
   });
 }
 
+/**
+ * Approve a self-registered pending account and assign its role. One
+ * admin endpoint — POST /users/:id/approve — which sets the profile row,
+ * role and active status in the right order for the role/profile constraint
+ * trigger (see users.service.ts approveSignup()).
+ */
+export function useApproveSignup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, role }: { id: string; role: "staff" | "rider" }) => api.approveSignup(id, role),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["reports", "pending-approvals"] });
+    },
+  });
+}
+
+/** Reject a self-registered pending account — soft-deletes it (recoverable via restore). */
+export function useRejectSignup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteUser(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["reports", "pending-approvals"] });
+    },
+  });
+}
+
 export function useUserPermissions(id: string | undefined) {
   return useQuery({
     queryKey: ["user-permissions", id],

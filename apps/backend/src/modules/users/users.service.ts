@@ -156,7 +156,18 @@ export async function listUsers(
     let query = supabaseAdmin.from("users").select(select, { count: "exact" });
 
     if (!includeDeleted) query = query.is("deleted_at", null);
-    if (filters.accountStatus) query = query.eq("status", filters.accountStatus);
+
+    // Self-registered accounts still waiting on an admin. selfSignUpStaff()
+    // stamps this exact status_reason; approving/rejecting replaces it, so the
+    // reason match is what keeps admin-created inactive staff out of the queue.
+    if (filters.pendingApproval) {
+        query = query
+            .eq("status", "inactive")
+            .ilike("status_reason", "%awaiting admin approval%");
+    } else if (filters.accountStatus) {
+        query = query.eq("status", filters.accountStatus);
+    }
+
     if (filters.kycStatus) query = query.eq("rider_profiles.kyc_status", filters.kycStatus);
 
     if (filters.search) {
@@ -177,8 +188,12 @@ export async function listUsers(
     }
 
     // Role is a plain column now — no id lookup, no `in` list, no second query.
-    if (filters.role) query = query.eq("role", filters.role);
-    else if (filters.staffOnly) query = query.in("role", [...STAFF_ROLES]);
+    // The pending-approval queue spans roles (every pending account is a
+    // placeholder `staff` row until approval), so the role filter is ignored.
+    if (!filters.pendingApproval) {
+        if (filters.role) query = query.eq("role", filters.role);
+        else if (filters.staffOnly) query = query.in("role", [...STAFF_ROLES]);
+    }
 
     const [from, to] = toRange(filters);
     // Sorting by kyc_status has to name the embedded table; the other two
@@ -1181,6 +1196,64 @@ export async function changeRole(
     });
 
     return role;
+}
+
+/**
+ * Approve a self-registered pending account (Users → Awaiting approval) and
+ * assign it a role.
+ *
+ * Why this is not just changeRole() + changeAccountStatus(): the
+ * `trg_users_profile_matches_role` constraint trigger (migration 28b) fires at
+ * COMMIT and demands that `users.role` already agree with which profile
+ * extension row exists. supabase-js runs each statement as its own
+ * transaction, so updating `users.role` to `rider` BEFORE the `rider_profiles`
+ * row exists — which is the order changeRole() uses — trips the trigger with a
+ * 422. Here the profile row is written first, then the role and status flip in
+ * a single update, so the trigger sees a consistent row.
+ */
+export async function approveSignup(
+    id: string,
+    role: Extract<UserRole, "staff" | "rider">,
+    actor: AuthContext,
+    req?: Request,
+): Promise<UserDetail> {
+    const before = await requireLiveUser(id);
+    if (before.account_status !== "inactive") {
+        throw businessRule("This account is not awaiting approval.");
+    }
+    const previousRole = await getRole(id);
+
+    // Profile extension first — the trigger only checks on `users.role`, so
+    // reshaping the extension tables while the role is still the placeholder
+    // `staff` is invisible to it.
+    await ensureRoleProfile(id, role, {
+        mustChangePassword: false,
+        onboardingCompleted: role === "staff",
+    });
+
+    const { error } = await supabaseAdmin
+        .from("users")
+        .update({
+            role,
+            status: "active",
+            status_reason: "Approved by admin",
+            status_changed_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+    if (error) throw mapPostgresError(error);
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: id,
+        action: "user.roles_changed",
+        entityType: "user",
+        entityId: id,
+        before: { role: previousRole, account_status: before.account_status },
+        after: { role, account_status: "active" },
+        req,
+    });
+
+    return getUserById(id, actor);
 }
 
 // ---------------------------------------------------------------------------
