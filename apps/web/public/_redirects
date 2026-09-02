@@ -1,0 +1,4 @@
+# SPA fallback — every route is served by index.html (BrowserRouter).
+# Without this, deep links / refreshes on paths like /users hit Render's
+# static 404 ("Not Found") instead of the app, which then routes to login.
+/*  /index.html  200
