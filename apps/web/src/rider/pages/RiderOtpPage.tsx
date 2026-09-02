@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { AuthBrand } from "@/components/auth/AuthBrand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/common/Spinner";
@@ -67,7 +68,8 @@ export default function RiderOtpPage() {
   };
 
   return (
-    <Card className="animate-fade-in">
+    <Card className="animate-fade-in overflow-hidden">
+      <AuthBrand />
       <CardContent className="p-6 sm:p-8">
         <button
           onClick={() => navigate("/login")}

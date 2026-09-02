@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AuthBrand } from "@/components/auth/AuthBrand";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { toastError } from "@/lib/toastHelpers";
@@ -70,7 +71,14 @@ export default function LoginPage() {
   const fieldIcon = "pointer-events-none absolute left-3.5 top-1/2 h-[1.05rem] w-[1.05rem] -translate-y-1/2 text-muted-foreground";
 
   return (
-    <Card className="animate-fade-in border-border/80 shadow-card">
+    <Card
+      className="animate-fade-in overflow-hidden rounded-2xl border border-primary/25"
+      style={{
+        boxShadow:
+          "0 0 0 1px rgba(33,196,93,0.18), 0 12px 32px -12px rgba(33,196,93,0.28), 0 0 40px rgba(33,196,93,0.14)",
+      }}
+    >
+      <AuthBrand />
       <CardContent className="p-7 sm:p-9">
         <div className="space-y-1.5">
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Welcome back</h1>
@@ -148,7 +156,11 @@ export default function LoginPage() {
             </p>
           )}
 
-          <Button type="submit" className="h-12 w-full rounded-[0.7rem] text-[0.9rem] font-semibold" disabled={login.isPending}>
+          <Button
+            type="submit"
+            className="group h-12 w-full rounded-[0.7rem] border border-primary/40 bg-transparent text-[0.9rem] font-semibold text-primary shadow-none transition-colors hover:border-primary hover:bg-primary hover:text-white focus-visible:ring-primary dark:text-primary"
+            disabled={login.isPending}
+          >
             {login.isPending ? (
               <>
                 <Spinner className="h-4 w-4" /> Signing in…

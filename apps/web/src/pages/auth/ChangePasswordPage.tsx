@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AuthBrand } from "@/components/auth/AuthBrand";
 import { useAuthStore } from "@/store/authStore";
 import * as authApi from "@/services/api/staff";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
@@ -43,7 +44,8 @@ export default function ChangePasswordPage() {
   };
 
   return (
-    <Card className="animate-fade-in">
+    <Card className="animate-fade-in overflow-hidden">
+      <AuthBrand />
       <CardContent className="p-6 sm:p-8">
         <h1 className="mb-1 text-xl font-semibold">Set a new password</h1>
         <p className="mb-6 text-sm text-muted-foreground">

@@ -1,4 +1,4 @@
 
-> backend@ build E:\Projects\nr-ev-scooters\apps\backend
+> backend@ build C:\Users\kavis\source\repos\EV\NR-EvScooters\apps\backend
 > tsc -p tsconfig.json
 
