@@ -1,15 +1,13 @@
-import { useState } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, useLocation, useMatch, useNavigate } from "react-router-dom";
 import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buildNavTree, navForUser, type NavItem } from "@/routes/roleConfig";
 import type { StaffUser } from "@/types";
-import { useUiStore } from "@/store/uiStore";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import logoMark from "@/assets/logo-mark.svg";
-import logoWordmark from "@/assets/logo-wordmark.svg";
-import logoWordmarkDark from "@/assets/logo-wordmark-dark.svg";
+import logoWordmarkGreen from "@/assets/logo-wordmark-green.svg";
 
 /**
  * Hoisted to module scope deliberately — a component defined INSIDE Sidebar's
@@ -26,31 +24,49 @@ function NavItemLink({
   collapsed?: boolean;
   onNavigate?: () => void;
 }) {
-  const link = (
-    <NavLink
-      to={item.path}
-      onClick={onNavigate}
-      className={({ isActive }) =>
-        cn(
-          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-smooth",
-          isActive
-            ? "bg-primary text-primary-foreground shadow-[0_6px_16px_-4px_hsl(var(--primary)/0.5)]"
-            : "text-sidebar-foreground/70 hover:bg-primary/10 hover:text-primary",
-          collapsed && "justify-center px-0",
-        )
-      }
-    >
-      <item.icon className="h-[1.125rem] w-[1.125rem] shrink-0" strokeWidth={1.75} />
-      {!collapsed && <span className="truncate">{item.label}</span>}
-    </NavLink>
-  );
+  // Hook must run unconditionally; only the collapsed branch below uses it.
+  const isActive = !!useMatch({ path: item.path, end: false });
 
-  // In the collapsed icon rail there's no room for the module name, so surface
-  // it as a hover tooltip instead.
-  if (!collapsed) return link;
+  // --- Expanded sidebar: original token-based styling, untouched ---
+  if (!collapsed) {
+    return (
+      <NavLink
+        to={item.path}
+        onClick={onNavigate}
+        className={({ isActive }) =>
+          cn(
+            "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-smooth",
+            isActive
+              ? "bg-primary text-primary-foreground shadow-[0_6px_16px_-4px_hsl(var(--primary)/0.5)]"
+              : "text-sidebar-foreground/70 hover:bg-primary/10 hover:text-primary",
+          )
+        }
+      >
+        <item.icon className="h-[1.125rem] w-[1.125rem] shrink-0" strokeWidth={1.75} />
+        <span className="truncate">{item.label}</span>
+      </NavLink>
+    );
+  }
+
+  // --- Collapsed icon rail: inline styles so nothing in the cascade can hide
+  // the icon or the active-state green. Module name moves to a hover tooltip. ---
+  const fg = isActive ? "#ffffff" : "#64748B";
+
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{link}</TooltipTrigger>
+      <TooltipTrigger asChild>
+        <NavLink
+          to={item.path}
+          onClick={onNavigate}
+          className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl transition-smooth"
+          style={{
+            backgroundColor: isActive ? "#21C45D" : "#F1F5F9",
+            boxShadow: isActive ? "0 6px 16px -4px rgba(33,196,93,0.5)" : undefined,
+          }}
+        >
+          <item.icon className="h-[1rem] w-[1rem] shrink-0" strokeWidth={1.75} style={{ color: fg }} />
+        </NavLink>
+      </TooltipTrigger>
       <TooltipContent side="right">{item.label}</TooltipContent>
     </Tooltip>
   );
@@ -69,7 +85,6 @@ export function Sidebar({
 }) {
   const items = navForUser(user);
   const tree = buildNavTree(items);
-  const theme = useUiStore((s) => s.theme);
   const location = useLocation();
   const navigateTo = useNavigate();
   // Only ever holds a group the user opened by hand while browsing an
@@ -83,6 +98,13 @@ export function Sidebar({
   const activeItem = [...items]
     .filter((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
     .sort((a, b) => b.path.length - a.path.length)[0];
+
+  // Landing on an ungrouped page (Dashboard/Settings) closes any section the
+  // user had opened by hand — the sidebar shouldn't keep an unrelated group
+  // expanded once you've navigated away from it.
+  useEffect(() => {
+    if (activeItem && !activeItem.group) setManualOpenGroup(undefined);
+  }, [activeItem?.path, activeItem?.group]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * The single source of truth for which section is expanded. The active
@@ -136,7 +158,7 @@ export function Sidebar({
         {collapsed ? (
           <img src={logoMark} alt="Swapngo" className="h-8 w-8 shrink-0" />
         ) : (
-          <img src={theme === "dark" ? logoWordmarkDark : logoWordmark} alt="Swapngo" className="h-6 w-auto" />
+          <img src={logoWordmarkGreen} alt="Swapngo" className="h-6 w-auto" />
         )}
       </div>
 
@@ -144,9 +166,11 @@ export function Sidebar({
         {collapsed ? (
           // Icon rail — group labels have nowhere to go at this width, so
           // every item (grouped or not) renders flat, same as before groups existed.
-          items.map((item) => (
-            <NavItemLink key={item.path} item={item} collapsed={collapsed} onNavigate={onNavigate} />
-          ))
+          <div className="flex flex-col items-center gap-2">
+            {items.map((item) => (
+              <NavItemLink key={item.path} item={item} collapsed onNavigate={onNavigate} />
+            ))}
+          </div>
         ) : (
           <Accordion type="single" collapsible value={openGroup ?? ""} onValueChange={handleGroupToggle} className="space-y-1">
             {tree.map((entry) =>
