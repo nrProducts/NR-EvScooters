@@ -1,24 +1,33 @@
 import { View } from 'react-native';
 import { Tabs } from 'expo-router';
-import { Home, Bike, CreditCard, User, BatteryCharging } from 'lucide-react-native';
+import { Home, Bike, IndianRupee, User, BatteryCharging } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/theme';
 
-const BAR_HEIGHT = 45;
-const BAR_MARGIN = 40;
+/**
+ * Sized for a thumb, not for a cursor. At 45 tall with 18px glyphs the pill
+ * was below the 44pt minimum touch target both platforms' HIG asks for, and
+ * the five icons read as decoration rather than navigation. TAB_BAR_FOOTPRINT
+ * in lib/tabBar.ts mirrors BAR_HEIGHT + BAR_BOTTOM_GAP — change one and the
+ * other has to move with it or every screen's scroll tail tucks under the bar.
+ */
+const BAR_HEIGHT = 64;
+const BAR_MARGIN = 24;
 /** How far the floating pill sits above the true screen edge — on top of the safe-area inset. */
 const BAR_BOTTOM_GAP = 16;
+const ICON_SIZE = 22;
+const ACTIVE_DISC = 46;
 
 /** Active tab gets a filled circle behind its icon; inactive is just the icon. */
 function TabIcon({ focused, color, Icon }: { focused: boolean; color: string; Icon: LucideIcon }) {
-  if (!focused) return <Icon size={18} color={color} />;
+  if (!focused) return <Icon size={ICON_SIZE} color={color} />;
   return (
     <View
       className="items-center justify-center rounded-full"
-      style={{ width: 36, height: 36, backgroundColor: COLORS.primary }}
+      style={{ width: ACTIVE_DISC, height: ACTIVE_DISC, backgroundColor: COLORS.primary }}
     >
-      <Icon size={18} color="#FFF" />
+      <Icon size={ICON_SIZE} color="#FFF" />
     </View>
   );
 }
@@ -106,7 +115,10 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="billing"
-        options={{ title: 'Billing', tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} Icon={CreditCard} /> }}
+        // A rupee glyph, not a credit card: the tab is the rider's plan and
+        // what they owe on it, and a card read as "saved payment methods" —
+        // a screen this app does not have.
+        options={{ title: 'Plan & Billing', tabBarIcon: ({ focused, color }) => <TabIcon focused={focused} color={color} Icon={IndianRupee} /> }}
       />
       <Tabs.Screen
         name="home"

@@ -88,18 +88,23 @@ afterEach(() => {
 describe("requestReturn — overdue late-fee gate", () => {
     it("rejects the return with the spec's exact message when the renewal late fee is unpaid", async () => {
         queue("rentals", { data: overdueRentalRow, error: null });
-        // periodsFor: the current period rolled past its due_on two days ago,
-        // and the rider's committed period IS over, so the earlier
-        // period-due gate passes through to the late-fee gate.
+        // periodsFor: the current period rolled past its due_on, and the
+        // rider's committed period IS over, so the earlier period-due gate
+        // passes through to the late-fee gate.
+        //
+        // due_on is the 23rd, not the 24th: computeLateRenewalFee does not
+        // charge for TODAY (renewing buys it), so with "today" fixed at the
+        // 25th a due_on of the 24th now owes nothing and there would be no
+        // gate left to test. The 23rd leaves exactly one lost day — the 24th.
         queue("subscription_periods", {
             data: [{
                 subscription_id: SUBSCRIPTION_ID, status: "current",
-                starts_on: "2026-08-17", due_on: "2026-08-24",
+                starts_on: "2026-08-16", due_on: "2026-08-23",
             }],
             error: null,
         });
         // previewOverdueLateFee's own due_on lookup.
-        queue("subscription_periods", { data: { due_on: "2026-08-24" }, error: null });
+        queue("subscription_periods", { data: { due_on: "2026-08-23" }, error: null });
         queue("pricing_rules", { data: null, error: null }); // no per-subscription override
         queue("pricing_rules", { data: { amount: 450, is_active: true }, error: null }); // global rule
         // currentPeriodWindow's id/created_at lookup.

@@ -2,18 +2,18 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { ArrowRight, Hash, LifeBuoy, PackageCheck } from 'lucide-react-native';
+import { ArrowRight, Hash, LifeBuoy, RefreshCw } from 'lucide-react-native';
 import { Badge } from './ui/Badge';
 import { SCOOTER_HERO } from '../lib/scooterImage';
 import { COLORS } from '../constants/theme';
 import { RENTAL_STATUS_LABEL, RENTAL_STATUS_TONE, formatDate } from '../constants/status';
-import { canReturnYet } from '../lib/returnPolicy';
+import { getRenewalEligibility } from '../lib/returnPolicy';
 import { describeExpiry, rentalDayNumber } from '../lib/rentalTiming';
 import type { ApiRental } from '../types/api';
 
 interface ActiveRentalCardProps {
   rental: ApiRental;
-  onReturn: () => void;
+  onRenew: () => void;
   /** Kept for call-site compatibility; the card now always shows the brand scooter. */
   imageUrl?: string | null;
 }
@@ -25,9 +25,17 @@ interface ActiveRentalCardProps {
  * than useless.
  *
  * Deliberately NOT the whole of /my-scooter — battery and pickup station stay
- * there. Return / renewal messaging lives in ScooterStatusCard directly below.
+ * there. Return / renewal messaging lives in ScooterStatusCard directly above.
+ *
+ * The primary action here is RENEW, never return. Handing a rider whose plan
+ * has just lapsed a full-width green "Return Scooter" button makes ending the
+ * rental the path of least resistance at the exact moment the business wants
+ * them to continue it — and it is the wrong shape for the state too, since an
+ * overdue rider cannot return without first paying the late fee anyway.
+ * Returning is a deliberate act and lives on the My Scooter tab, where it has
+ * always also been, as a secondary tinted button beneath Renew.
  */
-export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onReturn }) => {
+export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRenew }) => {
   const router = useRouter();
   const { vehicle, plan } = rental;
 
@@ -42,9 +50,9 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
     totalDays && daysLeft != null ? Math.max(0.04, Math.min(1, (totalDays - daysLeft) / totalDays)) : null;
 
   const returnRequested = Boolean(rental.return_requested_at);
-  // Riders can't back out mid-period — only once bookings.next_due_at is up.
-  // The server re-enforces this; disabling here just avoids a rejected submit.
-  const canReturn = canReturnYet(rental.next_due_at);
+  // Same gate the My Scooter tab and Billing use — offered from the plan's
+  // last day onward, and never while a paid renewal is already queued.
+  const renewal = getRenewalEligibility(rental.plan_status, rental.next_due_at, rental.renewal_status);
   const isActive = rental.status === 'active';
 
   return (
@@ -142,26 +150,22 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
         </View>
 
         {/* Once a return is requested there's nothing left to tap here —
-            ScooterStatusCard right below covers what happens next. */}
-        {!returnRequested ? (
-          <>
-            <TouchableOpacity
-              onPress={onReturn}
-              disabled={!canReturn}
-              accessibilityRole="button"
-              activeOpacity={0.85}
-              className="flex-row items-center justify-center rounded-2xl py-3.5 mt-3"
-              style={{ backgroundColor: COLORS.primary, opacity: canReturn ? 1 : 0.5 }}
-            >
-              <PackageCheck size={16} color={COLORS.white} />
-              <Text className="text-white text-sm font-bold ml-2">Return Scooter</Text>
-            </TouchableOpacity>
-            {!canReturn && rental.next_due_at ? (
-              <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-2">
-                You can return once your current plan period ends on {formatDate(rental.next_due_at)}.
-              </Text>
-            ) : null}
-          </>
+            ScooterStatusCard above covers what happens next. Mid-period there
+            is nothing to do either: no button beats a button that does
+            nothing useful. */}
+        {!returnRequested && renewal.canRenew ? (
+          <TouchableOpacity
+            onPress={onRenew}
+            accessibilityRole="button"
+            activeOpacity={0.85}
+            className="flex-row items-center justify-center rounded-2xl py-3.5 mt-3"
+            style={{ backgroundColor: renewal.isLate ? COLORS.danger : COLORS.primary }}
+          >
+            <RefreshCw size={16} color={COLORS.white} />
+            <Text className="text-white text-sm font-bold ml-2">
+              {renewal.isLate ? 'Renew Plan Now' : 'Renew Plan'}
+            </Text>
+          </TouchableOpacity>
         ) : null}
 
         <TouchableOpacity

@@ -8,8 +8,8 @@ import { Spinner } from './Spinner';
 import { COLORS } from '../constants/theme';
 import { rentalRepository } from '../services';
 import { usePaySettlement } from './SettlementCard';
-import { computeLateReturnPenalty, getRenewalEligibility } from '../lib/returnPolicy';
-import type { ApiRental, ApiReturnSettlement, ApiReturnStage } from '../types/api';
+import { computeLateReturnPenalty, effectiveDueAt, getRenewalEligibility } from '../lib/returnPolicy';
+import type { ApiOverdueLateFee, ApiRental, ApiReturnSettlement, ApiReturnStage } from '../types/api';
 
 function formatDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -20,7 +20,6 @@ interface ScooterStatusCardProps {
   rental: ApiRental;
   settlement: ApiReturnSettlement | null;
   onSettlementPaid: () => void;
-  onRenew: () => void;
 }
 
 /**
@@ -31,9 +30,18 @@ interface ScooterStatusCardProps {
  * underlying data and actions as before, just one card, one message, one
  * button, in priority order — a settlement actually due always outranks a
  * renewal reminder, since an open return blocks getting a new plan anyway.
+ *
+ * Renders ABOVE ActiveRentalCard, not below it: this is the alert strip, and
+ * a warning a rider has to scroll past their own plan summary to reach is a
+ * warning that arrives too late.
+ *
+ * It carries no Renew button of its own. "Renew Plan" is the primary action
+ * on the My Plan card immediately below — one renew button on the screen,
+ * in the place the plan itself lives. The only action here is paying a
+ * return settlement, which nothing else on Home offers.
  */
 export function ScooterStatusCard({
-  rental, settlement, onSettlementPaid, onRenew,
+  rental, settlement, onSettlementPaid,
 }: ScooterStatusCardProps) {
   const [stage, setStage] = useState<ApiReturnStage | null>(null);
 
@@ -47,19 +55,44 @@ export function ScooterStatusCard({
   loadStageRef.current = loadStage;
   useFocusEffect(useCallback(() => { loadStageRef.current(); }, []));
 
+  // The AUTHORITATIVE overdue figure — the same server preview the return
+  // gate and the payable invoice are built from (GET /rentals/me/overdue-
+  // late-fee -> previewOverdueLateFee). Home used to state the day count and
+  // rupee amount from a device-clock estimate of the RETURN-lateness fee,
+  // which is a different debt anchored to a different date; for a rider who
+  // has not requested a return, what they actually owe is the RENEWAL late
+  // fee, and that is what Billing bills them for. Two screens, two
+  // estimates, two numbers for one debt.
+  const [overdue, setOverdue] = useState<ApiOverdueLateFee | null>(null);
+  const loadOverdue = useCallback(() => {
+    void rentalRepository.overdueLateFee().then(setOverdue).catch(() => {
+      // Non-critical: the local estimate below stands in.
+    });
+  }, []);
+  useEffect(loadOverdue, [loadOverdue]);
+  const loadOverdueRef = useRef(loadOverdue);
+  loadOverdueRef.current = loadOverdue;
+  useFocusEffect(useCallback(() => { loadOverdueRef.current(); }, []));
+
   const { pay, paying, payError } = usePaySettlement(
     settlement ?? { due_invoice_id: null } as ApiReturnSettlement,
     onSettlementPaid,
   );
 
   const isSettlementDue = !!settlement && settlement.due_amount > 0 && settlement.status === 'amount_due';
-  const charge = computeLateReturnPenalty({
-    returnDueAt: rental.return_due_at,
+  // effectiveDueAt, not return_due_at alone — the documented way to resolve
+  // the rider's real deadline (see lib/returnPolicy.ts), so a payload that
+  // ever stops coalescing server-side can't silently zero the estimate out.
+  const estimate = computeLateReturnPenalty({
+    returnDueAt: effectiveDueAt(rental),
     maxDays: rental.max_late_fee_days,
     feePerDay: rental.late_return_fee_per_day,
   });
+  // Server first, estimate only until it lands (or if the call failed).
+  const daysLate = overdue?.isLate ? overdue.daysLate : estimate.daysLate;
+  const lateAmount = overdue?.isLate ? overdue.lateFee : estimate.penaltyAmount;
   const recoveryRequired = !!rental.recovery_flagged_at;
-  const overdue = charge.isLate;
+  const overdueNow = overdue ? overdue.isLate : estimate.isLate;
   const eligibility = getRenewalEligibility(rental.plan_status, rental.next_due_at, rental.renewal_status);
 
   // --- Priority order: exactly one of these renders. -----------------------
@@ -121,22 +154,17 @@ export function ScooterStatusCard({
     return (
       <StatusShell tone="danger" icon={AlertTriangle} title="Vehicle Recovery Required">
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
-          A ₹{charge.penaltyAmount} late fee applies. Please make your scooter available for pickup.
+          A ₹{lateAmount.toFixed(0)} late fee applies. Please make your scooter available for pickup.
         </Text>
       </StatusShell>
     );
   }
 
-  if (overdue) {
-    return (
-      <StatusShell tone="danger" icon={AlertTriangle} title={`Overdue by ${charge.daysLate} day${charge.daysLate > 1 ? 's' : ''}`}>
-        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
-          A ₹{charge.penaltyAmount} late fee has built up — return your scooter as soon as possible.
-        </Text>
-      </StatusShell>
-    );
-  }
-
+  // ABOVE the overdue branch, not below it. A renewal that has been PAID and
+  // is waiting to activate leaves the outgoing period `current` and its
+  // due_on in the past, so the lateness maths still reads "overdue" — and a
+  // rider who has already paid was being told, in red, that a late fee was
+  // building up against them.
   if (rental.renewal_status === 'scheduled') {
     return (
       <StatusShell tone="success" icon={RefreshCw} title="Renewal Scheduled">
@@ -148,6 +176,31 @@ export function ScooterStatusCard({
     );
   }
 
+  // One state, not two. "Plan expired" and "overdue by N days" were separate
+  // branches with overdue winning, so an expired rider got the lateness
+  // warning ("return your scooter as soon as possible") and never the thing
+  // they actually needed to do — renew. Renewing is what clears this fee.
+  if (overdueNow) {
+    return (
+      <StatusShell
+        tone="danger"
+        icon={AlertTriangle}
+        title={`Plan expired · overdue by ${daysLate} day${daysLate === 1 ? '' : 's'}`}
+      >
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
+          {lateAmount > 0 ? `A ₹${lateAmount.toFixed(0)} late fee has built up and grows each day. ` : ''}
+          {eligibility.canRenew
+            ? 'Renew your plan below to clear it and keep riding.'
+            : 'Return your scooter as soon as possible.'}
+        </Text>
+      </StatusShell>
+    );
+  }
+
+  // Reached only when the SERVER says nothing is overdue yet. eligibility is
+  // computed off the device clock, so the two can briefly disagree for a
+  // handset set to another timezone — keep the late wording available here so
+  // that rider still gets an accurate card rather than a cheerful one.
   if (eligibility.canRenew) {
     const remaining = rental.next_due_at ? describeDaysLeft(rental.next_due_at) : null;
     return (
@@ -162,10 +215,11 @@ export function ScooterStatusCard({
               : 'Plan Status'
         }
       >
-        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3">
-          {eligibility.isLate ? 'Renew now — a late fee applies, shown before you pay.' : 'Renew any time before your plan ends.'}
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
+          {eligibility.isLate
+            ? 'Renew below — a late fee applies, shown before you pay.'
+            : 'Renew any time before your plan ends.'}
         </Text>
-        <ActionButton tone={eligibility.isLate ? 'danger' : 'primary'} onPress={onRenew} label="Renew Plan" />
       </StatusShell>
     );
   }
@@ -209,7 +263,7 @@ function StatusShell({
     >
       <View className="flex-row items-center mb-1.5">
         <Icon size={16} color={tint} />
-        <Text style={{ color: tint }} className="text-xs font-bold ml-2">{title}</Text>
+        <Text style={{ color: tint }} className="text-xs font-bold ml-2 flex-1">{title}</Text>
       </View>
       {children}
     </View>

@@ -106,15 +106,61 @@ export async function lateFeeReferenceDate(
     return previous && previous.status !== "scheduled" ? previous.due_on : invoiceDueOn;
 }
 
+/**
+ * How many days of renewal late fee are owed, and the money for them.
+ *
+ * ── TODAY IS NOT CHARGED. ────────────────────────────────────────────────
+ *
+ * This is the rule that separates the RENEWAL fee from the RETURN fee, and
+ * they are genuinely different questions:
+ *
+ *   Renewing buys today. applyRenewalSuccess re-anchors the new period's
+ *   starts_on to businessToday(), so a rider renewing on the 3rd is paying
+ *   full price for the 3rd. Charging a late fee for the 3rd as well bills
+ *   the same day twice — once as plan, once as penalty.
+ *
+ *   Returning loses today. The rider held the scooter through the 3rd and
+ *   hands it back having used it, so the 3rd IS chargeable. That is
+ *   computeLateReturnPenalty's job (rentals.service.ts), it counts the
+ *   handover day inclusively, and it is deliberately NOT changed by this.
+ *
+ * So with a period due on the 1st:
+ *
+ *   renew on the 2nd -> 0 days. The 2nd is the first unpaid day and renewing
+ *                       today buys it. Late, but nothing lost, nothing owed.
+ *   renew on the 3rd -> 1 day  (the 2nd was lost)
+ *   renew on the 4th -> 2 days (the 2nd and 3rd were lost)
+ *   return on the 3rd -> 2 days, via computeLateReturnPenalty (the 2nd AND
+ *                        the 3rd, because the scooter was out on both)
+ *
+ * Previously this counted `Math.max(1, dueDate -> today)`, which charged the
+ * 3rd as well and floored at one day — so a rider renewing on the 2nd, who
+ * has lost nothing at all, was charged a full day's penalty.
+ *
+ * `isLate` means A FEE IS OWED, not "the plan has lapsed". Those diverge for
+ * exactly one day now (the 2nd above) and every consumer here wants the
+ * money question — the lapsed-plan question is answered by
+ * subscriptions.status / getRenewalEligibility on the client.
+ *
+ * Both ends are compared as IST calendar days rather than through the
+ * server's local clock: `wholeDaysBetween` buckets with setHours(), so
+ * feeding it `today` as an instant measured the gap in whatever timezone the
+ * host happened to run in (UTC on Render), which is a different day boundary
+ * from the `date` columns this is compared against. Anchoring BOTH sides at
+ * UTC midnight of a business-day string makes the offset cancel exactly.
+ */
 export async function computeLateRenewalFee(
     subscriptionId: string,
     dueDate: string,
 ): Promise<{ isLate: boolean; lateFee: number; daysLate: number; feePerDay: number }> {
-    const today = new Date();
-    const isLate = businessToday(today) > dueDate;
-    if (!isLate) return { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0 };
-
-    const daysLate = Math.max(1, wholeDaysBetween(new Date(`${dueDate}T00:00:00Z`), today));
+    const elapsed = wholeDaysBetween(
+        new Date(`${dueDate}T00:00:00Z`),
+        new Date(`${businessToday()}T00:00:00Z`),
+    );
+    // -1 for today, which the renewal itself pays for. Floored at 0, which
+    // also covers renewing early (elapsed negative).
+    const daysLate = Math.max(0, elapsed - 1);
+    if (daysLate <= 0) return { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0 };
 
     // The rate lookup — subscription override first, then the global rule —
     // lives in lateFeeRateFor, so the return path resolves the same rate from

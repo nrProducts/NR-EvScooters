@@ -115,8 +115,25 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         // /auth/logout's own 401 must not re-trigger onUnauthorized — that
         // path IS the sign-out flow, so re-firing it here is exactly what
         // turns a single bad token into an infinite sign-out loop.
-        if (path !== '/auth/logout') onUnauthorized();
-        throw new ApiError(401, 'UNAUTHENTICATED', 'Your session has expired. Please sign in again.');
+        //
+        // Neither must a 401 on a request we KNOWINGLY SENT NO TOKEN WITH.
+        // getAccessToken() returns null both when the rider is genuinely
+        // signed out AND when supabase-js cannot reach Supabase to read or
+        // refresh the session — and the second case is a network outage, not
+        // a rejected credential. Firing the global sign-out there tore down a
+        // perfectly good session because the phone briefly could not resolve
+        // supabase.co: the rider was bounced to the sign-in screen, and the
+        // stored session was wiped, so they could not get back in until the
+        // network recovered. A 401 only means "your session expired" if we
+        // actually presented one.
+        if (token && path !== '/auth/logout') onUnauthorized();
+        throw new ApiError(
+            401,
+            'UNAUTHENTICATED',
+            token
+                ? 'Your session has expired. Please sign in again.'
+                : "Couldn't verify your sign-in. Check your connection and try again.",
+        );
     }
 
     if (response.status === 204) return undefined as T;

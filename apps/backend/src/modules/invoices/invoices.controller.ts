@@ -2,6 +2,7 @@ import { Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import { computeInvoiceLateFee } from "../payments/renewalFee";
+import { syncOverdueLateFeeInvoiceForUser } from "../rentals/overdueLateFee";
 import { recordOfflinePayment } from "../payments/payments.service";
 import * as service from "./invoices.service";
 import { ListInvoicesFilters } from "./invoices.types";
@@ -21,6 +22,20 @@ export async function listInvoicesHandler(req: AuthedRequest, res: Response) {
  */
 export async function myInvoicesHandler(req: AuthedRequest, res: Response) {
     const { bookingId, ...page } = validatedQuery<{ page: number; pageSize: number; bookingId?: string }>(req);
+
+    // The overdue-late-fee invoice (purpose 'adhoc') is a standing charge that
+    // GROWS every day the rider stays overdue, but unlike a period renewal it
+    // gets no live top-up below — computeInvoiceLateFee returns nothing for a
+    // non-period purpose. Without this the bill kept quoting the amount from
+    // the day it was minted, so Billing said "1 day / ₹334" while Home said
+    // "overdue by 2 days / ₹668" for the same debt. Re-pricing the row itself
+    // (rather than decorating the response) is what also keeps
+    // createOrderForInvoice — which charges the row's balance — in step.
+    //
+    // Best-effort: a payment history that fails to load is strictly worse than
+    // one that briefly shows yesterday's figure.
+    await syncOverdueLateFeeInvoiceForUser(req.user!.id).catch(() => undefined);
+
     const result = await service.listInvoices({
         ...page, userId: req.user!.id, bookingId, sortBy: "created_at", sortDir: "desc",
     });

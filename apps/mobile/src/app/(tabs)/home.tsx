@@ -22,7 +22,6 @@ import { useVehicleCatalogStore } from '../../store/useVehicleCatalogStore';
 import { bookingRepository, maintenanceRepository, rentalRepository } from '../../services';
 import { useCancelBooking } from '../../hooks/useCancelBooking';
 import { useRiderJourney } from '../../hooks/useRiderJourney';
-import { ReturnGate } from '../../components/ReturnGate';
 import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
 import { notifyError } from '../../lib/confirm';
 import { COLORS } from '../../constants/theme';
@@ -68,7 +67,6 @@ export default function HomeScreen() {
   const [activeRental, setActiveRental] = useState<ApiRental | null>(null);
   const [settlement, setSettlement] = useState<ApiReturnSettlement | null>(null);
   const [maintenanceNotice, setMaintenanceNotice] = useState<ApiMaintenanceNotice | null>(null);
-  const [showReturn, setShowReturn] = useState(false);
   const { cancelling, cancelBooking } = useCancelBooking();
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const [refreshing, setRefreshing] = useState(false);
@@ -237,22 +235,19 @@ export default function HomeScreen() {
         {journey.phase === 'active_rental' ? (
           activeRental ? (
             <>
-              <ReturnGate
-                visible={showReturn}
-                rental={activeRental}
-                onClose={() => setShowReturn(false)}
-                onSubmitted={loadRental}
-              />
-              <ActiveRentalCard rental={activeRental} onReturn={() => setShowReturn(true)} />
               {/* The one "what's happening / what do I do" box — settlement due,
                   return awaiting confirmation, overdue/recovery, or a renewal
-                  reminder, in priority order; never more than one. */}
+                  reminder, in priority order; never more than one.
+                  ABOVE the plan card, with the KYC and maintenance banners:
+                  everything on Home that needs the rider's attention sits at
+                  the top of the screen, in one band, before the summary of
+                  what is already fine. */}
               <ScooterStatusCard
                 rental={activeRental}
                 settlement={settlement}
                 onSettlementPaid={loadSettlement}
-                onRenew={() => router.push('/billing')}
               />
+              <ActiveRentalCard rental={activeRental} onRenew={() => router.push('/billing')} />
             </>
           ) : (
             <View className="mb-5"><SkeletonList count={1} /></View>

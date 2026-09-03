@@ -168,10 +168,173 @@ export interface OverdueLateFeeInvoiceResult {
 }
 
 /**
+ * The one wording for this charge, so the invoice header, its single line
+ * item and every re-price after it read identically. The day count is IN the
+ * text, which is exactly why the text has to be rewritten whenever the fee is
+ * re-priced — a description frozen at "1 day" on an invoice now worth two
+ * days' fee is how a rider ends up reading two different numbers for the same
+ * debt on two different screens.
+ */
+export function overdueLateFeeDescription(daysLate: number, feePerDay: number): string {
+    return `Overdue plan renewal — late fee (${daysLate} day${daysLate > 1 ? "s" : ""} @ ₹${feePerDay}/day)`;
+}
+
+/**
+ * Brings an already-open adhoc invoice up to TODAY's fee.
+ *
+ * The fee is a per-day rate that keeps growing while the rider stays overdue
+ * (computeLateRenewalFee recomputes it on every call), but the invoice minted
+ * on the first overdue day was a frozen row: nothing re-priced it, and
+ * computeInvoiceLateFee deliberately returns nothing for a non-period
+ * purpose, so neither the rider's invoice list nor createOrderForInvoice ever
+ * topped it up. A rider who opened Return on day 1 and paid on day 5 was
+ * billed day 1's amount — the same defect as audit finding H3, one level
+ * down: H3 fixed the stale ORDER, this fixes the stale INVOICE behind it.
+ * docs/payment/08-idempotency-design.md states the rule outright: "the rider
+ * must be charged today's amount".
+ *
+ * Never lowers the bill below what has already been allocated to it (a
+ * part-paid invoice), and never touches a paid one — once settled the debt is
+ * closed for this cycle however many more days pass, matching
+ * isOverdueLateFeeSettled.
+ */
+async function repriceOverdueLateFeeInvoice(
+    invoice: { id: string; total_amount: number },
+    preview: OverdueLateFeePreview,
+): Promise<number> {
+    const { data: balance, error: balanceError } = await supabaseAdmin
+        .from("v_invoice_balances")
+        .select("allocated_amount, is_paid")
+        .eq("invoice_id", invoice.id)
+        .maybeSingle();
+    if (balanceError) throw balanceError;
+    if (balance?.is_paid) return Number(invoice.total_amount);
+
+    const allocated = Number(balance?.allocated_amount ?? 0);
+    const amount = Math.max(preview.lateFee, allocated);
+    if (amount === Number(invoice.total_amount)) return amount;
+
+    // chk_invoices_total forces total_amount = subtotal_amount, so both move
+    // together or neither does.
+    const { error: invoiceError } = await supabaseAdmin
+        .from("invoices")
+        .update({ subtotal_amount: amount, total_amount: amount })
+        .eq("id", invoice.id);
+    if (invoiceError) throw invoiceError;
+
+    // The invoice carries exactly one line (ensureOverdueLateFeeInvoice writes
+    // it), so this rewrites the charge rather than appending a second one —
+    // chk_invoice_items_amount needs unit_amount and amount to agree at
+    // quantity 1.
+    const { error: itemError } = await supabaseAdmin
+        .from("invoice_items")
+        .update({
+            description: overdueLateFeeDescription(preview.daysLate, preview.feePerDay),
+            unit_amount: amount,
+            amount,
+        })
+        .eq("invoice_id", invoice.id)
+        .eq("item_type", "adjustment");
+    if (itemError) throw itemError;
+
+    return amount;
+}
+
+/**
+ * Cancels an open (unpaid) overdue-late-fee invoice, because the debt behind
+ * it has just been collected somewhere else.
+ *
+ * The adhoc invoice and a late RENEWAL bill the SAME days at the SAME rate —
+ * that is the whole point of lateFeeAlreadyCharged, which nets a PAID adhoc
+ * off the renewal. The reverse direction had nothing: renew first and the
+ * renewal's own recordLateFeeCharge collects the fee, while the adhoc invoice
+ * raised earlier (by opening the Return sheet) keeps standing on the rider's
+ * bill demanding the identical amount a second time.
+ *
+ * It went unnoticed because the Billing screen refused to offer a renewal at
+ * all while any invoice was outstanding — so "renew while an adhoc is open"
+ * was unreachable. Now that it is reachable, this is what stops it double
+ * charging.
+ *
+ * Only ever voids an invoice with NOTHING allocated to it:
+ * assert_invoice_void_unallocated enforces that in the database anyway, and
+ * money that did arrive is a real payment that must be reconciled, not erased.
+ */
+async function voidOpenOverdueLateFeeInvoice(subscriptionId: string): Promise<void> {
+    const window = await currentPeriodWindow(subscriptionId);
+    const existing = await findAdhocInvoice(subscriptionId, window?.createdAt ?? "1970-01-01");
+    if (!existing) return;
+
+    const { data: balance, error: balanceError } = await supabaseAdmin
+        .from("v_invoice_balances")
+        .select("allocated_amount")
+        .eq("invoice_id", existing.id)
+        .maybeSingle();
+    if (balanceError) throw balanceError;
+    if (Number(balance?.allocated_amount ?? 0) > 0) return;
+
+    // chk_invoices_void requires both fields whenever status is 'void'.
+    const { error } = await supabaseAdmin
+        .from("invoices")
+        .update({
+            status: "void",
+            voided_at: new Date().toISOString(),
+            void_reason: "Late fee collected on the plan renewal instead.",
+        })
+        .eq("id", existing.id)
+        .neq("status", "void");
+    if (error) throw error;
+}
+
+/**
+ * Re-prices the rider's own open overdue-late-fee invoice, if they have one.
+ *
+ * Deliberately callable from a READ path (the rider's invoice list): the
+ * alternative is a bill that quotes yesterday's total until the rider happens
+ * to open the Return sheet, which is the exact inconsistency this exists to
+ * remove. Idempotent, touches only this rider's own unpaid adhoc invoice, and
+ * is a no-op the moment nothing is overdue.
+ */
+export async function syncOverdueLateFeeInvoiceForUser(userId: string): Promise<void> {
+    const { data: rental, error } = await supabaseAdmin
+        .from("rentals")
+        .select("subscription_id")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .order("picked_up_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (error) throw error;
+    if (!rental?.subscription_id) return;
+
+    const preview = await previewOverdueLateFee(rental.subscription_id);
+    // Nothing owed any more — the rider renewed, or the fee was switched off.
+    // An invoice still sitting there is a bill for a debt that no longer
+    // exists, so it is cancelled rather than left to be paid.
+    if (!preview.isLate || preview.lateFee <= 0) {
+        await voidOpenOverdueLateFeeInvoice(rental.subscription_id);
+        return;
+    }
+
+    const window = await currentPeriodWindow(rental.subscription_id);
+    if (!window) return;
+
+    const existing = await findAdhocInvoice(rental.subscription_id, window.createdAt);
+    if (!existing) return;
+
+    await repriceOverdueLateFeeInvoice(existing, preview);
+}
+
+/**
  * Idempotent: repeated calls while nothing has changed return the SAME
  * invoice rather than minting a new charge every time the rider opens the
  * Return screen. Only creates a fresh one when no open invoice exists for
  * this period's overdue cycle.
+ *
+ * "Nothing has changed" excludes the passage of time: an existing UNPAID
+ * invoice is re-priced to today's fee before it is handed back, so the amount
+ * the rider is shown, the order created from it and the row itself can never
+ * disagree. See repriceOverdueLateFeeInvoice.
  */
 export async function ensureOverdueLateFeeInvoice(
     subscriptionId: string,
@@ -190,7 +353,10 @@ export async function ensureOverdueLateFeeInvoice(
     const existing = await findAdhocInvoice(subscriptionId, window.createdAt);
     if (existing) {
         const isPaid = await isInvoicePaid(existing.id);
-        return { invoiceId: existing.id, amount: Number(existing.total_amount), isPaid };
+        const amount = isPaid
+            ? Number(existing.total_amount)
+            : await repriceOverdueLateFeeInvoice(existing, preview);
+        return { invoiceId: existing.id, amount, isPaid };
     }
 
     const today = businessToday();
@@ -216,7 +382,7 @@ export async function ensureOverdueLateFeeInvoice(
     const { error: itemError } = await supabaseAdmin.from("invoice_items").insert({
         invoice_id: invoice.id,
         item_type: "adjustment",
-        description: `Overdue plan renewal — late fee (${preview.daysLate} day${preview.daysLate > 1 ? "s" : ""} @ ₹${preview.feePerDay}/day)`,
+        description: overdueLateFeeDescription(preview.daysLate, preview.feePerDay),
         line_number: 1,
         quantity: 1,
         unit_amount: preview.lateFee,
