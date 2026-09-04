@@ -482,12 +482,20 @@ export interface ApiRental {
     late_return_fee_per_day: number;
 }
 
+/**
+ * Two prices for one lapsed plan. `daysLate`/`lateFee` are the RETURN figures
+ * (the handover day counts); `renewalDaysLate`/`renewalLateFee` are the RENEW
+ * figures (one day less — the renewal buys today). Quote them in matched
+ * pairs, never a day count from one exit beside money from the other.
+ */
 export interface ApiOverdueLateFee {
     isLate: boolean;
     daysLate: number;
     feePerDay: number;
     lateFee: number;
     dueOn: string | null;
+    renewalDaysLate: number;
+    renewalLateFee: number;
     isSettled: boolean;
 }
 

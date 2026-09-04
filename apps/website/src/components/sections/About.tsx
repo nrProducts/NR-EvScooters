@@ -4,7 +4,7 @@ import { SERVICE_CITY } from "@/content/contact";
 
 export function About() {
   return (
-    <section id="about" className="py-20 sm:py-28">
+    <section id="about" className="py-14 sm:py-20">
       <Container className="max-w-3xl">
         <SectionHeading align="left" eyebrow="About Swapngo" title="EV rentals, without the wait" />
 

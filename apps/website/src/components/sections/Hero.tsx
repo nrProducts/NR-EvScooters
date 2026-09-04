@@ -2,13 +2,17 @@ import { ArrowRight, BatteryCharging, Wallet, ShieldCheck } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { ScooterIllustration } from "@/components/ui/ScooterIllustration";
-
-const BENEFITS = [
-  { icon: Wallet, label: "Weekly plans from ₹1,800" },
-  { icon: ShieldCheck, label: "KYC-verified riders only" },
-];
+import { useSiteData } from "@/lib/siteData";
+import { formatCurrency } from "@/lib/utils";
 
 export function Hero() {
+  const { plans } = useSiteData();
+  const cheapest = plans.reduce((min, p) => (p.price < min.price ? p : min), plans[0]);
+  const BENEFITS = [
+    { icon: Wallet, label: `Plans from ${formatCurrency(cheapest.price)} / ${cheapest.billingCycle}` },
+    { icon: ShieldCheck, label: "KYC-verified riders only" },
+  ];
+
   return (
     <section
       id="home"
@@ -35,8 +39,8 @@ export function Hero() {
               Book Your Scooter
               <ArrowRight className="h-4 w-4" aria-hidden />
             </Button>
-            <Button href="#vehicles" variant="light" size="lg">
-              Explore Vehicles
+            <Button href="#pricing" variant="light" size="lg">
+              View Plans
             </Button>
           </div>
 

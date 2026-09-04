@@ -35,6 +35,7 @@ import permissionsRoutes from "../modules/permissions/permissions.routes";
 import attendanceRoutes from "../modules/attendance/attendance.routes";
 import leaveRoutes from "../modules/leave/leave.routes";
 import holidaysRoutes from "../modules/holidays/holidays.routes";
+import publicRoutes from "../modules/public/public.routes";
 
 const router = Router();
 
@@ -97,5 +98,8 @@ router.use("/reconciliation", reconciliationRoutes);
 router.use("/attendance", attendanceRoutes);
 router.use("/leave", leaveRoutes);
 router.use("/holidays", holidaysRoutes);
+
+// Unauthenticated read-only feed for the public marketing site (apps/website).
+router.use("/public", publicRoutes);
 
 export default router;

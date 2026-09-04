@@ -182,7 +182,30 @@ export default function UserListPage() {
     {
       header: "Payment",
       key: "payment_status",
-      render: (u) => (u.payment_status ? <StatusBadge status={u.payment_status} /> : "—"),
+      // An open return SUPERSEDES the plan status, exactly as it does in
+      // BookingListPage's merged status column. `subscriptions.status` stays
+      // "active" all the way through a return by design — the rental must not
+      // end until staff confirm the handover — so rendering it alone showed a
+      // rider who had asked to give the scooter back as an ordinary paying
+      // customer, with nothing on the row to say staff owed them an action.
+      //
+      // The plan status is kept as sub-text rather than dropped: it is still
+      // the answer to "is this rider also behind on money", which the return
+      // does not settle either way.
+      render: (u) => (u.open_return ? (
+        <div className="min-w-0">
+          <StatusBadge status={u.open_return.status === "inspected" ? "inspected" : "return_requested"} />
+          {u.payment_status ? (
+            <p className="mt-1 truncate text-xs capitalize text-muted-foreground">
+              Plan: {u.payment_status.replace(/_/g, " ")}
+            </p>
+          ) : null}
+        </div>
+      ) : u.payment_status ? (
+        <StatusBadge status={u.payment_status} />
+      ) : (
+        "—"
+      )),
       hideOnMobile: true,
     },
     {
@@ -194,7 +217,15 @@ export default function UserListPage() {
     {
       header: "Plan Ends",
       key: "next_due_at",
-      render: (u) => (u.next_due_at ? formatDate(u.next_due_at) : "—"),
+      // Muted during a return: the date is a RENEWAL date, and nothing is
+      // going to renew on a scooter being handed back. Kept visible rather
+      // than blanked — staff still need to know which period the rider is
+      // being returned out of — but it must not read as an upcoming event.
+      render: (u) => (u.next_due_at ? (
+        <span className={u.open_return ? "text-muted-foreground line-through" : undefined}>
+          {formatDate(u.next_due_at)}
+        </span>
+      ) : "—"),
       hideOnMobile: true,
     },
     {

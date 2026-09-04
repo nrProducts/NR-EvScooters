@@ -239,16 +239,52 @@ async function readAdminRow(id: string): Promise<AdminMaintenanceRow> {
 export interface RiderRental {
     vehicle_id: string;
     started_at: string;
+    /**
+     * When the rider gave this unit back — `rental_vehicle_assignments
+     * .released_at`. Null while they still hold it, which means "no upper
+     * bound yet" rather than "no bound".
+     */
+    released_at?: string | null;
 }
+
+/**
+ * How long after a hand-back a ticket still counts as the returning rider's
+ * own.
+ *
+ * moveRideToMaintenance releases the assignment AND opens the ticket in the
+ * same flow, in that order, so a hard ceiling at released_at races that write
+ * and hides the report of the damage the rider themselves just handed in. A
+ * short grace covers the gap without reopening the window: nothing a NEXT
+ * rider does to the scooter lands within minutes of the previous handover.
+ */
+const RELEASE_GRACE_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 /**
  * Turns the rider's vehicle assignments into the PostgREST `or=` filter that
  * decides which maintenance tickets they may see: per vehicle, only tickets
- * raised at or after their FIRST assignment of that unit.
+ * raised WHILE they held that unit.
  *
  * This is the whole access check for /me/history — the query runs as
  * supabaseAdmin, so RLS is bypassed and nothing else stands between a rider
  * and other people's incident reports.
+ *
+ * ── Both ends are bounded now. ───────────────────────────────────────────
+ *
+ * It used to be a lower bound only, from the rider's FIRST assignment of a
+ * unit with no ceiling at release. That meant a rider who handed a scooter
+ * back kept seeing every ticket raised on it afterwards — forever, including
+ * the next rider's damage reports, which are staff-authored free text about a
+ * specific incident. Coming back on a DIFFERENT scooter did not narrow it
+ * either: the old vehicle stayed in scope and kept streaming in.
+ *
+ * The rule the rider would expect, and now the one enforced: their billing
+ * history is theirs and persists, but the vehicle they see is whichever one
+ * they actually hold. A released unit's window closes with it (plus
+ * RELEASE_GRACE_MS — see there for the write-order race it covers).
+ *
+ * Held twice, released in between, is genuinely two windows, so it emits two
+ * clauses rather than collapsing to one span that would hand the rider the
+ * gap between their own two rentals.
  *
  * Returns null when the rider has held nothing, which callers must treat as
  * "no results" rather than "no filter" — an empty or= string would match every
@@ -257,36 +293,34 @@ export interface RiderRental {
  * Exported for tests, same reason computeCancellationCharge is.
  */
 export function buildOwnershipScope(rentals: RiderRental[]): string | null {
-    // Earliest assignment per vehicle — a rider who held the same unit twice
-    // sees from the first time they had it.
-    const since = new Map<string, string>();
-    for (const r of rentals) {
-        const current = since.get(r.vehicle_id);
-        if (!current || r.started_at < current) since.set(r.vehicle_id, r.started_at);
-    }
-    if (since.size === 0) return null;
+    if (rentals.length === 0) return null;
 
-    return [...since.entries()]
-        .map(([vehicleId, startedAt]) => `and(vehicle_id.eq.${vehicleId},created_at.gte.${startedAt})`)
-        .join(",");
+    // Sorted and de-duplicated so the filter depends only on WHICH windows the
+    // rider held, never on the order the assignments happened to come back in
+    // — the same access decision must not serialise two different ways.
+    const clauses = [...new Set(rentals.map((r) => {
+        const parts = [`vehicle_id.eq.${r.vehicle_id}`, `created_at.gte.${r.started_at}`];
+        if (r.released_at) {
+            const until = new Date(new Date(r.released_at).getTime() + RELEASE_GRACE_MS);
+            parts.push(`created_at.lte.${until.toISOString()}`);
+        }
+        return `and(${parts.join(",")})`;
+    }))].sort();
+
+    return clauses.join(",");
 }
 
 /**
  * Maintenance events for vehicles this rider has personally held.
  *
- * SCOPED PER VEHICLE TO THE RIDER'S FIRST ASSIGNMENT. `description` is
- * staff-authored free text about a specific incident, so returning every
- * ticket on a vehicle the rider once had would show them another rider's
- * damage report.
+ * SCOPED PER VEHICLE TO THE WINDOW THE RIDER ACTUALLY HELD IT.
+ * `description` is staff-authored free text about a specific incident, so
+ * returning every ticket on a vehicle the rider once had would show them
+ * another rider's damage report. See buildOwnershipScope for both bounds.
  *
  * The rider's history comes from `rental_vehicle_assignments` rather than
  * `rentals` — a rental no longer names a vehicle, and this needs every unit
- * they have held, including temp ones.
- *
- * Deliberately a lower bound only, with no ceiling at release:
- * moveRideToMaintenance releases the assignment AND opens the ticket in one
- * flow, so an upper bound would race that write and hide the ticket for damage
- * the rider themselves just reported.
+ * they have held, including temp ones, each with its own release date.
  */
 export async function getMyMaintenanceHistory(
     userId: string,
@@ -294,7 +328,7 @@ export async function getMyMaintenanceHistory(
 ): Promise<Paginated<MaintenanceView>> {
     let assignmentsQuery = supabaseAdmin
         .from("rental_vehicle_assignments")
-        .select("vehicle_id, assigned_at, rentals!inner(user_id)")
+        .select("vehicle_id, assigned_at, released_at, rentals!inner(user_id)")
         .eq("rentals.user_id", userId);
 
     if (filters.vehicleId) assignmentsQuery = assignmentsQuery.eq("vehicle_id", filters.vehicleId);
@@ -305,6 +339,7 @@ export async function getMyMaintenanceHistory(
     const held: RiderRental[] = (assignments ?? []).map((a) => ({
         vehicle_id: a.vehicle_id,
         started_at: a.assigned_at,
+        released_at: a.released_at,
     }));
 
     const ownershipFilter = buildOwnershipScope(held);

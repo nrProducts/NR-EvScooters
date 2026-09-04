@@ -4,7 +4,11 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertTriangle, X } from 'lucide-react-native';
 import { Spinner } from './Spinner';
+import { InfoHint } from './ui/InfoHint';
 import { COLORS } from '../constants/theme';
+import {
+  LATE_FEE_POLICY_TITLE, lateFeePolicyExample, lateFeePolicySections,
+} from '../constants/lateFeePolicy';
 import { billingRepository, rentalRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
 import { ApiError } from '../lib/ApiError';
@@ -130,7 +134,22 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
               <DetailLine label="Vehicle" value={rental.vehicle.registration_number} />
             ) : null}
             {lateFee.dueOn ? <DetailLine label="Plan Ended" value={formatDate(lateFee.dueOn)} /> : null}
-            <DetailLine label="Overdue" value={`${lateFee.daysLate} day${lateFee.daysLate > 1 ? 's' : ''}`} />
+            {/* The ⓘ earns its place on THIS line specifically: this count
+                includes today (the rider is handing the scooter back having
+                ridden it), so it is deliberately one day more than the renew
+                banner on Home quotes for the same date. Without the
+                explanation that reads as one of the two screens being wrong. */}
+            <DetailLine
+              label="Overdue"
+              value={`${lateFee.daysLate} day${lateFee.daysLate > 1 ? 's' : ''}`}
+              info={
+                <InfoHint
+                  title={LATE_FEE_POLICY_TITLE}
+                  sections={lateFeePolicySections(lateFee.feePerDay)}
+                  example={lateFeePolicyExample(lateFee.feePerDay)}
+                />
+              }
+            />
             <DetailLine label="Late Fee" value={`₹${lateFee.lateFee.toFixed(0)}`} />
 
             <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
@@ -169,10 +188,13 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
   );
 };
 
-function DetailLine({ label, value }: { label: string; value: string }) {
+function DetailLine({ label, value, info }: { label: string; value: string; info?: React.ReactNode }) {
   return (
     <View className="flex-row items-center justify-between py-1">
-      <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">{label}</Text>
+      <View className="flex-row items-center">
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">{label}</Text>
+        {info}
+      </View>
       <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold">{value}</Text>
     </View>
   );

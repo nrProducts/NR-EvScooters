@@ -18,6 +18,7 @@ import {
     ensureOverdueLateFeeInvoice, isOverdueLateFeeSettled, OverdueLateFeeInvoiceResult, overdueLateFeeStatusFor,
     previewOverdueLateFee,
 } from "./overdueLateFee";
+import { voidAbandonedRenewalInvoice } from "./abandonedRenewal";
 
 /**
  * Rentals.
@@ -585,6 +586,29 @@ export async function requestReturn(
             throw conflict("You've already requested a return for this scooter.");
         }
         throw error;
+    }
+
+    // The rider is handing the scooter back, so the next plan period is never
+    // going to be bought — and any renewal invoice a "Review & Renew" preview
+    // left behind is a bill for it. Voided here rather than hidden in the app,
+    // so admin and revenue reporting stop counting a debt nobody owes. See
+    // abandonedRenewal.ts. Best-effort: an accepted return must not roll back
+    // because a stale bill could not be cleared.
+    if (subscription) {
+        try {
+            const voided = await voidAbandonedRenewalInvoice(subscription.id);
+            if (voided) {
+                console.info("[rentals] voided abandoned renewal invoice on return request", {
+                    rentalId, invoiceId: voided.invoiceId, amount: voided.amount,
+                });
+            }
+        } catch (voidError) {
+            console.error("[rentals] failed to void abandoned renewal invoice", {
+                rentalId,
+                subscriptionId: subscription.id,
+                error: voidError instanceof Error ? voidError.message : String(voidError),
+            });
+        }
     }
 
     // Best-effort: a feedback write must never roll back an accepted return

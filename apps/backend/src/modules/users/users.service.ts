@@ -228,10 +228,11 @@ export async function listUsers(
     }
 
     const userIds = rows.map((r) => r.id);
-    const [vehicles, plans, outstanding] = await Promise.all([
+    const [vehicles, plans, outstanding, openReturns] = await Promise.all([
         activeVehicleByUser(userIds),
         currentPlanByUser(userIds),
         outstandingByUser(userIds),
+        openReturnByUser(userIds),
     ]);
 
     const items: UserListItem[] = rows.map((row) => {
@@ -245,6 +246,7 @@ export async function listUsers(
             plan_started_at: planInfo?.plan_started_at ?? null,
             next_due_at: planInfo?.next_due_at ?? null,
             outstanding_amount: outstanding.get(row.id) ?? 0,
+            open_return: openReturns.get(row.id) ?? null,
         };
     });
 
@@ -270,12 +272,13 @@ export async function getUserById(id: string, actor: AuthContext): Promise<UserD
     // Deleted profiles are visible to admins only.
     if (row.deleted_at && actor.role !== "admin") throw notFound("User not found.");
 
-    const [vehicles, plans, documents, lastLoginAt, outstanding] = await Promise.all([
+    const [vehicles, plans, documents, lastLoginAt, outstanding, openReturns] = await Promise.all([
         activeVehicleByUser([id]),
         currentPlanByUser([id]),
         documentsForUser(id),
         lastLoginFor(id),
         outstandingByUser([id]),
+        openReturnByUser([id]),
     ]);
     const planInfo = plans.get(id);
 
@@ -288,6 +291,7 @@ export async function getUserById(id: string, actor: AuthContext): Promise<UserD
         plan_started_at: planInfo?.plan_started_at ?? null,
         next_due_at: planInfo?.next_due_at ?? null,
         outstanding_amount: outstanding.get(id) ?? 0,
+        open_return: openReturns.get(id) ?? null,
         last_login_at: lastLoginAt,
         kyc_completion_percent: kycCompletionPercent(documents),
         // Storage paths are never included — see §2 "Do not expose confidential
@@ -1503,6 +1507,42 @@ async function currentPlanByUser(userIds: string[]): Promise<Map<string, {
         });
     }
 
+    return map;
+}
+
+/**
+ * The open return per rider, in ONE query for the whole page.
+ *
+ * 'requested' and 'inspected' are the open states. 'rejected' leaves the rider
+ * on their plan exactly as before, and 'approved' has already ended the
+ * rental — neither should make the grid say a return is in progress.
+ *
+ * Scoped to an ACTIVE rental so a stale row from a previous, completed rental
+ * can never mark a rider who has since picked up a new scooter.
+ */
+async function openReturnByUser(
+    userIds: string[],
+): Promise<Map<string, UserListItem["open_return"]>> {
+    const map = new Map<string, UserListItem["open_return"]>();
+    if (userIds.length === 0) return map;
+
+    const { data, error } = await supabaseAdmin
+        .from("rental_returns")
+        .select("status, requested_at, rentals!inner(user_id, status)")
+        .in("status", ["requested", "inspected"])
+        .eq("rentals.status", "active")
+        .in("rentals.user_id", userIds)
+        .order("requested_at", { ascending: false });
+    if (error) throw error;
+
+    for (const row of data ?? []) {
+        const rental = one<{ user_id: string }>(row.rentals);
+        if (!rental?.user_id || map.has(rental.user_id)) continue; // newest first
+        map.set(rental.user_id, {
+            status: row.status as "requested" | "inspected",
+            requested_at: row.requested_at,
+        });
+    }
     return map;
 }
 

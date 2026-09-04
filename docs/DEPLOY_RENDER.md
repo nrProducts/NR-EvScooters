@@ -119,6 +119,7 @@ Changing any `VITE_*` requires a redeploy — they're compile-time, not runtime.
 | Key | Notes |
 |---|---|
 | `VITE_ADMIN_CONSOLE_URL` | the deployed web console URL — powers the "Login" link |
+| `VITE_API_BASE_URL` | `https://<backend-url>/api/v1` — live plan pricing + fleet/station counts (`GET /public/*`). Blank = bundled fallback content only |
 | `VITE_PLAY_STORE_URL` / `VITE_APP_STORE_URL` | app listing URLs; blank = "coming soon" CTA |
 
 ## After deploy

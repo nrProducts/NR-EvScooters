@@ -165,8 +165,8 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
               }}
               error={errors.rating}
             />
-
-            <View
+            {/* Commenting this becasue overdue is first should pay then only we can request return scooter */}
+            {/* <View
               className="rounded-2xl p-3.5 mb-3"
               style={{
                 backgroundColor: (deadline.alreadyOverdue ? COLORS.danger : COLORS.warning) + '14',
@@ -194,7 +194,7 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
                     ? `A ₹${lateReturnFeePerDay}/day late fee has already been accruing since then, and will be charged when our team confirms the handover.`
                     : `Each day after that adds a ₹${lateReturnFeePerDay} late fee, charged when our team confirms the handover.`}
               </Text>
-            </View>
+            </View> */}
 
             <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed mb-2">
               Your request will be processed as per our return policy. The rental stays active — and the

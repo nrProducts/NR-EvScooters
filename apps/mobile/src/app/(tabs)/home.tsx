@@ -12,6 +12,7 @@ import { FeaturedScooterCard } from '../../components/FeaturedScooterCard';
 import { SettlementCard } from '../../components/SettlementCard';
 import { HomeHeroCard } from '../../components/home/HomeHeroCard';
 import { HomeQuickLinks } from '../../components/home/HomeQuickLinks';
+import { isReturnLocked } from '../../lib/returnLock';
 import { NeedHelpCard } from '../../components/home/NeedHelpCard';
 import { Badge } from '../../components/ui/Badge';
 import { SkeletonList } from '../../components/ui/Skeleton';
@@ -413,7 +414,9 @@ export default function HomeScreen() {
           </>
         ) : null}
 
-        <HomeQuickLinks />
+        {/* Nearby scooters / My plan go dead while a return is in flight —
+            both lead somewhere the backend will refuse. See lib/returnLock.ts. */}
+        <HomeQuickLinks returnLocked={isReturnLocked(activeRental)} />
         <NeedHelpCard />
       </ScrollView>
     </AppShell>

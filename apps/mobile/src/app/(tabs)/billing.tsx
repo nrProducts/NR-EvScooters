@@ -484,7 +484,21 @@ export default function BillingScreen() {
     (inv) => !(isOverdueLateFee(inv) && inv.payment_state !== 'paid'),
   );
 
-  const outstandingInvoices = visibleInvoices.filter(
+  // A rider handing the scooter back is not buying another period, so a
+  // renewal bill is not something they owe — it is an offer for a plan that
+  // will never start. requestReturn now VOIDS it server-side
+  // (abandonedRenewal.ts), which is the real fix; this keeps the screen honest
+  // in the window before that lands, and if the void ever fails.
+  //
+  // Scoped to `subscription_period` deliberately. A return settlement, and an
+  // ad-hoc charge an admin raised (lost key, damage), are real debts that MUST
+  // stay payable during a return — that is the whole point of the payment gate
+  // on the return itself.
+  const payableInvoices = hasActiveReturn
+    ? visibleInvoices.filter((inv) => inv.purpose !== 'subscription_period')
+    : visibleInvoices;
+
+  const outstandingInvoices = payableInvoices.filter(
     (inv) => inv.status !== 'void' && inv.payment_state !== 'paid',
   );
   // GET /invoices/me already attaches the live-computed late fee (days late ×
@@ -666,17 +680,26 @@ export default function BillingScreen() {
     }
   };
 
-  // Every invoice this rider has ever had (see useMyBilling — no longer
-  // scoped to just the current booking), newest first. One record type, one
-  // list — each row's own purpose label (invoiceLabel) and date are what
-  // make every entry distinguishable; nothing here is ever the same
-  // underlying payment shown a second time under a different heading.
+  // PAYMENT History — money that actually moved, newest first.
+  //
+  // It used to be the whole invoice list, unpaid rows included, on the
+  // reasoning that a pending renewal should "read exactly like the paid ones
+  // beneath it". The effect was the opposite: the same ₹1800 renewal appeared
+  // as a Pay card under Amount Due AND as a "Due" row in the history directly
+  // below it, so one debt looked like two, and a record labelled History was
+  // reporting something that had not happened yet. Amount Due above is the
+  // authoritative — and only — place an outstanding bill is stated.
+  //
+  // `partial` stays: money genuinely arrived against it, and a history that
+  // omitted a payment the rider made would be wrong in the other direction.
+  // Its outstanding remainder is still shown above, where it belongs.
+  //
   // Sorted on the SAME date the row displays (see historyDate) — ordering by
   // a future due_on while showing the raised date put rows in an order the
   // dates on screen did not explain.
-  const paymentHistoryItems = [...visibleInvoices].sort((a, b) => (
-    historyDate(a) < historyDate(b) ? 1 : -1
-  ));
+  const paymentHistoryItems = visibleInvoices
+    .filter((inv) => inv.payment_state === 'paid' || inv.payment_state === 'partial')
+    .sort((a, b) => (historyDate(a) < historyDate(b) ? 1 : -1));
 
   // Outstanding invoices with a Pay button. Rendered inside the "Amount Due"
   // section when there's an active plan, and also standalone when there

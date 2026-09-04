@@ -22,6 +22,8 @@ import {
 } from '../../constants/status';
 import { describeExpiry, rentalDayNumber } from '../../lib/rentalTiming';
 import { canReturnYet, getRenewalEligibility } from '../../lib/returnPolicy';
+import { isReturnLocked } from '../../lib/returnLock';
+import { useReturnLock } from '../../components/ReturnLockSheet';
 import { useCurrentRideOrBooking } from '../../hooks/useCurrentRideOrBooking';
 import { useVehicleCatalogStore } from '../../store/useVehicleCatalogStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -114,6 +116,13 @@ export default function MyScooterScreen() {
     ? getRenewalEligibility(state.rental.plan_status, state.rental.next_due_at, state.rental.renewal_status).canRenew
     : false;
 
+  // ONE decision, read by the plan row, the documents card and the support
+  // button below — see lib/returnLock.ts. The Renew/Return buttons were
+  // already replaced by ReturnStatusCard; everything else on this screen had
+  // carried on as if the rider still held an ordinary rental.
+  const returnLocked = state.kind === 'rental' && isReturnLocked(state.rental);
+  const lock = useReturnLock(returnLocked);
+
   const renderHero = (title: string, badge: React.ReactNode) => (
     <View
       className="rounded-3xl mb-5 overflow-hidden"
@@ -201,6 +210,20 @@ export default function MyScooterScreen() {
                   value={`${formatDate(state.rental.started_at)} · Day ${rentalDayNumber(state.rental.started_at)}`}
                 />
                 {(() => {
+                  // Nothing renews on a scooter being handed back. This row
+                  // was still reading "Renews on — Expired 3 days ago" in red
+                  // beside a "Return requested" card, which states a deadline
+                  // the rider has already answered and cannot act on anyway
+                  // (renewing is refused server-side mid-return).
+                  if (returnLocked) {
+                    return (
+                      <DetailRow
+                        icon={CalendarClock}
+                        label="Plan ended"
+                        value={formatDate(state.rental.expires_at)}
+                      />
+                    );
+                  }
                   const expiry = describeExpiry(state.rental.expires_at);
                   if (!expiry) return null;
                   return (
@@ -269,8 +292,12 @@ export default function MyScooterScreen() {
                 </>
               )}
 
+              {/* Kept reachable through a return — the handover itself is the
+                  likeliest thing a rider needs help with — but it warns first.
+                  See lib/returnLock.ts for why this one is 'warn', not
+                  'blocked'. */}
               <TouchableOpacity
-                onPress={() => router.push('/support')}
+                onPress={() => lock.run(() => router.push('/support'), 'warn')}
                 accessibilityRole="button"
                 className="flex-row items-center justify-center rounded-2xl py-3 mt-2 border"
                 style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
@@ -288,7 +315,12 @@ export default function MyScooterScreen() {
                 onSubmitted={() => void reload()}
               />
 
-              <VehicleDocumentsCard />
+              {/* Paperwork for a scooter the rider is handing back is not
+                  theirs to manage any more — the documents follow whichever
+                  vehicle is currently assigned. */}
+              {returnLocked ? null : <VehicleDocumentsCard />}
+
+              {lock.sheet}
             </>
           ) : state.kind === 'booking' ? (
             <>

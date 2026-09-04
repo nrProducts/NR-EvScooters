@@ -1118,7 +1118,10 @@ export class MockRentalRepository implements RentalRepository {
     // current on its plan, so the Return flow is never gated behind a fee.
     async overdueLateFee(): Promise<ApiOverdueLateFee> {
         await delay(100);
-        return { isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: null, isSettled: true };
+        return {
+            isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: null,
+            renewalDaysLate: 0, renewalLateFee: 0, isSettled: true,
+        };
     }
 
     async payOverdueLateFee(): Promise<ApiOverdueLateFeeInvoice> {

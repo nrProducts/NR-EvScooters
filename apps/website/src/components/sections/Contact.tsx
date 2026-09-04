@@ -1,11 +1,11 @@
 import { Mail, Phone, MapPin } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { CONTACT_EMAIL, CONTACT_PHONE_DISPLAY, CONTACT_PHONE_HREF, CONTACT_IS_PLACEHOLDER, SERVICE_CITY } from "@/content/contact";
+import { CONTACT_EMAIL, CONTACT_PHONE_DISPLAY, CONTACT_PHONE_HREF, CONTACT_IS_PLACEHOLDER, CONTACT_ADDRESS } from "@/content/contact";
 
 export function Contact() {
   return (
-    <section id="contact" className="py-20 sm:py-28">
+    <section id="contact" className="py-14 sm:py-20">
       <Container className="max-w-3xl">
         <SectionHeading eyebrow="Contact" title="We're here to help" />
 
@@ -15,10 +15,15 @@ export function Contact() {
           </p>
         )}
 
-        <div className="mt-12 grid gap-6 sm:grid-cols-3">
+        <div className="mt-10 grid gap-6 sm:grid-cols-3">
           <ContactCard icon={Mail} label="Email" value={CONTACT_EMAIL} href={`mailto:${CONTACT_EMAIL}`} />
           <ContactCard icon={Phone} label="Phone" value={CONTACT_PHONE_DISPLAY} href={CONTACT_PHONE_HREF} />
-          <ContactCard icon={MapPin} label="Location" value={SERVICE_CITY} />
+          <ContactCard
+            icon={MapPin}
+            label="Office"
+            value={CONTACT_ADDRESS}
+            href={`https://maps.google.com/?q=${encodeURIComponent(CONTACT_ADDRESS)}`}
+          />
         </div>
       </Container>
     </section>
@@ -45,5 +50,11 @@ function ContactCard({
       <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
     </div>
   );
-  return href ? <a href={href}>{content}</a> : content;
+  if (!href) return content;
+  const external = href.startsWith("http");
+  return (
+    <a href={href} {...(external ? { target: "_blank", rel: "noreferrer" } : {})}>
+      {content}
+    </a>
+  );
 }

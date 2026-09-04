@@ -92,10 +92,10 @@ describe("requestReturn — overdue late-fee gate", () => {
         // rider's committed period IS over, so the earlier period-due gate
         // passes through to the late-fee gate.
         //
-        // due_on is the 23rd, not the 24th: computeLateRenewalFee does not
-        // charge for TODAY (renewing buys it), so with "today" fixed at the
-        // 25th a due_on of the 24th now owes nothing and there would be no
-        // gate left to test. The 23rd leaves exactly one lost day — the 24th.
+        // due_on the 23rd, "today" the 25th: the return-path late fee counts
+        // the handover day (chargeCurrentDay), so the 24th and the 25th are
+        // both chargeable — an unpaid fee is owed and the gate has something
+        // to reject.
         queue("subscription_periods", {
             data: [{
                 subscription_id: SUBSCRIPTION_ID, status: "current",

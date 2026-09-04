@@ -60,6 +60,9 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   due: "warning",
   past_due: "warning",
   return_requested: "warning",
+  // rental_returns.status once staff have reviewed but not yet approved —
+  // surfaced on the Users grid, where an open return supersedes plan status.
+  inspected: "info",
   vehicle_recovery_required: "destructive",
   // ReturnStageStatus (Vehicle Return → Inspection → Payment Gate → Approve Return)
   payment_required: "destructive",

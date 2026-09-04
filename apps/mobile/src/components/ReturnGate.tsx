@@ -46,7 +46,14 @@ export const ReturnGate: React.FC<ReturnGateProps> = ({ visible, rental, onClose
       // Fails open: if the preview call itself fails, the rider still reaches
       // the return form — requestReturn's own backend gate is the real
       // enforcement and will reject them there if something is genuinely owed.
-      .catch(() => { if (!cancelled) setLateFee({ isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: null, isSettled: true }); })
+      .catch(() => {
+        if (!cancelled) {
+          setLateFee({
+            isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: null,
+            renewalDaysLate: 0, renewalLateFee: 0, isSettled: true,
+          });
+        }
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [visible]);

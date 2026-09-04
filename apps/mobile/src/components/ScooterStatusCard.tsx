@@ -5,7 +5,11 @@ import {
   CheckCircle2, Clock, AlertTriangle, CreditCard, RefreshCw, Undo2,
 } from 'lucide-react-native';
 import { Spinner } from './Spinner';
+import { InfoHint } from './ui/InfoHint';
 import { COLORS } from '../constants/theme';
+import {
+  LATE_FEE_POLICY_TITLE, lateFeePolicyExample, lateFeePolicySections,
+} from '../constants/lateFeePolicy';
 import { rentalRepository } from '../services';
 import { usePaySettlement } from './SettlementCard';
 import { computeLateReturnPenalty, effectiveDueAt, getRenewalEligibility } from '../lib/returnPolicy';
@@ -88,7 +92,10 @@ export function ScooterStatusCard({
     maxDays: rental.max_late_fee_days,
     feePerDay: rental.late_return_fee_per_day,
   });
-  // Server first, estimate only until it lands (or if the call failed).
+  // Server first, estimate only until it lands (or if the call failed). These
+  // two are the RETURN-path pair — the handover day counted — which is what
+  // the recovery branch below wants, since recovery ends in the scooter coming
+  // back. The renew banner uses the other pair; see there.
   const daysLate = overdue?.isLate ? overdue.daysLate : estimate.daysLate;
   const lateAmount = overdue?.isLate ? overdue.lateFee : estimate.penaltyAmount;
   const recoveryRequired = !!rental.recovery_flagged_at;
@@ -181,17 +188,55 @@ export function ScooterStatusCard({
   // warning ("return your scooter as soon as possible") and never the thing
   // they actually needed to do — renew. Renewing is what clears this fee.
   if (overdueNow) {
+    // Priced as a RENEWAL whenever renewing is the action on offer, because
+    // the button this banner points at is "Renew Plan Now" on the card
+    // directly below. A renewal buys today as plan time, so today is not also
+    // charged as a penalty — one day fewer than the Return sheet quotes for
+    // the same date. Both figures come from the one server preview
+    // (previewOverdueLateFee), so the day count and the rupee amount on this
+    // banner always describe the same exit: 2 days at ₹334/day is ₹668, and a
+    // rider can check that. Showing the return day count beside the renewal
+    // amount is what made this read as broken.
+    const renewing = eligibility.canRenew;
+    const shownDays = renewing && overdue ? overdue.renewalDaysLate : daysLate;
+    const shownAmount = renewing && overdue ? overdue.renewalLateFee : lateAmount;
+    const feePerDay = overdue?.feePerDay ?? 0;
+
     return (
       <StatusShell
         tone="danger"
         icon={AlertTriangle}
-        title={`Plan expired · overdue by ${daysLate} day${daysLate === 1 ? '' : 's'}`}
+        // Zero days is a real state, not a bug: on the FIRST day after a plan
+        // ends, renewing costs no late fee at all (today is the day the new
+        // plan starts). "Overdue by 0 days" would be nonsense, so that day
+        // gets its own wording — and it is the one day where telling the rider
+        // to act now actually saves them money.
+        title={shownDays > 0
+          ? `Plan expired · overdue by ${shownDays} day${shownDays === 1 ? '' : 's'}`
+          : 'Plan expired · renew today'}
+        titleAccessory={
+          <InfoHint
+            title={LATE_FEE_POLICY_TITLE}
+            sections={lateFeePolicySections(feePerDay)}
+            example={lateFeePolicyExample(feePerDay)}
+            color={COLORS.danger}
+          />
+        }
       >
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
-          {lateAmount > 0 ? `A ₹${lateAmount.toFixed(0)} late fee has built up and grows each day. ` : ''}
-          {eligibility.canRenew
-            ? 'Renew your plan below to clear it and keep riding.'
-            : 'Return your scooter as soon as possible.'}
+          {shownAmount > 0
+            ? `A ₹${shownAmount.toFixed(0)} late fee has built up and grows each day. `
+              + (renewing
+                ? 'Renew your plan below to clear it and keep riding.'
+                : 'Return your scooter as soon as possible.')
+            : renewing
+              // Nothing owed YET. Saying "a late fee has built up" here would be
+              // false, and "renew to clear it" points at a debt that does not
+              // exist — the accurate and more useful message is the deadline.
+              ? feePerDay > 0
+                ? `Renew below today and you owe no late fee — ₹${feePerDay.toFixed(0)}/day starts tomorrow.`
+                : 'Renew your plan below to keep riding.'
+              : 'Return your scooter as soon as possible.'}
         </Text>
       </StatusShell>
     );
@@ -245,11 +290,13 @@ const TONE_COLOR: Record<'danger' | 'warning' | 'success' | 'primary', string> =
 };
 
 function StatusShell({
-  tone, icon: Icon, title, children,
+  tone, icon: Icon, title, titleAccessory, children,
 }: {
   tone: 'danger' | 'warning' | 'success' | 'primary';
   icon: React.ComponentType<{ size?: number; color?: string }>;
   title: string;
+  /** Trailing control on the title row — an InfoHint, in practice. */
+  titleAccessory?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const tint = TONE_COLOR[tone];
@@ -263,7 +310,10 @@ function StatusShell({
     >
       <View className="flex-row items-center mb-1.5">
         <Icon size={16} color={tint} />
+        {/* The title keeps flex-1 so a long one wraps rather than pushing the
+            accessory off the row. */}
         <Text style={{ color: tint }} className="text-xs font-bold ml-2 flex-1">{title}</Text>
+        {titleAccessory}
       </View>
       {children}
     </View>

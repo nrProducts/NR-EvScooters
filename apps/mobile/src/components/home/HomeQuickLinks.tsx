@@ -1,53 +1,82 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { MapPin, CalendarDays, Zap, type LucideIcon } from 'lucide-react-native';
+import { Lock, MapPin, CalendarDays, Zap, type LucideIcon } from 'lucide-react-native';
 import { COLORS } from '../../constants/theme';
+import { useReturnLock } from '../ReturnLockSheet';
 
 /**
  * The three everyday shortcuts under the hero: find a scooter, see bookings,
  * check the plan. A light equal-width row — the bottom tab bar stays the
  * primary nav; this is just quick reach.
+ *
+ * `lockedWhileReturning` is what each does once a return is in flight:
+ *
+ *   · Nearby scooters — LOCKED. It opens the booking flow, and createBooking
+ *     refuses while the rider still holds a scooter (the rental stays active
+ *     right through a return), so this could only ever end in a rejection.
+ *   · My plan — LOCKED. Renewing is off the table; the plan cannot change.
+ *   · My bookings — open. A read-only record of past bookings changes
+ *     nothing, and a rider mid-return has every reason to look at it.
  */
-const ITEMS: { icon: LucideIcon; label: string; route: string }[] = [
-  { icon: MapPin, label: 'Nearby scooters', route: '/browse-vehicles' },
-  { icon: CalendarDays, label: 'My bookings', route: '/booking-history' },
-  { icon: Zap, label: 'My plan', route: '/my-plan' },
+const ITEMS: { icon: LucideIcon; label: string; route: string; lockedWhileReturning: boolean }[] = [
+  { icon: MapPin, label: 'Nearby scooters', route: '/browse-vehicles', lockedWhileReturning: true },
+  { icon: CalendarDays, label: 'My bookings', route: '/booking-history', lockedWhileReturning: false },
+  { icon: Zap, label: 'My plan', route: '/my-plan', lockedWhileReturning: true },
 ];
 
-export const HomeQuickLinks: React.FC = () => {
+interface HomeQuickLinksProps {
+  /** True while the rider has a return awaiting staff confirmation. */
+  returnLocked?: boolean;
+}
+
+export const HomeQuickLinks: React.FC<HomeQuickLinksProps> = ({ returnLocked = false }) => {
   const router = useRouter();
+  const lock = useReturnLock(returnLocked);
 
   return (
     <View className="flex-row mb-6" style={{ gap: 10 }}>
-      {ITEMS.map(({ icon: Icon, label, route }) => (
-        <TouchableOpacity
-          key={route}
-          onPress={() => router.push(route as never)}
-          accessibilityRole="button"
-          accessibilityLabel={label}
-          activeOpacity={0.85}
-          className="flex-1 rounded-2xl px-3 py-4"
-          style={{
-            backgroundColor: COLORS.card,
-            shadowColor: COLORS.black,
-            shadowOpacity: 0.04,
-            shadowRadius: 10,
-            shadowOffset: { width: 0, height: 3 },
-            elevation: 1,
-          }}
-        >
-          <View
-            className="w-8 h-8 rounded-xl items-center justify-center mb-2"
-            style={{ backgroundColor: COLORS.primary + '14' }}
+      {ITEMS.map(({ icon: Icon, label, route, lockedWhileReturning }) => {
+        // Dimmed and padlocked rather than removed: a tile that vanishes looks
+        // like a bug, and the rider still gets told WHY when they tap it.
+        const isLocked = returnLocked && lockedWhileReturning;
+        return (
+          <TouchableOpacity
+            key={route}
+            onPress={() => (isLocked
+              ? lock.run(() => undefined, 'blocked')
+              : router.push(route as never))}
+            accessibilityRole="button"
+            accessibilityLabel={label}
+            accessibilityState={{ disabled: isLocked }}
+            accessibilityHint={isLocked ? 'Unavailable while your return is being completed' : undefined}
+            activeOpacity={0.85}
+            className="flex-1 rounded-2xl px-3 py-4"
+            style={{
+              backgroundColor: COLORS.card,
+              opacity: isLocked ? 0.55 : 1,
+              shadowColor: COLORS.black,
+              shadowOpacity: 0.04,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 3 },
+              elevation: 1,
+            }}
           >
-            <Icon size={16} color={COLORS.primary} />
-          </View>
-          <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-bold" numberOfLines={2}>
-            {label}
-          </Text>
-        </TouchableOpacity>
-      ))}
+            <View
+              className="w-8 h-8 rounded-xl items-center justify-center mb-2"
+              style={{ backgroundColor: (isLocked ? COLORS.textSecondary : COLORS.primary) + '14' }}
+            >
+              {isLocked
+                ? <Lock size={14} color={COLORS.textSecondary} />
+                : <Icon size={16} color={COLORS.primary} />}
+            </View>
+            <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-bold" numberOfLines={2}>
+              {label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+      {lock.sheet}
     </View>
   );
 };

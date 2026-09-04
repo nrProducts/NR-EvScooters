@@ -63,9 +63,9 @@ beforeEach(() => {
     queues = {};
     stubsByTable = {};
     vi.useFakeTimers();
-    // "Today" is 2026-08-25 IST against a 2026-08-23 due_on: the 24th was
-    // lost, the 25th is bought by the renewal itself, so exactly ONE day is
-    // chargeable. See computeLateRenewalFee for why today never counts.
+    // "Today" is 2026-08-25 IST against a 2026-08-23 due_on. This is the RETURN
+    // path (previewOverdueLateFee passes chargeCurrentDay: true), so the
+    // handover day counts: the 24th AND the 25th are chargeable => 2 days.
     vi.setSystemTime(new Date("2026-08-25T10:00:00+05:30"));
 });
 
@@ -85,7 +85,10 @@ describe("previewOverdueLateFee", () => {
         queue("subscription_periods", { data: { id: PERIOD_ID, due_on: "2026-08-26" }, error: null });
 
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
-        expect(preview).toEqual({ isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: "2026-08-26" });
+        expect(preview).toEqual({
+            isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: "2026-08-26",
+            renewalDaysLate: 0, renewalLateFee: 0,
+        });
     });
 
     it("computes the fee from the global pricing_rules rate once overdue", async () => {
@@ -95,36 +98,69 @@ describe("previewOverdueLateFee", () => {
         queue("pricing_rules", { data: null, error: null }); // no per-subscription override
         queue("pricing_rules", { data: { amount: 450, is_active: true }, error: null }); // global rule
 
+        // Both exits priced in one read: return 2 days (24th + 25th), renew 1
+        // (the 25th is bought by the renewal). Home quotes the renewal pair,
+        // the Return sheet the other — see OverdueLateFeePreview.
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
-        expect(preview).toEqual({ isLate: true, daysLate: 1, feePerDay: 450, lateFee: 450, dueOn: "2026-08-23" });
+        expect(preview).toEqual({
+            isLate: true, daysLate: 2, feePerDay: 450, lateFee: 900, dueOn: "2026-08-23",
+            renewalDaysLate: 1, renewalLateFee: 450,
+        });
     });
 });
 
 /**
- * The boundary that separates the renewal fee from the return fee. Renewing
- * pays for today (applyRenewalSuccess re-anchors starts_on to today), so today
- * is never also charged as a penalty; returning loses today, and
- * computeLateReturnPenalty counts it — see rentalReturnPolicy.test.ts, which
- * still expects 2 days where this expects 1.
+ * The RETURN count includes the handover day. Renewing pays for today
+ * (applyRenewalSuccess re-anchors starts_on to today), so a renewal drops it;
+ * a return does not buy today, the rider just rode the scooter through it, so
+ * previewOverdueLateFee passes chargeCurrentDay: true and today counts. With a
+ * due_on of the 23rd and "today" the 25th that is 2 days (the 24th and 25th),
+ * where a late renewal would be 1.
  */
-describe("previewOverdueLateFee — today is never charged", () => {
-    it("charges nothing on the first day past the due date", async () => {
-        // Due on the 24th, today the 25th: the 25th is the first unpaid day
-        // AND the day the renewal would start. Nothing has been lost yet.
+describe("previewOverdueLateFee — the handover day counts", () => {
+    it("charges one day on the first day past the due date", async () => {
+        // Due on the 24th, today the 25th: the rider rode the 25th and hands
+        // the scooter back on it, so that one day is chargeable. Renewing on
+        // the same day costs nothing — the day the fee would cover is the day
+        // the new plan starts. This is the ONE day where the two exits are
+        // priced differently enough to change a rider's mind, and it is why
+        // Home says "renew today" instead of "overdue by 0 days".
         queue("subscription_periods", { data: { id: PERIOD_ID, due_on: "2026-08-24" }, error: null });
+        queue("pricing_rules", { data: null, error: null });
+        queue("pricing_rules", { data: { amount: 450, is_active: true }, error: null });
 
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
-        expect(preview).toEqual({ isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: "2026-08-24" });
+        expect(preview).toMatchObject({
+            isLate: true, daysLate: 1, lateFee: 450,
+            renewalDaysLate: 0, renewalLateFee: 0,
+            // Still reported even at zero days owed, so the renew banner can
+            // quote the rate that starts tomorrow.
+            feePerDay: 450,
+        });
     });
 
-    it("charges one day on the second day past the due date", async () => {
-        // Due on the 23rd, today the 25th: the 24th was lost, the 25th is bought.
+    it("charges nothing before the due date has passed", async () => {
+        // Due on the 26th, today the 25th: still inside the plan.
+        queue("subscription_periods", { data: { id: PERIOD_ID, due_on: "2026-08-26" }, error: null });
+
+        const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
+        expect(preview).toEqual({
+            isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: "2026-08-26",
+            renewalDaysLate: 0, renewalLateFee: 0,
+        });
+    });
+
+    it("charges two days on the second day past the due date", async () => {
+        // Due on the 23rd, today the 25th: the 24th and the 25th were both ridden.
         queue("subscription_periods", { data: { id: PERIOD_ID, due_on: "2026-08-23" }, error: null });
         queue("pricing_rules", { data: null, error: null });
         queue("pricing_rules", { data: { amount: 450, is_active: true }, error: null });
 
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
-        expect(preview).toMatchObject({ isLate: true, daysLate: 1, lateFee: 450 });
+        expect(preview).toMatchObject({
+            isLate: true, daysLate: 2, lateFee: 900,
+            renewalDaysLate: 1, renewalLateFee: 450,
+        });
     });
 
     it("grows by one whole day thereafter", async () => {
@@ -133,9 +169,29 @@ describe("previewOverdueLateFee — today is never charged", () => {
         queue("pricing_rules", { data: null, error: null });
         queue("pricing_rules", { data: { amount: 450, is_active: true }, error: null });
 
-        // 24th, 25th, 26th lost; the 27th is bought by the renewal.
+        // 24th, 25th, 26th, 27th all ridden and the 27th is the handover day.
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
-        expect(preview).toMatchObject({ isLate: true, daysLate: 3, lateFee: 1350 });
+        expect(preview).toMatchObject({
+            isLate: true, daysLate: 4, lateFee: 1800,
+            renewalDaysLate: 3, renewalLateFee: 1350,
+        });
+    });
+
+    /**
+     * The invariant the two screens rest on: whatever the dates, the renewal
+     * pair is exactly one day cheaper than the return pair, at one shared
+     * rate. A day count and a rupee amount from DIFFERENT exits shown side by
+     * side is the bug this split was introduced to fix.
+     */
+    it("keeps the two exits exactly one day apart at the same rate", async () => {
+        queue("subscription_periods", { data: { id: PERIOD_ID, due_on: "2026-08-23" }, error: null });
+        queue("pricing_rules", { data: null, error: null });
+        queue("pricing_rules", { data: { amount: 450, is_active: true }, error: null });
+
+        const p = await previewOverdueLateFee(SUBSCRIPTION_ID);
+        expect(p.renewalDaysLate).toBe(p.daysLate - 1);
+        expect(p.lateFee).toBe(p.feePerDay * p.daysLate);
+        expect(p.renewalLateFee).toBe(p.feePerDay * p.renewalDaysLate);
     });
 });
 
@@ -187,14 +243,14 @@ describe("ensureOverdueLateFeeInvoice", () => {
         queue("invoice_items", { data: null, error: null });
 
         const result = await ensureOverdueLateFeeInvoice(SUBSCRIPTION_ID, USER_ID);
-        expect(result).toEqual({ invoiceId: "new-invoice-id", amount: 450, isPaid: false });
+        expect(result).toEqual({ invoiceId: "new-invoice-id", amount: 900, isPaid: false });
 
         const insertCall = stubsByTable.invoices[1].calls.find(([name]) => name === "insert");
         expect(insertCall?.[1][0]).toMatchObject({
             user_id: USER_ID,
             subscription_id: SUBSCRIPTION_ID,
             purpose: "adhoc",
-            total_amount: 450,
+            total_amount: 900,
             // Looked up dynamically, not the wrong hardcoded "SNG" literal —
             // trg_allocate_invoice_number matches invoice_series.code EXACTLY
             // and the live series is fiscal-year-suffixed ("SNG-FY2627").
@@ -206,21 +262,22 @@ describe("ensureOverdueLateFeeInvoice", () => {
         queuePeriod("2026-08-23");
         queue("pricing_rules", { data: null, error: null });
         queue("pricing_rules", { data: { amount: 450, is_active: true }, error: null });
-        queue("invoices", { data: { id: "existing-invoice-id", total_amount: 450 }, error: null });
+        queue("invoices", { data: { id: "existing-invoice-id", total_amount: 900 }, error: null });
         queue("v_invoice_balances", { data: { is_paid: false }, error: null }); // isInvoicePaid
         queue("v_invoice_balances", { data: { allocated_amount: 0, is_paid: false }, error: null }); // reprice
 
         const result = await ensureOverdueLateFeeInvoice(SUBSCRIPTION_ID, USER_ID);
-        expect(result).toEqual({ invoiceId: "existing-invoice-id", amount: 450, isPaid: false });
+        expect(result).toEqual({ invoiceId: "existing-invoice-id", amount: 900, isPaid: false });
         // No second `invoices` insert was ever queued/consumed — reusing the
         // one from the lookup is the only call that hit the invoices table.
-        // Still one day late at the same rate, so the re-price is a no-op too.
+        // Still two days late at the same rate, so the re-price is a no-op too.
         expect(stubsByTable.invoices).toHaveLength(1);
         expect(stubsByTable.invoices[0].calls.some(([name]) => name === "update")).toBe(false);
     });
 
     it("re-prices a stale invoice to TODAY's fee instead of handing back day one's", async () => {
-        // Two days overdue now; the open invoice was minted on day one at 450.
+        // Three days counted now (24th, 25th, 26th); the open invoice was minted
+        // on day one at 450.
         vi.setSystemTime(new Date("2026-08-26T10:00:00+05:30"));
         queuePeriod("2026-08-23");
         queue("pricing_rules", { data: null, error: null });
@@ -232,18 +289,18 @@ describe("ensureOverdueLateFeeInvoice", () => {
         queue("invoice_items", { data: null, error: null }); // the line-item update
 
         const result = await ensureOverdueLateFeeInvoice(SUBSCRIPTION_ID, USER_ID);
-        expect(result).toEqual({ invoiceId: "existing-invoice-id", amount: 900, isPaid: false });
+        expect(result).toEqual({ invoiceId: "existing-invoice-id", amount: 1350, isPaid: false });
 
         const invoiceUpdate = stubsByTable.invoices[1].calls.find(([name]) => name === "update");
-        expect(invoiceUpdate?.[1][0]).toEqual({ subtotal_amount: 900, total_amount: 900 });
+        expect(invoiceUpdate?.[1][0]).toEqual({ subtotal_amount: 1350, total_amount: 1350 });
 
         // The day count lives IN the description, so it has to be rewritten
         // with the amount or the bill contradicts itself.
         const itemUpdate = stubsByTable.invoice_items[0].calls.find(([name]) => name === "update");
         expect(itemUpdate?.[1][0]).toMatchObject({
-            description: "Overdue plan renewal — late fee (2 days @ ₹450/day)",
-            unit_amount: 900,
-            amount: 900,
+            description: "Overdue plan renewal — late fee (3 days @ ₹450/day)",
+            unit_amount: 1350,
+            amount: 1350,
         });
     });
 
@@ -291,7 +348,7 @@ describe("syncOverdueLateFeeInvoiceForUser", () => {
         await syncOverdueLateFeeInvoiceForUser(USER_ID);
 
         expect(stubsByTable.invoices[1].calls.find(([name]) => name === "update")?.[1][0])
-            .toEqual({ subtotal_amount: 900, total_amount: 900 });
+            .toEqual({ subtotal_amount: 1350, total_amount: 1350 });
     });
 
     it("does nothing at all for a rider with no active rental", async () => {

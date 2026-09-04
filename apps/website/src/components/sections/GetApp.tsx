@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
  */
 export function GetApp() {
   return (
-    <section id="get-app" className="py-20 sm:py-28">
+    <section id="get-app" className="py-14 sm:py-20">
       <Container>
         <div className="rounded-2xl bg-primary px-6 py-14 text-center sm:px-14">
           <Smartphone className="mx-auto h-10 w-10 text-primary-foreground" aria-hidden />

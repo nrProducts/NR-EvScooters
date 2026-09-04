@@ -2,12 +2,13 @@ import { Check } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Button } from "@/components/ui/Button";
-import { ACTIVE_PLANS } from "@/content/pricing";
+import { useSiteData } from "@/lib/siteData";
 import { formatCurrency } from "@/lib/utils";
 
 export function Pricing() {
+  const { plans } = useSiteData();
   return (
-    <section id="pricing" className="bg-surface py-20 sm:py-28">
+    <section id="pricing" className="bg-surface py-14 sm:py-20">
       <Container>
         <SectionHeading
           eyebrow="Pricing"
@@ -15,8 +16,8 @@ export function Pricing() {
           description="This is the plan currently on offer — pricing is managed centrally, so it's always accurate here."
         />
 
-        <div className="mx-auto mt-14 max-w-md">
-          {ACTIVE_PLANS.map((plan) => (
+        <div className="mx-auto mt-10 max-w-md">
+          {plans.map((plan) => (
             <div key={plan.name} className="rounded-2xl border-2 border-primary bg-card p-8 shadow-lift">
               <span className="inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wide text-secondary-foreground">
                 Most popular

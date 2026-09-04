@@ -32,11 +32,11 @@ const STEPS = [
 
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="py-20 sm:py-28">
+    <section id="how-it-works" className="py-14 sm:py-20">
       <Container>
         <SectionHeading eyebrow="How It Works" title="From sign-up to riding in four steps" />
 
-        <ol className="mt-14 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+        <ol className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {STEPS.map(({ icon: Icon, title, description }, i) => (
             <li key={title} className="relative rounded-2xl border border-border bg-card p-6 shadow-soft">
               <span className="text-sm font-bold text-primary">{String(i + 1).padStart(2, "0")}</span>

@@ -685,11 +685,17 @@ export interface ApiRental {
 // ---------------------------------------------------------------------------
 
 export interface ApiOverdueLateFee {
-    isLate: boolean;
+    /** RETURN-path day count: the handover day counts, because the rider rode the scooter through it. */
     daysLate: number;
-    feePerDay: number;
+    /** RETURN-path money — what the Return sheet collects and the adhoc invoice is raised for. */
     lateFee: number;
+    isLate: boolean;
+    feePerDay: number;
     dueOn: string | null;
+    /** RENEW-path day count. Always one less than daysLate: the renewal payment buys today as plan time. */
+    renewalDaysLate: number;
+    /** RENEW-path money — what Home's renew banner must quote, since its call to action is "Renew Plan Now". */
+    renewalLateFee: number;
     /** True once paid (or if nothing was ever owed) — the Return flow is unblocked. */
     isSettled: boolean;
 }

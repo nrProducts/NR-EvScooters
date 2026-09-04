@@ -1,7 +1,7 @@
 import { Container } from "@/components/ui/Container";
 import { Logo } from "@/components/ui/Logo";
 import { ADMIN_CONSOLE_URL } from "@/content/links";
-import { CONTACT_EMAIL, SOCIAL_LINKS } from "@/content/contact";
+import { CONTACT_EMAIL, CONTACT_PHONE_DISPLAY, CONTACT_PHONE_HREF, CONTACT_ADDRESS, SOCIAL_LINKS } from "@/content/contact";
 
 const QUICK_LINKS = [
   { label: "How It Works", href: "#how-it-works" },
@@ -72,7 +72,12 @@ export function Footer() {
                 {CONTACT_EMAIL}
               </a>
             </li>
-            <li className="text-sm text-muted-foreground">Chennai, India</li>
+            <li>
+              <a href={CONTACT_PHONE_HREF} className="text-sm text-muted-foreground hover:text-primary">
+                {CONTACT_PHONE_DISPLAY}
+              </a>
+            </li>
+            <li className="text-sm leading-relaxed text-muted-foreground">{CONTACT_ADDRESS}</li>
           </ul>
         </div>
       </Container>

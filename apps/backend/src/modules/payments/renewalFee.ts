@@ -120,9 +120,12 @@ export async function lateFeeReferenceDate(
  *   the same day twice — once as plan, once as penalty.
  *
  *   Returning loses today. The rider held the scooter through the 3rd and
- *   hands it back having used it, so the 3rd IS chargeable. That is
- *   computeLateReturnPenalty's job (rentals.service.ts), it counts the
- *   handover day inclusively, and it is deliberately NOT changed by this.
+ *   hands it back having used it, so the 3rd IS chargeable. The return path
+ *   (previewOverdueLateFee -> ensureOverdueLateFeeInvoice, overdueLateFee.ts)
+ *   asks for exactly that by passing `chargeCurrentDay: true` — the overdue
+ *   adhoc invoice is now the ONLY late fee the return flow collects
+ *   (completeRide sets its own settlement late_fee_amount to 0), so the
+ *   handover day has to be counted here or it is never charged at all.
  *
  * So with a period due on the 1st:
  *
@@ -130,8 +133,8 @@ export async function lateFeeReferenceDate(
  *                       today buys it. Late, but nothing lost, nothing owed.
  *   renew on the 3rd -> 1 day  (the 2nd was lost)
  *   renew on the 4th -> 2 days (the 2nd and 3rd were lost)
- *   return on the 3rd -> 2 days, via computeLateReturnPenalty (the 2nd AND
- *                        the 3rd, because the scooter was out on both)
+ *   return on the 3rd -> 2 days (chargeCurrentDay: the 2nd AND the 3rd,
+ *                        because the scooter was out on both)
  *
  * Previously this counted `Math.max(1, dueDate -> today)`, which charged the
  * 3rd as well and floored at one day — so a rider renewing on the 2nd, who
@@ -152,14 +155,17 @@ export async function lateFeeReferenceDate(
 export async function computeLateRenewalFee(
     subscriptionId: string,
     dueDate: string,
+    options: { chargeCurrentDay?: boolean } = {},
 ): Promise<{ isLate: boolean; lateFee: number; daysLate: number; feePerDay: number }> {
     const elapsed = wholeDaysBetween(
         new Date(`${dueDate}T00:00:00Z`),
         new Date(`${businessToday()}T00:00:00Z`),
     );
-    // -1 for today, which the renewal itself pays for. Floored at 0, which
-    // also covers renewing early (elapsed negative).
-    const daysLate = Math.max(0, elapsed - 1);
+    // Renewal drops today (`elapsed - 1`) because the renewal payment itself
+    // buys it; a RETURN keeps today (`chargeCurrentDay`) because the rider used
+    // the scooter through the handover day and nothing else charges for it.
+    // Both floored at 0, which also covers acting early (elapsed <= 0).
+    const daysLate = Math.max(0, elapsed - (options.chargeCurrentDay ? 0 : 1));
     if (daysLate <= 0) return { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0 };
 
     // The rate lookup — subscription override first, then the global rule —

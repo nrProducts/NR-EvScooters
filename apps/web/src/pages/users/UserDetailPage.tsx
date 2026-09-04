@@ -116,6 +116,21 @@ export default function UserDetailPage() {
               label="Current plan"
               value={user.current_plan ? `${user.current_plan.name} — ₹${user.current_plan.price.toFixed(0)}/${user.current_plan.billing_cycle}` : "None"}
             />
+            {/* An open return is its own row here rather than replacing the
+                plan status: a detail page has the space to state both, and
+                staff opening this record need the return surfaced explicitly —
+                it is the thing waiting on them. Same fact the Users grid
+                folds into its Payment column. */}
+            {user.open_return ? (
+              <Row
+                label="Return"
+                value={
+                  <StatusBadge
+                    status={user.open_return.status === "inspected" ? "inspected" : "return_requested"}
+                  />
+                }
+              />
+            ) : null}
             <Row label="Payment status" value={user.payment_status ? <StatusBadge status={user.payment_status} /> : "—"} />
             <Row
               label="Outstanding balance"

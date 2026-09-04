@@ -37,11 +37,11 @@ const REASONS = [
 
 export function WhySwapngo() {
   return (
-    <section id="why" className="py-20 sm:py-28">
+    <section id="why" className="py-14 sm:py-20">
       <Container>
         <SectionHeading eyebrow="Why Swapngo" title="Everything you need, nothing you don't" />
 
-        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {REASONS.map(({ icon: Icon, title, description }) => (
             <div
               key={title}

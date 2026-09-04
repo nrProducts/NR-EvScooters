@@ -6,18 +6,22 @@ import { computeLateRenewalFee, lateFeeReferenceDate } from "../payments/renewal
  * The gate between an overdue rider and "Return Scooter".
  *
  * A rider who has stopped paying (their current period's due_on has passed,
- * unpaid) but wants to hand the scooter back rather than renew still owes
- * the same RENEWAL late fee `computeLateRenewalFee` already charges a rider
- * who renews late — see apps/backend/src/modules/payments/renewalFee.ts. The
- * return flow must collect it before the rental can close, or a rider could
- * dodge the fee entirely just by returning instead of renewing.
+ * unpaid) but wants to hand the scooter back rather than renew still owes a
+ * per-day late fee at the same rate `computeLateRenewalFee` charges a late
+ * renewal — see apps/backend/src/modules/payments/renewalFee.ts. The return
+ * flow must collect it before the rental can close, or a rider could dodge
+ * the fee entirely just by returning instead of renewing.
  *
- * This is deliberately a SEPARATE debt from the return-lateness fee
- * (return_recovery_settings.late_fee_per_day, computeLateReturnPenalty in
- * rentals.service.ts) — that one is about the scooter itself coming back
- * late once a return has been requested; this one is about the plan having
- * lapsed before a return was ever requested at all. A rider can owe either,
- * both, or neither.
+ * One difference from the renewal fee: the RETURN count includes the handover
+ * day itself (`chargeCurrentDay: true` below). A late renewal drops today
+ * because the renewal payment buys it; a return does not buy today, the rider
+ * simply used the scooter through it, so with a period due on the 1st a rider
+ * renewing on the 3rd owes 1 day (the 2nd) but a rider returning on the 3rd
+ * owes 2 (the 2nd and the 3rd).
+ *
+ * This adhoc invoice is now the ONLY late fee the return flow collects — the
+ * old return-lateness settlement fee (computeLateReturnPenalty) was zeroed in
+ * completeRide to avoid charging for lateness two different ways.
  *
  * The charge is collected through a standalone `invoices` row, purpose
  * 'adhoc' — the one enum value nothing else in the codebase produces (see
@@ -31,13 +35,39 @@ import { computeLateRenewalFee, lateFeeReferenceDate } from "../payments/renewal
  * subscription gets activated, just money recorded against an invoice.
  */
 
+/**
+ * BOTH prices for one lapse, because a rider standing on an expired plan has
+ * two different exits and they genuinely cost different amounts:
+ *
+ *   `daysLate` / `lateFee`            — RETURN today. The handover day counts.
+ *   `renewalDaysLate` / `renewalLateFee` — RENEW today. Exactly one day less,
+ *                                          because the renewal payment buys
+ *                                          today as plan time.
+ *
+ * Both are returned from the one endpoint so a screen never has to guess or
+ * derive the other number locally. Home's renew banner quotes the RENEWAL
+ * pair (its call to action is "Renew Plan Now"); the Return sheet and the
+ * payable adhoc invoice quote the RETURN pair. Quoting a day count from one
+ * exit beside a rupee amount from the other is the exact contradiction this
+ * split exists to stop — 3 days next to ₹668 at ₹334/day is not a number a
+ * rider can check.
+ */
 export interface OverdueLateFeePreview {
     isLate: boolean;
     daysLate: number;
     feePerDay: number;
     lateFee: number;
     dueOn: string | null;
+    /** Days the fee covers if the rider RENEWS today rather than returning. Always max(0, daysLate - 1). */
+    renewalDaysLate: number;
+    /** Money owed if the rider RENEWS today rather than returning. */
+    renewalLateFee: number;
 }
+
+const NOTHING_OWED = {
+    isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0,
+    renewalDaysLate: 0, renewalLateFee: 0,
+} as const;
 
 /** Pure read — computes nothing into existence. Safe to call on every screen load. */
 export async function previewOverdueLateFee(subscriptionId: string): Promise<OverdueLateFeePreview> {
@@ -48,13 +78,31 @@ export async function previewOverdueLateFee(subscriptionId: string): Promise<Ove
         .eq("status", "current")
         .maybeSingle();
     if (error) throw error;
-    if (!period) return { isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: null };
+    if (!period) return { ...NOTHING_OWED, dueOn: null };
 
     const referenceDate = await lateFeeReferenceDate(subscriptionId, null, period.due_on);
-    if (!referenceDate) return { isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: period.due_on };
+    if (!referenceDate) return { ...NOTHING_OWED, dueOn: period.due_on };
 
-    const { isLate, daysLate, feePerDay, lateFee } = await computeLateRenewalFee(subscriptionId, referenceDate);
-    return { isLate, daysLate, feePerDay, lateFee, dueOn: period.due_on };
+    // chargeCurrentDay: this is the RETURN path — the rider held the scooter
+    // through today and hands it back today, so the handover day is chargeable
+    // (unlike a renewal, which buys today). See computeLateRenewalFee.
+    const { isLate, daysLate, feePerDay, lateFee } = await computeLateRenewalFee(
+        subscriptionId,
+        referenceDate,
+        { chargeCurrentDay: true },
+    );
+
+    // Derived rather than a second computeLateRenewalFee call: the two differ
+    // only by the handover day and the rate is already resolved, so deriving
+    // it here saves the duplicate pricing_rules lookup AND guarantees the two
+    // figures can never disagree about the rate they were priced at.
+    const renewalDaysLate = Math.max(0, daysLate - 1);
+    const renewalLateFee = Math.round(feePerDay * renewalDaysLate * 100) / 100;
+
+    return {
+        isLate, daysLate, feePerDay, lateFee, dueOn: period.due_on,
+        renewalDaysLate, renewalLateFee,
+    };
 }
 
 /**

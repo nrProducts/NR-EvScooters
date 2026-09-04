@@ -6,6 +6,7 @@ import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { hasActiveRentalForUser } from "../users/users.service";
 import { computeLateReturnPenalty } from "../rentals/rentals.service";
+import { hasOpenReturn, hasOpenReturnForUser } from "../rentals/abandonedRenewal";
 import { returnStageSummaryFor } from "../returns/returns.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { getDepositForSubscriptionOrNull } from "../deposits/deposits.service";
@@ -654,7 +655,18 @@ export async function createBooking(
         hasActiveRentalForUser(actor.id),
     ]);
     if (alreadyBooked || alreadyRenting) {
-        throw conflict("You already have an active booking or rental. Return your scooter or wait for pickup before booking another.");
+        // A rental with a return already requested still counts as active —
+        // requestReturn deliberately leaves it that way until staff confirm
+        // the handover — so this is also the guard that stops a rider booking
+        // a second scooter mid-return. "Return your scooter" is the wrong
+        // instruction for someone who has already done exactly that, so that
+        // case gets its own wording.
+        const pendingReturn = alreadyRenting && await hasOpenReturnForUser(actor.id);
+        throw conflict(
+            pendingReturn
+                ? "Your return is still being completed. You can book another scooter once our team confirms the handover."
+                : "You already have an active booking or rental. Return your scooter or wait for pickup before booking another.",
+        );
     }
 
     const [plan] = await Promise.all([
@@ -1309,6 +1321,20 @@ export async function requestEarlyRecharge(bookingId: string, actor: AuthContext
     const context = (await loadBookingContext([bookingId])).get(bookingId) ?? EMPTY_CONTEXT;
 
     if (!context.subscriptionId) throw businessRule("This booking has no plan to renew yet.");
+
+    // A rider who has asked to hand the scooter back is not buying another
+    // period. Enforced here, not just hidden in the app, because this endpoint
+    // MINTS rows — advanceToNextPeriod inserts a 'scheduled' period and
+    // generate_period_invoice raises its invoice — so an unguarded call
+    // recreates the very phantom bill requestReturn just voided
+    // (abandonedRenewal.ts), and the rider is asked to pay it all over again.
+    if (await hasOpenReturn(context.subscriptionId)) {
+        throw businessRule(
+            "You've requested a return for this scooter, so your plan can't be renewed. "
+            + "Cancel the return with our team first if you'd like to keep riding.",
+        );
+    }
+
     if (context.planStatus !== "active" && context.planStatus !== "past_due") {
         throw businessRule("This plan can't be renewed right now.");
     }

@@ -166,6 +166,11 @@ services:
       # The deployed web console URL, e.g. https://nr-evscooters-web.onrender.com
       - key: VITE_ADMIN_CONSOLE_URL
         sync: false
+      # Backend API base URL incl. /api/v1 (e.g. https://api.swapngo.in/api/v1)
+      # — powers the live plan pricing + fleet/station counts on the site.
+      # Blank = the site runs on its bundled fallback content.
+      - key: VITE_API_BASE_URL
+        sync: false
       - key: VITE_PLAY_STORE_URL
         sync: false
       - key: VITE_APP_STORE_URL

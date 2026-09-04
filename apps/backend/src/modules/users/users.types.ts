@@ -98,6 +98,34 @@ export interface UserListItem extends UserProfile {
      * paid, even while a completed rental's records still exist.
      */
     outstanding_amount: number;
+    /**
+     * The rider's OPEN return, if they have asked to hand the scooter back and
+     * staff have not finished it.
+     *
+     * Needed because `payment_status` cannot answer this and never could:
+     * requestReturn deliberately leaves both the rental and the subscription
+     * ACTIVE until the handover is confirmed (ending them early would release
+     * the vehicle assignment and put a scooter the rider still physically
+     * holds back into the bookable pool). So the Users grid read `active` off
+     * `subscriptions.status` and showed a rider mid-return as an ordinary
+     * paying customer — the plan looked live, the renewal date looked real,
+     * and nothing on the row said a return was waiting on staff.
+     *
+     * `bookings` already merges this into its own status column (see
+     * BookingListPage's four-stage Booked -> Active -> Return Requested ->
+     * Completed); this is the same fact, on the rider.
+     *
+     * Deliberately the raw `rental_returns.status` rather than the full
+     * ReturnStage: computeReturnStage costs a deposit lookup, a damage lookup
+     * and an invoice-paid check PER RENTAL, which is fine for one return
+     * detail page and far too much for every row of a paginated user list.
+     * The Returns screens remain the place for the detailed stage.
+     */
+    open_return: {
+        /** 'requested' = awaiting staff review; 'inspected' = reviewed, settling. */
+        status: "requested" | "inspected";
+        requested_at: string | null;
+    } | null;
 }
 
 export interface UserDetail extends UserListItem {

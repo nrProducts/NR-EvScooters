@@ -8,6 +8,8 @@ import { SCOOTER_HERO } from '../lib/scooterImage';
 import { COLORS } from '../constants/theme';
 import { RENTAL_STATUS_LABEL, RENTAL_STATUS_TONE, formatDate } from '../constants/status';
 import { getRenewalEligibility } from '../lib/returnPolicy';
+import { isReturnLocked } from '../lib/returnLock';
+import { useReturnLock } from './ReturnLockSheet';
 import { describeExpiry, rentalDayNumber } from '../lib/rentalTiming';
 import type { ApiRental } from '../types/api';
 
@@ -49,7 +51,8 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
   const progress =
     totalDays && daysLeft != null ? Math.max(0.04, Math.min(1, (totalDays - daysLeft) / totalDays)) : null;
 
-  const returnRequested = Boolean(rental.return_requested_at);
+  const returnRequested = isReturnLocked(rental);
+  const lock = useReturnLock(returnRequested);
   // Same gate the My Scooter tab and Billing use — offered from the plan's
   // last day onward, and never while a paid renewal is already queued.
   const renewal = getRenewalEligibility(rental.plan_status, rental.next_due_at, rental.renewal_status);
@@ -168,8 +171,11 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
           </TouchableOpacity>
         ) : null}
 
+        {/* Support stays reachable during a return — the likeliest reason a
+            rider needs it IS the handover — but it warns first, so tapping it
+            never reads as "the plan is still editable". See lib/returnLock.ts. */}
         <TouchableOpacity
-          onPress={() => router.push('/support')}
+          onPress={() => lock.run(() => router.push('/support'), 'warn')}
           accessibilityRole="button"
           activeOpacity={0.85}
           className="flex-row items-center justify-center rounded-2xl py-3 mt-3 border"
@@ -179,6 +185,7 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
           <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2">Get Support</Text>
         </TouchableOpacity>
       </View>
+      {lock.sheet}
     </View>
   );
 };

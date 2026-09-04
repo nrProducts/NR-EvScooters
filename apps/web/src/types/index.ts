@@ -212,6 +212,19 @@ export interface AppUser {
    * records still exist. This is the truth for "is this rider due?".
    */
   outstanding_amount: number;
+  /**
+   * The rider's OPEN return, if staff have not finished the handover.
+   *
+   * `payment_status` cannot answer this: requestReturn leaves the rental and
+   * the subscription ACTIVE until the handover is confirmed, so a rider
+   * mid-return reads as an ordinary paying customer. Render this INSTEAD of
+   * the plan status wherever it is set — same rule BookingListPage already
+   * follows in its merged status column.
+   */
+  open_return: {
+    status: "requested" | "inspected";
+    requested_at: string | null;
+  } | null;
 }
 
 export interface AppUserDocument {
