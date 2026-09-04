@@ -10,24 +10,21 @@
     },
     "preview": {
       "distribution": "internal",
-      "env": {
-        "//": "TODO: replace with the real staging values before building.",
-        "EXPO_PUBLIC_API_URL": "https://staging.example.com/api/v1",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://your-project.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-anon-key"
-      }
+      "android": { "buildType": "apk" },
+      "environment": "preview"
     },
     "production": {
       "autoIncrement": true,
-      "env": {
-        "//": "TODO: replace with the real production values before building.",
-        "EXPO_PUBLIC_API_URL": "https://api.example.com/api/v1",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://your-project.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "your-anon-key"
-      }
+      "android": { "buildType": "app-bundle" },
+      "environment": "production"
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
+    }
   }
 }

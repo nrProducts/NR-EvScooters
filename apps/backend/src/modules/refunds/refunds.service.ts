@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "../../config/supabase";
-import { getRazorpay } from "../../config/razorpay";
+import {
+    describeGatewayError, getRazorpay, RefundSimulation, resolveRefundSimulation,
+} from "../../config/razorpay";
 import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
@@ -534,8 +536,18 @@ export async function processRefund(
 ): Promise<RefundRow> {
     const refund = await readRefund(refundId);
     if (!refund) throw notFound("Refund not found.");
+    const simulation = resolveRefundSimulation();
     if (refund.status === "succeeded") return toRefundRow(refund);
-    if (refund.status === "processing") throw conflict("This refund is already being processed.");
+    // A SIMULATED payout parked at `processing` has no webhook coming to
+    // finish it — nothing in dev delivers refund.processed — so retrying it
+    // is the only way out of that state. Narrowly scoped to a refund this
+    // simulator itself created (`sim_refund_…`) while the simulator is still
+    // on, so a real in-flight payout can never be re-sent to the gateway.
+    const resumableSimulation = simulation !== "off"
+        && !!refund.gateway_refund_id?.startsWith("sim_refund_");
+    if (refund.status === "processing" && !resumableSimulation) {
+        throw conflict("This refund is already being processed.");
+    }
     if (refund.status === "rejected") throw conflict("This refund was rejected and can't be processed.");
     // The review gate: a pending refund must be reviewed before it can be
     // approved. Settlement refunds are stamped reviewed_at at creation (the
@@ -592,6 +604,15 @@ export async function processRefund(
 
         const after = await readRefund(refundId);
         return toRefundRow(after ?? refund);
+    }
+
+    // --- Simulated payout (development only) ------------------------------
+    //
+    // resolveRefundSimulation() has already refused to return anything but
+    // "off" in production or against a live key, so reaching here means a
+    // developer explicitly asked for it on a test account.
+    if (simulation !== "off") {
+        return await simulateRefundPayout(refundId, refund, simulation, actor);
     }
 
     await supabaseAdmin
@@ -668,14 +689,124 @@ export async function processRefund(
         const after = await readRefund(refundId);
         return toRefundRow(after ?? refund);
     } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        // describeGatewayError, NOT `err instanceof Error ? … : String(err)`.
+        // The Razorpay SDK rejects with a plain object, so the old expression
+        // wrote the literal string "[object Object]" into failure_reason and
+        // into the audit log — the one place an operator looks to find out
+        // why a rider's money did not move.
+        const message = describeGatewayError(err);
         await markRefundFailed(refundId, message);
         await writeAudit({
             actorId: actor?.id ?? null, targetUserId: refund.user_id, action: "refund.failed",
             entityType: "refund", entityId: refundId, after: { reason: message },
         });
-        throw err;
+        // Rethrown as a legible API error rather than the raw SDK rejection,
+        // which `errorHandler` would otherwise flatten to a generic 500 and
+        // the admin console would show as "Something went wrong".
+        if (err instanceof Error) throw err;
+        throw businessRule(message);
     }
+}
+
+/**
+ * The development-only stand-in for the gateway payout above.
+ *
+ * Everything a real payout touches, it touches — status, gateway_refund_id,
+ * attempt_count, deposit release, rider notification, audit — so the states
+ * the rider and the admin console see are the genuine ones. The two things
+ * that make it safe are that it is unreachable in production (see
+ * resolveRefundSimulation) and that everything it writes says so: a
+ * `sim_refund_…` id and `simulated: true` on every audit row.
+ */
+async function simulateRefundPayout(
+    refundId: string,
+    refund: RawRefundRow,
+    mode: Exclude<RefundSimulation, "off">,
+    actor: AuthContext | null,
+): Promise<RefundRow> {
+    const { subscription } = chainOf(refund);
+    const nowIso = new Date().toISOString();
+    const amount = Number(refund.amount);
+    // A resumed `processing` simulation keeps the id it was already given, so
+    // the admin console's row does not appear to change payout mid-flight.
+    const gatewayRefundId = refund.gateway_refund_id?.startsWith("sim_refund_")
+        ? refund.gateway_refund_id
+        : `sim_refund_${randomUUID()}`;
+
+    if (mode === "fail") {
+        const message = "Simulated gateway failure (REFUND_SIMULATION_MODE=fail).";
+        await supabaseAdmin
+            .from("refunds")
+            .update({
+                status: "failed",
+                failure_reason: message,
+                last_attempted_at: nowIso,
+                attempt_count: refund.attempt_count + 1,
+            })
+            .eq("id", refundId)
+            .neq("status", "succeeded");
+        await writeAudit({
+            actorId: actor?.id ?? null, targetUserId: refund.user_id, action: "refund.failed",
+            entityType: "refund", entityId: refundId, after: { reason: message, simulated: true },
+        });
+        throw businessRule(message);
+    }
+
+    if (mode === "processing") {
+        await supabaseAdmin
+            .from("refunds")
+            .update({
+                status: "processing",
+                gateway_refund_id: gatewayRefundId,
+                last_attempted_at: nowIso,
+                attempt_count: refund.attempt_count + 1,
+            })
+            .eq("id", refundId)
+            .neq("status", "succeeded");
+        await writeAudit({
+            actorId: actor?.id ?? null, targetUserId: refund.user_id, action: "refund.submitted",
+            entityType: "refund", entityId: refundId,
+            after: { gateway_refund_id: gatewayRefundId, simulated: true, awaiting: "retry (no webhook in simulation)" },
+        });
+        const pending = await readRefund(refundId);
+        return toRefundRow(pending ?? refund);
+    }
+
+    // mode === "success"
+    await supabaseAdmin
+        .from("refunds")
+        .update({
+            status: "succeeded",
+            gateway_refund_id: gatewayRefundId,
+            completed_at: nowIso,
+            last_attempted_at: nowIso,
+            failure_reason: null,
+            attempt_count: refund.attempt_count + 1,
+        })
+        .eq("id", refundId)
+        .neq("status", "succeeded");
+
+    if (subscription) {
+        await releaseDepositIfFullyRefunded(subscription.id, amount);
+    }
+
+    await writeAudit({
+        actorId: actor?.id ?? null, targetUserId: refund.user_id, action: "refund.processed",
+        entityType: "refund", entityId: refundId,
+        after: { gateway_refund_id: gatewayRefundId, simulated: true, amount },
+    });
+
+    await notifyUser(refund.user_id, {
+        template: "refund_completed",
+        title: "Refund Completed",
+        body: refund.reason === "booking_cancellation"
+            ? `Your refund of ₹${amount} for the cancelled booking has been completed.`
+            : `Your refund of ₹${amount} has been completed.`,
+        screen: refund.reason === "booking_cancellation" ? "booking-history" : "my-plan",
+    });
+
+    const after = await readRefund(refundId);
+    return toRefundRow(after ?? refund);
 }
 
 /**

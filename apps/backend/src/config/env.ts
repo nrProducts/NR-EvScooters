@@ -109,6 +109,29 @@ export const env = {
     razorpayWebhookSecret: requiredInProduction("RAZORPAY_WEBHOOK_SECRET"),
 
     /**
+     * DEVELOPMENT ONLY — makes refund payouts testable without a gateway that
+     * will actually pay out. `off` (the default) is the only value with any
+     * effect in production, because config/razorpay.ts's
+     * `resolveRefundSimulation` refuses every other value when NODE_ENV is
+     * production or the key is a `rzp_live_` one.
+     *
+     * Read the raw string here rather than validating it: an unknown value
+     * must not stop the server booting, and the resolver is where the
+     * safety rules live so there is one place to read them.
+     *
+     *   off        — real gateway call (default)
+     *   success    — payout settles immediately
+     *   processing — payout accepted, awaiting the (never-arriving) webhook
+     *   fail       — gateway rejects the payout
+     *
+     * A simulated payout is stamped `sim_refund_<uuid>` and audited with
+     * `simulated: true`, so it is never mistakable for real money leaving —
+     * which is the failure the deleted mock branch caused (see
+     * refunds.service.ts).
+     */
+    refundSimulationMode: process.env.REFUND_SIMULATION_MODE ?? "off",
+
+    /**
      * How long a checkout session stays collectable. Matches the vehicle hold
      * (BOOKING_PAYMENT_GRACE_MINUTES) by default so the order and the scooter
      * reservation expire together — an order outliving its hold would send a

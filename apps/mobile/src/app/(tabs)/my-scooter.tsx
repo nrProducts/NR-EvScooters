@@ -28,7 +28,8 @@ import { useCurrentRideOrBooking } from '../../hooks/useCurrentRideOrBooking';
 import { useVehicleCatalogStore } from '../../store/useVehicleCatalogStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { rentalRepository } from '../../services';
-import { SettlementCard, shouldShowSettlement } from '../../components/SettlementCard';
+import { SettlementCard } from '../../components/SettlementCard';
+import { isAmountDueSettlement } from '../../lib/settlementDisplay';
 import type { ApiReturnSettlement } from '../../types/api';
 import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -177,10 +178,18 @@ export default function MyScooterScreen() {
                 />,
               )}
 
-              {/* A return in Payment Required/Submitted keeps the rental (and
-                  vehicle) with the rider until Approve Return completes it —
-                  so this can't wait for the "no active rental" branch below. */}
-              {shouldShowSettlement(settlement) ? (
+              {/* ONLY the amount-due variant, and only here.
+                  A return in Payment Required/Submitted keeps the rental (and
+                  vehicle) with the rider until Approve Return completes it, so
+                  the "pay this to finish your return" card has to be reachable
+                  from the screen about that scooter — it can't wait for the
+                  "no active rental" branch below.
+                  The REFUND variant used to render here too, which put "your
+                  ₹2000 is coming back" on the screen about the vehicle rather
+                  than the one about money. It lives on Billing now, where it
+                  stays until the refund actually lands — see
+                  shouldShowRefundInBilling. */}
+              {isAmountDueSettlement(settlement) ? (
                 <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
               ) : null}
 
@@ -365,7 +374,11 @@ export default function MyScooterScreen() {
             </>
           ) : (
             <>
-              {shouldShowSettlement(settlement) ? (
+              {/* Same rule as the branch above: money still owed is payable
+                  from here, money coming back is Billing's card. Without the
+                  refund variant this branch is just the empty state, which is
+                  the honest answer to "my scooter" once the scooter is gone. */}
+              {isAmountDueSettlement(settlement) ? (
                 <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
               ) : null}
               <EmptyState

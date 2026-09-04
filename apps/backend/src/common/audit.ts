@@ -67,6 +67,10 @@ export type AuditAction =
     | "pricing_rule.created" | "pricing_rule.updated" | "pricing_rule.deleted" | "subscription_adjustment.waived"
     // DPDPA — consent (ss.5-6)
     | "consent.granted" | "consent.withdrawn" | "consent.notice_published"
+    // Terms & Conditions. Separate from consent above because these record
+    // formation of the RENTAL CONTRACT, not a lawful basis for processing
+    // data — the evidence behind a late fee or a damage deduction.
+    | "legal_document.published" | "legal_document.accepted"
     // DPDPA — data-principal rights (ss.11-14)
     | "privacy.request_created" | "privacy.request_updated" | "privacy.request_assigned"
     | "privacy.request_completed" | "privacy.request_rejected" | "privacy.request_cancelled"
@@ -105,6 +109,7 @@ export interface AuditEntry {
         | "notification_broadcast" | "notification_setting" | "notification_message"
         | "return_recovery_setting" | "cancellation_tier"
         | "consent_record" | "consent_notice" | "privacy_request" | "retention_run"
+        | "legal_document" | "legal_acceptance"
         | "referral"
         | "attendance_record" | "leave_request" | "holiday";
     entityId: string;

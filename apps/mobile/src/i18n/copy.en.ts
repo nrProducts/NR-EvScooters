@@ -31,7 +31,12 @@ export const en = {
     'consent.detail.retention': 'How long we keep it',
     'consent.readNotice': 'Read the full privacy notice',
     'consent.version': 'Notice version {version}, effective {date}',
-    'consent.confirmDeclaration': 'I confirm that I have read and agree to the terms and conditions.',
+    // Reworded to cover the privacy notice ONLY. It previously said "the terms
+    // and conditions", which the app neither showed the rider nor recorded —
+    // a declaration about a document that did not exist on any screen. The
+    // Terms now have their own document, their own checkbox below, and their
+    // own acceptance record.
+    'consent.confirmDeclaration': 'I confirm that I have read and understood the privacy notice.',
     'consent.accept': 'Agree & Continue',
     'consent.saving': 'Saving your choices...',
     'consent.error': 'We could not save your choices. Please try again.',
@@ -39,6 +44,24 @@ export const en = {
         'Our privacy notice has been updated since you opened this screen. Please read it again and choose.',
     'consent.grantedOn': 'Consent for identity verification given on {date}',
     'consent.manage': 'Manage',
+
+    // --- Terms & Conditions -----------------------------------------------
+    // A separate legal act from consent above: consent is the lawful basis
+    // for processing data, these form the rental contract that makes a late
+    // fee, damage charge or deposit deduction collectable.
+    'terms.title': 'Terms & Conditions',
+    'terms.version': 'Version {version}, effective {date}',
+    'terms.readTerms': 'Read the full Terms & Conditions',
+    'terms.agree': 'I have read and agree to the Terms & Conditions.',
+    // Shown until the rider has actually opened the document. The checkbox
+    // stays disabled until then, so "I have read" is not a claim the app
+    // invited them to make without ever showing them anything.
+    'terms.openFirst': 'Open the Terms & Conditions above before you agree.',
+    'terms.acceptedOn': 'You accepted version {version} on {date}.',
+    'terms.englishOnly':
+        'Shown in English. A reviewed Tamil translation is not available yet — ask our support team if anything is unclear.',
+    'terms.stale':
+        'Our Terms have been updated since you opened this screen. Please read them again and accept.',
 
     // --- purposes ---------------------------------------------------------
     'purpose.kyc_identity_verification.title': 'Verify who you are',

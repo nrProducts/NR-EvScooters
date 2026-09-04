@@ -1129,6 +1129,113 @@ export type Database = {
         }
         Relationships: []
       }
+      legal_acceptances: {
+        Row: {
+          accepted_at: string
+          actor_id: string | null
+          device_id: string | null
+          doc_type: Database["public"]["Enums"]["legal_document_type"]
+          document_id: string
+          document_version: string
+          id: string
+          ip: unknown | null
+          language: string
+          source: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string
+          actor_id?: string | null
+          device_id?: string | null
+          doc_type: Database["public"]["Enums"]["legal_document_type"]
+          document_id: string
+          document_version: string
+          id?: string
+          ip?: unknown | null
+          language?: string
+          source?: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string
+          actor_id?: string | null
+          device_id?: string | null
+          doc_type?: Database["public"]["Enums"]["legal_document_type"]
+          document_id?: string
+          document_version?: string
+          id?: string
+          ip?: unknown | null
+          language?: string
+          source?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_acceptances_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "legal_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_acceptances_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      legal_documents: {
+        Row: {
+          body_en: string
+          body_sha256: string
+          body_ta: string | null
+          created_at: string
+          created_by: string | null
+          doc_type: Database["public"]["Enums"]["legal_document_type"]
+          effective_from: string
+          id: string
+          retired_at: string | null
+          version: string
+        }
+        Insert: {
+          body_en: string
+          body_sha256: string
+          body_ta?: string | null
+          created_at?: string
+          created_by?: string | null
+          doc_type: Database["public"]["Enums"]["legal_document_type"]
+          effective_from?: string
+          id?: string
+          retired_at?: string | null
+          version: string
+        }
+        Update: {
+          body_en?: string
+          body_sha256?: string
+          body_ta?: string | null
+          created_at?: string
+          created_by?: string | null
+          doc_type?: Database["public"]["Enums"]["legal_document_type"]
+          effective_from?: string
+          id?: string
+          retired_at?: string | null
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maintenance_tickets: {
         Row: {
           cost_amount: number | null
@@ -4009,6 +4116,7 @@ export type Database = {
         | "verified"
         | "rejected"
       leave_request_status: "pending" | "approved" | "rejected" | "cancelled"
+      legal_document_type: "terms"
       maintenance_outcome:
         | "quick_fix"
         | "temp_vehicle"

@@ -15,11 +15,13 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { billingRepository, rentalRepository } from '../../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
 import { getRenewalEligibility } from '../../lib/returnPolicy';
+import { SettlementCard } from '../../components/SettlementCard';
+import { shouldShowRefundInBilling } from '../../lib/settlementDisplay';
 import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
 import { ApiError } from '../../lib/ApiError';
 import type {
-  ApiEarlyRecharge, ApiInvoice, ApiPaymentOrder, ApiPlanQuote, ApiReturnStage,
-  InvoicePaymentState,
+  ApiEarlyRecharge, ApiInvoice, ApiPaymentOrder, ApiPlanQuote, ApiReturnSettlement,
+  ApiReturnStage, InvoicePaymentState,
 } from '../../types/api';
 
 const CYCLE_LABEL: Record<string, string> = {
@@ -385,6 +387,34 @@ export default function BillingScreen() {
   // namespaced by kind covers both instead of two separate expanded-id
   // states that only ever apply to half the list each.
   const [expandedHistoryKey, setExpandedHistoryKey] = useState<string | null>(null);
+
+  // The return settlement, for the refund card below. Billing is where money
+  // owed TO the rider belongs — My Scooter used to carry this, which put a
+  // refund notice on the screen about the vehicle and made it vanish once
+  // the 48h display window lapsed, whether or not the money had arrived.
+  // Here it stays until the refund is actually completed; see
+  // shouldShowRefundInBilling.
+  //
+  // Its own fetch rather than a field on useMyBilling: the settlement
+  // survives the rental, so it must load even in the no-active-booking
+  // branch, where useMyBilling has no booking to hang anything off.
+  const [settlement, setSettlement] = useState<ApiReturnSettlement | null>(null);
+  const loadSettlement = useCallback(() => {
+    void rentalRepository.settlement().then(setSettlement).catch(() => {
+      // Non-critical: the rest of Billing renders fine without it.
+    });
+  }, []);
+  useEffect(loadSettlement, [loadSettlement]);
+  // Refetched on focus for the same reason Home and My Scooter do it: an
+  // admin approving the return, or the refund completing at the gateway,
+  // changes this with no action of the rider's own.
+  useFocusEffect(useCallback(() => { loadSettlement(); }, [loadSettlement]));
+
+  const renderRefundCard = () => (
+    shouldShowRefundInBilling(settlement)
+      ? <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
+      : null
+  );
 
   // The admin side can change this rider's plan_status (a payment going
   // overdue, a vehicle being released) with no action of the rider's own —
@@ -999,7 +1029,15 @@ export default function BillingScreen() {
         </View>
       ) : error ? (
         <ErrorState message={error} onRetry={() => void reload()} />
-      ) : !bookingId && (outstandingInvoices.length > 0 || paymentHistoryItems.length > 0) ? (
+      ) : !bookingId && (
+        outstandingInvoices.length > 0
+        || paymentHistoryItems.length > 0
+        // A rider whose rental has ended and whose refund hasn't landed yet
+        // has something live on this screen even with an empty history, and
+        // "No active plan" would be the one screen in the app not telling
+        // them where their deposit is.
+        || shouldShowRefundInBilling(settlement)
+      ) ? (
         // No active booking/rental right now — but Billing stays a live
         // record of everything that ever happened on this account, not a
         // screen that goes blank the moment there's nothing currently
@@ -1012,6 +1050,10 @@ export default function BillingScreen() {
           contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
+          {/* Above Amount Due: the refund is the newest thing that happened
+              to this rider's money, and it is the reason they opened this
+              screen. */}
+          {renderRefundCard()}
           {outstandingInvoices.length > 0 ? (
             <>
               <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Amount Due</Text>
@@ -1033,6 +1075,12 @@ export default function BillingScreen() {
           contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
+          {/* A refund from the PREVIOUS rental can still be in flight while
+              this rider is already on a new plan — the refund outlives the
+              rental that produced it, so it is not the else-branch of
+              anything below. */}
+          {renderRefundCard()}
+
           {/* Current plan — a quiet, sophisticated surface rather than a
               solid brand-color block: the price is the loud element, not
               the card itself. */}

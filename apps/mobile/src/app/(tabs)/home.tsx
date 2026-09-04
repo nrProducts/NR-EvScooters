@@ -13,6 +13,7 @@ import { SettlementCard } from '../../components/SettlementCard';
 import { HomeHeroCard } from '../../components/home/HomeHeroCard';
 import { HomeQuickLinks } from '../../components/home/HomeQuickLinks';
 import { isReturnLocked } from '../../lib/returnLock';
+import { useDismissibleBanner } from '../../lib/dismissedBanners';
 import { NeedHelpCard } from '../../components/home/NeedHelpCard';
 import { Badge } from '../../components/ui/Badge';
 import { SkeletonList } from '../../components/ui/Skeleton';
@@ -76,6 +77,16 @@ export default function HomeScreen() {
   // The rider's place in the rental journey — drives which single primary card
   // shows below and whether discovery / the Book action are offered.
   const journey = useRiderJourney({ pendingBooking, activeRental, settlement });
+
+  // The post-return summary is INFORMATION, not a task — the refund proceeds
+  // whether or not the rider is looking at it, and Billing now carries the
+  // same card until the money actually lands. So Home lets it be closed,
+  // keyed by the rental it describes: a later return brings a new key and
+  // shows again. The journey phase still reads `rental_completed` either
+  // way, so dismissing this changes nothing else about what Home offers.
+  const [settlementDismissed, dismissSettlement] = useDismissibleBanner(
+    settlement ? `settlement:${settlement.rental_id}` : null,
+  );
 
   // has_active_booking/has_active_rental can change server-side without any
   // action the rider took here — an admin releasing a vehicle that was still
@@ -350,7 +361,13 @@ export default function HomeScreen() {
           )
         ) : journey.phase === 'rental_completed' ? (
           <>
-            {settlement ? <SettlementCard settlement={settlement} onPaid={loadSettlement} /> : null}
+            {settlement && !settlementDismissed ? (
+              <SettlementCard
+                settlement={settlement}
+                onPaid={loadSettlement}
+                onDismiss={dismissSettlement}
+              />
+            ) : null}
             <HomeHeroCard phase="rental_completed" featured={featuredRef} />
           </>
         ) : journey.phase === 'loading' ? (
@@ -359,8 +376,21 @@ export default function HomeScreen() {
           <HomeHeroCard phase={journey.phase} featured={featuredRef} />
         )}
 
-        {/* ---- Discovery: only while the rider can actually book ---- */}
-        {journey.phase === 'ready_to_book' ? (
+        {/* ---- Discovery: only while the rider can actually book ----
+            `rental_completed` counts, and leaving it out was a bug. That
+            phase means "no live rental, but a settlement worth showing" —
+            deriveRiderPhase only reaches it AFTER the `!can_rent` check, so
+            the rider is verified and free to book; the hero card sitting
+            right above it says "Ready for your next ride?" and offers Book.
+            Gating on ready_to_book alone therefore removed the scooter card
+            and the whole Available Scooters list from a rider who was being
+            invited to book in the same breath.
+            Worse, it did so INDEFINITELY: shouldShowSettlement stays true
+            forever while a refund is unresolved (its 48h window only applies
+            to terminal states), so a refund stuck at pending — a failed
+            gateway payout reads as `pending_refund` — kept discovery hidden
+            for good. */}
+        {journey.phase === 'ready_to_book' || journey.phase === 'rental_completed' ? (
           <>
             <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold uppercase tracking-wide mb-2">
               Ready to ride?
