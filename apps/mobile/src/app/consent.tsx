@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Spinner } from '../components/Spinner';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ShieldCheck, ChevronDown, ChevronUp, FileText, Lock } from 'lucide-react-native';
+import { ShieldCheck, ChevronDown, ChevronUp, ChevronRight, FileText, Lock } from 'lucide-react-native';
 import { COLORS } from '../constants/theme';
 import { ConsentToggle } from '../components/ui/ConsentToggle';
 import { CheckRow } from '../components/ui/CheckRow';
@@ -12,7 +12,9 @@ import { useT, useLangStore } from '../i18n';
 import type { CopyKey } from '../i18n';
 import { useConsent } from '../hooks/useConsent';
 import { useAuthStore } from '../store/useAuthStore';
-import type { ConsentPurpose } from '../types/api';
+import { api } from '../lib/api';
+import { ApiError } from '../lib/ApiError';
+import type { ApiLegalDocument, ConsentPurpose } from '../types/api';
 
 /**
  * Notice-and-consent capture (DPDPA ss.5-6), shown between profile setup and
@@ -29,12 +31,54 @@ export default function ConsentScreen() {
     const { t } = useT();
     const hydrate = useLangStore((s) => s.hydrate);
     const langReady = useLangStore((s) => s.ready);
+    const lang = useLangStore((s) => s.lang);
 
     const { state, notice, loading, saving, error, save } = useConsent();
     const refreshProfile = useAuthStore((s) => s.refreshProfile);
     const [optional, setOptional] = useState<Record<string, boolean>>({});
     const [expanded, setExpanded] = useState<string | null>(null);
     const [declared, setDeclared] = useState(false);
+
+    // --- Terms & Conditions ------------------------------------------------
+    // Fetched here rather than through useConsent: the Terms are a different
+    // document with a different lifecycle, and folding them into the consent
+    // hook would tie a re-consent prompt to a terms revision and vice versa.
+    const [terms, setTerms] = useState<ApiLegalDocument | null>(null);
+    const [agreedToTerms, setAgreedToTerms] = useState(false);
+    // The rider must OPEN the document before the agreement box will enable.
+    // "I have read" should not be a claim the app invites without ever having
+    // shown them anything — and this is the one screen where that claim is
+    // later relied on to collect money.
+    const [openedTerms, setOpenedTerms] = useState(false);
+    const [termsError, setTermsError] = useState<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        api.termsDocument(lang)
+            .then((doc) => {
+                if (cancelled) return;
+                setTerms((prev) => {
+                    // A language switch re-fetches the same version; only a
+                    // genuinely different version should reset the rider's
+                    // ticks, so switching language mid-signup does not quietly
+                    // undo what they already did.
+                    if (prev && prev.version !== doc.version) {
+                        setAgreedToTerms(false);
+                        setOpenedTerms(false);
+                    }
+                    return doc;
+                });
+            })
+            .catch(() => {
+                // Left null. The Continue button stays disabled below, so the
+                // rider cannot proceed past terms we failed to load rather
+                // than proceeding without accepting them.
+                if (!cancelled) setTerms(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [lang]);
 
     useEffect(() => {
         if (!langReady) void hydrate();
@@ -71,6 +115,37 @@ export default function ConsentScreen() {
         ];
         const result = await save(grants);
         if (!result.ok) return;
+
+        // Terms acceptance is recorded SECOND and separately, because it is a
+        // separate legal act: consent above is the lawful basis for processing
+        // data, this forms the rental contract.
+        //
+        // A failure here must not navigate on. Consent is already saved (and
+        // is idempotent to re-save), so the rider lands back on this screen
+        // with both boxes still ticked and can retry — far better than
+        // reaching /kyc-intro having agreed to terms we never recorded, which
+        // is precisely the state that makes a damage charge unenforceable.
+        if (terms) {
+            try {
+                await api.acceptTerms({ version: terms.version, language: terms.language });
+            } catch (err) {
+                setTermsError(
+                    err instanceof ApiError && err.status === 409
+                        ? t('terms.stale')
+                        : err instanceof ApiError
+                          ? err.message
+                          : t('consent.error'),
+                );
+                // A 409 means the document changed under them — re-fetch so
+                // they are reading, and accepting, the version now live.
+                if (err instanceof ApiError && err.status === 409) {
+                    api.termsDocument(lang).then(setTerms).catch(() => {});
+                    setAgreedToTerms(false);
+                    setOpenedTerms(false);
+                }
+                return;
+            }
+        }
 
         // The routing gate in _layout.tsx decides whether to show this screen
         // from profile.consent_up_to_date, which is the CACHED profile in the
@@ -205,12 +280,86 @@ export default function ConsentScreen() {
                 />
             </View>
 
+            {/*
+              * Terms & Conditions — a second, separate legal act.
+              *
+              * Kept visually distinct from the privacy block above rather than
+              * merged into one "I agree to everything" tick, because they are
+              * different agreements with different consequences: one governs
+              * data, the other governs money. A rider disputing a damage
+              * charge should be able to point at the box that was about the
+              * damage charge.
+              */}
+            <View
+                className="rounded-2xl border p-4 mb-4"
+                style={{ borderColor: COLORS.border, backgroundColor: COLORS.card }}
+            >
+                <TouchableOpacity
+                    onPress={() => {
+                        setOpenedTerms(true);
+                        router.push('/terms' as never);
+                    }}
+                    accessibilityRole="link"
+                    className="flex-row items-center mb-3"
+                >
+                    <FileText size={16} color={COLORS.primary} />
+                    <Text style={{ color: COLORS.primary }} className="text-xs font-bold ml-2 flex-1">
+                        {t('terms.readTerms')}
+                    </Text>
+                    <ChevronRight size={16} color={COLORS.primary} />
+                </TouchableOpacity>
+
+                <CheckRow
+                    checked={agreedToTerms}
+                    onToggle={() => setAgreedToTerms((v) => !v)}
+                    text={t('terms.agree')}
+                    // Disabled until they have opened the document, and while
+                    // it has not loaded — never pre-checked.
+                    disabled={saving || !openedTerms || !terms}
+                />
+
+                {!openedTerms ? (
+                    <Text
+                        style={{ color: COLORS.textSecondary }}
+                        className="text-[10px] font-semibold mt-2 ml-8"
+                    >
+                        {t('terms.openFirst')}
+                    </Text>
+                ) : null}
+
+                {terms ? (
+                    <Text
+                        style={{ color: COLORS.textSecondary }}
+                        className="text-[10px] font-semibold mt-2 ml-8"
+                    >
+                        {t('terms.version', {
+                            version: terms.version,
+                            date: new Date(terms.effective_from).toLocaleDateString(),
+                        })}
+                    </Text>
+                ) : null}
+            </View>
+
+            {termsError ? (
+                <View
+                    className="rounded-2xl border p-3.5 mb-4"
+                    style={{ borderColor: COLORS.danger, backgroundColor: COLORS.danger + '10' }}
+                >
+                    <Text style={{ color: COLORS.danger }} className="text-xs font-semibold">
+                        {termsError}
+                    </Text>
+                </View>
+            ) : null}
+
             <TouchableOpacity
                 onPress={() => void accept()}
-                disabled={saving || !declared}
+                disabled={saving || !declared || !agreedToTerms || !terms}
                 accessibilityRole="button"
-                accessibilityState={{ disabled: saving || !declared }}
-                style={{ backgroundColor: COLORS.primary, opacity: saving || !declared ? 0.5 : 1 }}
+                accessibilityState={{ disabled: saving || !declared || !agreedToTerms || !terms }}
+                style={{
+                    backgroundColor: COLORS.primary,
+                    opacity: saving || !declared || !agreedToTerms || !terms ? 0.5 : 1,
+                }}
                 className="w-full py-4 rounded-2xl flex-row justify-center items-center"
             >
                 {saving ? (

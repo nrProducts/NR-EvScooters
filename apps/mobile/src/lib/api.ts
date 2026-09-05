@@ -9,7 +9,7 @@ export { ApiError };
 import type {
     ApiAvailability, ApiBooking, ApiBookingWithPlan, ApiConsentHistoryItem, ApiConsentNotice,
     ApiConsentState, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiErrorBody,
-    ApiInvoice, ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
+    ApiInvoice, ApiKycSummary, ApiLegalAcceptanceState, ApiLegalDocument, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
     ApiNominee, ApiPrivacyRequest, ApiPrivacySummary, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
     ApiOverdueLateFee, ApiOverdueLateFeeInvoice, ApiReturnStage,
@@ -258,6 +258,28 @@ export const api = {
         params: { q: string; lat?: number; lng?: number },
         signal?: AbortSignal,
     ) => request<{ data: GeocodeArea[] }>('/geocode/search', { query: params, signal }),
+
+    // --- Terms & Conditions -----------------------------------------------
+    // Separate from the consent calls below on purpose: those establish a
+    // lawful basis for processing data, these record acceptance of the
+    // rental contract — the evidence behind a late fee or damage charge.
+    termsDocument: (lang: 'en' | 'ta') =>
+        request<ApiLegalDocument>('/legal/documents/terms', { query: { lang } }),
+
+    myTermsState: () => request<ApiLegalAcceptanceState>('/users/me/legal/terms'),
+
+    /**
+     * The version being displayed is sent back so the server can refuse an
+     * acceptance made against terms that were retired while the screen was
+     * open — the rider must never be recorded as agreeing to words they did
+     * not see. `language` is what they actually read, not their app-wide
+     * preference, since the Tamil body may not exist.
+     */
+    acceptTerms: (input: { version: string; language: 'en' | 'ta' }) =>
+        request<ApiLegalAcceptanceState>('/users/me/legal/acceptances', {
+            method: 'POST',
+            body: { doc_type: 'terms', ...input },
+        }),
 
     // --- DPDPA consent ----------------------------------------------------
     consentNotice: (lang: 'en' | 'ta') =>

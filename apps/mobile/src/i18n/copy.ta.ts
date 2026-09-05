@@ -47,7 +47,9 @@ export const ta: Copy = {
     'consent.detail.retention': 'எவ்வளவு காலம் வைத்திருக்கிறோம்',
     'consent.readNotice': 'முழு தனியுரிமை அறிவிப்பைப் படிக்கவும்',
     'consent.version': 'அறிவிப்பு பதிப்பு {version}, {date} முதல் அமல்',
-    'consent.confirmDeclaration': 'நான் விதிமுறைகள் மற்றும் நிபந்தனைகளைப் படித்து ஒப்புக்கொள்கிறேன் என்பதை உறுதிப்படுத்துகிறேன்.',
+    // Matches the reworded English: this declaration now covers the PRIVACY
+    // NOTICE only. The Terms have their own checkbox and their own record.
+    'consent.confirmDeclaration': 'தனியுரிமை அறிவிப்பைப் படித்து புரிந்துகொண்டேன் என்பதை உறுதிப்படுத்துகிறேன்.',
     'consent.accept': 'ஒப்புக்கொண்டு தொடரவும்',
     'consent.saving': 'உங்கள் தேர்வுகள் சேமிக்கப்படுகின்றன...',
     'consent.error': 'உங்கள் தேர்வுகளைச் சேமிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.',
@@ -55,6 +57,21 @@ export const ta: Copy = {
         'இந்தத் திரையைத் திறந்த பிறகு எங்கள் தனியுரிமை அறிவிப்பு புதுப்பிக்கப்பட்டுள்ளது. மீண்டும் படித்துத் தேர்வு செய்யவும்.',
     'consent.grantedOn': 'அடையாளச் சரிபார்ப்புக்கான சம்மதம் {date} அன்று வழங்கப்பட்டது',
     'consent.manage': 'நிர்வகி',
+
+    // --- விதிமுறைகள் மற்றும் நிபந்தனைகள் ------------------------------------
+    // UI labels only. The Terms DOCUMENT itself is served in English until a
+    // human-reviewed Tamil translation exists — a legal text must not be
+    // machine-translated, which is what 'terms.englishOnly' tells the rider.
+    'terms.title': 'விதிமுறைகள் மற்றும் நிபந்தனைகள்',
+    'terms.version': 'பதிப்பு {version}, {date} முதல் அமலில்',
+    'terms.readTerms': 'முழு விதிமுறைகளையும் நிபந்தனைகளையும் படிக்கவும்',
+    'terms.agree': 'விதிமுறைகள் மற்றும் நிபந்தனைகளைப் படித்து ஒப்புக்கொள்கிறேன்.',
+    'terms.openFirst': 'ஒப்புக்கொள்வதற்கு முன் மேலே உள்ள விதிமுறைகளைத் திறந்து படிக்கவும்.',
+    'terms.acceptedOn': 'பதிப்பு {version} ஐ {date} அன்று நீங்கள் ஏற்றுக்கொண்டீர்கள்.',
+    'terms.englishOnly':
+        'ஆங்கிலத்தில் காட்டப்படுகிறது. மதிப்பாய்வு செய்யப்பட்ட தமிழ் மொழிபெயர்ப்பு இன்னும் கிடைக்கவில்லை — ஏதேனும் தெளிவில்லை என்றால் எங்கள் ஆதரவுக் குழுவைக் கேட்கவும்.',
+    'terms.stale':
+        'இந்தத் திரையைத் திறந்ததிலிருந்து எங்கள் விதிமுறைகள் புதுப்பிக்கப்பட்டுள்ளன. மீண்டும் படித்து ஏற்கவும்.',
 
     // --- purposes ---------------------------------------------------------
     'purpose.kyc_identity_verification.title': 'நீங்கள் யார் என்பதைச் சரிபார்த்தல்',

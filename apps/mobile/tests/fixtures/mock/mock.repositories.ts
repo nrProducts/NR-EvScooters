@@ -415,6 +415,11 @@ export class MockUserRepository implements UserRepository {
             // by the backend's consent.test.ts, not here.
             consent_up_to_date: true,
             consent_notice_version: '2026-08-14.1',
+            // Same reasoning as consent above: an "already accepted" fixture
+            // keeps the mock's routing identical to today's. The terms gate
+            // itself is exercised against the real API, not here.
+            terms_up_to_date: true,
+            terms_version: '2026-09-04.1-draft',
         };
     }
 

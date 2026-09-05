@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   User, Camera, Mail, Phone, ShieldCheck, ChevronRight, LogOut, LifeBuoy, Lock, HelpCircle,
+  FileText,
 } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import { Badge } from './ui/Badge';
@@ -221,9 +222,16 @@ export function ProfileContent(
         {[
           { icon: ShieldCheck, label: 'KYC Verification', route: '/kyc' },
           { icon: LifeBuoy, label: 'Support', route: '/support' },
-          // DPDPA: consent toggles, data export, correction, erasure, nominee
-          // and the grievance channel all live behind this one entry.
+          // DPDPA: consent toggles, data export, correction, erasure, nominee,
+          // the full privacy notice and the grievance channel all live behind
+          // this one entry. It is deliberately NOT split into a separate
+          // "Privacy Policy" row — the notice is already reachable inside, and
+          // two entries would imply two documents where there is one.
           { icon: Lock, label: 'Privacy & Data', route: '/privacy' },
+          // The rental agreement the rider accepted at signup: deposit, late
+          // fees, damage, returns and cancellation. Read-only here —
+          // re-accepting only happens when a new version is published.
+          { icon: FileText, label: 'Terms & Conditions', route: '/terms' },
           { icon: HelpCircle, label: 'How Swapngo Works', route: '/onboarding?replay=1' },
         ].map((item, i) => {
           const Icon = item.icon;

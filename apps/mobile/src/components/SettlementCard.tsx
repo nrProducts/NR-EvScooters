@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Spinner } from './Spinner';
-import { CheckCircle2, CreditCard, PackageCheck } from 'lucide-react-native';
+import { CheckCircle2, Clock, CreditCard, PackageCheck, RefreshCw, X } from 'lucide-react-native';
 import { COLORS } from '../constants/theme';
 import { billingRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
@@ -21,6 +21,51 @@ const STATUS_LABEL: Record<ApiReturnSettlement['status'], string> = {
   amount_due: 'Amount Due',
   settlement_completed: 'Settlement Completed',
 };
+
+/**
+ * The status line's own colour and icon, rather than the card's.
+ *
+ * These states were all painted the same muted grey, so "Refund Pending" and
+ * "Refund Completed" — the one line on this card that says whether the
+ * rider's ₹2000 has actually moved — were visually identical. A rider had to
+ * read the word to learn the outcome.
+ *
+ * Green is reserved for money that has ACTUALLY arrived. A refund the
+ * business has merely promised is amber (waiting on us), and one the gateway
+ * has accepted but not yet settled is brand blue-green (in flight, nothing
+ * for anyone to do). `no_refund_required` and `settlement_completed` are
+ * closed-and-fine, so they read as neutral rather than as a payout.
+ */
+const STATUS_STYLE: Record<
+  ApiReturnSettlement['status'],
+  { color: string; icon: React.ComponentType<{ size?: number; color?: string }> }
+> = {
+  pending_refund: { color: COLORS.warning, icon: Clock },
+  refund_processing: { color: COLORS.primary, icon: RefreshCw },
+  refund_completed: { color: COLORS.success, icon: CheckCircle2 },
+  no_refund_required: { color: COLORS.textSecondary, icon: CheckCircle2 },
+  amount_due: { color: COLORS.danger, icon: CreditCard },
+  settlement_completed: { color: COLORS.textSecondary, icon: CheckCircle2 },
+};
+
+/**
+ * The status line, as its own pill so the colour reads as a state badge
+ * rather than as coloured body text.
+ */
+export function RefundStatusPill({ status }: { status: ApiReturnSettlement['status'] }) {
+  const { color, icon: Icon } = STATUS_STYLE[status];
+  return (
+    <View
+      className="self-start flex-row items-center px-2.5 py-1 rounded-full mt-3"
+      style={{ backgroundColor: color + '1A' }}
+    >
+      <Icon size={12} color={color} />
+      <Text style={{ color }} className="text-[11px] font-bold ml-1.5">
+        {STATUS_LABEL[status]}
+      </Text>
+    </View>
+  );
+}
 
 /**
  * Home only surfaces the settlement while money is actually due — once it
@@ -95,10 +140,17 @@ export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => 
  * billing.tsx already uses for every other invoice payment on this app.
  */
 export function SettlementCard({
-  settlement, onPaid,
+  settlement, onPaid, onDismiss,
 }: {
   settlement: ApiReturnSettlement;
   onPaid: () => void;
+  /**
+   * Renders a close button on the informational (refund/settled) variant.
+   * Deliberately NOT offered on the amount-due variant — that card carries
+   * the only Pay button the rider has, and a banner you can dismiss your way
+   * out of paying is a banner that costs the business money.
+   */
+  onDismiss?: () => void;
 }) {
   const { pay, paying, payError } = usePaySettlement(settlement, onPaid);
 
@@ -148,9 +200,24 @@ export function SettlementCard({
     >
       <View className="flex-row items-center mb-1">
         <CheckCircle2 size={16} color={COLORS.success} />
-        <Text style={{ color: COLORS.success }} className="text-xs font-extrabold ml-2">
+        {/* flex-1 so the headline wraps rather than pushing the close button
+            off the row on a narrow handset. */}
+        <Text style={{ color: COLORS.success }} className="text-xs font-extrabold ml-2 flex-1">
           Scooter Returned Successfully
         </Text>
+        {onDismiss ? (
+          <TouchableOpacity
+            onPress={onDismiss}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss"
+            // The icon is 14px; the padding is what makes the tap target
+            // reachable without enlarging the glyph.
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            className="-mr-1 -mt-1 p-1"
+          >
+            <X size={14} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <View className="mt-2">
@@ -174,9 +241,7 @@ export function SettlementCard({
         </>
       ) : null}
 
-      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold mt-3">
-        Refund Status: {STATUS_LABEL[settlement.status]}
-      </Text>
+      <RefundStatusPill status={settlement.status} />
     </View>
   );
 }

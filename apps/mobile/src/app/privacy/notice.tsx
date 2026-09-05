@@ -3,6 +3,7 @@ import { View, Text, ScrollView } from 'react-native';
 import { Spinner } from '../../components/Spinner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppShell } from '../../components/AppShell';
+import { Markdown } from '../../components/Markdown';
 import { COLORS } from '../../constants/theme';
 import { LanguageToggle } from '../../i18n/LanguageToggle';
 import { useT, useLangStore } from '../../i18n';
@@ -73,78 +74,3 @@ export default function PrivacyNoticeScreen() {
         </AppShell>
     );
 }
-
-/**
- * Minimal Markdown renderer for the notice body.
- *
- * Deliberately not a dependency: the notice uses headings, paragraphs, bullets
- * and bold, and a full Markdown engine would be several hundred KB of bundle
- * for that. If the notice ever needs tables or links, revisit — do not quietly
- * extend this until it becomes one.
- */
-const Markdown: React.FC<{ body: string }> = ({ body }) => {
-    const blocks = body.trim().split(/\n{2,}/);
-
-    return (
-        <View>
-            {blocks.map((block, i) => {
-                const trimmed = block.trim();
-
-                if (trimmed.startsWith('## ')) {
-                    return (
-                        <Text
-                            key={i}
-                            style={{ color: COLORS.textPrimary }}
-                            className="text-base font-black mt-5 mb-2"
-                        >
-                            {trimmed.slice(3)}
-                        </Text>
-                    );
-                }
-                if (trimmed.startsWith('# ')) {
-                    return (
-                        <Text
-                            key={i}
-                            style={{ color: COLORS.textPrimary }}
-                            className="text-xl font-black mb-3"
-                        >
-                            {trimmed.slice(2)}
-                        </Text>
-                    );
-                }
-                if (trimmed.startsWith('- ')) {
-                    return (
-                        <View key={i} className="mb-2">
-                            {trimmed.split('\n').map((line, j) => (
-                                <View key={j} className="flex-row mb-1">
-                                    <Text style={{ color: COLORS.textSecondary }} className="text-sm mr-2">
-                                        •
-                                    </Text>
-                                    <Text
-                                        style={{ color: COLORS.textPrimary }}
-                                        className="text-[13px] font-medium leading-relaxed flex-1"
-                                    >
-                                        {stripBold(line.replace(/^[-*]\s+/, ''))}
-                                    </Text>
-                                </View>
-                            ))}
-                        </View>
-                    );
-                }
-                return (
-                    <Text
-                        key={i}
-                        style={{ color: COLORS.textPrimary }}
-                        className="text-[13px] font-medium leading-relaxed mb-3"
-                    >
-                        {stripBold(trimmed.replace(/\n/g, ' '))}
-                    </Text>
-                );
-            })}
-        </View>
-    );
-};
-
-/** Bold markers are removed rather than rendered — inline styling would need
- *  nested <Text> parsing that this renderer deliberately does not do. */
-const stripBold = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1');

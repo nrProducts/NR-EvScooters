@@ -24,6 +24,7 @@ import billingRoutes from "../modules/billing/billing.routes";
 import reconciliationRoutes from "../modules/reconciliation/reconciliation.routes";
 import revenueRoutes from "../modules/revenue/revenue.routes";
 import { consentRouter, riderConsentRouter } from "../modules/consent/consent.routes";
+import { legalRouter, riderLegalRouter } from "../modules/legal/legal.routes";
 import geocodeRoutes from "../modules/geocode/geocode.routes";
 import { adminPrivacyRouter, riderPrivacyRouter } from "../modules/privacy/privacy.routes";
 import notificationSettingsRoutes from "../modules/notification-settings/notification-settings.routes";
@@ -50,12 +51,16 @@ router.use("/users/me/notifications", riderNotificationsRouter);
 router.use("/users/me/support", riderSupportRouter);
 router.use("/users/me/consents", riderConsentRouter);
 router.use("/users/me/privacy", riderPrivacyRouter);
+router.use("/users/me/legal", riderLegalRouter);
 router.use("/users", usersRoutes);
 // The permission catalogue — modules, permissions and profiles. Read-only,
 // and the console's replacement for the deleted permissionProfiles.ts.
 router.use("/permissions", permissionsRoutes);
 router.use("/kyc", adminKycRouter);
 router.use("/consent", consentRouter);
+// Terms & Conditions. Separate from /consent: that establishes a lawful basis
+// for processing data, this forms the rental contract.
+router.use("/legal", legalRouter);
 router.use("/privacy", adminPrivacyRouter);
 router.use("/support", adminSupportRouter);
 router.use("/notifications", adminNotificationsRouter);

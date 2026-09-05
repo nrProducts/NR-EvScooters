@@ -39,6 +39,9 @@ const RIDER_ROUTES = [
   "battery-stations", "profile",
   // DPDPA. "privacy" covers privacy/index, notice, requests, [id] and nominee.
   "consent", "privacy",
+  // The rental agreement, readable any time from Profile. Acceptance itself
+  // happens on the consent screen, not here.
+  "terms",
   // Replayed from Profile ("How Swapngo Works") while signed in — see the
   // !hasSeenOnboarding gate below for the signed-out first-run case, which
   // doesn't rely on this list at all.
@@ -274,8 +277,21 @@ export default function RootLayout() {
     // version, so publishing a revised notice re-prompts every rider here with
     // no extra code. /privacy is exempt so a rider can always re-read the
     // notice, and mid-flow screens are left alone.
-    if (!profile.consent_up_to_date) {
-      if (current !== "consent" && current !== "privacy") {
+    //
+    // Terms acceptance rides the SAME gate rather than getting one of its own.
+    // Both are captured on the consent screen in one pass, so a rider who owes
+    // either is sent to the same place — and a rider who owes only the terms
+    // (because a new version was published) re-confirms consent harmlessly,
+    // since recordConsents is idempotent for unchanged choices.
+    //
+    // Two separate gates would mean two sequential full-screen interruptions
+    // for what is, to the rider, one "please agree to this" moment.
+    //
+    // /privacy and /terms are exempt so a rider can always re-read either
+    // document — including from the consent screen's own links, which would
+    // otherwise bounce straight back here.
+    if (!profile.consent_up_to_date || !profile.terms_up_to_date) {
+      if (current !== "consent" && current !== "privacy" && current !== "terms") {
         safeReplace("/consent?next=/kyc-intro");
       }
       return;

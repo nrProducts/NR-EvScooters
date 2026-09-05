@@ -31,6 +31,88 @@ export function getRazorpay(): Razorpay {
     return client;
 }
 
+export type RefundSimulation = "off" | "success" | "processing" | "fail";
+
+/**
+ * Whether refund payouts are being SIMULATED rather than sent to the gateway.
+ *
+ * Development affordance, and the guard rails are the whole point. The old
+ * deleted mock branch (see refunds.service.ts) turned itself on implicitly —
+ * blank keys were enough — so a production deploy missing a secret quietly
+ * told riders their money was on its way. This one has to be asked for by
+ * name AND is refused outright when it could touch real money:
+ *
+ *   - NODE_ENV=production, or
+ *   - a live key (`rzp_live_`), whatever NODE_ENV claims.
+ *
+ * A refusal is logged loudly rather than silently ignored: an operator who
+ * set the variable deserves to know it did nothing.
+ */
+export function resolveRefundSimulation(): RefundSimulation {
+    const raw = env.refundSimulationMode.trim().toLowerCase();
+    if (raw === "off" || raw === "") return "off";
+
+    if (raw !== "success" && raw !== "processing" && raw !== "fail") {
+        console.error(
+            `[razorpay] REFUND_SIMULATION_MODE="${env.refundSimulationMode}" is not one of ` +
+            "off|success|processing|fail — treating it as off.",
+        );
+        return "off";
+    }
+
+    if (env.nodeEnv === "production") {
+        console.error(
+            "[razorpay] REFUND_SIMULATION_MODE is set in PRODUCTION and has been ignored. " +
+            "Refunds will go to the real gateway.",
+        );
+        return "off";
+    }
+
+    if (env.razorpayKeyId.startsWith("rzp_live_")) {
+        console.error(
+            "[razorpay] REFUND_SIMULATION_MODE is set against a LIVE key and has been ignored. " +
+            "Refunds will go to the real gateway.",
+        );
+        return "off";
+    }
+
+    console.warn(
+        `[razorpay] REFUND SIMULATION ACTIVE (${raw}) — refund payouts will NOT reach the gateway.`,
+    );
+    return raw;
+}
+
+/**
+ * The human-readable reason behind a rejected gateway call.
+ *
+ * The Razorpay SDK rejects with a PLAIN OBJECT (`{ statusCode, error: {
+ * code, description } }`), not an `Error`. Every `err instanceof Error ?
+ * err.message : String(err)` in the codebase therefore recorded the string
+ * "[object Object]" — which is exactly what `refunds.failure_reason` held for
+ * the first failed settlement refund, leaving nobody able to say whether the
+ * gateway had refused the amount, the payment, or our credentials.
+ */
+export function describeGatewayError(err: unknown): string {
+    if (err && typeof err === "object") {
+        const e = err as {
+            statusCode?: number;
+            error?: { description?: string; code?: string; reason?: string };
+        };
+        const detail = e.error;
+        if (detail?.description || detail?.code) {
+            const code = detail.code ? ` [${detail.code}${detail.reason ? `/${detail.reason}` : ""}]` : "";
+            const status = e.statusCode ? ` (HTTP ${e.statusCode})` : "";
+            return `${detail.description ?? "The payment gateway rejected this request."}${code}${status}`;
+        }
+    }
+    if (err instanceof Error) return err.message;
+    try {
+        return JSON.stringify(err) ?? String(err);
+    } catch {
+        return String(err);
+    }
+}
+
 /**
  * The subset of Razorpay's payment entity this codebase relies on.
  *

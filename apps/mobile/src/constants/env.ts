@@ -6,10 +6,43 @@ import Constants from 'expo-constants';
  * the Supabase ANON key is safe (RLS constrains it); the SERVICE ROLE key
  * never is.
  */
+
+/**
+ * Every EXPO_PUBLIC_* value the app reads, as ONE STATIC REFERENCE EACH.
+ *
+ * This shape is load-bearing, not stylistic. babel-preset-expo inlines these
+ * by textually substituting *static* `process.env.EXPO_PUBLIC_X` member
+ * expressions at transform time. A computed access — `process.env[name]` —
+ * is invisible to that transform: nothing is substituted, and because a
+ * release bundle has no populated `process.env` at runtime either, the value
+ * is simply absent.
+ *
+ * That is exactly what this file used to do, and the failure mode was silent
+ * and release-only: Metro's dev server DOES populate process.env at runtime,
+ * so development worked perfectly, while every standalone/release build read
+ * undefined for all three required vars and rendered the "App not configured"
+ * screen instead of the app. Verified by grepping the exported Hermes bundle —
+ * before this change it contained the variable NAMES and none of the VALUES.
+ *
+ * So: never collapse these into a loop, a computed lookup, or a helper that
+ * takes the name as a parameter. One literal `process.env.EXPO_PUBLIC_*` per
+ * line is the whole point. Adding a new variable means adding a line here.
+ */
+const INLINED: Record<string, string | undefined> = {
+    EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+    EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
+    EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+    EXPO_PUBLIC_MAP_STYLE_URL: process.env.EXPO_PUBLIC_MAP_STYLE_URL,
+    EXPO_PUBLIC_GEOCODE_URL: process.env.EXPO_PUBLIC_GEOCODE_URL,
+};
+
 function read(name: string): string | undefined {
-    const fromEnv = process.env[name];
-    const fromExtra = (Constants.expoConfig?.extra as Record<string, string> | undefined)?.[name];
-    return fromEnv ?? fromExtra ?? undefined;
+    const fromEnv = INLINED[name];
+    // `||` rather than `??`: an unset EXPO_PUBLIC_* var can inline as the
+    // empty string as well as undefined, and "" is not a usable URL or key —
+    // it must fall through to `extra` (populated by app.config.js) the same
+    // way a missing value does.
+    return fromEnv || (Constants.expoConfig?.extra as Record<string, string> | undefined)?.[name] || undefined;
 }
 
 function required(name: string): string {

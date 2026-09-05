@@ -123,7 +123,25 @@ export default function RefundsPage() {
       ),
       hideOnMobile: true,
     },
-    { header: "Status", key: "status", render: (r) => <StatusBadge status={r.status} /> },
+    {
+      header: "Status",
+      key: "status",
+      // A failed refund shows WHY underneath. The API has always returned
+      // failure_reason and nothing in this console rendered it, so the only
+      // way to find out why a rider's money had not moved was to read the
+      // database — and until the backend's describeGatewayError fix, the
+      // answer waiting there was the string "[object Object]".
+      render: (r) => (
+        <div className="space-y-1">
+          <StatusBadge status={r.status} />
+          {r.status === "failed" && r.failure_reason ? (
+            <p className="max-w-[16rem] text-xs text-destructive" title={r.failure_reason}>
+              {r.failure_reason}
+            </p>
+          ) : null}
+        </div>
+      ),
+    },
     {
       header: "Reviewed By",
       key: "reviewed_by",

@@ -112,6 +112,41 @@ export interface ApiMe extends ApiUserDetail {
      */
     consent_up_to_date: boolean;
     consent_notice_version: string;
+    /**
+     * False when the rider has never accepted the Terms, OR accepted an older
+     * version. Same shape and same purpose as `consent_up_to_date` above —
+     * but a different instrument: consent is the lawful basis for processing
+     * data, this is acceptance of the rental contract. A rider can be up to
+     * date on one and owe the other.
+     */
+    terms_up_to_date: boolean;
+    terms_version: string;
+}
+
+/** The live Terms & Conditions, served from the API and rendered as Markdown. */
+export interface ApiLegalDocument {
+    id: string;
+    doc_type: 'terms';
+    version: string;
+    effective_from: string;
+    /**
+     * The language ACTUALLY served, which is not always the one requested:
+     * no reviewed Tamil text exists yet, so a Tamil request falls back to
+     * English and says so here rather than mislabelling it.
+     */
+    language: 'en' | 'ta';
+    /** Markdown, limited to what components/Markdown.tsx renders. */
+    body: string;
+    body_sha256: string;
+}
+
+/** Whether this rider still owes an acceptance, and of which version. */
+export interface ApiLegalAcceptanceState {
+    doc_type: 'terms';
+    current_version: string;
+    up_to_date: boolean;
+    accepted_version: string | null;
+    accepted_at: string | null;
 }
 
 /**
