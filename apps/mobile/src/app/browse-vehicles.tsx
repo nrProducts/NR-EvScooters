@@ -13,11 +13,25 @@ import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
 import { COLORS } from '../constants/theme';
 import { VEHICLE_CATEGORIES, VehicleCategory } from '../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useT, type CopyKey } from '../i18n';
 
-const CATEGORY_OPTIONS: { key: VehicleCategory | 'all'; label: string }[] = [
-  { key: 'all', label: 'All' },
-  ...VEHICLE_CATEGORIES.map((c) => ({ key: c, label: c[0].toUpperCase() + c.slice(1) })),
-];
+/**
+ * Filter chips.
+ *
+ * The labels used to be derived from the enum value by capitalising it, which
+ * only reads as a word at all in English — "scooter" has no capital form in
+ * Tamil or Hindi, and the value itself is an API constant that must not
+ * change. So each category gets a real key and the chips are built inside the
+ * component, where a language change re-renders them.
+ */
+const CATEGORY_LABEL_KEY: Record<VehicleCategory | 'all', CopyKey> = {
+  all: 'vehicles.category.all',
+  scooter: 'vehicles.category.scooter',
+  bike: 'vehicles.category.bike',
+  moped: 'vehicles.category.moped',
+};
+
+const CATEGORY_KEYS: (VehicleCategory | 'all')[] = ['all', ...VEHICLE_CATEGORIES];
 
 export default function BrowseVehiclesScreen() {
   // AppShell insets its drawer sheet but not screen content, so each screen
@@ -25,6 +39,7 @@ export default function BrowseVehiclesScreen() {
   // the last rows.
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useT();
   const { list, loadingList, listError, loadList, loadMore, pagination } = useVehicleCatalogStore();
 
   const [search, setSearch] = useState('');
@@ -62,7 +77,7 @@ export default function BrowseVehiclesScreen() {
           <ChevronLeft size={20} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={{ color: COLORS.textPrimary }} className="text-base font-extrabold flex-1">
-          Available Vehicles
+          {t('vehicles.title')}
         </Text>
       </View>
 
@@ -75,14 +90,18 @@ export default function BrowseVehiclesScreen() {
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search scooters"
+            placeholder={t('vehicles.searchPlaceholder')}
             placeholderTextColor={COLORS.textSecondary}
             className="flex-1 py-3 ml-2.5 text-sm"
             style={{ color: COLORS.textPrimary }}
           />
         </View>
 
-        <ChipSelect options={CATEGORY_OPTIONS} value={category} onChange={setCategory} />
+        <ChipSelect
+          options={CATEGORY_KEYS.map((key) => ({ key, label: t(CATEGORY_LABEL_KEY[key]) }))}
+          value={category}
+          onChange={setCategory}
+        />
       </View>
 
       {loadingList && list.length === 0 ? (
@@ -90,7 +109,7 @@ export default function BrowseVehiclesScreen() {
       ) : listError ? (
         <ErrorState message={listError} onRetry={() => void loadList({ search: debouncedSearch || undefined, category: category === 'all' ? undefined : category })} />
       ) : list.length === 0 ? (
-        <EmptyState icon={Search} title="No scooters found" subtitle="Try a different search or category." />
+        <EmptyState icon={Search} title={t('vehicles.empty.title')} subtitle={t('vehicles.empty.subtitle')} />
       ) : (
         <FlatList
           data={list}

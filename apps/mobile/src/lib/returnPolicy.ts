@@ -1,3 +1,6 @@
+import type { CopyKey } from '../i18n/types';
+import { translate as translateFn, type TranslateFn } from '../i18n/translate';
+
 /**
  * Client-side mirror of the post-pickup late-return rule so the rider can be
  * shown the deadline and running fee before submitting, and so the mock
@@ -100,13 +103,24 @@ export const RETURN_REASONS = [
 
 export type ReturnReason = (typeof RETURN_REASONS)[number];
 
-export const RETURN_REASON_LABEL: Record<ReturnReason, string> = {
-  plan_ended: 'My plan ended',
-  switching_plan: 'Switching plan',
-  scooter_issue: 'Problem with the scooter',
-  moving_away: 'Moving away',
-  too_expensive: 'Too expensive',
-  other: 'Something else',
+/**
+ * Translation keys, not labels.
+ *
+ * `CopyKey` is imported from `../i18n/types` rather than the barrel
+ * (`../i18n`), which pulls in zustand and expo-secure-store — this module is
+ * also imported by the node-based test fixtures under
+ * tests/fixtures/mock/, and `../i18n/types` alone has no React Native import,
+ * so it stays safe there. The label ITSELF is resolved with t() at the one
+ * call site (ReturnScooterModal.tsx); `reason` is sent to the API as-is and
+ * is never translated or compared against translated text.
+ */
+export const RETURN_REASON_LABEL_KEY: Record<ReturnReason, CopyKey> = {
+  plan_ended: 'returnReason.plan_ended',
+  switching_plan: 'returnReason.switching_plan',
+  scooter_issue: 'returnReason.scooter_issue',
+  moving_away: 'returnReason.moving_away',
+  too_expensive: 'returnReason.too_expensive',
+  other: 'returnReason.other',
 };
 
 export interface LateReturnCharge {
@@ -208,15 +222,28 @@ export function computeLateReturnPenalty(input: {
   };
 }
 
-/** "today by 11:59 PM" / "2 days ago" — for deadline copy. */
-export function describeReturnDeadline(dueAt: string | null): string {
-  if (!dueAt) return 'today by 11:59 PM';
+/**
+ * "today by 11:59 PM" / "2 days ago" — for deadline copy.
+ *
+ * `t` defaults to English, same reasoning as `describeElapsed` in
+ * cancellationPolicy.ts: this stays callable without a hook, and its
+ * existing tests stay valid unchanged.
+ */
+export function describeReturnDeadline(
+  dueAt: string | null,
+  t: TranslateFn = (k, v) => translateFn('en', k, v),
+): string {
+  if (!dueAt) return t('requestReturn.deadline.todayByMidnight');
   const due = new Date(dueAt);
-  if (Number.isNaN(due.getTime())) return 'today by 11:59 PM';
+  if (Number.isNaN(due.getTime())) return t('requestReturn.deadline.todayByMidnight');
 
   const { daysLate } = computeLateReturnPenalty({ returnDueAt: dueAt });
   if (daysLate === 0) {
-    return `${due.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} by 11:59 PM`;
+    return t('requestReturn.deadline.dateByMidnight', {
+      date: due.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
+    });
   }
-  return `${daysLate} day${daysLate > 1 ? 's' : ''} ago`;
+  return daysLate === 1
+    ? t('requestReturn.deadline.daysAgoOne')
+    : t('requestReturn.deadline.daysAgoOther', { days: daysLate });
 }

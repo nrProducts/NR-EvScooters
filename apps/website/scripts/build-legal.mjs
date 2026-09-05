@@ -35,8 +35,18 @@ const outDir = resolve(here, "../public");
 const allowPlaceholders = process.argv.includes("--allow-placeholders");
 
 const DOCS = [
-    { src: "docs/legal/privacy-policy.md", out: "privacy.html", title: "Privacy Policy — Swapngo" },
-    { src: "docs/legal/terms-and-conditions.md", out: "terms.html", title: "Terms & Conditions — Swapngo" },
+    {
+        src: "docs/legal/privacy-policy.md",
+        out: "privacy.html",
+        title: "Privacy Policy — Swapngo",
+        description: "Swapngo's privacy policy: how we collect, use, and protect rider data for our EV scooter rental service in Chennai.",
+    },
+    {
+        src: "docs/legal/terms-and-conditions.md",
+        out: "terms.html",
+        title: "Terms & Conditions — Swapngo",
+        description: "The terms and conditions governing EV scooter rental bookings, payments, and returns with Swapngo in Chennai.",
+    },
 ];
 
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -130,13 +140,15 @@ function render(md) {
     return out.join("\n");
 }
 
-const PAGE = (title, body) => `<!doctype html>
+const PAGE = (title, body, description, canonicalPath) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
+<meta name="description" content="${esc(description)}">
 <meta name="robots" content="index, follow">
+<link rel="canonical" href="https://swapngo.in/${canonicalPath}">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
   :root {
@@ -212,7 +224,7 @@ for (const doc of DOCS) {
     }
 
     const outPath = resolve(outDir, doc.out);
-    writeFileSync(outPath, PAGE(doc.title, render(md)), "utf8");
+    writeFileSync(outPath, PAGE(doc.title, render(md), doc.description, doc.out), "utf8");
     const warn = placeholders.length ? `  (DRAFT — ${placeholders.length} placeholder(s) still present)` : "";
     console.log(`[legal] ${doc.src} -> public/${doc.out}${warn}`);
 }

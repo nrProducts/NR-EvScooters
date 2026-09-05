@@ -6,6 +6,7 @@ import { COLORS } from '../constants/theme';
 import { rentalRepository } from '../services';
 import { computeLateReturnPenalty, describeReturnDeadline } from '../lib/returnPolicy';
 import type { ApiRental, ApiReturnStage } from '../types/api';
+import { useT, type CopyKey } from '../i18n';
 
 interface ReturnStatusCardProps {
   rental: ApiRental;
@@ -13,11 +14,16 @@ interface ReturnStatusCardProps {
   compact?: boolean;
 }
 
-const STAGE_HEADLINE: Partial<Record<ApiReturnStage['status'], string>> = {
-  payment_required: 'Payment Required',
-  payment_submitted: 'Payment Submitted',
-  ready_for_approval: 'Payment Verified — Ready for Approval',
-  return_completed: 'Return Completed',
+/**
+ * Stage → translation key. The stage VALUES are the API's
+ * (`payment_required`, …) and are never translated or compared against
+ * translated text; only the headline the rider reads is.
+ */
+const STAGE_HEADLINE_KEY: Partial<Record<ApiReturnStage['status'], CopyKey>> = {
+  payment_required: 'returnStatus.stage.payment_required',
+  payment_submitted: 'returnStatus.stage.payment_submitted',
+  ready_for_approval: 'returnStatus.stage.ready_for_approval',
+  return_completed: 'returnStatus.stage.return_completed',
 };
 
 /**
@@ -43,6 +49,7 @@ const STAGE_HEADLINE: Partial<Record<ApiReturnStage['status'], string>> = {
  * server-side while the rider isn't even looking at the app.
  */
 export const ReturnStatusCard: React.FC<ReturnStatusCardProps> = ({ rental, compact }) => {
+  const { t } = useT();
   const [stage, setStage] = useState<ApiReturnStage | null>(null);
 
   const loadStage = useCallback(() => {
@@ -92,20 +99,29 @@ export const ReturnStatusCard: React.FC<ReturnStatusCardProps> = ({ rental, comp
             <Icon size={14} color={tint} />
             <Text style={{ color: tint }} className="text-xs font-extrabold ml-2">
               {recoveryRequired
-                ? 'Vehicle Recovery Required'
+                ? t('scooterStatus.recoveryRequired')
                 : overdue
-                  ? `Overdue by ${charge.daysLate} day${charge.daysLate > 1 ? 's' : ''}`
-                  : 'Return requested'}
+                  ? charge.daysLate === 1
+                    ? t('returnStatus.overdueOne')
+                    : t('returnStatus.overdueOther', { count: charge.daysLate })
+                  : t('returnStatus.returnRequested')}
             </Text>
           </View>
           <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed">
             {recoveryRequired
-              ? `A ₹${charge.penaltyAmount} late fee applies (capped at ${rental.max_late_fee_days} day${rental.max_late_fee_days > 1 ? 's' : ''}) and our team is on the way to collect the scooter. Please make it available for pickup.`
+              ? t(
+                  rental.max_late_fee_days === 1
+                    ? 'returnStatus.recoveryBody.one'
+                    : 'returnStatus.recoveryBody.other',
+                  { amount: `₹${charge.penaltyAmount}`, days: rental.max_late_fee_days },
+                )
               : overdue
-                ? `A ₹${charge.penaltyAmount} late fee has built up so far, and will be charged when our team confirms the handover.`
+                ? t('returnStatus.overdueBody', { amount: `₹${charge.penaltyAmount}` })
                 : rental.return_requested_at
-                  ? 'Your scooter is waiting for staff confirmation. It stays yours until then.'
-                  : `Hand your scooter in by ${describeReturnDeadline(rental.return_due_at)}. Our team will confirm the handover — the scooter stays yours until then.`}
+                  ? t('scooterStatus.returnRequested.body')
+                  : t('returnStatus.handInBy', {
+                      deadline: describeReturnDeadline(rental.return_due_at, t),
+                    })}
           </Text>
         </View>
       ) : null}
@@ -116,6 +132,7 @@ export const ReturnStatusCard: React.FC<ReturnStatusCardProps> = ({ rental, comp
 };
 
 function ReturnStagePanel({ stage, compact }: { stage: ApiReturnStage; compact?: boolean }) {
+  const { t } = useT();
   const tint = stage.status === 'payment_required'
     ? COLORS.danger
     : stage.status === 'payment_submitted'
@@ -135,17 +152,26 @@ function ReturnStagePanel({ stage, compact }: { stage: ApiReturnStage; compact?:
       <View className="flex-row items-center mb-1">
         <Icon size={14} color={tint} />
         <Text style={{ color: tint }} className="text-xs font-extrabold ml-2">
-          Return Status: {STAGE_HEADLINE[stage.status] ?? stage.status}
+          {/* An unmapped stage falls back to the raw API value rather than to
+              a guess. It is not a rider-facing word, but it is honest, and it
+              is what a support call needs to hear read out. */}
+          {t('returnStatus.stagePrefix', {
+            stage: STAGE_HEADLINE_KEY[stage.status]
+              ? t(STAGE_HEADLINE_KEY[stage.status]!)
+              : stage.status,
+          })}
         </Text>
       </View>
       <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed">
         {stage.status === 'payment_required'
-          ? `An additional ₹${stage.additionalDue.toFixed(0)} was found during inspection (damage/other charges). Pay it above to continue your return.`
+          ? t('returnStatus.stageBody.paymentRequired', {
+              amount: `₹${stage.additionalDue.toFixed(0)}`,
+            })
           : stage.status === 'payment_submitted'
-            ? 'Payment Status: Paid – Awaiting Admin Verification. Your payment has been received. The admin will verify it and complete your vehicle return.'
+            ? t('returnStatus.stageBody.paymentSubmitted')
             : stage.status === 'ready_for_approval'
-              ? 'Your payment has been verified. Awaiting return completion — our team will finish processing the handover shortly.'
-              : 'Your vehicle has been successfully returned.'}
+              ? t('returnStatus.stageBody.readyForApproval')
+              : t('returnStatus.stageBody.completed')}
       </Text>
     </View>
   );

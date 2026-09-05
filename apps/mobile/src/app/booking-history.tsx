@@ -9,14 +9,15 @@ import { pullToRefresh, useRefresh } from '../components/ui/PullToRefresh';
 import { bookingRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import {
-  BOOKING_STATUS_LABEL, BOOKING_STATUS_TONE,
-  REFUND_STATUS_LABEL, REFUND_STATUS_TONE, formatDate,
+  BOOKING_STATUS_LABEL_KEY, BOOKING_STATUS_TONE,
+  REFUND_STATUS_LABEL_KEY, REFUND_STATUS_TONE, formatDate,
 } from '../constants/status';
 import { COLORS } from '../constants/theme';
 import { Calendar, Bike, MapPin, History, XCircle } from 'lucide-react-native';
 import { useCancelBooking } from '../hooks/useCancelBooking';
 import type { ApiBooking } from '../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useT } from '../i18n';
 
 /**
  * Bookings only — a full-page screen pushed from Home's "My Rides" (and
@@ -27,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
  */
 export default function BookingHistoryScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useT();
   const [bookings, setBookings] = useState<ApiBooking[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
   const [bookingsError, setBookingsError] = useState<string | null>(null);
@@ -52,7 +54,7 @@ export default function BookingHistoryScreen() {
     return bookingRepository
       .history({ page: 1, pageSize: 50 })
       .then((res) => setBookings(res.data))
-      .catch((err) => setBookingsError(err instanceof ApiError ? err.message : 'Could not load your booking history.'))
+      .catch((err) => setBookingsError(err instanceof ApiError ? err.message : t('bookingHistory.loadFailed')))
       .finally(() => setBookingsLoading(false));
   };
 
@@ -63,13 +65,13 @@ export default function BookingHistoryScreen() {
   }, []);
 
   return (
-    <AppShell title="Booking History">
+    <AppShell title={t('bookingHistory.title')}>
       {bookingsLoading ? (
         <View className="px-5 pt-5"><SkeletonList count={3} /></View>
       ) : bookingsError ? (
         <ErrorState message={bookingsError} onRetry={() => loadBookings()} />
       ) : bookings.length === 0 ? (
-        <EmptyState icon={History} title="No bookings yet" subtitle="Your booking history will show up here." />
+        <EmptyState icon={History} title={t('bookingHistory.empty.title')} subtitle={t('bookingHistory.empty.subtitle')} />
       ) : (
         <ScrollView
           className="flex-1 px-5 pt-4"
@@ -89,9 +91,9 @@ export default function BookingHistoryScreen() {
                   <View className="flex-row items-center justify-between mb-3">
                     <View className="flex-row items-center">
                       <Bike size={15} color={COLORS.primary} />
-                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold ml-2">{b.vehicle_model?.name ?? 'Scooter'}</Text>
+                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold ml-2">{b.vehicle_model?.name ?? t('bookingHistory.scooterFallback')}</Text>
                     </View>
-                    <Badge label={BOOKING_STATUS_LABEL[b.status]} tone={BOOKING_STATUS_TONE[b.status]} />
+                    <Badge label={t(BOOKING_STATUS_LABEL_KEY[b.status])} tone={BOOKING_STATUS_TONE[b.status]} />
                   </View>
                   <View className="flex-row items-center mb-1">
                     <Calendar size={12} color={COLORS.textSecondary} />
@@ -108,12 +110,19 @@ export default function BookingHistoryScreen() {
                     <View className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.border }}>
                       <View className="flex-row items-center justify-between mb-1">
                         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
-                          Cancelled {b.cancelled_at ? formatDate(b.cancelled_at) : ''}
+                          {t('bookingHistory.cancelledOn', { date: b.cancelled_at ? formatDate(b.cancelled_at) : '' })}
                         </Text>
-                        <Badge label={REFUND_STATUS_LABEL[b.refund_status]} tone={REFUND_STATUS_TONE[b.refund_status]} />
+                        <Badge label={t(REFUND_STATUS_LABEL_KEY[b.refund_status])} tone={REFUND_STATUS_TONE[b.refund_status]} />
                       </View>
                       <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
-                        Cancellation fee ₹{b.cancellation_penalty_amount ?? 0} · Refund ₹{b.refund_amount ?? 0}
+                        {t('bookingHistory.refundLine', {
+                          // Formatted here, not in the dictionary: the rupee
+                          // symbol and the number's grouping follow the
+                          // device's region, not the app's language — see the
+                          // note on formatDate in constants/status.ts.
+                          fee: `₹${b.cancellation_penalty_amount ?? 0}`,
+                          refund: `₹${b.refund_amount ?? 0}`,
+                        })}
                       </Text>
                     </View>
                   ) : null}
@@ -128,7 +137,7 @@ export default function BookingHistoryScreen() {
                     >
                       <XCircle size={13} color={COLORS.danger} />
                       <Text style={{ color: COLORS.danger }} className="text-xs font-bold ml-2">
-                        {cancelling ? 'Cancelling…' : 'Cancel Booking'}
+                        {cancelling ? t('bookingHistory.cancelling') : t('bookingHistory.cancelBooking')}
                       </Text>
                     </TouchableOpacity>
                   ) : null}

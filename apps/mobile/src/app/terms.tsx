@@ -6,7 +6,7 @@ import { AppShell } from '../components/AppShell';
 import { Markdown } from '../components/Markdown';
 import { COLORS } from '../constants/theme';
 import { LanguageToggle } from '../i18n/LanguageToggle';
-import { useT, useLangStore } from '../i18n';
+import { useT, useLangStore, documentLanguage } from '../i18n';
 import { api } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
 import type { ApiLegalDocument, ApiLegalAcceptanceState } from '../types/api';
@@ -29,6 +29,10 @@ export default function TermsScreen() {
     const insets = useSafeAreaInsets();
     const { t } = useT();
     const lang = useLangStore((s) => s.lang);
+    // Legal text exists only in the languages it has actually been reviewed
+    // in — Hindi falls back to English rather than being machine-translated.
+    // See src/i18n/documentLanguage.ts.
+    const docLang = documentLanguage(lang);
     const [doc, setDoc] = useState<ApiLegalDocument | null>(null);
     const [state, setState] = useState<ApiLegalAcceptanceState | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -38,7 +42,7 @@ export default function TermsScreen() {
         setDoc(null);
         setError(null);
 
-        api.termsDocument(lang)
+        api.termsDocument(docLang)
             .then((data) => {
                 if (!cancelled) setDoc(data);
             })
@@ -64,7 +68,7 @@ export default function TermsScreen() {
         return () => {
             cancelled = true;
         };
-    }, [lang]);
+    }, [docLang]);
 
     return (
         <AppShell title={t('terms.title')}>

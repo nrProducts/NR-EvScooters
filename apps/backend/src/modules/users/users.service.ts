@@ -41,7 +41,7 @@ import { businessToday } from "../../common/dates";
  */
 const PROFILE_SELECT = `
     id, full_name, email, phone, date_of_birth, gender, role, status,
-    photo_storage_path, created_at, updated_at, deleted_at,
+    photo_storage_path, preferred_language, created_at, updated_at, deleted_at,
     rider_profiles(kyc_status, onboarding_completed_at),
     staff_profiles(staff_code, must_change_password, joined_on),
     user_addresses(line_1, line_2, city, state, postal_code, country, is_primary),
@@ -59,6 +59,7 @@ interface RawUserRow {
     role: UserRole;
     status: UserStatus;
     photo_storage_path: string | null;
+    preferred_language: string | null;
     created_at: string;
     updated_at: string | null;
     deleted_at: string | null;
@@ -123,6 +124,14 @@ function toProfile(row: RawUserRow): UserProfile {
         kyc_status: rider?.kyc_status ?? "not_submitted",
         profile_photo_url: row.photo_storage_path,
         profile_completed: !!rider?.onboarding_completed_at,
+        // Coalesced rather than passed through: the column is NOT NULL, but a
+        // row read back before the migration lands (or through a stale
+        // PostgREST schema cache) would arrive as undefined, and a mobile
+        // client that receives null for this simply keeps its local choice —
+        // which on a shared phone is the account-switch bug this field exists
+        // to prevent. 'en' is the column's own default, so this agrees with
+        // the database rather than inventing a second opinion.
+        preferred_language: row.preferred_language ?? "en",
         created_at: row.created_at,
         updated_at: row.updated_at,
         deleted_at: row.deleted_at,

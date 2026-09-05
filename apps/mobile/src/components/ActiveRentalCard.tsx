@@ -6,12 +6,13 @@ import { ArrowRight, Hash, LifeBuoy, RefreshCw } from 'lucide-react-native';
 import { Badge } from './ui/Badge';
 import { SCOOTER_HERO } from '../lib/scooterImage';
 import { COLORS } from '../constants/theme';
-import { RENTAL_STATUS_LABEL, RENTAL_STATUS_TONE, formatDate } from '../constants/status';
+import { RENTAL_STATUS_LABEL_KEY, RENTAL_STATUS_TONE, formatDate } from '../constants/status';
 import { getRenewalEligibility } from '../lib/returnPolicy';
 import { isReturnLocked } from '../lib/returnLock';
 import { useReturnLock } from './ReturnLockSheet';
 import { describeExpiry, rentalDayNumber } from '../lib/rentalTiming';
 import type { ApiRental } from '../types/api';
+import { useT } from '../i18n';
 
 interface ActiveRentalCardProps {
   rental: ApiRental;
@@ -39,6 +40,7 @@ interface ActiveRentalCardProps {
  */
 export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRenew }) => {
   const router = useRouter();
+  const { t } = useT();
   const { vehicle, plan } = rental;
 
   const periodStart = rental.current_period_start ?? rental.started_at;
@@ -74,23 +76,23 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
       <View className="p-5">
         {/* --- My Plan ------------------------------------------------------ */}
         <View className="flex-row items-center justify-between mb-3">
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">My Plan</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">{t('rental.myPlan')}</Text>
           <Badge
-            label={isActive ? 'Active Plan' : RENTAL_STATUS_LABEL[rental.status]}
+            label={isActive ? t('rental.activePlan') : t(RENTAL_STATUS_LABEL_KEY[rental.status])}
             tone={isActive ? 'primary' : RENTAL_STATUS_TONE[rental.status]}
           />
         </View>
 
         <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">
-          {plan?.name ?? 'Your plan'}
+          {plan?.name ?? t('rental.yourPlan')}
         </Text>
         <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-bold mt-0.5">
-          Unlimited Kms
+          {t('rental.unlimitedKms')}
         </Text>
 
         {dueDate ? (
           <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-2">
-            {formatDate(periodStart)}  —  {formatDate(dueDate)}
+            {t('rental.periodRange', { start: formatDate(periodStart), end: formatDate(dueDate) })}
           </Text>
         ) : null}
 
@@ -98,14 +100,18 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
           <View className="mt-3">
             <View className="flex-row items-center justify-between mb-1.5">
               <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
-                {daysLeft === 0 ? 'Last day' : `${daysLeft} day${daysLeft > 1 ? 's' : ''} remaining`}
+                {daysLeft === 0
+                  ? t('rental.lastDay')
+                  : daysLeft === 1
+                    ? t('rental.daysRemaining.one')
+                    : t('rental.daysRemaining.other', { count: daysLeft })}
               </Text>
               {totalDays ? (
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
                   {/* daysLeft is exclusive of today (calendarDaysBetween(now, due)),
                       so on the first day of a 7-day period daysLeft is 6 and this
                       is Day 1 — no +1. */}
-                  Day {Math.max(1, Math.min(totalDays, totalDays - daysLeft))} of {totalDays}
+                  {t('rental.dayOf', { day: Math.max(1, Math.min(totalDays, totalDays - daysLeft)), total: totalDays })}
                 </Text>
               ) : null}
             </View>
@@ -121,7 +127,7 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
           activeOpacity={0.85}
           className="flex-row items-center mt-3"
         >
-          <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">View Plan Details</Text>
+          <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">{t('rental.viewPlanDetails')}</Text>
           <ArrowRight size={13} color={COLORS.primary} />
         </TouchableOpacity>
 
@@ -132,13 +138,13 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
         >
           <Image
             source={SCOOTER_HERO}
-            accessibilityLabel={vehicle?.name ?? 'Your scooter'}
+            accessibilityLabel={vehicle?.name ?? t('home.yourScooter')}
             contentFit="contain"
             style={{ width: 64, height: 52, marginRight: 12 }}
           />
           <View className="flex-1">
             <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold" numberOfLines={1}>
-              {vehicle?.name ?? 'Your scooter'}
+              {vehicle?.name ?? t('home.yourScooter')}
             </Text>
             {vehicle ? (
               <View className="flex-row items-center mt-1">
@@ -149,7 +155,7 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
               </View>
             ) : null}
           </View>
-          <Badge label="Assigned" tone="success" />
+          <Badge label={t('rental.assigned')} tone="success" />
         </View>
 
         {/* Once a return is requested there's nothing left to tap here —
@@ -166,7 +172,7 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
           >
             <RefreshCw size={16} color={COLORS.white} />
             <Text className="text-white text-sm font-bold ml-2">
-              {renewal.isLate ? 'Renew Plan Now' : 'Renew Plan'}
+              {renewal.isLate ? t('rental.renewPlanNow') : t('scooter.renewPlan')}
             </Text>
           </TouchableOpacity>
         ) : null}
@@ -182,7 +188,7 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
           style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
         >
           <LifeBuoy size={14} color={COLORS.textSecondary} />
-          <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2">Get Support</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2">{t('support.getSupport')}</Text>
         </TouchableOpacity>
       </View>
       {lock.sheet}

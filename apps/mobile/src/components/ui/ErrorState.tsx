@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { AlertTriangle, RefreshCw, WifiOff } from 'lucide-react-native';
 import { COLORS } from '../../constants/theme';
+import { useT } from '../../i18n';
 
 interface ErrorStateProps {
   message: string;
@@ -10,6 +11,7 @@ interface ErrorStateProps {
 }
 
 export const ErrorState: React.FC<ErrorStateProps> = ({ message, onRetry, offline }) => {
+  const { t } = useT();
   const Icon = offline ? WifiOff : AlertTriangle;
   return (
     <View className="items-center justify-center py-14 px-6">
@@ -20,7 +22,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({ message, onRetry, offlin
         <Icon size={24} color={COLORS.danger} />
       </View>
       <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold text-center">
-        {offline ? "Can't reach the server" : 'Something went wrong'}
+        {offline ? t('errorState.offline') : t('errorState.generic')}
       </Text>
       <Text
         style={{ color: COLORS.textSecondary }}
@@ -36,7 +38,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({ message, onRetry, offlin
           style={{ backgroundColor: COLORS.primary }}
         >
           <RefreshCw size={14} color="#FFF" />
-          <Text className="text-white font-bold text-xs ml-2">Try Again</Text>
+          <Text className="text-white font-bold text-xs ml-2">{t('common.tryAgain')}</Text>
         </TouchableOpacity>
       ) : null}
     </View>

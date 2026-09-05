@@ -1,3 +1,5 @@
+import type { CopyKey } from '../../../i18n/types';
+
 /**
  * Wire contract for the battery-station module. Kept in sync by hand with
  * apps/backend/src/modules/battery-stations/battery-stations.types.ts and
@@ -50,10 +52,18 @@ export interface StationWithDistance extends BatteryStation {
     distanceKm: number;
 }
 
-export const STATION_STATUS_LABEL: Record<StationStatus, string> = {
-    WORKING: "Working",
-    NOT_WORKING: "Not working",
-    MAINTENANCE: "Maintenance",
+/**
+ * Translation keys, not labels. `StationStatus` values (`WORKING`,
+ * `NOT_WORKING`, `MAINTENANCE`) are the API's and are never translated or
+ * compared against translated text; only what the rider reads in their place
+ * is. `CopyKey` is imported from `../../../i18n/types` rather than the
+ * barrel (`../../../i18n`), which pulls in zustand/expo-secure-store — this
+ * type stays free of any React Native import.
+ */
+export const STATION_STATUS_LABEL_KEY: Record<StationStatus, CopyKey> = {
+    WORKING: "status.station.working",
+    NOT_WORKING: "status.station.not_working",
+    MAINTENANCE: "status.station.maintenance",
 };
 
 /**

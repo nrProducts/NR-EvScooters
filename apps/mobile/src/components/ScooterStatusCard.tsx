@@ -8,12 +8,13 @@ import { Spinner } from './Spinner';
 import { InfoHint } from './ui/InfoHint';
 import { COLORS } from '../constants/theme';
 import {
-  LATE_FEE_POLICY_TITLE, lateFeePolicyExample, lateFeePolicySections,
+  LATE_FEE_POLICY_TITLE_KEY, lateFeePolicyExample, lateFeePolicySections,
 } from '../constants/lateFeePolicy';
 import { rentalRepository } from '../services';
 import { usePaySettlement } from './SettlementCard';
 import { computeLateReturnPenalty, effectiveDueAt, getRenewalEligibility } from '../lib/returnPolicy';
 import type { ApiOverdueLateFee, ApiRental, ApiReturnSettlement, ApiReturnStage } from '../types/api';
+import { useT, type TranslateFn } from '../i18n';
 
 function formatDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -47,6 +48,7 @@ interface ScooterStatusCardProps {
 export function ScooterStatusCard({
   rental, settlement, onSettlementPaid,
 }: ScooterStatusCardProps) {
+  const { t } = useT();
   const [stage, setStage] = useState<ApiReturnStage | null>(null);
 
   const loadStage = useCallback(() => {
@@ -106,14 +108,19 @@ export function ScooterStatusCard({
 
   if (isSettlementDue) {
     return (
-      <StatusShell tone="danger" icon={CreditCard} title="Payment Required">
+      <StatusShell tone="danger" icon={CreditCard} title={t('scooterStatus.paymentRequired')}>
         <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black mt-1">
           ₹{settlement!.due_amount.toFixed(0)}
         </Text>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5 mb-3">
-          Complete the payment to finish your scooter return.
+          {t('scooterStatus.paymentRequired.body')}
         </Text>
-        <ActionButton tone="danger" onPress={() => void pay()} busy={paying} label={`Pay ₹${settlement!.due_amount.toFixed(0)}`} />
+        <ActionButton
+          tone="danger"
+          onPress={() => void pay()}
+          busy={paying}
+          label={t('scooterStatus.pay', { amount: `₹${settlement!.due_amount.toFixed(0)}` })}
+        />
         {payError ? (
           <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mt-3">{payError}</Text>
         ) : null}
@@ -123,9 +130,9 @@ export function ScooterStatusCard({
 
   if (stage?.status === 'payment_submitted') {
     return (
-      <StatusShell tone="warning" icon={Clock} title="Payment Received">
+      <StatusShell tone="warning" icon={Clock} title={t('scooterStatus.paymentReceived')}>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
-          Awaiting admin confirmation before your return can be completed.
+          {t('scooterStatus.paymentReceived.body')}
         </Text>
       </StatusShell>
     );
@@ -133,9 +140,9 @@ export function ScooterStatusCard({
 
   if (stage?.status === 'ready_for_approval') {
     return (
-      <StatusShell tone="warning" icon={Clock} title="Return Verification Pending">
+      <StatusShell tone="warning" icon={Clock} title={t('scooterStatus.verificationPending')}>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
-          Your payment is verified — our team is completing the handover.
+          {t('scooterStatus.verificationPending.body')}
         </Text>
       </StatusShell>
     );
@@ -149,9 +156,9 @@ export function ScooterStatusCard({
   // return_due_at/expiry fields and would otherwise still read as true.
   if (rental.return_requested_at) {
     return (
-      <StatusShell tone="warning" icon={Undo2} title="Return Requested">
+      <StatusShell tone="warning" icon={Undo2} title={t('scooterStatus.returnRequested')}>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
-          Your scooter is waiting for staff confirmation. It stays yours until then.
+          {t('scooterStatus.returnRequested.body')}
         </Text>
       </StatusShell>
     );
@@ -159,9 +166,9 @@ export function ScooterStatusCard({
 
   if (recoveryRequired) {
     return (
-      <StatusShell tone="danger" icon={AlertTriangle} title="Vehicle Recovery Required">
+      <StatusShell tone="danger" icon={AlertTriangle} title={t('scooterStatus.recoveryRequired')}>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
-          A ₹{lateAmount.toFixed(0)} late fee applies. Please make your scooter available for pickup.
+          {t('scooterStatus.recoveryRequired.body', { amount: `₹${lateAmount.toFixed(0)}` })}
         </Text>
       </StatusShell>
     );
@@ -174,10 +181,18 @@ export function ScooterStatusCard({
   // building up against them.
   if (rental.renewal_status === 'scheduled') {
     return (
-      <StatusShell tone="success" icon={RefreshCw} title="Renewal Scheduled">
+      <StatusShell tone="success" icon={RefreshCw} title={t('scooterStatus.renewalScheduled')}>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
-          {rental.scheduled_start_date ? `Starts ${formatDay(rental.scheduled_start_date)}. ` : ''}
-          Your current plan stays active until then.
+          {[
+            rental.scheduled_start_date
+              ? t('scooterStatus.renewalScheduled.starts', {
+                  date: formatDay(rental.scheduled_start_date),
+                })
+              : null,
+            t('scooterStatus.renewalScheduled.body'),
+          ]
+            .filter(Boolean)
+            .join(' ')}
         </Text>
       </StatusShell>
     );
@@ -211,32 +226,42 @@ export function ScooterStatusCard({
         // plan starts). "Overdue by 0 days" would be nonsense, so that day
         // gets its own wording — and it is the one day where telling the rider
         // to act now actually saves them money.
-        title={shownDays > 0
-          ? `Plan expired · overdue by ${shownDays} day${shownDays === 1 ? '' : 's'}`
-          : 'Plan expired · renew today'}
+        title={
+          shownDays > 1
+            ? t('scooterStatus.expired.overdueOther', { count: shownDays })
+            : shownDays === 1
+              ? t('scooterStatus.expired.overdueOne')
+              : t('scooterStatus.expired.renewToday')
+        }
         titleAccessory={
           <InfoHint
-            title={LATE_FEE_POLICY_TITLE}
-            sections={lateFeePolicySections(feePerDay)}
-            example={lateFeePolicyExample(feePerDay)}
+            title={t(LATE_FEE_POLICY_TITLE_KEY)}
+            sections={lateFeePolicySections(t, feePerDay)}
+            example={lateFeePolicyExample(t, feePerDay)}
             color={COLORS.danger}
           />
         }
       >
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
+          {/*
+            Two sentences joined, not one interpolated string: the "what you
+            owe" half and the "what to do" half are independent, and a
+            language that orders them differently or joins them with a
+            connective can only do so if they arrive as separate keys.
+          */}
           {shownAmount > 0
-            ? `A ₹${shownAmount.toFixed(0)} late fee has built up and grows each day. `
-              + (renewing
-                ? 'Renew your plan below to clear it and keep riding.'
-                : 'Return your scooter as soon as possible.')
+            ? [
+                t('scooterStatus.lateFeeBuilt', { amount: `₹${shownAmount.toFixed(0)}` }),
+                renewing ? t('scooterStatus.renewToClear') : t('scooterStatus.returnAsap'),
+              ].join(' ')
             : renewing
               // Nothing owed YET. Saying "a late fee has built up" here would be
               // false, and "renew to clear it" points at a debt that does not
               // exist — the accurate and more useful message is the deadline.
               ? feePerDay > 0
-                ? `Renew below today and you owe no late fee — ₹${feePerDay.toFixed(0)}/day starts tomorrow.`
-                : 'Renew your plan below to keep riding.'
-              : 'Return your scooter as soon as possible.'}
+                ? t('scooterStatus.renewFreeToday', { rate: `₹${feePerDay.toFixed(0)}` })
+                : t('scooterStatus.renewToKeepRiding')
+              : t('scooterStatus.returnAsap')}
         </Text>
       </StatusShell>
     );
@@ -247,42 +272,50 @@ export function ScooterStatusCard({
   // handset set to another timezone — keep the late wording available here so
   // that rider still gets an accurate card rather than a cheerful one.
   if (eligibility.canRenew) {
-    const remaining = rental.next_due_at ? describeDaysLeft(rental.next_due_at) : null;
+    const remaining = rental.next_due_at ? describeDaysLeft(rental.next_due_at, t) : null;
     return (
       <StatusShell
         tone={eligibility.isLate ? 'danger' : 'primary'}
         icon={RefreshCw}
         title={
           eligibility.isLate
-            ? 'Plan Expired'
+            ? t('scooterStatus.planExpired')
             : rental.next_due_at
-              ? `Plan ends ${formatDay(rental.next_due_at)}${remaining ? ` · ${remaining}` : ''}`
-              : 'Plan Status'
+              ? remaining
+                ? t('scooterStatus.planEndsOnWithLeft', {
+                    date: formatDay(rental.next_due_at),
+                    remaining,
+                  })
+                : t('scooterStatus.planEndsOn', { date: formatDay(rental.next_due_at) })
+              : t('scooterStatus.planStatus')
         }
       >
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
           {eligibility.isLate
-            ? 'Renew below — a late fee applies, shown before you pay.'
-            : 'Renew any time before your plan ends.'}
+            ? t('scooterStatus.renewLateFeeApplies')
+            : t('scooterStatus.renewAnyTime')}
         </Text>
       </StatusShell>
     );
   }
 
   return (
-    <StatusShell tone="success" icon={CheckCircle2} title="Scooter Active">
-      <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">Everything looks good.</Text>
+    <StatusShell tone="success" icon={CheckCircle2} title={t('scooterStatus.active')}>
+      <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">{t('scooterStatus.allGood')}</Text>
     </StatusShell>
   );
 }
 
-function describeDaysLeft(nextDueAt: string): string | null {
+/** `t` is passed in rather than hooked, since this runs outside the component. */
+function describeDaysLeft(nextDueAt: string, t: TranslateFn): string | null {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const due = new Date(`${nextDueAt}T00:00:00`);
   const remaining = Math.round((due.getTime() - today.getTime()) / 86_400_000);
   if (remaining <= 0) return null;
-  return `${remaining} day${remaining === 1 ? '' : 's'} left`;
+  return remaining === 1
+    ? t('scooterStatus.daysLeftOne')
+    : t('scooterStatus.daysLeftOther', { count: remaining });
 }
 
 const TONE_COLOR: Record<'danger' | 'warning' | 'success' | 'primary', string> = {

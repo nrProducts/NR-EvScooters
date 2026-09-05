@@ -7,7 +7,7 @@ import { Spinner } from './Spinner';
 import { InfoHint } from './ui/InfoHint';
 import { COLORS } from '../constants/theme';
 import {
-  LATE_FEE_POLICY_TITLE, lateFeePolicyExample, lateFeePolicySections,
+  LATE_FEE_POLICY_TITLE_KEY, lateFeePolicyExample, lateFeePolicySections,
 } from '../constants/lateFeePolicy';
 import { billingRepository, rentalRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
@@ -15,6 +15,7 @@ import { ApiError } from '../lib/ApiError';
 import { useAuthStore } from '../store/useAuthStore';
 import { formatDate } from '../constants/status';
 import type { ApiOverdueLateFee, ApiRental } from '../types/api';
+import { useT } from '../i18n';
 
 interface LateFeePaymentModalProps {
   visible: boolean;
@@ -44,6 +45,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
   visible, rental, lateFee, onClose, onPaid,
 }) => {
   const insets = useSafeAreaInsets();
+  const { t } = useT();
   const profile = useAuthStore((s) => s.profile);
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
@@ -60,7 +62,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
           amount: Math.round(order.amount * 100),
           currency: order.currency,
           order_id: order.gatewayOrderId,
-          description: 'Overdue Plan — Late Fee',
+          description: t('lateFeeGate.checkoutDescription'),
           prefill: {
             email: profile?.email ?? undefined,
             contact: profile?.phone ?? undefined,
@@ -77,7 +79,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
       } else if (err instanceof ApiError) {
         setPayError(err.message);
       } else {
-        setPayError('Your late fee payment was not completed. Please try again to continue the return process.');
+        setPayError(t('lateFeeGate.error'));
       }
     } finally {
       setPaying(false);
@@ -99,12 +101,12 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
         >
           <View className="flex-row justify-between items-center px-6 pt-6 pb-2">
             <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">
-              Late Fee Payment Required
+              {t('lateFeeGate.title')}
             </Text>
             <TouchableOpacity
               onPress={onClose}
               accessibilityRole="button"
-              accessibilityLabel="Close"
+              accessibilityLabel={t('common.close')}
               className="w-8 h-8 rounded-full items-center justify-center"
               style={{ backgroundColor: COLORS.background }}
             >
@@ -120,42 +122,47 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
               <View className="flex-row items-center mb-1">
                 <AlertTriangle size={14} color={COLORS.danger} />
                 <Text style={{ color: COLORS.danger }} className="text-xs font-extrabold ml-2">
-                  Plan Expired
+                  {t('lateFeeGate.planExpired')}
                 </Text>
               </View>
               <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed">
-                Your plan has expired and a late fee is pending. Please complete the late fee payment before
-                returning the scooter.
+                {t('lateFeeGate.body')}
               </Text>
             </View>
 
-            <DetailLine label="Rider" value={profile?.full_name ?? '—'} />
+            <DetailLine label={t('lateFeeGate.rider')} value={profile?.full_name ?? t('common.dash')} />
             {rental.vehicle ? (
-              <DetailLine label="Vehicle" value={rental.vehicle.registration_number} />
+              <DetailLine label={t('lateFeeGate.vehicle')} value={rental.vehicle.registration_number} />
             ) : null}
-            {lateFee.dueOn ? <DetailLine label="Plan Ended" value={formatDate(lateFee.dueOn)} /> : null}
+            {lateFee.dueOn ? <DetailLine label={t('lateFeeGate.planEnded')} value={formatDate(lateFee.dueOn)} /> : null}
             {/* The ⓘ earns its place on THIS line specifically: this count
                 includes today (the rider is handing the scooter back having
                 ridden it), so it is deliberately one day more than the renew
                 banner on Home quotes for the same date. Without the
                 explanation that reads as one of the two screens being wrong. */}
             <DetailLine
-              label="Overdue"
-              value={`${lateFee.daysLate} day${lateFee.daysLate > 1 ? 's' : ''}`}
+              label={t('lateFeeGate.overdue')}
+              value={
+                lateFee.daysLate === 1
+                  ? t('lateFeeGate.overdueDays.one')
+                  : t('lateFeeGate.overdueDays.other', { count: lateFee.daysLate })
+              }
               info={
                 <InfoHint
-                  title={LATE_FEE_POLICY_TITLE}
-                  sections={lateFeePolicySections(lateFee.feePerDay)}
-                  example={lateFeePolicyExample(lateFee.feePerDay)}
+                  title={t(LATE_FEE_POLICY_TITLE_KEY)}
+                  sections={lateFeePolicySections(t, lateFee.feePerDay)}
+                  example={lateFeePolicyExample(t, lateFee.feePerDay)}
                 />
               }
             />
-            <DetailLine label="Late Fee" value={`₹${lateFee.lateFee.toFixed(0)}`} />
+            <DetailLine label={t('lateFeeGate.lateFee')} value={`₹${lateFee.lateFee.toFixed(0)}`} />
 
             <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
 
             <View className="flex-row items-center justify-between mb-4">
-              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Amount Due</Text>
+              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
+                {t('lateFeeGate.amountDue')}
+              </Text>
               <Text style={{ color: COLORS.danger }} className="text-lg font-black">
                 ₹{lateFee.lateFee.toFixed(0)}
               </Text>
@@ -173,7 +180,9 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
               {paying ? (
                 <Spinner size={18} color="#FFF" />
               ) : (
-                <Text className="text-white font-bold text-sm">Pay Late Fee — ₹{lateFee.lateFee.toFixed(0)}</Text>
+                <Text className="text-white font-bold text-sm">
+                  {t('lateFeeGate.payButton', { amount: `₹${lateFee.lateFee.toFixed(0)}` })}
+                </Text>
               )}
             </TouchableOpacity>
             {payError ? (

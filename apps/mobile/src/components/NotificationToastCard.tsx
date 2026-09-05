@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Bell, X } from 'lucide-react-native';
 import { COLORS } from '../constants/theme';
 import { useNotificationToastStore, type NotificationToastItem } from '../store/useNotificationToastStore';
+import { useT } from '../i18n';
 
 const AUTO_DISMISS_MS = 4500;
 const SLIDE_MS = 320;
@@ -17,6 +18,7 @@ const SLIDE_MS = 320;
 export const NotificationToastCard: React.FC<{ item: NotificationToastItem }> = ({ item }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useT();
   const dismissCurrent = useNotificationToastStore((s) => s.dismissCurrent);
   const translateY = useRef(new Animated.Value(-120)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -115,7 +117,7 @@ export const NotificationToastCard: React.FC<{ item: NotificationToastItem }> = 
         <TouchableOpacity
           onPress={() => dismiss()}
           accessibilityRole="button"
-          accessibilityLabel="Dismiss notification"
+          accessibilityLabel={t('ui.dismissNotification')}
           className="w-7 h-7 rounded-full items-center justify-center ml-2"
           style={{ backgroundColor: COLORS.background }}
         >

@@ -32,12 +32,12 @@ export function Hero() {
           </span>
 
           <h1 className="mt-5 text-4xl font-extrabold leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-            Move Smarter with <span className="text-primary">Swapngo</span>
+            EV Scooter Rental in Chennai — Move Smarter with <span className="text-primary">Swapngo</span>
           </h1>
 
           <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
-            Rent an electric scooter with swappable-battery charging — no waiting around to charge. Verify once,
-            book a plan, swap batteries in minutes, and ride.
+            Rent an electric scooter in Chennai with swappable-battery charging — no waiting around to charge.
+            Verify once, book a weekly plan, swap batteries in minutes, and ride.
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">

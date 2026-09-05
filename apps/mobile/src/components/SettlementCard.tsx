@@ -8,18 +8,23 @@ import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } 
 import { ApiError } from '../lib/ApiError';
 import { useAuthStore } from '../store/useAuthStore';
 import type { ApiReturnSettlement } from '../types/api';
+import { useT, type CopyKey } from '../i18n';
 
 // The display predicates live in a pure, RN-free module so useRiderJourney can
 // share them; re-exported here so existing importers keep working unchanged.
 export { shouldShowSettlement } from '../lib/settlementDisplay';
 
-const STATUS_LABEL: Record<ApiReturnSettlement['status'], string> = {
-  pending_refund: 'Refund Pending',
-  refund_processing: 'Refund Processing',
-  refund_completed: 'Refund Completed',
-  no_refund_required: 'No Refund Required',
-  amount_due: 'Amount Due',
-  settlement_completed: 'Settlement Completed',
+/**
+ * Settlement status -> translation key. The status VALUES are the API's and
+ * are never translated; only what the rider reads in their place is.
+ */
+const STATUS_LABEL_KEY: Record<ApiReturnSettlement['status'], CopyKey> = {
+  pending_refund: 'settlement.status.pending_refund',
+  refund_processing: 'settlement.status.refund_processing',
+  refund_completed: 'settlement.status.refund_completed',
+  no_refund_required: 'settlement.status.no_refund_required',
+  amount_due: 'settlement.status.amount_due',
+  settlement_completed: 'settlement.status.settlement_completed',
 };
 
 /**
@@ -53,6 +58,7 @@ const STATUS_STYLE: Record<
  * rather than as coloured body text.
  */
 export function RefundStatusPill({ status }: { status: ApiReturnSettlement['status'] }) {
+  const { t } = useT();
   const { color, icon: Icon } = STATUS_STYLE[status];
   return (
     <View
@@ -61,7 +67,7 @@ export function RefundStatusPill({ status }: { status: ApiReturnSettlement['stat
     >
       <Icon size={12} color={color} />
       <Text style={{ color }} className="text-[11px] font-bold ml-1.5">
-        {STATUS_LABEL[status]}
+        {t(STATUS_LABEL_KEY[status])}
       </Text>
     </View>
   );
@@ -87,6 +93,7 @@ export function shouldShowSettlementOnHome(settlement: ApiReturnSettlement | nul
  * can drift.
  */
 export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => void) {
+  const { t } = useT();
   const profile = useAuthStore((s) => s.profile);
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
@@ -102,7 +109,7 @@ export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => 
         amount: Math.round(order.amount * 100),
         currency: order.currency,
         order_id: order.gatewayOrderId,
-        description: 'Return Settlement',
+        description: t('settlement.checkoutDescription'),
         prefill: {
           email: profile?.email ?? undefined,
           contact: profile?.phone ?? undefined,
@@ -123,7 +130,7 @@ export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => 
       } else if (err instanceof ApiError) {
         setPayError(err.message);
       } else {
-        setPayError('Payment failed. Please try again.');
+        setPayError(t('payment.failed'));
       }
     } finally {
       setPaying(false);
@@ -152,6 +159,7 @@ export function SettlementCard({
    */
   onDismiss?: () => void;
 }) {
+  const { t } = useT();
   const { pay, paying, payError } = usePaySettlement(settlement, onPaid);
 
   const isDue = settlement.due_amount > 0 && settlement.status === 'amount_due';
@@ -166,14 +174,14 @@ export function SettlementCard({
         <View className="flex-row items-center mb-1">
           <PackageCheck size={16} color={COLORS.danger} />
           <Text style={{ color: COLORS.danger }} className="text-xs font-extrabold ml-2">
-            Scooter Return Settlement
+            {t('settlement.returnSettlement')}
           </Text>
         </View>
         <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black mt-2">
           ₹{settlement.due_amount.toFixed(0)}
         </Text>
         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5 mb-3">
-          Additional amount due — please pay this to complete your return process.
+          {t('settlement.additionalDue')}
         </Text>
         <TouchableOpacity
           onPress={() => void pay()}
@@ -183,7 +191,9 @@ export function SettlementCard({
         >
           {paying ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
           <Text className="text-white text-xs font-bold ml-2">
-            {paying ? 'Processing…' : `Pay ₹${settlement.due_amount.toFixed(0)}`}
+            {paying
+              ? t('settlement.processing')
+              : t('scooterStatus.pay', { amount: `₹${settlement.due_amount.toFixed(0)}` })}
           </Text>
         </TouchableOpacity>
         {payError ? (
@@ -203,13 +213,13 @@ export function SettlementCard({
         {/* flex-1 so the headline wraps rather than pushing the close button
             off the row on a narrow handset. */}
         <Text style={{ color: COLORS.success }} className="text-xs font-extrabold ml-2 flex-1">
-          Scooter Returned Successfully
+          {t('settlement.returnedSuccessfully')}
         </Text>
         {onDismiss ? (
           <TouchableOpacity
             onPress={onDismiss}
             accessibilityRole="button"
-            accessibilityLabel="Dismiss"
+            accessibilityLabel={t('settlement.dismiss')}
             // The icon is 14px; the padding is what makes the tap target
             // reachable without enlarging the glyph.
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -221,9 +231,9 @@ export function SettlementCard({
       </View>
 
       <View className="mt-2">
-        <SettlementLine label="Security Deposit" amount={settlement.deposit_amount} />
-        {settlement.late_fee_amount > 0 && <SettlementLine label="Late Fee" amount={-settlement.late_fee_amount} />}
-        {settlement.damage_fee_amount > 0 && <SettlementLine label="Damage Fee" amount={-settlement.damage_fee_amount} />}
+        <SettlementLine label={t('settlement.securityDeposit')} amount={settlement.deposit_amount} />
+        {settlement.late_fee_amount > 0 && <SettlementLine label={t('settlement.lateFee')} amount={-settlement.late_fee_amount} />}
+        {settlement.damage_fee_amount > 0 && <SettlementLine label={t('settlement.damageFee')} amount={-settlement.damage_fee_amount} />}
         {settlement.other_charges.map((c, i) => (
           <SettlementLine key={i} label={c.label} amount={-c.amount} />
         ))}
@@ -233,7 +243,7 @@ export function SettlementCard({
         <>
           <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
           <View className="flex-row items-center justify-between">
-            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">Refund Amount</Text>
+            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">{t('settlement.refundAmount')}</Text>
             <Text style={{ color: COLORS.success }} className="text-lg font-black">
               ₹{settlement.refund_amount.toFixed(0)}
             </Text>

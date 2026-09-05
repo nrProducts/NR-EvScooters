@@ -28,10 +28,11 @@ import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
 import { notifyError } from '../../lib/confirm';
 import { COLORS } from '../../constants/theme';
 import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
-import { VEHICLE_STATUS_LABEL, VEHICLE_STATUS_TONE } from '../../constants/status';
+import { VEHICLE_STATUS_LABEL_KEY, VEHICLE_STATUS_TONE } from '../../constants/status';
 import type { ApiBooking, ApiMaintenanceNotice, ApiRental, ApiReturnSettlement } from '../../types/api';
 import { ScooterStatusCard } from '../../components/ScooterStatusCard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useT } from '../../i18n';
 
 function formatDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -46,6 +47,7 @@ function formatDay(dateStr: string): string {
 export default function HomeScreen() {
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
+  const { t } = useT();
   const {
     featured, loadingFeatured, featuredError, loadFeatured,
     list, loadingList, listError, loadList,
@@ -58,13 +60,22 @@ export default function HomeScreen() {
   // hold was about to lapse.
   const awaitingPayment = pendingBooking?.status === 'pending_payment';
 
-  /** e.g. "24 min" — how long the unpaid hold has left, or null once lapsed. */
+  /**
+   * e.g. "24 min" — how long the unpaid hold has left, or null once lapsed.
+   *
+   * Built from two keys rather than one, because "1 hr 5 min" and "24 min"
+   * are different sentences: a language that needs a different unit order, or
+   * a joining word between the two parts, cannot express both by concatenating
+   * the same fragment twice.
+   */
   const holdCountdown = (() => {
     if (!awaitingPayment || !pendingBooking?.hold_expires_at) return null;
     const msLeft = new Date(pendingBooking.hold_expires_at).getTime() - Date.now();
     if (msLeft <= 0) return null;
     const mins = Math.ceil(msLeft / 60_000);
-    return mins >= 60 ? `${Math.floor(mins / 60)} hr ${mins % 60} min` : `${mins} min`;
+    return mins >= 60
+      ? t('home.duration.hoursMinutes', { hours: Math.floor(mins / 60), minutes: mins % 60 })
+      : t('home.duration.minutes', { minutes: mins });
   })();
   const [activeRental, setActiveRental] = useState<ApiRental | null>(null);
   const [settlement, setSettlement] = useState<ApiReturnSettlement | null>(null);
@@ -216,7 +227,7 @@ export default function HomeScreen() {
       const canOpen = await Linking.canOpenURL(url);
       await Linking.openURL(canOpen ? url : buildWebMapsUrl(station.lat, station.lng));
     } catch {
-      notifyError("Can't open maps", 'No maps app could be found on this device.');
+      notifyError(t('home.error.maps.title'), t('home.error.maps.message'));
     }
   };
 
@@ -225,7 +236,7 @@ export default function HomeScreen() {
   const featuredRef = featured ? { id: featured.id, name: featured.name } : null;
 
   return (
-    <AppShell title="Home">
+    <AppShell title={t('home.title')}>
       <ScrollView
         className="flex-1 px-5 pt-5"
         contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
@@ -279,20 +290,20 @@ export default function HomeScreen() {
               {awaitingPayment ? (
                 <View className="flex-row items-center">
                   <View className="w-1.5 h-1.5 rounded-full mr-2" style={{ backgroundColor: COLORS.warning }} />
-                  <Text style={{ color: COLORS.warning }} className="text-[11px] font-bold uppercase tracking-wide">Payment Pending</Text>
+                  <Text style={{ color: COLORS.warning }} className="text-[11px] font-bold uppercase tracking-wide">{t('home.paymentPending')}</Text>
                 </View>
               ) : (
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Pickup Scheduled</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">{t('home.pickupScheduled')}</Text>
               )}
               {pendingBooking.vehicle ? (
                 <Badge
-                  label={VEHICLE_STATUS_LABEL[pendingBooking.vehicle.status]}
+                  label={t(VEHICLE_STATUS_LABEL_KEY[pendingBooking.vehicle.status])}
                   tone={VEHICLE_STATUS_TONE[pendingBooking.vehicle.status]}
                 />
               ) : null}
             </View>
             <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold mb-2">
-              {pendingBooking.vehicle?.registration_number ?? pendingBooking.vehicle_model?.name ?? 'Your scooter'}
+              {pendingBooking.vehicle?.registration_number ?? pendingBooking.vehicle_model?.name ?? t('home.yourScooter')}
             </Text>
             <View className="flex-row items-center mb-1">
               <Calendar size={13} color={COLORS.textSecondary} />
@@ -313,10 +324,15 @@ export default function HomeScreen() {
               className="text-[11px] font-medium mt-3 leading-relaxed"
             >
               {awaitingPayment
-                ? `This booking is not confirmed yet — complete payment to secure it.${holdCountdown ? ` Held for ${holdCountdown}.` : ''}`
+                ? [
+                    t('home.notConfirmed'),
+                    holdCountdown ? t('home.heldFor', { duration: holdCountdown }) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
                 : pendingBooking.vehicle
-                  ? 'Your scooter is reserved — staff will hand it over at pickup.'
-                  : "We'll notify you the day before — staff will assign your scooter at pickup."}
+                  ? t('home.reserved')
+                  : t('home.willNotify')}
             </Text>
             {awaitingPayment ? (
               <TouchableOpacity
@@ -326,7 +342,7 @@ export default function HomeScreen() {
                 style={{ backgroundColor: COLORS.primary }}
               >
                 <CreditCard size={14} color="#FFF" />
-                <Text className="text-white text-xs font-bold ml-2">Complete Payment</Text>
+                <Text className="text-white text-xs font-bold ml-2">{t('home.completePayment')}</Text>
               </TouchableOpacity>
             ) : null}
             {!awaitingPayment && pendingBooking.station ? (
@@ -337,7 +353,7 @@ export default function HomeScreen() {
               >
                 <Navigation size={14} color={COLORS.primaryPressed} />
                 <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-bold ml-2">
-                  Get Directions to Pickup
+                  {t('home.getDirections')}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -354,7 +370,7 @@ export default function HomeScreen() {
             >
               <XCircle size={14} color={COLORS.danger} />
               <Text style={{ color: COLORS.danger }} className="text-xs font-bold ml-2">
-                {cancelling ? 'Cancelling…' : 'Cancel Booking'}
+                {cancelling ? t('bookingHistory.cancelling') : t('bookingHistory.cancelBooking')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -393,7 +409,7 @@ export default function HomeScreen() {
         {journey.phase === 'ready_to_book' || journey.phase === 'rental_completed' ? (
           <>
             <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold uppercase tracking-wide mb-2">
-              Ready to ride?
+              {t('home.readyToRide')}
             </Text>
             {loadingFeatured ? (
               <View className="mb-5"><SkeletonList count={1} /></View>
@@ -404,9 +420,9 @@ export default function HomeScreen() {
             ) : null}
 
             <View className="flex-row items-center justify-between mb-3">
-              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Available Scooters</Text>
+              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">{t('vehicles.availableScooters')}</Text>
               <TouchableOpacity onPress={() => router.push('/browse-vehicles')} className="flex-row items-center">
-                <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">See All</Text>
+                <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">{t('common.seeAll')}</Text>
                 <ChevronRight size={14} color={COLORS.primary} />
               </TouchableOpacity>
             </View>

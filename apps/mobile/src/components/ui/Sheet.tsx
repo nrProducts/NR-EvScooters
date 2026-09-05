@@ -3,6 +3,7 @@ import { Modal, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import { COLORS } from '../../constants/theme';
+import { useT } from '../../i18n';
 
 /**
  * The app's bottom-sheet chrome: dim scrim, rounded card rising from the
@@ -27,6 +28,7 @@ export const Sheet: React.FC<SheetProps> = ({
   children,
 }) => {
   const insets = useSafeAreaInsets();
+  const { t } = useT();
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -37,7 +39,7 @@ export const Sheet: React.FC<SheetProps> = ({
             activeOpacity={1}
             onPress={onClose}
             accessibilityRole="button"
-            accessibilityLabel="Dismiss"
+            accessibilityLabel={t('ui.dismiss')}
           />
         ) : (
           <View style={{ flex: 1 }} />
@@ -61,7 +63,7 @@ export const Sheet: React.FC<SheetProps> = ({
                 <TouchableOpacity
                   onPress={onClose}
                   accessibilityRole="button"
-                  accessibilityLabel="Close"
+                  accessibilityLabel={t('common.close')}
                   className="w-8 h-8 rounded-full items-center justify-center"
                   style={{ backgroundColor: COLORS.background }}
                 >

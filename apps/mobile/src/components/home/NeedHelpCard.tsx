@@ -3,10 +3,12 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LifeBuoy, ChevronRight } from 'lucide-react-native';
 import { COLORS } from '../../constants/theme';
+import { useT } from '../../i18n';
 
 /** Compact "we're here to help" card at the tail of Home. */
 export const NeedHelpCard: React.FC = () => {
   const router = useRouter();
+  const { t } = useT();
 
   return (
     <View
@@ -23,9 +25,9 @@ export const NeedHelpCard: React.FC = () => {
         <LifeBuoy size={17} color={COLORS.primary} />
       </View>
       <View className="flex-1">
-        <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold mb-0.5">Need help?</Text>
+        <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold mb-0.5">{t('support.needHelp')}</Text>
         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
-          We&apos;re here to help you 24/7.
+          {t('support.available247')}
         </Text>
       </View>
       <TouchableOpacity
@@ -35,7 +37,7 @@ export const NeedHelpCard: React.FC = () => {
         className="flex-row items-center rounded-xl px-3 py-2"
         style={{ backgroundColor: COLORS.primary + '14' }}
       >
-        <Text style={{ color: COLORS.primaryPressed }} className="text-[11px] font-bold mr-0.5">Contact Support</Text>
+        <Text style={{ color: COLORS.primaryPressed }} className="text-[11px] font-bold mr-0.5">{t('support.contactSupport')}</Text>
         <ChevronRight size={13} color={COLORS.primaryPressed} />
       </TouchableOpacity>
     </View>

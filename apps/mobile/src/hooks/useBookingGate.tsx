@@ -5,6 +5,7 @@ import { Sheet } from '../components/ui/Sheet';
 import { confirmAction } from '../lib/confirm';
 import { useCanRent, useHasActiveBooking, useHasActiveRental } from '../store/useAuthStore';
 import { COLORS } from '../constants/theme';
+import { useT } from '../i18n';
 
 /**
  * The restrictions that stand between tapping a scooter and the booking flow:
@@ -17,6 +18,7 @@ import { COLORS } from '../constants/theme';
  */
 export function useBookingGate() {
   const router = useRouter();
+  const { t } = useT();
   const canRent = useCanRent();
   const hasActiveBooking = useHasActiveBooking();
   const hasActiveRental = useHasActiveRental();
@@ -28,12 +30,12 @@ export function useBookingGate() {
   const startBooking = async (modelId: string, modelName?: string) => {
     if (alreadyBookedOrRenting) {
       const goThere = await confirmAction({
-        title: hasActiveRental ? "You're already on a ride" : 'You already have a booking',
+        title: hasActiveRental ? t('bookingGate.alreadyRiding') : t('bookingGate.alreadyBooked'),
         message: hasActiveRental
-          ? 'You have an active rental. Return your scooter before booking another one.'
-          : 'You already have a scooter booked and awaiting pickup.',
-        confirmLabel: hasActiveRental ? 'View My Scooter' : 'View Booking',
-        cancelLabel: 'Not now',
+          ? t('bookingGate.activeRentalNote')
+          : t('bookingGate.activeBookingNote'),
+        confirmLabel: hasActiveRental ? t('bookingGate.viewMyScooter') : t('bookingGate.viewBooking'),
+        cancelLabel: t('bookingGate.notNow'),
       });
       if (goThere) router.push(hasActiveRental ? '/my-scooter' : '/home');
       return;
@@ -46,24 +48,23 @@ export function useBookingGate() {
   };
 
   const ctaLabel = hasActiveRental
-    ? 'Active Rental'
+    ? t('bookingGate.activeRental')
     : hasActiveBooking
-      ? 'Booking Pending'
+      ? t('bookingGate.bookingPending')
       : !canRent
-        ? 'Complete KYC to Book'
-        : 'Book Now';
+        ? t('bookingGate.completeKycToBook')
+        : t('bookingGate.bookNow');
 
   /** Render this once inside any component that calls startBooking. */
   const kycModal = (
     <Sheet
       visible={kycPrompt !== null}
       onClose={() => setKycPrompt(null)}
-      title="Complete Your KYC First"
+      title={t('bookingGate.completeKycFirst')}
     >
       <View className="px-6 pt-3">
         <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium leading-relaxed mb-6">
-          You need a verified KYC before you can book a scooter. It only takes a few minutes — once
-          approved, you&apos;ll be able to book {kycPrompt?.modelName ?? 'this scooter'} right away.
+          {t('bookingGate.kycNeeded', { scooter: kycPrompt?.modelName ?? t('bookingGate.thisScooter') })}
         </Text>
         <TouchableOpacity
           onPress={() => { setKycPrompt(null); router.push('/kyc'); }}
@@ -71,7 +72,7 @@ export function useBookingGate() {
           className="py-4 rounded-2xl items-center"
           style={{ backgroundColor: COLORS.primary }}
         >
-          <Text className="text-white text-sm font-bold">Complete KYC</Text>
+          <Text className="text-white text-sm font-bold">{t('bookingGate.completeKyc')}</Text>
         </TouchableOpacity>
       </View>
     </Sheet>

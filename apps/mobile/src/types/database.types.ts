@@ -3209,6 +3209,7 @@ export type Database = {
           id: string
           phone: string | null
           photo_storage_path: string | null
+          preferred_language: string
           role: Database["public"]["Enums"]["user_role"]
           status: Database["public"]["Enums"]["user_status"]
           status_changed_at: string | null
@@ -3226,6 +3227,7 @@ export type Database = {
           id: string
           phone?: string | null
           photo_storage_path?: string | null
+          preferred_language?: string
           role?: Database["public"]["Enums"]["user_role"]
           status?: Database["public"]["Enums"]["user_status"]
           status_changed_at?: string | null
@@ -3243,6 +3245,7 @@ export type Database = {
           id?: string
           phone?: string | null
           photo_storage_path?: string | null
+          preferred_language?: string
           role?: Database["public"]["Enums"]["user_role"]
           status?: Database["public"]["Enums"]["user_status"]
           status_changed_at?: string | null

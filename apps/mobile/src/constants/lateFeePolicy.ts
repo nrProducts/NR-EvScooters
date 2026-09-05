@@ -1,3 +1,5 @@
+import type { CopyKey, TranslateFn } from '../i18n';
+
 /**
  * The ONE rider-facing explanation of how the overdue late fee is counted.
  *
@@ -13,6 +15,17 @@
  * apps/backend/src/modules/payments/renewalFee.ts (computeLateRenewalFee's
  * `chargeCurrentDay`) and apps/backend/src/modules/rentals/overdueLateFee.ts.
  * If the maths changes there, this text changes with it.
+ *
+ * ── On translation ───────────────────────────────────────────────────────
+ *
+ * The functions below now take `t` and return finished strings, rather than
+ * holding the strings themselves. That keeps the "one explanation, many
+ * screens" guarantee intact in all three languages: the shared text still
+ * lives in exactly one place, it is just the key set rather than the prose.
+ *
+ * `t` is a parameter and not a hook because these are called from render
+ * bodies that already have one, and from InfoHint props that are computed
+ * outside a component in at least one call site.
  */
 
 export interface LateFeePolicySection {
@@ -20,7 +33,7 @@ export interface LateFeePolicySection {
   body: string;
 }
 
-export const LATE_FEE_POLICY_TITLE = 'How your late fee is counted';
+export const LATE_FEE_POLICY_TITLE_KEY: CopyKey = 'lateFee.title';
 
 /**
  * `feePerDay` is threaded through rather than hardcoded because the rate is an
@@ -28,31 +41,27 @@ export const LATE_FEE_POLICY_TITLE = 'How your late fee is counted';
  * rate the system does not actually charge is worse than one quoting no rate
  * at all. Pass 0 (or omit) and the money examples are left out.
  */
-export function lateFeePolicySections(feePerDay = 0): LateFeePolicySection[] {
+export function lateFeePolicySections(t: TranslateFn, feePerDay = 0): LateFeePolicySection[] {
+  // Formatted here rather than inside the dictionary: the rupee symbol and
+  // the number's grouping follow the device's region, not the app's language.
   const rate = feePerDay > 0 ? `₹${feePerDay.toFixed(0)}` : null;
 
   return [
     {
-      heading: 'The last day of your plan is yours',
-      body: 'Your plan covers its final day in full. The late fee only begins the day AFTER your plan ends.',
+      heading: t('lateFee.lastDay.heading'),
+      body: t('lateFee.lastDay.body'),
     },
     {
-      heading: 'Renewing pays for today',
-      body: 'When you renew, your new plan starts today — so today is charged as plan time, not as a penalty. '
-        + 'Renew on the very first day after your plan ends and you owe no late fee at all.',
+      heading: t('lateFee.renewing.heading'),
+      body: t('lateFee.renewing.body'),
     },
     {
-      heading: 'Returning uses up today',
-      body: 'When you hand the scooter back, you have already ridden it through today, so today is counted. '
-        + 'That is why returning always shows one day more than renewing on the same date.',
+      heading: t('lateFee.returning.heading'),
+      body: t('lateFee.returning.body'),
     },
     {
-      heading: 'It is one fee, paid once',
-      body: rate
-        ? `The rate is ${rate} per day either way. Whichever way you clear it — renewing or paying before a return — `
-          + 'it is the same debt, and paying it once settles it for this cycle.'
-        : 'The rate is the same either way. Whichever way you clear it — renewing or paying before a return — '
-          + 'it is the same debt, and paying it once settles it for this cycle.',
+      heading: t('lateFee.oneFee.heading'),
+      body: rate ? t('lateFee.oneFee.withRate', { rate }) : t('lateFee.oneFee.noRate'),
     },
   ];
 }
@@ -64,11 +73,12 @@ export function lateFeePolicySections(feePerDay = 0): LateFeePolicySection[] {
  * their own live figures back to them in the explainer adds nothing the screen
  * behind it is not already showing.
  */
-export function lateFeePolicyExample(feePerDay = 0): string[] {
-  const money = (days: number) => (feePerDay > 0 ? ` = ₹${(feePerDay * days).toFixed(0)}` : '');
+export function lateFeePolicyExample(t: TranslateFn, feePerDay = 0): string[] {
+  const money = (days: number) =>
+    feePerDay > 0 ? t('lateFee.example.equals', { amount: `₹${(feePerDay * days).toFixed(0)}` }) : '';
   return [
-    'Say your plan ended on the 1st and today is the 4th:',
-    `· Renew today → 2 days (the 2nd and 3rd)${money(2)}`,
-    `· Return today → 3 days (the 2nd, 3rd and 4th)${money(3)}`,
+    t('lateFee.example.intro'),
+    t('lateFee.example.renew', { amount: money(2) }),
+    t('lateFee.example.return', { amount: money(3) }),
   ];
 }

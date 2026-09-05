@@ -48,8 +48,12 @@ export default function NomineeScreen() {
             setPhone(current.phone ?? '');
             setEmail(current.email ?? '');
         } catch (err) {
-            setLoadError(err instanceof ApiError ? err.message : 'Could not load your nominee.');
+            setLoadError(err instanceof ApiError ? err.message : t('nominee.error.load'));
         }
+    // `t` is a new closure every render; re-creating `load` on every
+    // language change would be harmless but pointless since it only runs
+    // once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -67,14 +71,14 @@ export default function NomineeScreen() {
                 email: email.trim() || undefined,
             });
             setNominee(saved);
-            notify('Nominee saved', t('privacy.nominee.warn'));
+            notify(t('nominee.saved.title'), t('privacy.nominee.warn'));
             router.back();
         } catch (err) {
             if (err instanceof ApiError) {
                 setFieldErrors(err.fields ?? {});
-                if (!err.fields) notify('Could not save', err.message);
+                if (!err.fields) notify(t('nominee.error.save'), err.message);
             } else {
-                notify('Could not save', 'Please try again.');
+                notify(t('nominee.error.save'), t('common.pleaseTryAgain'));
             }
         } finally {
             setSaving(false);
@@ -83,9 +87,9 @@ export default function NomineeScreen() {
 
     const remove = async () => {
         const confirmed = await confirmAction({
-            title: 'Remove your nominee?',
-            message: 'Nobody will be able to act on your behalf until you name someone else.',
-            confirmLabel: 'Remove',
+            title: t('nominee.removeConfirm.title'),
+            message: t('nominee.removeConfirm.message'),
+            confirmLabel: t('common.remove'),
             cancelLabel: t('common.cancel'),
             destructive: true,
         });
@@ -94,10 +98,10 @@ export default function NomineeScreen() {
         setSaving(true);
         try {
             await api.deleteNominee();
-            notify('Nominee removed', '');
+            notify(t('nominee.removed.title'), '');
             router.back();
         } catch (err) {
-            notify('Could not remove', err instanceof ApiError ? err.message : 'Please try again.');
+            notify(t('nominee.error.remove'), err instanceof ApiError ? err.message : t('common.pleaseTryAgain'));
         } finally {
             setSaving(false);
         }
@@ -130,37 +134,37 @@ export default function NomineeScreen() {
                         </Text>
 
                         <FormField
-                            label="Their name"
+                            label={t('nominee.form.name')}
                             value={fullName}
                             onChangeText={setFullName}
                             required
                             error={fieldErrors.full_name}
-                            placeholder="Full name"
+                            placeholder={t('nominee.form.namePlaceholder')}
                         />
                         <FormField
-                            label="Their relationship to you"
+                            label={t('nominee.form.relationship')}
                             value={relationship}
                             onChangeText={setRelationship}
                             required
                             error={fieldErrors.relationship}
-                            placeholder="Relationship"
+                            placeholder={t('nominee.form.relationshipPlaceholder')}
                         />
                         <FormField
-                            label="Their phone number"
+                            label={t('nominee.form.phone')}
                             value={phone}
                             onChangeText={setPhone}
                             keyboardType="phone-pad"
                             error={fieldErrors.phone}
-                            placeholder="Phone number"
+                            placeholder={t('nominee.form.phonePlaceholder')}
                         />
                         <FormField
-                            label="Their email (optional)"
+                            label={t('nominee.form.email')}
                             value={email}
                             onChangeText={setEmail}
                             keyboardType="email-address"
                             autoCapitalize="none"
                             error={fieldErrors.email}
-                            placeholder="Email"
+                            placeholder={t('nominee.form.emailPlaceholder')}
                         />
 
                         {/* The nominee never consented to being in our records.
@@ -202,7 +206,7 @@ export default function NomineeScreen() {
                                 className="w-full py-3.5 rounded-2xl items-center mt-2"
                             >
                                 <Text style={{ color: COLORS.danger }} className="font-bold text-xs">
-                                    Remove my nominee
+                                    {t('nominee.remove')}
                                 </Text>
                             </TouchableOpacity>
                         ) : null}

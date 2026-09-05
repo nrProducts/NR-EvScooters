@@ -4,9 +4,10 @@ import { Spinner } from '../../../components/Spinner';
 import { ArrowLeft, MapPin, Search, X } from 'lucide-react-native';
 import { COLORS } from '../../../constants/theme';
 import { formatDistance } from '../utils/distance';
-import { formatStationName, STATION_STATUS_LABEL, type BatteryStation } from '../types/batteryStation.types';
+import { formatStationName, STATION_STATUS_LABEL_KEY, type BatteryStation } from '../types/batteryStation.types';
 import { stationStatusColor } from './StationStatusBadge';
 import type { AreaResult } from '../utils/geocode';
+import { useT } from '../../../i18n';
 
 /**
  * Search bar plus its result list, in two modes:
@@ -37,6 +38,7 @@ export const StationSearch: React.FC<{
     value, onChangeText, results, onSelect, distanceFor,
     areas, isSearchingAreas, onSelectArea, selectedArea, onClearArea, recommendations,
 }) => {
+    const { t } = useT();
     const isSearching = value.trim().length > 0;
     const showPanel = isSearching || !!selectedArea;
 
@@ -58,7 +60,7 @@ export const StationSearch: React.FC<{
                     <TouchableOpacity
                         onPress={onClearArea}
                         accessibilityRole="button"
-                        accessibilityLabel="Back to search"
+                        accessibilityLabel={t('stationSearch.backToSearch')}
                         className="w-8 h-8 rounded-full items-center justify-center -ml-1"
                     >
                         <ArrowLeft size={17} color={COLORS.textSecondary} />
@@ -69,9 +71,9 @@ export const StationSearch: React.FC<{
                 <TextInput
                     value={value}
                     onChangeText={onChangeText}
-                    placeholder="Search station, QIS ID or area"
+                    placeholder={t('stationSearch.placeholder')}
                     placeholderTextColor={COLORS.textSecondary}
-                    accessibilityLabel="Search battery stations or an area"
+                    accessibilityLabel={t('stationSearch.a11yLabel')}
                     returnKeyType="search"
                     autoCorrect={false}
                     autoCapitalize="none"
@@ -83,7 +85,7 @@ export const StationSearch: React.FC<{
                     <TouchableOpacity
                         onPress={() => onChangeText('')}
                         accessibilityRole="button"
-                        accessibilityLabel="Clear search"
+                        accessibilityLabel={t('stationSearch.clearSearch')}
                         className="w-8 h-8 rounded-full items-center justify-center"
                     >
                         <X size={15} color={COLORS.textSecondary} />
@@ -107,9 +109,9 @@ export const StationSearch: React.FC<{
                     <ScrollView keyboardShouldPersistTaps="handled">
                         {selectedArea ? (
                             <>
-                                <SectionHeading label={`Stations near ${selectedArea.name}`} />
+                                <SectionHeading label={t('stationSearch.stationsNear', { area: selectedArea.name })} />
                                 {recommendations.length === 0 ? (
-                                    <EmptyRow text={`No stations found near ${selectedArea.name}.`} />
+                                    <EmptyRow text={t('stationSearch.noneNear', { area: selectedArea.name })} />
                                 ) : (
                                     recommendations.map(({ station, distanceKm }, index) => (
                                         <StationRow
@@ -126,7 +128,7 @@ export const StationSearch: React.FC<{
                             <>
                                 {results.length > 0 ? (
                                     <>
-                                        <SectionHeading label="Stations" />
+                                        <SectionHeading label={t('stationSearch.stationsHeading')} />
                                         {results.map((station, index) => {
                                             const distance = distanceFor(station);
                                             return (
@@ -136,7 +138,7 @@ export const StationSearch: React.FC<{
                                                     trailing={
                                                         distance !== null
                                                             ? formatDistance(distance)
-                                                            : STATION_STATUS_LABEL[station.status]
+                                                            : t(STATION_STATUS_LABEL_KEY[station.status])
                                                     }
                                                     first={index === 0}
                                                     onPress={() => onSelect(station)}
@@ -148,13 +150,13 @@ export const StationSearch: React.FC<{
 
                                 {areas.length > 0 ? (
                                     <>
-                                        <SectionHeading label="Areas" />
+                                        <SectionHeading label={t('stationSearch.areasHeading')} />
                                         {areas.map((area, index) => (
                                             <TouchableOpacity
                                                 key={area.id}
                                                 onPress={() => onSelectArea(area)}
                                                 accessibilityRole="button"
-                                                accessibilityLabel={`Show stations near ${area.name}`}
+                                                accessibilityLabel={t('stationSearch.showNear', { area: area.name })}
                                                 className="px-4 py-3 flex-row items-center"
                                                 style={{
                                                     minHeight: 56,
@@ -187,7 +189,7 @@ export const StationSearch: React.FC<{
                                 ) : null}
 
                                 {results.length === 0 && areas.length === 0 && !isSearchingAreas ? (
-                                    <EmptyRow text={`Nothing matches "${value.trim()}".`} />
+                                    <EmptyRow text={t('stationSearch.noMatches', { query: value.trim() })} />
                                 ) : null}
                             </>
                         )}
@@ -223,11 +225,17 @@ const StationRow: React.FC<{
     trailing: string;
     first: boolean;
     onPress: () => void;
-}> = ({ station, trailing, first, onPress }) => (
+}> = ({ station, trailing, first, onPress }) => {
+    const { t } = useT();
+    return (
     <TouchableOpacity
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`${formatStationName(station.name)}, ${STATION_STATUS_LABEL[station.status]}, ${trailing}`}
+        accessibilityLabel={t('stationSearch.rowA11y', {
+            station: formatStationName(station.name),
+            status: t(STATION_STATUS_LABEL_KEY[station.status]),
+            trailing,
+        })}
         className="px-4 py-3 flex-row items-center"
         style={{
             minHeight: 56,
@@ -255,4 +263,5 @@ const StationRow: React.FC<{
             {trailing}
         </Text>
     </TouchableOpacity>
-);
+    );
+};

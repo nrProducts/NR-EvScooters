@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";
 import { useAuthStore } from "../store/useAuthStore";
 import { useOnboardingStore } from "../store/useOnboardingStore";
+import { useLangStore, useT } from "../i18n";
 import { useNotificationBadgeStore } from "../store/useNotificationBadgeStore";
 import { useNotificationToastStore } from "../store/useNotificationToastStore";
 import { userRepository } from "../services";
@@ -46,6 +47,10 @@ const RIDER_ROUTES = [
   // !hasSeenOnboarding gate below for the signed-out first-run case, which
   // doesn't rely on this list at all.
   "onboarding",
+  // Re-opened from Profile → Language at any time. The first-launch pass is
+  // handled by its own gate below, ahead of onboarding, and does not rely on
+  // this list.
+  "language",
 ];
 // Screens reachable while signed OUT (the login surface).
 const AUTH_ROUTES = ["index", "otp-verify", "auth-callback"];
@@ -100,12 +105,20 @@ function MisconfiguredScreen({ missing }: { missing: string[] }) {
 }
 
 export default function RootLayout() {
+  const { t } = useT();
   const missing = missingEnvVars();
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const initialising = useAuthStore((s) => s.initialising);
   const onboardingHydrated = useOnboardingStore((s) => s.hydrated);
   const hasSeenOnboarding = useOnboardingStore((s) => s.hasSeenOnboarding);
   const hydrateOnboarding = useOnboardingStore((s) => s.hydrate);
+  // Device-level, like onboarding above and for the same reason: the picker
+  // must not reappear because the rider signed out, and the app must not
+  // flash English before the stored preference has been read.
+  const langReady = useLangStore((s) => s.ready);
+  const langChosen = useLangStore((s) => s.chosen);
+  const hydrateLang = useLangStore((s) => s.hydrate);
+  const syncLangWithProfile = useLangStore((s) => s.syncWithProfile);
   const session = useAuthStore((s) => s.session);
   const profile = useAuthStore((s) => s.profile);
   const hasSeenKycIntro = useAuthStore((s) => s.hasSeenKycIntro);
@@ -159,6 +172,23 @@ export default function RootLayout() {
   useEffect(() => {
     void hydrateOnboarding();
   }, [hydrateOnboarding]);
+
+  // Same boot step as onboarding: read the stored language before anything
+  // renders. Deliberately not awaited alongside the session — it touches no
+  // network and must not be delayed by one.
+  useEffect(() => {
+    void hydrateLang();
+  }, [hydrateLang]);
+
+  // Reconciles this device's language against the signed-in account's
+  // `preferred_language` each time a profile lands — which covers sign-in,
+  // account switching on a shared phone, and retrying a push that failed
+  // while the rider was offline. All the branching is in the store; see
+  // syncWithProfile there for which side wins in which case.
+  useEffect(() => {
+    if (!profile) return;
+    syncLangWithProfile(profile.id, profile.preferred_language);
+  }, [profile, syncLangWithProfile]);
 
   // Registers a push token once per signed-in account, not on every profile
   // refetch — keyed on the id (not a plain boolean) so switching accounts
@@ -232,7 +262,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!navigationState?.key) return;
-    if (initialising || !onboardingHydrated) return;
+    if (initialising || !onboardingHydrated || !langReady) return;
 
     // The (tabs) group wraps Home/My Scooter/Billing/Stations/Profile
     // for the bottom tab bar, and doesn't affect any route's URL — but
@@ -242,6 +272,18 @@ export default function RootLayout() {
     const rawSegs = segments as unknown as string[];
     const current = rawSegs[0] === "(tabs)" ? (rawSegs[1] ?? "home") : (rawSegs[0] ?? "index");
     const atAuthScreen = rawSegs.length === 0 || AUTH_ROUTES.includes(current);
+
+    // Language comes before EVERYTHING, onboarding included: onboarding is
+    // three screens of prose, and showing it in a language the rider cannot
+    // read is the one failure this whole feature exists to prevent. The gate
+    // is on `chosen`, not on the language being set — the app always has a
+    // language (guessed from the device locale, else English), so anything
+    // weaker than "the rider actually picked" would skip the picker on a
+    // Tamil phone and silently decide for them.
+    if (!langChosen) {
+      if (current !== "language") safeReplace("/language");
+      return;
+    }
 
     // Device has never completed onboarding — takes priority over everything
     // else, signed in or not, so a brand-new install always sees it first.
@@ -313,7 +355,7 @@ export default function RootLayout() {
     }
   }, [
     navigationState?.key, initialising, onboardingHydrated, hasSeenOnboarding, session, profile,
-    hasSeenKycIntro, segments, router, safeReplace,
+    hasSeenKycIntro, segments, router, safeReplace, langReady, langChosen,
   ]);
 
   if (missing.length > 0) return <MisconfiguredScreen missing={missing} />;
@@ -322,7 +364,7 @@ export default function RootLayout() {
   // native splash before this shows the SNG mark alone — Android 12+ clips
   // windowSplashScreenAnimatedIcon to a circle, so the wordmark can only be
   // shown here, once JS owns the screen.
-  if (initialising || !onboardingHydrated) {
+  if (initialising || !onboardingHydrated || !langReady) {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" backgroundColor={COLORS.background} />
@@ -346,20 +388,20 @@ export default function RootLayout() {
           ) : (
             <>
               <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
-                Couldn&apos;t load your profile
+                {t('rootLayout.couldNotLoadProfile')}
               </Text>
               <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-3 leading-relaxed">
-                {profileError ?? "Something went wrong. Please try again."}
+                {profileError ?? t('common.genericError')}
               </Text>
               <TouchableOpacity
                 onPress={() => void refreshProfile()}
                 className="mt-6 px-6 py-3 rounded-2xl"
                 style={{ backgroundColor: COLORS.primary }}
               >
-                <Text style={{ color: '#FFF' }} className="font-bold text-sm">Try Again</Text>
+                <Text style={{ color: '#FFF' }} className="font-bold text-sm">{t('common.tryAgain')}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => void signOut()} className="mt-4 px-4 py-2">
-                <Text style={{ color: COLORS.textSecondary }} className="font-medium text-xs">Sign out</Text>
+                <Text style={{ color: COLORS.textSecondary }} className="font-medium text-xs">{t('auth.signOut')}</Text>
               </TouchableOpacity>
             </>
           )}

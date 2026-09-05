@@ -13,11 +13,13 @@ import { pullToRefresh, useRefresh } from '../../../components/ui/PullToRefresh'
 import { StationStatusBadge } from '../components/StationStatusBadge';
 import { useBatteryStation } from '../hooks/useBatteryStations';
 import { formatStationName, type BatteryStation } from '../types/batteryStation.types';
+import { useT } from '../../../i18n';
 
 /** The optional full-details screen reached from the map's bottom sheet. */
 export default function StationDetailsScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { t } = useT();
     const { id } = useLocalSearchParams<{ id: string }>();
     const { data: station, isLoading, isError, error, refetch } = useBatteryStation(id);
     // refetch() ignores the 60s staleTime configured on the root QueryClient,
@@ -26,12 +28,12 @@ export default function StationDetailsScreen() {
 
     const copy = useCallback(async (value: string, label: string) => {
         if (await copyToClipboard(value)) {
-            notifySuccess(`${label} copied`, value);
+            notifySuccess(t('stationDetail.copied', { label }), value);
         } else {
             // The value is on screen and selectable either way.
-            notifyError('Could not copy', value);
+            notifyError(t('stationDetail.error.copyFailed'), value);
         }
-    }, []);
+    }, [t]);
 
     const navigate = useCallback(async (target: BatteryStation) => {
         const deepLink = buildMapsUrl(target.latitude, target.longitude, Platform.OS === 'ios' ? 'ios' : 'android');
@@ -42,9 +44,9 @@ export default function StationDetailsScreen() {
             }
             await Linking.openURL(buildWebMapsUrl(target.latitude, target.longitude));
         } catch {
-            notifyError('No navigation app found', 'Copy the coordinates and open them in a maps app.');
+            notifyError(t('stationDetail.error.noNavApp.title'), t('stationDetail.error.noNavApp.message'));
         }
-    }, []);
+    }, [t]);
 
     return (
         <View className="flex-1" style={{ backgroundColor: COLORS.background, paddingTop: insets.top }}>
@@ -52,14 +54,14 @@ export default function StationDetailsScreen() {
                 <TouchableOpacity
                     onPress={() => (router.canGoBack() ? router.back() : router.navigate('/battery-stations'))}
                     accessibilityRole="button"
-                    accessibilityLabel="Go back"
+                    accessibilityLabel={t('stationDetail.goBack')}
                     className="w-10 h-10 rounded-xl items-center justify-center mr-2"
                     style={{ backgroundColor: COLORS.background }}
                 >
                     <ArrowLeft size={18} color={COLORS.textPrimary} />
                 </TouchableOpacity>
                 <Text style={{ color: COLORS.textPrimary }} className="text-base font-extrabold flex-1" numberOfLines={1}>
-                    {station ? formatStationName(station.name) : 'Station details'}
+                    {station ? formatStationName(station.name) : t('stationDetail.title')}
                 </Text>
             </View>
 
@@ -69,7 +71,7 @@ export default function StationDetailsScreen() {
                 </View>
             ) : isError || !station ? (
                 <ErrorState
-                    message={error?.message ?? 'This station is no longer available.'}
+                    message={error?.message ?? t('stationDetail.error.loadFailed')}
                     offline={error?.isOffline}
                     onRetry={() => void refetch()}
                 />
@@ -88,24 +90,24 @@ export default function StationDetailsScreen() {
                         >
                             <BatteryCharging size={12} color={COLORS.primary} />
                             <Text style={{ color: COLORS.primaryPressed }} className="text-[10px] font-black ml-1.5">
-                                {station.batteryCount} BATTERIES
+                                {t('stationDetail.batteries', { count: station.batteryCount })}
                             </Text>
                         </View>
                     </View>
 
                     <Card>
-                        <Row icon={Hash} label="Serial number" value={`#${station.serialNumber}`} />
-                        <Row icon={Hash} label="QIS ID(s)" value={station.qisIds.join('\n')} />
+                        <Row icon={Hash} label={t('stationDetail.serialNumber')} value={`#${station.serialNumber}`} />
+                        <Row icon={Hash} label={t('stationDetail.qisIds')} value={station.qisIds.join('\n')} />
                     </Card>
 
                     <Card>
-                        <Row icon={MapPin} label="Latitude" value={station.latitude.toFixed(6)} />
-                        <Row icon={MapPin} label="Longitude" value={station.longitude.toFixed(6)} />
+                        <Row icon={MapPin} label={t('stationDetail.latitude')} value={station.latitude.toFixed(6)} />
+                        <Row icon={MapPin} label={t('stationDetail.longitude')} value={station.longitude.toFixed(6)} />
                         <TouchableOpacity
                             onPress={() =>
                                 void copy(
                                     `${station.latitude.toFixed(6)}, ${station.longitude.toFixed(6)}`,
-                                    'Coordinates',
+                                    t('stationDetail.coordinatesLabel'),
                                 )
                             }
                             accessibilityRole="button"
@@ -114,7 +116,7 @@ export default function StationDetailsScreen() {
                         >
                             <Copy size={15} color={COLORS.textSecondary} />
                             <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2">
-                                Copy coordinates
+                                {t('stationDetail.copyCoordinates')}
                             </Text>
                         </TouchableOpacity>
                     </Card>
@@ -122,12 +124,12 @@ export default function StationDetailsScreen() {
                     <TouchableOpacity
                         onPress={() => void navigate(station)}
                         accessibilityRole="button"
-                        accessibilityLabel={`Navigate to ${formatStationName(station.name)}`}
+                        accessibilityLabel={t('stationDetail.navigateTo', { station: formatStationName(station.name) })}
                         className="flex-row items-center justify-center rounded-2xl mt-2"
                         style={{ backgroundColor: COLORS.primary, minHeight: 52 }}
                     >
                         <Navigation size={17} color={COLORS.white} />
-                        <Text className="text-white font-bold text-sm ml-2">Navigate to station</Text>
+                        <Text className="text-white font-bold text-sm ml-2">{t('stationDetail.navigate')}</Text>
                     </TouchableOpacity>
                 </ScrollView>
             )}

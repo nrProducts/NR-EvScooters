@@ -44,7 +44,7 @@ export default function PrivacyHubScreen() {
                 {loading && !state ? (
                     <Spinner size={18} color={COLORS.primary} />
                 ) : !state ? (
-                    <ErrorState message={error ?? 'Could not load your privacy settings.'} onRetry={reload} />
+                    <ErrorState message={error ?? t('privacy.loadFailed')} onRetry={reload} />
                 ) : (
                     <>
                         <LanguageToggle label={t('lang.label')} />

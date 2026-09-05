@@ -5,6 +5,7 @@ import { MapPinOff } from 'lucide-react-native';
 import { COLORS } from '../../../constants/theme';
 import { ENV } from '../../../constants/env';
 import { CHENNAI, type BatteryStationMapHandle, type BatteryStationMapProps } from './mapContract';
+import { translate, useLangStore, useT } from '../../../i18n';
 
 export { CHENNAI };
 export type { BatteryStationMapHandle };
@@ -29,13 +30,14 @@ const BatteryStationMapView = lazy(() => import('./BatteryStationMapView'));
 
 export const BatteryStationMap = forwardRef<BatteryStationMapHandle, BatteryStationMapProps>(
     function BatteryStationMap(props, ref) {
+        const { t } = useT();
         // Checked before the lazy import so an unconfigured build never pays
         // to load the renderer just to render a notice.
         if (!ENV.mapStyleUrl) {
             return (
                 <MapNotice
-                    title="Map not configured"
-                    detail="Add EXPO_PUBLIC_MAP_STYLE_URL to apps/mobile/.env (see .env.example) and restart Metro with -c."
+                    title={t('mapControl.notConfigured.title')}
+                    detail={t('mapControl.notConfigured.detail')}
                 />
             );
         }
@@ -56,23 +58,26 @@ const MapLoading = () => (
     </View>
 );
 
-const MapNotice: React.FC<{ title: string; detail: string }> = ({ title, detail }) => (
-    <View className="flex-1 items-center justify-center px-10" style={{ backgroundColor: COLORS.gray[100] }}>
-        <MapPinOff size={28} color={COLORS.textSecondary} />
-        <Text style={{ color: COLORS.textPrimary }} className="text-base font-black mt-3 text-center">
-            {title}
-        </Text>
-        <Text
-            style={{ color: COLORS.textSecondary }}
-            className="text-xs font-medium text-center mt-2 leading-relaxed"
-        >
-            {detail}
-        </Text>
-        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-2">
-            Search and station details still work.
-        </Text>
-    </View>
-);
+const MapNotice: React.FC<{ title: string; detail: string }> = ({ title, detail }) => {
+    const { t } = useT();
+    return (
+        <View className="flex-1 items-center justify-center px-10" style={{ backgroundColor: COLORS.gray[100] }}>
+            <MapPinOff size={28} color={COLORS.textSecondary} />
+            <Text style={{ color: COLORS.textPrimary }} className="text-base font-black mt-3 text-center">
+                {title}
+            </Text>
+            <Text
+                style={{ color: COLORS.textSecondary }}
+                className="text-xs font-medium text-center mt-2 leading-relaxed"
+            >
+                {detail}
+            </Text>
+            <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-2">
+                {t('mapControl.searchStillWorks')}
+            </Text>
+        </View>
+    );
+};
 
 /**
  * Catches both the failed lazy import and any throw from MapLibre's own
@@ -95,10 +100,18 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, { failed: bool
 
     render() {
         if (this.state.failed) {
+            // A class component, so useT() is unavailable — reads the
+            // current language directly from the store rather than through
+            // the hook. This is a one-shot error fallback with no interactive
+            // language switcher on screen, so it not re-rendering live on a
+            // language change (it would need remounting to pick one up
+            // anyway, since getDerivedStateFromError only runs once) costs
+            // nothing a rider would notice.
+            const lang = useLangStore.getState().lang;
             return (
                 <MapNotice
-                    title="Map unavailable"
-                    detail="This build is missing the MapLibre native module. Rebuild the development client (see docs/battery-stations.md §1.4)."
+                    title={translate(lang, 'mapControl.unavailable.title')}
+                    detail={translate(lang, 'mapControl.unavailable.detail')}
                 />
             );
         }

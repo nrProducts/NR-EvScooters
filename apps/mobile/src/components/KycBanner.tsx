@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { ArrowRight } from 'lucide-react-native';
 import { useAuthStore, useCanRent } from '../store/useAuthStore';
 import { COLORS } from '../constants/theme';
+import { useT } from '../i18n';
 
 /**
  * A single compact line on Home, shown until KYC is verified — deliberately not
@@ -12,6 +13,7 @@ import { COLORS } from '../constants/theme';
 export const KycBanner: React.FC = () => {
   const router = useRouter();
   const canRent = useCanRent();
+  const { t } = useT();
   const kycStatus = useAuthStore((s) => s.profile?.kyc_status ?? 'not_submitted');
 
   if (canRent) return null;
@@ -19,10 +21,10 @@ export const KycBanner: React.FC = () => {
   const inReview = kycStatus === 'pending' || kycStatus === 'partially_verified';
   const message =
     kycStatus === 'rejected'
-      ? 'A document needs fixing to unlock all features'
+      ? t('kycBanner.rejected')
       : inReview
-        ? "Your profile is under review — we'll notify you"
-        : 'Complete your profile to unlock all features';
+        ? t('kycBanner.inReview')
+        : t('kycBanner.incomplete');
 
   return (
     <TouchableOpacity

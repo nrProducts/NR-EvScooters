@@ -5,7 +5,7 @@ import { CONTACT_EMAIL, CONTACT_PHONE_DISPLAY, CONTACT_PHONE_HREF, CONTACT_ADDRE
 
 const QUICK_LINKS = [
   { label: "How It Works", href: "#how-it-works" },
-  { label: "Vehicles", href: "#vehicles" },
+  { label: "Why Swapngo", href: "#why" },
   { label: "Pricing", href: "#pricing" },
   { label: "About", href: "#about" },
 ];
@@ -86,6 +86,14 @@ export function Footer() {
         <Container className="flex flex-col items-center justify-between gap-3 py-6 text-xs text-white/60 sm:flex-row">
           <p>© {year} Swapngo. All rights reserved.</p>
           <div className="flex gap-5">
+            {/*
+              Left as "#" deliberately: /privacy.html and /terms.html are
+              generated from docs/legal/*.md, which still has unresolved
+              [PLACEHOLDER] markers awaiting legal review, and the generated
+              files are gitignored until that's done — so they aren't live on
+              the deployed site yet. Point these at "/privacy.html" and
+              "/terms.html" once that review lands and the files are committed.
+            */}
             <a href="#" className="hover:text-white">
               Privacy Policy
             </a>

@@ -8,6 +8,7 @@ import { ApiError } from '../lib/ApiError';
 import { COLORS } from '../constants/theme';
 import { isValidPhone, toE164 } from '../lib/authValidation';
 import { Phone, ArrowRight } from 'lucide-react-native';
+import { useT } from '../i18n';
 
 /**
  * Rider login = phone + OTP. Google is offered as a secondary / recovery
@@ -18,6 +19,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const requestOtp = useAuthStore((s) => s.requestOtp);
   const signInWithGoogle = useAuthStore((s) => s.signInWithGoogle);
+  const { t } = useT();
 
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState<'otp' | 'google' | null>(null);
@@ -26,7 +28,7 @@ export default function LoginScreen() {
   const sendCode = async () => {
     if (busy) return;
     if (!isValidPhone(phone)) {
-      setError('Enter a valid mobile number.');
+      setError(t('auth.error.invalidPhone'));
       return;
     }
     const e164 = toE164(phone);
@@ -36,7 +38,7 @@ export default function LoginScreen() {
       await requestOtp(e164);
       router.push({ pathname: '/otp-verify', params: { phone: e164 } });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not send the code. Please try again.');
+      setError(err instanceof ApiError ? err.message : t('auth.error.sendFailed'));
     } finally {
       setBusy(null);
     }
@@ -54,7 +56,7 @@ export default function LoginScreen() {
         setBusy(null);
         return;
       }
-      setError(err instanceof ApiError ? err.message : 'Google sign-in failed. Please try again.');
+      setError(err instanceof ApiError ? err.message : t('auth.error.googleFailed'));
     } finally {
       setBusy(null);
     }
@@ -76,7 +78,7 @@ export default function LoginScreen() {
             resizeMode="contain"
           />
           <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium mt-1.5 text-center px-4">
-            Sign in with your mobile number to start riding.
+            {t('auth.tagline')}
           </Text>
         </View>
 
@@ -85,13 +87,13 @@ export default function LoginScreen() {
             <View className="items-center py-10">
               <Spinner size={32} color={COLORS.primary} />
               <Text style={{ color: COLORS.textSecondary }} className="font-medium mt-4">
-                Opening Google sign-in...
+                {t('auth.openingGoogle')}
               </Text>
             </View>
           ) : (
             <>
               <Text style={{ color: COLORS.textSecondary }} className="text-sm font-bold mb-2">
-                Mobile Number
+                {t('auth.mobileNumber')}
               </Text>
               <View
                 className="flex-row items-center rounded-2xl px-4 py-3.5 mb-1 border"
@@ -104,18 +106,18 @@ export default function LoginScreen() {
                     setPhone(t);
                     if (error) setError('');
                   }}
-                  placeholder="Mobile number"
+                  placeholder={t('auth.mobileNumberPlaceholder')}
                   placeholderTextColor={COLORS.textSecondary}
                   keyboardType="phone-pad"
                   autoComplete="tel"
-                  accessibilityLabel="Mobile number"
+                  accessibilityLabel={t('auth.mobileNumberPlaceholder')}
                   className="flex-1 text-base font-semibold ml-3"
                   style={{ color: COLORS.textPrimary }}
                   onSubmitEditing={() => void sendCode()}
                 />
               </View>
               <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mb-3 px-1">
-                We&apos;ll text you a 6-digit code. Indian numbers can be typed without +91.
+                {t('auth.otpHint')}
               </Text>
 
               {error ? (
@@ -135,7 +137,7 @@ export default function LoginScreen() {
                   <Spinner size={18} color="#FFF" />
                 ) : (
                   <>
-                    <Text className="text-white font-bold text-base mr-2">Send Code</Text>
+                    <Text className="text-white font-bold text-base mr-2">{t('auth.sendCode')}</Text>
                     <ArrowRight size={18} color="#FFF" />
                   </>
                 )}
@@ -145,7 +147,7 @@ export default function LoginScreen() {
               <View className="flex-row items-center my-5">
                 <View className="flex-1 h-px" style={{ backgroundColor: COLORS.border }} />
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-bold mx-3 uppercase">
-                  or
+                  {t('auth.or')}
                 </Text>
                 <View className="flex-1 h-px" style={{ backgroundColor: COLORS.border }} />
               </View>
@@ -154,7 +156,7 @@ export default function LoginScreen() {
               <TouchableOpacity
                 onPress={() => void continueWithGoogle()}
                 accessibilityRole="button"
-                accessibilityLabel="Continue with Google"
+                accessibilityLabel={t('auth.continueWithGoogle')}
                 className="w-full py-3.5 rounded-2xl flex-row justify-center items-center border"
                 style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
               >
@@ -165,16 +167,16 @@ export default function LoginScreen() {
                   <Text style={{ color: '#4285F4' }} className="text-[13px] font-black">G</Text>
                 </View>
                 <Text style={{ color: COLORS.textPrimary }} className="font-bold text-sm">
-                  Continue with Google
+                  {t('auth.continueWithGoogle')}
                 </Text>
               </TouchableOpacity>
               <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-2 text-center px-2">
-                Changed your number? Use Google to get back into your account.
+                {t('auth.googleRecoveryHint')}
               </Text>
 
               <View className="mt-8 pt-6 border-t" style={{ borderColor: COLORS.border }}>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center leading-relaxed">
-                  By continuing you agree to our Terms and acknowledge our Privacy Policy.
+                  {t('auth.legalNote')}
                 </Text>
               </View>
             </>

@@ -21,38 +21,23 @@ import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
 import { ApiError } from '../../lib/ApiError';
 import type {
   ApiEarlyRecharge, ApiInvoice, ApiPaymentOrder, ApiPlanQuote, ApiReturnSettlement,
-  ApiReturnStage, InvoicePaymentState,
+  ApiReturnStage,
 } from '../../types/api';
-
-const CYCLE_LABEL: Record<string, string> = {
-  daily: 'Day', weekly: 'Week', monthly: 'Month', yearly: 'Year',
-};
-
-// 'overdue' is RED, the same red Home paints the "Plan expired · overdue by
-// N days" banner. It was amber on the reasoning that overdue is "attention,
-// not alarm" — but this rider's scooter will not start until the bill is
-// paid, which is alarm, and showing the identical fact in two colours on two
-// screens reads as two different severities of two different problems.
-// 'partial' stays amber: money HAS arrived, there is just some left.
-const PAYMENT_STATE_TONE: Record<InvoicePaymentState, 'success' | 'warning' | 'danger' | undefined> = {
-  paid: 'success', partial: 'warning', overdue: 'danger', unpaid: undefined,
-};
-const PAYMENT_STATE_LABEL: Record<InvoicePaymentState, string> = {
-  paid: 'Paid', partial: 'Partially Paid', overdue: 'Due', unpaid: 'Due',
-};
-const PAYMENT_METHOD_LABEL: Record<NonNullable<ApiInvoice['payment_method']>, string> = {
-  upi: 'UPI', card: 'Card', netbanking: 'Net Banking', wallet: 'Wallet', cash: 'Cash',
-};
+import {
+  BILLING_CYCLE_LABEL_KEY, PAYMENT_METHOD_LABEL_KEY, PAYMENT_STATE_LABEL_KEY, PAYMENT_STATE_TONE,
+  PLAN_STATUS_LABEL_KEY,
+} from '../../constants/status';
+import { useT, type TranslateFn } from '../../i18n';
 
 /**
- * An invoice is raised for a REASON now, not for a payment kind. The old
- * rental/deposit/damage/penalty split was `payment_type`, which is gone —
- * a deposit is a LINE on the initial invoice, and a damage charge is a line
- * on the settlement one.
+ * `PURPOSE_LABEL`, `invoiceLabel`, `dueLabel` and `invoiceLines` all take `t`
+ * as a parameter rather than calling a hook, because they are plain module-
+ * scope functions called from render logic and from each other — the same
+ * pattern as lateFeePolicySections in constants/lateFeePolicy.ts.
  */
-const PURPOSE_LABEL: Record<string, string> = {
-  initial: 'Plan & Deposit', subscription_period: 'Plan Renewal',
-  settlement: 'Return Settlement', adhoc: 'Payment',
+const PURPOSE_LABEL_KEY: Record<string, Parameters<TranslateFn>[0]> = {
+  initial: 'billing.purpose.initial', subscription_period: 'billing.purpose.subscription_period',
+  settlement: 'billing.purpose.settlement', adhoc: 'billing.purpose.adhoc',
 };
 
 /**
@@ -67,22 +52,26 @@ const PURPOSE_LABEL: Record<string, string> = {
  * The deposit line is what distinguishes it: the deposit is billed once,
  * alongside period 1, and never again.
  */
-function invoiceLabel(invoice: ApiInvoice): string {
+function invoiceLabel(invoice: ApiInvoice, t: TranslateFn): string {
   if (
     invoice.purpose === 'subscription_period'
     && invoice.items.some((item) => item.item_type === 'deposit')
   ) {
-    return PURPOSE_LABEL.initial;
+    return t('billing.purpose.initial');
   }
   // An ad-hoc charge (lost key, cleaning fee, …) — name it by what it's for.
   // Only when there is ONE thing it's for: with several lines the heading has
   // to stay generic so the lines themselves can be shown without repeating
   // it (hasItemDetail below is the other half of that rule).
+  //
+  // `invoice.items[0].description` is server-generated free text (an admin's
+  // own words for an ad-hoc charge) and is deliberately passed through
+  // untranslated — it is data, not app copy, same as a support ticket subject.
   if (invoice.purpose === 'adhoc') {
-    if (invoice.items.length === 1) return invoice.items[0].description || 'Additional charge';
-    return invoice.items.length === 0 ? 'Additional charge' : 'Additional charges';
+    if (invoice.items.length === 1) return invoice.items[0].description || t('billing.additionalCharge');
+    return invoice.items.length === 0 ? t('billing.additionalCharge') : t('billing.additionalCharges');
   }
-  return PURPOSE_LABEL[invoice.purpose] ?? 'Payment';
+  return PURPOSE_LABEL_KEY[invoice.purpose] ? t(PURPOSE_LABEL_KEY[invoice.purpose]) : t('billing.purpose.adhoc');
 }
 
 /**
@@ -107,12 +96,15 @@ function invoiceLabel(invoice: ApiInvoice): string {
  * that is genuinely late, so it is the one field that can be trusted to say
  * "this is payable now, whatever due_on claims".
  */
-function dueLabel(invoice: ApiInvoice): { text: string; overdue: boolean } {
+function dueLabel(invoice: ApiInvoice, t: TranslateFn): { text: string; overdue: boolean } {
   const daysLate = invoice.days_late ?? 0;
   if (daysLate > 0) {
-    return { text: `Overdue by ${daysLate} day${daysLate === 1 ? '' : 's'}`, overdue: true };
+    return {
+      text: daysLate === 1 ? t('billing.overdueByOne') : t('billing.overdueByOther', { count: daysLate }),
+      overdue: true,
+    };
   }
-  return { text: `Due ${formatDate(invoice.due_on)}`, overdue: false };
+  return { text: t('billing.dueOn', { date: formatDate(invoice.due_on) }), overdue: false };
 }
 
 /**
@@ -139,7 +131,10 @@ function dueLabel(invoice: ApiInvoice): { text: string; overdue: boolean } {
  * so a renamed rule would read the old word here until the invoice is
  * actually paid. Worth a field on ApiInvoice if it ever gets renamed.
  */
-function invoiceLines(invoice: ApiInvoice): { key: string; description: string; amount: number }[] {
+function invoiceLines(
+  invoice: ApiInvoice,
+  t: TranslateFn,
+): { key: string; description: string; amount: number }[] {
   const lines = invoice.items.map((item) => ({
     key: item.id, description: item.description, amount: item.amount,
   }));
@@ -152,7 +147,9 @@ function invoiceLines(invoice: ApiInvoice): { key: string; description: string; 
     const perDay = Math.round(lateFee / daysLate);
     lines.push({
       key: `${invoice.id}-late-fee`,
-      description: `Late fee — ${daysLate} day${daysLate === 1 ? '' : 's'} × ₹${perDay}`,
+      description: t(daysLate === 1 ? 'billing.lateFeeLine' : 'billing.lateFeeLineOther', {
+        days: daysLate, rate: perDay,
+      }),
       amount: lateFee,
     });
   }
@@ -216,9 +213,12 @@ function isOverdueLateFee(invoice: ApiInvoice): boolean {
  * "Return Settlement") and genuinely itemised lines, so those still expand.
  */
 function hasItemDetail(invoice: ApiInvoice): boolean {
-  const lines = invoiceLines(invoice);
-  if (lines.length === 0) return false;
-  return !(invoice.purpose === 'adhoc' && lines.length === 1);
+  // Line COUNT only — independent of invoiceLines' translated descriptions,
+  // so this needs no `t` and stays callable from anywhere `invoice` is known.
+  const lateFeeLine = (invoice.late_fee ?? 0) > 0 && (invoice.days_late ?? 0) > 0 ? 1 : 0;
+  const lineCount = invoice.items.length + lateFeeLine;
+  if (lineCount === 0) return false;
+  return !(invoice.purpose === 'adhoc' && lineCount === 1);
 }
 
 function formatDate(dateStr: string | null): string {
@@ -284,8 +284,9 @@ function BillLine({
 function PaymentHistoryCard({
   invoice, expanded, onToggle,
 }: { invoice: ApiInvoice; expanded: boolean; onToggle: () => void }) {
+  const { t } = useT();
   const hasItems = hasItemDetail(invoice);
-  const lines = invoiceLines(invoice);
+  const lines = invoiceLines(invoice, t);
   // total_due is what the rider actually owes today (balance + live late
   // fee); total_amount is only what the bill was raised for. They differ for
   // exactly the invoices invoiceLines() has just merged a fee into, and the
@@ -304,17 +305,17 @@ function PaymentHistoryCard({
       >
         <View className="flex-1 pr-3">
           <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">
-            {invoiceLabel(invoice)}
+            {invoiceLabel(invoice, t)}
           </Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
             {formatDate(historyDate(invoice))}
-            {invoice.payment_method ? `  ·  ${PAYMENT_METHOD_LABEL[invoice.payment_method]}` : ''}
+            {invoice.payment_method ? `  ·  ${t(PAYMENT_METHOD_LABEL_KEY[invoice.payment_method])}` : ''}
             {hasItems ? (expanded ? '  ▲' : '  ▼') : ''}
           </Text>
         </View>
         <View className="items-end">
           <Text style={{ color: COLORS.textPrimary }} className="text-base font-bold mb-1">₹{shownTotal.toFixed(0)}</Text>
-          <Badge label={PAYMENT_STATE_LABEL[invoice.payment_state]} tone={PAYMENT_STATE_TONE[invoice.payment_state]} />
+          <Badge label={t(PAYMENT_STATE_LABEL_KEY[invoice.payment_state])} tone={PAYMENT_STATE_TONE[invoice.payment_state]} />
         </View>
       </TouchableOpacity>
       {expanded && hasItems ? (
@@ -359,6 +360,7 @@ function AttentionNote({ label, tone = 'warning' }: { label: string; tone?: 'war
 
 export default function BillingScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useT();
   const { bookingId, booking, invoices, loading, error, reload } = useMyBilling();
   const { refreshing, onRefresh } = useRefresh(() => reload(true));
   const profile = useAuthStore((s) => s.profile);
@@ -581,7 +583,7 @@ export default function BillingScreen() {
         amount: Math.round(order.amount * 100),
         currency: order.currency,
         order_id: order.gatewayOrderId,
-        description: invoiceLabel(invoice),
+        description: invoiceLabel(invoice, t),
         prefill: {
           email: profile?.email ?? undefined,
           contact: profile?.phone ?? undefined,
@@ -597,7 +599,7 @@ export default function BillingScreen() {
       } else if (err instanceof ApiError) {
         setPayError(err.message);
       } else {
-        setPayError('Payment failed. Please try again.');
+        setPayError(t('billing.error.paymentFailed'));
       }
     } finally {
       setPayingInvoiceId(null);
@@ -626,7 +628,7 @@ export default function BillingScreen() {
         amount: Math.round(order.amount * 100),
         currency: order.currency,
         order_id: order.gatewayOrderId,
-        description: plan?.name ?? 'Scooter Booking',
+        description: plan?.name ?? t('billing.checkoutDescription.scooterBooking'),
         prefill: {
           email: profile?.email ?? undefined,
           contact: profile?.phone ?? undefined,
@@ -642,7 +644,7 @@ export default function BillingScreen() {
       } else if (err instanceof ApiError) {
         setBookingPaymentError(err.message);
       } else {
-        setBookingPaymentError('Payment failed. Please try again.');
+        setBookingPaymentError(t('billing.error.paymentFailed'));
       }
     } finally {
       setCompletingBookingPayment(false);
@@ -661,7 +663,7 @@ export default function BillingScreen() {
       setRechargePreview(recharge);
     } catch (err) {
       if (err instanceof ApiError) setRechargeError(err.message);
-      else setRechargeError('Could not load your recharge details. Please try again.');
+      else setRechargeError(t('billing.error.rechargeFailed'));
     } finally {
       setPreviewLoading(false);
     }
@@ -686,7 +688,7 @@ export default function BillingScreen() {
         amount: Math.round(order.amount * 100),
         currency: order.currency,
         order_id: order.gatewayOrderId,
-        description: 'Weekly Rental — Recharge',
+        description: t('billing.checkoutDescription.weeklyRecharge'),
         prefill: {
           email: profile?.email ?? undefined,
           contact: profile?.phone ?? undefined,
@@ -703,7 +705,7 @@ export default function BillingScreen() {
       } else if (err instanceof ApiError) {
         setRechargeError(err.message);
       } else {
-        setRechargeError('Recharge failed. Please try again.');
+        setRechargeError(t('billing.error.rechargeConfirmFailed'));
       }
     } finally {
       setRecharging(false);
@@ -737,17 +739,17 @@ export default function BillingScreen() {
   // with no current rental — it still has to be payable).
   const renderOutstandingInvoices = () => (
     <>
-      <AttentionNote label="Payment required" tone={isDue ? 'danger' : 'warning'} />
+      <AttentionNote label={t('billing.paymentRequired')} tone={isDue ? 'danger' : 'warning'} />
       {/* Consequence of plan_status='past_due', stated plainly under the red
           note above rather than as a banner of its own. */}
       {isDue ? (
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3 -mt-2">
-          Your scooter won't start until this is paid.
+          {t('billing.scooterWontStart')}
         </Text>
       ) : null}
       {outstandingInvoices.length > 1 ? (
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold mb-2">
-          ₹{outstandingTotal.toFixed(0)} total across {outstandingInvoices.length} invoices
+          {t('billing.totalAcross', { total: outstandingTotal.toFixed(0), count: outstandingInvoices.length })}
         </Text>
       ) : null}
 
@@ -763,10 +765,10 @@ export default function BillingScreen() {
             <View className="p-5">
               <View className="flex-row items-center justify-between mb-3">
                 <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">
-                  {invoiceLabel(inv)}
+                  {invoiceLabel(inv, t)}
                 </Text>
                 {(() => {
-                  const due = dueLabel(inv);
+                  const due = dueLabel(inv, t);
                   return (
                     <Text
                       style={{ color: due.overdue ? COLORS.danger : COLORS.textSecondary }}
@@ -793,21 +795,24 @@ export default function BillingScreen() {
                   ))
                   : null
               ) : (
-                <BillLine label="Rental plan amount" amount={inv.total_amount} />
+                <BillLine label={t('billing.rentalPlanAmount')} amount={inv.total_amount} />
               )}
               {inv.allocated_amount > 0 ? (
-                <BillLine label="Already paid" amount={inv.allocated_amount} negative />
+                <BillLine label={t('billing.alreadyPaid')} amount={inv.allocated_amount} negative />
               ) : null}
               {inv.late_fee ? (
                 <BillLine
-                  label={`Late fee (${inv.days_late} day${inv.days_late === 1 ? '' : 's'} × ₹${perDay.toFixed(0)}/day)`}
+                  label={t(
+                    inv.days_late === 1 ? 'billing.lateFeeParenOne' : 'billing.lateFeeParenOther',
+                    { days: inv.days_late ?? 0, rate: perDay.toFixed(0) },
+                  )}
                   amount={inv.late_fee}
                   attention
                 />
               ) : null}
               <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
               <View className="flex-row items-center justify-between pb-1">
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Total</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">{t('billing.total')}</Text>
                 <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">₹{total.toFixed(0)}</Text>
               </View>
             </View>
@@ -824,7 +829,7 @@ export default function BillingScreen() {
                 <CreditCard size={16} color="#FFF" />
               )}
               <Text className="text-white text-sm font-bold ml-2">
-                {payingInvoiceId === inv.id ? 'Processing…' : `Pay ₹${total.toFixed(0)}`}
+                {payingInvoiceId === inv.id ? t('billing.processing') : t('billing.pay', { amount: total.toFixed(0) })}
               </Text>
             </TouchableOpacity>
           </View>
@@ -838,9 +843,9 @@ export default function BillingScreen() {
 
   const renderPaymentHistory = () => (
     <>
-      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Payment History</Text>
+      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">{t('billing.paymentHistory')}</Text>
       {paymentHistoryItems.length === 0 ? (
-        <EmptyState icon={Receipt} title="No payments yet" />
+        <EmptyState icon={Receipt} title={t('billing.noPayments')} />
       ) : (
         paymentHistoryItems.map((inv) => (
           <PaymentHistoryCard
@@ -873,13 +878,13 @@ export default function BillingScreen() {
                 <ShieldCheck size={16} color={COLORS.warning} />
               </View>
               <View className="flex-1 ml-3">
-                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold">Return in Progress</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold">{t('billing.returnInProgress')}</Text>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
                   {returnStage?.status === 'payment_submitted'
-                    ? 'Your payment was received — awaiting admin confirmation.'
+                    ? t('billing.return.paymentSubmitted')
                     : returnStage?.status === 'ready_for_approval'
-                      ? 'Payment verified — our team is completing your return.'
-                      : 'Your return is awaiting staff review.'}
+                      ? t('billing.return.readyForApproval')
+                      : t('billing.return.awaitingReview')}
                 </Text>
               </View>
             </View>
@@ -893,16 +898,16 @@ export default function BillingScreen() {
               className="rounded-2xl border p-5 mb-7"
               style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
             >
-              {renewalIsLate ? <AttentionNote label="Payment required" tone="danger" /> : null}
+              {renewalIsLate ? <AttentionNote label={t('billing.paymentRequired')} tone="danger" /> : null}
               <Text style={{ color: renewalIsLate ? COLORS.danger : COLORS.textPrimary }} className="text-sm font-semibold mb-1">
                 {renewalIsLate
-                  ? 'Your plan has expired'
-                  : planEndsToday ? 'Your plan ends today' : `Plan ends ${formatDate(booking?.next_due_at ?? null)}`}
+                  ? t('billing.planExpired')
+                  : planEndsToday ? t('billing.planEndsToday') : t('billing.planEndsOn', { date: formatDate(booking?.next_due_at ?? null) })}
               </Text>
               <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-4 leading-relaxed">
                 {renewalIsLate
-                  ? 'Renew now — a late fee applies, shown below before you pay.'
-                  : 'Renew now to keep riding without interruption. Your next plan starts the moment this one ends.'}
+                  ? t('billing.renewLateNotice')
+                  : t('billing.renewOnTimeNotice')}
               </Text>
               {rechargePreview ? (
                 <>
@@ -927,7 +932,7 @@ export default function BillingScreen() {
                     ))}
                     <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
                     <View className="flex-row items-center justify-between">
-                      <Text style={{ color: COLORS.textPrimary }} className="text-xs font-medium">Renewal amount</Text>
+                      <Text style={{ color: COLORS.textPrimary }} className="text-xs font-medium">{t('billing.renewalAmount')}</Text>
                       <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold">
                         ₹{rechargePreview.amountDue.toFixed(0)}
                       </Text>
@@ -935,7 +940,10 @@ export default function BillingScreen() {
                     {rechargePreview.isLate ? (
                       <View className="flex-row items-center justify-between mt-1">
                         <Text style={{ color: COLORS.danger }} className="text-xs font-medium">
-                          Late fee ({rechargePreview.daysLate} day{rechargePreview.daysLate === 1 ? '' : 's'} × ₹{rechargePreview.feePerDay.toFixed(0)})
+                          {t(
+                            rechargePreview.daysLate === 1 ? 'billing.lateFeeDaysOne' : 'billing.lateFeeDaysOther',
+                            { days: rechargePreview.daysLate, rate: rechargePreview.feePerDay.toFixed(0) },
+                          )}
                         </Text>
                         <Text style={{ color: COLORS.danger }} className="text-xs font-semibold">
                           ₹{rechargePreview.lateFee.toFixed(0)}
@@ -944,7 +952,7 @@ export default function BillingScreen() {
                     ) : null}
                     <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
                     <View className="flex-row items-center justify-between">
-                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Total payable</Text>
+                      <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">{t('billing.totalPayable')}</Text>
                       <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold">
                         ₹{rechargePreview.total.toFixed(0)}
                       </Text>
@@ -957,7 +965,7 @@ export default function BillingScreen() {
                       className="flex-1 py-3.5 rounded-2xl items-center border"
                       style={{ borderColor: COLORS.border, opacity: recharging ? 0.6 : 1 }}
                     >
-                      <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">Cancel</Text>
+                      <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">{t('billing.cancel')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={handleConfirmRecharge}
@@ -967,7 +975,7 @@ export default function BillingScreen() {
                     >
                       {recharging ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                       <Text className="text-white text-xs font-bold ml-2">
-                        {recharging ? 'Processing…' : `Confirm & Pay ₹${rechargePreview.total.toFixed(0)}`}
+                        {recharging ? t('billing.processing') : t('billing.confirmAndPay', { amount: rechargePreview.total.toFixed(0) })}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -981,7 +989,7 @@ export default function BillingScreen() {
                 >
                   {previewLoading ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                   <Text className="text-white text-sm font-bold ml-2">
-                    {previewLoading ? 'Loading…' : 'Review & Renew'}
+                    {previewLoading ? t('billing.loading') : t('billing.reviewAndRenew')}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -999,10 +1007,10 @@ export default function BillingScreen() {
               </View>
               <View className="flex-1 ml-3">
                 <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold">
-                  Renewal scheduled — starts {formatDate(booking?.scheduled_start_date ?? null)}
+                  {t('billing.renewalScheduled', { date: formatDate(booking?.scheduled_start_date ?? null) })}
                 </Text>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                  Your current plan stays active until then. No action needed.
+                  {t('billing.currentPlanActiveUntilThen')}
                 </Text>
               </View>
             </View>
@@ -1015,14 +1023,14 @@ export default function BillingScreen() {
                 <ShieldCheck size={16} color={COLORS.success} />
               </View>
               <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold ml-3">
-                All payments are clear — no amount due.
+                {t('billing.allClear')}
               </Text>
             </View>
           )
   );
 
   return (
-    <AppShell title="Billing">
+    <AppShell title={t('billing.title')}>
       {loading ? (
         <View className="flex-1 items-center justify-center">
           <Spinner size={32} color={COLORS.primary} />
@@ -1056,7 +1064,7 @@ export default function BillingScreen() {
           {renderRefundCard()}
           {outstandingInvoices.length > 0 ? (
             <>
-              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Amount Due</Text>
+              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">{t('billing.amountDue')}</Text>
               {renderOutstandingInvoices()}
               <View className="h-4" />
             </>
@@ -1066,8 +1074,8 @@ export default function BillingScreen() {
       ) : !bookingId ? (
         <EmptyState
           icon={CreditCard}
-          title="No active plan"
-          subtitle="Book a scooter to see your billing details here."
+          title={t('billing.noActivePlan')}
+          subtitle={t('billing.bookToSeeDetails')}
         />
       ) : (
         <ScrollView
@@ -1084,7 +1092,7 @@ export default function BillingScreen() {
           {/* Current plan — a quiet, sophisticated surface rather than a
               solid brand-color block: the price is the loud element, not
               the card itself. */}
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Current Plan</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">{t('billing.currentPlan')}</Text>
           <View
             className="rounded-3xl p-5 mb-7 border"
             style={{
@@ -1108,20 +1116,20 @@ export default function BillingScreen() {
               return (
                 <View className="self-start px-2.5 py-1 rounded-full mb-3" style={{ backgroundColor: tint + '1A' }}>
                   <Text style={{ color: tint }} className="text-[10px] font-bold uppercase tracking-wider">
-                    {booking.plan_status.replace('_', ' ')}
+                    {t(PLAN_STATUS_LABEL_KEY[booking.plan_status])}
                   </Text>
                 </View>
               );
             })() : null}
-            <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold">{plan?.name ?? 'Rental Plan'}</Text>
+            <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold">{plan?.name ?? t('billing.rentalPlan')}</Text>
             <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5 mb-4">
-              {plan ? `${CYCLE_LABEL[plan.billing_cycle] ?? plan.billing_cycle} rental` : ''}
+              {plan ? t('billing.cycleRental', { cycle: t(BILLING_CYCLE_LABEL_KEY[plan.billing_cycle]) }) : ''}
             </Text>
             <Text style={{ color: COLORS.textPrimary }} className="text-4xl font-bold mb-4">
               ₹{(plan?.price ?? 0).toFixed(0)}{' '}
               {plan ? (
                 <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium">
-                  / {CYCLE_LABEL[plan.billing_cycle] ?? plan.billing_cycle}
+                  / {t(BILLING_CYCLE_LABEL_KEY[plan.billing_cycle])}
                 </Text>
               ) : null}
             </Text>
@@ -1147,13 +1155,13 @@ export default function BillingScreen() {
                 <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">
                   {formatDate(booking?.current_period_start ?? null)}
                 </Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mt-0.5">Started</Text>
+                <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mt-0.5">{t('billing.started')}</Text>
               </View>
               <View className="items-end">
                 <Text style={{ color: renewalIsLate ? COLORS.danger : COLORS.textPrimary }} className="text-xs font-bold">
-                  {formatDate(booking?.next_due_at ?? null)}{renewalIsLate ? ' · expired' : ''}
+                  {formatDate(booking?.next_due_at ?? null)}{renewalIsLate ? t('billing.expired') : ''}
                 </Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mt-0.5">Ends</Text>
+                <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mt-0.5">{t('billing.ends')}</Text>
               </View>
             </View>
           </View>
@@ -1161,7 +1169,7 @@ export default function BillingScreen() {
           {/* Amount Due — exactly one of these five states, never stacked.
               Same handlers/data as before; just one consistent section
               instead of up to four separate colored boxes. */}
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">Amount Due</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">{t('billing.amountDue')}</Text>
 
           {isPendingBookingPayment ? (
             // Booking payment never completed — no subscription/invoice
@@ -1173,11 +1181,10 @@ export default function BillingScreen() {
               style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
             >
               <View className="p-5">
-                <AttentionNote label="Payment required" />
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-1">Booking Payment</Text>
+                <AttentionNote label={t('billing.paymentRequired')} />
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-1">{t('billing.bookingPayment')}</Text>
                 <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-4 leading-relaxed">
-                  Your last payment attempt didn't go through. Your reservation is still held — complete the
-                  payment to confirm your booking.
+                  {t('billing.bookingPaymentNotCompleted')}
                 </Text>
 
                 {bookingQuote ? (
@@ -1203,13 +1210,13 @@ export default function BillingScreen() {
                   ))
                 ) : (
                   <>
-                    <BillLine label="Rental plan amount" amount={plan?.price ?? 0} />
-                    <BillLine label="Security deposit" amount={plan?.deposit_amount ?? 0} />
+                    <BillLine label={t('billing.rentalPlanAmount')} amount={plan?.price ?? 0} />
+                    <BillLine label={t('billing.securityDeposit')} amount={plan?.deposit_amount ?? 0} />
                   </>
                 )}
                 <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
                 <View className="flex-row items-center justify-between mb-4">
-                  <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">Total</Text>
+                  <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">{t('billing.total')}</Text>
                   <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">
                     ₹{(bookingQuote?.amount ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)).toFixed(0)}
                   </Text>
@@ -1227,8 +1234,8 @@ export default function BillingScreen() {
                   )}
                   <Text className="text-white text-sm font-bold ml-2">
                     {completingBookingPayment
-                      ? 'Processing…'
-                      : `Pay ₹${(bookingQuote?.amount ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)).toFixed(0)}`}
+                      ? t('billing.processing')
+                      : t('billing.pay', { amount: (bookingQuote?.amount ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)).toFixed(0) })}
                   </Text>
                 </TouchableOpacity>
                 {bookingPaymentError ? (

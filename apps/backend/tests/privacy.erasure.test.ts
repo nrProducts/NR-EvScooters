@@ -73,6 +73,13 @@ const NOT_PERSONAL_DATA = new Set([
     // created_at/updated_at.
     "last_login_at",
     "must_change_password",
+    // Which of the app's 3 shipped languages the rider's UI renders in — a
+    // display preference, not data ABOUT the person, and not something a
+    // rider would expect erased along with their name and documents. Erasing
+    // it would also silently drop a still-usable (now-anonymous) account back
+    // into English mid-session for no compliance reason. See the rationale in
+    // supabase/v2/migrations/20260905100000_user_preferred_language.sql.
+    "preferred_language",
 ]);
 
 describe("anonymise_user covers every personal column the API exposes", () => {

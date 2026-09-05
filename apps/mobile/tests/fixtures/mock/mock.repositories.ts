@@ -233,7 +233,14 @@ function completionPercent(userId: string): number {
 
 function toApiUser(row: MockUserRow): ApiUser {
     const { ...rest } = row;
-    return { ...rest, kyc_status: computeKycStatus(row.id) };
+    return {
+        ...rest,
+        kyc_status: computeKycStatus(row.id),
+        // Matches the column's own NOT NULL DEFAULT 'en'. Seeded rows carry no
+        // language because none of them ever picked one, which is exactly the
+        // state a real row is in before the rider first opens the picker.
+        preferred_language: 'en',
+    };
 }
 
 /**

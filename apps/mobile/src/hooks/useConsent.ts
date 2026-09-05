@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
 import type { ApiConsentNotice, ApiConsentState, ConsentPurpose } from '../types/api';
-import { useLangStore } from '../i18n';
+import { useLangStore, documentLanguage } from '../i18n';
 
 /**
  * The rider's consent state plus the live notice.
@@ -13,6 +13,10 @@ import { useLangStore } from '../i18n';
  */
 export function useConsent() {
     const lang = useLangStore((s) => s.lang);
+    // Legal text exists only in the languages it has actually been reviewed
+    // in — Hindi falls back to English rather than being machine-translated.
+    // See src/i18n/documentLanguage.ts.
+    const docLang = documentLanguage(lang);
     const [state, setState] = useState<ApiConsentState | null>(null);
     const [notice, setNotice] = useState<ApiConsentNotice | null>(null);
     const [loading, setLoading] = useState(true);
@@ -25,7 +29,7 @@ export function useConsent() {
         try {
             const [consents, activeNotice] = await Promise.all([
                 api.myConsents(),
-                api.consentNotice(lang),
+                api.consentNotice(docLang),
             ]);
             setState(consents);
             setNotice(activeNotice);
@@ -34,7 +38,7 @@ export function useConsent() {
         } finally {
             setLoading(false);
         }
-    }, [lang]);
+    }, [docLang]);
 
     useEffect(() => {
         void load();
@@ -53,7 +57,7 @@ export function useConsent() {
             try {
                 const next = await api.setConsents({
                     notice_version: notice.version,
-                    language: lang,
+                    language: docLang,
                     grants,
                 });
                 setState(next);
@@ -69,7 +73,7 @@ export function useConsent() {
                 setSaving(false);
             }
         },
-        [notice, lang, load],
+        [notice, docLang, load],
     );
 
     /** Single optional toggle, written immediately — withdrawal must be one tap. */
@@ -82,7 +86,7 @@ export function useConsent() {
                 const next = granted
                     ? await api.setConsents({
                           notice_version: notice.version,
-                          language: lang,
+                          language: docLang,
                           grants: [{ purpose, granted: true }],
                       })
                     : await api.withdrawConsent(purpose);
@@ -97,7 +101,7 @@ export function useConsent() {
                 setSaving(false);
             }
         },
-        [notice, lang, load],
+        [notice, docLang, load],
     );
 
     return { state, notice, loading, saving, error, reload: load, save, setOne };

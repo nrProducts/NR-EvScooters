@@ -37,7 +37,15 @@ export function isReturnLocked(rental: Pick<ApiRental, 'return_requested_at'> | 
     return !!rental?.return_requested_at;
 }
 
-export const RETURN_LOCK_TITLE = 'Return requested';
+/**
+ * The copy below is exported as translation KEYS rather than as strings.
+ *
+ * The point of putting it here in the first place was that every locked
+ * surface says the SAME sentence — five screens must not paraphrase one
+ * rule. Keys preserve that guarantee across three languages, where plain
+ * strings would only have preserved it in English.
+ */
+export const RETURN_LOCK_TITLE_KEY = 'returnLock.title' as const;
 
 /**
  * The one sentence every locked surface shows. Says what is true (the request
@@ -45,14 +53,10 @@ export const RETURN_LOCK_TITLE = 'Return requested';
  * moves next (staff) — a rider who is only told "you can't do that" reads it
  * as the app being broken.
  */
-export const RETURN_LOCK_BODY =
-  "You've asked to return this scooter, so your plan can't be changed while our team completes the handover. "
-  + 'Your scooter stays yours until they confirm it.';
+export const RETURN_LOCK_BODY_KEY = 'returnLock.body' as const;
 
 /** Shown where the rider is being stopped outright. */
-export const RETURN_LOCK_BLOCKED_HINT =
-  'Need to keep riding instead? Contact support and we can cancel the return for you.';
+export const RETURN_LOCK_BLOCKED_HINT_KEY = 'returnLock.blockedHint' as const;
 
 /** Shown on the support path, where they can carry on. */
-export const RETURN_LOCK_SUPPORT_HINT =
-  'You can still contact support — including about this return.';
+export const RETURN_LOCK_SUPPORT_HINT_KEY = 'returnLock.supportHint' as const;

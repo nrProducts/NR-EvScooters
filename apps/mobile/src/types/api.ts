@@ -71,6 +71,20 @@ export interface ApiUser {
     profile_photo_url: string | null;
     /** Has the rider completed the initial onboarding profile form (spec Step 1)? */
     profile_completed: boolean;
+    /**
+     * `users.preferred_language` — 'en' | 'ta' | 'hi'.
+     *
+     * The ONLY localisation state the server holds. Every translated string
+     * ships inside the app (src/i18n/copy.*.ts); the database remembers which
+     * of them to use and nothing else, so a copy fix is an app release and
+     * never a data migration.
+     *
+     * Typed `string | null` rather than `Lang` on purpose: this is a wire
+     * type, and a value the app does not recognise (a language added by a
+     * newer build, then read by an older one) must narrow at the boundary —
+     * `isLang()` in src/i18n/types.ts — rather than lie about itself here.
+     */
+    preferred_language: string | null;
     created_at: string;
     updated_at: string;
     deleted_at: string | null;
@@ -168,6 +182,8 @@ export interface UpdateUserPayload {
     country?: string;
     emergency_contact_name?: string;
     emergency_contact_phone?: string;
+    /** 'en' | 'ta' | 'hi'. Sent alone by the language picker; see src/i18n. */
+    preferred_language?: string;
 }
 
 export interface ApiDocument {

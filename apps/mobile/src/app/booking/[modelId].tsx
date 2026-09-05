@@ -21,14 +21,12 @@ import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
 import type { ApiAvailability, ApiOrderLine, ApiPaymentOrder, ApiPlan, ApiPlanQuote, ApiVehicleModelDetail } from '../../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useT, type CopyKey } from '../../i18n';
+import { BILLING_CYCLE_LABEL_KEY } from '../../constants/status';
 
 // Device geolocation isn't wired up yet — the backend's nearest_station RPC
 // still does the real PostGIS work against whatever coordinates are sent.
 const PLACEHOLDER_LOCATION = { lat: 9.9312, lng: 76.2673 };
-
-const CYCLE_LABEL: Record<string, string> = {
-  daily: 'Day', weekly: 'Week', monthly: 'Month', yearly: 'Year',
-};
 
 const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
@@ -37,57 +35,67 @@ function formatDay(dateStr: string): string {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-const TrustRow: React.FC = () => (
-  <View className="flex-row justify-around py-1">
-    {[
-      { Icon: ShieldCheck, label: 'Secure payment' },
-      { Icon: Zap, label: 'Instant refunds' },
-      { Icon: Lock, label: 'Razorpay' },
-    ].map(({ Icon, label }) => (
-      <View key={label} className="flex-row items-center" style={{ gap: 6 }}>
-        <Icon size={14} color={COLORS.primary} />
-        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">{label}</Text>
-      </View>
-    ))}
-  </View>
-);
-
-/** Informational — the actual selection happens on Razorpay's secure screen. */
-const PAYMENT_METHODS = [
-  { Icon: Smartphone, title: 'UPI', subtitle: 'GPay · PhonePe · Paytm' },
-  { Icon: CreditCard, title: 'Cards', subtitle: 'Visa · Mastercard · RuPay' },
-  { Icon: Landmark, title: 'Net Banking', subtitle: 'All major banks' },
-  { Icon: Wallet, title: 'Wallets', subtitle: 'Paytm · PhonePe · Mobikwik' },
-] as const;
-
-const PaymentMethodsCard: React.FC = () => (
-  <View className="rounded-2xl border overflow-hidden" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-    <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider px-4 pt-4 pb-1">
-      Payment method
-    </Text>
-    {PAYMENT_METHODS.map(({ Icon, title, subtitle }, i) => (
-      <View
-        key={title}
-        className="flex-row items-center px-4 py-3"
-        style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
-      >
-        <View className="w-9 h-9 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: COLORS.primary + '14' }}>
-          <Icon size={17} color={COLORS.primary} />
+const TrustRow: React.FC = () => {
+  const { t } = useT();
+  const items: { Icon: typeof ShieldCheck; labelKey: CopyKey }[] = [
+    { Icon: ShieldCheck, labelKey: 'booking.trust.securePayment' },
+    { Icon: Zap, labelKey: 'booking.trust.instantRefunds' },
+    { Icon: Lock, labelKey: 'booking.trust.razorpay' },
+  ];
+  return (
+    <View className="flex-row justify-around py-1">
+      {items.map(({ Icon, labelKey }) => (
+        <View key={labelKey} className="flex-row items-center" style={{ gap: 6 }}>
+          <Icon size={14} color={COLORS.primary} />
+          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">{t(labelKey)}</Text>
         </View>
-        <View className="flex-1">
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{title}</Text>
-          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">{subtitle}</Text>
-        </View>
-      </View>
-    ))}
-    <View className="px-4 py-2.5 flex-row items-center" style={{ backgroundColor: COLORS.background, gap: 6 }}>
-      <Lock size={12} color={COLORS.textSecondary} />
-      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
-        Choose on the secure Razorpay screen
-      </Text>
+      ))}
     </View>
-  </View>
-);
+  );
+};
+
+/**
+ * Informational — the actual selection happens on Razorpay's secure screen.
+ * Keys, not labels: module scope does not re-run on a language change.
+ */
+const PAYMENT_METHOD_KEYS = [
+  { Icon: Smartphone, titleKey: 'booking.paymentMethods.upi', subtitleKey: 'booking.paymentMethods.upiSubtitle' },
+  { Icon: CreditCard, titleKey: 'booking.paymentMethods.cards', subtitleKey: 'booking.paymentMethods.cardsSubtitle' },
+  { Icon: Landmark, titleKey: 'booking.paymentMethods.netBanking', subtitleKey: 'booking.paymentMethods.netBankingSubtitle' },
+  { Icon: Wallet, titleKey: 'booking.paymentMethods.wallets', subtitleKey: 'booking.paymentMethods.walletsSubtitle' },
+] as const satisfies readonly { Icon: typeof Smartphone; titleKey: CopyKey; subtitleKey: CopyKey }[];
+
+const PaymentMethodsCard: React.FC = () => {
+  const { t } = useT();
+  return (
+    <View className="rounded-2xl border overflow-hidden" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+      <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider px-4 pt-4 pb-1">
+        {t('booking.paymentMethods.title')}
+      </Text>
+      {PAYMENT_METHOD_KEYS.map(({ Icon, titleKey, subtitleKey }, i) => (
+        <View
+          key={titleKey}
+          className="flex-row items-center px-4 py-3"
+          style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
+        >
+          <View className="w-9 h-9 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: COLORS.primary + '14' }}>
+            <Icon size={17} color={COLORS.primary} />
+          </View>
+          <View className="flex-1">
+            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{t(titleKey)}</Text>
+            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">{t(subtitleKey)}</Text>
+          </View>
+        </View>
+      ))}
+      <View className="px-4 py-2.5 flex-row items-center" style={{ backgroundColor: COLORS.background, gap: 6 }}>
+        <Lock size={12} color={COLORS.textSecondary} />
+        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
+          {t('booking.paymentMethods.chooseOnRazorpay')}
+        </Text>
+      </View>
+    </View>
+  );
+};
 
 /**
  * The whole booking flow on ONE screen: pickup station, plan, price, and a
@@ -96,6 +104,7 @@ const PaymentMethodsCard: React.FC = () => (
  */
 export default function BookingScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useT();
   const { modelId } = useLocalSearchParams<{ modelId: string }>();
   const router = useRouter();
   const profile = useAuthStore((s) => s.profile);
@@ -126,7 +135,7 @@ export default function BookingScreen() {
         setModel(data);
         setVehicleModel(data);
       })
-      .catch((err) => setModelError(err instanceof ApiError ? err.message : 'Could not load this scooter.'))
+      .catch((err) => setModelError(err instanceof ApiError ? err.message : t('booking.error.loadModel')))
       .finally(() => setLoadingModel(false));
   };
 
@@ -173,10 +182,10 @@ export default function BookingScreen() {
     : (draft.plan ? draft.plan.price + draft.plan.deposit_amount : 0);
 
   const blockedReason = (): string | null => {
-    if (!draft.station) return 'Finding a pickup station near you…';
-    if (noneAvailable) return 'No scooters free at this station right now';
-    if (plans.length === 0) return 'No plans on sale for this scooter';
-    if (!draft.plan) return 'Choose a rental plan';
+    if (!draft.station) return t('booking.blocked.findingStation');
+    if (noneAvailable) return t('booking.blocked.noneAvailable');
+    if (plans.length === 0) return t('booking.blocked.noPlans');
+    if (!draft.plan) return t('booking.blocked.choosePlan');
     return null;
   };
 
@@ -189,13 +198,13 @@ export default function BookingScreen() {
       const canOpen = await Linking.canOpenURL(url);
       await Linking.openURL(canOpen ? url : buildWebMapsUrl(lat, lng));
     } catch {
-      notifyError("Can't open maps", 'No maps app could be found on this device.');
+      notifyError(t('booking.error.maps.title'), t('booking.error.maps.message'));
     }
   };
 
   const handlePay = async () => {
     if (blockedReason()) {
-      notify('Almost there', blockedReason() as string);
+      notify(t('booking.almostThere'), blockedReason() as string);
       return;
     }
     if (!draft.plan || !draft.station || !draft.startDay || !model) return;
@@ -216,7 +225,9 @@ export default function BookingScreen() {
         amount: Math.round(order.amount * 100),
         currency: order.currency,
         order_id: order.gatewayOrderId,
-        description: draft.plan ? `${draft.plan.name} — rental + deposit` : 'Scooter rental',
+        description: draft.plan
+          ? t('booking.checkoutDescription', { plan: draft.plan.name })
+          : t('booking.checkoutDescriptionFallback'),
         prefill: {
           email: profile?.email ?? undefined,
           contact: profile?.phone ?? undefined,
@@ -230,11 +241,11 @@ export default function BookingScreen() {
     } catch (err) {
       if (err instanceof PaymentCancelledError) {
         // Nothing was created — a retry just makes a fresh (or reused) intent.
-        setPayError('Payment cancelled. Tap Pay to try again.');
+        setPayError(t('booking.error.paymentCancelled'));
       } else if (err instanceof PaymentUnavailableError || err instanceof ApiError) {
         setPayError(err.message);
       } else {
-        setPayError('Something went wrong. Please try again.');
+        setPayError(t('booking.error.generic'));
       }
     } finally {
       setPaying(false);
@@ -254,13 +265,15 @@ export default function BookingScreen() {
           <View className="w-16 h-16 rounded-full items-center justify-center mb-5" style={{ backgroundColor: COLORS.success + '1A' }}>
             <CheckCircle2 size={32} color={COLORS.success} />
           </View>
-          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">Booking Confirmed</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">{t('booking.confirmed.title')}</Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium text-center mt-2 leading-relaxed">
-            Payment successful. Your plan starts now — head to {draft.station?.name ?? 'your pickup station'} right away
-            to collect your {model?.name ?? 'scooter'}.
+            {t('booking.confirmed.body', {
+              station: draft.station?.name ?? t('booking.confirmed.yourPickupStation'),
+              scooter: model?.name ?? t('booking.confirmed.yourScooter'),
+            })}
           </Text>
           <TouchableOpacity onPress={handleDone} className="mt-8 py-4 px-8 rounded-2xl items-center" style={{ backgroundColor: COLORS.primary }}>
-            <Text className="text-white text-sm font-bold">Done</Text>
+            <Text className="text-white text-sm font-bold">{t('booking.confirmed.done')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -283,7 +296,9 @@ export default function BookingScreen() {
           <ChevronLeft size={20} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={{ color: COLORS.textPrimary }} className="flex-1 text-center text-base font-black" numberOfLines={1}>
-          {draft.plan ? 'Confirm & Pay' : `Book ${model?.name ?? 'Scooter'}`}
+          {draft.plan
+            ? t('booking.confirmAndPay')
+            : t('booking.bookScooter', { scooter: model?.name ?? t('bookingHistory.scooterFallback') })}
         </Text>
         <View className="w-9" />
       </View>
@@ -291,7 +306,7 @@ export default function BookingScreen() {
       {loadingModel ? (
         <View className="flex-1 items-center justify-center"><Spinner size={32} color={COLORS.primary} /></View>
       ) : modelError || !model ? (
-        <ErrorState message={modelError ?? 'This scooter could not be found.'} onRetry={load} />
+        <ErrorState message={modelError ?? t('booking.error.modelNotFound')} onRetry={load} />
       ) : (
         <>
           <ScrollView className="flex-1 px-4 pt-4" contentContainerStyle={{ paddingBottom: 24 }}>
@@ -300,7 +315,7 @@ export default function BookingScreen() {
               <View className="flex-row items-center">
                 <MapPin size={16} color={COLORS.primary} />
                 <View className="flex-1 ml-3">
-                  <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">Pickup location</Text>
+                  <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">{t('booking.pickupLocation')}</Text>
                   {loadingStation ? (
                     <Spinner size={14} color={COLORS.primary} />
                   ) : stationError ? (
@@ -320,7 +335,7 @@ export default function BookingScreen() {
                   style={{ backgroundColor: COLORS.primary + '12' }}
                 >
                   <Navigation size={13} color={COLORS.primary} />
-                  <Text style={{ color: COLORS.primary }} className="text-xs font-bold ml-1.5">Get directions</Text>
+                  <Text style={{ color: COLORS.primary }} className="text-xs font-bold ml-1.5">{t('booking.getDirections')}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -331,12 +346,15 @@ export default function BookingScreen() {
                 <Bike size={16} color={noneAvailable ? COLORS.danger : COLORS.primary} />
                 <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold ml-2.5">
                   {loadingAvailability || availableCount == null
-                    ? 'Checking availability…'
-                    : `${availableCount} available here`}
+                    ? t('booking.checkingAvailability')
+                    : t('booking.availableHere', { count: availableCount })}
                 </Text>
               </View>
               {availableCount != null ? (
-                <Badge label={noneAvailable ? 'Unavailable' : 'Available'} tone={noneAvailable ? 'danger' : 'success'} />
+                <Badge
+                  label={noneAvailable ? t('booking.unavailable') : t('booking.available')}
+                  tone={noneAvailable ? 'danger' : 'success'}
+                />
               ) : null}
             </View>
 
@@ -344,17 +362,17 @@ export default function BookingScreen() {
             <View className="rounded-2xl border p-3 flex-row items-start mb-4" style={{ backgroundColor: COLORS.warning + '12', borderColor: COLORS.warning + '33', gap: 8 }}>
               <AlertTriangle size={16} color={COLORS.warning} />
               <View className="flex-1">
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">Your plan starts right now</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{t('booking.startsNow.title')}</Text>
                 <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5 leading-relaxed">
-                  Once you pay, head straight to the pickup station and collect your scooter today. Pickup 8 AM – 8 PM.
+                  {t('booking.startsNow.body')}
                 </Text>
               </View>
             </View>
 
             {/* Plan picker */}
-            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-1">Choose a plan</Text>
+            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-1">{t('booking.choosePlan')}</Text>
             <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3">
-              {plans.length > 0 ? 'Pick how long you want the scooter for.' : 'No plans are on sale for this scooter yet.'}
+              {plans.length > 0 ? t('booking.choosePlanHint') : t('booking.noPlansHint')}
             </Text>
             <View style={{ gap: 10 }}>
               {plans.map((plan: ApiPlan) => {
@@ -374,11 +392,11 @@ export default function BookingScreen() {
                   >
                     <View className="flex-1 mr-3">
                       <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
-                        {CYCLE_LABEL[plan.billing_cycle] ?? plan.billing_cycle}
+                        {t(BILLING_CYCLE_LABEL_KEY[plan.billing_cycle])}
                       </Text>
                       {plan.included_minutes != null ? (
                         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                          {plan.included_minutes} minutes included
+                          {t('booking.minutesIncluded', { minutes: plan.included_minutes })}
                         </Text>
                       ) : null}
                     </View>
@@ -407,8 +425,10 @@ export default function BookingScreen() {
                   <View className="flex-row items-center rounded-2xl px-4 py-3" style={{ backgroundColor: COLORS.primary, gap: 10 }}>
                     <BadgePercent size={18} color="#FFF" />
                     <View className="flex-1">
-                      <Text className="text-white text-sm font-black">Deal applied</Text>
-                      <Text className="text-white/85 text-[11px] font-semibold">You save {money(saved)} on this booking</Text>
+                      <Text className="text-white text-sm font-black">{t('booking.dealApplied')}</Text>
+                      <Text className="text-white/85 text-[11px] font-semibold">
+                        {t('booking.youSave', { amount: money(saved) })}
+                      </Text>
                     </View>
                   </View>
                 ) : null}
@@ -417,12 +437,14 @@ export default function BookingScreen() {
                 <View className="rounded-2xl border p-4" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
                   <View className="flex-row items-center justify-between mb-3">
                     <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">
-                      Payment summary
+                      {t('booking.paymentSummary')}
                     </Text>
                     <View className="flex-row items-center" style={{ gap: 4 }}>
                       <Calendar size={12} color={COLORS.textSecondary} />
                       <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
-                        Starts {draft.startDay ? formatDay(draft.startDay) : 'today'}
+                        {t('booking.startsOn', {
+                          date: draft.startDay ? formatDay(draft.startDay) : t('booking.startsToday'),
+                        })}
                       </Text>
                     </View>
                   </View>
@@ -441,11 +463,11 @@ export default function BookingScreen() {
                   ) : (
                     <>
                       <View className="flex-row items-center justify-between py-1.5">
-                        <Text style={{ color: COLORS.textSecondary }} className="text-[13px] font-medium">Rental plan amount</Text>
+                        <Text style={{ color: COLORS.textSecondary }} className="text-[13px] font-medium">{t('booking.rentalPlanAmount')}</Text>
                         <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold">{money(draft.plan.price)}</Text>
                       </View>
                       <View className="flex-row items-center justify-between py-1.5">
-                        <Text style={{ color: COLORS.textSecondary }} className="text-[13px] font-medium">Security deposit (refundable)</Text>
+                        <Text style={{ color: COLORS.textSecondary }} className="text-[13px] font-medium">{t('booking.securityDepositRefundable')}</Text>
                         <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold">{money(draft.plan.deposit_amount)}</Text>
                       </View>
                     </>
@@ -455,11 +477,11 @@ export default function BookingScreen() {
                   <View className="flex-row items-center justify-between">
                     <View>
                       <Text style={{ color: COLORS.textPrimary }} className="text-sm font-black">
-                        {quote ? 'Total Payable' : 'Estimated Total'}
+                        {quote ? t('booking.totalPayable') : t('booking.estimatedTotal')}
                       </Text>
                       {!quote ? (
                         <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-medium mt-0.5">
-                          Confirmed on the payment screen
+                          {t('booking.confirmedOnPaymentScreen')}
                         </Text>
                       ) : null}
                     </View>
@@ -474,9 +496,10 @@ export default function BookingScreen() {
                 <View className="flex-row items-start rounded-2xl p-3" style={{ backgroundColor: COLORS.primary + '0D', gap: 8 }}>
                   <ShieldCheck size={14} color={COLORS.primary} />
                   <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium flex-1 leading-relaxed">
-                    Cancel within {DEFAULT_CANCELLATION_TIERS[0].upto_minutes} min of booking and{' '}
-                    {DEFAULT_CANCELLATION_TIERS[0].penalty_percent}% of the plan amount is kept back; the fee rises the
-                    longer you wait. Your security deposit is always refunded in full.
+                    {t('booking.cancellationNote', {
+                      minutes: DEFAULT_CANCELLATION_TIERS[0].upto_minutes,
+                      percent: DEFAULT_CANCELLATION_TIERS[0].penalty_percent,
+                    })}
                   </Text>
                 </View>
               </View>
@@ -505,10 +528,10 @@ export default function BookingScreen() {
           >
             <View className="shrink-0">
               <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">
-                {draft.plan ? 'Total Payable' : 'Amount'}
+                {draft.plan ? t('booking.totalPayable') : t('booking.amount')}
               </Text>
               <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">
-                {draft.plan ? money(total) : '—'}
+                {draft.plan ? money(total) : t('common.dash')}
               </Text>
             </View>
             <TouchableOpacity
@@ -524,7 +547,7 @@ export default function BookingScreen() {
             >
               {busy ? <Spinner size={16} color="#FFF" /> : null}
               <Text className="text-white text-base font-black ml-2" numberOfLines={1}>
-                {busy ? 'Processing…' : (blockedReason() ?? 'Continue')}
+                {busy ? t('booking.processing') : (blockedReason() ?? t('booking.continue'))}
               </Text>
               {!busy && !blockedReason() ? <ArrowRight size={18} color="#FFF" style={{ marginLeft: 6 }} /> : null}
             </TouchableOpacity>

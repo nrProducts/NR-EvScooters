@@ -6,6 +6,7 @@ import { ArrowRight, ShieldCheck } from 'lucide-react-native';
 import { useBookingGate } from '../../hooks/useBookingGate';
 import { COLORS } from '../../constants/theme';
 import type { RiderPhase } from '../../hooks/useRiderJourney';
+import { useT, type CopyKey } from '../../i18n';
 
 const SNG_LOGO = require('../../../assets/images/logo-lockup.png') as number;
 
@@ -23,6 +24,7 @@ interface HomeHeroCardProps {
 export const HomeHeroCard: React.FC<HomeHeroCardProps> = ({ phase, featured }) => {
   const router = useRouter();
   const { startBooking, kycModal } = useBookingGate();
+  const { t } = useT();
 
   const copy = HERO_COPY[phase] ?? HERO_COPY.ready_to_book;
 
@@ -53,10 +55,10 @@ export const HomeHeroCard: React.FC<HomeHeroCardProps> = ({ phase, featured }) =
       <View className="flex-row items-center">
         <View className="flex-1 p-5 pr-2">
           <Text style={{ color: COLORS.primaryPressed }} className="text-lg font-black leading-tight">
-            {copy.heading}
+            {t(copy.heading)}
           </Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-1.5 leading-relaxed">
-            {copy.body}
+            {t(copy.body)}
           </Text>
 
           <TouchableOpacity
@@ -71,7 +73,7 @@ export const HomeHeroCard: React.FC<HomeHeroCardProps> = ({ phase, featured }) =
               <ShieldCheck size={14} color="#FFF" />
             ) : null}
             <Text className="text-white text-xs font-bold mr-1.5" style={{ marginLeft: phase.startsWith('kyc') ? 6 : 0 }}>
-              {copy.cta}
+              {t(copy.cta)}
             </Text>
             {!disabled ? <ArrowRight size={14} color="#FFF" /> : null}
           </TouchableOpacity>
@@ -90,25 +92,30 @@ export const HomeHeroCard: React.FC<HomeHeroCardProps> = ({ phase, featured }) =
   );
 };
 
-const HERO_COPY: Record<string, { heading: string; body: string; cta: string }> = {
+/**
+ * Keys, not copy — module scope is evaluated once at import, so a resolved
+ * string here would never follow a language change. Resolved with t() in the
+ * component above.
+ */
+const HERO_COPY: Record<string, { heading: CopyKey; body: CopyKey; cta: CopyKey }> = {
   kyc_required: {
-    heading: 'One step to your first ride',
-    body: 'Complete your KYC to unlock unlimited-km EV scooter rentals.',
-    cta: 'Complete KYC',
+    heading: 'hero.kycRequired.heading',
+    body: 'hero.kycRequired.body',
+    cta: 'hero.kycRequired.cta',
   },
   kyc_in_review: {
-    heading: "You're almost there",
-    body: 'Your KYC is under review. Rentals unlock as soon as it is approved.',
-    cta: 'KYC under review',
+    heading: 'hero.kycInReview.heading',
+    body: 'hero.kycInReview.body',
+    cta: 'hero.kycInReview.cta',
   },
   ready_to_book: {
-    heading: 'Go Green. Go Unlimited.',
-    body: 'Unlimited kilometres on your EV scooter, one simple weekly plan.',
-    cta: 'Book a Scooter',
+    heading: 'hero.readyToBook.heading',
+    body: 'hero.readyToBook.body',
+    cta: 'hero.readyToBook.cta',
   },
   rental_completed: {
-    heading: 'Ready for your next ride?',
-    body: 'Pick a plan and get back on an EV scooter in minutes.',
-    cta: 'Book a Scooter',
+    heading: 'hero.rentalCompleted.heading',
+    body: 'hero.rentalCompleted.body',
+    cta: 'hero.rentalCompleted.cta',
   },
 };

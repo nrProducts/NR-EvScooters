@@ -21,12 +21,13 @@ import type { CorrectableField, DpRequestType } from '../../types/api';
 /** Statuses we still owe the rider an answer on. Mirrors the backend's list. */
 const OPEN_STATUSES = ['open', 'in_progress', 'awaiting_principal'];
 
-const CORRECTABLE: { key: CorrectableField; label: string }[] = [
-    { key: 'full_name', label: 'My name' },
-    { key: 'date_of_birth', label: 'My date of birth' },
-    { key: 'aadhaar_details', label: 'My Aadhaar details' },
-    { key: 'driving_licence_details', label: 'My licence details' },
-    { key: 'other', label: 'Something else' },
+/** Keys, not labels — module scope does not re-run on a language change. */
+const CORRECTABLE_KEYS: { key: CorrectableField; labelKey: CopyKey }[] = [
+    { key: 'full_name', labelKey: 'correctable.full_name' },
+    { key: 'date_of_birth', labelKey: 'correctable.date_of_birth' },
+    { key: 'aadhaar_details', labelKey: 'correctable.aadhaar_details' },
+    { key: 'driving_licence_details', labelKey: 'correctable.driving_licence_details' },
+    { key: 'other', labelKey: 'correctable.other' },
 ];
 
 /**
@@ -67,11 +68,11 @@ export default function PrivacyRequestsScreen() {
 
         const result = await create({ type: 'erasure', details: details.trim() || undefined });
         if (!result.ok) {
-            notify('Could not send your request', result.message);
+            notify(t('requestsScreen.error.sendFailed'), result.message);
             return;
         }
         notify(
-            'Request received',
+            t('requestsScreen.received.title'),
             t('request.submitted', { reference: result.request.reference }),
         );
         reset();
@@ -87,10 +88,10 @@ export default function PrivacyRequestsScreen() {
                     : undefined,
         });
         if (!result.ok) {
-            notify('Could not send your request', result.message);
+            notify(t('requestsScreen.error.sendFailed'), result.message);
             return;
         }
-        notify('Request received', t('request.submitted', { reference: result.request.reference }));
+        notify(t('requestsScreen.received.title'), t('request.submitted', { reference: result.request.reference }));
         reset();
     };
 
@@ -113,16 +114,16 @@ export default function PrivacyRequestsScreen() {
                 {mode === 'correction' ? (
                     <Card title={t('privacy.data.correct')} help={t('privacy.data.correct.help')}>
                         <ChipSelect<CorrectableField>
-                            label="What is wrong?"
-                            options={CORRECTABLE}
+                            label={t('requestsScreen.whatIsWrong')}
+                            options={CORRECTABLE_KEYS.map(({ key, labelKey }) => ({ key, label: t(labelKey) }))}
                             value={field}
                             onChange={setField}
                         />
                         <Field
-                            label="What should it be?"
+                            label={t('requestsScreen.whatShouldItBe')}
                             value={correctedValue}
                             onChange={setCorrectedValue}
-                            placeholder="The correct detail"
+                            placeholder={t('requestsScreen.correctPlaceholder')}
                         />
                         <Field
                             label={t('request.detailsLabel')}

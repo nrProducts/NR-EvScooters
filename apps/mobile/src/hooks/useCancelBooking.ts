@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { ApiError } from '../lib/ApiError';
 import { confirmAction, notify } from '../lib/confirm';
 import { computeCancellationCharge, describeElapsed } from '../lib/cancellationPolicy';
+import { useT } from '../i18n';
 import type { ApiBooking } from '../types/api';
 
 /**
@@ -13,6 +14,7 @@ import type { ApiBooking } from '../types/api';
  * rule mismatch surfaces to the rider instead of hiding.
  */
 export function useCancelBooking() {
+  const { t } = useT();
   const [cancelling, setCancelling] = useState(false);
 
   /** Resolves true only if the booking was actually cancelled. */
@@ -30,22 +32,31 @@ export function useCancelBooking() {
     });
 
     const refundNote = wasPaid && charge.refundAmount > 0
-      ? "\n\nWe'll send this back to your original payment method after a quick review, generally the same day."
+      ? t('cancelBooking.refundNote')
       : '';
 
+    const elapsed = describeElapsed(charge.elapsedMinutes, t);
     const message = !wasPaid
-      ? "This booking hasn't been paid for yet, so there's nothing to charge or refund."
+      ? t('cancelBooking.notPaidYet')
       : charge.penaltyAmount > 0
-        ? `You booked this ${describeElapsed(charge.elapsedMinutes)}. Cancelling now keeps back ${charge.penaltyPercent}% (₹${charge.penaltyAmount}) of the ₹${charge.planPaid} plan amount, leaving a refund of ₹${charge.refundAmount}${
-            charge.depositRefund > 0 ? ` (includes your ₹${charge.depositRefund} deposit)` : ''
-          }.${refundNote}`
-        : `You booked this ${describeElapsed(charge.elapsedMinutes)}, so there's no cancellation fee. You'll be refunded ₹${charge.refundAmount}.${refundNote}`;
+        ? t('cancelBooking.withPenalty', {
+            elapsed,
+            percent: charge.penaltyPercent,
+            penalty: charge.penaltyAmount,
+            planPaid: charge.planPaid,
+            refund: charge.refundAmount,
+            depositNote: charge.depositRefund > 0
+              ? t('cancelBooking.depositNote', { amount: charge.depositRefund })
+              : '',
+            refundNote,
+          })
+        : t('cancelBooking.noPenalty', { elapsed, refund: charge.refundAmount, refundNote });
 
     const confirmed = await confirmAction({
-      title: 'Cancel Booking?',
+      title: t('cancelBooking.confirm.title'),
       message,
-      confirmLabel: 'Cancel Booking',
-      cancelLabel: 'Keep Booking',
+      confirmLabel: t('cancelBooking.confirm.confirmLabel'),
+      cancelLabel: t('cancelBooking.confirm.cancelLabel'),
       destructive: true,
     });
     if (!confirmed) return false;
@@ -63,16 +74,16 @@ export function useCancelBooking() {
       // staff approve it, so the copy here must not claim it's already moving.
       const fee = cancelled.cancellation_penalty_amount ?? 0;
       const refundAmount = cancelled.refund_amount ?? 0;
-      const feeNote = fee > 0 ? `A late-cancellation fee of ₹${fee} was applied. ` : '';
+      const feeNote = fee > 0 ? t('cancelBooking.feeApplied', { amount: fee }) : '';
       const refundNote = refundAmount <= 0
-        ? 'No refund is owed.'
+        ? t('cancelBooking.noRefundOwed')
         : cancelled.refund_status === 'processed'
-          ? `Your refund of ₹${refundAmount} is complete.`
-          : `Your refund of ₹${refundAmount} has been requested — we'll notify you once it's approved and sent.`;
-      notify('Booking Cancelled', `${feeNote}${refundNote}`);
+          ? t('cancelBooking.refundComplete', { amount: refundAmount })
+          : t('cancelBooking.refundRequested', { amount: refundAmount });
+      notify(t('cancelBooking.cancelled.title'), `${feeNote}${refundNote}`);
       return true;
     } catch (err) {
-      notify('Could not cancel', err instanceof ApiError ? err.message : 'Please try again.');
+      notify(t('cancelBooking.error.title'), err instanceof ApiError ? err.message : t('common.pleaseTryAgain'));
       return false;
     } finally {
       setCancelling(false);

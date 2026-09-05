@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, Modal, FlatList } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Calendar, ChevronLeft, X } from 'lucide-react-native';
 import { COLORS } from '../../constants/theme';
+import { INTL_LOCALE_TAG, useT } from '../../i18n';
 
 interface DatePickerFieldProps {
   label: string;
@@ -18,8 +19,24 @@ interface DatePickerFieldProps {
 
 type PickerStep = 'year' | 'month' | 'day';
 
-const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+/**
+ * Generated from `Intl.DateTimeFormat`, keyed to the APP's language rather
+ * than the device region — so switching to Tamil shows Tamil month names
+ * without a 12-entry translation key per language, and a rider in a
+ * different timezone/region still sees the picker in the language they
+ * chose, not their device's regional format. Reference year/dates are
+ * arbitrary (any month/week works) since only the localised NAME is read.
+ */
+function monthLabels(locale: string): string[] {
+  const fmt = new Intl.DateTimeFormat(locale, { month: 'short' });
+  return Array.from({ length: 12 }, (_, i) => fmt.format(new Date(2024, i, 1)));
+}
+
+function weekdayLabels(locale: string): string[] {
+  const fmt = new Intl.DateTimeFormat(locale, { weekday: 'narrow' });
+  // 2024-01-07 is a Sunday — the grid below assumes a Sun-first week.
+  return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(2024, 0, 7 + i)));
+}
 
 function daysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
@@ -48,6 +65,9 @@ export const DatePickerField: React.FC<DatePickerFieldProps> = ({
   maxYear = new Date().getFullYear() - 18,
 }) => {
   const insets = useSafeAreaInsets();
+  const { t, lang } = useT();
+  const MONTH_LABELS = useMemo(() => monthLabels(INTL_LOCALE_TAG[lang]), [lang]);
+  const WEEKDAY_LABELS = useMemo(() => weekdayLabels(INTL_LOCALE_TAG[lang]), [lang]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [step, setStep] = useState<PickerStep>('year');
   const [pendingYear, setPendingYear] = useState<number | null>(null);
@@ -116,8 +136,8 @@ export const DatePickerField: React.FC<DatePickerFieldProps> = ({
       >
         <TextInput
           value={value}
-          onChangeText={(t) => onChangeText(formatTyped(t))}
-          placeholder="YYYY-MM-DD"
+          onChangeText={(v) => onChangeText(formatTyped(v))}
+          placeholder={t('datePicker.placeholder')}
           placeholderTextColor={COLORS.textSecondary}
           keyboardType="number-pad"
           accessibilityLabel={label}
@@ -128,7 +148,7 @@ export const DatePickerField: React.FC<DatePickerFieldProps> = ({
         <TouchableOpacity
           onPress={openPicker}
           accessibilityRole="button"
-          accessibilityLabel="Open calendar"
+          accessibilityLabel={t('datePicker.openCalendar')}
           className="px-3.5 py-3"
         >
           <Calendar size={18} color={COLORS.textSecondary} />
@@ -152,19 +172,19 @@ export const DatePickerField: React.FC<DatePickerFieldProps> = ({
                   else setPickerOpen(false);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Back"
+                accessibilityLabel={t('datePicker.back')}
                 className="w-8 h-8 rounded-full items-center justify-center"
                 style={{ backgroundColor: COLORS.background }}
               >
                 <ChevronLeft size={16} color={COLORS.textPrimary} />
               </TouchableOpacity>
               <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
-                {step === 'year' ? 'Select Year' : step === 'month' ? String(pendingYear) : `${MONTH_LABELS[pendingMonth ?? 0]} ${pendingYear}`}
+                {step === 'year' ? t('datePicker.selectYear') : step === 'month' ? String(pendingYear) : `${MONTH_LABELS[pendingMonth ?? 0]} ${pendingYear}`}
               </Text>
               <TouchableOpacity
                 onPress={() => setPickerOpen(false)}
                 accessibilityRole="button"
-                accessibilityLabel="Close"
+                accessibilityLabel={t('datePicker.close')}
                 className="w-8 h-8 rounded-full items-center justify-center"
                 style={{ backgroundColor: COLORS.background }}
               >

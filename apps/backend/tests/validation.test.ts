@@ -97,6 +97,37 @@ describe("selfUpdateUserBody", () => {
     it("refuses an empty patch", () => {
         expect(() => selfUpdateUserBody.parse({})).toThrow();
     });
+
+    // Multi-language rider app: preferred_language is the one field the
+    // language picker writes to /users/me on its own, so it must be
+    // acceptable alone as well as alongside other fields — see
+    // apps/mobile/src/i18n/index.ts's pushToServer.
+    it("accepts a supported preferred_language on its own", () => {
+        expect(selfUpdateUserBody.parse({ preferred_language: "ta" })).toEqual({
+            preferred_language: "ta",
+        });
+        expect(selfUpdateUserBody.parse({ preferred_language: "hi" })).toEqual({
+            preferred_language: "hi",
+        });
+        expect(selfUpdateUserBody.parse({ preferred_language: "en" })).toEqual({
+            preferred_language: "en",
+        });
+    });
+
+    it("refuses a language the app has no translations for", () => {
+        // Not a free string: this value is read straight into a dictionary
+        // lookup on the device, so an unsupported language must fail loudly
+        // here (400) rather than reach the client and degrade silently.
+        expect(() => selfUpdateUserBody.parse({ preferred_language: "te" })).toThrow();
+        expect(() => selfUpdateUserBody.parse({ preferred_language: "TA" })).toThrow();
+        expect(() => selfUpdateUserBody.parse({ preferred_language: "" })).toThrow();
+    });
+
+    it("accepts preferred_language alongside other self-update fields", () => {
+        expect(
+            selfUpdateUserBody.parse({ city: "Kochi", preferred_language: "hi" }),
+        ).toEqual({ city: "Kochi", preferred_language: "hi" });
+    });
 });
 
 describe("updateStatusBody", () => {

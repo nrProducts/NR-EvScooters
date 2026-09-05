@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, FlatList } from 'react-native'
 import { Search, ChevronDown, Check } from 'lucide-react-native';
 import { COLORS } from '../../constants/theme';
 import { Sheet } from './Sheet';
+import { useT } from '../../i18n';
 
 interface Option {
   key: string;
@@ -26,8 +27,10 @@ interface SearchableSelectFieldProps {
  * (e.g. all 36 Indian states/UTs).
  */
 export const SearchableSelectField: React.FC<SearchableSelectFieldProps> = ({
-  label, options, value, onChange, required, error, placeholder = 'Select...',
+  label, options, value, onChange, required, error, placeholder,
 }) => {
+  const { t } = useT();
+  const resolvedPlaceholder = placeholder ?? t('ui.selectPlaceholder');
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -71,7 +74,7 @@ export const SearchableSelectField: React.FC<SearchableSelectFieldProps> = ({
           className="text-sm font-semibold flex-1"
           numberOfLines={1}
         >
-          {value || placeholder}
+          {value || resolvedPlaceholder}
         </Text>
         <ChevronDown size={16} color={COLORS.textSecondary} />
       </TouchableOpacity>
@@ -92,10 +95,10 @@ export const SearchableSelectField: React.FC<SearchableSelectFieldProps> = ({
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder="Search..."
+              placeholder={t('ui.searchPlaceholder')}
               placeholderTextColor={COLORS.textSecondary}
               autoFocus
-              accessibilityLabel={`Search ${label}`}
+              accessibilityLabel={t('ui.searchLabelFor', { field: label })}
               className="flex-1 text-sm font-semibold ml-2.5"
               style={{ color: COLORS.textPrimary }}
             />
@@ -110,7 +113,7 @@ export const SearchableSelectField: React.FC<SearchableSelectFieldProps> = ({
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center py-6">
-              No matches.
+              {t('common.noMatches')}
             </Text>
           }
           renderItem={({ item }) => {

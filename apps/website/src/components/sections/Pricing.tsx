@@ -13,7 +13,7 @@ export function Pricing() {
         <SectionHeading
           eyebrow="Pricing"
           title="One simple plan, no surprises"
-          description="This is the plan currently on offer — pricing is managed centrally, so it's always accurate here."
+          description="Affordable weekly EV scooter rental in Chennai — this is the plan currently on offer, and pricing is managed centrally, so it's always accurate here."
         />
 
         <div className="mx-auto mt-10 max-w-md">

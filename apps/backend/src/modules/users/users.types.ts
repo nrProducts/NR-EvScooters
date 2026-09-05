@@ -41,6 +41,22 @@ export interface UserProfile {
     profile_photo_url: string | null;
     /** Derived from `rider_profiles.onboarding_completed_at` being set. */
     profile_completed: boolean;
+    /**
+     * `users.preferred_language` — 'en' | 'ta' | 'hi', never null (the column
+     * is NOT NULL DEFAULT 'en').
+     *
+     * The only thing the database knows about localisation. Translations live
+     * in the mobile app (apps/mobile/src/i18n/copy.*.ts) and nowhere else:
+     * there is no translations table and there must not be one, or fixing a
+     * typo becomes a data migration and two riders on different app versions
+     * can be shown text that does not match their build.
+     *
+     * Typed as a plain string rather than a union because the API layer is
+     * not where the app's supported set is decided — the zod enum in
+     * users.validation.ts is what actually constrains writes, alongside the
+     * CHECK constraint on the column.
+     */
+    preferred_language: string;
 
     created_at: string;
     updated_at: string | null;

@@ -2,7 +2,19 @@ import { Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { chooseAction, notify } from './confirm';
+import { translate, useLangStore } from '../i18n';
 import type { LocalFile } from '../types/api';
+
+/**
+ * These are plain async functions, not components or hooks, so `useT()` is
+ * unavailable — reads the current language directly from the store instead.
+ * Each call re-reads it fresh, so a language changed mid-picker-flow (an edge
+ * case, but the picker can be open a while) is still reflected in whichever
+ * dialog appears next.
+ */
+function t(key: Parameters<typeof translate>[1], vars?: Record<string, string | number>): string {
+  return translate(useLangStore.getState().lang, key, vars);
+}
 
 /** Must match the backend's allow-list and the bucket's allowed_mime_types. */
 const ALLOWED = ['image/jpeg', 'image/png', 'application/pdf'];
@@ -20,11 +32,11 @@ function extensionOf(mime: string): string {
  */
 function validate(file: LocalFile, size?: number): boolean {
   if (!ALLOWED.includes(file.mimeType)) {
-    notify('Unsupported file', 'Upload a JPEG, PNG or PDF.');
+    notify(t('filePicker.error.unsupported.title'), t('filePicker.error.unsupported.message'));
     return false;
   }
   if (size !== undefined && size > MAX_BYTES) {
-    notify('File too large', 'Each document must be 10 MB or smaller.');
+    notify(t('filePicker.error.tooLarge.title'), t('filePicker.error.tooLarge.message'));
     return false;
   }
   return true;
@@ -33,7 +45,7 @@ function validate(file: LocalFile, size?: number): boolean {
 async function fromCamera(): Promise<LocalFile | null> {
   const perm = await ImagePicker.requestCameraPermissionsAsync();
   if (!perm.granted) {
-    notify('Camera unavailable', 'Allow camera access to photograph your document.');
+    notify(t('filePicker.error.cameraUnavailable.title'), t('filePicker.error.cameraUnavailable.message'));
     return null;
   }
 
@@ -57,7 +69,7 @@ async function fromCamera(): Promise<LocalFile | null> {
 async function fromLibrary(): Promise<LocalFile | null> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) {
-    notify('Photos unavailable', 'Allow photo access to pick your document.');
+    notify(t('filePicker.error.photosUnavailable.title'), t('filePicker.error.photosUnavailable.message'));
     return null;
   }
 
@@ -103,19 +115,19 @@ async function fromFiles(): Promise<LocalFile | null> {
  */
 export async function pickDocument(): Promise<LocalFile | null> {
   if (Platform.OS === 'web') {
-    const wantsPdf = window.confirm('Upload a PDF file? Press Cancel to upload a photo instead.');
+    const wantsPdf = window.confirm(t('filePicker.web.uploadPdfConfirm'));
     if (wantsPdf) return fromFiles();
-    const wantsCamera = window.confirm('Take a new photo? Press Cancel to choose an existing photo instead.');
+    const wantsCamera = window.confirm(t('filePicker.web.takePhotoConfirm'));
     return wantsCamera ? fromCamera() : fromLibrary();
   }
 
   const choice = await chooseAction({
-    title: 'Add document',
-    message: 'How would you like to provide this document?',
+    title: t('filePicker.addDocument.title'),
+    message: t('filePicker.addDocument.message'),
     options: [
-      { key: 'camera', label: 'Take Photo' },
-      { key: 'library', label: 'Choose Photo' },
-      { key: 'files', label: 'Browse Files (PDF)' },
+      { key: 'camera', label: t('filePicker.takePhoto') },
+      { key: 'library', label: t('filePicker.choosePhoto') },
+      { key: 'files', label: t('filePicker.browseFiles') },
     ],
   });
 
@@ -132,16 +144,16 @@ export async function pickDocument(): Promise<LocalFile | null> {
  */
 export async function pickPhoto(): Promise<LocalFile | null> {
   if (Platform.OS === 'web') {
-    const wantsCamera = window.confirm('Take a new photo? Press Cancel to choose from your files instead.');
+    const wantsCamera = window.confirm(t('filePicker.web.takePhotoConfirmGallery'));
     return wantsCamera ? fromCamera() : fromLibrary();
   }
 
   const choice = await chooseAction({
-    title: 'Add photo',
-    message: 'How would you like to provide your photo?',
+    title: t('filePicker.addPhoto.title'),
+    message: t('filePicker.addPhoto.message'),
     options: [
-      { key: 'camera', label: 'Take Photo' },
-      { key: 'library', label: 'Choose from Gallery' },
+      { key: 'camera', label: t('filePicker.takePhoto') },
+      { key: 'library', label: t('filePicker.chooseFromGallery') },
     ],
   });
 

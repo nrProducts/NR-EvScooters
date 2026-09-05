@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { Text, ScrollView } from 'react-native';
 import { Spinner } from '../../components/Spinner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppShell } from '../../components/AppShell';
 import { Markdown } from '../../components/Markdown';
 import { COLORS } from '../../constants/theme';
 import { LanguageToggle } from '../../i18n/LanguageToggle';
-import { useT, useLangStore } from '../../i18n';
+import { useT, useLangStore, documentLanguage } from '../../i18n';
 import { api } from '../../lib/api';
 import { ApiError } from '../../lib/ApiError';
 import type { ApiConsentNotice } from '../../types/api';
@@ -22,6 +22,10 @@ export default function PrivacyNoticeScreen() {
     const insets = useSafeAreaInsets();
     const { t } = useT();
     const lang = useLangStore((s) => s.lang);
+    // Legal text exists only in the languages it has actually been reviewed
+    // in — Hindi falls back to English rather than being machine-translated.
+    // See src/i18n/documentLanguage.ts.
+    const docLang = documentLanguage(lang);
     const [notice, setNotice] = useState<ApiConsentNotice | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -29,21 +33,25 @@ export default function PrivacyNoticeScreen() {
         let cancelled = false;
         setNotice(null);
         setError(null);
-        api.consentNotice(lang)
+        api.consentNotice(docLang)
             .then((data) => {
                 if (!cancelled) setNotice(data);
             })
             .catch((err) => {
                 if (!cancelled) {
                     setError(
-                        err instanceof ApiError ? err.message : 'Could not load the privacy notice.',
+                        err instanceof ApiError ? err.message : t('notice.loadFailed'),
                     );
                 }
             });
         return () => {
             cancelled = true;
         };
-    }, [lang]);
+    // `t` is a new closure every render; re-fetching on every language
+    // change would refetch the SAME English/Tamil document `docLang` already
+    // reacts to, so this only needs to depend on `docLang` itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [docLang]);
 
     return (
         <AppShell title={t('privacy.notice.link')}>

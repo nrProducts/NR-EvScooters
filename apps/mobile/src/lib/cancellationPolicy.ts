@@ -1,3 +1,6 @@
+import { translate } from '../i18n/translate';
+import type { TranslateFn } from '../i18n/translate';
+
 /**
  * Client-side mirror of the pre-pickup cancellation rule so the rider can be
  * shown an estimated fee and refund BEFORE confirming, and so the mock
@@ -79,11 +82,20 @@ export function computeCancellationCharge(input: {
 }
 
 /** Human phrasing of how long ago the booking was made — for the confirmation dialog. */
-export function describeElapsed(elapsedMinutes: number): string {
-  if (elapsedMinutes < 1) return 'just now';
-  if (elapsedMinutes < 60) return `${elapsedMinutes} min ago`;
+/**
+ * `t` defaults to English rather than being required, so this stays callable
+ * (and its existing tests stay valid) without every call site needing a
+ * hook. `translate` is imported from `../i18n/translate` specifically — that
+ * module has no React Native import, unlike the `../i18n` barrel, so this
+ * pure, node-testable file stays pure and node-testable.
+ */
+export function describeElapsed(elapsedMinutes: number, t: TranslateFn = (k, v) => translate('en', k, v)): string {
+  if (elapsedMinutes < 1) return t('cancelBooking.elapsed.justNow');
+  if (elapsedMinutes < 60) return t('cancelBooking.elapsed.minAgo', { minutes: elapsedMinutes });
   const hours = Math.floor(elapsedMinutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  if (hours < 24) {
+    return hours === 1 ? t('cancelBooking.elapsed.hourAgo') : t('cancelBooking.elapsed.hoursAgo', { hours });
+  }
   const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? '' : 's'} ago`;
+  return days === 1 ? t('cancelBooking.elapsed.dayAgo') : t('cancelBooking.elapsed.daysAgo', { days });
 }

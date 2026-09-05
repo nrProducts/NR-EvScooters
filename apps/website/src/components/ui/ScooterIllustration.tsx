@@ -8,7 +8,7 @@ export function ScooterIllustration({ className }: { className?: string }) {
   return (
     <img
       src="/scooter.png"
-      alt="SwapNgo electric scooter"
+      alt="Swapngo electric scooter available for rent in Chennai"
       loading="lazy"
       decoding="async"
       className={`object-contain ${className ?? ""}`}

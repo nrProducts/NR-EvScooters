@@ -17,7 +17,7 @@ import { ReturnStatusCard } from '../../components/ReturnStatusCard';
 import { VehicleStage } from '../../components/VehicleStage';
 import { COLORS } from '../../constants/theme';
 import {
-  BILLING_CYCLE_LABEL, RENTAL_STATUS_LABEL, RENTAL_STATUS_TONE, VEHICLE_STATUS_LABEL,
+  BILLING_CYCLE_LABEL_KEY, RENTAL_STATUS_LABEL_KEY, RENTAL_STATUS_TONE, VEHICLE_STATUS_LABEL_KEY,
   VEHICLE_STATUS_TONE, formatDate,
 } from '../../constants/status';
 import { describeExpiry, rentalDayNumber } from '../../lib/rentalTiming';
@@ -33,6 +33,7 @@ import { isAmountDueSettlement } from '../../lib/settlementDisplay';
 import type { ApiReturnSettlement } from '../../types/api';
 import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useT } from '../../i18n';
 
 /**
  * Everything about the scooter the rider currently has: identity, plan,
@@ -45,6 +46,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
  */
 export default function MyScooterScreen() {
   const router = useRouter();
+  const { t } = useT();
   const { state, loading, error, reload } = useCurrentRideOrBooking();
   const { refreshing, onRefresh } = useRefresh(() => reload(true));
   const [showReturn, setShowReturn] = useState(false);
@@ -155,7 +157,7 @@ export default function MyScooterScreen() {
   );
 
   return (
-    <AppShell title="My Scooter">
+    <AppShell title={t('scooter.title')}>
       {loading ? (
         <View className="flex-1 items-center justify-center">
           <Spinner size={32} color={COLORS.primary} />
@@ -173,7 +175,7 @@ export default function MyScooterScreen() {
               {renderHero(
                 state.rental.vehicle.name,
                 <Badge
-                  label={RENTAL_STATUS_LABEL[state.rental.status]}
+                  label={t(RENTAL_STATUS_LABEL_KEY[state.rental.status])}
                   tone={RENTAL_STATUS_TONE[state.rental.status]}
                 />,
               )}
@@ -202,21 +204,24 @@ export default function MyScooterScreen() {
               >
                 <DetailRow
                   icon={Hash}
-                  label="Registration Number"
+                  label={t('scooter.registrationNumber')}
                   value={state.rental.vehicle.registration_number}
                   first
                 />
                 {state.rental.plan ? (
                   <DetailRow
                     icon={CreditCard}
-                    label="Plan"
-                    value={`${state.rental.plan.name} · ₹${state.rental.plan.price.toFixed(0)}/${BILLING_CYCLE_LABEL[state.rental.plan.billing_cycle]}`}
+                    label={t('scooter.plan')}
+                    value={`${state.rental.plan.name} · ₹${state.rental.plan.price.toFixed(0)}/${t(BILLING_CYCLE_LABEL_KEY[state.rental.plan.billing_cycle])}`}
                   />
                 ) : null}
                 <DetailRow
                   icon={Calendar}
-                  label="On rent since"
-                  value={`${formatDate(state.rental.started_at)} · Day ${rentalDayNumber(state.rental.started_at)}`}
+                  label={t('scooter.onRentSince')}
+                  value={t('scooter.sinceValue', {
+                    date: formatDate(state.rental.started_at),
+                    day: rentalDayNumber(state.rental.started_at),
+                  })}
                 />
                 {(() => {
                   // Nothing renews on a scooter being handed back. This row
@@ -228,7 +233,7 @@ export default function MyScooterScreen() {
                     return (
                       <DetailRow
                         icon={CalendarClock}
-                        label="Plan ended"
+                        label={t('scooter.planEnded')}
                         value={formatDate(state.rental.expires_at)}
                       />
                     );
@@ -238,7 +243,7 @@ export default function MyScooterScreen() {
                   return (
                     <DetailRow
                       icon={CalendarClock}
-                      label="Renews on"
+                      label={t('scooter.renewsOn')}
                       value={expiry.text}
                       valueColor={
                         expiry.tone === 'neutral' ? undefined
@@ -252,12 +257,12 @@ export default function MyScooterScreen() {
                 {state.rental.vehicle.next_service_due_date ? (
                   <DetailRow
                     icon={Wrench}
-                    label="Next service due"
+                    label={t('scooter.nextServiceDue')}
                     value={formatDate(state.rental.vehicle.next_service_due_date)}
                   />
                 ) : null}
                 {state.rental.station ? (
-                  <DetailRow icon={MapPin} label="Picked Up At" value={state.rental.station.name} />
+                  <DetailRow icon={MapPin} label={t('scooter.pickedUpAt')} value={state.rental.station.name} />
                 ) : null}
               </View>
 
@@ -277,7 +282,7 @@ export default function MyScooterScreen() {
                     >
                       <RefreshCw size={15} color="#FFF" />
                       <Text className="text-white text-xs font-bold ml-2">
-                        Renew Plan
+                        {t('scooter.renewPlan')}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -290,12 +295,12 @@ export default function MyScooterScreen() {
                   >
                     <PackageCheck size={15} color={COLORS.primaryPressed} />
                     <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-bold ml-2">
-                      Return Scooter
+                      {t('scooter.returnScooter')}
                     </Text>
                   </TouchableOpacity>
                   {!canReturn && state.rental.next_due_at ? (
                     <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-2">
-                      You can return once your current plan period ends on {formatDate(state.rental.next_due_at)}.
+                      {t('scooter.returnAfter', { date: formatDate(state.rental.next_due_at) })}
                     </Text>
                   ) : null}
                 </>
@@ -313,7 +318,7 @@ export default function MyScooterScreen() {
               >
                 <LifeBuoy size={14} color={COLORS.textSecondary} />
                 <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2">
-                  Report a problem
+                  {t('scooter.reportProblem')}
                 </Text>
               </TouchableOpacity>
 
@@ -334,14 +339,14 @@ export default function MyScooterScreen() {
           ) : state.kind === 'booking' ? (
             <>
               {renderHero(
-                state.booking.vehicle?.name ?? state.booking.vehicle_model?.name ?? 'Your scooter',
+                state.booking.vehicle?.name ?? state.booking.vehicle_model?.name ?? t('home.yourScooter'),
                 state.booking.vehicle ? (
                   <Badge
-                    label={VEHICLE_STATUS_LABEL[state.booking.vehicle.status]}
+                    label={t(VEHICLE_STATUS_LABEL_KEY[state.booking.vehicle.status])}
                     tone={VEHICLE_STATUS_TONE[state.booking.vehicle.status]}
                   />
                 ) : (
-                  <Badge label="Vehicle not yet assigned" tone="neutral" />
+                  <Badge label={t('scooter.notAssigned')} tone="neutral" />
                 ),
               )}
 
@@ -355,19 +360,19 @@ export default function MyScooterScreen() {
                 >
                   <DetailRow
                     icon={Hash}
-                    label="Registration Number"
+                    label={t('scooter.registrationNumber')}
                     value={state.booking.vehicle.registration_number}
                     first
                   />
                   {state.booking.plan ? (
                     <DetailRow
                       icon={CreditCard}
-                      label="Plan"
-                      value={`${state.booking.plan.name} · ₹${state.booking.plan.price.toFixed(0)}/${BILLING_CYCLE_LABEL[state.booking.plan.billing_cycle]}`}
+                      label={t('scooter.plan')}
+                      value={`${state.booking.plan.name} · ₹${state.booking.plan.price.toFixed(0)}/${t(BILLING_CYCLE_LABEL_KEY[state.booking.plan.billing_cycle])}`}
                     />
                   ) : null}
                   {state.booking.station ? (
-                    <DetailRow icon={MapPin} label="Pickup Station" value={state.booking.station.name} />
+                    <DetailRow icon={MapPin} label={t('scooter.pickupStation')} value={state.booking.station.name} />
                   ) : null}
                 </View>
               ) : null}
@@ -383,8 +388,8 @@ export default function MyScooterScreen() {
               ) : null}
               <EmptyState
                 icon={Bike}
-                title="No active rental"
-                subtitle="Book a scooter to see it here — once picked up, its details will show up on this screen."
+                title={t('scooter.empty.title')}
+                subtitle={t('scooter.empty.subtitle')}
               />
             </>
           )}

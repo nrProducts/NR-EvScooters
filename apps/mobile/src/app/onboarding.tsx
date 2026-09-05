@@ -10,35 +10,42 @@ import {
 } from 'lucide-react-native';
 import { COLORS } from '../constants/theme';
 import { useOnboardingStore } from '../store/useOnboardingStore';
+import { useT, type CopyKey } from '../i18n';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+/**
+ * The slides hold translation KEYS, not text.
+ *
+ * This is module scope, evaluated once at import — before any store has
+ * hydrated and outside every React render — so a literal string here would be
+ * frozen in whatever language the module happened to load in and would never
+ * re-render on a language change. The keys are resolved with t() inside the
+ * component, where a language switch repaints them like everything else.
+ */
 interface Slide {
-  title: string;
-  description: string;
+  titleKey: CopyKey;
+  bodyKey: CopyKey;
   Icon: typeof Bike;
   badges: { Icon: typeof Bike; position: 'topRight' | 'bottomRight' | 'bottomLeft' }[];
 }
 
 const SLIDES: Slide[] = [
   {
-    title: 'Find Your EV. Book in Seconds.',
-    description:
-      'Discover available Swapngo electric scooters near you, choose your preferred vehicle, and book it directly from the app.',
+    titleKey: 'onboarding.slide1.title',
+    bodyKey: 'onboarding.slide1.body',
     Icon: Bike,
     badges: [{ Icon: MapPin, position: 'topRight' }],
   },
   {
-    title: 'Ride More. Swap Anytime.',
-    description:
-      'Enjoy your ride without worrying about charging. When the battery is low, find a nearby Swapngo battery swapping station and swap the battery quickly.',
+    titleKey: 'onboarding.slide2.title',
+    bodyKey: 'onboarding.slide2.body',
     Icon: BatteryCharging,
     badges: [{ Icon: Zap, position: 'topRight' }],
   },
   {
-    title: 'Everything You Need in One App',
-    description:
-      'Manage your rental, view your scooter, track your rides, check payments, find swap stations, and get support—all from one app.',
+    titleKey: 'onboarding.slide3.title',
+    bodyKey: 'onboarding.slide3.body',
     Icon: LayoutDashboard,
     badges: [
       { Icon: CreditCard, position: 'topRight' },
@@ -58,6 +65,7 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const { replay } = useLocalSearchParams<{ replay?: string }>();
   const markSeen = useOnboardingStore((s) => s.markSeen);
+  const { t } = useT();
 
   const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -99,7 +107,7 @@ export default function OnboardingScreen() {
           style={{ position: 'absolute', top: insets.top + 12, right: 20, zIndex: 1 }}
           className="px-3 py-2"
         >
-          <Text style={{ color: COLORS.textSecondary }} className="text-sm font-bold">Skip</Text>
+          <Text style={{ color: COLORS.textSecondary }} className="text-sm font-bold">{t('common.skip')}</Text>
         </TouchableOpacity>
       )}
 
@@ -112,7 +120,7 @@ export default function OnboardingScreen() {
         style={{ flex: 1 }}
       >
         {SLIDES.map((slide, index) => (
-          <View key={slide.title} style={{ width: SCREEN_WIDTH }} className="flex-1 px-8 items-center justify-center">
+          <View key={slide.titleKey} style={{ width: SCREEN_WIDTH }} className="flex-1 px-8 items-center justify-center">
             <Animated.View
               style={{
                 opacity: index === activeIndex ? heroAnim : 1,
@@ -145,13 +153,13 @@ export default function OnboardingScreen() {
             </Animated.View>
 
             <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black text-center mb-3">
-              {slide.title}
+              {t(slide.titleKey)}
             </Text>
             <Text
               style={{ color: COLORS.textSecondary }}
               className="text-sm font-medium text-center leading-relaxed"
             >
-              {slide.description}
+              {t(slide.bodyKey)}
             </Text>
           </View>
         ))}
@@ -177,7 +185,7 @@ export default function OnboardingScreen() {
           style={{ backgroundColor: COLORS.primary }}
           className="w-full py-4 rounded-2xl flex-row justify-center items-center shadow-sm"
         >
-          <Text className="text-white font-bold text-base mr-2">{isLast ? 'Get Started' : 'Next'}</Text>
+          <Text className="text-white font-bold text-base mr-2">{isLast ? t('onboarding.getStarted') : t('common.next')}</Text>
           <ArrowRight size={18} color="#FFF" />
         </TouchableOpacity>
       </View>

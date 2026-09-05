@@ -11,11 +11,12 @@ import { FormField } from './ui/FormField';
 import { StarRating } from './ui/StarRating';
 import { COLORS } from '../constants/theme';
 import {
-  LATE_RETURN_FEE_PER_DAY, RETURN_REASONS, RETURN_REASON_LABEL, returnDeadlineFor,
+  LATE_RETURN_FEE_PER_DAY, RETURN_REASONS, RETURN_REASON_LABEL_KEY, returnDeadlineFor,
   type ReturnReason,
 } from '../lib/returnPolicy';
 import { useRequestReturn } from '../hooks/useRequestReturn';
 import type { ApiRental } from '../types/api';
+import { useT } from '../i18n';
 
 interface ReturnScooterModalProps {
   visible: boolean;
@@ -24,8 +25,6 @@ interface ReturnScooterModalProps {
   /** Fired after a successful request so the screen can refresh its rental. */
   onSubmitted?: () => void;
 }
-
-const REASON_OPTIONS = RETURN_REASONS.map((key) => ({ key, label: RETURN_REASON_LABEL[key] }));
 
 /**
  * The deadline this request will actually carry — an estimate; the server's
@@ -51,7 +50,12 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
   visible, rental, onClose, onSubmitted,
 }) => {
   const insets = useSafeAreaInsets();
+  const { t } = useT();
   const { submitting, requestReturn } = useRequestReturn();
+
+  // Built inside the component, not at module scope, so a language change
+  // re-renders these labels like everything else.
+  const REASON_OPTIONS = RETURN_REASONS.map((key) => ({ key, label: t(RETURN_REASON_LABEL_KEY[key]) }));
 
   const [reason, setReason] = useState<ReturnReason | ''>('');
   const [feedback, setFeedback] = useState('');
@@ -77,10 +81,10 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
 
   const submit = async () => {
     const next: Record<string, string> = {};
-    if (!reason) next.reason = 'Pick a reason.';
-    if (!rating) next.rating = 'Rate your ride.';
+    if (!reason) next.reason = t('returnModal.error.reason');
+    if (!rating) next.rating = t('returnModal.error.rating');
     // Mirrors the backend's superRefine so the rider isn't bounced by a 400.
-    if (reason === 'other' && !feedback.trim()) next.feedback = 'Tell us a bit more.';
+    if (reason === 'other' && !feedback.trim()) next.feedback = t('returnModal.error.feedback');
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
@@ -112,12 +116,12 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
         >
           <View className="flex-row justify-between items-center px-6 pt-6 pb-4">
             <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">
-              Return Scooter
+              {t('returnModal.title')}
             </Text>
             <TouchableOpacity
               onPress={close}
               accessibilityRole="button"
-              accessibilityLabel="Close"
+              accessibilityLabel={t('common.close')}
               className="w-8 h-8 rounded-full items-center justify-center"
               style={{ backgroundColor: COLORS.background }}
             >
@@ -131,7 +135,7 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
             contentContainerStyle={{ paddingBottom: 12 }}
           >
             <ChipSelect
-              label="Why are you returning?"
+              label={t('returnModal.reasonLabel')}
               required
               options={REASON_OPTIONS}
               value={reason as ReturnReason}
@@ -143,20 +147,20 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
             />
 
             <FormField
-              label="Anything you'd like us to know?"
+              label={t('returnModal.feedbackLabel')}
               value={feedback}
-              onChangeText={(t) => {
-                setFeedback(t);
+              onChangeText={(v) => {
+                setFeedback(v);
                 if (errors.feedback) setErrors((e) => ({ ...e, feedback: '' }));
               }}
-              placeholder="Tell us how the ride went"
+              placeholder={t('returnModal.feedbackPlaceholder')}
               multiline
               required={reason === 'other'}
               error={errors.feedback}
             />
 
             <StarRating
-              label="Rate your ride"
+              label={t('returnModal.ratingLabel')}
               required
               value={rating}
               onChange={(v) => {
@@ -197,10 +201,7 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
             </View> */}
 
             <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed mb-2">
-              Your request will be processed as per our return policy. The rental stays active — and the
-              scooter stays yours — until our team confirms the physical handover at the station. Nothing
-              is charged now; payment collection goes live in a later update. Need to change this
-              afterwards? Contact support.
+              {t('returnModal.policyNote')}
             </Text>
           </ScrollView>
 
@@ -215,7 +216,7 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
               {submitting ? (
                 <Spinner size={18} color="#FFF" />
               ) : (
-                <Text className="text-white font-bold text-sm">Request Return</Text>
+                <Text className="text-white font-bold text-sm">{t('returnModal.submit')}</Text>
               )}
             </TouchableOpacity>
           </View>

@@ -9,6 +9,7 @@ import { userRepository, rentalRepository } from '../services';
 import { rentalDayNumber } from '../lib/rentalTiming';
 import { ProfileContent } from './ProfileContent';
 import { X, User, Bell, ChevronLeft } from 'lucide-react-native';
+import { useT } from '../i18n';
 
 interface AppShellProps {
   title: string;
@@ -28,6 +29,7 @@ interface AppShellProps {
  */
 export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   const router = useRouter();
+  const { t } = useT();
   const profile = useAuthStore((s) => s.profile);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -105,7 +107,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
             <TouchableOpacity
               onPress={() => router.back()}
               accessibilityRole="button"
-              accessibilityLabel="Go back"
+              accessibilityLabel={t('appShell.goBack')}
               className="w-9 h-9 rounded-xl items-center justify-center mr-2"
               style={{ backgroundColor: COLORS.background }}
             >
@@ -122,7 +124,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
           {rentalDay != null ? (
             <View className="ml-2 rounded-full px-2 py-0.5" style={{ backgroundColor: COLORS.primary + '14' }}>
               <Text style={{ color: COLORS.primaryPressed }} className="text-[10px] font-bold">
-                Day {rentalDay}
+                {t('appShell.dayN', { day: rentalDay })}
               </Text>
             </View>
           ) : null}
@@ -134,7 +136,11 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
           className="w-9 h-9 rounded-full items-center justify-center mr-2"
           style={{ backgroundColor: COLORS.background }}
           accessibilityRole="button"
-          accessibilityLabel={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : 'Notifications'}
+          accessibilityLabel={
+            unreadNotifications > 0
+              ? t('appShell.notificationsUnread', { count: unreadNotifications })
+              : t('appShell.notifications')
+          }
         >
           <Bell size={18} color={COLORS.textPrimary} />
           {unreadNotifications > 0 ? (
@@ -152,7 +158,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
         <TouchableOpacity
           onPress={() => setProfileOpen(true)}
           accessibilityRole="button"
-          accessibilityLabel="Profile"
+          accessibilityLabel={t('appShell.profile')}
           className="w-9 h-9 rounded-full items-center justify-center border overflow-hidden"
           style={{ backgroundColor: COLORS.primary + '1A', borderColor: COLORS.primary + '40' }}
         >
@@ -182,9 +188,11 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
             }}
           >
             <View className="flex-row justify-between items-center mb-5">
-              <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">Profile</Text>
+              <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">{t('profile.profile')}</Text>
               <TouchableOpacity
                 onPress={() => setProfileOpen(false)}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.close')}
                 className="w-8 h-8 rounded-full items-center justify-center"
                 style={{ backgroundColor: COLORS.background }}
               >

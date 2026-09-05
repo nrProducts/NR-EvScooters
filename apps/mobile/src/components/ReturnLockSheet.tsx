@@ -4,8 +4,10 @@ import { Undo2 } from 'lucide-react-native';
 import { Sheet } from './ui/Sheet';
 import { COLORS } from '../constants/theme';
 import {
-  RETURN_LOCK_BLOCKED_HINT, RETURN_LOCK_BODY, RETURN_LOCK_SUPPORT_HINT, RETURN_LOCK_TITLE,
+  RETURN_LOCK_BLOCKED_HINT_KEY, RETURN_LOCK_BODY_KEY, RETURN_LOCK_SUPPORT_HINT_KEY,
+  RETURN_LOCK_TITLE_KEY,
 } from '../lib/returnLock';
+import { useT } from '../i18n';
 
 /** 'blocked' has no way through; 'warn' explains, then lets the rider continue. */
 export type ReturnLockIntent = 'blocked' | 'warn';
@@ -66,8 +68,11 @@ interface ReturnLockSheetProps {
 
 export const ReturnLockSheet: React.FC<ReturnLockSheetProps> = ({
   visible, intent, onClose, onContinue,
-}) => (
-  <Sheet visible={visible} onClose={onClose} title={RETURN_LOCK_TITLE}>
+}) => {
+  const { t } = useT();
+
+  return (
+  <Sheet visible={visible} onClose={onClose} title={t(RETURN_LOCK_TITLE_KEY)}>
     <View className="px-6 pt-1">
       <View
         className="rounded-2xl p-3.5 mb-4 flex-row"
@@ -78,12 +83,12 @@ export const ReturnLockSheet: React.FC<ReturnLockSheetProps> = ({
           style={{ color: COLORS.textSecondary }}
           className="text-[11px] font-medium leading-relaxed flex-1 ml-2.5"
         >
-          {RETURN_LOCK_BODY}
+          {t(RETURN_LOCK_BODY_KEY)}
         </Text>
       </View>
 
       <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed mb-4">
-        {intent === 'warn' ? RETURN_LOCK_SUPPORT_HINT : RETURN_LOCK_BLOCKED_HINT}
+        {t(intent === 'warn' ? RETURN_LOCK_SUPPORT_HINT_KEY : RETURN_LOCK_BLOCKED_HINT_KEY)}
       </Text>
 
       {onContinue ? (
@@ -94,7 +99,7 @@ export const ReturnLockSheet: React.FC<ReturnLockSheetProps> = ({
             className="flex-1 py-3.5 rounded-2xl items-center border"
             style={{ borderColor: COLORS.border }}
           >
-            <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">Not now</Text>
+            <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">{t('common.notNow')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onContinue}
@@ -102,7 +107,7 @@ export const ReturnLockSheet: React.FC<ReturnLockSheetProps> = ({
             className="flex-1 py-3.5 rounded-2xl items-center"
             style={{ backgroundColor: COLORS.primary }}
           >
-            <Text className="text-white text-xs font-bold">Continue to support</Text>
+            <Text className="text-white text-xs font-bold">{t('returnLock.continueToSupport')}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -112,9 +117,10 @@ export const ReturnLockSheet: React.FC<ReturnLockSheetProps> = ({
           className="py-3.5 rounded-2xl items-center"
           style={{ backgroundColor: COLORS.primary }}
         >
-          <Text className="text-white text-xs font-bold">Got it</Text>
+          <Text className="text-white text-xs font-bold">{t('common.gotIt')}</Text>
         </TouchableOpacity>
       )}
     </View>
   </Sheet>
-);
+  );
+};

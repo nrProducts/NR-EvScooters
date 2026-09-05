@@ -4,6 +4,7 @@ import { Wrench, Clock } from 'lucide-react-native';
 import { COLORS } from '../constants/theme';
 import { SimplifiedVehicleCard } from './SimplifiedVehicleCard';
 import type { ApiMaintenanceNotice } from '../types/api';
+import { useT } from '../i18n';
 
 function formatEta(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
@@ -16,6 +17,8 @@ function formatEta(iso: string): string {
  * it's still open, so this never shows raw historical assignment data.
  */
 export const MaintenanceNoticeBanner: React.FC<{ notice: ApiMaintenanceNotice | null }> = ({ notice }) => {
+  const { t } = useT();
+
   if (!notice) return null;
 
   if (notice.stage === 'pending_triage') {
@@ -26,7 +29,7 @@ export const MaintenanceNoticeBanner: React.FC<{ notice: ApiMaintenanceNotice | 
       >
         <Wrench size={16} color={COLORS.textSecondary} />
         <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2 flex-1">
-          Your scooter is being inspected. We'll update you shortly.
+          {t('maintenance.inspecting')}
         </Text>
       </View>
     );
@@ -41,12 +44,12 @@ export const MaintenanceNoticeBanner: React.FC<{ notice: ApiMaintenanceNotice | 
         <View className="flex-row items-center">
           <Clock size={16} color={COLORS.warning} />
           <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold ml-2">
-            Your Scooter Is Being Repaired
+            {t('maintenance.beingRepaired')}
           </Text>
         </View>
         {notice.expected_ready_at ? (
           <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold mt-1.5">
-            Expected ready by {formatEta(notice.expected_ready_at)}.
+            {t('maintenance.expectedReady', { time: formatEta(notice.expected_ready_at) })}
           </Text>
         ) : null}
       </View>
@@ -62,11 +65,11 @@ export const MaintenanceNoticeBanner: React.FC<{ notice: ApiMaintenanceNotice | 
       <View className="flex-row items-center">
         <Wrench size={16} color={COLORS.primary} />
         <Text style={{ color: COLORS.primaryPressed }} className="text-sm font-extrabold ml-2">
-          Your Scooter Is In Maintenance
+          {t('maintenance.inMaintenance')}
         </Text>
       </View>
       <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold mt-1.5">
-        Use this temporary vehicle until it's ready.
+        {t('maintenance.useTempVehicle')}
       </Text>
       {notice.temp_vehicle ? <SimplifiedVehicleCard vehicle={notice.temp_vehicle} /> : null}
     </View>

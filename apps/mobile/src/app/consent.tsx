@@ -8,7 +8,7 @@ import { COLORS } from '../constants/theme';
 import { ConsentToggle } from '../components/ui/ConsentToggle';
 import { CheckRow } from '../components/ui/CheckRow';
 import { LanguageToggle } from '../i18n/LanguageToggle';
-import { useT, useLangStore } from '../i18n';
+import { useT, useLangStore, documentLanguage } from '../i18n';
 import type { CopyKey } from '../i18n';
 import { useConsent } from '../hooks/useConsent';
 import { useAuthStore } from '../store/useAuthStore';
@@ -32,6 +32,10 @@ export default function ConsentScreen() {
     const hydrate = useLangStore((s) => s.hydrate);
     const langReady = useLangStore((s) => s.ready);
     const lang = useLangStore((s) => s.lang);
+    // Legal text exists only in the languages it has actually been reviewed
+    // in — Hindi falls back to English rather than being machine-translated.
+    // See src/i18n/documentLanguage.ts.
+    const docLang = documentLanguage(lang);
 
     const { state, notice, loading, saving, error, save } = useConsent();
     const refreshProfile = useAuthStore((s) => s.refreshProfile);
@@ -54,7 +58,7 @@ export default function ConsentScreen() {
 
     useEffect(() => {
         let cancelled = false;
-        api.termsDocument(lang)
+        api.termsDocument(docLang)
             .then((doc) => {
                 if (cancelled) return;
                 setTerms((prev) => {
@@ -78,7 +82,7 @@ export default function ConsentScreen() {
         return () => {
             cancelled = true;
         };
-    }, [lang]);
+    }, [docLang]);
 
     useEffect(() => {
         if (!langReady) void hydrate();
@@ -139,7 +143,7 @@ export default function ConsentScreen() {
                 // A 409 means the document changed under them — re-fetch so
                 // they are reading, and accepting, the version now live.
                 if (err instanceof ApiError && err.status === 409) {
-                    api.termsDocument(lang).then(setTerms).catch(() => {});
+                    api.termsDocument(docLang).then(setTerms).catch(() => {});
                     setAgreedToTerms(false);
                     setOpenedTerms(false);
                 }

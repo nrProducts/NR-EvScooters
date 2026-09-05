@@ -4,6 +4,7 @@ import type { SessionRef } from '../services/types';
 import { setUnauthorizedHandler } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
 import type { ApiMe, RoleName } from '../types/api';
+import { useLangStore } from '../i18n';
 
 /**
  * Collapses overlapping sign-out triggers (e.g. two 401s arriving close
@@ -113,6 +114,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         signOutInFlight = (async () => {
             await authRepository.signOut();
             set({ session: null, profile: null, error: null, hasSeenKycIntro: false });
+            // The LANGUAGE deliberately survives — it is a device preference,
+            // and dropping a rider back into English at the login screen is
+            // the hardest place to recover from a language they cannot read.
+            // Only the account link is dropped, so the next account's
+            // `preferred_language` is adopted rather than overwritten by the
+            // outgoing rider's. See forgetAccount in src/i18n/index.ts.
+            useLangStore.getState().forgetAccount();
         })();
         try {
             await signOutInFlight;

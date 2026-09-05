@@ -9,6 +9,7 @@ import { COLORS } from '../constants/theme';
 import { formatPhoneForDisplay, isValidOtp, sanitizeOtpInput } from '../lib/authValidation';
 import { ArrowLeft, ShieldCheck } from 'lucide-react-native';
 import { Spinner } from '../components/Spinner';
+import { useT } from '../i18n';
 
 const RESEND_SECONDS = 30;
 
@@ -24,6 +25,7 @@ export default function OtpVerifyScreen() {
 
   const verifyOtp = useAuthStore((s) => s.verifyOtp);
   const requestOtp = useAuthStore((s) => s.requestOtp);
+  const { t } = useT();
 
   const [code, setCode] = useState('');
   const [verifying, setVerifying] = useState(false);
@@ -44,7 +46,7 @@ export default function OtpVerifyScreen() {
   const submit = async (value: string = code) => {
     if (verifying) return;
     if (!isValidOtp(value)) {
-      setError('Enter the 6-digit code.');
+      setError(t('otp.error.invalid'));
       return;
     }
     setError('');
@@ -53,7 +55,7 @@ export default function OtpVerifyScreen() {
       await verifyOtp(phone, value);
       // Root layout redirects from here.
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not verify the code. Please try again.');
+      setError(err instanceof ApiError ? err.message : t('otp.error.verifyFailed'));
       setCode('');
     } finally {
       setVerifying(false);
@@ -67,7 +69,7 @@ export default function OtpVerifyScreen() {
       await requestOtp(phone);
       setSecondsLeft(RESEND_SECONDS);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not resend the code.');
+      setError(err instanceof ApiError ? err.message : t('otp.error.resendFailed'));
     }
   };
 
@@ -78,7 +80,7 @@ export default function OtpVerifyScreen() {
       <TouchableOpacity
         onPress={() => router.back()}
         accessibilityRole="button"
-        accessibilityLabel="Go back"
+        accessibilityLabel={t('auth.goBack')}
         className="w-10 h-10 rounded-2xl items-center justify-center mb-8 border"
         style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
       >
@@ -93,10 +95,10 @@ export default function OtpVerifyScreen() {
       </View>
 
       <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black mb-2">
-        Enter verification code
+        {t('otp.title')}
       </Text>
       <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium mb-8">
-        Sent to {phone ? formatPhoneForDisplay(phone) : 'your number'}.
+        {t('otp.sentTo', { phone: phone ? formatPhoneForDisplay(phone) : t('otp.yourNumber') })}
       </Text>
 
       {/* Hidden real input; the boxes below mirror it. */}
@@ -113,7 +115,7 @@ export default function OtpVerifyScreen() {
         autoComplete="sms-otp"
         textContentType="oneTimeCode"
         maxLength={6}
-        accessibilityLabel="6 digit verification code"
+        accessibilityLabel={t('otp.inputLabel')}
         style={{ position: 'absolute', opacity: 0, height: 1, width: 1 }}
       />
 
@@ -158,19 +160,19 @@ export default function OtpVerifyScreen() {
         {verifying ? (
           <Spinner size={18} color="#FFF" />
         ) : (
-          <Text className="text-white font-bold text-base">Verify</Text>
+          <Text className="text-white font-bold text-base">{t('otp.verify')}</Text>
         )}
       </TouchableOpacity>
 
       <View className="flex-row justify-center mt-6">
         {secondsLeft > 0 ? (
           <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
-            Resend code in {secondsLeft}s
+            {t('otp.resendIn', { seconds: secondsLeft })}
           </Text>
         ) : (
           <TouchableOpacity onPress={() => void resend()} accessibilityRole="button">
             <Text style={{ color: COLORS.primary }} className="text-xs font-bold">
-              Resend code
+              {t('otp.resend')}
             </Text>
           </TouchableOpacity>
         )}

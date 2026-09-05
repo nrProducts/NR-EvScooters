@@ -14,6 +14,18 @@ export const uuidOrMeParam = z.object({
     id: z.union([z.literal("me"), z.string().uuid("A valid user id is required.")]),
 });
 
+/**
+ * The languages the mobile app ships translations for.
+ *
+ * Kept in step by hand with `LANGS` in apps/mobile/src/i18n/types.ts and with
+ * the CHECK constraint on `users.preferred_language`. There is no shared
+ * package between the apps, so all three move together in one commit —
+ * widening any two without the third fails at whichever layer was left
+ * behind, which is the intended outcome: a language the app cannot render is
+ * not a language the API should accept.
+ */
+const PREFERRED_LANGUAGES = ["en", "ta", "hi"] as const;
+
 /** E.164-ish. Deliberately permissive on country prefix, strict on shape. */
 const phoneSchema = z
     .string()
@@ -140,6 +152,15 @@ export const selfUpdateUserBody = z
         ...addressFields,
         emergency_contact_name: personNameSchema.max(120).optional(),
         emergency_contact_phone: phoneSchema.optional(),
+        // The language picker PATCHes this field on its own. It is the one
+        // field on this schema a rider changes without opening a form, so it
+        // has to be tolerant of arriving alone — which the `.refine` below
+        // already allows, since one key is more than zero.
+        //
+        // An enum, not a free string: this value is read straight back into a
+        // dictionary lookup on the device, and the CHECK constraint on the
+        // column would otherwise reject it as a 500 instead of a 400.
+        preferred_language: z.enum(PREFERRED_LANGUAGES).optional(),
     })
     .strict()
     .refine((v) => Object.keys(v).length > 0, "Provide at least one field to update.");

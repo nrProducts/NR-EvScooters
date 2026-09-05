@@ -5,11 +5,23 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FAQ_ITEMS } from "@/content/faq";
 import { cn } from "@/lib/utils";
 
+const FAQ_JSON_LD = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQ_ITEMS.map((item) => ({
+    "@type": "Question",
+    name: item.question,
+    acceptedAnswer: { "@type": "Answer", text: item.answer },
+  })),
+});
+
 export function Faq() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   return (
     <section id="faq" className="bg-surface py-14 sm:py-20">
+      {/* Mirrors FAQ_ITEMS exactly, so it can never advertise an answer the page doesn't show. */}
+      <script type="application/ld+json">{FAQ_JSON_LD}</script>
       <Container className="max-w-3xl">
         <SectionHeading eyebrow="FAQ" title="Frequently asked questions" />
 

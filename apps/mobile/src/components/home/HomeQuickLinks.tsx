@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Lock, MapPin, CalendarDays, Zap, type LucideIcon } from 'lucide-react-native';
 import { COLORS } from '../../constants/theme';
 import { useReturnLock } from '../ReturnLockSheet';
+import { useT, type CopyKey } from '../../i18n';
 
 /**
  * The three everyday shortcuts under the hero: find a scooter, see bookings,
@@ -19,10 +20,10 @@ import { useReturnLock } from '../ReturnLockSheet';
  *   · My bookings — open. A read-only record of past bookings changes
  *     nothing, and a rider mid-return has every reason to look at it.
  */
-const ITEMS: { icon: LucideIcon; label: string; route: string; lockedWhileReturning: boolean }[] = [
-  { icon: MapPin, label: 'Nearby scooters', route: '/browse-vehicles', lockedWhileReturning: true },
-  { icon: CalendarDays, label: 'My bookings', route: '/booking-history', lockedWhileReturning: false },
-  { icon: Zap, label: 'My plan', route: '/my-plan', lockedWhileReturning: true },
+const ITEMS: { icon: LucideIcon; labelKey: CopyKey; route: string; lockedWhileReturning: boolean }[] = [
+  { icon: MapPin, labelKey: 'quickLinks.nearbyScooters', route: '/browse-vehicles', lockedWhileReturning: true },
+  { icon: CalendarDays, labelKey: 'quickLinks.myBookings', route: '/booking-history', lockedWhileReturning: false },
+  { icon: Zap, labelKey: 'quickLinks.myPlan', route: '/my-plan', lockedWhileReturning: true },
 ];
 
 interface HomeQuickLinksProps {
@@ -33,13 +34,15 @@ interface HomeQuickLinksProps {
 export const HomeQuickLinks: React.FC<HomeQuickLinksProps> = ({ returnLocked = false }) => {
   const router = useRouter();
   const lock = useReturnLock(returnLocked);
+  const { t } = useT();
 
   return (
     <View className="flex-row mb-6" style={{ gap: 10 }}>
-      {ITEMS.map(({ icon: Icon, label, route, lockedWhileReturning }) => {
+      {ITEMS.map(({ icon: Icon, labelKey, route, lockedWhileReturning }) => {
         // Dimmed and padlocked rather than removed: a tile that vanishes looks
         // like a bug, and the rider still gets told WHY when they tap it.
         const isLocked = returnLocked && lockedWhileReturning;
+        const label = t(labelKey);
         return (
           <TouchableOpacity
             key={route}
@@ -49,7 +52,7 @@ export const HomeQuickLinks: React.FC<HomeQuickLinksProps> = ({ returnLocked = f
             accessibilityRole="button"
             accessibilityLabel={label}
             accessibilityState={{ disabled: isLocked }}
-            accessibilityHint={isLocked ? 'Unavailable while your return is being completed' : undefined}
+            accessibilityHint={isLocked ? t('quickLinks.lockedHint') : undefined}
             activeOpacity={0.85}
             className="flex-1 rounded-2xl px-3 py-4"
             style={{
