@@ -1,13 +1,18 @@
 import { Mail, Phone, MapPin } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { ContactForm } from "@/components/ContactForm";
 import { CONTACT_EMAIL, CONTACT_PHONE_DISPLAY, CONTACT_PHONE_HREF, CONTACT_IS_PLACEHOLDER, CONTACT_ADDRESS } from "@/content/contact";
 
 export function Contact() {
   return (
     <section id="contact" className="py-14 sm:py-20">
       <Container className="max-w-3xl">
-        <SectionHeading eyebrow="Contact" title="We're here to help" />
+        <SectionHeading
+          eyebrow="Contact"
+          title="We're here to help"
+          description="Send us a query and our team will get back to you, or reach us directly using the details below."
+        />
 
         {CONTACT_IS_PLACEHOLDER && (
           <p className="mx-auto mt-4 max-w-md text-center text-xs text-muted-foreground">
@@ -15,7 +20,11 @@ export function Contact() {
           </p>
         )}
 
-        <div className="mt-10 grid gap-6 sm:grid-cols-3">
+        <div className="mt-10">
+          <ContactForm />
+        </div>
+
+        <div className="mt-6 grid gap-6 sm:grid-cols-3">
           <ContactCard icon={Mail} label="Email" value={CONTACT_EMAIL} href={`mailto:${CONTACT_EMAIL}`} />
           <ContactCard icon={Phone} label="Phone" value={CONTACT_PHONE_DISPLAY} href={CONTACT_PHONE_HREF} />
           <ContactCard

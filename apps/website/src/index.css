@@ -33,6 +33,10 @@
     --secondary: 142 40% 90%;
     --secondary-foreground: 142 39% 22%;
 
+    /* Danger #FF4D4F — same value as apps/web, for form validation states. */
+    --destructive: 359 100% 65%;
+    --destructive-foreground: 210 40% 98%;
+
     --muted: 220 14% 95%;
     --muted-foreground: 220 9% 46%;
 

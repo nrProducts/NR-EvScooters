@@ -137,4 +137,10 @@ export const env = {
     emailFrom: process.env.EMAIL_FROM ?? "",
     /** Base URL of the admin console, for email CTA links. */
     adminAppUrl: process.env.ADMIN_APP_URL ?? "",
+    /**
+     * Where the public website's contact-form queries are delivered. Defaulted
+     * rather than required so the endpoint works out of the box and a blank
+     * env var can't silently send enquiries nowhere.
+     */
+    contactInboxEmail: process.env.CONTACT_INBOX_EMAIL ?? "contact@swapngo.in",
 };

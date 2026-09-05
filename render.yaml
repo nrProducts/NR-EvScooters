@@ -84,12 +84,17 @@ services:
         value: https://photon.komoot.io/api
 
       # --- Transactional email (Resend) — optional, blank = disabled ------
+      # REQUIRED for the public website's contact form (POST /public/contact);
+      # without them that endpoint returns 503 and enquiries are lost.
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
         sync: false
       - key: ADMIN_APP_URL
         sync: false
+      # Inbox receiving website contact-form queries.
+      - key: CONTACT_INBOX_EMAIL
+        value: contact@swapngo.in
 
       # --- MSG91 (only the /auth/otp/test diagnostic) — optional ----------
       - key: MSG91_AUTH_KEY
