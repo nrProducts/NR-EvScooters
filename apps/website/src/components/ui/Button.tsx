@@ -3,20 +3,22 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary-hover shadow-soft",
-        outline: "border border-border bg-transparent hover:bg-secondary",
-        ghost: "hover:bg-secondary",
-        light: "bg-white text-foreground hover:bg-secondary shadow-soft",
-        /** Black pill CTA — for use on colored/full-bleed backgrounds. */
-        dark: "bg-foreground text-white hover:bg-foreground/85 shadow-soft",
+        default: "bg-primary text-primary-foreground shadow-glow hover:-translate-y-0.5 hover:bg-primary-hover",
+        outline: "border border-border bg-transparent text-foreground hover:-translate-y-0.5 hover:border-foreground/30 hover:bg-secondary/60",
+        ghost: "text-foreground hover:bg-secondary/60",
+        light: "bg-white text-foreground shadow-soft hover:-translate-y-0.5 hover:bg-secondary",
+        /** For colored/dark full-bleed backgrounds. */
+        dark: "bg-foreground text-white hover:-translate-y-0.5 hover:bg-foreground/85",
+        /** Outline tuned for dark backgrounds (e.g. the closing CTA section). */
+        "outline-dark": "border border-white/25 bg-white/5 text-white backdrop-blur hover:-translate-y-0.5 hover:border-white/40 hover:bg-white/10",
       },
       size: {
-        default: "h-11 px-5",
-        lg: "h-12 px-6 text-base",
+        default: "h-11 px-5 text-sm",
+        lg: "h-14 px-7 text-base",
         sm: "h-9 px-4 text-xs",
       },
     },

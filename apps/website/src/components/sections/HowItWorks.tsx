@@ -10,12 +10,12 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 const STEPS = [
   {
     icon: IdCard,
-    title: "Complete KYC",
-    description: "Verify your ID and driving licence in the app — a one-time step before you can book.",
+    title: "Verify your identity",
+    description: "Complete KYC in the app — a one-time step before you can book your first ride.",
   },
   {
     icon: ListChecks,
-    title: "Choose a scooter & plan",
+    title: "Choose your scooter & plan",
     description: "Pick your vehicle and the rental plan that fits your riding pattern.",
   },
   {
@@ -32,19 +32,24 @@ const STEPS = [
 
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="py-14 sm:py-20">
+    <section id="how-it-works" className="py-12 sm:py-16">
       <Container>
-        <SectionHeading eyebrow="How It Works" title="From sign-up to riding in four steps" />
+        <SectionHeading eyebrow="How It Works" title={"From signup to riding\nin four simple steps."} />
 
-        <ol className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+        <ol className="relative mt-16 grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+          {/* Connecting line — desktop only, sits behind the step markers. */}
+          <div aria-hidden className="absolute left-0 right-0 top-7 hidden h-px bg-border lg:block" />
+
           {STEPS.map(({ icon: Icon, title, description }, i) => (
-            <li key={title} className="relative rounded-2xl border border-border bg-card p-6 shadow-soft">
-              <span className="text-sm font-bold text-primary">{String(i + 1).padStart(2, "0")}</span>
-              <div className="mt-4 flex h-11 w-11 items-center justify-center rounded-xl bg-secondary">
-                <Icon className="h-5 w-5 text-primary" aria-hidden />
+            <li key={title} className="relative">
+              <div className="relative z-10 flex h-14 w-14 items-center justify-center rounded-2xl bg-foreground text-white shadow-lift">
+                <Icon className="h-6 w-6" aria-hidden />
+                <span className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground ring-4 ring-background">
+                  {i + 1}
+                </span>
               </div>
-              <h3 className="mt-4 text-base font-semibold text-foreground">{title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
+              <h3 className="mt-5 text-lg font-bold text-foreground">{title}</h3>
+              <p className="mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">{description}</p>
             </li>
           ))}
         </ol>

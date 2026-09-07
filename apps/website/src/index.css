@@ -1,47 +1,48 @@
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/manrope";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
- * Same brand-green (#21C45D) token language as apps/web/src/index.css, light
- * mode only — a public marketing site has no admin theme toggle to serve.
- * The real logo art (logo/swapngo_logo_1.png) ships with its own slightly
- * different green — recolored to this exact hue/saturation (see
- * scripts/notes in the asset pipeline) so the mark matches the site theme
- * rather than the other way around. `--surface` is new here: the very light
- * gray section background the brief calls for, one step below `--background`
- * so hero/CTA bands can alternate with plain white cards without a third
- * gray in the mix.
+ * Design tokens for the Swapngo marketing site — a single premium palette
+ * built around the brand green (#21C45D), used sparingly (CTAs, highlights,
+ * active states) against a mostly-neutral canvas, plus a near-black pair
+ * (`--dark` / `--near-black`) for high-contrast sections like the closing
+ * CTA and footer. Values are stored as "H S% L%" triplets (not hex) so
+ * `hsl(var(--x))` can take Tailwind's `/opacity` modifier — e.g. `bg-primary/20`
+ * — which is used throughout the site.
  */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 215 28% 17%;
+    --background: 140 23% 97%; /* #F7FAF8 */
+    --foreground: 166 26% 10%; /* #13201D */
 
-    --card: 0 0% 100%;
-    --card-foreground: 215 28% 17%;
+    --card: 0 0% 100%; /* #FFFFFF */
+    --card-foreground: 166 26% 10%;
 
-    --surface: 210 40% 98%;
+    --surface: 142 50% 95%; /* #EAF8EF — soft green, used sparingly for section bands */
+
+    --dark: 171 48% 8%; /* #0B1F1C — closing CTA / dark sections */
+    --near-black: 166 48% 5%; /* #071411 — footer */
 
     /* Brand green #21C45D */
     --primary: 142 71% 45%;
-    --primary-hover: 142 72% 37%; /* #1AA34D — darkened brand green */
+    --primary-hover: 142 72% 37%; /* #1AA34D */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 142 40% 90%;
+    --secondary: 142 45% 92%;
     --secondary-foreground: 142 39% 22%;
 
     /* Danger #FF4D4F — same value as apps/web, for form validation states. */
     --destructive: 359 100% 65%;
     --destructive-foreground: 210 40% 98%;
 
-    --muted: 220 14% 95%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 147 19% 94%;
+    --muted-foreground: 162 6% 43%; /* #66736F */
 
-    --border: 220 13% 91%;
-    --radius: 1.125rem;
+    --border: 147 19% 89%; /* #DDE8E2 */
+    --radius: 0.875rem;
   }
 
   * {
@@ -50,7 +51,7 @@
 
   html {
     scroll-behavior: smooth;
-    scroll-padding-top: 5rem;
+    scroll-padding-top: 5.5rem;
   }
 
   body {
@@ -60,6 +61,28 @@
       "cv03",
       "cv04",
       "cv11";
+  }
+
+  ::selection {
+    background-color: hsl(var(--primary) / 0.25);
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--primary));
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  /* A faint dot grid used behind hero/CTA compositions — always paired with
+     a mask or fade so it reads as texture, never as a busy background. */
+  .bg-grid-pattern {
+    background-image: radial-gradient(circle, hsl(var(--foreground) / 0.08) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  .text-balance {
+    text-wrap: balance;
   }
 }
 

@@ -216,7 +216,7 @@ export function ContactForm() {
     <form
       onSubmit={handleSubmit}
       noValidate
-      className="rounded-2xl border border-border bg-card p-6 shadow-soft sm:p-8"
+      className="rounded-3xl border border-border bg-card p-6 shadow-card sm:p-8"
     >
       {/*
         Honeypot. Hidden from sight AND from assistive tech, and never
@@ -252,7 +252,7 @@ export function ContactForm() {
         )}
       </p>
 
-      <div className={cn("grid gap-5 sm:grid-cols-2", formError && "mt-5")}>
+      <div className={cn("grid gap-4 sm:grid-cols-2", formError && "mt-3")}>
         <Field label="Full Name" required error={errors.full_name} htmlFor={`${formId}-full_name`}>
           <input
             {...field("full_name")}
@@ -302,12 +302,12 @@ export function ContactForm() {
           <Field label="Message" required error={errors.message} htmlFor={`${formId}-message`}>
             <textarea
               {...field("message")}
-              rows={5}
+              rows={3}
               placeholder="Tell us how we can help you..."
               maxLength={MESSAGE_MAX}
-              className={cn(inputClass(!!errors.message), "min-h-[8rem] resize-y py-3")}
+              className={cn(inputClass(!!errors.message), "min-h-[6rem] resize-y py-2.5")}
             />
-            <p className="mt-1.5 text-right text-xs text-muted-foreground">
+            <p className="mt-1 text-right text-xs text-muted-foreground">
               {values.message.trim().length} / {MESSAGE_MAX}
             </p>
           </Field>
@@ -319,14 +319,14 @@ export function ContactForm() {
               Preferred Contact Method{" "}
               <span className="font-normal text-muted-foreground">(optional)</span>
             </legend>
-            <div className="mt-2.5 flex flex-wrap gap-2">
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
               {CONTACT_METHODS.map((m) => {
                 const checked = values.preferred_contact === m.value;
                 return (
                   <label
                     key={m.value}
                     className={cn(
-                      "cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition-colors",
+                      "cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                       "focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2",
                       checked
                         ? "border-primary bg-secondary text-secondary-foreground"
@@ -352,14 +352,14 @@ export function ContactForm() {
         </div>
       </div>
 
-      <div className="mt-7 flex flex-col-reverse items-center gap-3 sm:flex-row sm:justify-between">
+      <div className="mt-6 flex flex-col-reverse items-center gap-2.5 sm:flex-row sm:justify-between">
         <p className="text-xs text-muted-foreground">
           <span className="text-destructive">*</span> Required fields
         </p>
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary px-6 text-base font-semibold text-primary-foreground shadow-soft transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-soft transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
           {submitting ? (
             <>
@@ -380,7 +380,7 @@ export function ContactForm() {
 
 function inputClass(invalid: boolean): string {
   return cn(
-    "h-11 w-full rounded-xl border bg-background px-3.5 text-sm text-foreground",
+    "h-11 w-full rounded-xl border bg-background px-3 text-sm text-foreground",
     "placeholder:text-muted-foreground/70",
     "transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1",
     invalid ? "border-destructive" : "border-border hover:border-primary/40",
@@ -411,9 +411,9 @@ function Field({
           </span>
         )}
       </label>
-      <div className="mt-1.5">{children}</div>
+      <div className="mt-1">{children}</div>
       {error && (
-        <p id={`${htmlFor}-error`} className="mt-1.5 text-xs font-medium text-destructive">
+        <p id={`${htmlFor}-error`} className="mt-1 text-xs font-medium text-destructive">
           {error}
         </p>
       )}

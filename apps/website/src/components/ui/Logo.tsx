@@ -11,7 +11,7 @@ export function Logo({ className }: { className?: string }) {
     <img
       src={logoWordmark}
       alt="Swapngo"
-      className={cn("h-7 w-auto sm:h-8", className)}
+      className={cn("h-8 w-auto sm:h-9", className)}
     />
   );
 }
