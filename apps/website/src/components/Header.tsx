@@ -96,7 +96,7 @@ export function Header() {
 
         <div className="hidden items-center gap-3 lg:flex">
           <Button href="#get-app" size="sm">
-            Get Started
+            Book Now
             <ArrowRight className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
@@ -136,7 +136,7 @@ export function Header() {
             </nav>
             <div className="mt-auto pt-8">
               <Button href="#get-app" size="lg" className="w-full" onClick={() => setOpen(false)}>
-                Get Started
+                Book Now
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Button>
             </div>

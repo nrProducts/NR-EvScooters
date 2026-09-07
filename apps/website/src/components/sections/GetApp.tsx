@@ -1,13 +1,17 @@
-import { ArrowRight, Smartphone } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { ArrowRight, Smartphone, Globe } from "lucide-react";
 import { Container } from "@/components/ui/Container";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { HAS_APP_LINKS, PLAY_STORE_URL, APP_STORE_URL } from "@/content/links";
+import { PLAY_STORE_URL, ADMIN_CONSOLE_URL } from "@/content/links";
+import { cn } from "@/lib/utils";
 
 /**
  * Booking, KYC, and payment all happen in the Swapngo mobile app (Expo,
- * no live rider web flow) — so every "Book a Scooter" CTA on this static
- * site lands here rather than a booking screen that doesn't exist yet.
+ * Android-only for now). There's no iOS app planned — iPhone riders are
+ * meant to use the rider role inside apps/web instead (the same login form
+ * used by staff — it detects a rider account and routes to /rider
+ * automatically, see LoginPage.tsx). Both platforms are shown as equal,
+ * parallel options here rather than one primary CTA plus a buried fallback,
+ * since neither path is more "correct" than the other for a given rider.
  */
 export function GetApp() {
   return (
@@ -24,31 +28,66 @@ export function GetApp() {
           Ready to move?
         </h2>
         <p className="mx-auto mt-4 max-w-md text-lg leading-relaxed text-white/70">
-          Book your Swapngo EV and start riding — booking, KYC, and payments all happen in the app.
+          Book your Swapngo EV and start riding — booking, KYC, and payments all happen wherever
+          you ride from.
         </p>
 
-        <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Button href="#pricing" size="lg">
-            Book a Scooter
-            <ArrowRight className="h-4 w-4" aria-hidden />
-          </Button>
-          <AppLink label="Google Play" href={PLAY_STORE_URL} />
-          <AppLink label="App Store" href={APP_STORE_URL} />
+        <div className="mx-auto mt-9 grid max-w-xl gap-4 sm:grid-cols-2">
+          <PlatformButton
+            icon={Smartphone}
+            eyebrow="Android"
+            label={PLAY_STORE_URL ? "Get the app" : "Coming soon"}
+            href={PLAY_STORE_URL}
+            disabled={!PLAY_STORE_URL}
+          />
+          <PlatformButton icon={Globe} eyebrow="iPhone" label="Ride from your browser" href={ADMIN_CONSOLE_URL} external />
         </div>
-
-        {/* Neither store link is configured yet — say so rather than assume which
-            platform ships first; PLAY_STORE_URL/APP_STORE_URL are the source of truth. */}
-        {!HAS_APP_LINKS && <Badge tone="dark" className="mt-6">App — coming soon</Badge>}
       </Container>
     </section>
   );
 }
 
-function AppLink({ label, href }: { label: string; href: string }) {
-  if (!href) return null;
+function PlatformButton({
+  icon: Icon,
+  eyebrow,
+  label,
+  href,
+  disabled,
+  external,
+}: {
+  icon: LucideIcon;
+  eyebrow: string;
+  label: string;
+  href: string;
+  disabled?: boolean;
+  external?: boolean;
+}) {
+  const Comp = disabled ? "span" : "a";
   return (
-    <Button href={href} variant="outline-dark" size="lg">
-      Download App — {label}
-    </Button>
+    <Comp
+      href={disabled ? undefined : href}
+      {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
+      aria-disabled={disabled}
+      className={cn(
+        "group flex items-center gap-4 rounded-2xl border border-white/15 bg-white/5 px-6 py-5 text-left backdrop-blur transition-all duration-200",
+        disabled
+          ? "cursor-not-allowed opacity-50"
+          : "hover:-translate-y-0.5 hover:border-primary/40 hover:bg-white/10",
+      )}
+    >
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15">
+        <Icon className="h-5 w-5 text-primary" aria-hidden />
+      </span>
+      <span className="flex-1">
+        <span className="block text-xs font-semibold uppercase tracking-wide text-white/50">{eyebrow}</span>
+        <span className="block text-base font-bold text-white">{label}</span>
+      </span>
+      {!disabled && (
+        <ArrowRight
+          className="h-4 w-4 shrink-0 text-white/40 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-primary"
+          aria-hidden
+        />
+      )}
+    </Comp>
   );
 }
