@@ -1,6 +1,6 @@
 import { Container } from "@/components/ui/Container";
 import { Logo } from "@/components/ui/Logo";
-import { CONTACT_EMAIL, CONTACT_PHONE_DISPLAY, CONTACT_PHONE_HREF, CONTACT_ADDRESS, SOCIAL_LINKS } from "@/content/contact";
+import { CONTACT_EMAIL, CONTACT_PHONES, CONTACT_ADDRESS, SOCIAL_LINKS } from "@/content/contact";
 
 const COMPANY_LINKS = [
   { label: "Home", href: "#home" },
@@ -71,11 +71,13 @@ export function Footer() {
                 {CONTACT_EMAIL}
               </a>
             </li>
-            <li>
-              <a href={CONTACT_PHONE_HREF} className="text-[15px] font-medium text-white/70 transition-colors hover:text-primary">
-                {CONTACT_PHONE_DISPLAY}
-              </a>
-            </li>
+            {CONTACT_PHONES.map((p) => (
+              <li key={p.href}>
+                <a href={p.href} className="text-[15px] font-medium text-white/70 transition-colors hover:text-primary">
+                  {p.display}
+                </a>
+              </li>
+            ))}
             <li className="text-[15px] leading-relaxed text-white/50">{CONTACT_ADDRESS}</li>
           </ul>
         </div>

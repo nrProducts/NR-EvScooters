@@ -3,6 +3,7 @@ import { Menu, X, ArrowRight } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
+import { TopBar } from "@/components/TopBar";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -59,58 +60,64 @@ export function Header() {
   }, [open]);
 
   return (
-    <header
-      className={cn(
-        "sticky top-0 z-50 w-full transition-all duration-300",
-        scrolled
-          ? "border-b border-border bg-background/80 shadow-soft backdrop-blur-xl"
-          : "border-b border-transparent bg-background/40 backdrop-blur-md",
-      )}
-    >
-      <Container className="flex h-[4.5rem] items-center justify-between py-3">
-        <a href="#home" aria-label="Swapngo home" className="shrink-0">
-          <Logo />
-        </a>
+    <header className="sticky top-0 z-50 w-full">
+      {/* Its own solid green, independent of the nav row's scroll-driven
+          background below — this bar never goes translucent or disappears. */}
+      <TopBar />
 
-        <nav
-          className="hidden items-center gap-9 rounded-full lg:flex"
-          aria-label="Primary"
-        >
-          {NAV_ITEMS.map((item) => {
-            const active = activeHref === item.href;
-            return (
-              <a
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "text-[15px] font-semibold transition-colors",
-                  active ? "text-primary" : "text-foreground/70 hover:text-foreground",
-                )}
-              >
-                {item.label}
-              </a>
-            );
-          })}
-        </nav>
+      <div
+        className={cn(
+          "w-full transition-all duration-300",
+          scrolled
+            ? "border-b border-border bg-background/80 shadow-soft backdrop-blur-xl"
+            : "border-b border-transparent bg-background/40 backdrop-blur-md",
+        )}
+      >
+        <Container className="flex h-[4.5rem] items-center justify-between py-3">
+          <a href="#home" aria-label="Swapngo home" className="shrink-0">
+            <Logo />
+          </a>
 
-        <div className="hidden items-center gap-3 lg:flex">
-          <Button href="#get-app" size="sm">
-            Book Now
-            <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-          </Button>
-        </div>
+          <nav
+            className="hidden items-center gap-9 rounded-full lg:flex"
+            aria-label="Primary"
+          >
+            {NAV_ITEMS.map((item) => {
+              const active = activeHref === item.href;
+              return (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "text-[15px] font-semibold transition-colors",
+                    active ? "text-primary" : "text-foreground/70 hover:text-foreground",
+                  )}
+                >
+                  {item.label}
+                </a>
+              );
+            })}
+          </nav>
 
-        <button
-          type="button"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full text-foreground transition-colors hover:bg-secondary/60 lg:hidden"
-          aria-label={open ? "Close menu" : "Open menu"}
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </button>
-      </Container>
+          <div className="hidden items-center gap-3 lg:flex">
+            <Button href="#get-app" size="sm">
+              Book Now
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            </Button>
+          </div>
+
+          <button
+            type="button"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-foreground transition-colors hover:bg-secondary/60 lg:hidden"
+            aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+        </Container>
+      </div>
 
       {open && (
         <div className="fixed inset-x-0 top-[4.5rem] bottom-0 z-40 overflow-y-auto border-t border-border bg-background lg:hidden">

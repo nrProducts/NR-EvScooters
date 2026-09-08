@@ -2,7 +2,7 @@ import { Mail, Phone, MapPin } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { ContactForm } from "@/components/ContactForm";
-import { CONTACT_EMAIL, CONTACT_PHONE_DISPLAY, CONTACT_PHONE_HREF, CONTACT_IS_PLACEHOLDER, CONTACT_ADDRESS } from "@/content/contact";
+import { CONTACT_EMAIL, CONTACT_PHONES, CONTACT_IS_PLACEHOLDER, CONTACT_ADDRESS } from "@/content/contact";
 
 export function Contact() {
   return (
@@ -23,7 +23,12 @@ export function Contact() {
 
           <div className="mt-9 space-y-4">
             <ContactRow icon={Mail} label="Email" value={CONTACT_EMAIL} href={`mailto:${CONTACT_EMAIL}`} />
-            <ContactRow icon={Phone} label="Phone" value={CONTACT_PHONE_DISPLAY} href={CONTACT_PHONE_HREF} />
+            <ContactRow
+              icon={Phone}
+              label="Phone"
+              value={CONTACT_PHONES.map((p) => p.display).join(", ")}
+              href={CONTACT_PHONES[0]?.href}
+            />
             <ContactRow
               icon={MapPin}
               label="Office"
