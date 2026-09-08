@@ -10,10 +10,15 @@ import { completeRide } from "../rentals/rentals.service";
 import { Paginated, AuthContext } from "../../types";
 import { businessToday, endOfBusinessDay } from "../../common/dates";
 import {
-    CreateVehicleInput, ListVehiclesFilters, ScrapRecordRow, ScrapVehicleInput, UpdateVehicleInput,
-    VehicleBookingRow, VehicleDetail, VehicleDocumentRow, VehicleMaintenanceRow, VehiclePaymentStatus,
-    VehicleRentalRow, VehicleRow,
+    CreateVehicleDocumentInput, CreateVehicleInput, ListVehiclesFilters, RiderVehicleDocumentRow, ScrapRecordRow,
+    ScrapVehicleInput, UpdateVehicleDocumentInput, UpdateVehicleInput, VehicleBookingRow, VehicleDetail,
+    VehicleDocumentRow, VehicleDocumentType, VehicleMaintenanceRow, VehiclePaymentStatus, VehicleRentalRow, VehicleRow,
 } from "./vehicles.types";
+import type { UploadedFile } from "../kyc/kyc.storage";
+import {
+    assertValidVehicleDocumentFile, buildVehicleDocumentStoragePath, createVehicleDocumentSignedUrl,
+    removeVehicleDocumentFile, uploadVehicleDocumentFile,
+} from "./vehicles.documents.storage";
 
 /**
  * The fleet.
@@ -324,7 +329,7 @@ async function scrapRecordForVehicle(vehicleId: string): Promise<ScrapRecordRow 
 async function documentsForVehicle(vehicleId: string): Promise<VehicleDocumentRow[]> {
     const { data, error } = await supabaseAdmin
         .from("vehicle_documents")
-        .select("id, document_type, document_number, issued_on, expires_on")
+        .select("id, document_type, document_number, issued_on, expires_on, storage_path")
         .eq("vehicle_id", vehicleId)
         .order("expires_on", { ascending: true });
     if (error) throw error;
@@ -335,7 +340,230 @@ async function documentsForVehicle(vehicleId: string): Promise<VehicleDocumentRo
         doc_number: row.document_number,
         issued_date: row.issued_on,
         expires_on: row.expires_on,
+        has_file: !!row.storage_path,
     }));
+}
+
+// ---------------------------------------------------------------------------
+// Vehicle documents (RC / insurance / PUC / fitness / permit) — admin write
+// path plus a rider-safe read path. The table (public.vehicle_documents) and
+// the admin read path above both predate this: nothing ever wrote a row or a
+// file, so it sat permanently empty. See vehicles.documents.storage.ts for
+// the bucket/signed-URL side.
+// ---------------------------------------------------------------------------
+
+async function requireVehicleDocument(documentId: string): Promise<{
+    id: string; vehicle_id: string; document_type: VehicleDocumentType; storage_path: string | null;
+}> {
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_documents")
+        .select("id, vehicle_id, document_type, storage_path")
+        .eq("id", documentId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw notFound("Document not found.");
+    return data;
+}
+
+export async function createVehicleDocument(
+    vehicleId: string,
+    input: CreateVehicleDocumentInput,
+    file: UploadedFile | undefined,
+    actor: AuthContext,
+): Promise<VehicleDocumentRow> {
+    await requireVehicle(vehicleId); // 404s before touching storage if the vehicle doesn't exist
+
+    let storagePath: string | null = null;
+    if (file) {
+        const mime = assertValidVehicleDocumentFile(file);
+        storagePath = buildVehicleDocumentStoragePath(vehicleId, input.document_type, mime);
+        await uploadVehicleDocumentFile(storagePath, file, mime);
+    }
+
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_documents")
+        .insert({
+            vehicle_id: vehicleId,
+            document_type: input.document_type,
+            document_number: input.doc_number,
+            issued_on: input.issued_on ?? null,
+            expires_on: input.expires_on,
+            storage_path: storagePath,
+        })
+        .select("id")
+        .single();
+
+    if (error) {
+        // Insert failed after the file landed — don't leave an orphaned object.
+        if (storagePath) await removeVehicleDocumentFile(storagePath);
+        if ((error as { code?: string }).code === "23505") {
+            throw conflict("This vehicle already has a document of this type with this number.");
+        }
+        throw error;
+    }
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: null,
+        action: "vehicle.document_uploaded",
+        entityType: "vehicle_document",
+        entityId: data.id,
+        before: null,
+        after: { vehicle_id: vehicleId, document_type: input.document_type, expires_on: input.expires_on },
+    });
+
+    return requireVehicleDocumentRow(data.id);
+}
+
+export async function updateVehicleDocument(
+    documentId: string,
+    input: UpdateVehicleDocumentInput,
+    file: UploadedFile | undefined,
+    actor: AuthContext,
+): Promise<VehicleDocumentRow> {
+    const existing = await requireVehicleDocument(documentId);
+
+    let storagePath = existing.storage_path;
+    let previousPath: string | null = null;
+    if (file) {
+        const mime = assertValidVehicleDocumentFile(file);
+        const newPath = buildVehicleDocumentStoragePath(existing.vehicle_id, existing.document_type, mime);
+        await uploadVehicleDocumentFile(newPath, file, mime);
+        previousPath = storagePath;
+        storagePath = newPath;
+    }
+
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (input.doc_number !== undefined) patch.document_number = input.doc_number;
+    if (input.issued_on !== undefined) patch.issued_on = input.issued_on;
+    if (input.expires_on !== undefined) patch.expires_on = input.expires_on;
+    if (file) patch.storage_path = storagePath;
+
+    const { error } = await supabaseAdmin.from("vehicle_documents").update(patch as never).eq("id", documentId);
+    if (error) {
+        if (file) await removeVehicleDocumentFile(storagePath);
+        throw error;
+    }
+
+    // Replacing an existing file — remove the old object only after the
+    // update committed, so a failed write never leaves the row pointing at
+    // nothing.
+    if (previousPath) await removeVehicleDocumentFile(previousPath);
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: null,
+        action: "vehicle.document_updated",
+        entityType: "vehicle_document",
+        entityId: documentId,
+        before: null,
+        after: { ...input, file_replaced: !!file },
+    });
+
+    return requireVehicleDocumentRow(documentId);
+}
+
+export async function deleteVehicleDocument(documentId: string, actor: AuthContext): Promise<void> {
+    const existing = await requireVehicleDocument(documentId);
+
+    const { error } = await supabaseAdmin.from("vehicle_documents").delete().eq("id", documentId);
+    if (error) throw error;
+
+    await removeVehicleDocumentFile(existing.storage_path);
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: null,
+        action: "vehicle.document_deleted",
+        entityType: "vehicle_document",
+        entityId: documentId,
+        before: { vehicle_id: existing.vehicle_id, document_type: existing.document_type },
+        after: null,
+    });
+}
+
+async function requireVehicleDocumentRow(documentId: string): Promise<VehicleDocumentRow> {
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_documents")
+        .select("id, document_type, document_number, issued_on, expires_on, storage_path")
+        .eq("id", documentId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw notFound("Document not found.");
+    return {
+        id: data.id,
+        doc_type: data.document_type,
+        doc_number: data.document_number,
+        issued_date: data.issued_on,
+        expires_on: data.expires_on,
+        has_file: !!data.storage_path,
+    };
+}
+
+/** Admin: a signed URL for one document's file, regardless of which vehicle it belongs to. */
+export async function getVehicleDocumentUrl(documentId: string): Promise<string> {
+    const doc = await requireVehicleDocument(documentId);
+    if (!doc.storage_path) throw notFound("No file has been uploaded for this document yet.");
+    return createVehicleDocumentSignedUrl(doc.storage_path);
+}
+
+/**
+ * The vehicle a rider currently holds, resolved server-side from their own
+ * active rental — never a client-supplied id. Null if they have no active
+ * rental (nothing to show, not an error).
+ */
+async function currentVehicleIdForRider(userId: string): Promise<string | null> {
+    const { data, error } = await supabaseAdmin
+        .from("rentals")
+        .select("rental_vehicle_assignments(vehicle_id, released_at)")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .order("picked_up_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+
+    const assignments = Array.isArray(data.rental_vehicle_assignments)
+        ? data.rental_vehicle_assignments
+        : data.rental_vehicle_assignments
+          ? [data.rental_vehicle_assignments]
+          : [];
+    const live = assignments.find((a) => a.released_at === null);
+    return live?.vehicle_id ?? null;
+}
+
+/** Rider: the paperwork for whichever scooter they currently hold. Empty (not an error) if nothing's assigned or nothing's been uploaded yet. */
+export async function getVehicleDocumentsForRider(userId: string): Promise<RiderVehicleDocumentRow[]> {
+    const vehicleId = await currentVehicleIdForRider(userId);
+    if (!vehicleId) return [];
+
+    const { data, error } = await supabaseAdmin
+        .from("vehicle_documents")
+        .select("id, document_type, expires_on, storage_path")
+        .eq("vehicle_id", vehicleId)
+        .order("document_type", { ascending: true });
+    if (error) throw error;
+
+    return (data ?? []).map((row) => ({
+        id: row.id,
+        doc_type: row.document_type,
+        expires_on: row.expires_on,
+        has_file: !!row.storage_path,
+    }));
+}
+
+/**
+ * Rider: a signed URL for one document belonging to the vehicle they
+ * currently hold. 404s (not 403 — mirrors kyc's "don't confirm existence of
+ * someone else's row") if the document exists but isn't theirs to see.
+ */
+export async function getVehicleDocumentUrlForRider(userId: string, documentId: string): Promise<string> {
+    const vehicleId = await currentVehicleIdForRider(userId);
+    const doc = await requireVehicleDocument(documentId);
+    if (!vehicleId || doc.vehicle_id !== vehicleId) throw notFound("Document not found.");
+    if (!doc.storage_path) throw notFound("No file has been uploaded for this document yet.");
+    return createVehicleDocumentSignedUrl(doc.storage_path);
 }
 
 /**

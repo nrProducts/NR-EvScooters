@@ -64,6 +64,13 @@ export const env = {
     /** Keep in sync with storage.buckets.file_size_limit in the migration. */
     vehiclePhotoMaxFileBytes: intFromEnv("VEHICLE_PHOTO_MAX_FILE_BYTES", 10 * 1024 * 1024),
 
+    /** Private bucket holding vehicle statutory documents (RC, insurance, PUC, ...). Must not be public. */
+    vehicleDocumentBucket: process.env.VEHICLE_DOCUMENT_BUCKET ?? "vehicle-documents",
+    /** Keep in sync with storage.buckets.file_size_limit in the migration. */
+    vehicleDocumentMaxFileBytes: intFromEnv("VEHICLE_DOCUMENT_MAX_FILE_BYTES", 10 * 1024 * 1024),
+    /** Lifetime of a minted signed URL, in seconds. Short by design. */
+    vehicleDocumentSignedUrlTtlSeconds: intFromEnv("VEHICLE_DOCUMENT_SIGNED_URL_TTL_SECONDS", 300),
+
     // --- Geocoding proxy -------------------------------------------------
     // Riders used to call this third-party endpoint straight from the handset
     // with their exact coordinates, which meant an undisclosed disclosure of

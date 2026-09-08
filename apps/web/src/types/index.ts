@@ -512,13 +512,17 @@ export interface Vehicle {
   plan_end_date: string | null;
 }
 
+export type VehicleDocumentType = "registration" | "insurance" | "puc" | "fitness" | "permit";
+
 export interface VehicleDocument {
   id: string;
   /** Five types now, not two — insurance joined the documents it belonged with. */
-  doc_type: "registration" | "insurance" | "puc" | "fitness" | "permit";
+  doc_type: VehicleDocumentType;
   doc_number: string;
   issued_date: string | null;
   expires_on: string;
+  /** Whether a file has actually been uploaded — a document can exist as metadata-only until one is. */
+  has_file: boolean;
 }
 
 export interface VehicleMaintenanceRecord {

@@ -783,6 +783,21 @@ export interface ApiOverdueLateFeeInvoice {
     isPaid: boolean;
 }
 
+/**
+ * One statutory document (RC, insurance, PUC, ...) for whichever scooter the
+ * rider currently holds. No document number here — that's fleet-admin detail
+ * the rider has no reason to see; this is just enough to know it exists, when
+ * it expires, and whether there's a file to view.
+ */
+export type VehicleDocType = 'registration' | 'insurance' | 'puc' | 'fitness' | 'permit';
+
+export interface ApiVehicleDocument {
+    id: string;
+    doc_type: VehicleDocType;
+    expires_on: string;
+    has_file: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Return & Settlement — mirrors apps/backend/src/modules/returns/returns.types.ts
 // ---------------------------------------------------------------------------

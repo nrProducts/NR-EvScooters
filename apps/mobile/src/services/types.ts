@@ -2,7 +2,7 @@ import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
-    ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
+    ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload, KycDocType,
     ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
     UpdateUserPayload, VerifyPaymentPayload,
@@ -151,6 +151,10 @@ export interface RentalRepository {
     payOverdueLateFee(): Promise<ApiOverdueLateFeeInvoice>;
     /** Vehicle Return → Inspection → Payment Gate → Approve Return, from the rider's own side. Null once there's no return to report on. */
     returnStage(): Promise<ApiReturnStage | null>;
+    /** The paperwork (RC/insurance/PUC/...) for whichever scooter the rider currently holds. Empty, not an error, if nothing's assigned or nothing's been uploaded yet. */
+    vehicleDocuments(): Promise<ApiVehicleDocument[]>;
+    /** Short-lived signed URL for one document's file. */
+    vehicleDocumentUrl(documentId: string): Promise<string>;
 }
 
 export interface MaintenanceRepository {

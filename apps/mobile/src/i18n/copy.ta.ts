@@ -962,6 +962,8 @@ export const ta: Copy = {
     'vehicleDocs.pucHint': 'மாசுக் கட்டுப்பாடு',
     'vehicleDocs.footer':
         'எங்கள் குழு பதிவேற்றத்தை முடித்தவுடன் உங்கள் ஸ்கூட்டரின் ஆவணங்களை இங்கே பார்க்கவும் பதிவிறக்கவும் முடியும்.',
+    'vehicleDocs.expiresOn': '{date} வரை செல்லுபடியாகும்',
+    'vehicleDocs.error.openFailed.title': 'ஆவணத்தைத் திறக்க முடியவில்லை',
 
     // --- app shell (header + profile sheet) ---------------------------------
     'appShell.goBack': 'பின்செல்',
@@ -971,6 +973,7 @@ export const ta: Copy = {
     'appShell.profile': 'சுயவிவரம்',
 
     // --- root layout: profile load failure ----------------------------------
+    'rootLayout.settingUpAccount': 'உங்கள் கணக்கை அமைக்கிறோம்…',
     'rootLayout.couldNotLoadProfile': 'உங்கள் சுயவிவரத்தை ஏற்ற முடியவில்லை',
 
     // --- shared error state --------------------------------------------------

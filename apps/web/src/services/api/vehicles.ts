@@ -1,5 +1,5 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
-import type { PaginatedResult, Vehicle, VehicleDetail, VehicleStatus } from "@/types";
+import type { PaginatedResult, Vehicle, VehicleDetail, VehicleDocument, VehicleDocumentType, VehicleStatus } from "@/types";
 
 export interface VehicleFilters {
   search?: string;
@@ -100,4 +100,37 @@ export async function assignVehicleToUser(id: string, userId: string, unassignEx
     user_id: userId,
     unassign_existing: unassignExisting,
   });
+}
+
+// --- vehicle documents (RC / insurance / PUC / fitness / permit) --------
+
+export interface VehicleDocumentFormInput {
+  doc_type: VehicleDocumentType;
+  doc_number: string;
+  issued_on?: string;
+  expires_on: string;
+  /** Optional — a document can be recorded with no file yet, same as it can today with none of this UI. */
+  file?: File;
+}
+
+/** POST /vehicles/:id/documents — requireStaff, multipart. */
+export async function createVehicleDocument(vehicleId: string, input: VehicleDocumentFormInput): Promise<VehicleDocument> {
+  const form = new FormData();
+  form.append("doc_type", input.doc_type);
+  form.append("doc_number", input.doc_number);
+  if (input.issued_on) form.append("issued_on", input.issued_on);
+  form.append("expires_on", input.expires_on);
+  if (input.file) form.append("file", input.file);
+  return apiClient.postForm<VehicleDocument>(`/vehicles/${vehicleId}/documents`, form);
+}
+
+/** DELETE /vehicles/documents/:documentId — requireStaff. */
+export async function deleteVehicleDocument(documentId: string): Promise<void> {
+  await apiClient.delete(`/vehicles/documents/${documentId}`);
+}
+
+/** GET /vehicles/documents/:documentId/url — requireStaff. Short-lived signed URL for the file. */
+export async function getVehicleDocumentUrl(documentId: string): Promise<string> {
+  const { url } = await apiClient.get<{ url: string }>(`/vehicles/documents/${documentId}/url`);
+  return url;
 }

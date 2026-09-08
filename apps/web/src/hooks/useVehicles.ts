@@ -55,3 +55,20 @@ export function useAssignVehicleToUser() {
     },
   });
 }
+
+export function useCreateVehicleDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ vehicleId, input }: { vehicleId: string; input: api.VehicleDocumentFormInput }) =>
+      api.createVehicleDocument(vehicleId, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle"] }),
+  });
+}
+
+export function useDeleteVehicleDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: string) => api.deleteVehicleDocument(documentId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle"] }),
+  });
+}

@@ -62,6 +62,29 @@ export interface VehicleRow {
     plan_end_date: string | null;
 }
 
+export type VehicleDocumentType = "registration" | "insurance" | "puc" | "fitness" | "permit";
+
+export interface CreateVehicleDocumentInput {
+    document_type: VehicleDocumentType;
+    doc_number: string;
+    issued_on?: string;
+    expires_on: string;
+}
+
+export interface UpdateVehicleDocumentInput {
+    doc_number?: string;
+    issued_on?: string | null;
+    expires_on?: string;
+}
+
+/** What a rider is allowed to know about their own vehicle's paperwork — no document number, just enough to view/download the file. */
+export interface RiderVehicleDocumentRow {
+    id: string;
+    doc_type: VehicleDocumentType;
+    expires_on: string;
+    has_file: boolean;
+}
+
 export interface VehicleDocumentRow {
     id: string;
     /** Five types now, not two — `vehicle_document_type`. */
@@ -72,6 +95,8 @@ export interface VehicleDocumentRow {
     issued_date: string | null;
     /** `vehicle_documents.expires_on`. */
     expires_on: string;
+    /** Whether a file has actually been uploaded — `vehicle_documents.storage_path` is nullable. */
+    has_file: boolean;
 }
 
 export interface VehicleMaintenanceRow {

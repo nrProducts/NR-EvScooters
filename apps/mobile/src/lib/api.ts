@@ -12,7 +12,7 @@ import type {
     ApiInvoice, ApiKycSummary, ApiLegalAcceptanceState, ApiLegalDocument, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
     ApiNominee, ApiPrivacyRequest, ApiPrivacySummary, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
-    ApiOverdueLateFee, ApiOverdueLateFeeInvoice, ApiReturnStage,
+    ApiOverdueLateFee, ApiOverdueLateFeeInvoice, ApiReturnStage, ApiVehicleDocument,
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
     ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
@@ -489,6 +489,13 @@ export const api = {
     // Vehicle Return → Inspection → Payment Gate → Approve Return, from the
     // rider's own side. Null once there's no return to report on.
     myReturnStage: () => request<ApiReturnStage | null>('/rentals/me/return-stage'),
+
+    // The paperwork (RC/insurance/PUC/...) for whichever scooter the rider
+    // currently holds. Empty array (not an error) if nothing's assigned or
+    // nothing's been uploaded yet — see rentals.service.ts's currentVehicleIdForRider.
+    myVehicleDocuments: () => request<ApiVehicleDocument[]>('/rentals/me/vehicle-documents'),
+    myVehicleDocumentUrl: (documentId: string) =>
+        request<{ url: string }>(`/rentals/me/vehicle-documents/${documentId}/url`).then((r) => r.url),
 
     // --- maintenance ---------------------------------------------------
     maintenanceHistory: (params: MaintenanceHistoryParams = {}) =>

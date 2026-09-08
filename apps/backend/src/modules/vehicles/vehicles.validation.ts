@@ -73,3 +73,29 @@ export const assignVehicleToUserBody = z.object({
     user_id: z.string().uuid("Pick a rider to assign this vehicle to."),
     unassign_existing: z.boolean().optional(),
 });
+
+// --- vehicle documents (RC / insurance / PUC / fitness / permit) --------
+
+export const VEHICLE_DOCUMENT_TYPES = ["registration", "insurance", "puc", "fitness", "permit"] as const;
+
+export const documentIdParam = z.object({ documentId: z.string().uuid("A valid document id is required.") });
+
+/**
+ * multipart/form-data — the file arrives via multer, not in this body, same
+ * split as kyc.validation.ts's uploadDocumentBody.
+ */
+export const createVehicleDocumentBody = z.object({
+    doc_type: z.enum(VEHICLE_DOCUMENT_TYPES),
+    doc_number: z.string().trim().min(1, "Enter the document number.").max(80),
+    issued_on: dateSchema.optional(),
+    expires_on: dateSchema,
+});
+
+export const updateVehicleDocumentBody = z
+    .object({
+        doc_number: z.string().trim().min(1).max(80).optional(),
+        issued_on: dateSchema.nullable().optional(),
+        expires_on: dateSchema.optional(),
+    })
+    .strict()
+    .refine((v) => Object.keys(v).length > 0, "Provide at least one field to update.");

@@ -957,6 +957,8 @@ export const hi: Copy = {
     'vehicleDocs.pucHint': 'प्रदूषण नियंत्रण',
     'vehicleDocs.footer':
         'हमारी टीम के अपलोड करना पूरा करने के बाद आप यहां अपने स्कूटर के दस्तावेज़ देख और डाउनलोड कर पाएंगे।',
+    'vehicleDocs.expiresOn': '{date} तक मान्य',
+    'vehicleDocs.error.openFailed.title': 'दस्तावेज़ नहीं खोला जा सका',
 
     // --- app shell (header + profile sheet) ---------------------------------
     'appShell.goBack': 'वापस जाएं',
@@ -966,6 +968,7 @@ export const hi: Copy = {
     'appShell.profile': 'प्रोफ़ाइल',
 
     // --- root layout: profile load failure ----------------------------------
+    'rootLayout.settingUpAccount': 'आपका खाता सेट किया जा रहा है…',
     'rootLayout.couldNotLoadProfile': 'आपकी प्रोफ़ाइल लोड नहीं हो सकी',
 
     // --- shared error state --------------------------------------------------

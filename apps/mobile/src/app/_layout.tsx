@@ -384,7 +384,17 @@ export default function RootLayout() {
         <StatusBar style="dark" backgroundColor={COLORS.background} />
         <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
           {loadingProfile ? (
-            <Spinner size={32} color={COLORS.primary} />
+            <>
+              <Spinner size={32} color={COLORS.primary} />
+              {/* A bare spinner on an otherwise blank screen reads as "frozen"
+                  rather than "loading" once the button-level spinner on the
+                  screen before this one has already disappeared — this is the
+                  ONLY thing telling the rider anything is happening while
+                  GET /users/me is in flight. */}
+              <Text style={{ color: COLORS.textSecondary }} className="text-sm font-semibold mt-4">
+                {t('rootLayout.settingUpAccount')}
+              </Text>
+            </>
           ) : (
             <>
               <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">

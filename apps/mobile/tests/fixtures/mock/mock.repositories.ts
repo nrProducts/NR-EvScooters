@@ -8,7 +8,7 @@ import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
     ApiAvailability, ApiBooking, ApiDocument, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
-    ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl,
+    ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiVehicleDocument,
     ApiStation, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, BookingRefundStatus, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
     KycStatus, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
@@ -1144,6 +1144,16 @@ export class MockRentalRepository implements RentalRepository {
     async returnStage(): Promise<ApiReturnStage | null> {
         await delay(100);
         return null;
+    }
+    async vehicleDocuments(): Promise<ApiVehicleDocument[]> {
+        await delay(100);
+        // No vehicle-document seed data yet — an empty list is the real,
+        // correct response for a rider with nothing uploaded, same as live.
+        return [];
+    }
+    async vehicleDocumentUrl(_documentId: string): Promise<string> {
+        await delay(100);
+        throw new ApiError(404, 'NOT_FOUND', 'Document not found.');
     }
 }
 

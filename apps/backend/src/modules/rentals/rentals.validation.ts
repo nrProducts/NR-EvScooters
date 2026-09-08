@@ -12,6 +12,8 @@ export type RentalHistoryQuery = z.infer<typeof rentalHistoryQuery>;
 
 export const rentalIdParam = z.object({ id: z.string().uuid("A valid rental id is required.") });
 
+export const vehicleDocumentIdParam = z.object({ documentId: z.string().uuid("A valid document id is required.") });
+
 export const listRentalsQuery = z.object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),

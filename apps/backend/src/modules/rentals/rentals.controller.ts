@@ -11,6 +11,7 @@ import { assertValidDamagePhoto, buildDamagePhotoPath, uploadDamagePhotoFile } f
 import { RecordDamageBody } from "../damages/damages.validation";
 import type { UploadedFile } from "../kyc/kyc.storage";
 import { getMyReturnStage, getMySettlement, getMySettlementHistory } from "../returns/returns.service";
+import * as vehiclesService from "../vehicles/vehicles.service";
 
 export async function myCurrentRentalHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getMyCurrentRental(req.user!.id));
@@ -40,6 +41,15 @@ export async function myOverdueLateFeeHandler(req: AuthedRequest, res: Response)
 
 export async function payMyOverdueLateFeeHandler(req: AuthedRequest, res: Response) {
     res.json(await service.payMyOverdueLateFee(req.user!.id));
+}
+
+export async function myVehicleDocumentsHandler(req: AuthedRequest, res: Response) {
+    res.json(await vehiclesService.getVehicleDocumentsForRider(req.user!.id));
+}
+
+export async function myVehicleDocumentUrlHandler(req: AuthedRequest, res: Response) {
+    const url = await vehiclesService.getVehicleDocumentUrlForRider(req.user!.id, req.params.documentId as string);
+    res.json({ url });
 }
 
 export async function requestReturnHandler(req: AuthedRequest, res: Response) {

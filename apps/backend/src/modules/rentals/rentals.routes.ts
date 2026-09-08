@@ -59,6 +59,17 @@ router.get("/me/return-stage", asyncHandler(c.myReturnStageHandler));
 router.get("/me/overdue-late-fee", asyncHandler(c.myOverdueLateFeeHandler));
 router.post("/me/overdue-late-fee", asyncHandler(c.payMyOverdueLateFeeHandler));
 
+// The paperwork (RC/insurance/PUC/...) for whichever scooter the rider
+// currently holds. Resolved server-side from their own active rental —
+// there's no vehicle id in this URL for a rider to substitute another
+// vehicle's. See vehicles.service.ts's currentVehicleIdForRider.
+router.get("/me/vehicle-documents", asyncHandler(c.myVehicleDocumentsHandler));
+router.get(
+    "/me/vehicle-documents/:documentId/url",
+    validate({ params: v.vehicleDocumentIdParam }),
+    asyncHandler(c.myVehicleDocumentUrlHandler),
+);
+
 // Rider-initiated post-pickup return REQUEST. Scoped to the caller's own
 // rental inside the service, so no requireStaff. Does not end the ride —
 // staff close it via POST /:id/complete below, which settles any late fee.

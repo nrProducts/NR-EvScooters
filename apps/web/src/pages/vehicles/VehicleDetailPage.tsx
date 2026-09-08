@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Pencil, FileText, Recycle } from "lucide-react";
+import { ArrowLeft, Pencil, FileText, Recycle, Plus, Trash2, ExternalLink } from "lucide-react";
 import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -16,12 +17,17 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistorySplitView } from "@/components/vehicles/VehicleHistorySplitView";
-import { useVehicle, useUpdateVehicle, useScrapVehicle } from "@/hooks/useVehicles";
+import {
+  useVehicle, useUpdateVehicle, useScrapVehicle, useCreateVehicleDocument, useDeleteVehicleDocument,
+} from "@/hooks/useVehicles";
+import { getVehicleDocumentUrl, type VehicleDocumentFormInput } from "@/services/api/vehicles";
 import { ApiError } from "@/services/api/httpClient";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import type { VehicleDocument, VehicleDocumentType } from "@/types";
 
 export default function VehicleDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -30,8 +36,27 @@ export default function VehicleDetailPage() {
   const { data: vehicle, isLoading, isError, refetch } = useVehicle(id);
   const updateVehicle = useUpdateVehicle();
   const scrapVehicle = useScrapVehicle();
+  const createDocument = useCreateVehicleDocument();
+  const deleteDocument = useDeleteVehicleDocument();
   const [editOpen, setEditOpen] = useState(false);
   const [scrapOpen, setScrapOpen] = useState(false);
+  const [addDocOpen, setAddDocOpen] = useState(false);
+  const [deleteDoc, setDeleteDoc] = useState<VehicleDocument | null>(null);
+  const [openingDocId, setOpeningDocId] = useState<string | null>(null);
+
+  const canEdit = hasAction(user, "vehicles", "edit");
+
+  const openDocument = async (doc: VehicleDocument) => {
+    setOpeningDocId(doc.id);
+    try {
+      const url = await getVehicleDocumentUrl(doc.id);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toastError(err, "Could not open document");
+    } finally {
+      setOpeningDocId(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -113,10 +138,15 @@ export default function VehicleDetailPage() {
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-4 w-4" /> Documents
               </CardTitle>
+              {canEdit && (
+                <Button variant="outline" size="sm" onClick={() => setAddDocOpen(true)}>
+                  <Plus className="h-4 w-4" /> Add
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               {vehicle.documents.length === 0 ? (
@@ -128,7 +158,27 @@ export default function VehicleDetailPage() {
                   <div key={doc.id} className="flex items-center justify-between gap-2">
                     <div>
                       <p className="font-medium capitalize">{doc.doc_type}</p>
-                      <p className="text-xs text-muted-foreground">expires {formatDate(doc.expires_on)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        #{doc.doc_number} · expires {formatDate(doc.expires_on)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {doc.has_file && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={openingDocId === doc.id}
+                          onClick={() => void openDocument(doc)}
+                          title="View file"
+                        >
+                          {openingDocId === doc.id ? <Spinner className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
+                        </Button>
+                      )}
+                      {canEdit && (
+                        <Button variant="ghost" size="icon" onClick={() => setDeleteDoc(doc)} title="Delete">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -201,7 +251,160 @@ export default function VehicleDetailPage() {
         isPending={scrapVehicle.isPending}
         error={scrapVehicle.error}
       />
+
+      <AddDocumentDialog
+        open={addDocOpen}
+        onOpenChange={setAddDocOpen}
+        isPending={createDocument.isPending}
+        error={createDocument.error}
+        onSubmit={(input) =>
+          createDocument.mutate({ vehicleId: vehicle.id, input }, {
+            onSuccess: () => {
+              toastSuccess("Document added");
+              setAddDocOpen(false);
+            },
+            onError: (err) => toastError(err, "Could not add document"),
+          })
+        }
+      />
+
+      <ConfirmDialog
+        open={!!deleteDoc}
+        onOpenChange={(o) => !o && setDeleteDoc(null)}
+        title="Delete this document?"
+        description={deleteDoc ? `This removes the ${deleteDoc.doc_type} record and its file, if any. This can't be undone.` : undefined}
+        confirmLabel="Delete"
+        destructive
+        loading={deleteDocument.isPending}
+        onConfirm={() =>
+          deleteDoc &&
+          deleteDocument.mutate(deleteDoc.id, {
+            onSuccess: () => {
+              toastSuccess("Document deleted");
+              setDeleteDoc(null);
+            },
+            onError: (err) => toastError(err, "Could not delete document"),
+          })
+        }
+      />
     </div>
+  );
+}
+
+const DOCUMENT_TYPES: { value: VehicleDocumentType; label: string }[] = [
+  { value: "registration", label: "Registration (RC)" },
+  { value: "insurance", label: "Insurance" },
+  { value: "puc", label: "PUC" },
+  { value: "fitness", label: "Fitness" },
+  { value: "permit", label: "Permit" },
+];
+
+function AddDocumentDialog({
+  open,
+  onOpenChange,
+  onSubmit,
+  isPending,
+  error,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (input: VehicleDocumentFormInput) => void;
+  isPending: boolean;
+  error: unknown;
+}) {
+  const [docType, setDocType] = useState<VehicleDocumentType>("registration");
+  const [docNumber, setDocNumber] = useState("");
+  const [issuedOn, setIssuedOn] = useState("");
+  const [expiresOn, setExpiresOn] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+
+  const reset = () => {
+    setDocType("registration");
+    setDocNumber("");
+    setIssuedOn("");
+    setExpiresOn("");
+    setFile(null);
+  };
+
+  const canSubmit = docNumber.trim().length > 0 && expiresOn.length > 0 && !isPending;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) reset();
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add a document</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-1.5">
+          <Label>Document type</Label>
+          <Select value={docType} onValueChange={(v) => setDocType(v as VehicleDocumentType)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DOCUMENT_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Document number</Label>
+          <Input value={docNumber} onChange={(e) => setDocNumber(e.target.value)} placeholder="e.g. TN01AB1234" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Issued on (optional)</Label>
+            <Input type="date" value={issuedOn} onChange={(e) => setIssuedOn(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Expires on</Label>
+            <Input type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label>File (optional — JPEG, PNG or PDF)</Label>
+          <Input
+            type="file"
+            accept="image/jpeg,image/png,application/pdf"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+        </div>
+
+        {!!error && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {error instanceof ApiError ? error.message : "Something went wrong. Please try again."}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!canSubmit}
+            onClick={() =>
+              onSubmit({
+                doc_type: docType,
+                doc_number: docNumber.trim(),
+                issued_on: issuedOn || undefined,
+                expires_on: expiresOn,
+                file: file ?? undefined,
+              })
+            }
+          >
+            {isPending && <Spinner className="h-4 w-4" />}
+            Add document
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

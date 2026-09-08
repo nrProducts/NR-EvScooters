@@ -28,6 +28,7 @@ export type AuditAction =
     | "booking.created" | "booking.approved" | "booking.rejected" | "booking.fulfilled"
     | "booking.cancelled" | "booking.payment_completed"
     | "vehicle.created" | "vehicle.updated" | "vehicle.scrapped" | "vehicle.assigned"
+    | "vehicle.document_uploaded" | "vehicle.document_updated" | "vehicle.document_deleted"
     | "maintenance.created" | "maintenance.updated" | "maintenance.outcome_set"
     | "notification.broadcast" | "notification_setting.updated"
     | "invoice.refunded" | "invoice.adjusted" | "invoice.charge_added"

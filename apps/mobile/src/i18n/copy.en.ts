@@ -762,7 +762,9 @@ export const en = {
     'vehicleDocs.puc': 'PUC Certificate',
     'vehicleDocs.pucHint': 'Pollution Under Control',
     'vehicleDocs.footer':
-        "You'll be able to view and download your scooter's documents here once our team finishes uploading them.",
+        "You'll be able to view and download each document here once it's uploaded.",
+    'vehicleDocs.expiresOn': 'Valid until {date}',
+    'vehicleDocs.error.openFailed.title': "Couldn't open document",
 
     // --- app shell (header + profile sheet) ---------------------------------
     'appShell.goBack': 'Go back',
@@ -772,6 +774,7 @@ export const en = {
     'appShell.profile': 'Profile',
 
     // --- root layout: profile load failure ----------------------------------
+    'rootLayout.settingUpAccount': 'Setting up your account…',
     'rootLayout.couldNotLoadProfile': "Couldn't load your profile",
 
     // --- shared error state --------------------------------------------------
