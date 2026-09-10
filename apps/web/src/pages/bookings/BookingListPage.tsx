@@ -525,11 +525,11 @@ export default function BookingListPage() {
             <Skeleton className="h-32 w-full" />
           ) : !availableVehicles || availableVehicles.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              No vehicle has been auto-allocated yet, and none are available at this station right now.
+              No scooters are available at this station right now.
             </p>
           ) : (
             <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">No vehicle was auto-allocated yet — pick one manually:</p>
+              <p className="text-xs text-muted-foreground">Select a scooter to hand over:</p>
               {availableVehicles.map((v) => (
                 <label
                   key={v.id}

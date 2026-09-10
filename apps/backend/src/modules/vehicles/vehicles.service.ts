@@ -891,9 +891,7 @@ function mapPostgresError(error: { code?: string; message?: string }): Error {
  *
  * The disposal row is what makes this terminal: `recompute_vehicle_status()`
  * reads it and derives `retired`. The old version wrote `status: 'scrap'` and
- * `active: false` itself, needing both because `allocate_vehicle_for_booking`
- * filtered on `active` rather than on status. The new allocator filters on
- * status alone, so one fact does the job of two.
+ * `active: false` itself; status alone is authoritative now.
  */
 export async function scrapVehicle(
     id: string,
@@ -942,9 +940,9 @@ export async function scrapVehicle(
 // ---------------------------------------------------------------------------
 
 /**
- * Largely superseded by the booking flow's allocate_vehicle_for_booking() +
- * POST /bookings/:id/pickup. Kept working for any direct caller, but new code
- * should go through bookings, not this.
+ * Largely superseded by POST /bookings/:id/pickup, which is how staff hand a
+ * vehicle over against a booking. Kept working for any direct caller, but new
+ * code should go through bookings, not this.
  */
 export async function assignVehicle(vehicleId: string, userId: string) {
     const { data, error } = await supabaseAdmin

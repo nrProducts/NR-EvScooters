@@ -2240,6 +2240,7 @@ export type Database = {
       rental_vehicle_assignments: {
         Row: {
           assigned_at: string
+          assigned_by_user_id: string | null
           assigned_hub_id: string | null
           created_at: string
           id: string
@@ -2252,6 +2253,7 @@ export type Database = {
         }
         Insert: {
           assigned_at?: string
+          assigned_by_user_id?: string | null
           assigned_hub_id?: string | null
           created_at?: string
           id?: string
@@ -2264,6 +2266,7 @@ export type Database = {
         }
         Update: {
           assigned_at?: string
+          assigned_by_user_id?: string | null
           assigned_hub_id?: string | null
           created_at?: string
           id?: string
@@ -2275,6 +2278,13 @@ export type Database = {
           vehicle_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "rental_vehicle_assignments_assigned_by_user_id_fkey"
+            columns: ["assigned_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "rental_vehicle_assignments_assigned_hub_id_fkey"
             columns: ["assigned_hub_id"]

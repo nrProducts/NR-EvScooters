@@ -137,10 +137,10 @@ export default function AdminDashboardPage() {
                   />
                   <div
                     className="h-full bg-info"
-                    style={{ width: `${(summary.vehicles.by_status.reserved / summary.vehicles.total) * 100}%` }}
+                    style={{ width: `${(summary.vehicles.by_status.assigned / summary.vehicles.total) * 100}%` }}
                   />
                 </div>
-                <p className="text-center text-[0.6875rem] text-muted-foreground">Available / Reserved</p>
+                <p className="text-center text-[0.6875rem] text-muted-foreground">Available / Assigned</p>
               </div>
             ) : undefined
           }

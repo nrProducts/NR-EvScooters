@@ -11,7 +11,7 @@ import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { applyRefundWebhookResult } from "../refunds/refunds.service";
 import {
-    assertVehicleAvailable, hasActiveBookingForUser, requireBookablePlan, tryAllocateVehicle,
+    assertVehicleAvailable, hasActiveBookingForUser, requireBookablePlan,
 } from "../bookings/bookings.service";
 import { hasActiveRentalForUser } from "../users/users.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
@@ -1768,9 +1768,6 @@ async function materializeBookingFromOrder(
         });
     }
 
-    // Hold a specific unit now — money in, booking exists. Best-effort.
-    await tryAllocateVehicle(bookingId);
-
     await qualifyReferralIfApplicable(order.user_id, { id: order.user_id } as AuthContext);
 
     await writeAudit({
@@ -2032,11 +2029,9 @@ async function applyInitialSuccess(subscriptionId: string, userId: string): Prom
         .eq("status", "pending_payment");
     if (subscriptionError) throw subscriptionError;
 
-    // Only now — payment settled and the booking is genuinely 'confirmed' —
-    // does a specific vehicle get held against it. Best-effort: a booking
-    // with nothing free yet still confirms, and staff allocate one manually
-    // at pickup (confirmPickup accepts an explicit vehicle_id for that).
-    await tryAllocateVehicle(subscription.booking_id);
+    // No vehicle is held against the booking here. Staff choose and hand over
+    // a physical unit manually at pickup (confirmPickup requires an explicit
+    // vehicle_id) — see apps/backend/src/modules/bookings/bookings.service.ts.
 
     const { error: depositError } = await supabaseAdmin
         .from("deposits")

@@ -67,10 +67,14 @@ export default function LanguageScreen() {
             else router.replace('/(tabs)/profile');
             return;
         }
-        // First launch. The gate in _layout.tsx now sees `chosen` and routes
-        // onward on its own (onboarding, or straight into the app for a
-        // reinstall that kept its session) — replace() rather than push()
-        // so this screen leaves the stack for good.
+        // First launch. `selected` starts out as the guessed device language,
+        // so a rider who never taps a row (the pre-selection already matches
+        // what they want) would otherwise leave here with `chosen` still
+        // false — and the gate in _layout.tsx redirects straight back to
+        // /language whenever `chosen` is false, which looks like Continue
+        // does nothing at all. Committing the current selection here, not
+        // only on row-tap, is what makes Continue actually able to leave.
+        if (!chosen) setLang(selected, { chosen: true });
         router.replace('/');
     };
 

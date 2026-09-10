@@ -588,30 +588,10 @@ export function computeCancellationCharge(input: {
 // ---------------------------------------------------------------------------
 
 /**
- * Best-effort call to `allocate_vehicle_for_booking()` — finds a free unit
- * matching the booking's model/hub and holds it (`held_vehicle_id`, and
- * `recompute_vehicle_status()` derives `reserved` from that). Never throws: a
- * booking with no vehicle available yet is still a valid booking.
- *
- * Called from payments.service.ts's applyInitialSuccess, once the booking
- * actually moves to 'confirmed' — not at creation. A vehicle held against a
- * merely `pending_payment` booking was reserved for a rider who might never
- * pay, keeping it out of the available pool for the whole grace window; the
- * RPC itself already accepted 'confirmed' as well as 'pending_payment', so
- * moving the call needed no migration.
- */
-export async function tryAllocateVehicle(bookingId: string): Promise<void> {
-    const { error } = await supabaseAdmin.rpc("allocate_vehicle_for_booking", { p_booking_id: bookingId });
-    if (error) {
-        console.error("[bookings] allocate_vehicle_for_booking failed", { bookingId, error: error.message });
-    }
-}
-
-/**
  * A booking is only worth taking if a unit can actually be handed over at that
- * hub. tryAllocateVehicle() is still best-effort — between this count and the
- * insert another rider could take the last one — but that narrow race is very
- * different from cheerfully confirming a booking against an empty hub.
+ * hub eventually — this is a fleet-capacity check, not a hold. Nothing claims
+ * a specific vehicle at booking time; staff pick one manually at pickup (see
+ * confirmPickup).
  */
 export async function assertVehicleAvailable(modelId: string, hubId: string): Promise<void> {
     const { data, error } = await supabaseAdmin
@@ -730,9 +710,10 @@ export async function createBooking(
         },
     });
 
-    // Vehicle allocation waits for payment — see tryAllocateVehicle's doc
-    // comment. assertVehicleAvailable above only confirmed a unit existed at
-    // creation time; nothing is held against this booking yet.
+    // No vehicle is held against this booking, now or ever automatically —
+    // assertVehicleAvailable above only confirmed a unit existed at creation
+    // time. Staff pick and hand over a physical vehicle manually at pickup
+    // (see confirmPickup).
 
     // First-booking referral discount, if this rider was referred and this is
     // genuinely their first booking. The discount is recorded against the
@@ -1814,6 +1795,7 @@ export async function confirmPickup(
             vehicle_id: vehicleId,
             reason: "initial",
             assigned_hub_id: booking.hub_id,
+            assigned_by_user_id: actor.id,
         });
     if (assignmentError) {
         await supabaseAdmin.from("rentals").delete().eq("id", rental.id);
