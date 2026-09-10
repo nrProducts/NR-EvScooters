@@ -28,7 +28,7 @@ export function Hero() {
           <Badge tone="outline">Chennai's EV Mobility</Badge>
 
           <h1 className="mt-6 text-balance text-hero-mobile font-extrabold text-foreground sm:text-hero lg:text-hero-lg">
-            Move around Chennai <span className="text-primary">without the hassle.</span>
+            EV Scooter Rental in Chennai <span className="text-primary">without the hassle.</span>
           </h1>
 
           <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground sm:text-xl">
@@ -62,7 +62,7 @@ export function Hero() {
           <div className="relative mx-auto max-w-md motion-safe:animate-float lg:max-w-none">
             <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-secondary via-white to-surface p-2 shadow-lift ring-1 ring-primary/15 sm:p-4">
               <div className="overflow-hidden rounded-[1.5rem]">
-                <ScooterIllustration className="aspect-[4/3] w-full scale-110" />
+                <ScooterIllustration className="aspect-[4/3] w-full scale-110" priority />
               </div>
             </div>
 
