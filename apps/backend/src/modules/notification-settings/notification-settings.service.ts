@@ -2,10 +2,11 @@ import type { Request } from "express";
 import { supabaseAdmin } from "../../config/supabase";
 import { notFound } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
-import { AuthContext, NotificationTypeCode } from "../../types";
+import { paginate, toRange } from "../../common/pagination";
+import { AuthContext, NotificationTypeCode, Paginated } from "../../types";
 import {
-    EligibleRecipient, NotificationSettingRow, NotificationTypeSummary, RecipientResolution,
-    UpdateNotificationSettingInput,
+    EligibleRecipient, EmailDeliveryLogEntry, EmailLogFilters, NotificationSettingRow,
+    NotificationTypeSummary, RecipientResolution, UpdateNotificationSettingInput,
 } from "./notification-settings.types";
 
 /**
@@ -219,4 +220,83 @@ export async function getRecipients(type: NotificationTypeCode): Promise<Recipie
         sendInApp: notificationType.send_in_app,
         recipients,
     };
+}
+
+// ---------------------------------------------------------------------------
+// Email delivery log — "what mail actually went to admins/staff"
+// ---------------------------------------------------------------------------
+
+const EMAIL_LOG_COLUMNS = `
+    id, title, body, notification_type_code, created_at,
+    users!inner(id, full_name, email, role),
+    notification_deliveries!inner(id, status, provider, provider_ref, error, sent_at, created_at)
+`;
+
+interface RawEmailLogRow {
+    id: string;
+    title: string;
+    body: string;
+    notification_type_code: string;
+    created_at: string;
+    users: unknown;
+    notification_deliveries: unknown;
+}
+
+/**
+ * The Notification Manager's "mail grid" — every EMAIL (not push/in-app)
+ * `notify()` has sent to an admin or staff account, newest first.
+ *
+ * Reads `notification_messages` rather than `notification_deliveries`
+ * directly so `!inner` on `users` can restrict to staff/admin the same way
+ * `listAllNotifications` restricts to riders (notifications.service.ts) — one
+ * event can fan out to both a rider (their own copy) and staff, and this grid
+ * is only the latter.
+ */
+export async function listEmailDeliveries(filters: EmailLogFilters): Promise<Paginated<EmailDeliveryLogEntry>> {
+    const { data: types, error: typesError } = await supabaseAdmin
+        .from("notification_types")
+        .select("code, label");
+    if (typesError) throw typesError;
+    const labelByCode = new Map((types ?? []).map((t) => [t.code, t.label]));
+
+    let query = supabaseAdmin
+        .from("notification_messages")
+        .select(EMAIL_LOG_COLUMNS, { count: "exact" })
+        .eq("notification_deliveries.channel", "email")
+        .in("users.role", ["admin", "staff"]);
+
+    if (filters.notificationType) query = query.eq("notification_type_code", filters.notificationType);
+    if (filters.status) query = query.eq("notification_deliveries.status", filters.status);
+
+    const [from, to] = toRange(filters);
+    const { data, error, count } = await query
+        .order("created_at", { ascending: false })
+        .range(from, to);
+    if (error) throw error;
+
+    const rows = (data ?? []) as unknown as RawEmailLogRow[];
+    const items = rows.map((row): EmailDeliveryLogEntry => {
+        const recipient = unwrap<{ id: string; full_name: string; email: string | null }>(row.users);
+        const delivery = unwrap<{
+            status: EmailDeliveryLogEntry["status"]; provider: string | null; provider_ref: string | null;
+            error: string | null; sent_at: string | null;
+        }>(row.notification_deliveries);
+
+        return {
+            id: row.id,
+            notification_type: row.notification_type_code as NotificationTypeCode,
+            label: labelByCode.get(row.notification_type_code) ?? row.notification_type_code,
+            title: row.title,
+            body: row.body,
+            status: delivery?.status ?? "pending",
+            provider: delivery?.provider ?? null,
+            provider_ref: delivery?.provider_ref ?? null,
+            error: delivery?.error ?? null,
+            sent_at: delivery?.sent_at ?? null,
+            created_at: row.created_at,
+            recipient: recipient ? { id: recipient.id, full_name: recipient.full_name, email: recipient.email } : null,
+        };
+    });
+
+    return paginate(items, count ?? 0, filters);
 }

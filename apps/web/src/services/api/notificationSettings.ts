@@ -1,5 +1,5 @@
-import { apiClient } from "./httpClient";
-import type { NotificationSetting, NotificationType, NotificationTypeSummary } from "@/types";
+import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
+import type { EmailDeliveryLogEntry, NotificationSetting, NotificationType, NotificationTypeSummary, PaginatedResult } from "@/types";
 
 /**
  * GET /notification-settings — requireAdmin. Every event type with current
@@ -36,4 +36,22 @@ export async function updateNotificationSetting(
   input: UpdateNotificationSettingInput,
 ): Promise<NotificationSetting> {
   return apiClient.put<NotificationSetting>(`/notification-settings/${type}`, input);
+}
+
+export interface EmailLogParams {
+  page?: number;
+  pageSize?: number;
+  notificationType?: string;
+  status?: "pending" | "sent" | "failed";
+}
+
+/** GET /notification-settings/email-log — requireAdmin. The mail grid: every email notify() has sent to staff/admins. */
+export async function fetchEmailDeliveryLog(params: EmailLogParams): Promise<PaginatedResult<EmailDeliveryLogEntry>> {
+  const res = await apiClient.get<BackendPaginated<EmailDeliveryLogEntry>>("/notification-settings/email-log", {
+    page: params.page,
+    pageSize: params.pageSize,
+    notificationType: params.notificationType,
+    status: params.status,
+  });
+  return toPaginatedResult(res);
 }

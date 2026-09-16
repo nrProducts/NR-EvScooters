@@ -88,7 +88,7 @@ services:
       # without them that endpoint returns 503 and enquiries are lost.
       - key: RESEND_API_KEY
         sync: false
-      - key: EMAIL_FROM
+      - key: ADMIN_NOTIFICATION_EMAIL_FROM
         sync: false
       - key: ADMIN_APP_URL
         sync: false

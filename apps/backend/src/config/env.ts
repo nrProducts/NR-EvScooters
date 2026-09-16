@@ -164,7 +164,16 @@ export const env = {
     // needs it throws a clear error at call time — see config/resend.ts.
     emailProvider: process.env.EMAIL_PROVIDER ?? "resend",
     resendApiKey: process.env.RESEND_API_KEY ?? "",
-    emailFrom: process.env.EMAIL_FROM ?? "",
+    emailFrom: process.env.ADMIN_NOTIFICATION_EMAIL_FROM ?? "",
+    /**
+     * From-address for the staff/admin "needs your action" emails
+     * (notify.service.ts's sendEmail — KYC review, refund approval, booking
+     * ready for pickup, etc). Separate from `emailFrom` so these operational
+     * escalations aren't tied to the same inbox as rider-facing mail and the
+     * website contact form; falls back to `EMAIL_FROM` so it isn't a second
+     * required var on top of an already-working setup.
+     */
+    adminNotificationEmailFrom: process.env.ADMIN_NOTIFICATION_EMAIL_FROM || process.env.EMAIL_FROM || "",
     /** Base URL of the admin console, for email CTA links. */
     adminAppUrl: process.env.ADMIN_APP_URL ?? "",
     /**

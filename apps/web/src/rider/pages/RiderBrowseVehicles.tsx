@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Bike } from "lucide-react";
+import { Search, Bike, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { CenteredSpinner } from "@/rider/components/common";
@@ -51,8 +50,8 @@ export default function RiderBrowseVehicles() {
           <button
             key={c.value}
             onClick={() => setCategory(c.value)}
-            className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium ${
-              category === c.value ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"
+            className={`shrink-0 rounded-xl border px-3.5 py-2 text-xs font-bold ${
+              category === c.value ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground"
             }`}
           >
             {c.label}
@@ -71,31 +70,42 @@ export default function RiderBrowseVehicles() {
           {data!.data.map((m) => {
             const unavailable = m.availability.available_count === 0;
             return (
-              <Card
+              <button
                 key={m.id}
                 onClick={() => navigate(`/rider/booking/${m.id}`)}
-                className="cursor-pointer overflow-hidden"
+                className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-3 text-left"
               >
-                {m.image_url && (
-                  <img src={m.image_url} alt="" className="h-36 w-full object-cover" />
-                )}
-                <div className="p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-bold">{m.name}</p>
-                      {m.vendor?.name && <p className="text-xs text-muted-foreground">{m.vendor.name}</p>}
-                    </div>
-                    <Badge variant={unavailable ? "muted" : "success"}>
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-secondary">
+                  {m.image_url && (
+                    <img src={m.image_url} alt="" className="h-full w-full object-contain" />
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-extrabold">{m.name}</p>
+                    <Badge variant={unavailable ? "muted" : "success"} className="shrink-0">
                       {unavailable ? "Unavailable" : `${m.availability.available_count} free`}
                     </Badge>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-                    {m.starting_price != null && <span>from {formatMoney(m.starting_price)}</span>}
-                    {m.battery_range_km != null && <span>{m.battery_range_km} km range</span>}
-                    {m.top_speed_kmph != null && <span>{m.top_speed_kmph} km/h</span>}
+                  {m.vendor?.name && (
+                    <p className="mb-1 truncate text-[11px] font-medium text-muted-foreground">{m.vendor.name}</p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                    {m.starting_price != null && (
+                      <span className="text-xs font-extrabold text-primary">from {formatMoney(m.starting_price)}</span>
+                    )}
+                    {m.battery_range_km != null && (
+                      <span className="text-[11px] text-muted-foreground">{m.battery_range_km} km range</span>
+                    )}
+                    {m.top_speed_kmph != null && (
+                      <span className="text-[11px] text-muted-foreground">{m.top_speed_kmph} km/h</span>
+                    )}
                   </div>
                 </div>
-              </Card>
+
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
             );
           })}
         </div>

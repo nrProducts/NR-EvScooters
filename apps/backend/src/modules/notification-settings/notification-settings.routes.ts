@@ -31,6 +31,17 @@ router.get("/types", requireStaff, asyncHandler(c.listTypeSummariesHandler));
 
 router.get("/", requireAdmin, asyncHandler(c.listSettingsHandler));
 
+// Declared before "/:type" — Express would otherwise try to match
+// "email-log" as a :type param on the PUT route below (harmless there since
+// it's a different method, but keeping list routes grouped above param
+// routes is the convention the rest of this file follows).
+router.get(
+    "/email-log",
+    requireAdmin,
+    validate({ query: v.emailLogQuery }),
+    asyncHandler(c.listEmailLogHandler),
+);
+
 router.put(
     "/:type",
     requireAdmin,

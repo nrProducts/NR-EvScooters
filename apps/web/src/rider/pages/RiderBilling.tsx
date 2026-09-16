@@ -104,10 +104,10 @@ export default function RiderBilling() {
     outstanding.map((inv) => {
       const total = inv.total_due ?? inv.balance_amount;
       return (
-        <Card key={inv.id} className="mb-3">
+        <Card key={inv.id} className="mb-3 border-destructive/30 bg-destructive/5">
           <CardContent className="p-4">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold">{invoiceLabel(inv)}</p>
+              <p className="text-sm font-semibold text-destructive">{invoiceLabel(inv)}</p>
               <p className="text-[11px] text-muted-foreground">Due {formatDate(inv.due_on)}</p>
             </div>
             <div className="flex items-center justify-between text-sm">
@@ -126,9 +126,9 @@ export default function RiderBilling() {
                 <span>{formatMoney(inv.late_fee)}</span>
               </div>
             )}
-            <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+            <div className="mt-2 flex items-center justify-between border-t border-destructive/20 pt-2">
               <span className="text-sm font-semibold">Total</span>
-              <span className="text-xl font-bold">{formatMoney(total)}</span>
+              <span className="text-xl font-bold text-destructive">{formatMoney(total)}</span>
             </div>
             <Button
               className="mt-3 w-full"
@@ -150,7 +150,9 @@ export default function RiderBilling() {
       {plan && (
         <div className="mb-6 rounded-lg border border-primary/25 bg-primary/5 p-5">
           {planBooking?.plan_status && (
-            <Badge variant="info" className="mb-2">{planBooking.plan_status.replace("_", " ")}</Badge>
+            <Badge variant={planBooking.plan_status === "past_due" ? "destructive" : "info"} className="mb-2">
+              {planBooking.plan_status.replace("_", " ")}
+            </Badge>
           )}
           <p className="text-lg font-bold">{plan.name}</p>
           <p className="text-3xl font-bold">
@@ -176,16 +178,16 @@ export default function RiderBilling() {
         <>
           <SectionTitle>Amount Due</SectionTitle>
           {isPendingBookingPayment ? (
-            <Card className="mb-6">
+            <Card className="mb-6 border-destructive/30 bg-destructive/5">
               <CardContent className="p-4">
-                <p className="text-sm font-semibold">Booking Payment</p>
+                <p className="text-sm font-semibold text-destructive">Booking Payment</p>
                 <p className="mb-3 mt-1 text-xs text-muted-foreground">
                   Your last payment attempt didn't go through. Your reservation is still held — complete the payment
                   to confirm your booking.
                 </p>
-                <div className="flex items-center justify-between border-t border-border pt-2 text-sm font-semibold">
+                <div className="flex items-center justify-between border-t border-destructive/20 pt-2 text-sm font-semibold">
                   <span>Total</span>
-                  <span>{formatMoney((plan?.price ?? 0) + (plan?.deposit_amount ?? 0))}</span>
+                  <span className="text-destructive">{formatMoney((plan?.price ?? 0) + (plan?.deposit_amount ?? 0))}</span>
                 </div>
                 <Button
                   className="mt-3 w-full"
@@ -209,9 +211,9 @@ export default function RiderBilling() {
               <p className="text-xs text-muted-foreground">Your return is awaiting staff review.</p>
             </div>
           ) : canRechargeEarly ? (
-            <Card className="mb-6">
+            <Card className={eligibility.isLate ? "mb-6 border-destructive/30 bg-destructive/5" : "mb-6"}>
               <CardContent className="p-4">
-                <p className="text-sm font-semibold">
+                <p className={eligibility.isLate ? "text-sm font-semibold text-destructive" : "text-sm font-semibold"}>
                   {eligibility.isLate ? "Your plan has expired" : `Plan ends ${formatDate(planBooking?.next_due_at ?? null)}`}
                 </p>
                 <p className="mb-3 mt-1 text-xs text-muted-foreground">
@@ -294,7 +296,7 @@ export default function RiderBilling() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold">{formatMoney(inv.total_amount)}</span>
-                    <Badge variant={inv.payment_state === "paid" ? "success" : "warning"}>
+                    <Badge variant={inv.payment_state === "paid" ? "success" : "destructive"}>
                       {inv.payment_state === "paid" ? "Paid" : "Due"}
                     </Badge>
                     {inv.items.length > 0 && (open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />)}

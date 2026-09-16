@@ -15,7 +15,7 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { useNotificationLog, useBroadcastNotification } from "@/hooks/useNotifications";
 import { useMyNotifications, useMarkNotificationRead, useMarkAllNotificationsRead, useUnreadCount } from "@/hooks/useMyNotifications";
-import { useNotificationTypeSummaries } from "@/hooks/useNotificationSettings";
+import { useEmailDeliveryLog, useNotificationSettings, useNotificationTypeSummaries } from "@/hooks/useNotificationSettings";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
@@ -24,7 +24,7 @@ import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { notificationLink } from "@/lib/notificationLink";
 import { useAuthStore } from "@/store/authStore";
-import type { MyNotification, NotificationDeliveryStatus, NotificationLogEntry } from "@/types";
+import type { EmailDeliveryLogEntry, MyNotification, NotificationDeliveryStatus, NotificationLogEntry } from "@/types";
 
 const STATUS_OPTIONS: (NotificationDeliveryStatus | "all")[] = ["all", "sent", "pending", "failed"];
 
@@ -64,8 +64,13 @@ function riderNotificationTypeLabel(template: string): string {
 }
 
 export default function NotificationsPage() {
-  const [tab, setTab] = useState<"admin" | "riderLog" | "rider">("admin");
+  const [tab, setTab] = useState<"admin" | "riderLog" | "rider" | "emailLog">("admin");
   const { data: unread } = useUnreadCount();
+  const role = useAuthStore((s) => s.user?.role);
+  // GET /notification-settings and its /email-log both 403 for staff — the
+  // config screen this log pairs with (Settings → Notification Manager) is
+  // already admin-only for the same reason, so the tab follows it.
+  const isAdmin = role === "admin";
 
   usePageSubtitle("What you've sent to riders, and what riders' activity has sent to you.");
 
@@ -79,12 +84,14 @@ export default function NotificationsPage() {
             From Riders
             {!!unread && <Badge variant="destructive" className="ml-1.5 px-1.5 py-0 text-[0.625rem]">{unread}</Badge>}
           </TabsTrigger>
+          {isAdmin && <TabsTrigger value="emailLog">Email to Admins</TabsTrigger>}
         </TabsList>
       </Tabs>
 
       {tab === "admin" && <AdminBroadcastTab />}
       {tab === "riderLog" && <RiderNotificationLogTab />}
       {tab === "rider" && <RiderActivityTab />}
+      {tab === "emailLog" && isAdmin && <EmailDeliveryLogTab />}
     </div>
   );
 }
@@ -390,6 +397,118 @@ function RiderActivityTab() {
       />
 
       {data && <Pagination page={page} pageSize={10} total={data.total} onPageChange={setPage} />}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Email to Admins — every EMAIL notify() has actually sent to an admin/staff
+// account for a "needs your action" event (KYC review, refund approval,
+// booking ready for pickup, ...). Config for whether/who gets emailed lives
+// in Settings → Notification Manager; this is just the delivery log.
+// ---------------------------------------------------------------------------
+
+const EMAIL_LOG_STATUS_OPTIONS: (EmailDeliveryLogEntry["status"] | "all")[] = ["all", "sent", "pending", "failed"];
+
+function EmailDeliveryLogTab() {
+  const [status, setStatus] = useState<EmailDeliveryLogEntry["status"] | "all">("all");
+  const [notificationType, setNotificationType] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 8;
+
+  const { data: settings } = useNotificationSettings();
+  const { data, isLoading, isError, refetch } = useEmailDeliveryLog({
+    page,
+    pageSize,
+    notificationType: notificationType === "all" ? undefined : notificationType,
+    status: status === "all" ? undefined : status,
+  });
+
+  const columns: DataTableColumn<EmailDeliveryLogEntry>[] = [
+    {
+      header: "To",
+      key: "recipient",
+      render: (row) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium">{row.recipient?.full_name ?? "Unknown"}</p>
+          <p className="truncate text-xs text-muted-foreground">{row.recipient?.email ?? "—"}</p>
+        </div>
+      ),
+    },
+    { header: "Type", key: "type", render: (row) => <Badge variant="secondary">{row.label}</Badge> },
+    {
+      header: "Message",
+      key: "message",
+      render: (row) => (
+        <div className="min-w-0">
+          <p className="truncate font-medium">{row.title}</p>
+          <p className="truncate text-xs text-muted-foreground">{row.body}</p>
+        </div>
+      ),
+      hideOnMobile: true,
+    },
+    {
+      header: "Status",
+      key: "status",
+      render: (row) => (
+        <div className="space-y-0.5">
+          <StatusBadge status={row.status} />
+          {row.status === "failed" && row.error && (
+            <p className="max-w-[16rem] truncate text-[11px] text-destructive" title={row.error}>{row.error}</p>
+          )}
+        </div>
+      ),
+    },
+    {
+      header: "Sent",
+      key: "sent_at",
+      render: (row) => formatDateTime(row.sent_at ?? row.created_at),
+      hideOnMobile: true,
+    },
+  ];
+
+  return (
+    <Card>
+      <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm font-medium">{data?.total ?? 0} emails sent to admins/staff</p>
+        <div className="flex gap-2">
+          <Select value={notificationType} onValueChange={(v) => { setNotificationType(v); setPage(1); }}>
+            <SelectTrigger className="w-52">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              {(settings ?? []).map((s) => (
+                <SelectItem key={s.notification_type} value={s.notification_type}>{s.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={status} onValueChange={(v) => { setStatus(v as typeof status); setPage(1); }}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              {EMAIL_LOG_STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s} className="capitalize">
+                  {s === "all" ? "All statuses" : s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <DataTable
+        columns={columns}
+        data={data?.data ?? []}
+        isLoading={isLoading}
+        isError={isError}
+        onRetry={() => refetch()}
+        emptyTitle="No emails sent yet"
+        emptyDescription="Once a notification with 'Send email' enabled fires (Settings → Notification Manager), it shows up here."
+      />
+
+      {data && <Pagination page={page} pageSize={pageSize} total={data.total} onPageChange={setPage} />}
     </Card>
   );
 }

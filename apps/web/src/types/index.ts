@@ -707,6 +707,22 @@ export interface NotificationTypeSummary {
   action_path: string | null;
 }
 
+/** One row of the "mail grid" — GET /notification-settings/email-log. Every email notify() has sent to an admin/staff account. */
+export interface EmailDeliveryLogEntry {
+  id: string;
+  notification_type: NotificationType;
+  label: string;
+  title: string;
+  body: string;
+  status: "pending" | "sent" | "failed";
+  provider: string | null;
+  provider_ref: string | null;
+  error: string | null;
+  sent_at: string | null;
+  created_at: string;
+  recipient: { id: string; full_name: string; email: string | null } | null;
+}
+
 /** A row in the personal (rider/staff/admin) notification inbox — GET /users/me/notifications. */
 export interface MyNotification {
   id: string;

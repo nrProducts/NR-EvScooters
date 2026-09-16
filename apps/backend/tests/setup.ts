@@ -14,4 +14,4 @@ process.env.KYC_MAX_FILE_BYTES ??= "1048576";
 // dotenv does not overwrite keys already on process.env, and "" counts as
 // present, so assigning here wins.
 process.env.RESEND_API_KEY = "";
-process.env.EMAIL_FROM = "";
+process.env.ADMIN_NOTIFICATION_EMAIL_FROM = "";
