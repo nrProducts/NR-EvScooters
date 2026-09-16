@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import {
-  CheckCircle2, Clock, AlertTriangle, CreditCard, RefreshCw, Undo2,
+  CheckCircle2, Clock, AlertTriangle, CreditCard, RefreshCw, Undo2, X,
 } from 'lucide-react-native';
 import { Spinner } from './Spinner';
 import { InfoHint } from './ui/InfoHint';
@@ -11,6 +11,7 @@ import {
   LATE_FEE_POLICY_TITLE_KEY, lateFeePolicyExample, lateFeePolicySections,
 } from '../constants/lateFeePolicy';
 import { rentalRepository } from '../services';
+import { useDismissibleBanner } from '../lib/dismissedBanners';
 import { usePaySettlement } from './SettlementCard';
 import { computeLateReturnPenalty, effectiveDueAt, getRenewalEligibility } from '../lib/returnPolicy';
 import type { ApiOverdueLateFee, ApiRental, ApiReturnSettlement, ApiReturnStage } from '../types/api';
@@ -105,6 +106,15 @@ export function ScooterStatusCard({
   const eligibility = getRenewalEligibility(rental.plan_status, rental.next_due_at, rental.renewal_status);
 
   // --- Priority order: exactly one of these renders. -----------------------
+  //
+  // A branch passing `dismissKey` is INFORMATION — the rider can close it.
+  // One without is money owed or an action with a deadline (settlement due,
+  // recovery, overdue, the plan's last day), and stays until it is resolved —
+  // same rule as SettlementCard, whose amount-due variant has no close
+  // button either. Keys carry the rental and the state (plus the date that
+  // defines it), so closing "Return requested" never hides a later "Payment
+  // received", and a new rental starts with everything visible again.
+  const keyBase = `scooterStatus:${rental.id}`;
 
   if (isSettlementDue) {
     return (
@@ -130,7 +140,7 @@ export function ScooterStatusCard({
 
   if (stage?.status === 'payment_submitted') {
     return (
-      <StatusShell tone="warning" icon={Clock} title={t('scooterStatus.paymentReceived')}>
+      <StatusShell tone="warning" icon={Clock} title={t('scooterStatus.paymentReceived')} dismissKey={`${keyBase}:payment_submitted`}>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
           {t('scooterStatus.paymentReceived.body')}
         </Text>
@@ -140,7 +150,7 @@ export function ScooterStatusCard({
 
   if (stage?.status === 'ready_for_approval') {
     return (
-      <StatusShell tone="warning" icon={Clock} title={t('scooterStatus.verificationPending')}>
+      <StatusShell tone="warning" icon={Clock} title={t('scooterStatus.verificationPending')} dismissKey={`${keyBase}:ready_for_approval`}>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
           {t('scooterStatus.verificationPending.body')}
         </Text>
@@ -156,7 +166,12 @@ export function ScooterStatusCard({
   // return_due_at/expiry fields and would otherwise still read as true.
   if (rental.return_requested_at) {
     return (
-      <StatusShell tone="warning" icon={Undo2} title={t('scooterStatus.returnRequested')}>
+      <StatusShell
+        tone="warning"
+        icon={Undo2}
+        title={t('scooterStatus.returnRequested')}
+        dismissKey={`${keyBase}:return_requested:${rental.return_requested_at}`}
+      >
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
           {t('scooterStatus.returnRequested.body')}
         </Text>
@@ -181,7 +196,12 @@ export function ScooterStatusCard({
   // building up against them.
   if (rental.renewal_status === 'scheduled') {
     return (
-      <StatusShell tone="success" icon={RefreshCw} title={t('scooterStatus.renewalScheduled')}>
+      <StatusShell
+        tone="success"
+        icon={RefreshCw}
+        title={t('scooterStatus.renewalScheduled')}
+        dismissKey={`${keyBase}:renewal_scheduled:${rental.scheduled_start_date ?? ''}`}
+      >
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
           {[
             rental.scheduled_start_date
@@ -300,7 +320,7 @@ export function ScooterStatusCard({
   }
 
   return (
-    <StatusShell tone="success" icon={CheckCircle2} title={t('scooterStatus.active')}>
+    <StatusShell tone="success" icon={CheckCircle2} title={t('scooterStatus.active')} dismissKey={`${keyBase}:active`}>
       <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">{t('scooterStatus.allGood')}</Text>
     </StatusShell>
   );
@@ -323,15 +343,27 @@ const TONE_COLOR: Record<'danger' | 'warning' | 'success' | 'primary', string> =
 };
 
 function StatusShell({
-  tone, icon: Icon, title, titleAccessory, children,
+  tone, icon: Icon, title, titleAccessory, dismissKey, children,
 }: {
   tone: 'danger' | 'warning' | 'success' | 'primary';
   icon: React.ComponentType<{ size?: number; color?: string }>;
   title: string;
   /** Trailing control on the title row — an InfoHint, in practice. */
   titleAccessory?: React.ReactNode;
+  /**
+   * Makes the card closable, remembered under this key (lib/dismissedBanners).
+   * Omit for anything the rider must act on — see the priority-order note in
+   * ScooterStatusCard.
+   */
+  dismissKey?: string;
   children: React.ReactNode;
 }) {
+  const { t } = useT();
+  // Called unconditionally; with no key the hook reports "dismissed", which
+  // is why the check below also requires a key.
+  const [dismissed, dismiss] = useDismissibleBanner(dismissKey ?? null);
+  if (dismissKey && dismissed) return null;
+
   const tint = TONE_COLOR[tone];
   return (
     <View
@@ -347,6 +379,18 @@ function StatusShell({
             accessory off the row. */}
         <Text style={{ color: tint }} className="text-xs font-bold ml-2 flex-1">{title}</Text>
         {titleAccessory}
+        {dismissKey ? (
+          <TouchableOpacity
+            onPress={dismiss}
+            accessibilityRole="button"
+            accessibilityLabel={t('ui.dismiss')}
+            // Same 14px glyph + padded hit area as SettlementCard's close.
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            className="-mr-1 -my-1 p-1 ml-2"
+          >
+            <X size={14} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        ) : null}
       </View>
       {children}
     </View>

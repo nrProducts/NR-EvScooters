@@ -460,8 +460,8 @@ export default function HomeScreen() {
           </>
         ) : null}
 
-        {/* Nearby scooters / My plan go dead while a return is in flight —
-            both lead somewhere the backend will refuse. See lib/returnLock.ts. */}
+        {/* My plan goes dead while a return is in flight — it leads somewhere
+            the backend will refuse. See lib/returnLock.ts. */}
         <HomeQuickLinks returnLocked={isReturnLocked(activeRental)} />
         <NeedHelpCard />
       </ScrollView>

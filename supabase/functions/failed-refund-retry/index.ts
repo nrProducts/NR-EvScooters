@@ -179,7 +179,7 @@ Deno.serve(async (_req) => {
                 body: refund.reason === "booking_cancellation"
                     ? `Your refund of ₹${Number(refund.amount)} for the cancelled booking has been completed.`
                     : "Your security deposit refund has been completed.",
-                screen: refund.reason === "booking_cancellation" ? "booking-history" : "my-plan",
+                screen: refund.reason === "booking_cancellation" ? "booking-history" : "billing",
             });
 
             succeeded++;

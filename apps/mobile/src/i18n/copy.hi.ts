@@ -377,7 +377,7 @@ export const hi: Copy = {
     'hero.rentalCompleted.cta': 'स्कूटर बुक करें',
 
     // --- Home quick links -------------------------------------------------
-    'quickLinks.nearbyScooters': 'आस-पास के स्कूटर',
+    'quickLinks.nearbyStations': 'आस-पास के स्टेशन',
     'quickLinks.myBookings': 'मेरी बुकिंग्स',
     'quickLinks.myPlan': 'मेरा प्लान',
     'quickLinks.lockedHint': 'आपका रिटर्न पूरा होने तक यह उपलब्ध नहीं है',
@@ -433,6 +433,11 @@ export const hi: Copy = {
     'notifications.empty.title': 'अभी तक कोई सूचना नहीं',
     'notifications.empty.subtitle': 'जब भी आपका ध्यान चाहिए होगा, हम आपको बताएंगे।',
     'notifications.fallbackTitle': 'सूचना',
+    'notifications.unavailable.title': 'खोलने के लिए कुछ नहीं',
+    'notifications.unavailable.message': 'यह सूचना अब किसी स्क्रीन से जुड़ी नहीं है। हो सकता है यह किसी ऐसी चीज़ के बारे में हो जो पहले ही पूरी हो चुकी है।',
+    'notFound.title': 'पेज नहीं मिला',
+    'notFound.message': 'आप जो पेज ढूंढ रहे थे वह उपलब्ध नहीं है। हो सकता है वह हटा दिया गया हो।',
+    'notFound.goHome': 'होम पर जाएं',
 
     // --- booking history --------------------------------------------------
     'bookingHistory.title': 'बुकिंग इतिहास',

@@ -6,6 +6,7 @@ import { Bell, X } from 'lucide-react-native';
 import { COLORS } from '../constants/theme';
 import { useNotificationToastStore, type NotificationToastItem } from '../store/useNotificationToastStore';
 import { useT } from '../i18n';
+import { resolveNotificationRoute } from '../lib/notificationRoute';
 
 const AUTO_DISMISS_MS = 4500;
 const SLIDE_MS = 320;
@@ -60,11 +61,20 @@ export const NotificationToastCard: React.FC<{ item: NotificationToastItem }> = 
   };
 
   const handlePress = () => {
-    if (item.screen) {
-      dismiss(() => router.push(`/${item.screen}` as never));
-    } else {
+    if (!item.screen) {
       dismiss();
+      return;
     }
+    // A screen that no longer resolves falls back to the notification list,
+    // where the rider can still read it — never an unmatched route.
+    const href = resolveNotificationRoute(item.screen) ?? '/notifications';
+    dismiss(() => {
+      try {
+        router.push(href as never);
+      } catch (err) {
+        console.warn('[push] popup navigation failed:', href, err);
+      }
+    });
   };
 
   return (

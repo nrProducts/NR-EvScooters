@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { toastError, toastSuccess } from "@/lib/toastHelpers";
 import { CenteredSpinner, StatusPill } from "@/rider/components/common";
 import { riderApi } from "@/rider/services/riderApi";
-import { SUPPORT_EMAIL, SUPPORT_PHONE, SUPPORT_PHONE_DISPLAY } from "@/rider/constants/support";
+import { SUPPORT_EMAIL, SUPPORT_PHONES } from "@/rider/constants/support";
 import { SUPPORT_STATUS_LABEL, SUPPORT_STATUS_TONE, formatDate } from "@/rider/constants/status";
 
 export default function RiderSupport() {
@@ -48,17 +48,22 @@ export default function RiderSupport() {
       <h1 className="mb-4 text-lg font-bold">Support</h1>
 
       <div className="mb-5 grid grid-cols-2 gap-3">
-        <a
-          href={`tel:${SUPPORT_PHONE}`}
-          className="flex flex-col items-center gap-1.5 rounded-lg border border-border p-4 text-center"
-        >
-          <Phone className="h-5 w-5 text-primary" />
-          <span className="text-xs font-semibold">Call us</span>
-          <span className="text-[10px] text-muted-foreground">{SUPPORT_PHONE_DISPLAY}</span>
-        </a>
+        {SUPPORT_PHONES.map((phone) => (
+          <a
+            key={phone.e164}
+            href={`tel:${phone.e164}`}
+            className="flex flex-col items-center gap-1.5 rounded-lg border border-border p-4 text-center"
+          >
+            <Phone className="h-5 w-5 text-primary" />
+            <span className="text-xs font-semibold">Call us</span>
+            <span className="text-[10px] text-muted-foreground">{phone.display}</span>
+          </a>
+        ))}
         <a
           href={`mailto:${SUPPORT_EMAIL}`}
-          className="flex flex-col items-center gap-1.5 rounded-lg border border-border p-4 text-center"
+          // Spans the row: the phones fill it in pairs, and an email left
+          // alone in half a row reads like a missing tile.
+          className="col-span-2 flex flex-col items-center gap-1.5 rounded-lg border border-border p-4 text-center"
         >
           <Mail className="h-5 w-5 text-primary" />
           <span className="text-xs font-semibold">Email us</span>

@@ -148,7 +148,7 @@ export async function pauseSubscription(
         template: "maintenance_plan_paused",
         title: "Rental Plan Paused",
         body: "Your vehicle is currently under maintenance. Your rental plan has been paused.",
-        screen: "my-plan",
+        screen: "billing",
     });
 }
 
@@ -262,7 +262,7 @@ export async function resumeSubscription(
         template: "vehicle_available_again",
         title: "Vehicle Available Again",
         body: "Your vehicle has been assigned back to you and your rental plan has resumed.",
-        screen: "my-plan",
+        screen: "billing",
     });
 }
 

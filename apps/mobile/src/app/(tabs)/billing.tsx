@@ -589,7 +589,6 @@ export default function BillingScreen() {
           contact: profile?.phone ?? undefined,
           name: profile?.full_name,
         },
-        theme: { color: COLORS.primary },
       });
       await billingRepository.verifyPayment(verifyPayload);
       reload();
@@ -634,7 +633,6 @@ export default function BillingScreen() {
           contact: profile?.phone ?? undefined,
           name: profile?.full_name,
         },
-        theme: { color: COLORS.primary },
       });
       await billingRepository.verifyPayment(verifyPayload);
       reload();
@@ -694,7 +692,6 @@ export default function BillingScreen() {
           contact: profile?.phone ?? undefined,
           name: profile?.full_name,
         },
-        theme: { color: COLORS.primary },
       });
       await billingRepository.verifyPayment(verifyPayload);
       setRechargePreview(null);

@@ -12,6 +12,11 @@
 //   200 {}                              on success
 //   non-2xx { "error": { "message" } }  on failure (Supabase surfaces this)
 //
+// NOTE: this function is deployed with verify_jwt = false (see
+// supabase/config.toml). Auth hooks authenticate with the standard-webhooks
+// signature verified below, never an `Authorization: Bearer <jwt>` header, so
+// the platform JWT check would 401 every hook call before this code runs.
+//
 // NOTE: the MSG91 request/response logic here is intentionally kept in sync
 // with apps/backend/src/modules/auth/msg91.ts (which has the unit tests).
 // If you change one, change the other.

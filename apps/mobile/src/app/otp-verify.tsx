@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
 import { ApiError } from '../lib/ApiError';
 import { COLORS } from '../constants/theme';
@@ -38,10 +38,22 @@ export default function OtpVerifyScreen() {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 350);
-    return () => clearTimeout(t);
-  }, []);
+  // Focus once the screen actually holds navigation focus, not on a fixed
+  // timer. A bare setTimeout raced the push animation: on a slower device the
+  // focus landed mid-transition, React marked the input focused but Android
+  // never raised the soft keyboard — and since the input then already HAD
+  // focus, tapping the boxes called focus() again as a no-op, leaving no way
+  // to recover short of backgrounding the app. blur() first so the focus is a
+  // real transition even if RN still believes the field is focused.
+  useFocusEffect(
+    useCallback(() => {
+      const t = setTimeout(() => {
+        inputRef.current?.blur();
+        inputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(t);
+    }, []),
+  );
 
   const submit = async (value: string = code) => {
     if (verifying) return;
@@ -101,26 +113,14 @@ export default function OtpVerifyScreen() {
         {t('otp.sentTo', { phone: phone ? formatPhoneForDisplay(phone) : t('otp.yourNumber') })}
       </Text>
 
-      {/* Hidden real input; the boxes below mirror it. */}
-      <TextInput
-        ref={inputRef}
-        value={code}
-        onChangeText={(t) => {
-          const next = sanitizeOtpInput(t);
-          setCode(next);
-          if (error) setError('');
-          if (next.length === 6) void submit(next);
-        }}
-        keyboardType="number-pad"
-        autoComplete="sms-otp"
-        textContentType="oneTimeCode"
-        maxLength={6}
-        accessibilityLabel={t('otp.inputLabel')}
-        style={{ position: 'absolute', opacity: 0, height: 1, width: 1 }}
-      />
-
-      <TouchableOpacity activeOpacity={1} onPress={() => inputRef.current?.focus()}>
-        <View className="flex-row justify-between mb-6">
+      {/* The boxes are decoration; the input below is the real field, stretched
+          over them so a tap lands on the input ITSELF and Android raises the
+          keyboard the way it does for any ordinary field. Previously the input
+          was 1x1 and fully transparent in the corner, so it could never be
+          tapped — the only way in was a programmatic focus(), and when that
+          silently failed to raise the keyboard there was no way to recover. */}
+      <View className="mb-6">
+        <View className="flex-row justify-between">
           {digits.map((d, i) => {
             const active = i === code.length;
             return (
@@ -142,7 +142,36 @@ export default function OtpVerifyScreen() {
             );
           })}
         </View>
-      </TouchableOpacity>
+
+        <TextInput
+          ref={inputRef}
+          value={code}
+          onChangeText={(t) => {
+            const next = sanitizeOtpInput(t);
+            setCode(next);
+            if (error) setError('');
+            if (next.length === 6) void submit(next);
+          }}
+          keyboardType="number-pad"
+          autoComplete="sms-otp"
+          textContentType="oneTimeCode"
+          maxLength={6}
+          caretHidden
+          accessibilityLabel={t('otp.inputLabel')}
+          // Transparent text over the boxes, not an invisible view: Android
+          // will not raise the keyboard for a zero-opacity field, so the field
+          // stays barely-rendered while its own text and caret are hidden.
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            opacity: 0.01,
+            color: 'transparent',
+          }}
+        />
+      </View>
 
       {error ? (
         <Text style={{ color: COLORS.danger }} className="text-xs font-semibold mb-4 px-1">

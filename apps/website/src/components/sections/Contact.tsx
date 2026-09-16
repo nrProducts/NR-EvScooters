@@ -23,12 +23,11 @@ export function Contact() {
 
           <div className="mt-9 space-y-4">
             <ContactRow icon={Mail} label="Email" value={CONTACT_EMAIL} href={`mailto:${CONTACT_EMAIL}`} />
-            <ContactRow
-              icon={Phone}
-              label="Phone"
-              value={CONTACT_PHONES.map((p) => p.display).join(", ")}
-              href={CONTACT_PHONES[0]?.href}
-            />
+            {/* One row per number: a single joined row can only link to one
+                of them, so tapping the second would dial the first. */}
+            {CONTACT_PHONES.map((p) => (
+              <ContactRow key={p.href} icon={Phone} label="Phone" value={p.display} href={p.href} />
+            ))}
             <ContactRow
               icon={MapPin}
               label="Office"

@@ -77,7 +77,7 @@ Deno.serve(async (_req) => {
             subjectId: booking.id,
             title: "Payment Failed",
             body: "Your payment didn't go through. Please try again to keep your reservation.",
-            screen: "booking/billing",
+            screen: "billing",
         });
         if (result.logged) logged++;
         if (result.sent) sent++;

@@ -298,6 +298,15 @@ max_frequency = "30s"
 enabled = true
 uri = "pg-functions://postgres/public/custom_access_token_hook"
 
+# Auth hooks authenticate with a standard-webhooks signature, never an
+# `Authorization: Bearer <jwt>` header. With verify_jwt on (the platform
+# default) the Edge Functions gateway rejects every hook call with a 401
+# before the function boots, and Auth surfaces that as
+# "500: Hook requires authorization token" on /otp. send-sms verifies the
+# signature itself, so the gateway check is both wrong and redundant here.
+[functions.send-sms]
+verify_jwt = false
+
 # Delivers phone OTPs via MSG91 through the send-sms Edge Function. The secret
 # is generated once (supabase secrets) and shared with the function. Same
 # caveat as above: this only wires up local dev, not the live project.

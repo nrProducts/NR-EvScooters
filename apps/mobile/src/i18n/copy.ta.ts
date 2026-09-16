@@ -381,7 +381,7 @@ export const ta: Copy = {
     'hero.rentalCompleted.cta': 'ஒரு ஸ்கூட்டரை முன்பதிவு செய்',
 
     // --- Home quick links -------------------------------------------------
-    'quickLinks.nearbyScooters': 'அருகிலுள்ள ஸ்கூட்டர்கள்',
+    'quickLinks.nearbyStations': 'அருகிலுள்ள நிலையங்கள்',
     'quickLinks.myBookings': 'என் முன்பதிவுகள்',
     'quickLinks.myPlan': 'என் திட்டம்',
     'quickLinks.lockedHint': 'உங்கள் திருப்பு முடியும் வரை இது கிடைக்காது',
@@ -437,6 +437,11 @@ export const ta: Copy = {
     'notifications.empty.title': 'இன்னும் அறிவிப்புகள் இல்லை',
     'notifications.empty.subtitle': 'உங்கள் கவனம் தேவைப்படும்போது உங்களுக்குத் தெரிவிப்போம்.',
     'notifications.fallbackTitle': 'அறிவிப்பு',
+    'notifications.unavailable.title': 'திறக்க எதுவும் இல்லை',
+    'notifications.unavailable.message': 'இந்த அறிவிப்பு இப்போது எந்த திரையுடனும் இணைக்கப்படவில்லை. இது ஏற்கனவே முடிந்த ஒன்றைப் பற்றியதாக இருக்கலாம்.',
+    'notFound.title': 'பக்கம் கிடைக்கவில்லை',
+    'notFound.message': 'நீங்கள் தேடிய பக்கம் கிடைக்கவில்லை. அது நகர்த்தப்பட்டிருக்கலாம் அல்லது இனி இல்லாமல் இருக்கலாம்.',
+    'notFound.goHome': 'முகப்புக்குச் செல்',
 
     // --- booking history --------------------------------------------------
     'bookingHistory.title': 'முன்பதிவு வரலாறு',

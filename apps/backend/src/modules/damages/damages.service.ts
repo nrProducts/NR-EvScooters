@@ -274,7 +274,7 @@ export async function recordDamage(
         body: damage.outstanding_amount > 0
             ? `A damage charge of ₹${input.amount} has been recorded. ₹${damage.outstanding_amount} is due after your deposit deduction.`
             : `A damage charge of ₹${input.amount} has been added to your account.`,
-        screen: "my-plan",
+        screen: "billing",
     });
 
     await notify({
@@ -566,7 +566,7 @@ export async function resolveDispute(
         template: "damage_dispute_resolved",
         title: "Damage Dispute Resolved",
         body: "Your damage dispute has been reviewed and resolved. Check your plan for the updated charge.",
-        screen: "my-plan",
+        screen: "billing",
     });
 
     return damage;

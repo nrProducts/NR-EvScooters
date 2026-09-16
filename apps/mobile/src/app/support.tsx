@@ -8,7 +8,7 @@ import { SkeletonList } from '../components/ui/Skeleton';
 import { supportRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { notifyError } from '../lib/confirm';
-import { SUPPORT_EMAIL, SUPPORT_PHONE, SUPPORT_PHONE_DISPLAY } from '../constants/support';
+import { SUPPORT_EMAIL, SUPPORT_PHONES } from '../constants/support';
 import { SUPPORT_STATUS_LABEL_KEY, SUPPORT_STATUS_TONE, formatDate } from '../constants/status';
 import { COLORS } from '../constants/theme';
 import { LifeBuoy, Mail, Phone, Send, CheckCircle2 } from 'lucide-react-native';
@@ -21,14 +21,17 @@ import { useT, type CopyKey, type TranslateFn } from '../i18n';
  * here would be fixed at import time and would not follow a language change.
  * `desc` stays literal — a phone number and an email address are the same in
  * every language, and translating them would be a bug.
+ *
+ * Built from constants/support.ts, one row per support number, so a number
+ * added or removed there needs no change here.
  */
 const CHANNELS: { labelKey: CopyKey; desc: string; icon: typeof Phone; url: string }[] = [
-  {
-    labelKey: 'support.callSupport',
-    desc: SUPPORT_PHONE_DISPLAY,
+  ...SUPPORT_PHONES.map((phone) => ({
+    labelKey: 'support.callSupport' as const,
+    desc: phone.display,
     icon: Phone,
-    url: `tel:${SUPPORT_PHONE}`,
-  },
+    url: `tel:${phone.e164}`,
+  })),
   {
     labelKey: 'support.emailUs',
     desc: SUPPORT_EMAIL,
@@ -122,7 +125,7 @@ export default function SupportScreen() {
         <View className="gap-3 mb-6">
           {CHANNELS.map((c) => (
             <TouchableOpacity
-              key={c.labelKey}
+              key={c.url}
               onPress={() => openChannel(c.url, t)}
               className="rounded-2xl p-4 border flex-row items-center"
               style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
