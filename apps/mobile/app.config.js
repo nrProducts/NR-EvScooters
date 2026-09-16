@@ -19,7 +19,7 @@ module.exports = {
       icon: './assets/images/icon.png',
     },
     android: {
-      package: 'com.nrproducts.evscooters',
+      package: 'in.swapngo.evscooters',
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
       /**
        * Permissions pulled in by dependencies that this app does not use.

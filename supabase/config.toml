@@ -260,8 +260,12 @@ enable_signup = true
 # We treat a successful OTP as proof of the number, so no separate confirm step.
 enable_confirmations = false
 # Supabase generates the {{ .Code }}; delivery is done by the send_sms hook
-# (MSG91), so this template is only the fallback message body.
-template = "{{ `{{ .Code }}` }} is your NR FleetHub verification code."
+# (MSG91), so this template is only the fallback message body. Kept
+# WORD-FOR-WORD in sync with the DLT-registered content template on Jio
+# TrueConnect — PE 1201178845643455514, header SWAPGO, DLT content template id
+# 1277178896545732925. MSG91 substitutes the {#number#} tag there with the same
+# code {{ .Code }} names here. If one changes, change both.
+template = "{{ `{{ .Code }}` }} is your OTP to log in to Swapngo Fleet Hub. Please do not share this OTP with anyone."
 # Controls the minimum amount of time that must pass before sending another sms otp.
 max_frequency = "30s"
 
@@ -285,16 +289,22 @@ max_frequency = "30s"
 # uri = "pg-functions://postgres/auth/before-user-created-hook"
 
 # Adds role/account_status claims to every JWT (see 20260720100600_auth.sql).
+# NOTE: this config.toml is linked to the OLD project (jeerugpvchfjlgssfoeb).
+# The live project (cndqvdskrcmivqflbttl, "Swapngo") all apps point to has its
+# own Auth Hooks configured directly in its Supabase Dashboard — this toggle
+# only affects `supabase start` local dev, not production. See
+# docs/final-system-audit/FIXES-APPLIED.md for the outstanding dashboard step.
 [auth.hook.custom_access_token]
-enabled = false
-# uri = "pg-functions://postgres/public/custom_access_token_hook"
+enabled = true
+uri = "pg-functions://postgres/public/custom_access_token_hook"
 
 # Delivers phone OTPs via MSG91 through the send-sms Edge Function. The secret
-# is generated once (supabase secrets) and shared with the function.
+# is generated once (supabase secrets) and shared with the function. Same
+# caveat as above: this only wires up local dev, not the live project.
 [auth.hook.send_sms]
-enabled = false
-# uri = "https://cndqvdskrcmivqflbttl.functions.supabase.co/send-sms"
-# secrets = "env(SEND_SMS_HOOK_SECRET)"
+enabled = true
+uri = "http://127.0.0.1:54321/functions/v1/send-sms"
+secrets = "env(SEND_SMS_HOOK_SECRET)"
 
 # Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
 [auth.sms.twilio]
