@@ -1,8 +1,9 @@
 import { Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
+import { validatedQuery } from "../../middleware/validate.middleware";
 import { NotificationTypeCode } from "../../types";
 import * as service from "./notification-settings.service";
-import type { UpdateNotificationSettingBody } from "./notification-settings.validation";
+import type { EmailLogQuery, UpdateNotificationSettingBody } from "./notification-settings.validation";
 
 /** GET /notification-settings — requireAdmin. Every event type with current config + recipients. */
 export async function listSettingsHandler(req: AuthedRequest, res: Response) {
@@ -22,4 +23,9 @@ export async function updateSettingHandler(req: AuthedRequest, res: Response) {
     const type = req.params.type as NotificationTypeCode;
     const body = req.body as UpdateNotificationSettingBody;
     res.json(await service.updateSetting(type, body, req.user!, req));
+}
+
+/** GET /notification-settings/email-log — requireAdmin. The mail grid: every email notify() has sent to staff/admins. */
+export async function listEmailLogHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.listEmailDeliveries(validatedQuery<EmailLogQuery>(req)));
 }

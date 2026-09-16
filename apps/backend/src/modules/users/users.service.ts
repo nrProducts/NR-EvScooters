@@ -20,6 +20,7 @@ import {
 } from "./users.photo.storage";
 import type { UploadedFile } from "../kyc/kyc.storage";
 import { businessToday } from "../../common/dates";
+import { previewOverdueLateFee } from "../rentals/overdueLateFee";
 
 /**
  * A user is five tables now.
@@ -243,6 +244,7 @@ export async function listUsers(
         outstandingByUser(userIds),
         openReturnByUser(userIds),
     ]);
+    const pendingLateFees = await pendingLateFeeByUser(userIds.filter((id) => !outstanding.get(id)));
 
     const items: UserListItem[] = rows.map((row) => {
         const planInfo = plans.get(row.id);
@@ -254,7 +256,7 @@ export async function listUsers(
             payment_status: planInfo?.payment_status ?? null,
             plan_started_at: planInfo?.plan_started_at ?? null,
             next_due_at: planInfo?.next_due_at ?? null,
-            outstanding_amount: outstanding.get(row.id) ?? 0,
+            outstanding_amount: outstanding.get(row.id) ?? pendingLateFees.get(row.id) ?? 0,
             open_return: openReturns.get(row.id) ?? null,
         };
     });
@@ -290,6 +292,7 @@ export async function getUserById(id: string, actor: AuthContext): Promise<UserD
         openReturnByUser([id]),
     ]);
     const planInfo = plans.get(id);
+    const pendingLateFee = outstanding.get(id) ? null : await pendingLateFeeByUser([id]);
 
     return {
         ...toProfile(row),
@@ -299,7 +302,7 @@ export async function getUserById(id: string, actor: AuthContext): Promise<UserD
         payment_status: planInfo?.payment_status ?? null,
         plan_started_at: planInfo?.plan_started_at ?? null,
         next_due_at: planInfo?.next_due_at ?? null,
-        outstanding_amount: outstanding.get(id) ?? 0,
+        outstanding_amount: outstanding.get(id) ?? pendingLateFee?.get(id) ?? 0,
         open_return: openReturns.get(id) ?? null,
         last_login_at: lastLoginAt,
         kyc_completion_percent: kycCompletionPercent(documents),
@@ -1577,6 +1580,39 @@ async function outstandingByUser(userIds: string[]): Promise<Map<string, number>
         const balance = Number(row.balance_amount);
         if (balance <= 0) continue;
         map.set(row.user_id, Math.round(((map.get(row.user_id) ?? 0) + balance) * 100) / 100);
+    }
+    return map;
+}
+
+/**
+ * The overdue late fee is minted into a real invoice lazily — only when the
+ * rider opens Return, or staff process one (ensureOverdueLateFeeInvoice) —
+ * so a subscription can sit `past_due` for days with genuine money owed and
+ * nothing in `v_invoice_balances` yet. Without this, the user grid showed
+ * "Past Due" next to an outstanding balance of ₹0, which reads as nothing
+ * being owed. This previews the fee live — the same computation the admin
+ * Returns list already uses via overdueLateFeeStatusFor — for whichever
+ * users outstandingByUser found no real invoice balance for. Once a real
+ * invoice exists its balance is the authoritative number, so this is only
+ * ever a fallback for users passed in here.
+ */
+async function pendingLateFeeByUser(userIds: string[]): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    if (userIds.length === 0) return map;
+
+    const { data, error } = await supabaseAdmin
+        .from("subscriptions")
+        .select("id, user_id")
+        .in("user_id", userIds)
+        .eq("status", "past_due");
+    if (error) throw error;
+    if (!data || data.length === 0) return map;
+
+    for (const row of data) {
+        const preview = await previewOverdueLateFee(row.id);
+        if (preview.isLate && preview.lateFee > 0) {
+            map.set(row.user_id, Math.round(((map.get(row.user_id) ?? 0) + preview.lateFee) * 100) / 100);
+        }
     }
     return map;
 }

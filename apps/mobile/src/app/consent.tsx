@@ -49,11 +49,6 @@ export default function ConsentScreen() {
     // hook would tie a re-consent prompt to a terms revision and vice versa.
     const [terms, setTerms] = useState<ApiLegalDocument | null>(null);
     const [agreedToTerms, setAgreedToTerms] = useState(false);
-    // The rider must OPEN the document before the agreement box will enable.
-    // "I have read" should not be a claim the app invites without ever having
-    // shown them anything — and this is the one screen where that claim is
-    // later relied on to collect money.
-    const [openedTerms, setOpenedTerms] = useState(false);
     const [termsError, setTermsError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -68,7 +63,6 @@ export default function ConsentScreen() {
                     // undo what they already did.
                     if (prev && prev.version !== doc.version) {
                         setAgreedToTerms(false);
-                        setOpenedTerms(false);
                     }
                     return doc;
                 });
@@ -145,7 +139,6 @@ export default function ConsentScreen() {
                 if (err instanceof ApiError && err.status === 409) {
                     api.termsDocument(docLang).then(setTerms).catch(() => {});
                     setAgreedToTerms(false);
-                    setOpenedTerms(false);
                 }
                 return;
             }
@@ -299,10 +292,7 @@ export default function ConsentScreen() {
                 style={{ borderColor: COLORS.border, backgroundColor: COLORS.card }}
             >
                 <TouchableOpacity
-                    onPress={() => {
-                        setOpenedTerms(true);
-                        router.push('/terms' as never);
-                    }}
+                    onPress={() => router.push('/terms' as never)}
                     accessibilityRole="link"
                     className="flex-row items-center mb-3"
                 >
@@ -317,19 +307,8 @@ export default function ConsentScreen() {
                     checked={agreedToTerms}
                     onToggle={() => setAgreedToTerms((v) => !v)}
                     text={t('terms.agree')}
-                    // Disabled until they have opened the document, and while
-                    // it has not loaded — never pre-checked.
-                    disabled={saving || !openedTerms || !terms}
+                    disabled={saving}
                 />
-
-                {!openedTerms ? (
-                    <Text
-                        style={{ color: COLORS.textSecondary }}
-                        className="text-[10px] font-semibold mt-2 ml-8"
-                    >
-                        {t('terms.openFirst')}
-                    </Text>
-                ) : null}
 
                 {terms ? (
                     <Text

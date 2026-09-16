@@ -159,7 +159,7 @@ export async function voidAbandonedRenewalInvoice(
 export async function hasOpenReturn(subscriptionId: string): Promise<boolean> {
     const { data, error } = await supabaseAdmin
         .from("rental_returns")
-        .select("id, rentals!inner(subscription_id)")
+        .select("rental_id, rentals!inner(subscription_id)")
         .eq("rentals.subscription_id", subscriptionId)
         .in("status", ["requested", "inspected"])
         .limit(1)
@@ -176,7 +176,7 @@ export async function hasOpenReturn(subscriptionId: string): Promise<boolean> {
 export async function hasOpenReturnForUser(userId: string): Promise<boolean> {
     const { data, error } = await supabaseAdmin
         .from("rental_returns")
-        .select("id, rentals!inner(user_id, status)")
+        .select("rental_id, rentals!inner(user_id, status)")
         .eq("rentals.user_id", userId)
         .eq("rentals.status", "active")
         .in("status", ["requested", "inspected"])

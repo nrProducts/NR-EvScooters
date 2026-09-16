@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { subscribeAdminChannel, unsubscribeAdminChannel, type RealtimeHandlers } from "@/lib/realtimeClient";
 import { useAuthStore } from "@/store/authStore";
@@ -45,6 +45,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const push = useToastStore((s) => s.push);
   const navigate = useNavigate();
+  const location = useLocation();
+  const pathnameRef = useRef(location.pathname);
+  pathnameRef.current = location.pathname;
   const [approval, setApproval] = useState<ApprovalRequest | null>(null);
   // The catalogue decides which notifications are tasks. Fetched, not
   // hard-coded — see the note where APPROVAL_TEMPLATES used to be. The
@@ -99,10 +102,16 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             push({ tone: "warning", title: "Booking Cancelled", message: "A booking was just cancelled." });
           } else if (next.status === "fulfilled") {
             push({ tone: "success", title: "Booking Completed", message: "A pickup was just completed." });
-          } else if (next.status === "confirmed") {
+          } else if (next.status === "confirmed" && !pathnameRef.current.startsWith("/bookings")) {
             // Payment just landed (payments.service.ts's applyInitialSuccess)
             // — this is the actual moment a pickup becomes something staff
             // can act on, so this is where the blocking popup belongs.
+            //
+            // Skipped when staff is already on /bookings: that's the common
+            // admin-created-booking flow (create booking, record offline
+            // payment, hand the scooter over in the same sitting) — the list
+            // there already refreshes from the invalidation above, so the
+            // popup only added an extra click on top of "Confirm handover".
             //
             // The embed changed shape: a booking reserves a PLAN, and the
             // plan is what names a vehicle model — `bookings.vehicle_model_id`

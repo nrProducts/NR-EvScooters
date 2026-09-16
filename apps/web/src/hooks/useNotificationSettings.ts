@@ -22,6 +22,14 @@ export function useNotificationTypeSummaries(enabled = true) {
   });
 }
 
+/** Admin-only: the "mail grid" — every email notify() has sent to staff/admins. */
+export function useEmailDeliveryLog(params: api.EmailLogParams) {
+  return useQuery({
+    queryKey: ["notification-email-log", params],
+    queryFn: () => api.fetchEmailDeliveryLog(params),
+  });
+}
+
 export function useUpdateNotificationSetting() {
   const qc = useQueryClient();
   return useMutation({

@@ -69,3 +69,27 @@ export interface NotificationTypeSummary {
     requires_action: boolean;
     action_path: string | null;
 }
+
+/** One row of the admin-facing "what mail actually went out" log. */
+export interface EmailDeliveryLogEntry {
+    id: string;
+    notification_type: NotificationTypeCode;
+    /** The catalogue label, e.g. "Refund needs approval" — falls back to the code if the type was since removed. */
+    label: string;
+    title: string;
+    body: string;
+    status: "pending" | "sent" | "failed";
+    provider: string | null;
+    provider_ref: string | null;
+    error: string | null;
+    sent_at: string | null;
+    created_at: string;
+    recipient: { id: string; full_name: string; email: string | null } | null;
+}
+
+export interface EmailLogFilters {
+    page: number;
+    pageSize: number;
+    notificationType?: string;
+    status?: "pending" | "sent" | "failed";
+}

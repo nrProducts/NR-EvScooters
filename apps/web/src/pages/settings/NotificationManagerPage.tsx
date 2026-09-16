@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
+import { ArrowLeft, Mail } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -65,9 +65,16 @@ export default function NotificationManagerPage() {
 
   return (
     <div className="space-y-3 animate-fade-in">
-      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
-        <ArrowLeft className="h-4 w-4" />
-      </Button>
+      <div className="flex items-center justify-between gap-2">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/notifications">
+            <Mail className="h-3.5 w-3.5" /> View email delivery log
+          </Link>
+        </Button>
+      </div>
 
       {recipientOptions.length === 0 && (
         <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
@@ -213,3 +220,4 @@ function NotificationTypeCard({
     </Card>
   );
 }
+

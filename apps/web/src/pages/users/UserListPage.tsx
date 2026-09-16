@@ -32,7 +32,7 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
-import { initials, formatDate, formatCurrency } from "@/lib/utils";
+import { initials, formatDate } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "pending", "partially_verified", "verified", "rejected"];
@@ -227,13 +227,6 @@ export default function UserListPage() {
         </span>
       ) : "—"),
       hideOnMobile: true,
-    },
-    {
-      header: "Outstanding",
-      key: "outstanding_amount",
-      render: (u) => (u.outstanding_amount > 0
-        ? <span className="font-semibold text-destructive">{formatCurrency(u.outstanding_amount)}</span>
-        : <span className="text-muted-foreground">₹0</span>),
     },
     { header: "Joined", key: "created_at", sortKey: "created_at", render: (u) => formatDate(u.created_at), hideOnMobile: true },
     {

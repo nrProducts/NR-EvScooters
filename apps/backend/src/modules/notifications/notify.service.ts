@@ -297,7 +297,7 @@ async function sendEmail(
             ctaUrl: `${env.adminAppUrl}${ctx.screen ?? ""}`,
         });
         const sent = await getResend().emails.send({
-            from: env.emailFrom, to: recipient.email, subject: ctx.title, html,
+            from: env.adminNotificationEmailFrom, to: recipient.email, subject: `SwapNgo — ${ctx.title}`, html,
         });
         await supabaseAdmin
             .from("notification_deliveries")
