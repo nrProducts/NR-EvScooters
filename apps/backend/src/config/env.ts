@@ -164,7 +164,7 @@ export const env = {
     // needs it throws a clear error at call time — see config/resend.ts.
     emailProvider: process.env.EMAIL_PROVIDER ?? "resend",
     resendApiKey: process.env.RESEND_API_KEY ?? "",
-    emailFrom: process.env.EMAIL_FROM ?? "",
+    emailFrom: process.env.ADMIN_NOTIFICATION_EMAIL_FROM ?? "",
     /**
      * From-address for the staff/admin "needs your action" emails
      * (notify.service.ts's sendEmail — KYC review, refund approval, booking
