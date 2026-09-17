@@ -7,9 +7,13 @@ export const CONTACT_ADDRESS = "No. 5/61, Pillaiyar Kovil Street, Medavakkam, Ch
 /** Real and DB-backed: the initial battery-swap network is Chennai-only. */
 export const SERVICE_CITY = "Chennai";
 
-/** The support number — shown in the header's top bar, the Contact section, and the footer. */
+/**
+ * The support numbers — shown in the header's top bar, the Contact section,
+ * and the footer. Same numbers as the rider apps (apps/mobile/src/constants/support.ts).
+ */
 export const CONTACT_PHONES: { display: string; href: string }[] = [
   { display: "+91 96009 99046", href: "tel:+919600999046" },
+  { display: "+91 96009 99047", href: "tel:+919600999047" },
 ];
 
 /** WhatsApp is still a placeholder — "#" so it's obviously a stand-in rather than a link that looks real but goes nowhere useful. */

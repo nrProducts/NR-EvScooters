@@ -10,6 +10,8 @@ import { pullToRefresh } from '../components/ui/PullToRefresh';
 import { useMyNotifications } from '../hooks/useNotifications';
 import { COLORS } from '../constants/theme';
 import { formatDate } from '../constants/status';
+import { resolveNotificationRoute } from '../lib/notificationRoute';
+import { notify } from '../lib/confirm';
 import type { ApiNotification } from '../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '../i18n';
@@ -42,7 +44,19 @@ export default function NotificationsScreen() {
 
   const openNotification = async (n: ApiNotification) => {
     if (!n.read_at) await markRead(n.id);
-    if (n.payload?.screen) router.push(`/${n.payload.screen}` as never);
+    if (!n.payload?.screen) return;
+    // Resolved rather than pushed as-is — see lib/notificationRoute.ts for
+    // how stored screens drifted out of step with this app's routes.
+    const href = resolveNotificationRoute(n.payload.screen);
+    if (!href) {
+      notify(t('notifications.unavailable.title'), t('notifications.unavailable.message'));
+      return;
+    }
+    try {
+      router.push(href as never);
+    } catch {
+      notify(t('notifications.unavailable.title'), t('notifications.unavailable.message'));
+    }
   };
 
   return (
@@ -103,7 +117,7 @@ export default function NotificationsScreen() {
                     {formatDate(item.created_at)}
                   </Text>
                 </View>
-                {item.payload?.screen ? <ChevronRight size={16} color={COLORS.textSecondary} /> : null}
+                {resolveNotificationRoute(item.payload?.screen) ? <ChevronRight size={16} color={COLORS.textSecondary} /> : null}
               </TouchableOpacity>
             );
           }}

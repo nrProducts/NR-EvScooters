@@ -68,7 +68,6 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
             contact: profile?.phone ?? undefined,
             name: profile?.full_name,
           },
-          theme: { color: COLORS.primary },
         });
         await billingRepository.verifyPayment(verifyPayload);
       }

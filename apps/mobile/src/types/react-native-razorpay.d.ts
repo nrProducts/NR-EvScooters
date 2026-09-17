@@ -14,7 +14,14 @@ declare module 'react-native-razorpay' {
         description?: string;
         image?: string;
         prefill?: { email?: string; contact?: string; name?: string };
-        theme?: { color?: string };
+        theme?: { color?: string; backdrop_color?: string };
+        modal?: {
+            /** Ask the rider before the sheet is closed. */
+            confirm_close?: boolean;
+            animation?: boolean;
+        };
+        /** Android: include the app hash in OTP SMS so the OTP auto-fills. */
+        send_sms_hash?: boolean;
         notes?: Record<string, string>;
         /**
          * Payment-method display config. Reorders and groups what the sheet

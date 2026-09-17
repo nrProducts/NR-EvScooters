@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import RazorpayCheckout, { RazorpayCheckoutOptions, RazorpaySuccessResponse } from 'react-native-razorpay';
 import type { VerifyPaymentPayload } from '../types/api';
 import { BRAND_LOGO_DATA_URI } from './brandLogo';
+import { COLORS } from '../constants/theme';
 
 export class PaymentCancelledError extends Error {
     constructor() {
@@ -43,6 +44,44 @@ export class PaymentUnavailableError extends Error {
  */
 
 /**
+ * Checkout's accent colour. Razorpay paints its header and Pay button with
+ * it and puts white text on top, so it must be dark enough to read: the
+ * bright brand green (#21C45D) gives white text ~2.3:1 contrast, which is
+ * what made the sheet's header look washed out. The dark brand green is
+ * ~4.4:1 and still reads as Swapngo.
+ */
+const CHECKOUT_THEME_COLOR = COLORS.primaryDark;
+
+/**
+ * The rider's phone as Razorpay wants it, or undefined.
+ *
+ * `users.phone` is not uniformly E.164 — OTP sign-ups store "+91XXXXXXXXXX",
+ * older rows a bare 10-digit number, Google sign-ups nothing — and Checkout
+ * opens on a "Contact details" form whenever the prefill is missing or does
+ * not parse, putting a form in front of the payment the rider came to make.
+ */
+export function normalizeCheckoutContact(phone: string | null | undefined): string | undefined {
+    if (!phone) return undefined;
+    const digits = phone.replace(/[^\d+]/g, '');
+    if (/^\+\d{10,15}$/.test(digits)) return digits;
+    if (/^\d{10}$/.test(digits)) return `+91${digits}`;
+    if (/^91\d{10}$/.test(digits)) return `+${digits}`;
+    return undefined;
+}
+
+/** Drops blank prefill values — an empty string is shown as an empty field, not skipped. */
+function cleanPrefill(prefill: RazorpayCheckoutOptions['prefill']): RazorpayCheckoutOptions['prefill'] {
+    if (!prefill) return undefined;
+    const email = prefill.email?.trim();
+    const name = prefill.name?.trim();
+    return {
+        ...(email ? { email } : {}),
+        ...(name ? { name } : {}),
+        ...(normalizeCheckoutContact(prefill.contact) ? { contact: normalizeCheckoutContact(prefill.contact) } : {}),
+    };
+}
+
+/**
  * Opens Razorpay's native checkout sheet and returns the verify-callback
  * payload on success. Never resolves with a "failed" state — a decline,
  * cancel, or the native module being absent (e.g. a dev-client build that
@@ -71,7 +110,19 @@ export async function openRazorpayCheckout(options: RazorpayCheckoutOptions): Pr
             // needs an activated account, and this works today. Same artwork
             // either way, so they cannot disagree. See lib/brandLogo.ts.
             image: BRAND_LOGO_DATA_URI,
+            // Styling is decided here, not per call site, for the same reason
+            // as `name`: six flows open this sheet and it must look the same
+            // from all of them.
+            theme: { color: CHECKOUT_THEME_COLOR },
+            modal: {
+                // A stray back-press otherwise closes the sheet mid-payment
+                // with no warning; this asks first.
+                confirm_close: true,
+            },
+            // Android: lets the card-OTP step read the SMS itself.
+            send_sms_hash: true,
             ...options,
+            prefill: cleanPrefill(options.prefill),
         });
     } catch (err) {
         const e = err as { code?: number; description?: string } | undefined;

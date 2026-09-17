@@ -1097,7 +1097,7 @@ export async function assignVehicleToUser(
         template: "vehicle_assigned",
         title: "Scooter Assigned to You",
         body: "Staff has handed you a scooter. Enjoy your ride!",
-        screen: "post-booking-dashboard",
+        screen: "my-scooter",
     });
 
     await notify({

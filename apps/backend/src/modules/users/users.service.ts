@@ -665,6 +665,25 @@ export async function updateUser(
         });
     }
 
+    // The phone is a login credential too, and drifts the same way. Supabase
+    // resolves a phone-OTP sign-in against auth.users.phone — never
+    // public.users.phone — so a number written only to our table is invisible
+    // to Auth. A rider who signed up with Google and typed their number into
+    // the onboarding form then got a SECOND, empty account on their next OTP
+    // login instead of being signed into the one holding their KYC.
+    // phone_confirm matches the admin-created paths above: the rider is
+    // already authenticated, and possession is proven by the OTP they must
+    // pass to sign in with it later.
+    if (typeof incoming.phone === "string" && incoming.phone !== before.phone) {
+        const { error } = await supabaseAdmin.auth.admin.updateUserById(id, {
+            phone: incoming.phone as string,
+            phone_confirm: true,
+        });
+        if (error) throw conflict("This phone number is already registered.", {
+            phone: "This phone number is already registered.",
+        });
+    }
+
     // Split the flat patch back across the tables it now spans.
     const touchesAddress = ADDRESS_FIELDS.some((f) => f in incoming);
     const touchesContact = CONTACT_FIELDS.some((f) => f in incoming);

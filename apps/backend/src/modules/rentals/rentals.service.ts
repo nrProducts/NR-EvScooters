@@ -480,7 +480,7 @@ export async function payMyOverdueLateFee(userId: string): Promise<OverdueLateFe
     return ensureOverdueLateFeeInvoice(await getMyActiveSubscriptionId(userId), userId);
 }
 
-/** The rider's own currently-active rental — what post-booking-dashboard renders. */
+/** The rider's own currently-active rental — what the mobile My Scooter tab renders. */
 export async function getMyCurrentRental(userId: string): Promise<RentalView> {
     const { data, error } = await supabaseAdmin
         .from("rentals")
@@ -646,7 +646,7 @@ export async function requestReturn(
         title: "Return Requested",
         body: `Hand your scooter in by ${dueAt.toLocaleDateString()} 11:59 PM. Our team will confirm the handover.`
             + (late_fee_per_day > 0 ? ` A late fee of ₹${late_fee_per_day} per day applies after that.` : ""),
-        screen: "post-booking-dashboard",
+        screen: "my-scooter",
     });
 
     const assignments = (Array.isArray(existing.rental_vehicle_assignments)
@@ -1133,7 +1133,7 @@ export async function rejectReturn(
             template: "rental_return_rejected",
             title: "Return Request Declined",
             body: `Our team couldn't accept your return request: ${input.reason}. Your ride is still active — you can request a return again anytime.`,
-            screen: "post-booking-dashboard",
+            screen: "my-scooter",
         });
     }
 

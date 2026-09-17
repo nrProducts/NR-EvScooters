@@ -16,6 +16,7 @@ import { userRepository } from "../services";
 import { DialogHost } from "../components/ui/DialogHost";
 import { NotificationToastHost } from "../components/NotificationToastHost";
 import { registerForPushNotificationsAsync } from "../lib/pushNotifications";
+import { resolveNotificationRoute } from "../lib/notificationRoute";
 import { missingEnvVars } from "../constants/env";
 import { COLORS } from "../constants/theme";
 import { SplashAnimation } from "../components/SplashAnimation";
@@ -51,6 +52,9 @@ const RIDER_ROUTES = [
   // handled by its own gate below, ahead of onboarding, and does not rely on
   // this list.
   "language",
+  // +not-found.tsx — any URL that matches no route. Allowed so the rider sees
+  // its "page not found" message and a way home, rather than a silent jump.
+  "+not-found",
 ];
 // Screens reachable while signed OUT (the login surface).
 const AUTH_ROUTES = ["index", "otp-verify", "auth-callback"];
@@ -234,8 +238,15 @@ export default function RootLayout() {
     if (!navigationState?.key) return;
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const screen = response.notification.request.content.data?.screen;
-      console.log("[push] notification tapped:", response.notification.request.content.title, "-> screen:", screen);
-      router.push(`/${typeof screen === "string" ? screen : "notifications"}` as never);
+      // Unknown or missing screens open the notification list instead — see
+      // lib/notificationRoute.ts for why a stored screen can't be trusted.
+      const href = resolveNotificationRoute(screen) ?? "/notifications";
+      console.log("[push] notification tapped:", response.notification.request.content.title, "-> screen:", screen, "->", href);
+      try {
+        router.push(href as never);
+      } catch (err) {
+        console.warn("[push] tap navigation failed:", href, err);
+      }
     });
     return () => sub.remove();
   }, [router, navigationState?.key]);

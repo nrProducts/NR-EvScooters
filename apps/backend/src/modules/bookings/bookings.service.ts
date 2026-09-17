@@ -1822,7 +1822,7 @@ export async function confirmPickup(
         template: "pickup_confirmed",
         title: "Scooter Picked Up",
         body: `Enjoy your ride! Your rental is now active until ${context.nextDueAt}.`,
-        screen: "post-booking-dashboard",
+        screen: "my-scooter",
     });
 
     const { data: refreshed, error: refreshError } = await supabaseAdmin

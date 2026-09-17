@@ -1112,7 +1112,7 @@ export class MockRentalRepository implements RentalRepository {
             template: 'rental_return_requested',
             title: 'Return Requested',
             body: 'Hand your scooter in by 11:59 PM today. Our team will confirm the handover.',
-            screen: 'post-booking-dashboard',
+            screen: 'my-scooter',
         });
         audit('rental.return_requested', actor.id, { return_reason: payload.reason, rating: payload.rating });
 

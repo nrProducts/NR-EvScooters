@@ -180,7 +180,7 @@ Deno.serve(async (_req) => {
             subjectId: subscription.id,
             title: "Vehicle Available Again",
             body: "Your vehicle has been assigned back to you and your rental plan has resumed.",
-            screen: "my-plan",
+            screen: "billing",
         });
     }
 

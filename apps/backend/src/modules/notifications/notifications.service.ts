@@ -105,7 +105,9 @@ function toNotificationRow(row: RawMessageRow): NotificationRow {
 export async function deliverPush(
     deliveryId: string,
     userId: string,
-    input: Pick<NotifyInput, "title" | "body" | "screen" | "template">,
+    // `screen` is a plain string here, not RiderAppScreen: notify.service.ts's
+    // staff fan-out delivers through this too, with admin-console paths.
+    input: Pick<NotifyInput, "title" | "body" | "template"> & { screen?: string },
 ): Promise<void> {
     const { data: devices, error: deviceError } = await supabaseAdmin
         .from("user_devices")

@@ -115,7 +115,6 @@ export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => 
           contact: profile?.phone ?? undefined,
           name: profile?.full_name,
         },
-        theme: { color: COLORS.primary },
       });
       await billingRepository.verifyPayment(verifyPayload);
       // onPaid() (loadSettlement) alone only refreshes this card's own data.

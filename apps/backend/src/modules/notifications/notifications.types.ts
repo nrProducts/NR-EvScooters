@@ -57,6 +57,22 @@ export interface NotificationRow {
     rider_id: string | null;
 }
 
+/**
+ * The mobile app screens a rider notification may open on tap — each one a
+ * real route under apps/mobile/src/app.
+ *
+ * Narrowed from `string` because a free-text screen drifted out of sync with
+ * the app: "payments" never existed there, and "post-booking-dashboard" was
+ * deleted, yet both kept being sent, so tapping those notifications landed
+ * riders on expo-router's "Unmatched Route" page. The mobile side resolves
+ * every value through an allowlist (lib/notificationRoute.ts) as well, so
+ * already-stored notifications and admin broadcasts cannot break it either —
+ * keep the two lists in step when a screen is added or removed.
+ */
+export type RiderAppScreen =
+    | "home" | "my-scooter" | "billing" | "support" | "kyc" | "notifications"
+    | "booking-history" | "battery-stations" | "profile" | "privacy";
+
 export interface NotifyInput {
     /**
      * The `notification_types.code` this notification carries. Narrowed from
@@ -67,7 +83,7 @@ export interface NotifyInput {
     template: EmittedNotificationCode;
     title: string;
     body: string;
-    screen?: string;
+    screen?: RiderAppScreen;
     /**
      * Overrides `template` as the code written to `notification_type_code`.
      * Nothing passes it today — `template` already IS the code — but the

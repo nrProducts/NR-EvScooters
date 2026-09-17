@@ -7,21 +7,22 @@ import { useReturnLock } from '../ReturnLockSheet';
 import { useT, type CopyKey } from '../../i18n';
 
 /**
- * The three everyday shortcuts under the hero: find a scooter, see bookings,
- * check the plan. A light equal-width row — the bottom tab bar stays the
- * primary nav; this is just quick reach.
+ * The three everyday shortcuts under the hero: find a swap station, see
+ * bookings, check the plan. A light equal-width row — the bottom tab bar stays
+ * the primary nav; this is just quick reach.
  *
  * `lockedWhileReturning` is what each does once a return is in flight:
  *
- *   · Nearby scooters — LOCKED. It opens the booking flow, and createBooking
- *     refuses while the rider still holds a scooter (the rental stays active
- *     right through a return), so this could only ever end in a rejection.
+ *   · Nearby stations — open. It replaced "Nearby scooters", which only
+ *     re-offered the booking flow Home's own hero card already offers; where
+ *     to swap a battery is what a rider out on a scooter actually needs, and
+ *     that includes a rider riding back to return it.
  *   · My plan — LOCKED. Renewing is off the table; the plan cannot change.
  *   · My bookings — open. A read-only record of past bookings changes
  *     nothing, and a rider mid-return has every reason to look at it.
  */
 const ITEMS: { icon: LucideIcon; labelKey: CopyKey; route: string; lockedWhileReturning: boolean }[] = [
-  { icon: MapPin, labelKey: 'quickLinks.nearbyScooters', route: '/browse-vehicles', lockedWhileReturning: true },
+  { icon: MapPin, labelKey: 'quickLinks.nearbyStations', route: '/battery-stations', lockedWhileReturning: false },
   { icon: CalendarDays, labelKey: 'quickLinks.myBookings', route: '/booking-history', lockedWhileReturning: false },
   { icon: Zap, labelKey: 'quickLinks.myPlan', route: '/my-plan', lockedWhileReturning: true },
 ];

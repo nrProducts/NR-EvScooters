@@ -1373,7 +1373,7 @@ async function applyPaymentFailure(gatewayOrderId: string, reason: string): Prom
         template: "payment_failed",
         title: "Payment Failed",
         body: `Your payment could not be completed: ${reason}`,
-        screen: "payments",
+        screen: "billing",
     });
 
     await notify({
@@ -1653,7 +1653,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
 
     await notifyUser(order.user_id, {
         template: "payment_success", title: paymentSuccessCopy.title,
-        body: paymentSuccessCopy.body, screen: "payments",
+        body: paymentSuccessCopy.body, screen: "billing",
     });
 
     await notify({
@@ -1788,7 +1788,7 @@ async function materializeBookingFromOrder(
         template: "payment_success",
         title: "Payment Successful",
         body: "Payment successful. Your rental is active.",
-        screen: "payments",
+        screen: "billing",
     });
     await notify({
         notificationType: "payment_success",
@@ -1838,7 +1838,7 @@ async function handleUnfulfillableBooking(
         template: "payment_failed",
         title: "Booking Could Not Be Completed",
         body: "Your payment went through, but you already have an active booking or rental. Our team will refund this payment shortly.",
-        screen: "payments",
+        screen: "billing",
     });
     await notify({
         notificationType: "payment_failed",

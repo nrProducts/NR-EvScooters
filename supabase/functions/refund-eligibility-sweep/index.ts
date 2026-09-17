@@ -140,7 +140,7 @@ Deno.serve(async (_req) => {
             subjectId: refund.id,
             title: "Refund Initiated",
             body: `Your security deposit refund of ₹${amount} has been initiated.`,
-            screen: "my-plan",
+            screen: "billing",
             payload: { deposit_id: deposit.id, subscription_id: deposit.subscription_id },
         });
     }

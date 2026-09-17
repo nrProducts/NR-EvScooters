@@ -1,8 +1,21 @@
 /**
- * Placeholder contact details — not real yet. Centralized here so swapping
- * in the actual support phone/email later is a one-file change instead of
- * hunting through screens for hardcoded strings.
+ * Swapngo's rider support contact details — the one place they are set.
+ *
+ * Every screen that shows a way to reach support reads from here, so adding,
+ * removing or changing a number or the email is a one-file change. Mirrored
+ * in apps/web/src/rider/constants/support.ts (a separate bundle, so it cannot
+ * import this file) and apps/website/src/content/contact.ts.
  */
-export const SUPPORT_PHONE = '+18005550199';
-export const SUPPORT_PHONE_DISPLAY = '+1 (800) 555-0199';
-export const SUPPORT_EMAIL = 'support@nrfleethub.com';
+export interface SupportPhone {
+    /** Dialable, E.164 — used in the tel: link. */
+    e164: string;
+    /** How the number is printed on screen. */
+    display: string;
+}
+
+export const SUPPORT_EMAIL = 'support@swapngo.in';
+
+export const SUPPORT_PHONES: readonly SupportPhone[] = [
+    { e164: '+919600999046', display: '+91 96009 99046' },
+    { e164: '+919600999047', display: '+91 96009 99047' },
+];

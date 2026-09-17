@@ -394,7 +394,7 @@ export const en = {
     'hero.rentalCompleted.cta': 'Book a Scooter',
 
     // --- Home quick links -------------------------------------------------
-    'quickLinks.nearbyScooters': 'Nearby scooters',
+    'quickLinks.nearbyStations': 'Nearby stations',
     'quickLinks.myBookings': 'My bookings',
     'quickLinks.myPlan': 'My plan',
     'quickLinks.lockedHint': 'Unavailable while your return is being completed',
@@ -457,6 +457,11 @@ export const en = {
     // notification are composed by the backend and are NOT translated here —
     // see the note in src/app/notifications.tsx.
     'notifications.fallbackTitle': 'Notification',
+    'notifications.unavailable.title': 'Nothing to open',
+    'notifications.unavailable.message': "This notification isn't linked to a screen anymore. It may be about something that's already been taken care of.",
+    'notFound.title': 'Page not found',
+    'notFound.message': "The page you were looking for isn't available. It may have moved or no longer exists.",
+    'notFound.goHome': 'Go to Home',
 
     // --- booking history --------------------------------------------------
     'bookingHistory.title': 'Booking History',

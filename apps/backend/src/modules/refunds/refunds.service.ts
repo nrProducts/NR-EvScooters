@@ -328,7 +328,7 @@ export async function initiateRefund(depositId: string, actor: AuthContext | nul
         template: "refund_initiated",
         title: "Refund Initiated",
         body: `Your security deposit refund of ₹${amount} has been initiated.`,
-        screen: "my-plan",
+        screen: "billing",
     });
 
     await notify({
@@ -502,7 +502,7 @@ export async function rejectRefund(
         template: "refund_rejected",
         title: "Refund Not Approved",
         body: `Your refund request was reviewed and not approved: ${reason}. Contact support if you have questions.`,
-        screen: refund.reason === "booking_cancellation" ? "booking-history" : "my-plan",
+        screen: refund.reason === "booking_cancellation" ? "booking-history" : "billing",
     });
 
     const after = await readRefund(refundId);
@@ -599,7 +599,7 @@ export async function processRefund(
             body: refund.reason === "booking_cancellation"
                 ? `Your refund of ₹${Number(refund.amount)} for the cancelled booking has been processed.`
                 : `Your refund of ₹${Number(refund.amount)} has been processed.`,
-            screen: refund.reason === "booking_cancellation" ? "booking-history" : "my-plan",
+            screen: refund.reason === "booking_cancellation" ? "booking-history" : "billing",
         });
 
         const after = await readRefund(refundId);
@@ -683,7 +683,7 @@ export async function processRefund(
             body: refund.reason === "booking_cancellation"
                 ? `Your refund of ₹${Number(refund.amount)} for the cancelled booking has been completed.`
                 : "Your security deposit refund has been completed.",
-            screen: refund.reason === "booking_cancellation" ? "booking-history" : "my-plan",
+            screen: refund.reason === "booking_cancellation" ? "booking-history" : "billing",
         });
 
         const after = await readRefund(refundId);
@@ -802,7 +802,7 @@ async function simulateRefundPayout(
         body: refund.reason === "booking_cancellation"
             ? `Your refund of ₹${amount} for the cancelled booking has been completed.`
             : `Your refund of ₹${amount} has been completed.`,
-        screen: refund.reason === "booking_cancellation" ? "booking-history" : "my-plan",
+        screen: refund.reason === "booking_cancellation" ? "booking-history" : "billing",
     });
 
     const after = await readRefund(refundId);
