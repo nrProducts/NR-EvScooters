@@ -58,7 +58,17 @@ export function Pricing() {
                 </span>
               </div>
               <p className="mt-2 text-sm text-muted-foreground">
-                {formatCurrency(plan.depositAmount)} refundable security deposit
+                {plan.onboardingChargeAmount > 0 ? (
+                  <>
+                    {formatCurrency(plan.onboardingChargeAmount + plan.depositAmount)} due up front —{" "}
+                    {formatCurrency(plan.onboardingChargeAmount)} one-time onboarding charge (non-refundable) +{" "}
+                    {formatCurrency(plan.depositAmount)} refundable security deposit
+                    {plan.minRentalDaysForRefund > 0
+                      && `, refundable after ${plan.minRentalDaysForRefund} rental days`}
+                  </>
+                ) : (
+                  <>{formatCurrency(plan.depositAmount)} refundable security deposit</>
+                )}
               </p>
 
               <ul className="mt-7 space-y-3.5">

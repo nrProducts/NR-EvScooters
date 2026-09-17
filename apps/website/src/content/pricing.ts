@@ -10,7 +10,12 @@ export interface RentalPlan {
   billingCycle: "daily" | "weekly" | "monthly" | "yearly";
   price: number;
   durationDays: number;
+  /** The REFUNDABLE part of what is collected up front. */
   depositAmount: number;
+  /** One-time non-refundable charge taken with the first payment. 0 = none. */
+  onboardingChargeAmount: number;
+  /** Rental days before the deposit becomes refundable. 0 = no minimum. */
+  minRentalDaysForRefund: number;
   vehicleModelId: string;
   highlights: string[];
 }
@@ -21,7 +26,9 @@ export const ACTIVE_PLANS: RentalPlan[] = [
     billingCycle: "weekly",
     price: 1800,
     durationDays: 7,
-    depositAmount: 2000,
+    depositAmount: 1500,
+    onboardingChargeAmount: 500,
+    minRentalDaysForRefund: 45,
     vehicleModelId: "mvs7",
     highlights: [
       "Unlimited riding for 7 days",

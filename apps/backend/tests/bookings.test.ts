@@ -141,6 +141,10 @@ describe("toBookingView", () => {
             plan: {
                 id: "p-1", name: "NR Volt X1 — Daily", billing_cycle: "daily",
                 price: 149, duration_days: 1, deposit_amount: 2000,
+                // 0, not 500: this fixture's raw row carries no
+                // onboarding_charge_snapshot, which is exactly the shape of
+                // every booking taken before the split.
+                onboarding_charge_amount: 0,
             },
             vehicle: null,
             referral_discount_amount: null,

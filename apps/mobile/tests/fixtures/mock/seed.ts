@@ -452,19 +452,19 @@ const NR_VOLT_X1_DETAIL: ApiVehicleModelDetail = {
     plans: [
         {
             id: 'plan-daily', name: 'NR Volt X1 â€” Daily', billing_cycle: 'daily', price: 149,
-            included_minutes: 120, duration_days: 1, deposit_amount: 2000,
+            included_minutes: 120, duration_days: 1, deposit_amount: 1500, onboarding_charge_amount: 500, min_rental_days_for_refund: 45,
         },
         {
             id: 'plan-weekly', name: 'NR Volt X1 â€” Weekly', billing_cycle: 'weekly', price: 799,
-            included_minutes: 900, duration_days: 7, deposit_amount: 2000,
+            included_minutes: 900, duration_days: 7, deposit_amount: 1500, onboarding_charge_amount: 500, min_rental_days_for_refund: 45,
         },
         {
             id: 'plan-monthly', name: 'NR Volt X1 â€” Monthly', billing_cycle: 'monthly', price: 2499,
-            included_minutes: 4000, duration_days: 30, deposit_amount: 2000,
+            included_minutes: 4000, duration_days: 30, deposit_amount: 1500, onboarding_charge_amount: 500, min_rental_days_for_refund: 45,
         },
         {
             id: 'plan-yearly', name: 'NR Volt X1 â€” Yearly', billing_cycle: 'yearly', price: 24999,
-            included_minutes: null, duration_days: 365, deposit_amount: 2000,
+            included_minutes: null, duration_days: 365, deposit_amount: 1500, onboarding_charge_amount: 500, min_rental_days_for_refund: 45,
         },
     ],
     availability: { available_count: 4, status: 'available' },

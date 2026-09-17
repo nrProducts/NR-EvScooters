@@ -17,6 +17,7 @@ import {
   Eye,
   FileLock2,
   Undo2,
+  PiggyBank,
   Receipt,
   Boxes,
   UserRound,
@@ -167,6 +168,12 @@ export const NAV_ITEMS: NavItem[] = [
   // match: `refunds.view` opens the section, `refunds.approve` moves money.
   {
     label: "Refunds", path: "/refunds", icon: Undo2, roles: ["admin", "staff"], moduleKey: "refunds", group: "finance",
+  },
+  // Read-only: what is held, and why each deposit is or is not refundable yet.
+  // The money itself still moves through Refunds, so this shares its module
+  // key rather than inventing a permission that gates nothing extra.
+  {
+    label: "Deposits", path: "/deposits", icon: PiggyBank, roles: ["admin", "staff"], moduleKey: "refunds", group: "finance",
   },
   // Configurable charge rules (transaction fee, etc.) and their materialized
   // rider charges — see 20260817100000_billing_charge_engine.sql.

@@ -39,6 +39,8 @@ interface ApiPlan {
   price: number;
   duration_days: number;
   deposit_amount: number;
+  onboarding_charge_amount: number;
+  min_rental_days_for_refund: number;
   vehicle_model_id: string | null;
 }
 
@@ -61,6 +63,8 @@ function mergePlanCopy(p: ApiPlan): RentalPlan {
     price: p.price,
     durationDays: p.duration_days,
     depositAmount: p.deposit_amount,
+    onboardingChargeAmount: p.onboarding_charge_amount,
+    minRentalDaysForRefund: p.min_rental_days_for_refund,
     vehicleModelId: p.vehicle_model_id ?? copy?.vehicleModelId ?? "",
     highlights: copy?.highlights ?? [],
   };

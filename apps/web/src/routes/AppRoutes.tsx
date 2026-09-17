@@ -22,6 +22,7 @@ import SupportTicketsPage from "@/pages/support/SupportTicketsPage";
 import PaymentsPage from "@/pages/payments/PaymentsPage";
 import DamagesPage from "@/pages/damages/DamagesPage";
 import RefundsPage from "@/pages/refunds/RefundsPage";
+import DepositsPage from "@/pages/deposits/DepositsPage";
 import BillingPage from "@/pages/billing/BillingPage";
 import PlansPage from "@/pages/plans/PlansPage";
 import ReconciliationPage from "@/pages/reconciliation/ReconciliationPage";
@@ -112,6 +113,7 @@ export function AppRoutes() {
         <Route path="/payments" element={<PaymentsPage />} />
         <Route path="/damages" element={<DamagesPage />} />
         <Route path="/refunds" element={<RefundsPage />} />
+        <Route path="/deposits" element={<DepositsPage />} />
         <Route path="/billing" element={<BillingPage />} />
         <Route path="/plans" element={<PlansPage />} />
         <Route path="/reconciliation" element={<ReconciliationPage />} />

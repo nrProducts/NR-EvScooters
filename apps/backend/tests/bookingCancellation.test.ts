@@ -99,6 +99,45 @@ describe("computeCancellationCharge — edge cases", () => {
     });
 });
 
+describe("computeCancellationCharge — the non-refundable onboarding charge", () => {
+    const now = new Date("2026-08-29T12:00:00Z");
+
+    it("keeps the onboarding charge in full and never refunds it", () => {
+        // Rider paid 1899 plan + 500 onboarding + 1500 deposit. planPaid is
+        // what is left after both are held out, so the tier percentage is
+        // charged on the plan alone.
+        const c = computeCancellationCharge({
+            planPaid: 1899, depositAmount: 1500, onboardingCharge: 500,
+            createdAt: createdMinutesAgo(10, now), now,
+        });
+        expect(c.penaltyPercent).toBe(25);
+        expect(c.penaltyAmount).toBe(474.75);
+        expect(c.onboardingKept).toBe(500);
+        expect(c.depositRefund).toBe(1500);
+        // (1899 − 474.75) + 1500. The 500 is absent from the refund entirely.
+        expect(c.refundAmount).toBe(2924.25);
+    });
+
+    it("does not charge the tier penalty on the onboarding charge as well as keeping it", () => {
+        const withCharge = computeCancellationCharge({
+            planPaid: 1000, depositAmount: 1500, onboardingCharge: 500,
+            createdAt: createdMinutesAgo(10, now), now,
+        });
+        // Penalty is 25% of 1000, not of 1500 — keeping it AND penalising it
+        // would take the rider twice for the same 500.
+        expect(withCharge.penaltyAmount).toBe(250);
+    });
+
+    it("keeps nothing extra for a booking taken before the split", () => {
+        const c = computeCancellationCharge({
+            planPaid: 1000, depositAmount: 2000,
+            createdAt: createdMinutesAgo(10, now), now,
+        });
+        expect(c.onboardingKept).toBe(0);
+        expect(c.refundAmount).toBe(2750);
+    });
+});
+
 describe("DEFAULT_CANCELLATION_TIERS", () => {
     it("is the shipped fallback: 30→25, 60→50", () => {
         expect(DEFAULT_CANCELLATION_TIERS).toEqual([

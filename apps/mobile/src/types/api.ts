@@ -276,7 +276,12 @@ export interface ApiPlan {
     included_minutes: number | null;
     /** Source of truth for the recurring-billing cadence — billing_cycle is display-only. */
     duration_days: number;
+    /** The REFUNDABLE part of what is collected up front. */
     deposit_amount: number;
+    /** One-time non-refundable charge taken with the first payment. 0 = none. */
+    onboarding_charge_amount: number;
+    /** Cumulative rental days before the deposit becomes refundable. 0 = no minimum. */
+    min_rental_days_for_refund: number;
 }
 
 export interface ApiAvailability {
@@ -385,6 +390,8 @@ export interface ApiBooking {
     plan: {
         id: string; name: string; billing_cycle: BillingCycle; price: number;
         duration_days: number; deposit_amount: number;
+        /** Non-refundable, snapshotted at booking. 0 for bookings taken before the split. */
+        onboarding_charge_amount: number;
     } | null;
     /**
      * The specific physical unit reserved for this booking, if any —
@@ -620,9 +627,15 @@ export interface ApiDeposit {
     refund_eligible_at: string | null;
     refunded_at: string | null;
     forfeited_at: string | null;
+    forfeit_reason: string | null;
     refund_id: string | null;
     /** Deposit minus non-disputed damage deductions — the deposit's own amount when not yet `held`. */
     refundable_amount: number;
+    /** Rental days required before this deposit is refundable. 0 = no minimum. */
+    min_rental_days_required: number;
+    /** The rider's completed rental days, across their whole history. */
+    rental_days_completed: number;
+    refund_eligibility: 'not_eligible' | 'eligible' | 'refund_processed';
 }
 
 /**

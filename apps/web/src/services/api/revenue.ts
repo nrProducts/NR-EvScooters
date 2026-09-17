@@ -39,7 +39,8 @@ export interface RevenueTrendPoint {
 }
 
 export type RevenueType =
-  | "rental" | "renewal" | "late_fee" | "damage" | "additional_charge" | "discount";
+  | "rental" | "renewal" | "onboarding_charge" | "late_fee" | "damage"
+  | "additional_charge" | "discount";
 
 export interface RevenueByTypeRow {
   type: RevenueType | "gross";

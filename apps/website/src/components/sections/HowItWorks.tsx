@@ -21,7 +21,7 @@ const STEPS = [
   {
     icon: CreditCard,
     title: "Pay & confirm",
-    description: "Pay online, including a refundable security deposit, to lock in your booking.",
+    description: "Pay online, including a one-time onboarding charge and a refundable security deposit, to lock in your booking.",
   },
   {
     icon: MapPin,

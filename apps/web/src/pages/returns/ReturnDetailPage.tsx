@@ -26,7 +26,7 @@ import { ApiError } from "@/services/api/httpClient";
 import { ReturnStageStepper } from "./ReturnStageStepper";
 import { DamageChargeCard } from "./DamageChargeCard";
 import { AddDamageChargeModal, type DamageDraft } from "./AddDamageChargeModal";
-import { paymentMethodLabel, type DamageCategory, type ReturnStageStatus } from "@/types";
+import { paymentMethodLabel, type DamageCategory, type Deposit, type ReturnStageStatus } from "@/types";
 
 interface OtherChargeForm {
   label: string;
@@ -522,6 +522,7 @@ export default function ReturnDetailPage() {
                   renewalLateFee={rental.overdue_late_fee}
                 />
               )}
+              <DepositTermsNotice deposit={deposit ?? null} />
             </CardContent>
           </Card>
 
@@ -720,6 +721,63 @@ function PaymentStatusPanel({
       {review.status === "unpaid" && (
         <p className="text-xs text-destructive">
           This payment has not been captured yet. The rider can retry payment from the app.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What the rider actually gets back, and why.
+ *
+ * The settlement above is deposit arithmetic; this is the separate question
+ * of whether the deposit is refundable at all. Two things are easy to get
+ * wrong at a return desk and expensive to get wrong in front of a rider: the
+ * onboarding charge is not part of the refund and never was, and a rider who
+ * finished short of their plan's minimum rental days has forfeited the
+ * deposit outright.
+ */
+function DepositTermsNotice({ deposit }: { deposit: Deposit | null }) {
+  if (!deposit) return null;
+
+  const hasThreshold = deposit.min_rental_days_required > 0;
+  const shortOfThreshold = hasThreshold
+    && deposit.rental_days_completed < deposit.min_rental_days_required;
+  if (!hasThreshold && deposit.onboarding_charge_amount <= 0) return null;
+
+  return (
+    <div
+      className={cn(
+        "mt-3 space-y-1 rounded-lg border p-3 text-[0.6875rem]",
+        shortOfThreshold || deposit.status === "forfeited"
+          ? "border-destructive/40 bg-destructive/5"
+          : "border-border bg-muted/40",
+      )}
+    >
+      {deposit.onboarding_charge_amount > 0 && (
+        <p className="text-muted-foreground">
+          <span className="font-semibold text-foreground">
+            {formatCurrency(deposit.onboarding_charge_amount)} onboarding charge
+          </span>{" "}
+          was collected alongside this deposit and is non-refundable. It is not part of
+          the settlement above.
+        </p>
+      )}
+      {hasThreshold && (
+        <p className={shortOfThreshold ? "font-medium text-destructive" : "text-muted-foreground"}>
+          {shortOfThreshold ? (
+            <>
+              Rider has completed {deposit.rental_days_completed} of the{" "}
+              {deposit.min_rental_days_required} rental days this plan requires — the{" "}
+              {formatCurrency(deposit.amount)} security deposit is forfeited, not refunded.
+            </>
+          ) : (
+            <>
+              Rider has completed {deposit.rental_days_completed} of the{" "}
+              {deposit.min_rental_days_required} rental days required, so the security
+              deposit is refundable subject to the deductions above.
+            </>
+          )}
         </p>
       )}
     </div>

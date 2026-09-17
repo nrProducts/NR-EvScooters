@@ -1184,11 +1184,36 @@ export const en = {
     'booking.startsOn': 'Starts {date}',
     'booking.rentalPlanAmount': 'Rental plan amount',
     'booking.securityDepositRefundable': 'Security deposit (refundable)',
+    'deposit.title': 'Your deposit',
+    'deposit.securityDeposit': 'Security deposit',
+    'deposit.refundableNow': 'Refundable after deductions',
+    'deposit.daysRemaining':
+        '{completed} of {required} rental days completed — {remaining} more before this deposit can be refunded.',
+    'deposit.afterReturn':
+        'Refundable after you return the scooter and the holding period ends.',
+    'deposit.eligible': 'Eligible for refund. We will process it shortly.',
+    'deposit.refunded': 'Your refund has been processed.',
+    'deposit.forfeited': 'This deposit is not refundable.',
+    'deposit.onboardingNote':
+        'The {amount} onboarding charge paid at booking is non-refundable and is not part of this deposit.',
+    'booking.onboardingCharge': 'Onboarding charge',
+    'booking.onboardingFee': 'Onboarding fee',
+    'booking.securityDeposit': 'Security deposit',
+    'booking.nonRefundable': 'Non-refundable',
+    'booking.refundable': 'Refundable',
+    'booking.refundableAfterDays': 'Refundable after {days} rental days',
+    'booking.upfrontBreakdown': '{amount} upfront breakdown',
+    'booking.depositTerms':
+        'The {onboarding} onboarding charge is non-refundable. The {deposit} security deposit is refundable, subject to applicable deductions for damages, dues, penalties or other eligible charges.',
+    'booking.depositTermsWithDays':
+        'The {onboarding} onboarding charge is non-refundable. The {deposit} security deposit is refundable after you complete a minimum of {days} rental days, subject to applicable deductions for damages, dues, penalties or other eligible charges.',
     'booking.totalPayable': 'Total Payable',
     'booking.estimatedTotal': 'Estimated Total',
     'booking.confirmedOnPaymentScreen': 'Confirmed on the payment screen',
     'booking.cancellationNote':
         'Cancel within {minutes} min of booking and {percent}% of the plan amount is kept back; the fee rises the longer you wait. Your security deposit is always refunded in full.',
+    'booking.cancellationNoteWithOnboarding':
+        'Cancel within {minutes} min of booking and {percent}% of the plan amount is kept back; the fee rises the longer you wait. If you cancel before pickup your security deposit is refunded in full, though the onboarding charge is not refunded.',
     'booking.amount': 'Amount',
     'booking.processing': 'Processing…',
     'booking.continue': 'Continue',

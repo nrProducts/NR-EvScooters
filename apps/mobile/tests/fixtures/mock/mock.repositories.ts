@@ -805,6 +805,7 @@ function toApiBooking(row: MockBookingRow): ApiBooking {
             ? {
                 id: plan.id, name: plan.name, billing_cycle: plan.billing_cycle, price: plan.price,
                 duration_days: plan.duration_days, deposit_amount: plan.deposit_amount,
+                onboarding_charge_amount: plan.onboarding_charge_amount,
             }
             : null,
         // Mock DB has no per-unit vehicle allocation concept â€” matches

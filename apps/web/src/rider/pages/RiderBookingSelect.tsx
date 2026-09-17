@@ -125,7 +125,8 @@ export default function RiderBookingSelect() {
   const noneAvailable = availableCount === 0;
   const plans = model.plans ?? [];
   const lines = quote?.lines ?? [];
-  const total = quote?.amount ?? (plan ? plan.price + plan.deposit_amount : 0);
+  const total = quote?.amount
+    ?? (plan ? plan.price + plan.deposit_amount + plan.onboarding_charge_amount : 0);
 
   const blockedReason = (): string | null => {
     if (!station) return "Finding a pickup station near you…";
@@ -273,6 +274,12 @@ export default function RiderBookingSelect() {
                   <span className="text-muted-foreground">Rental plan amount</span>
                   <span className="font-medium">{formatMoney(plan.price)}</span>
                 </div>
+                {plan.onboarding_charge_amount > 0 && (
+                  <div className="flex items-center justify-between py-1.5 text-sm">
+                    <span className="text-muted-foreground">Onboarding charge</span>
+                    <span className="font-medium">{formatMoney(plan.onboarding_charge_amount)}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between py-1.5 text-sm">
                   <span className="text-muted-foreground">Security deposit (refundable)</span>
                   <span className="font-medium">{formatMoney(plan.deposit_amount)}</span>
@@ -289,6 +296,60 @@ export default function RiderBookingSelect() {
               <span className="text-2xl font-bold text-primary tabular-nums">{formatMoney(total)}</span>
             </div>
           </div>
+
+          {/* Stated before payment, not after: what comes back and what does
+              not is the thing riders are most likely to feel misled about. */}
+          {(plan.onboarding_charge_amount > 0 || plan.min_rental_days_for_refund > 0) && (
+            <div className="overflow-hidden rounded-lg border border-border bg-card">
+              <p className="px-4 pb-1 pt-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                {formatMoney(plan.onboarding_charge_amount + plan.deposit_amount)} upfront breakdown
+              </p>
+              <div className="space-y-2 px-4 pb-3 pt-2">
+                {plan.onboarding_charge_amount > 0 && (
+                  <div className="flex items-start justify-between gap-3 text-sm">
+                    <span>
+                      Onboarding fee
+                      <span className="block text-[11px] text-muted-foreground">Non-refundable</span>
+                    </span>
+                    <span className="font-medium tabular-nums">
+                      {formatMoney(plan.onboarding_charge_amount)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-start justify-between gap-3 text-sm">
+                  <span>
+                    Security deposit
+                    <span className="block text-[11px] text-muted-foreground">
+                      {plan.min_rental_days_for_refund > 0
+                        ? `Refundable after ${plan.min_rental_days_for_refund} rental days`
+                        : "Refundable"}
+                    </span>
+                  </span>
+                  <span className="font-medium tabular-nums">{formatMoney(plan.deposit_amount)}</span>
+                </div>
+              </div>
+              <p className="border-t border-border bg-secondary/40 px-4 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                {plan.onboarding_charge_amount > 0 && (
+                  <>
+                    The {formatMoney(plan.onboarding_charge_amount)} onboarding charge is
+                    non-refundable.{" "}
+                  </>
+                )}
+                {plan.min_rental_days_for_refund > 0 ? (
+                  <>
+                    The {formatMoney(plan.deposit_amount)} security deposit is refundable after you
+                    complete a minimum of {plan.min_rental_days_for_refund} rental days, subject to
+                    applicable deductions for damages, dues, penalties or other eligible charges.
+                  </>
+                ) : (
+                  <>
+                    The {formatMoney(plan.deposit_amount)} security deposit is refundable, subject to
+                    applicable deductions for damages, dues, penalties or other eligible charges.
+                  </>
+                )}
+              </p>
+            </div>
+          )}
 
           {/* Payment method (informational — chosen on Razorpay's secure screen) */}
           <div className="overflow-hidden rounded-lg border border-border bg-card">
@@ -323,7 +384,8 @@ export default function RiderBookingSelect() {
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
             Cancel within {DEFAULT_CANCELLATION_TIERS[0].upto_minutes} min of booking and{" "}
             {DEFAULT_CANCELLATION_TIERS[0].penalty_percent}% of the plan amount is kept back; the fee rises the longer
-            you wait. Your security deposit is always refunded in full.
+            you wait. If you cancel before pickup your security deposit is refunded in full
+            {plan.onboarding_charge_amount > 0 && ", though the onboarding charge is not refunded"}.
           </p>
         </div>
       )}

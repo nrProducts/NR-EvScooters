@@ -168,6 +168,7 @@ export type Database = {
           hold_expires_at: string | null
           hub_id: string
           id: string
+          onboarding_charge_snapshot: number
           plan_id: string
           plan_price_snapshot: number
           requested_start_on: string
@@ -184,6 +185,7 @@ export type Database = {
           hold_expires_at?: string | null
           hub_id: string
           id?: string
+          onboarding_charge_snapshot?: number
           plan_id: string
           plan_price_snapshot: number
           requested_start_on: string
@@ -200,6 +202,7 @@ export type Database = {
           hold_expires_at?: string | null
           hub_id?: string
           id?: string
+          onboarding_charge_snapshot?: number
           plan_id?: string
           plan_price_snapshot?: number
           requested_start_on?: string
@@ -553,6 +556,7 @@ export type Database = {
           forfeited_at: string | null
           held_at: string | null
           id: string
+          min_rental_days_required: number
           refund_eligible_on: string | null
           released_at: string | null
           status: Database["public"]["Enums"]["deposit_status"]
@@ -566,6 +570,7 @@ export type Database = {
           forfeited_at?: string | null
           held_at?: string | null
           id?: string
+          min_rental_days_required?: number
           refund_eligible_on?: string | null
           released_at?: string | null
           status?: Database["public"]["Enums"]["deposit_status"]
@@ -579,6 +584,7 @@ export type Database = {
           forfeited_at?: string | null
           held_at?: string | null
           id?: string
+          min_rental_days_required?: number
           refund_eligible_on?: string | null
           released_at?: string | null
           status?: Database["public"]["Enums"]["deposit_status"]
@@ -1947,7 +1953,9 @@ export type Database = {
           duration_days: number
           id: string
           is_active: boolean
+          min_rental_days_for_refund: number
           name: string
+          onboarding_charge_amount: number
           price_amount: number
           updated_at: string | null
           vehicle_model_id: string
@@ -1960,7 +1968,9 @@ export type Database = {
           duration_days: number
           id?: string
           is_active?: boolean
+          min_rental_days_for_refund?: number
           name: string
+          onboarding_charge_amount?: number
           price_amount: number
           updated_at?: string | null
           vehicle_model_id: string
@@ -1973,7 +1983,9 @@ export type Database = {
           duration_days?: number
           id?: string
           is_active?: boolean
+          min_rental_days_for_refund?: number
           name?: string
+          onboarding_charge_amount?: number
           price_amount?: number
           updated_at?: string | null
           vehicle_model_id?: string
@@ -4109,7 +4121,11 @@ export type Database = {
         | "vandalism"
         | "breakdown"
         | "other"
-      invoice_item_type: "plan_fee" | "adjustment" | "deposit"
+      invoice_item_type:
+        | "plan_fee"
+        | "adjustment"
+        | "deposit"
+        | "onboarding_charge"
       invoice_purpose:
         | "initial"
         | "subscription_period"
@@ -4390,7 +4406,7 @@ export const Constants = {
         "breakdown",
         "other",
       ],
-      invoice_item_type: ["plan_fee", "adjustment", "deposit"],
+      invoice_item_type: ["plan_fee", "adjustment", "deposit", "onboarding_charge"],
       invoice_purpose: [
         "initial",
         "subscription_period",

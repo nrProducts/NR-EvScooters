@@ -45,6 +45,8 @@ interface DepositRow {
     id: string;
     subscription_id: string;
     amount: number;
+    min_rental_days_required: number | null;
+    subscriptions: { user_id: string } | { user_id: string }[] | null;
 }
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
@@ -63,7 +65,7 @@ Deno.serve(async (_req) => {
 
     const { data: eligible, error } = await admin
         .from("deposits")
-        .select("id, subscription_id, amount")
+        .select("id, subscription_id, amount, min_rental_days_required, subscriptions!inner(user_id)")
         .eq("status", "held")
         .not("refund_eligible_on", "is", null)
         .lte("refund_eligible_on", today);
@@ -78,8 +80,21 @@ Deno.serve(async (_req) => {
     let skippedExisting = 0;
     let skippedNothingToRefund = 0;
     let skippedNoPayment = 0;
+    let skippedBelowRentalDays = 0;
 
     for (const deposit of (eligible ?? []) as DepositRow[]) {
+        // The rental-days threshold, re-checked here rather than trusted.
+        // settleDepositOnReturn already forfeits a deposit that finished
+        // short, but it is not the only writer of refund_eligible_on —
+        // resolving a damage dispute restarts the clock on any held deposit,
+        // including one belonging to a rider who is still riding. Paying out
+        // early is not recoverable, so this gate is checked again at the
+        // moment money would move.
+        if (await belowRentalDayThreshold(admin, deposit)) {
+            skippedBelowRentalDays++;
+            continue;
+        }
+
         const rentalIds = await rentalIdsFor(admin, deposit.subscription_id);
 
         if (await hasOpenDispute(admin, rentalIds)) {
@@ -152,8 +167,56 @@ Deno.serve(async (_req) => {
         skippedExisting,
         skippedNothingToRefund,
         skippedNoPayment,
+        skippedBelowRentalDays,
     }, 200);
 });
+
+/**
+ * Has this rider not yet completed the rental days their deposit requires?
+ *
+ * Mirrors cumulativeRentalDaysForUser in
+ * apps/backend/src/modules/rentals/rentalDays.ts — the same duplication
+ * across the Deno/Node boundary that businessToday and writeAudit already
+ * carry. Day 1 is the pickup day, so the count is inclusive of both ends.
+ *
+ * A deposit with no threshold (every one taken before the onboarding-charge
+ * split) short-circuits without a query.
+ */
+async function belowRentalDayThreshold(admin: Admin, deposit: DepositRow): Promise<boolean> {
+    const required = Number(deposit.min_rental_days_required ?? 0);
+    if (required <= 0) return false;
+
+    const raw = deposit.subscriptions;
+    const subscription = (Array.isArray(raw) ? raw[0] : raw) as { user_id: string } | null;
+    if (!subscription) return true; // Cannot prove it is owed; hold the money.
+
+    const { data, error } = await admin
+        .from("rentals")
+        .select("picked_up_at, returned_at")
+        .eq("user_id", subscription.user_id);
+    if (error) {
+        console.error(`[${SOURCE}] rental-day lookup failed`, {
+            depositId: deposit.id,
+            error: error.message,
+        });
+        return true; // Err towards holding: a late refund is fixable.
+    }
+
+    const now = Date.now();
+    const days = (data ?? []).reduce((total: number, rental: {
+        picked_up_at: string;
+        returned_at: string | null;
+    }) => {
+        const from = new Date(rental.picked_up_at);
+        from.setHours(0, 0, 0, 0);
+        const to = rental.returned_at ? new Date(rental.returned_at) : new Date(now);
+        to.setHours(0, 0, 0, 0);
+        if (to < from) return total;
+        return total + Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1;
+    }, 0);
+
+    return days < required;
+}
 
 /** Every rental the subscription has run — damage hangs off these, not the deposit. */
 async function rentalIdsFor(admin: Admin, subscriptionId: string): Promise<string[]> {

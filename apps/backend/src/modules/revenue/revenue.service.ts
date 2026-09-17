@@ -63,7 +63,7 @@ export interface AllocRow {
 
 export interface ItemRow {
     invoiceId: string;
-    itemType: "plan_fee" | "adjustment" | "deposit";
+    itemType: "plan_fee" | "adjustment" | "deposit" | "onboarding_charge";
     amount: number;
     description: string;
     adjustmentId: string | null;
@@ -330,6 +330,11 @@ async function loadWindow(from: string, to: string, opts: { withRiders?: boolean
 
 export function classifyItem(item: ItemRow, alloc: AllocRow, w: WindowData): RevenueType {
     if (item.amount < 0) return "discount";
+    // Earned the moment it is paid and never refunded, so unlike the deposit
+    // beside it on the same invoice, this IS revenue. Its own class rather
+    // than "additional_charge": it is a standing part of the price of
+    // starting a rental, not a one-off an admin raised.
+    if (item.itemType === "onboarding_charge") return "onboarding_charge";
     if (item.itemType === "plan_fee") {
         const seq = alloc.periodId ? w.seqByPeriod.get(alloc.periodId) ?? 1 : 1;
         return seq > 1 ? "renewal" : "rental";

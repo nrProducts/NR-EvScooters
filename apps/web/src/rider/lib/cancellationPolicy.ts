@@ -29,6 +29,8 @@ export interface CancellationCharge {
   planPaid: number;
   penaltyAmount: number;
   depositRefund: number;
+  /** The onboarding charge, kept in full — neither refunded nor penalised. */
+  onboardingKept: number;
   refundAmount: number;
 }
 
@@ -37,6 +39,8 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
 export function computeCancellationCharge(input: {
   planPaid: number | null;
   depositAmount?: number | null;
+  /** The onboarding charge paid — omit (or 0) for a booking taken before the split. */
+  onboardingCharge?: number | null;
   createdAt?: string | null;
   now?: Date;
   tiers?: readonly CancellationTier[];
@@ -57,9 +61,13 @@ export function computeCancellationCharge(input: {
   const planPaid = round2(Math.max(0, input.planPaid ?? 0));
   const penaltyAmount = round2(planPaid * (penaltyPercent / 100));
   const depositRefund = round2(Math.max(0, input.depositAmount ?? 0));
+  const onboardingKept = round2(Math.max(0, input.onboardingCharge ?? 0));
   const refundAmount = round2(Math.max(0, planPaid - penaltyAmount) + depositRefund);
 
-  return { elapsedMinutes, penaltyPercent, planPaid, penaltyAmount, depositRefund, refundAmount };
+  return {
+    elapsedMinutes, penaltyPercent, planPaid, penaltyAmount,
+    depositRefund, onboardingKept, refundAmount,
+  };
 }
 
 export function describeElapsed(elapsedMinutes: number): string {

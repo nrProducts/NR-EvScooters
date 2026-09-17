@@ -13,6 +13,7 @@ export type RevenueGranularity = "daily" | "weekly" | "monthly" | "yearly";
 export type RevenueType =
     | "rental"
     | "renewal"
+    | "onboarding_charge"
     | "late_fee"
     | "damage"
     | "additional_charge"
@@ -21,6 +22,7 @@ export type RevenueType =
 export const REVENUE_TYPE_LABEL: Record<RevenueType, string> = {
     rental: "New Rental / Booking",
     renewal: "Renewal",
+    onboarding_charge: "Onboarding Charge",
     late_fee: "Late Fee",
     damage: "Damage Charge",
     additional_charge: "Additional Charge",

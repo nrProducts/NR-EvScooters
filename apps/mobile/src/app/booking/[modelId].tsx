@@ -179,7 +179,9 @@ export default function BookingScreen() {
   );
   const total = quote
     ? quote.amount
-    : (draft.plan ? draft.plan.price + draft.plan.deposit_amount : 0);
+    : (draft.plan
+        ? draft.plan.price + draft.plan.deposit_amount + draft.plan.onboarding_charge_amount
+        : 0);
 
   const blockedReason = (): string | null => {
     if (!draft.station) return t('booking.blocked.findingStation');
@@ -465,6 +467,12 @@ export default function BookingScreen() {
                         <Text style={{ color: COLORS.textSecondary }} className="text-[13px] font-medium">{t('booking.rentalPlanAmount')}</Text>
                         <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold">{money(draft.plan.price)}</Text>
                       </View>
+                      {draft.plan.onboarding_charge_amount > 0 ? (
+                        <View className="flex-row items-center justify-between py-1.5">
+                          <Text style={{ color: COLORS.textSecondary }} className="text-[13px] font-medium">{t('booking.onboardingCharge')}</Text>
+                          <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold">{money(draft.plan.onboarding_charge_amount)}</Text>
+                        </View>
+                      ) : null}
                       <View className="flex-row items-center justify-between py-1.5">
                         <Text style={{ color: COLORS.textSecondary }} className="text-[13px] font-medium">{t('booking.securityDepositRefundable')}</Text>
                         <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold">{money(draft.plan.deposit_amount)}</Text>
@@ -488,6 +496,55 @@ export default function BookingScreen() {
                   </View>
                 </View>
 
+                {/* What comes back and what does not, stated BEFORE payment —
+                    the thing a rider is most likely to feel misled about. */}
+                {draft.plan.onboarding_charge_amount > 0 || draft.plan.min_rental_days_for_refund > 0 ? (
+                  <View className="mt-3 rounded-2xl overflow-hidden" style={{ borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card }}>
+                    <Text style={{ color: COLORS.textSecondary }} className="px-4 pt-4 pb-1 text-[11px] font-black uppercase tracking-wider">
+                      {t('booking.upfrontBreakdown', {
+                        amount: money(draft.plan.onboarding_charge_amount + draft.plan.deposit_amount),
+                      })}
+                    </Text>
+                    <View className="px-4 pt-2 pb-3">
+                      {draft.plan.onboarding_charge_amount > 0 ? (
+                        <View className="flex-row items-start justify-between py-1.5">
+                          <View className="flex-1 pr-3">
+                            <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold">{t('booking.onboardingFee')}</Text>
+                            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">{t('booking.nonRefundable')}</Text>
+                          </View>
+                          <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold">{money(draft.plan.onboarding_charge_amount)}</Text>
+                        </View>
+                      ) : null}
+                      <View className="flex-row items-start justify-between py-1.5">
+                        <View className="flex-1 pr-3">
+                          <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold">{t('booking.securityDeposit')}</Text>
+                          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+                            {draft.plan.min_rental_days_for_refund > 0
+                              ? t('booking.refundableAfterDays', { days: draft.plan.min_rental_days_for_refund })
+                              : t('booking.refundable')}
+                          </Text>
+                        </View>
+                        <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold">{money(draft.plan.deposit_amount)}</Text>
+                      </View>
+                    </View>
+                    <Text
+                      style={{ color: COLORS.textSecondary, backgroundColor: COLORS.secondary, borderTopWidth: 1, borderTopColor: COLORS.border }}
+                      className="px-4 py-2.5 text-[11px] font-medium leading-4"
+                    >
+                      {draft.plan.min_rental_days_for_refund > 0
+                        ? t('booking.depositTermsWithDays', {
+                            onboarding: money(draft.plan.onboarding_charge_amount),
+                            deposit: money(draft.plan.deposit_amount),
+                            days: draft.plan.min_rental_days_for_refund,
+                          })
+                        : t('booking.depositTerms', {
+                            onboarding: money(draft.plan.onboarding_charge_amount),
+                            deposit: money(draft.plan.deposit_amount),
+                          })}
+                    </Text>
+                  </View>
+                ) : null}
+
                 <PaymentMethodsCard />
 
                 <TrustRow />
@@ -495,10 +552,15 @@ export default function BookingScreen() {
                 <View className="flex-row items-start rounded-2xl p-3" style={{ backgroundColor: COLORS.primary + '0D', gap: 8 }}>
                   <ShieldCheck size={14} color={COLORS.primary} />
                   <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium flex-1 leading-relaxed">
-                    {t('booking.cancellationNote', {
-                      minutes: DEFAULT_CANCELLATION_TIERS[0].upto_minutes,
-                      percent: DEFAULT_CANCELLATION_TIERS[0].penalty_percent,
-                    })}
+                    {t(
+                      draft.plan.onboarding_charge_amount > 0
+                        ? 'booking.cancellationNoteWithOnboarding'
+                        : 'booking.cancellationNote',
+                      {
+                        minutes: DEFAULT_CANCELLATION_TIERS[0].upto_minutes,
+                        percent: DEFAULT_CANCELLATION_TIERS[0].penalty_percent,
+                      },
+                    )}
                   </Text>
                 </View>
               </View>

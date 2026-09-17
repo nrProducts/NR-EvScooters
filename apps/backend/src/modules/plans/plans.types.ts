@@ -16,7 +16,12 @@ export interface PlanRow {
     included_minutes: number | null;
     /** Source of truth for all recurring-billing date math — billing_cycle is display-only. */
     duration_days: number;
+    /** `plans.deposit_amount` — the REFUNDABLE half of what the rider pays up front. */
     deposit_amount: number;
+    /** One-time non-refundable charge taken with the first payment. 0 = none. */
+    onboarding_charge_amount: number;
+    /** Cumulative rental days before this plan's deposit is refundable. 0 = no threshold. */
+    min_rental_days_for_refund: number;
     /** NOT NULL in the new schema: a plan is always for one model. */
     vehicle_model_id: string;
     /** `plans.is_active`. */
@@ -40,6 +45,8 @@ export interface CreatePlanInput {
     price: number;
     duration_days: number;
     deposit_amount: number;
+    onboarding_charge_amount?: number;
+    min_rental_days_for_refund?: number;
     vehicle_model_id: string;
     /** Accepted and ignored — there is nowhere to store it. */
     included_minutes?: number | null;

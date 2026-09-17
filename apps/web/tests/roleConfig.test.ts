@@ -108,9 +108,12 @@ describe("navForUser", () => {
     // ordinary delegable permissions — frontend hiding standing in for a
     // control that did not exist. Resolved in favour of delegable; the
     // per-action split (refunds.view vs refunds.approve) is what limits them.
+    // Deposits rides on the same `refunds` module key: it is a read-only view
+    // of what is held and why, and the money it explains still moves through
+    // Refunds, so it needs no permission of its own.
     const items = navForUser({ role: "staff", permissions: grants("refunds", "billing") });
     expect(items.map((i) => i.label).sort())
-      .toEqual(staffBaseline("Billing & Charges", "Refunds"));
+      .toEqual(staffBaseline("Billing & Charges", "Deposits", "Refunds"));
   });
 });
 

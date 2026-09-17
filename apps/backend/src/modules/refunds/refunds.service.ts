@@ -17,6 +17,7 @@ import {
     ReviewRefundInput, RejectRefundInput,
 } from "./refunds.types";
 import { businessToday } from "../../common/dates";
+import { cumulativeRentalDaysForUser } from "../rentals/rentalDays";
 
 /**
  * Refunds.
@@ -282,7 +283,7 @@ async function existingRefund(subscriptionId: string, reason: RefundType): Promi
 export async function initiateRefund(depositId: string, actor: AuthContext | null): Promise<RefundRow> {
     const { data: deposit, error } = await supabaseAdmin
         .from("deposits")
-        .select("id, subscription_id, amount, status, refund_eligible_on")
+        .select("id, subscription_id, amount, status, refund_eligible_on, min_rental_days_required, subscriptions!inner(user_id)")
         .eq("id", depositId)
         .maybeSingle();
     if (error) throw error;
@@ -293,6 +294,26 @@ export async function initiateRefund(depositId: string, actor: AuthContext | nul
     const today = businessToday();
     if (!deposit.refund_eligible_on || deposit.refund_eligible_on > today) {
         throw businessRule("This deposit is not yet eligible for refund — it must wait out the post-return holding period.");
+    }
+
+    // The rental-days threshold. settleDepositOnReturn already forfeits a
+    // deposit that finished short, so reaching here below the threshold
+    // means something skipped that path — refuse rather than pay out on a
+    // deposit the rider has not earned back.
+    const minRentalDays = Number(deposit.min_rental_days_required ?? 0);
+    if (minRentalDays > 0) {
+        const subscription = Array.isArray(deposit.subscriptions)
+            ? deposit.subscriptions[0]
+            : deposit.subscriptions;
+        const daysCompleted = subscription
+            ? await cumulativeRentalDaysForUser(subscription.user_id)
+            : 0;
+        if (daysCompleted < minRentalDays) {
+            throw businessRule(
+                `This deposit is not yet eligible for refund — ${daysCompleted} of the ` +
+                `${minRentalDays} required rental days have been completed.`,
+            );
+        }
     }
 
     const existing = await existingRefund(deposit.subscription_id, "deposit_release");
