@@ -180,3 +180,9 @@ services:
         sync: false
       - key: VITE_APP_STORE_URL
         sync: false
+      # GA4 Measurement ID (e.g. G-XXXXXXXXXX) for this site's web data
+      # stream. Not a secret, but sync: false anyway — same reason as the
+      # store URLs above: no reason for it to live in this committed file.
+      # Blank = GA4 does not load at all (see src/lib/analytics.ts).
+      - key: VITE_GA_MEASUREMENT_ID
+        sync: false

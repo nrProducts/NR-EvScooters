@@ -3,6 +3,7 @@ import { ArrowRight, Smartphone, Globe } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { PLAY_STORE_URL, ADMIN_CONSOLE_URL } from "@/content/links";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 
 /**
  * Booking, KYC, and payment all happen in the Swapngo mobile app (Expo,
@@ -39,8 +40,16 @@ export function GetApp() {
             label={PLAY_STORE_URL ? "Get the app" : "Coming soon"}
             href={PLAY_STORE_URL}
             disabled={!PLAY_STORE_URL}
+            onClick={() => trackEvent("click_get_app", { platform: "android" })}
           />
-          <PlatformButton icon={Globe} eyebrow="iPhone" label="Ride from your browser" href={ADMIN_CONSOLE_URL} external />
+          <PlatformButton
+            icon={Globe}
+            eyebrow="iPhone"
+            label="Ride from your browser"
+            href={ADMIN_CONSOLE_URL}
+            external
+            onClick={() => trackEvent("click_get_app", { platform: "iphone_web" })}
+          />
         </div>
       </Container>
     </section>
@@ -54,6 +63,7 @@ function PlatformButton({
   href,
   disabled,
   external,
+  onClick,
 }: {
   icon: LucideIcon;
   eyebrow: string;
@@ -61,12 +71,14 @@ function PlatformButton({
   href: string;
   disabled?: boolean;
   external?: boolean;
+  onClick?: () => void;
 }) {
   const Comp = disabled ? "span" : "a";
   return (
     <Comp
       href={disabled ? undefined : href}
       {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
+      {...(disabled ? {} : { onClick })}
       aria-disabled={disabled}
       className={cn(
         "group flex items-center gap-4 rounded-2xl border border-white/15 bg-white/5 px-6 py-5 text-left backdrop-blur transition-all duration-200",

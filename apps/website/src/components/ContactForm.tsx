@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 import { CheckCircle2, AlertCircle, Loader2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
@@ -174,6 +175,8 @@ export function ContactForm() {
         return;
       }
 
+      // query_type is a fixed enum value, not free text — safe to send.
+      trackEvent("contact_form_submit", { query_type: values.query_type });
       setValues(EMPTY);
       setStatus("success");
     } catch {

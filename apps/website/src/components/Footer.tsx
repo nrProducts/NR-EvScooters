@@ -1,6 +1,7 @@
 import { Container } from "@/components/ui/Container";
 import { Logo } from "@/components/ui/Logo";
 import { CONTACT_EMAIL, CONTACT_PHONES, CONTACT_ADDRESS, SOCIAL_LINKS } from "@/content/contact";
+import { trackEvent } from "@/lib/analytics";
 
 const COMPANY_LINKS = [
   { label: "Home", href: "#home" },
@@ -43,6 +44,12 @@ export function Footer() {
                   href={s.url}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={() =>
+                    trackEvent("social_link_click", {
+                      platform: s.label.toLowerCase(),
+                      placement: "footer",
+                    })
+                  }
                   className="text-sm font-semibold text-white/60 transition-colors hover:text-primary"
                 >
                   {s.label}
@@ -69,13 +76,21 @@ export function Footer() {
           <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white/40">Get in Touch</h3>
           <ul className="mt-5 space-y-3.5">
             <li>
-              <a href={`mailto:${CONTACT_EMAIL}`} className="text-[15px] font-medium text-white/70 transition-colors hover:text-primary">
+              <a
+                href={`mailto:${CONTACT_EMAIL}`}
+                onClick={() => trackEvent("click_email", { placement: "footer" })}
+                className="text-[15px] font-medium text-white/70 transition-colors hover:text-primary"
+              >
                 {CONTACT_EMAIL}
               </a>
             </li>
             {CONTACT_PHONES.map((p) => (
               <li key={p.href}>
-                <a href={p.href} className="text-[15px] font-medium text-white/70 transition-colors hover:text-primary">
+                <a
+                  href={p.href}
+                  onClick={() => trackEvent("click_phone", { placement: "footer" })}
+                  className="text-[15px] font-medium text-white/70 transition-colors hover:text-primary"
+                >
                   {p.display}
                 </a>
               </li>
