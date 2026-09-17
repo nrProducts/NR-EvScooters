@@ -30,6 +30,32 @@ create the services by hand instead, set the same thing under
 The `apps/mobile` (Expo) app is not deployed to Render — it ships through the
 app stores.
 
+## Why every build starts with `rm -rf node_modules`
+
+Render restores the previous build's `node_modules` from its build cache, and
+`.npmrc` sets `node-linker=hoisted` (needed for the Android build on
+Windows). When a lockfile change alters a package that is already installed,
+pnpm 9.15 updates it in place — and on Render that failed for all three
+services at once:
+
+```
+ERR_PNPM_EEXIST  EEXIST: file already exists, rename
+'/opt/render/project/src/node_modules/react-native-css/node_modules' ->
+'/opt/render/project/src/node_modules/react-native-css_tmp_117/node_modules'
+```
+
+(first seen on 2278d82, the expo 54.0.35 → 54.0.37 bump, which changed
+`react-native-css`'s lockfile snapshot). The same lockfile installs cleanly from
+scratch, so each build deletes `node_modules` first.
+
+- **Static sites** also need `SKIP_INSTALL_DEPS=true`. Otherwise Render runs its
+  own `pnpm install` on the cached tree *before* the build command — that
+  automatic step is where web and website failed.
+- **backend** keeps `--prod=false`: `NODE_ENV=production` would otherwise skip
+  the devDependencies (TypeScript) the build needs.
+- **If a build still fails at install:** service → *Manual Deploy* →
+  **Clear build cache & deploy**.
+
 ## Deploy order
 
 URLs are assigned at create time, and each app points at the previous one, so
@@ -56,7 +82,7 @@ deploy in this order and paste the URL forward:
 |---|---|
 | Root Directory | *(blank)* |
 | Runtime | Node |
-| Build Command | `corepack enable && pnpm install --frozen-lockfile && pnpm --filter backend build` |
+| Build Command | `rm -rf node_modules apps/*/node_modules && corepack enable && pnpm install --frozen-lockfile --prod=false --filter backend... && pnpm --filter backend build` |
 | Start Command | `pnpm --filter backend start` |
 | Health Check Path | `/api/v1/health` |
 
@@ -65,7 +91,8 @@ deploy in this order and paste the URL forward:
 | Field | Value |
 |---|---|
 | Root Directory | *(blank)* |
-| Build Command | `corepack enable && pnpm install --frozen-lockfile && pnpm --filter web build` |
+| Build Command | `rm -rf node_modules apps/*/node_modules && corepack enable && pnpm install --frozen-lockfile --filter web... && pnpm --filter web build` |
+| Environment | `SKIP_INSTALL_DEPS=true` |
 | Publish Directory | `apps/web/dist` |
 | Redirect/Rewrite | `/*` → `/index.html` (Rewrite) — required, it uses BrowserRouter |
 
@@ -74,7 +101,8 @@ deploy in this order and paste the URL forward:
 | Field | Value |
 |---|---|
 | Root Directory | *(blank)* |
-| Build Command | `corepack enable && pnpm install --frozen-lockfile && pnpm --filter website build` |
+| Build Command | `rm -rf node_modules apps/*/node_modules && corepack enable && pnpm install --frozen-lockfile --filter website... && pnpm --filter website build` |
+| Environment | `SKIP_INSTALL_DEPS=true` |
 | Publish Directory | `apps/website/dist` |
 | Redirect/Rewrite | `/*` → `/index.html` (Rewrite) |
 

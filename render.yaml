@@ -22,6 +22,24 @@
 # first deploy and never stores them here. Deploy order matters for the URLs:
 # backend first, then web (needs the backend URL), then website (needs the
 # web URL). See docs/DEPLOY_RENDER.md.
+#
+# CLEAN node_modules ON EVERY BUILD — the `rm -rf` at the start of each
+# buildCommand is load-bearing. Render restores the previous build's
+# node_modules from its build cache, and .npmrc sets node-linker=hoisted (the
+# Android build on Windows needs it). When a lockfile change alters an
+# already-installed package, pnpm 9.15 updates it IN PLACE, and that path
+# failed on Render with:
+#   ERR_PNPM_EEXIST: file already exists, rename
+#   '…/node_modules/react-native-css/node_modules' -> '…/react-native-css_tmp_<pid>/node_modules'
+# First seen on 2278d82 (expo 54.0.35 -> 54.0.37 changed react-native-css's
+# lockfile snapshot), taking down all three services at once. A fresh install of
+# the same lockfile succeeds, so the builds install from scratch instead of
+# patching a cached tree. Costs some install time; a build that dies on every
+# dependency bump costs more.
+#
+# The static sites also set SKIP_INSTALL_DEPS=true. Without it Render runs its
+# OWN `pnpm install` before buildCommand — before the rm -rf can run, and on
+# the cached tree — which is exactly the step that failed for web and website.
 
 services:
   # ---------------------------------------------------------------------------
@@ -43,7 +61,7 @@ services:
         - pnpm-workspace.yaml
         - .node-version
         - render.yaml
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter backend build
+    buildCommand: rm -rf node_modules apps/*/node_modules && corepack enable && pnpm install --frozen-lockfile --prod=false --filter backend... && pnpm --filter backend build
     startCommand: pnpm --filter backend start
     healthCheckPath: /api/v1/health
     envVars:
@@ -121,7 +139,7 @@ services:
         - pnpm-workspace.yaml
         - .node-version
         - render.yaml
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter web build
+    buildCommand: rm -rf node_modules apps/*/node_modules && corepack enable && pnpm install --frozen-lockfile --filter web... && pnpm --filter web build
     staticPublishPath: apps/web/dist
     # BrowserRouter — every path must fall back to index.html.
     routes:
@@ -131,6 +149,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22.16.0"
+      # buildCommand does the (clean) install — see the note at the top.
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
       # Full backend base URL INCLUDING /api/v1, e.g.
       #   https://nr-evscooters-backend.onrender.com/api/v1
       - key: VITE_API_BASE_URL
@@ -159,7 +180,7 @@ services:
         - pnpm-workspace.yaml
         - .node-version
         - render.yaml
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter website build
+    buildCommand: rm -rf node_modules apps/*/node_modules && corepack enable && pnpm install --frozen-lockfile --filter website... && pnpm --filter website build
     staticPublishPath: apps/website/dist
     routes:
       - type: rewrite
@@ -168,6 +189,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22.16.0"
+      # buildCommand does the (clean) install — see the note at the top.
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
       # The deployed web console URL, e.g. https://nr-evscooters-web.onrender.com
       - key: VITE_ADMIN_CONSOLE_URL
         sync: false
