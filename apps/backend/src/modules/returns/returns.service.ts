@@ -3,10 +3,9 @@ import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { AuthContext, Paginated } from "../../types";
-import { completeRide, damageAmountFor, getRentalById } from "../rentals/rentals.service";
+import { completeRide, damageAmountFor, getRentalById, issueSettlementRefund } from "../rentals/rentals.service";
 import { listDamagesForRental } from "../damages/damages.service";
 import { getDepositForSubscriptionOrNull } from "../deposits/deposits.service";
-import { processRefund, paymentForRefund } from "../refunds/refunds.service";
 import { notifyUser } from "../notifications/notifications.service";
 import { businessToday } from "../../common/dates";
 import {
@@ -90,14 +89,23 @@ interface RawSettlementRow {
 /**
  * Rebuilds the old six-value `status` from the outcome plus the refund's own
  * status — the two facts the single column used to conflate.
+ *
+ * `outcome = 'balanced'` is the ONLY case with nothing owed either way — that
+ * is what `no_refund_required` actually means, and it is handled above. By
+ * the time this reaches `!refundStatus`, `outcome` can only be `'refund_due'`
+ * (amount_due and balanced already returned), so a missing refund there means
+ * one is owed but has not been created yet — `pending_refund`, not
+ * `no_refund_required`. Reporting "no refund required" while a settlement
+ * still names a positive `net_amount` told the rider their money was never
+ * coming when the truth was staff simply had not approved it yet.
  */
-function toStatus(
+export function toStatus(
     outcome: RawSettlementRow["outcome"],
     refundStatus: string | null,
 ): ReturnSettlementStatus {
     if (outcome === "amount_due") return "amount_due";
     if (outcome === "balanced") return "settlement_completed";
-    if (!refundStatus) return "no_refund_required";
+    if (!refundStatus) return "pending_refund";
     if (refundStatus === "succeeded") return "refund_completed";
     if (refundStatus === "processing") return "refund_processing";
     return "pending_refund";
@@ -585,86 +593,15 @@ export async function verifyReturnPayment(rentalId: string, actor: AuthContext):
  * and — if anything was owed — that amount is paid AND admin-verified;
  * settleReturn (rentals.service.ts) enforces the same gate independently,
  * so this is not the only thing standing between an unpaid return and completion.
- */
-/**
- * Creates (and tries to process) the deposit refund a settlement owes.
  *
- * Idempotent and self-healing: a no-op when nothing is owed or a refund is
- * already linked, so re-approving a return whose refund failed to be issued
- * the first time (e.g. the historical wrong-payment-transaction bug) issues
- * it now. Never throws for the refund's sake — the rental closure and the
- * settlement row must stand regardless; the refund stays pending/retryable.
+ * `issueSettlementRefund` itself has moved to rentals.service.ts — it now
+ * runs unconditionally inside settleReturn, so every path that can settle a
+ * rental (this one included, since it calls completeRide) gets the refund
+ * issued the same way. The calls to it below are the deliberately-kept
+ * self-heal retries: idempotent, so they simply confirm what settleReturn
+ * already did rather than risk a rental ever being settled with nothing left
+ * to create its refund.
  */
-async function issueSettlementRefund(
-    rentalId: string,
-    subscriptionId: string,
-    userId: string,
-    settlement: ReturnSettlementRow,
-    actor: AuthContext,
-): Promise<void> {
-    if (settlement.refund_amount <= 0 || settlement.refund_id) return;
-
-    try {
-        const payment = await paymentForRefund(subscriptionId, settlement.refund_amount);
-        if (!payment) {
-            console.error("[returns] settlement owes a refund but no captured payment exists", {
-                rentalId, amount: settlement.refund_amount,
-            });
-            return;
-        }
-
-        const deposit = await getDepositForSubscriptionOrNull(subscriptionId);
-
-        const { data: refund, error: refundError } = await supabaseAdmin
-            .from("refunds")
-            .insert({
-                user_id: userId,
-                payment_transaction_id: payment.id,
-                amount: settlement.refund_amount,
-                gross_amount: settlement.refund_amount,
-                reason: "settlement",
-                status: "pending",
-                // Pre-reviewed: approving the settlement IS the review, so
-                // processRefund's review gate lets the payout below through.
-                reviewed_at: new Date().toISOString(),
-                reviewed_by_user_id: actor.id,
-                review_note: "Auto-reviewed on return settlement approval.",
-            })
-            .select("id")
-            .single();
-        if (refundError) throw refundError;
-
-        await supabaseAdmin
-            .from("rental_settlements")
-            .update({ refund_id: refund.id })
-            .eq("rental_id", rentalId);
-
-        await writeAudit({
-            actorId: actor.id, targetUserId: userId, action: "settlement.refund_issued",
-            entityType: "rental_settlement", entityId: rentalId,
-            after: { refund_id: refund.id, amount: settlement.refund_amount, deposit_id: deposit?.id ?? null },
-        });
-
-        try {
-            await processRefund(refund.id, actor);
-            await writeAudit({
-                actorId: actor.id, targetUserId: userId, action: "settlement.completed",
-                entityType: "rental_settlement", entityId: rentalId, after: { refund_id: refund.id },
-            });
-        } catch (err) {
-            console.error("[returns] refund processing failed", {
-                rentalId, refundId: refund.id,
-                error: err instanceof Error ? err.message : String(err),
-            });
-        }
-    } catch (err) {
-        console.error("[returns] could not issue settlement refund", {
-            rentalId, amount: settlement.refund_amount,
-            error: err instanceof Error ? err.message : String(err),
-        });
-    }
-}
-
 export async function approveReturnSettlement(
     rentalId: string,
     input: ApproveReturnSettlementInput,

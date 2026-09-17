@@ -5,6 +5,7 @@ import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { getDepositForSubscriptionOrNull, settleDepositOnReturn } from "../deposits/deposits.service";
+import { paymentForRefund, processRefund } from "../refunds/refunds.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     AdminRentalRow, CompleteRideInput, ListRentalsFilters, MoveToMaintenanceInput, RejectReturnInput, RentalView,
@@ -788,6 +789,128 @@ export async function damageAmountFor(rentalId: string): Promise<number> {
 }
 
 /**
+ * Creates (and tries to process) the deposit refund a settlement owes.
+ *
+ * Idempotent and self-healing: a no-op when nothing is owed or a refund is
+ * already linked, so calling this again on a settlement whose refund failed
+ * to be issued the first time (e.g. the historical wrong-payment-transaction
+ * bug) issues it now. Never throws for the refund's sake — the rental
+ * closure and the settlement row must stand regardless; the refund stays
+ * pending/retryable.
+ *
+ * Lives here, not in returns.service.ts, because `settleReturn` below is the
+ * one place every path that can settle a rental actually goes through —
+ * completeRide, moveRideToMaintenance, and returns.service.ts's
+ * approveReturnSettlement (which calls completeRide) alike. Issuing the
+ * refund from inside settleReturn itself, rather than leaving it to whoever
+ * called into rentals.service.ts, is what makes it impossible for a rental
+ * closed through any of those doors to end up settled-and-owed-a-refund with
+ * nothing left to ever create it.
+ *
+ * Takes only the two fields it actually needs from a settlement, rather than
+ * the full return-detail row shape, so this has no reason to import
+ * anything from returns.service.ts (which already imports FROM this module)
+ * — returns.service.ts's own settlement rows satisfy this structurally with
+ * no cast needed.
+ */
+export async function issueSettlementRefund(
+    rentalId: string,
+    subscriptionId: string,
+    userId: string,
+    settlement: { refund_amount: number; refund_id: string | null },
+    actor: AuthContext,
+): Promise<void> {
+    if (settlement.refund_amount <= 0 || settlement.refund_id) return;
+
+    try {
+        const payment = await paymentForRefund(subscriptionId, settlement.refund_amount);
+        if (!payment) {
+            console.error("[rentals] settlement owes a refund but no captured payment exists", {
+                rentalId, amount: settlement.refund_amount,
+            });
+            return;
+        }
+
+        const deposit = await getDepositForSubscriptionOrNull(subscriptionId);
+
+        const { data: refund, error: refundError } = await supabaseAdmin
+            .from("refunds")
+            .insert({
+                user_id: userId,
+                payment_transaction_id: payment.id,
+                amount: settlement.refund_amount,
+                gross_amount: settlement.refund_amount,
+                reason: "settlement",
+                status: "pending",
+                // Pre-reviewed: settling the return IS the review, so
+                // processRefund's review gate lets the payout below through.
+                reviewed_at: new Date().toISOString(),
+                reviewed_by_user_id: actor.id,
+                review_note: "Auto-reviewed on return settlement.",
+            })
+            .select("id")
+            .single();
+        if (refundError) throw refundError;
+
+        await supabaseAdmin
+            .from("rental_settlements")
+            .update({ refund_id: refund.id })
+            .eq("rental_id", rentalId);
+
+        await writeAudit({
+            actorId: actor.id, targetUserId: userId, action: "settlement.refund_issued",
+            entityType: "rental_settlement", entityId: rentalId,
+            after: { refund_id: refund.id, amount: settlement.refund_amount, deposit_id: deposit?.id ?? null },
+        });
+
+        try {
+            await processRefund(refund.id, actor);
+            await writeAudit({
+                actorId: actor.id, targetUserId: userId, action: "settlement.completed",
+                entityType: "rental_settlement", entityId: rentalId, after: { refund_id: refund.id },
+            });
+        } catch (err) {
+            console.error("[rentals] refund processing failed", {
+                rentalId, refundId: refund.id,
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
+    } catch (err) {
+        console.error("[rentals] could not issue settlement refund", {
+            rentalId, amount: settlement.refund_amount,
+            error: err instanceof Error ? err.message : String(err),
+        });
+    }
+}
+
+/**
+ * How much of a deposit is available to a settlement's arithmetic — 0 when
+ * the deposit is about to be forfeited for finishing short of the plan's
+ * minimum rental days, its full amount otherwise. Exported and pure so this
+ * decision is tested directly rather than only exercised inside a
+ * DB-touching function.
+ *
+ * Deliberately gated to exactly "status still 'held' AND under the day
+ * threshold" — never to "status !== held" in general. A deposit already
+ * forfeited for DAMAGE before this return (the pre-existing path,
+ * recomputeDepositStatusForSubscription) must keep contributing its full
+ * amount here: settleReturn's totalCharges already carries that same damage
+ * cost, so amount − charges cancels to zero on its own. Zeroing this for
+ * that case too would bill the rider for the same damage twice — once by
+ * losing the deposit, again as a fresh amount_due once nothing is left to
+ * net it against.
+ */
+export function settlementDepositAmount(
+    deposit: { status: string; amount: number; min_rental_days_required: number; rental_days_completed: number } | null,
+): number {
+    const forfeitedForShortRental = !!deposit
+        && deposit.status === "held"
+        && deposit.min_rental_days_required > 0
+        && deposit.rental_days_completed < deposit.min_rental_days_required;
+    return forfeitedForShortRental ? 0 : (deposit?.amount ?? 0);
+}
+
+/**
  * Closes the open return and writes the settlement.
  *
  * Shared by completeRide and moveRideToMaintenance so the two can't drift —
@@ -797,7 +920,9 @@ export async function damageAmountFor(rentalId: string): Promise<number> {
  * arithmetic: `net_amount` must equal the deposit less the charges, and
  * `outcome` must agree with the sign. That is a real gain over the old
  * `days_late`/`late_penalty_amount` columns on the rental, which nothing
- * validated against the deposit at all.
+ * validated against the deposit at all. As of this function, it is ALSO the
+ * one place that decides and pays out the refund it owes — see
+ * issueSettlementRefund above.
  */
 async function settleReturn(
     before: RawRentalRow,
@@ -853,7 +978,8 @@ async function settleReturn(
         : input.other_charges_amount ?? 0;
 
     const deposit = await getDepositForSubscriptionOrNull(before.subscription_id);
-    const depositAmount = deposit?.amount ?? 0;
+    const depositAmount = settlementDepositAmount(deposit);
+
     const totalCharges = Math.round((lateFee + damageAmount + otherCharges) * 100) / 100;
     const netAmount = Math.round((depositAmount - totalCharges) * 100) / 100;
 
@@ -875,6 +1001,33 @@ async function settleReturn(
     });
     if (settlementError && (settlementError as { code?: string }).code !== "23505") {
         throw settlementError;
+    }
+
+    // Issue the refund HERE, not left for whichever caller remembers to.
+    // completeRide and moveRideToMaintenance both funnel through this one
+    // function, and so does a rental closed via the direct
+    // POST /rentals/:id/complete endpoint that never goes through
+    // returns.service.ts's approval flow at all — that endpoint used to
+    // leave a rider settled-and-owed-a-refund with nothing left to ever
+    // create it. Re-selecting the row (rather than trusting the locally
+    // computed netAmount) also makes this correct on the 23505 duplicate
+    // path above, where nothing was just inserted.
+    const { data: settledRow, error: settledReadError } = await supabaseAdmin
+        .from("rental_settlements")
+        .select("net_amount, refund_id")
+        .eq("rental_id", before.id)
+        .single();
+    if (settledReadError) throw settledReadError;
+
+    const riderId = unwrap<{ id: string }>(before.users)?.id;
+    if (riderId) {
+        await issueSettlementRefund(
+            before.id,
+            before.subscription_id,
+            riderId,
+            { refund_amount: Math.max(0, Number(settledRow.net_amount)), refund_id: settledRow.refund_id },
+            actor,
+        );
     }
 }
 
