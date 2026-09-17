@@ -183,6 +183,10 @@ export async function createBookingOrder(
         plan_price_snapshot: Number(plan.price_amount),
         duration_days_snapshot: Number(plan.duration_days),
         deposit_amount_snapshot: Number(plan.deposit_amount),
+        onboarding_charge_snapshot: Number(plan.onboarding_charge_amount ?? 0),
+        // Frozen with the money it governs: the refund terms this rider is
+        // agreeing to are the ones on the plan at the moment they pay.
+        min_rental_days_required: Number(plan.min_rental_days_for_refund ?? 0),
         billing_period_snapshot: plan.billing_period,
     } as unknown as Json;
 
@@ -318,7 +322,7 @@ export async function ensureBookingInvoice(
         .select(`
             id, user_id, status, requested_start_on,
             plan_price_snapshot, duration_days_snapshot, deposit_amount_snapshot,
-            plans(id, billing_period)
+            plans(id, billing_period, min_rental_days_for_refund)
         `)
         .eq("id", bookingId)
         .maybeSingle();
@@ -327,7 +331,11 @@ export async function ensureBookingInvoice(
     if (!booking || booking.user_id !== expectedUserId) throw notFound("Booking not found.");
     if (booking.status !== "pending_payment") throw conflict("This booking is not awaiting payment.");
 
-    const plan = unwrap<{ id: string; billing_period: "daily" | "weekly" | "monthly" }>(booking.plans);
+    const plan = unwrap<{
+        id: string;
+        billing_period: "daily" | "weekly" | "monthly";
+        min_rental_days_for_refund: number | null;
+    }>(booking.plans);
     if (!plan) throw businessRule("This booking has no plan attached.");
 
     const subscriptionId = await ensureSubscription(booking, plan);
@@ -516,7 +524,11 @@ async function ensureSubscription(
         plan_price_snapshot: number | string; duration_days_snapshot: number;
         deposit_amount_snapshot: number | string;
     },
-    plan: { id: string; billing_period: "daily" | "weekly" | "monthly" },
+    plan: {
+        id: string;
+        billing_period: "daily" | "weekly" | "monthly";
+        min_rental_days_for_refund?: number | null;
+    },
 ): Promise<string> {
     const { data: existing, error: readError } = await supabaseAdmin
         .from("subscriptions")
@@ -579,6 +591,9 @@ async function ensureSubscription(
         subscription_id: subscriptionId,
         amount: Number(booking.deposit_amount_snapshot),
         status: "pending",
+        // Frozen here for the same reason as every other snapshot above: the
+        // refund terms are the plan's terms as they stand when the rider pays.
+        min_rental_days_required: Number(plan.min_rental_days_for_refund ?? 0),
     });
     if (depositError && (depositError as { code?: string }).code !== "23505") throw depositError;
 
@@ -611,56 +626,91 @@ async function ensureInitialInvoice(subscriptionId: string, userId: string): Pro
 
     const invoiceId = data as string;
 
-    // The deposit is billed alongside the first period only. It is not a
-    // pricing rule — it is refundable, so it can never be revenue.
-    const { data: existingDeposit, error: itemReadError } = await supabaseAdmin
-        .from("invoice_items")
-        .select("id")
-        .eq("invoice_id", invoiceId)
-        .eq("item_type", "deposit")
+    // Billed alongside the first period only, and neither is a pricing rule.
+    // They are kept as separate lines because they are separate promises: the
+    // onboarding charge is earned on payment, the deposit is the rider's
+    // money we are holding. An invoice that merged them could not say which
+    // half was refundable.
+    const { data: onboardingBooking } = await supabaseAdmin
+        .from("subscriptions")
+        .select("bookings!inner(onboarding_charge_snapshot)")
+        .eq("id", subscriptionId)
         .maybeSingle();
-    if (itemReadError) throw itemReadError;
+    const booking = Array.isArray(onboardingBooking?.bookings)
+        ? onboardingBooking?.bookings[0]
+        : onboardingBooking?.bookings;
 
-    if (!existingDeposit) {
-        const { data: deposit } = await supabaseAdmin
-            .from("deposits").select("amount").eq("subscription_id", subscriptionId).maybeSingle();
-        const depositAmount = Number(deposit?.amount ?? env.defaultDepositAmount);
+    await appendFirstPeriodCharge(
+        invoiceId,
+        "onboarding_charge",
+        "One-time onboarding charge (non-refundable)",
+        Number(booking?.onboarding_charge_snapshot ?? 0),
+    );
 
-        if (depositAmount > 0) {
-            const { data: lastItem } = await supabaseAdmin
-                .from("invoice_items")
-                .select("line_number")
-                .eq("invoice_id", invoiceId)
-                .order("line_number", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            const { error: itemError } = await supabaseAdmin.from("invoice_items").insert({
-                invoice_id: invoiceId,
-                item_type: "deposit",
-                description: "Refundable security deposit",
-                line_number: (lastItem?.line_number ?? 0) + 1,
-                quantity: 1,
-                unit_amount: depositAmount,
-                amount: depositAmount,
-            });
-            if (itemError) throw itemError;
-
-            const { data: invoice } = await supabaseAdmin
-                .from("invoices").select("subtotal_amount, total_amount").eq("id", invoiceId).single();
-            const { error: totalError } = await supabaseAdmin
-                .from("invoices")
-                .update({
-                    subtotal_amount: round2(Number(invoice!.subtotal_amount) + depositAmount),
-                    total_amount: round2(Number(invoice!.total_amount) + depositAmount),
-                })
-                .eq("id", invoiceId);
-            if (totalError) throw totalError;
-        }
-    }
+    const { data: deposit } = await supabaseAdmin
+        .from("deposits").select("amount").eq("subscription_id", subscriptionId).maybeSingle();
+    await appendFirstPeriodCharge(
+        invoiceId,
+        "deposit",
+        "Refundable security deposit",
+        Number(deposit?.amount ?? env.defaultDepositAmount),
+    );
 
     void userId;
     return invoiceId;
+}
+
+/**
+ * Adds one first-period-only charge to an invoice and folds it into the
+ * totals. Idempotent per item type — a second checkout attempt on the same
+ * invoice must not bill the deposit twice.
+ */
+async function appendFirstPeriodCharge(
+    invoiceId: string,
+    itemType: "deposit" | "onboarding_charge",
+    description: string,
+    amount: number,
+): Promise<void> {
+    if (amount <= 0) return;
+
+    const { data: existing, error: readError } = await supabaseAdmin
+        .from("invoice_items")
+        .select("id")
+        .eq("invoice_id", invoiceId)
+        .eq("item_type", itemType)
+        .maybeSingle();
+    if (readError) throw readError;
+    if (existing) return;
+
+    const { data: lastItem } = await supabaseAdmin
+        .from("invoice_items")
+        .select("line_number")
+        .eq("invoice_id", invoiceId)
+        .order("line_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    const { error: itemError } = await supabaseAdmin.from("invoice_items").insert({
+        invoice_id: invoiceId,
+        item_type: itemType,
+        description,
+        line_number: (lastItem?.line_number ?? 0) + 1,
+        quantity: 1,
+        unit_amount: amount,
+        amount,
+    });
+    if (itemError) throw itemError;
+
+    const { data: invoice } = await supabaseAdmin
+        .from("invoices").select("subtotal_amount, total_amount").eq("id", invoiceId).single();
+    const { error: totalError } = await supabaseAdmin
+        .from("invoices")
+        .update({
+            subtotal_amount: round2(Number(invoice!.subtotal_amount) + amount),
+            total_amount: round2(Number(invoice!.total_amount) + amount),
+        })
+        .eq("id", invoiceId);
+    if (totalError) throw totalError;
 }
 
 /**

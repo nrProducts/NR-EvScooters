@@ -839,7 +839,12 @@ export interface Plan {
   price: number;
   included_minutes: number | null;
   duration_days: number;
+  /** The REFUNDABLE half of what the rider pays up front. */
   deposit_amount: number;
+  /** One-time non-refundable charge taken with the first payment. 0 = none. */
+  onboarding_charge_amount: number;
+  /** Cumulative rental days before this plan's deposit is refundable. 0 = no threshold. */
+  min_rental_days_for_refund: number;
   vehicle_model_id: string | null;
   active: boolean;
   created_at: string;
@@ -858,6 +863,13 @@ export interface Plan {
  * already knew, and the two could disagree.
  */
 export type DepositStatus = "pending" | "held" | "released" | "forfeited";
+
+/**
+ * Whether the deposit may be paid back yet — derived by the backend, never
+ * stored. `status` answers "is the money still with us"; this answers "may it
+ * go back", which additionally depends on the rider's completed rental days.
+ */
+export type DepositRefundEligibility = "not_eligible" | "eligible" | "refund_processed";
 
 export interface Deposit {
   id: string;
@@ -881,6 +893,25 @@ export interface Deposit {
    * Computed, never stored.
    */
   refundable_amount: number;
+  /**
+   * Cumulative rental days required before this deposit may be refunded,
+   * frozen from the plan when the rider paid. 0 = no threshold, which is
+   * every deposit taken before the onboarding-charge split — those riders
+   * keep the terms they originally agreed to.
+   */
+  min_rental_days_required: number;
+  /** The rider's completed rental days, across their whole history. */
+  rental_days_completed: number;
+  refund_eligibility: DepositRefundEligibility;
+  rider: { id: string; full_name: string; phone: string | null } | null;
+  booking_id: string | null;
+  vehicle_model_name: string | null;
+  /**
+   * The NON-REFUNDABLE onboarding charge paid alongside this deposit. Not part
+   * of `amount` — it was never the rider's money to get back — but shown
+   * beside it so staff see the whole of what was collected up front.
+   */
+  onboarding_charge_amount: number;
   created_at: string;
 }
 

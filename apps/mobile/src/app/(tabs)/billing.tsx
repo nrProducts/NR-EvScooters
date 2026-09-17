@@ -16,6 +16,7 @@ import { billingRepository, rentalRepository } from '../../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
 import { getRenewalEligibility } from '../../lib/returnPolicy';
 import { SettlementCard } from '../../components/SettlementCard';
+import { DepositStatusCard } from '../../components/DepositStatusCard';
 import { shouldShowRefundInBilling } from '../../lib/settlementDisplay';
 import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
 import { ApiError } from '../../lib/ApiError';
@@ -361,7 +362,7 @@ function AttentionNote({ label, tone = 'warning' }: { label: string; tone?: 'war
 export default function BillingScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useT();
-  const { bookingId, booking, invoices, loading, error, reload } = useMyBilling();
+  const { bookingId, booking, invoices, deposit, loading, error, reload } = useMyBilling();
   const { refreshing, onRefresh } = useRefresh(() => reload(true));
   const profile = useAuthStore((s) => s.profile);
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
@@ -415,6 +416,19 @@ export default function BillingScreen() {
   const renderRefundCard = () => (
     shouldShowRefundInBilling(settlement)
       ? <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
+      : null
+  );
+
+  // Shown while the deposit is still ours to hold — once a settlement is on
+  // screen, that card is the more specific answer and this would repeat it.
+  const renderDepositCard = () => (
+    deposit && !shouldShowRefundInBilling(settlement)
+      ? (
+        <DepositStatusCard
+          deposit={deposit}
+          onboardingCharge={booking?.plan?.onboarding_charge_amount}
+        />
+      )
       : null
   );
 
@@ -1085,6 +1099,7 @@ export default function BillingScreen() {
               rental that produced it, so it is not the else-branch of
               anything below. */}
           {renderRefundCard()}
+          {renderDepositCard()}
 
           {/* Current plan — a quiet, sophisticated surface rather than a
               solid brand-color block: the price is the loud element, not
@@ -1208,6 +1223,9 @@ export default function BillingScreen() {
                 ) : (
                   <>
                     <BillLine label={t('billing.rentalPlanAmount')} amount={plan?.price ?? 0} />
+                    {(plan?.onboarding_charge_amount ?? 0) > 0 ? (
+                      <BillLine label={t('booking.onboardingCharge')} amount={plan?.onboarding_charge_amount ?? 0} />
+                    ) : null}
                     <BillLine label={t('billing.securityDeposit')} amount={plan?.deposit_amount ?? 0} />
                   </>
                 )}
@@ -1215,7 +1233,9 @@ export default function BillingScreen() {
                 <View className="flex-row items-center justify-between mb-4">
                   <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">{t('billing.total')}</Text>
                   <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">
-                    ₹{(bookingQuote?.amount ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)).toFixed(0)}
+                    ₹{(bookingQuote?.amount
+                      ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)
+                        + (plan?.onboarding_charge_amount ?? 0)).toFixed(0)}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -1232,7 +1252,11 @@ export default function BillingScreen() {
                   <Text className="text-white text-sm font-bold ml-2">
                     {completingBookingPayment
                       ? t('billing.processing')
-                      : t('billing.pay', { amount: (bookingQuote?.amount ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)).toFixed(0) })}
+                      : t('billing.pay', {
+                          amount: (bookingQuote?.amount
+                            ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)
+                              + (plan?.onboarding_charge_amount ?? 0)).toFixed(0),
+                        })}
                   </Text>
                 </TouchableOpacity>
                 {bookingPaymentError ? (

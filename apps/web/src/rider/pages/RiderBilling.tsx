@@ -7,13 +7,13 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { CenteredSpinner, SectionTitle } from "@/rider/components/common";
 import { PaymentTrustRow } from "@/rider/components/payment";
 import {
-  useCurrentBooking, useCurrentRental, useBookingWithPlan, useMyInvoices, useReturnStage,
+  useCurrentBooking, useCurrentRental, useBookingWithPlan, useMyInvoices, useReturnStage, useDeposit,
 } from "@/rider/hooks/queries";
 import { usePayInvoice, usePayBooking } from "@/rider/hooks/mutations";
 import { riderApi } from "@/rider/services/riderApi";
 import { getRenewalEligibility } from "@/rider/lib/returnPolicy";
 import { BILLING_CYCLE_LABEL, formatDate, formatMoney } from "@/rider/constants/status";
-import type { ApiEarlyRecharge, ApiInvoice } from "@/rider/types/api";
+import type { ApiDeposit, ApiEarlyRecharge, ApiInvoice } from "@/rider/types/api";
 import { ApiError } from "@/services/api/httpClient";
 
 const PURPOSE_LABEL: Record<string, string> = {
@@ -38,6 +38,7 @@ export default function RiderBilling() {
   const { data: planBooking, isLoading: pbLoading } = useBookingWithPlan(bookingId);
   const { data: invoicesPage, isLoading: invLoading } = useMyInvoices();
   const { data: returnStage } = useReturnStage(!!rental);
+  const { data: deposit } = useDeposit(bookingId);
 
   const { pay: payInvoice, payingId, error: invError } = usePayInvoice();
   const { pay: payBooking, paying: payingBooking, error: bookingPayError } = usePayBooking();
@@ -187,7 +188,12 @@ export default function RiderBilling() {
                 </p>
                 <div className="flex items-center justify-between border-t border-destructive/20 pt-2 text-sm font-semibold">
                   <span>Total</span>
-                  <span className="text-destructive">{formatMoney((plan?.price ?? 0) + (plan?.deposit_amount ?? 0))}</span>
+                  <span className="text-destructive">
+                    {formatMoney(
+                      (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)
+                        + (plan?.onboarding_charge_amount ?? 0),
+                    )}
+                  </span>
                 </div>
                 <Button
                   className="mt-3 w-full"
@@ -277,6 +283,13 @@ export default function RiderBilling() {
         </>
       )}
 
+      {deposit && (
+        <>
+          <SectionTitle>Your Deposit</SectionTitle>
+          <DepositStatus deposit={deposit} onboardingCharge={plan?.onboarding_charge_amount ?? 0} />
+        </>
+      )}
+
       <SectionTitle>Payment History</SectionTitle>
       {history.length === 0 ? (
         <EmptyState icon={Receipt} title="No payments yet" />
@@ -318,5 +331,87 @@ export default function RiderBilling() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Where the rider's deposit stands, and what it would take to get it back.
+ *
+ * The deposit used to appear only as an invoice line and, after a return, in
+ * the settlement card. Neither answers the question a rider with a live
+ * rental has — "when do I get my money back" — which now has a condition
+ * attached. A condition whose progress the rider cannot see is one they call
+ * support about.
+ *
+ * The onboarding charge is stated separately rather than added in: it is not
+ * part of this deposit and never comes back.
+ */
+function DepositStatus({
+  deposit,
+  onboardingCharge,
+}: {
+  deposit: ApiDeposit;
+  onboardingCharge: number;
+}) {
+  const hasThreshold = deposit.min_rental_days_required > 0;
+  const remaining = Math.max(0, deposit.min_rental_days_required - deposit.rental_days_completed);
+  const forfeited = deposit.status === "forfeited";
+  const refunded = deposit.refund_eligibility === "refund_processed";
+  const eligible = deposit.refund_eligibility === "eligible";
+
+  const status = forfeited
+    ? deposit.forfeit_reason ?? "This deposit is not refundable."
+    : refunded
+      ? "Your refund has been processed."
+      : eligible
+        ? "Eligible for refund. We will process it shortly."
+        : hasThreshold && remaining > 0
+          ? `${deposit.rental_days_completed} of ${deposit.min_rental_days_required} rental days completed — ${remaining} more before this deposit can be refunded.`
+          : "Refundable after you return the scooter and the holding period ends.";
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs text-muted-foreground">Security deposit</span>
+        <span className="text-xl font-bold">{formatMoney(deposit.amount)}</span>
+      </div>
+
+      {deposit.refundable_amount !== deposit.amount && !forfeited && (
+        <div className="mt-1 flex items-baseline justify-between">
+          <span className="text-xs text-muted-foreground">Refundable after deductions</span>
+          <span className="text-sm font-semibold">{formatMoney(deposit.refundable_amount)}</span>
+        </div>
+      )}
+
+      {hasThreshold && !forfeited && !refunded && (
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-border">
+          <div
+            className={eligible ? "h-full rounded-full bg-success" : "h-full rounded-full bg-primary"}
+            style={{
+              width: `${Math.min(100, (deposit.rental_days_completed / deposit.min_rental_days_required) * 100)}%`,
+            }}
+          />
+        </div>
+      )}
+
+      <p
+        className={
+          forfeited
+            ? "mt-2 text-[11px] font-medium text-destructive"
+            : refunded || eligible
+              ? "mt-2 text-[11px] font-medium text-success"
+              : "mt-2 text-[11px] text-muted-foreground"
+        }
+      >
+        {status}
+      </p>
+
+      {onboardingCharge > 0 && (
+        <p className="mt-3 border-t border-border pt-2 text-[11px] text-muted-foreground">
+          The {formatMoney(onboardingCharge)} onboarding charge paid at booking is non-refundable
+          and is not part of this deposit.
+        </p>
+      )}
+    </Card>
   );
 }

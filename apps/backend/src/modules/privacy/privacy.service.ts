@@ -388,6 +388,50 @@ export async function getRequest(id: string): Promise<PrivacyRequestAdminView> {
     return toAdminView(data as Record<string, unknown>);
 }
 
+/** Same shape as users.validation's personNameSchema — letters, spaces, apostrophes, hyphens. */
+const PERSON_NAME_RE = /^[A-Za-z\s'-]+$/;
+
+/**
+ * `full_name` is the one correctable field with no document to re-verify
+ * against, so it is the one auto-applied on completion — everything else
+ * (DOB, Aadhaar, DL details) still needs a human to check it against the
+ * document image first, per the SOP, and is applied by hand before Complete.
+ */
+async function applyRequestedNameChange(
+    before: PrivacyRequestAdminView,
+    actor: AuthContext,
+    req?: Request,
+): Promise<void> {
+    const requested = before.requested_changes?.full_name;
+    if (typeof requested !== "string") return;
+    if (!before.rider) throw businessRule("This request has no rider attached.");
+
+    const full_name = requested.trim();
+    if (full_name.length < 2 || full_name.length > 120 || !PERSON_NAME_RE.test(full_name)) {
+        throw businessRule(
+            "The requested name is not a valid full name, so it cannot be applied automatically. " +
+            "Correct it on the rider's profile first.",
+        );
+    }
+
+    const { error } = await supabaseAdmin
+        .from("users")
+        .update({ full_name })
+        .eq("id", before.rider.id);
+    if (error) throw error;
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: before.rider.id,
+        action: "privacy.correction_applied",
+        entityType: "user",
+        entityId: before.rider.id,
+        before: { full_name: before.rider.full_name },
+        after: { full_name, reference: before.reference },
+        req,
+    });
+}
+
 export async function updateRequest(
     id: string,
     input: UpdateRequestBody,
@@ -409,6 +453,10 @@ export async function updateRequest(
             "An erasure is completed by running it, not by changing its status. " +
             "Use approve, then execute.",
         );
+    }
+
+    if (input.status === "completed" && before.type === "correction") {
+        await applyRequestedNameChange(before, actor, req);
     }
 
     // Built field by field rather than spread: the request body speaks the wire

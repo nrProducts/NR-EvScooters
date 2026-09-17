@@ -18,7 +18,16 @@ export interface PlanSummary {
     /** No column backs this any more; always null. See toPlans(). */
     included_minutes: number | null;
     duration_days: number;
+    /** The REFUNDABLE part of what is collected up front. */
     deposit_amount: number;
+    /** One-time non-refundable charge taken with the first payment. 0 = none. */
+    onboarding_charge_amount: number;
+    /**
+     * Cumulative rental days the rider must complete before the deposit above
+     * becomes refundable. 0 = no minimum. The rider apps must state this
+     * BEFORE payment, so it travels with the price.
+     */
+    min_rental_days_for_refund: number;
 }
 
 export interface VehicleModelListItem {

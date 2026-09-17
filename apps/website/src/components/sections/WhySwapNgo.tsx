@@ -16,7 +16,7 @@ const REASONS: Reason[] = [
   {
     icon: Wallet,
     title: "Affordable EV rentals",
-    description: "Transparent weekly pricing with a refundable deposit — no hidden charges, ever.",
+    description: "Transparent weekly pricing — every charge, refundable or not, is shown before you pay.",
     size: "lg",
   },
   {

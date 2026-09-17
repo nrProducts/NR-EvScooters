@@ -81,6 +81,8 @@ export interface BookingView {
     plan: {
         id: string; name: string; billing_cycle: string; price: number;
         duration_days: number; deposit_amount: number;
+        /** `bookings.onboarding_charge_snapshot` — non-refundable, 0 before the split. */
+        onboarding_charge_amount: number;
     } | null;
     /**
      * The unit reserved for this booking — `bookings.held_vehicle_id`, set by

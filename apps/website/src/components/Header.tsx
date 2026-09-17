@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
 import { TopBar } from "@/components/TopBar";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 
 const NAV_ITEMS = [
   { label: "Home", href: "#home" },
@@ -101,7 +102,7 @@ export function Header() {
           </nav>
 
           <div className="hidden items-center gap-3 lg:flex">
-            <Button href="#get-app" size="sm">
+            <Button href="#get-app" size="sm" onClick={() => trackEvent("click_book_now", { placement: "header" })}>
               Book Now
               <ArrowRight className="h-3.5 w-3.5" aria-hidden />
             </Button>
@@ -142,7 +143,15 @@ export function Header() {
               })}
             </nav>
             <div className="mt-auto pt-8">
-              <Button href="#get-app" size="lg" className="w-full" onClick={() => setOpen(false)}>
+              <Button
+                href="#get-app"
+                size="lg"
+                className="w-full"
+                onClick={() => {
+                  trackEvent("click_book_now", { placement: "mobile_menu" });
+                  setOpen(false);
+                }}
+              >
                 Book Now
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Button>

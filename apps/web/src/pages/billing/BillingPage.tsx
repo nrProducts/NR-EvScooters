@@ -76,7 +76,9 @@ export default function BillingPage() {
 // Cancellation Policy — time slabs. `cancellation_tiers`: a cancellation at
 // N minutes after the booking was created keeps back the first tier's
 // penalty_percent of the plan amount paid; past the last tier, 100% is kept.
-// The deposit is always refunded in full.
+// The deposit is always refunded in full. The onboarding charge is always
+// kept in full — it is held out of the plan amount rather than penalised as
+// part of it, so the rider is never charged twice for the same money.
 // ---------------------------------------------------------------------------
 
 /**
@@ -177,7 +179,7 @@ function CancellationTiersTab() {
           <CardDescription>
             When a rider cancels a paid booking before pickup. Each tier: cancel within this many minutes of booking and
             the business keeps that percent of the plan amount the rider paid. The security deposit is always refunded in
-            full. Past the last tier, nothing of the plan is refunded.
+            full; any onboarding charge is always kept in full. Past the last tier, nothing of the plan is refunded.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

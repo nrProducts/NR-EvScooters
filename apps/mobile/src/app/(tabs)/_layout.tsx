@@ -33,6 +33,16 @@ function TabIcon({ focused, color, Icon }: { focused: boolean; color: string; Ic
 }
 
 /**
+ * Home is the group's anchor, even though it is declared third below.
+ *
+ * Declaration order in the navigator is TAB-BAR ORDER — Home deliberately
+ * sits in the visual middle, under the thumb. Without this, the group's
+ * initial route is the first DECLARED one, my-scooter, which is neither
+ * where a rider expects to land nor where Back should return them.
+ */
+export const unstable_settings = { initialRouteName: 'home' };
+
+/**
  * The five primary rider destinations. The nav drawer is gone — KYC, Support
  * and Privacy & Data now live in the Profile sheet (ProfileContent), and
  * Notifications is the header bell. This bar is the whole top-level nav.
@@ -53,6 +63,17 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      /**
+       * Back returns to the tab you came FROM, not to the first one declared.
+       *
+       * React Navigation defaults this to `firstRoute`, which here resolved
+       * to my-scooter purely because the tab bar puts Scooter leftmost — so
+       * Home → Stations → Back landed on Scooter, a screen the rider had
+       * never opened. `history` makes Back mean what it says on every tab,
+       * and `initialRouteName` above makes Home the fallback when there is
+       * no history to pop (a deep link or a cold start into a tab).
+       */
+      backBehavior="history"
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,

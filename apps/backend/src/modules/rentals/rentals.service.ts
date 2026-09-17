@@ -4,7 +4,7 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
-import { getDepositForSubscriptionOrNull, setDepositRefundEligible } from "../deposits/deposits.service";
+import { getDepositForSubscriptionOrNull, settleDepositOnReturn } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     AdminRentalRow, CompleteRideInput, ListRentalsFilters, MoveToMaintenanceInput, RejectReturnInput, RentalView,
@@ -932,7 +932,7 @@ export async function completeRide(
     // real return. The whole active_rental_id dance existed to work around
     // rentals being recreated on every handover.
     if (subscription) {
-        await setDepositRefundEligible(subscription.id, endedAt);
+        await settleDepositOnReturn(subscription.id, endedAt, actor.id);
         const { error: subError } = await supabaseAdmin
             .from("subscriptions")
             .update({ status: "ended", ended_at: endedAt.toISOString() })
@@ -1027,7 +1027,7 @@ export async function moveRideToMaintenance(
     // end the subscription outright — this rider is not getting a
     // replacement vehicle, their plan is over.
     if (subscription) {
-        await setDepositRefundEligible(subscription.id, endedAt);
+        await settleDepositOnReturn(subscription.id, endedAt, actor.id);
         const { error: subError } = await supabaseAdmin
             .from("subscriptions")
             .update({ status: "ended", ended_at: endedAt.toISOString() })

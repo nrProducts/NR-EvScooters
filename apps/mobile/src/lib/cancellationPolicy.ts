@@ -44,6 +44,8 @@ export interface CancellationCharge {
   penaltyAmount: number;
   /** The security deposit actually paid — always refunded in full pre-pickup. */
   depositRefund: number;
+  /** The onboarding charge, kept in full — neither refunded nor penalised. */
+  onboardingKept: number;
   /** (planPaid − penaltyAmount) + depositRefund. */
   refundAmount: number;
 }
@@ -55,6 +57,8 @@ export function computeCancellationCharge(input: {
   planPaid: number | null;
   /** The security deposit actually paid — omit (or 0) if the booking was never paid. */
   depositAmount?: number | null;
+  /** The onboarding charge paid — omit (or 0) for a booking taken before the split. */
+  onboardingCharge?: number | null;
   /** bookings.created_at — omit only where it genuinely isn't known. */
   createdAt?: string | null;
   now?: Date;
@@ -76,9 +80,13 @@ export function computeCancellationCharge(input: {
   const planPaid = round2(Math.max(0, input.planPaid ?? 0));
   const penaltyAmount = round2(planPaid * (penaltyPercent / 100));
   const depositRefund = round2(Math.max(0, input.depositAmount ?? 0));
+  const onboardingKept = round2(Math.max(0, input.onboardingCharge ?? 0));
   const refundAmount = round2(Math.max(0, planPaid - penaltyAmount) + depositRefund);
 
-  return { elapsedMinutes, penaltyPercent, planPaid, penaltyAmount, depositRefund, refundAmount };
+  return {
+    elapsedMinutes, penaltyPercent, planPaid, penaltyAmount,
+    depositRefund, onboardingKept, refundAmount,
+  };
 }
 
 /** Human phrasing of how long ago the booking was made — for the confirmation dialog. */

@@ -29,7 +29,9 @@ const emptyForm: PlanInput = {
   billing_cycle: "weekly",
   price: 0,
   duration_days: 7,
-  deposit_amount: 2000,
+  deposit_amount: 1500,
+  onboarding_charge_amount: 500,
+  min_rental_days_for_refund: 45,
   vehicle_model_id: "",
   active: true,
 };
@@ -41,6 +43,8 @@ function toForm(plan: Plan): PlanInput {
     price: plan.price,
     duration_days: plan.duration_days,
     deposit_amount: plan.deposit_amount,
+    onboarding_charge_amount: plan.onboarding_charge_amount,
+    min_rental_days_for_refund: plan.min_rental_days_for_refund,
     vehicle_model_id: plan.vehicle_model_id ?? "",
     included_minutes: plan.included_minutes ?? undefined,
     active: plan.active,
@@ -63,7 +67,20 @@ export default function PlansPage() {
     { header: "Billing cycle", key: "billing_cycle", render: (p) => <span className="capitalize">{p.billing_cycle}</span> },
     { header: "Duration", key: "duration_days", render: (p) => `${p.duration_days} day${p.duration_days === 1 ? "" : "s"}` },
     { header: "Price", key: "price", sortKey: "price", render: (p) => formatCurrency(p.price) },
-    { header: "Deposit", key: "deposit_amount", render: (p) => formatCurrency(p.deposit_amount) },
+    {
+      header: "Upfront charges",
+      key: "deposit_amount",
+      render: (p) => (
+        <div className="min-w-0">
+          <p className="text-sm">{formatCurrency(p.deposit_amount + p.onboarding_charge_amount)} total</p>
+          <p className="text-xs text-muted-foreground">
+            {formatCurrency(p.onboarding_charge_amount)} onboarding ·{" "}
+            {formatCurrency(p.deposit_amount)} deposit
+            {p.min_rental_days_for_refund > 0 && ` · refundable after ${p.min_rental_days_for_refund}d`}
+          </p>
+        </div>
+      ),
+    },
     { header: "Status", key: "active", render: (p) => <StatusBadge status={p.active ? "active" : "inactive"} /> },
     { header: "Created", key: "created_at", sortKey: "created_at", render: (p) => formatDate(p.created_at), hideOnMobile: true },
     {
@@ -84,7 +101,7 @@ export default function PlansPage() {
     },
   ];
 
-  usePageSubtitle(`${data?.total ?? 0} plans · price, duration and deposit are configured here, never hardcoded`);
+  usePageSubtitle(`${data?.total ?? 0} plans · price, duration, deposit and onboarding charge are configured here, never hardcoded`);
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -236,8 +253,56 @@ function PlanFormDialog({
                 value={form.deposit_amount}
                 onChange={(e) => setForm((f) => ({ ...f, deposit_amount: Number(e.target.value) }))}
               />
+              <p className="text-xs text-muted-foreground">Refundable, subject to deductions.</p>
             </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Onboarding charge (₹)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={form.onboarding_charge_amount ?? 0}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, onboarding_charge_amount: Number(e.target.value) }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">Non-refundable. 0 to charge none.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Refundable after (rental days)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={form.min_rental_days_for_refund ?? 0}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, min_rental_days_for_refund: Number(e.target.value) }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Counted across all the rider's rentals. 0 for no minimum.
+              </p>
+            </div>
+          </div>
+
+          {/* Stated plainly because this is the number the rider is actually
+              asked to pay, and it is the sum of two fields edited separately. */}
+          <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+            Riders pay{" "}
+            <span className="font-semibold text-foreground">
+              {formatCurrency(form.price + form.deposit_amount + (form.onboarding_charge_amount ?? 0))}
+            </span>{" "}
+            up front ({formatCurrency(form.price)} plan +{" "}
+            {formatCurrency(form.onboarding_charge_amount ?? 0)} onboarding +{" "}
+            {formatCurrency(form.deposit_amount)} deposit).
+            {(form.min_rental_days_for_refund ?? 0) > 0 && (
+              <>
+                {" "}Changing these affects new bookings only — existing riders keep the terms
+                they paid under.
+              </>
+            )}
+          </p>
 
           <div className="flex items-center justify-between rounded-md border border-border p-3">
             <Label htmlFor="plan-active">Active (bookable by riders)</Label>

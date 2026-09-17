@@ -694,11 +694,36 @@ export const hi: Copy = {
     'booking.startsOn': '{date} से शुरू',
     'booking.rentalPlanAmount': 'किराया प्लान राशि',
     'booking.securityDepositRefundable': 'सुरक्षा जमा राशि (वापस मिलने वाली)',
+    'deposit.title': 'आपकी जमा राशि',
+    'deposit.securityDeposit': 'सुरक्षा जमा राशि',
+    'deposit.refundableNow': 'कटौती के बाद वापस मिलने वाली',
+    'deposit.daysRemaining':
+        '{required} में से {completed} किराया दिन पूरे हुए — जमा राशि वापस पाने के लिए {remaining} दिन और।',
+    'deposit.afterReturn':
+        'स्कूटर लौटाने और होल्डिंग अवधि पूरी होने के बाद वापस मिलेगी।',
+    'deposit.eligible': 'रिफंड के लिए पात्र। हम इसे जल्द ही प्रोसेस करेंगे।',
+    'deposit.refunded': 'आपका रिफंड प्रोसेस हो चुका है।',
+    'deposit.forfeited': 'यह जमा राशि वापस नहीं मिलेगी।',
+    'deposit.onboardingNote':
+        'बुकिंग के समय दिया गया {amount} का ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा और यह इस जमा राशि का हिस्सा नहीं है।',
+    'booking.onboardingCharge': 'ऑनबोर्डिंग शुल्क',
+    'booking.onboardingFee': 'ऑनबोर्डिंग शुल्क',
+    'booking.securityDeposit': 'सुरक्षा जमा राशि',
+    'booking.nonRefundable': 'वापस नहीं मिलेगी',
+    'booking.refundable': 'वापस मिलने वाली',
+    'booking.refundableAfterDays': '{days} किराया दिनों के बाद वापस मिलने वाली',
+    'booking.upfrontBreakdown': '{amount} अग्रिम राशि का विवरण',
+    'booking.depositTerms':
+        '{onboarding} का ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा। {deposit} की सुरक्षा जमा राशि वापस मिलेगी, जिसमें नुकसान, बकाया, जुर्माना या अन्य लागू शुल्क की कटौती की जा सकती है।',
+    'booking.depositTermsWithDays':
+        '{onboarding} का ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा। {deposit} की सुरक्षा जमा राशि कम से कम {days} किराया दिन पूरे करने के बाद वापस मिलेगी, जिसमें नुकसान, बकाया, जुर्माना या अन्य लागू शुल्क की कटौती की जा सकती है।',
     'booking.totalPayable': 'कुल देय राशि',
     'booking.estimatedTotal': 'अनुमानित कुल राशि',
     'booking.confirmedOnPaymentScreen': 'भुगतान स्क्रीन पर पक्का किया जाएगा',
     'booking.cancellationNote':
         'बुकिंग के {minutes} मिनट के अंदर रद्द करने पर प्लान राशि का {percent}% काट लिया जाता है; जितनी देर करेंगे, शुल्क उतना बढ़ेगा। आपकी सुरक्षा जमा राशि हमेशा पूरी वापस की जाती है।',
+    'booking.cancellationNoteWithOnboarding':
+        'बुकिंग के {minutes} मिनट के अंदर रद्द करने पर प्लान राशि का {percent}% काट लिया जाता है; जितनी देर करेंगे, शुल्क उतना बढ़ेगा। पिकअप से पहले रद्द करने पर आपकी सुरक्षा जमा राशि पूरी वापस मिलेगी, लेकिन ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा।',
     'booking.amount': 'राशि',
     'booking.processing': 'प्रक्रिया जारी है…',
     'booking.continue': 'जारी रखें',

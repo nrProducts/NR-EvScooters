@@ -118,7 +118,11 @@ export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean
   const appliedLines = ruleLines.filter((l) => !excluded.has(l.code));
 
   const estimate = plan
-    ? Math.max(0, plan.price + plan.deposit_amount + appliedLines.reduce((s, l) => s + l.amount, 0))
+    ? Math.max(
+        0,
+        plan.price + plan.deposit_amount + plan.onboarding_charge_amount
+          + appliedLines.reduce((s, l) => s + l.amount, 0),
+      )
     : 0;
   useEffect(() => {
     if (amountTouched) return;
@@ -244,6 +248,7 @@ export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean
                 {(plans?.data ?? []).map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.name} — {formatCurrency(p.price)} · {p.duration_days} day{p.duration_days === 1 ? "" : "s"} · deposit {formatCurrency(p.deposit_amount)}
+                    {p.onboarding_charge_amount > 0 && ` · onboarding ${formatCurrency(p.onboarding_charge_amount)}`}
                   </SelectItem>
                 ))}
                 {vehicle && (plans?.data ?? []).length === 0 && (
@@ -334,7 +339,10 @@ export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean
 
             {amountInvalid && <p className="text-[0.6875rem] text-destructive">Enter a valid, non-negative amount.</p>}
             <p className="text-[0.6875rem] text-muted-foreground">
-              Plan {plan ? formatCurrency(plan.price) : "—"} + deposit {plan ? formatCurrency(plan.deposit_amount) : "—"}
+              Plan {plan ? formatCurrency(plan.price) : "—"}
+              {plan && plan.onboarding_charge_amount > 0
+                && ` + onboarding ${formatCurrency(plan.onboarding_charge_amount)}`}
+              {" + deposit "}{plan ? formatCurrency(plan.deposit_amount) : "—"}
               {appliedLines.filter((l) => l.amount > 0).map((l) => ` + ${l.name.toLowerCase()} ${formatCurrency(l.amount)}`).join("")}
               {appliedLines.filter((l) => l.amount < 0).map((l) => ` − ${l.name.toLowerCase()} ${formatCurrency(Math.abs(l.amount))}`).join("")}
               {amountTouched && amountInput.trim() !== ""

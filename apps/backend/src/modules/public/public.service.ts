@@ -14,6 +14,8 @@ export interface PublicPlan {
     price: number;
     duration_days: number;
     deposit_amount: number;
+    onboarding_charge_amount: number;
+    min_rental_days_for_refund: number;
     vehicle_model_id: string | null;
     vehicle_model_name: string | null;
 }
@@ -22,7 +24,7 @@ export interface PublicPlan {
 export async function getPublicPlans(): Promise<PublicPlan[]> {
     const { data, error } = await supabaseAdmin
         .from("plans")
-        .select("id, name, billing_period, price_amount, duration_days, deposit_amount, vehicle_model_id, vehicle_models(name)")
+        .select("id, name, billing_period, price_amount, duration_days, deposit_amount, onboarding_charge_amount, min_rental_days_for_refund, vehicle_model_id, vehicle_models(name)")
         .eq("is_active", true)
         .is("deleted_at", null)
         .order("price_amount", { ascending: true });
@@ -37,6 +39,8 @@ export async function getPublicPlans(): Promise<PublicPlan[]> {
             price: Number(row.price_amount),
             duration_days: Number(row.duration_days ?? 0),
             deposit_amount: Number(row.deposit_amount ?? 0),
+            onboarding_charge_amount: Number(row.onboarding_charge_amount ?? 0),
+            min_rental_days_for_refund: Number(row.min_rental_days_for_refund ?? 0),
             vehicle_model_id: (row.vehicle_model_id as string | null) ?? null,
             vehicle_model_name: (model as { name?: string } | null)?.name ?? null,
         };

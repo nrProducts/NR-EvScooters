@@ -28,6 +28,7 @@ export function useCancelBooking() {
     const charge = computeCancellationCharge({
       planPaid,
       depositAmount: wasPaid ? booking.plan?.deposit_amount ?? 0 : 0,
+      onboardingCharge: wasPaid ? booking.plan?.onboarding_charge_amount ?? 0 : 0,
       createdAt: booking.created_at,
     });
 

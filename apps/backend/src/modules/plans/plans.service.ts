@@ -22,6 +22,7 @@ import { CreatePlanInput, ListPlansFilters, PlanRow, UpdatePlanInput } from "./p
 
 const PLAN_COLUMNS = `
     id, name, billing_period, price_amount, duration_days, deposit_amount,
+    onboarding_charge_amount, min_rental_days_for_refund,
     vehicle_model_id, is_active, created_at, updated_at
 `;
 
@@ -32,6 +33,8 @@ interface RawPlanRow {
     price_amount: number | string;
     duration_days: number;
     deposit_amount: number | string;
+    onboarding_charge_amount: number | string;
+    min_rental_days_for_refund: number;
     vehicle_model_id: string;
     is_active: boolean;
     created_at: string;
@@ -47,6 +50,8 @@ function toPlanRow(row: RawPlanRow): PlanRow {
         included_minutes: null,
         duration_days: row.duration_days,
         deposit_amount: Number(row.deposit_amount),
+        onboarding_charge_amount: Number(row.onboarding_charge_amount ?? 0),
+        min_rental_days_for_refund: Number(row.min_rental_days_for_refund ?? 0),
         vehicle_model_id: row.vehicle_model_id,
         active: row.is_active,
         created_at: row.created_at,
@@ -115,6 +120,8 @@ export async function createPlan(input: CreatePlanInput, actor: AuthContext): Pr
             price_amount: input.price,
             duration_days: input.duration_days,
             deposit_amount: input.deposit_amount,
+            onboarding_charge_amount: input.onboarding_charge_amount ?? 0,
+            min_rental_days_for_refund: input.min_rental_days_for_refund ?? 0,
             vehicle_model_id: input.vehicle_model_id,
             is_active: input.active ?? true,
         })
@@ -160,6 +167,8 @@ export async function updatePlan(
     if (patch.price !== undefined) columns.price_amount = patch.price;
     if (patch.duration_days !== undefined) columns.duration_days = patch.duration_days;
     if (patch.deposit_amount !== undefined) columns.deposit_amount = patch.deposit_amount;
+    if (patch.onboarding_charge_amount !== undefined) columns.onboarding_charge_amount = patch.onboarding_charge_amount;
+    if (patch.min_rental_days_for_refund !== undefined) columns.min_rental_days_for_refund = patch.min_rental_days_for_refund;
     if (patch.active !== undefined) columns.is_active = patch.active;
 
     // `included_minutes` is accepted by the validator and dropped here — there

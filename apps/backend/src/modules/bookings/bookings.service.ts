@@ -55,6 +55,7 @@ import {
 const BOOKING_COLUMNS = `
     id, user_id, status, requested_start_on, created_at, held_vehicle_id, hold_expires_at,
     plan_price_snapshot, duration_days_snapshot, deposit_amount_snapshot,
+    onboarding_charge_snapshot,
     vehicle_models:plans(vehicle_models(id, name)),
     hubs(id, name, code, latitude, longitude),
     plans(id, name, billing_period),
@@ -72,6 +73,7 @@ type RawBookingRow = {
     plan_price_snapshot: number | string;
     duration_days_snapshot: number;
     deposit_amount_snapshot: number | string;
+    onboarding_charge_snapshot: number | string | null;
     vehicle_models: unknown;
     hubs: unknown;
     plans: unknown;
@@ -446,6 +448,7 @@ export function toBookingView(row: RawBookingRow, ctx: BookingContext = EMPTY_CO
                 price: Number(row.plan_price_snapshot),
                 duration_days: row.duration_days_snapshot,
                 deposit_amount: Number(row.deposit_amount_snapshot),
+                onboarding_charge_amount: Number(row.onboarding_charge_snapshot ?? 0),
             }
             : null,
         // `held_vehicle_id` is the RESERVATION — confirmPickup and
@@ -533,6 +536,12 @@ export interface CancellationCharge {
     penaltyAmount: number;
     /** The security deposit actually paid — always refunded in full pre-pickup, never penalized. */
     depositRefund: number;
+    /**
+     * The onboarding charge, kept in full. Non-refundable means non-refundable:
+     * it is neither returned nor run through the tier percentage, so it is
+     * held out of planPaid rather than penalised as part of it.
+     */
+    onboardingKept: number;
     /** (planPaid − penaltyAmount) + depositRefund. */
     refundAmount: number;
 }
@@ -543,8 +552,9 @@ export interface CancellationCharge {
  * The tier is chosen by how many minutes elapsed between the booking being
  * created and the cancellation. Within a tier the rider keeps back
  * `penalty_percent` of the plan amount they actually paid (captured total
- * minus the deposit). Past the largest tier, 100% is kept. The deposit is
- * always refunded in full — no damage is possible before pickup.
+ * minus the deposit and the onboarding charge). Past the largest tier, 100%
+ * is kept. The deposit is always refunded in full — no damage is possible
+ * before pickup. The onboarding charge is always kept in full.
  *
  * `tiers` come from `cancellation_tiers`; the caller passes
  * DEFAULT_CANCELLATION_TIERS when the table is empty. Exported (with the
@@ -556,6 +566,8 @@ export function computeCancellationCharge(input: {
     planPaid: number | null;
     /** The deposit actually paid — omit (or 0) if none. */
     depositAmount?: number | null;
+    /** The onboarding charge actually paid — omit (or 0) for a booking taken before the split. */
+    onboardingCharge?: number | null;
     createdAt?: string | null;
     now?: Date;
     tiers?: readonly CancellationTier[];
@@ -578,9 +590,13 @@ export function computeCancellationCharge(input: {
     const planPaid = round2(Math.max(0, input.planPaid ?? 0));
     const penaltyAmount = round2(planPaid * (penaltyPercent / 100));
     const depositRefund = round2(Math.max(0, input.depositAmount ?? 0));
+    const onboardingKept = round2(Math.max(0, input.onboardingCharge ?? 0));
     const refundAmount = round2(Math.max(0, planPaid - penaltyAmount) + depositRefund);
 
-    return { elapsedMinutes, penaltyPercent, planPaid, penaltyAmount, depositRefund, refundAmount };
+    return {
+        elapsedMinutes, penaltyPercent, planPaid, penaltyAmount,
+        depositRefund, onboardingKept, refundAmount,
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -612,7 +628,7 @@ export async function assertVehicleAvailable(modelId: string, hubId: string): Pr
 export async function requireBookablePlan(planId: string, modelId: string) {
     const { data, error } = await supabaseAdmin
         .from("plans")
-        .select("id, is_active, vehicle_model_id, price_amount, duration_days, deposit_amount, billing_period")
+        .select("id, is_active, vehicle_model_id, price_amount, duration_days, deposit_amount, onboarding_charge_amount, min_rental_days_for_refund, billing_period")
         .eq("id", planId)
         .is("deleted_at", null)
         .maybeSingle();
@@ -667,6 +683,7 @@ export async function createBooking(
             plan_price_snapshot: plan.price_amount,
             duration_days_snapshot: plan.duration_days,
             deposit_amount_snapshot: plan.deposit_amount,
+            onboarding_charge_snapshot: plan.onboarding_charge_amount ?? 0,
             // Payment-gated: the rider must pay via POST
             // /payments/bookings/:id/order before this moves to 'confirmed'
             // — see payments.service.ts's applyPaymentSuccess, which is also
@@ -805,6 +822,7 @@ export async function adminCreateBooking(
             plan_price_snapshot: plan.price_amount,
             duration_days_snapshot: durationDays,
             deposit_amount_snapshot: plan.deposit_amount,
+            onboarding_charge_snapshot: plan.onboarding_charge_amount ?? 0,
             status: "pending_payment",
             hold_expires_at: new Date(Date.now() + env.bookingPaymentGraceMinutes * 60_000).toISOString(),
         })
@@ -1045,7 +1063,7 @@ export async function cancelMyBooking(
 ): Promise<BookingView> {
     const { data: existing, error: fetchError } = await supabaseAdmin
         .from("bookings")
-        .select("id, user_id, status, requested_start_on, created_at, held_vehicle_id, plan_price_snapshot")
+        .select("id, user_id, status, requested_start_on, created_at, held_vehicle_id, plan_price_snapshot, onboarding_charge_snapshot")
         .eq("id", bookingId)
         .maybeSingle();
 
@@ -1077,12 +1095,17 @@ export async function cancelMyBooking(
         ? await capturedAmountForSubscription(context.subscriptionId)
         : 0;
     const depositAmount = deposit?.amount ?? 0;
-    const planPaid = Math.max(0, capturedTotal - depositAmount);
+    // The onboarding charge comes out of planPaid, not out of the refund: it
+    // is non-refundable, so it must be neither given back nor charged a
+    // penalty percentage on top of being kept.
+    const onboardingCharge = wasPaid ? Number(existing.onboarding_charge_snapshot ?? 0) : 0;
+    const planPaid = Math.max(0, capturedTotal - depositAmount - onboardingCharge);
 
     const tiers = await getCancellationTiers();
     const charge = computeCancellationCharge({
         planPaid,
         depositAmount,
+        onboardingCharge,
         createdAt: existing.created_at,
         tiers,
     });

@@ -23,12 +23,12 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "How does payment work?",
     answer:
-      "Payment is collected in the app when you confirm your booking, alongside a refundable security deposit. If payment isn't completed in time, the reservation is automatically released.",
+      "Payment is collected in the app when you confirm your booking, alongside a one-time onboarding charge and a refundable security deposit. If payment isn't completed in time, the reservation is automatically released.",
   },
   {
     question: "How does the security deposit work?",
     answer:
-      "A refundable deposit is charged with your first rental period (₹2,000 on the current Weekly Unlimited plan). It's held against damage and is eligible for refund a set number of days after the vehicle is returned in good condition.",
+      "₹2,000 is collected with your first rental period on the current Weekly Unlimited plan, made up of a ₹500 one-time onboarding charge and a ₹1,500 refundable security deposit. The onboarding charge is not refundable. The ₹1,500 deposit is held against damage and becomes eligible for refund once you have completed a minimum of 45 rental days and the vehicle is returned in good condition, subject to deductions for damages, outstanding dues, penalties or other applicable charges.",
   },
   {
     question: "What happens after I book?",
