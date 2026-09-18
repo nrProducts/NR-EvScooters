@@ -23,6 +23,14 @@ import { computeLateRenewalFee, lateFeeReferenceDate } from "../payments/renewal
  * old return-lateness settlement fee (computeLateReturnPenalty) was zeroed in
  * completeRide to avoid charging for lateness two different ways.
  *
+ * One difference from an earlier version of this file: renewing and
+ * returning used to be charged by two different formulas (a renewal dropped
+ * "today," a return kept it) because a late renewal used to restart the
+ * period on whatever day the rider paid, making "today" genuinely ambiguous.
+ * Under the fixed noon-to-noon cycle a late renewal continues from the exact
+ * instant it was due, same as a return's deadline always has, so both exits
+ * now measure lateness identically — see computeLateRenewalFee.
+ *
  * The charge is collected through a standalone `invoices` row, purpose
  * 'adhoc' — the one enum value nothing else in the codebase produces (see
  * the check constraints on `invoices`: 'subscription_period' requires a
@@ -36,21 +44,21 @@ import { computeLateRenewalFee, lateFeeReferenceDate } from "../payments/renewal
  */
 
 /**
- * BOTH prices for one lapse, because a rider standing on an expired plan has
- * two different exits and they genuinely cost different amounts:
+ * ONE price for one lapse now, not two.
  *
- *   `daysLate` / `lateFee`            — RETURN today. The handover day counts.
- *   `renewalDaysLate` / `renewalLateFee` — RENEW today. Exactly one day less,
- *                                          because the renewal payment buys
- *                                          today as plan time.
+ * This used to return a second, RENEWAL-flavoured pair (`renewalDaysLate` /
+ * `renewalLateFee`, always exactly one day less than the return pair)
+ * because renewing and returning used to disagree about whether "today" was
+ * chargeable — see computeLateRenewalFee's docblock for why that ambiguity
+ * is gone under the fixed noon-to-noon cycle. There is now one precise
+ * cutover instant and one number of hours/days late from it, whichever exit
+ * the rider takes.
  *
- * Both are returned from the one endpoint so a screen never has to guess or
- * derive the other number locally. Home's renew banner quotes the RENEWAL
- * pair (its call to action is "Renew Plan Now"); the Return sheet and the
- * payable adhoc invoice quote the RETURN pair. Quoting a day count from one
- * exit beside a rupee amount from the other is the exact contradiction this
- * split exists to stop — 3 days next to ₹668 at ₹334/day is not a number a
- * rider can check.
+ * `renewalDaysLate`/`renewalLateFee` are kept on this shape, EQUAL to
+ * `daysLate`/`lateFee`, so the two screens that used to read the renewal
+ * pair specifically (Home's renew banner, the renewal preview) keep working
+ * unchanged rather than needing every consumer touched in the same change
+ * that collapsed the math underneath them.
  */
 export interface OverdueLateFeePreview {
     isLate: boolean;
@@ -58,14 +66,16 @@ export interface OverdueLateFeePreview {
     feePerDay: number;
     lateFee: number;
     dueOn: string | null;
-    /** Days the fee covers if the rider RENEWS today rather than returning. Always max(0, daysLate - 1). */
+    /** Precise hours elapsed since the due instant — for display ("30 minutes late"), never for billing. */
+    hoursLate: number;
+    /** @deprecated Equal to `daysLate` — the renew/return distinction this once carried no longer exists. */
     renewalDaysLate: number;
-    /** Money owed if the rider RENEWS today rather than returning. */
+    /** @deprecated Equal to `lateFee` — the renew/return distinction this once carried no longer exists. */
     renewalLateFee: number;
 }
 
 const NOTHING_OWED = {
-    isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0,
+    isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, hoursLate: 0,
     renewalDaysLate: 0, renewalLateFee: 0,
 } as const;
 
@@ -83,25 +93,12 @@ export async function previewOverdueLateFee(subscriptionId: string): Promise<Ove
     const referenceDate = await lateFeeReferenceDate(subscriptionId, null, period.due_on);
     if (!referenceDate) return { ...NOTHING_OWED, dueOn: period.due_on };
 
-    // chargeCurrentDay: this is the RETURN path — the rider held the scooter
-    // through today and hands it back today, so the handover day is chargeable
-    // (unlike a renewal, which buys today). See computeLateRenewalFee.
-    const { isLate, daysLate, feePerDay, lateFee } = await computeLateRenewalFee(
-        subscriptionId,
-        referenceDate,
-        { chargeCurrentDay: true },
-    );
-
-    // Derived rather than a second computeLateRenewalFee call: the two differ
-    // only by the handover day and the rate is already resolved, so deriving
-    // it here saves the duplicate pricing_rules lookup AND guarantees the two
-    // figures can never disagree about the rate they were priced at.
-    const renewalDaysLate = Math.max(0, daysLate - 1);
-    const renewalLateFee = Math.round(feePerDay * renewalDaysLate * 100) / 100;
+    const { isLate, daysLate, feePerDay, lateFee, hoursLate } =
+        await computeLateRenewalFee(subscriptionId, referenceDate);
 
     return {
-        isLate, daysLate, feePerDay, lateFee, dueOn: period.due_on,
-        renewalDaysLate, renewalLateFee,
+        isLate, daysLate, feePerDay, lateFee, hoursLate, dueOn: period.due_on,
+        renewalDaysLate: daysLate, renewalLateFee: lateFee,
     };
 }
 

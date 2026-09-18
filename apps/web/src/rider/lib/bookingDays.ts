@@ -36,6 +36,23 @@ export function isValidStartDay(dateStr: string): boolean {
     return parsed.getDay() !== 0;
 }
 
+/**
+ * DISPLAY ONLY — the calendar day a rental period ends on, for showing
+ * "Rental Period: 20 Sep, 12:00 PM -> 27 Sep, 12:00 PM" before checkout.
+ *
+ * Mirrors the backend's calculateRentalPeriod exactly (apps/backend/src/
+ * common/dates.ts): every rental runs a fixed noon-to-noon cycle, so a plan
+ * of N days ends startDay + N, not startDay + (N - 1). This never decides
+ * anything — the backend recomputes the authoritative dates itself at
+ * booking creation and pickup — it only lets the rider see, before paying,
+ * the same period the backend is about to create.
+ */
+export function rentalPeriodEndDay(startDay: string, durationDays: number): string {
+    const d = new Date(`${startDay}T00:00:00`);
+    d.setDate(d.getDate() + durationDays);
+    return fmt(d);
+}
+
 export interface DayOption {
     date: string; // YYYY-MM-DD
     weekday: string; // "Mon", "Tue", ...

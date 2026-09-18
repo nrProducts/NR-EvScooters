@@ -142,30 +142,34 @@ describe("generatePeriodInvoice", () => {
         expect(inserts[0]!.payload).toMatchObject({ status: "scheduled" });
     });
 
-    it("dates a LATE renewal from today, not backdated to the lapsed period", async () => {
+    it("dates a LATE renewal from the lapsed period's own due date, never from today", async () => {
+        // Fixed noon-to-noon cycle: the clock never restarts on whatever day
+        // someone happens to preview or pay. PERIOD_1 is due 22 Aug; previewed
+        // three days late on 25 Aug, the next period still starts exactly
+        // 22 Aug — the missed days are a late-fee matter, not a reason to
+        // shift the cycle.
         vi.useFakeTimers().setSystemTime(atNoonIst(TODAY));
         const { inserts } = build({ current: PERIOD_1, currentPaid: true });
 
         await generatePeriodInvoice(SUB);
 
-        // Backdating to 23 Aug would sell three days that have already gone
-        // by, and chk_invoices_due would reject an invoice issued today whose
-        // due date is in the past.
         expect(inserts[0]!.payload).toMatchObject({
-            starts_on: "2026-08-25",
-            ends_on: "2026-08-31",
-            due_on: "2026-08-31",
+            starts_on: "2026-08-22",
+            ends_on: "2026-08-29",
+            due_on: "2026-08-29",
         });
     });
 
-    it("dates an ON-TIME renewal from the day after the current period ends", async () => {
+    it("dates an ON-TIME renewal identically to a late one — the cycle never depends on preview timing", async () => {
         vi.useFakeTimers().setSystemTime(atNoonIst("2026-08-20"));
         const { inserts } = build({ current: PERIOD_1, currentPaid: true });
 
         await generatePeriodInvoice(SUB);
 
+        // Same starts_on as the late-preview test above: previewing 2 days
+        // early changes nothing about where the next period begins.
         expect(inserts[0]!.payload).toMatchObject({
-            starts_on: "2026-08-23",
+            starts_on: "2026-08-22",
             ends_on: "2026-08-29",
         });
     });

@@ -706,6 +706,8 @@ export const hi: Copy = {
     'deposit.forfeited': 'यह जमा राशि वापस नहीं मिलेगी।',
     'deposit.onboardingNote':
         'बुकिंग के समय दिया गया {amount} का ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा और यह इस जमा राशि का हिस्सा नहीं है।',
+    'booking.rentalPeriod': 'किराया अवधि',
+    'booking.fixedNoonCycleNote': 'सभी किराए दोपहर 12:00 बजे शुरू और समाप्त होते हैं।',
     'booking.onboardingCharge': 'ऑनबोर्डिंग शुल्क',
     'booking.onboardingFee': 'ऑनबोर्डिंग शुल्क',
     'booking.securityDeposit': 'सुरक्षा जमा राशि',

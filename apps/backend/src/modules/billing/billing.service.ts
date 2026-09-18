@@ -2,7 +2,7 @@ import { supabaseAdmin } from "../../config/supabase";
 import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
-import { addDays, businessToday } from "../../common/dates";
+import { calculateRentalPeriod } from "../../common/dates";
 import { AuthContext, Paginated } from "../../types";
 import {
     CancelRiderDiscountInput,
@@ -747,25 +747,25 @@ async function advanceToNextPeriod(subscriptionId: string, currentPeriodId: stri
         throw new Error(`advanceToNextPeriod: subscription ${subscriptionId} not found.`);
     }
 
-    // Late (past due_on): dates as if the new period starts today, so the
-    // invoice reflects picking billing back up right now — but it is NOT
-    // activated here. Early/on-time: dates start right after the current
-    // one ends, same as always. Either way this row is 'scheduled'; only a
-    // captured payment (applyRenewalSuccess) promotes it, closing the
-    // current one at that point.
-    const today = businessToday();
-    const late = today > current.due_on;
-    const nextStart = addDays(current.ends_on, 1);
-    const nextEnd = addDays(nextStart, subscription.duration_days_snapshot - 1);
+    // Fixed noon-to-noon cycle: the next period always starts exactly where
+    // the current one is due — `current.due_on`, the SAME calendar date as
+    // the current period's own end, since noon on that date is simultaneously
+    // this period's cutover and the next one's. Never "today," whether the
+    // renewal is previewed early or late: a late rider is charged a late fee
+    // for the gap, but the cycle itself never drifts to whatever day someone
+    // happens to preview or pay on. This is why `late` no longer exists as a
+    // branch here — see calculateRentalPeriod for the one place that decides
+    // what a plan's duration means in wall-clock terms.
+    const period = calculateRentalPeriod(current.due_on, subscription.duration_days_snapshot);
 
     const { data: inserted, error: insertError } = await supabaseAdmin
         .from("subscription_periods")
         .insert({
             subscription_id: subscriptionId,
             sequence_number: current.sequence_number + 1,
-            starts_on: late ? today : nextStart,
-            ends_on: late ? addDays(today, subscription.duration_days_snapshot - 1) : nextEnd,
-            due_on: late ? addDays(today, subscription.duration_days_snapshot - 1) : nextEnd,
+            starts_on: period.startDate,
+            ends_on: period.endDate,
+            due_on: period.endDate,
             base_amount_snapshot: subscription.plan_price_snapshot,
             status: "scheduled",
         })

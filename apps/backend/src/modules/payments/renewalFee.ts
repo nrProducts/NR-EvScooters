@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../../config/supabase";
-import { businessToday, wholeDaysBetween } from "../../common/dates";
+import { noonOfBusinessDay } from "../../common/dates";
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
@@ -107,72 +107,51 @@ export async function lateFeeReferenceDate(
 }
 
 /**
- * How many days of renewal late fee are owed, and the money for them.
+ * How many days of late fee are owed, and the money for them — ONE formula
+ * now for both a late renewal and a late return.
  *
- * ── TODAY IS NOT CHARGED. ────────────────────────────────────────────────
+ * ── Why the old renew-vs-return split is gone ───────────────────────────
  *
- * This is the rule that separates the RENEWAL fee from the RETURN fee, and
- * they are genuinely different questions:
+ * It used to exist because "today" was genuinely ambiguous: renewing
+ * re-anchored the new period's starts_on to businessToday() (applyRenewalSuccess,
+ * payments.service.ts), so the calendar day someone happened to pay on was
+ * simultaneously "the first day of the new period" AND "a day that might or
+ * might not already be late" — hence dropping it for a renewal (it was being
+ * bought) but keeping it for a return (the rider used the scooter through it,
+ * and nothing else charged for it).
  *
- *   Renewing buys today. applyRenewalSuccess re-anchors the new period's
- *   starts_on to businessToday(), so a rider renewing on the 3rd is paying
- *   full price for the 3rd. Charging a late fee for the 3rd as well bills
- *   the same day twice — once as plan, once as penalty.
+ * That ambiguity is gone. Under the fixed noon-to-noon cycle, a late renewal
+ * no longer restarts the period on payment day — it continues from the
+ * EXACT instant it was due (noon on `dueDate`), same as a return's deadline
+ * always has. There is now one precise cutover instant, not a fuzzy calendar
+ * day two different actions used to interpret two different ways, so both
+ * actions measure lateness identically: whole 24-hour blocks elapsed since
+ * noon on `dueDate`.
  *
- *   Returning loses today. The rider held the scooter through the 3rd and
- *   hands it back having used it, so the 3rd IS chargeable. The return path
- *   (previewOverdueLateFee -> ensureOverdueLateFeeInvoice, overdueLateFee.ts)
- *   asks for exactly that by passing `chargeCurrentDay: true` — the overdue
- *   adhoc invoice is now the ONLY late fee the return flow collects
- *   (completeRide sets its own settlement late_fee_amount to 0), so the
- *   handover day has to be counted here or it is never charged at all.
+ * `daysLate` — and therefore the fee — is still 0 for anything under a full
+ * 24 hours late (a rider back at 12:30 PM owes nothing yet, same as the old
+ * day-rate model never billed a fraction of a day). `hoursLate` is exposed
+ * alongside it purely for DISPLAY — "30 minutes late" is a fact worth
+ * showing a rider or admin even while the fee itself is still ₹0.
  *
- * So with a period due on the 1st:
- *
- *   renew on the 2nd -> 0 days. The 2nd is the first unpaid day and renewing
- *                       today buys it. Late, but nothing lost, nothing owed.
- *   renew on the 3rd -> 1 day  (the 2nd was lost)
- *   renew on the 4th -> 2 days (the 2nd and 3rd were lost)
- *   return on the 3rd -> 2 days (chargeCurrentDay: the 2nd AND the 3rd,
- *                        because the scooter was out on both)
- *
- * Previously this counted `Math.max(1, dueDate -> today)`, which charged the
- * 3rd as well and floored at one day — so a rider renewing on the 2nd, who
- * has lost nothing at all, was charged a full day's penalty.
- *
- * `isLate` means A FEE IS OWED, not "the plan has lapsed". Those diverge for
- * exactly one day now (the 2nd above) and every consumer here wants the
- * money question — the lapsed-plan question is answered by
- * subscriptions.status / getRenewalEligibility on the client.
- *
- * Both ends are compared as IST calendar days rather than through the
- * server's local clock: `wholeDaysBetween` buckets with setHours(), so
- * feeding it `today` as an instant measured the gap in whatever timezone the
- * host happened to run in (UTC on Render), which is a different day boundary
- * from the `date` columns this is compared against. Anchoring BOTH sides at
- * UTC midnight of a business-day string makes the offset cancel exactly.
+ * `isLate` means A FEE IS OWED (`daysLate > 0`), not "the plan has lapsed" —
+ * the lapsed-plan question is answered by subscriptions.status /
+ * getRenewalEligibility on the client.
  */
 export async function computeLateRenewalFee(
     subscriptionId: string,
     dueDate: string,
-    options: { chargeCurrentDay?: boolean } = {},
-): Promise<{ isLate: boolean; lateFee: number; daysLate: number; feePerDay: number }> {
-    const elapsed = wholeDaysBetween(
-        new Date(`${dueDate}T00:00:00Z`),
-        new Date(`${businessToday()}T00:00:00Z`),
-    );
-    // Renewal drops today (`elapsed - 1`) because the renewal payment itself
-    // buys it; a RETURN keeps today (`chargeCurrentDay`) because the rider used
-    // the scooter through the handover day and nothing else charges for it.
-    // Both floored at 0, which also covers acting early (elapsed <= 0).
-    const daysLate = Math.max(0, elapsed - (options.chargeCurrentDay ? 0 : 1));
-    if (daysLate <= 0) return { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0 };
+): Promise<{ isLate: boolean; lateFee: number; daysLate: number; feePerDay: number; hoursLate: number }> {
+    const dueAt = new Date(noonOfBusinessDay(dueDate));
+    const hoursLate = Math.max(0, (Date.now() - dueAt.getTime()) / (60 * 60 * 1000));
+    const daysLate = Math.floor(hoursLate / 24);
+    if (daysLate <= 0) return { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0, hoursLate };
 
     // The rate lookup — subscription override first, then the global rule —
     // lives in lateFeeRateFor, so the return path resolves the same rate from
     // the same place rather than a constant of its own.
     const feePerDay = await lateFeeRateFor(subscriptionId);
-    return { isLate: true, lateFee: round2(feePerDay * daysLate), daysLate, feePerDay };
+    return { isLate: true, lateFee: round2(feePerDay * daysLate), daysLate, feePerDay, hoursLate };
 }
 
 /**

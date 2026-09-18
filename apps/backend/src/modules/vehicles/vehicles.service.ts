@@ -8,7 +8,7 @@ import { notify } from "../notifications/notify.service";
 import { adminCancelBooking } from "../bookings/bookings.service";
 import { completeRide } from "../rentals/rentals.service";
 import { Paginated, AuthContext } from "../../types";
-import { businessToday, endOfBusinessDay } from "../../common/dates";
+import { businessToday, noonOfBusinessDay } from "../../common/dates";
 import {
     CreateVehicleDocumentInput, CreateVehicleInput, ListVehiclesFilters, RiderVehicleDocumentRow, ScrapRecordRow,
     ScrapVehicleInput, UpdateVehicleDocumentInput, UpdateVehicleInput, VehicleBookingRow, VehicleDetail,
@@ -1047,14 +1047,18 @@ export async function assignVehicleToUser(
         );
     }
 
+    const period = await currentPeriodDatesForSubscription(subscriptionId);
     const { data: rental, error: rentalError } = await supabaseAdmin
         .from("rentals")
         .insert({
             user_id: userId,
             subscription_id: subscriptionId,
             status: "active",
-            picked_up_at: new Date().toISOString(),
-            due_back_at: await dueBackForSubscription(subscriptionId),
+            // Fixed noon-to-noon cycle, same as the ordinary confirmPickup
+            // path — the rental's start/due-back are the period's own dates,
+            // never the literal moment staff click "assign," walk-in or not.
+            picked_up_at: noonOfBusinessDay(period.starts_on),
+            due_back_at: noonOfBusinessDay(period.ends_on),
         })
         .select("id")
         .single();
@@ -1116,23 +1120,21 @@ export async function assignVehicleToUser(
 }
 
 /**
- * When the scooter is due back: the end of the subscription's current period.
- *
- * `rentals.due_back_at` is NOT NULL, and the period is the only thing that
- * knows the answer — the rental is due back when the rider stops paying for it.
+ * When the rental starts and is due back: the subscription's current period,
+ * noon-anchored by the caller. The period is the only thing that knows the
+ * answer — the rental runs for as long as the rider is paying for it.
  */
-async function dueBackForSubscription(subscriptionId: string): Promise<string> {
+async function currentPeriodDatesForSubscription(
+    subscriptionId: string,
+): Promise<{ starts_on: string; ends_on: string }> {
     const { data, error } = await supabaseAdmin
         .from("v_subscription_current_period")
-        .select("ends_on")
+        .select("starts_on, ends_on")
         .eq("subscription_id", subscriptionId)
         .maybeSingle();
     if (error) throw error;
-    if (!data?.ends_on) {
+    if (!data?.starts_on || !data?.ends_on) {
         throw businessRule("This subscription has no current billing period to rent against.");
     }
-    // End of the last usable day, not its midnight — a rider whose period ends
-    // on the 17th has the whole of the 17th. In IST: `T23:59:59Z` would be
-    // 05:29:59 IST on the 18th, giving away five and a half hours.
-    return endOfBusinessDay(data.ends_on);
+    return { starts_on: data.starts_on, ends_on: data.ends_on };
 }

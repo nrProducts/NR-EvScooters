@@ -198,7 +198,22 @@ export default function BookingListPage() {
       render: (b) => (b.plan ? formatCurrency(b.plan.price) : "—"),
       hideOnMobile: true,
     },
-    { header: "Start day", key: "start", sortKey: "start_day", render: (b) => formatDate(b.start_day) },
+    {
+      // Every rental runs a fixed noon-to-noon cycle (see calculateRentalPeriod,
+      // apps/backend/src/common/dates.ts) — stated explicitly here rather than
+      // leaving staff to assume a bare date means "whenever pickup happened."
+      header: "Rental Period",
+      key: "start",
+      sortKey: "start_day",
+      render: (b) => (
+        <div className="min-w-0">
+          <p className="text-sm">{formatDate(b.start_day)} · 12:00 PM</p>
+          {b.next_due_at && (
+            <p className="text-xs text-muted-foreground">to {formatDate(b.next_due_at)} · 12:00 PM</p>
+          )}
+        </div>
+      ),
+    },
     {
       header: "Vehicle",
       key: "vehicle",

@@ -19,9 +19,9 @@ import { riderApi } from "@/rider/services/riderApi";
 import { payOrder } from "@/rider/lib/pay";
 import { PaymentCancelledError, PaymentUnavailableError } from "@/rider/lib/razorpayCheckout";
 import { ApiError } from "@/services/api/httpClient";
-import { getNextBookableDay } from "@/rider/lib/bookingDays";
+import { getNextBookableDay, rentalPeriodEndDay } from "@/rider/lib/bookingDays";
 import { DEFAULT_CANCELLATION_TIERS } from "@/rider/lib/cancellationPolicy";
-import { BILLING_CYCLE_LABEL, formatMoney } from "@/rider/constants/status";
+import { BILLING_CYCLE_LABEL, formatDate, formatMoney } from "@/rider/constants/status";
 import type { ApiPlan } from "@/rider/types/api";
 
 // Backend nearest_station RPC does the real PostGIS distance work; this is the
@@ -295,6 +295,30 @@ export default function RiderBookingSelect() {
               </div>
               <span className="text-2xl font-bold text-primary tabular-nums">{formatMoney(total)}</span>
             </div>
+          </div>
+
+          {/* Every rental is a fixed noon-to-noon cycle — shown plainly, with
+              no time picker anywhere: the system decides this, not the rider. */}
+          <div className="rounded-lg border border-border bg-card p-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Rental Period
+            </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold">{formatDate(startDay)}</p>
+                <p className="text-xs text-muted-foreground">12:00 PM</p>
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+              <div className="text-right">
+                <p className="text-sm font-bold">
+                  {formatDate(rentalPeriodEndDay(startDay, plan.duration_days))}
+                </p>
+                <p className="text-xs text-muted-foreground">12:00 PM</p>
+              </div>
+            </div>
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">
+              All rentals start and end at 12:00 PM.
+            </p>
           </div>
 
           {/* Stated before payment, not after: what comes back and what does

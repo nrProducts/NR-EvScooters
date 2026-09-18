@@ -1196,6 +1196,8 @@ export const en = {
     'deposit.forfeited': 'This deposit is not refundable.',
     'deposit.onboardingNote':
         'The {amount} onboarding charge paid at booking is non-refundable and is not part of this deposit.',
+    'booking.rentalPeriod': 'Rental Period',
+    'booking.fixedNoonCycleNote': 'All rentals start and end at 12:00 PM.',
     'booking.onboardingCharge': 'Onboarding charge',
     'booking.onboardingFee': 'Onboarding fee',
     'booking.securityDeposit': 'Security deposit',

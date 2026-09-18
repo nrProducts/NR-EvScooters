@@ -13,7 +13,7 @@ import {
 } from "./rentals.types";
 import { LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS } from "./returnPolicy.constants";
 import { paidPeriodIds } from "../payments/renewalPeriod";
-import { businessToday } from "../../common/dates";
+import { businessToday, formatTimeOfDayForCopy } from "../../common/dates";
 import { getSettings as getReturnRecoverySettings } from "../return-recovery-settings/return-recovery-settings.service";
 import {
     ensureOverdueLateFeeInvoice, isOverdueLateFeeSettled, OverdueLateFeeInvoiceResult, overdueLateFeeStatusFor,
@@ -645,7 +645,8 @@ export async function requestReturn(
     await notifyUser(actor.id, {
         template: "rental_return_requested",
         title: "Return Requested",
-        body: `Hand your scooter in by ${dueAt.toLocaleDateString()} 11:59 PM. Our team will confirm the handover.`
+        body: `Hand your scooter in by ${dueAt.toLocaleDateString()} `
+            + `${formatTimeOfDayForCopy(dueAt)}. Our team will confirm the handover.`
             + (late_fee_per_day > 0 ? ` A late fee of ₹${late_fee_per_day} per day applies after that.` : ""),
         screen: "my-scooter",
     });

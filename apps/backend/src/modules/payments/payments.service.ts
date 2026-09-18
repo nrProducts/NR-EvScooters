@@ -5,7 +5,7 @@ import { createGatewayOrder, fetchGatewayPayment } from "../../config/razorpay";
 import { env } from "../../config/env";
 import { badRequest, businessRule, conflict, notFound } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
-import { addDays, businessToday } from "../../common/dates";
+import { addDays, businessToday, calculateRentalPeriod } from "../../common/dates";
 import { computeInvoiceLateFee, lateFeeRuleFor } from "./renewalFee";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
@@ -573,7 +573,9 @@ async function ensureSubscription(
 
     const subscriptionId = data.id;
     const startsOn = booking.requested_start_on;
-    const endsOn = addDays(startsOn, booking.duration_days_snapshot - 1);
+    // Fixed noon-to-noon cycle: a plan of N days runs startsOn -> startsOn+N,
+    // not the old inclusive startsOn -> startsOn+(N-1). See calculateRentalPeriod.
+    const endsOn = calculateRentalPeriod(startsOn, booking.duration_days_snapshot).endDate;
 
     const { error: periodError } = await supabaseAdmin.from("subscription_periods").insert({
         subscription_id: subscriptionId,
@@ -2174,17 +2176,24 @@ async function applyRenewalSuccess(
         return;
     }
 
-    // Re-anchored at PAYMENT time, not trusted from preview time.
-    // advanceToNextPeriod stamped these dates when the rider opened Review &
-    // Renew — a rider who previews on Monday and pays on Thursday would
-    // otherwise be sold a week that started three days ago. Only the
-    // activate-now path needs it: a period paid ahead of schedule is anchored
-    // to the end of the period still running, which has not moved.
-    const startsOn = businessToday();
-    const endsOn = addDays(startsOn, subscription.duration_days_snapshot - 1);
+    // Re-derived at PAYMENT time from the CURRENT period's own due_on — never
+    // from "now." advanceToNextPeriod stamped these dates when the rider
+    // opened Review & Renew, and under the fixed noon-to-noon cycle they are
+    // already correct regardless of how long the rider takes to pay: a late
+    // renewal continues the cycle from where it was due, full stop, and the
+    // days in between are exactly what the late fee already charges for —
+    // never a reason to restart the cycle on whatever day payment happens to
+    // land on. The only thing worth re-deriving here rather than trusting the
+    // scheduled row as-is is `current.due_on` itself, which a maintenance
+    // pause resolved between preview and payment can still have moved; this
+    // keeps the period gapless/overlap-free against that ground truth without
+    // reintroducing a "today" anchor. `!current` is a fallback for the edge
+    // case where no current period exists to anchor to at all.
+    const anchor = current?.due_on ?? businessToday();
+    const period = calculateRentalPeriod(anchor, subscription.duration_days_snapshot);
     const { error: reanchorError } = await supabaseAdmin
         .from("subscription_periods")
-        .update({ starts_on: startsOn, ends_on: endsOn, due_on: endsOn })
+        .update({ starts_on: period.startDate, ends_on: period.endDate, due_on: period.endDate })
         .eq("id", paidPeriod.id)
         .eq("status", "scheduled");
     if (reanchorError) throw reanchorError;

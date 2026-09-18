@@ -30,7 +30,7 @@ import {
     BookingLifecycleStatus, BookingRefundStatus, BookingStatus, BookingView, CancelBookingInput,
     ConfirmPickupInput, CreateBookingInput, PickupBookingView, PickupQueueFilters,
 } from "./bookings.types";
-import { businessToday, endOfBusinessDay } from "../../common/dates";
+import { businessToday, formatBusinessDayForCopy, noonOfBusinessDay } from "../../common/dates";
 import { env } from "../../config/env";
 import {
     BEYOND_LAST_TIER_PENALTY_PERCENT, DEFAULT_CANCELLATION_TIERS, type CancellationTier,
@@ -515,14 +515,17 @@ async function viewsFor(rows: RawBookingRow[]): Promise<BookingView[]> {
  * instead of a raw constraint-violation error.
  */
 export function isValidStartDay(dateStr: string): boolean {
-    const parsed = new Date(`${dateStr}T00:00:00`);
+    const parsed = new Date(`${dateStr}T00:00:00Z`);
     if (Number.isNaN(parsed.getTime())) return false;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (parsed < today) return false;
+    // businessToday(), not the server's local clock: Render runs UTC, and
+    // "today" computed from `new Date()` is the WRONG calendar day for
+    // roughly 5.5 hours out of every 24 (see common/dates.ts's header) — the
+    // exact bug class that cost this codebase a day of subscription drift
+    // before. A start day is exactly the kind of date that bug would corrupt.
+    if (dateStr < businessToday()) return false;
 
-    return parsed.getDay() !== 0;
+    return parsed.getUTCDay() !== 0;
 }
 
 export interface CancellationCharge {
@@ -1761,17 +1764,18 @@ export async function confirmPickup(
         throw businessRule("This vehicle does not match the booked model.");
     }
 
-    // The rental runs to the end of the current billing period. That date is
-    // the period's, not a duration added to "now": the clock started when the
-    // rider paid, so a scooter collected two days late is still due back on
-    // the same day.
-    if (!context.nextDueAt) {
+    // The rental runs the FIXED noon-to-noon cycle the booking's period
+    // already names — never a duration added to "now." Whether the rider
+    // arrives at 9am or 5pm on their booked day, or two days late, the
+    // rental's start and due-back instants are exactly noon on
+    // currentPeriodStart and noon on nextDueAt. `picked_up_at`/`due_back_at`
+    // record that fixed cycle, not the literal moment staff clicked confirm —
+    // see calculateRentalPeriod, the one place this is decided.
+    if (!context.currentPeriodStart || !context.nextDueAt) {
         throw businessRule("This subscription has no current billing period to rent against.");
     }
-    // End of the IST day, not `T23:59:59Z` — that is 05:29:59 IST the next
-    // morning, and it handed every rental five and a half hours before
-    // computeLateReturnPenalty considered it late.
-    const dueBackAt = endOfBusinessDay(context.nextDueAt);
+    const pickedUpAt = noonOfBusinessDay(context.currentPeriodStart);
+    const dueBackAt = noonOfBusinessDay(context.nextDueAt);
 
     // Step 1: claim the booking. Guarded on 'confirmed', so a racing call
     // cannot also open a rental for it.
@@ -1792,7 +1796,7 @@ export async function confirmPickup(
             user_id: booking.user_id,
             subscription_id: context.subscriptionId,
             status: "active",
-            picked_up_at: new Date().toISOString(),
+            picked_up_at: pickedUpAt,
             due_back_at: dueBackAt,
         })
         .select("id")
@@ -1844,7 +1848,8 @@ export async function confirmPickup(
     await notifyUser(booking.user_id, {
         template: "pickup_confirmed",
         title: "Scooter Picked Up",
-        body: `Enjoy your ride! Your rental is now active until ${context.nextDueAt}.`,
+        body: `Enjoy your ride! Your rental runs until 12:00 PM on `
+            + `${formatBusinessDayForCopy(context.nextDueAt)}.`,
         screen: "my-scooter",
     });
 

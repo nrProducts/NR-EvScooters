@@ -711,6 +711,8 @@ export const ta: Copy = {
     'deposit.forfeited': 'இந்த வைப்புத்தொகை திரும்பத் தரப்படாது.',
     'deposit.onboardingNote':
         'முன்பதிவின்போது செலுத்திய {amount} சேர்க்கைக் கட்டணம் திரும்பத் தரப்படாது; அது இந்த வைப்புத்தொகையின் பகுதி அல்ல.',
+    'booking.rentalPeriod': 'வாடகைக் காலம்',
+    'booking.fixedNoonCycleNote': 'எல்லா வாடகைகளும் மதியம் 12:00 மணிக்குத் தொடங்கி முடிவடையும்.',
     'booking.onboardingCharge': 'சேர்க்கைக் கட்டணம்',
     'booking.onboardingFee': 'சேர்க்கைக் கட்டணம்',
     'booking.securityDeposit': 'பாதுகாப்பு வைப்புத்தொகை',

@@ -14,7 +14,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { vehicleCatalogRepository, billingRepository } from '../../services';
 import { notify, notifyError } from '../../lib/confirm';
 import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
-import { getNextBookableDay } from '../../lib/bookingDays';
+import { getNextBookableDay, rentalPeriodEndDay } from '../../lib/bookingDays';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
 import { DEFAULT_CANCELLATION_TIERS } from '../../lib/cancellationPolicy';
 import { ApiError } from '../../lib/ApiError';
@@ -495,6 +495,36 @@ export default function BookingScreen() {
                     <Text style={{ color: COLORS.primary }} className="text-2xl font-black">{money(total)}</Text>
                   </View>
                 </View>
+
+                {/* Every rental is a fixed noon-to-noon cycle — shown plainly
+                    rather than left for the rider to infer from a bare date,
+                    and with no time picker anywhere: the system decides this,
+                    not the rider. */}
+                {draft.startDay ? (
+                  <View className="rounded-2xl border p-4" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+                    <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mb-2">
+                      {t('booking.rentalPeriod')}
+                    </Text>
+                    <View className="flex-row items-center justify-between">
+                      <View className="items-start">
+                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-black">
+                          {formatDay(draft.startDay)}
+                        </Text>
+                        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">12:00 PM</Text>
+                      </View>
+                      <ArrowRight size={16} color={COLORS.textSecondary} />
+                      <View className="items-end">
+                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-black">
+                          {formatDay(rentalPeriodEndDay(draft.startDay, draft.plan.duration_days))}
+                        </Text>
+                        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">12:00 PM</Text>
+                      </View>
+                    </View>
+                    <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-medium mt-2 text-center">
+                      {t('booking.fixedNoonCycleNote')}
+                    </Text>
+                  </View>
+                ) : null}
 
                 {/* What comes back and what does not, stated BEFORE payment —
                     the thing a rider is most likely to feel misled about. */}
