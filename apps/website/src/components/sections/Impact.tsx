@@ -27,7 +27,7 @@ export function Impact() {
           {STATS.map(({ icon: Icon, value, label }) => (
             <div
               key={label}
-              className="rounded-2xl border border-border bg-white p-6 transition-colors duration-200 hover:border-primary/30"
+              className="rounded-2xl border border-border bg-white p-6 hover:border-primary/30"
             >
               <Icon className="h-5 w-5 text-primary" aria-hidden />
               <p className="mt-4 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">{value}</p>

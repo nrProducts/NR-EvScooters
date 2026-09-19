@@ -50,7 +50,7 @@ export function Faq() {
                     <span className="text-lg font-bold text-foreground">{item.question}</span>
                     <span
                       className={cn(
-                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground transition-transform duration-300",
+                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground",
                         open && "rotate-45 bg-primary text-primary-foreground",
                       )}
                     >
@@ -61,7 +61,7 @@ export function Faq() {
                 <div
                   id={`faq-panel-${i}`}
                   className={cn(
-                    "grid overflow-hidden transition-all duration-300 ease-in-out",
+                    "grid overflow-hidden",
                     open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
                   )}
                 >

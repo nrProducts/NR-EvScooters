@@ -1,7 +1,7 @@
 import { Mail, Phone, MapPin } from "lucide-react";
 import { Container } from "@/components/ui/Container";
-import { WhatsAppIcon, InstagramIcon } from "@/components/ui/BrandIcons";
-import { CONTACT_EMAIL, CONTACT_ADDRESS, CONTACT_PHONES, WHATSAPP_URL, INSTAGRAM_URL } from "@/content/contact";
+import { InstagramIcon } from "@/components/ui/BrandIcons";
+import { CONTACT_EMAIL, CONTACT_ADDRESS, CONTACT_PHONES, INSTAGRAM_URL, MAPS_URL } from "@/content/contact";
 import { trackEvent } from "@/lib/analytics";
 
 /**
@@ -18,7 +18,7 @@ export function TopBar() {
           <a
             href={`mailto:${CONTACT_EMAIL}`}
             onClick={() => trackEvent("click_email", { placement: "topbar" })}
-            className="flex items-center gap-2 transition-colors hover:text-dark"
+            className="flex items-center gap-2 hover:text-dark"
           >
             <Mail className="h-3.5 w-3.5" aria-hidden />
             {CONTACT_EMAIL}
@@ -29,37 +29,33 @@ export function TopBar() {
                 key={p.href}
                 href={p.href}
                 onClick={() => trackEvent("click_phone", { placement: "topbar" })}
-                className="flex items-center gap-2 transition-colors hover:text-dark"
+                className="flex items-center gap-2 hover:text-dark"
               >
                 <Phone className="h-3.5 w-3.5" aria-hidden />
                 {p.display}
               </a>
             ))}
           </span>
-          <span className="flex items-center gap-2 text-white/85">
+          <a
+            href={MAPS_URL}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => trackEvent("click_location", { placement: "topbar" })}
+            className="flex items-center gap-2 text-white/85 hover:text-dark"
+          >
             <MapPin className="h-3.5 w-3.5" aria-hidden />
             {CONTACT_ADDRESS}
-          </span>
+          </a>
         </div>
 
         <div className="flex items-center gap-3">
-          <a
-            href={WHATSAPP_URL}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Swapngo on WhatsApp"
-            onClick={() => trackEvent("click_whatsapp", { placement: "topbar" })}
-            className="flex h-7 w-7 items-center justify-center rounded-md bg-white/15 transition-colors hover:bg-white hover:text-primary"
-          >
-            <WhatsAppIcon className="h-3.5 w-3.5" />
-          </a>
           <a
             href={INSTAGRAM_URL}
             target="_blank"
             rel="noreferrer"
             aria-label="Swapngo on Instagram"
             onClick={() => trackEvent("social_link_click", { platform: "instagram", placement: "topbar" })}
-            className="flex h-7 w-7 items-center justify-center rounded-md bg-white/15 transition-colors hover:bg-white hover:text-primary"
+            className="flex h-7 w-7 items-center justify-center rounded-md bg-white/15 hover:bg-white hover:text-primary"
           >
             <InstagramIcon className="h-3.5 w-3.5" />
           </a>

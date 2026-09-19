@@ -205,7 +205,7 @@ export function ContactForm() {
         <button
           type="button"
           onClick={() => setStatus("idle")}
-          className="mt-6 inline-flex h-11 items-center justify-center rounded-full border border-border bg-background px-5 text-sm font-semibold text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+          className="mt-6 inline-flex h-11 items-center justify-center rounded-full border border-border bg-background px-5 text-sm font-semibold text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
           Send another query
         </button>
@@ -329,7 +329,7 @@ export function ContactForm() {
                   <label
                     key={m.value}
                     className={cn(
-                      "cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                      "cursor-pointer rounded-full border px-3 py-1 text-xs font-medium",
                       "focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2",
                       checked
                         ? "border-primary bg-secondary text-secondary-foreground"
@@ -362,11 +362,11 @@ export function ContactForm() {
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-soft transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-soft hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
           {submitting ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              <Loader2 className="h-4 w-4" aria-hidden />
               Submitting...
             </>
           ) : (
@@ -385,7 +385,7 @@ function inputClass(invalid: boolean): string {
   return cn(
     "h-11 w-full rounded-xl border bg-background px-3 text-sm text-foreground",
     "placeholder:text-muted-foreground/70",
-    "transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1",
+    "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1",
     invalid ? "border-destructive" : "border-border hover:border-primary/40",
   );
 }

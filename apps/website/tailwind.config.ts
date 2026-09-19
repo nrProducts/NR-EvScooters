@@ -86,25 +86,6 @@ export default {
         lift: "0 16px 40px rgb(15 23 42 / 0.12)",
         glow: "0 0 0 1px hsl(142 71% 45% / 0.12), 0 20px 60px -12px hsl(142 71% 45% / 0.35)",
       },
-      keyframes: {
-        "fade-up": {
-          from: { opacity: "0", transform: "translateY(16px)" },
-          to: { opacity: "1", transform: "translateY(0)" },
-        },
-        float: {
-          "0%, 100%": { transform: "translateY(0)" },
-          "50%": { transform: "translateY(-14px)" },
-        },
-        "float-sm": {
-          "0%, 100%": { transform: "translateY(0)" },
-          "50%": { transform: "translateY(-8px)" },
-        },
-      },
-      animation: {
-        "fade-up": "fade-up 0.6s cubic-bezier(0.16,1,0.3,1) both",
-        float: "float 5s ease-in-out infinite",
-        "float-sm": "float-sm 4s ease-in-out infinite",
-      },
     },
   },
   plugins: [],

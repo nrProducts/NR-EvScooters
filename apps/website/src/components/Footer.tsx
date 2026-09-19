@@ -50,7 +50,7 @@ export function Footer() {
                       placement: "footer",
                     })
                   }
-                  className="text-sm font-semibold text-white/60 transition-colors hover:text-primary"
+                  className="text-sm font-semibold text-white/60 hover:text-primary"
                 >
                   {s.label}
                 </a>
@@ -64,7 +64,7 @@ export function Footer() {
           <ul className="mt-5 space-y-3.5">
             {COMPANY_LINKS.map((l) => (
               <li key={l.href}>
-                <a href={l.href} className="text-[15px] font-medium text-white/70 transition-colors hover:text-primary">
+                <a href={l.href} className="text-[15px] font-medium text-white/70 hover:text-primary">
                   {l.label}
                 </a>
               </li>
@@ -79,7 +79,7 @@ export function Footer() {
               <a
                 href={`mailto:${CONTACT_EMAIL}`}
                 onClick={() => trackEvent("click_email", { placement: "footer" })}
-                className="text-[15px] font-medium text-white/70 transition-colors hover:text-primary"
+                className="text-[15px] font-medium text-white/70 hover:text-primary"
               >
                 {CONTACT_EMAIL}
               </a>
@@ -89,7 +89,7 @@ export function Footer() {
                 <a
                   href={p.href}
                   onClick={() => trackEvent("click_phone", { placement: "footer" })}
-                  className="text-[15px] font-medium text-white/70 transition-colors hover:text-primary"
+                  className="text-[15px] font-medium text-white/70 hover:text-primary"
                 >
                   {p.display}
                 </a>
@@ -105,7 +105,7 @@ export function Footer() {
           <p>© {year} Swapngo. All rights reserved.</p>
           <div className="flex gap-6">
             {LEGAL_LINKS.map((l) => (
-              <a key={l.label} href={l.href} className="transition-colors hover:text-white">
+              <a key={l.label} href={l.href} className="hover:text-white">
                 {l.label}
               </a>
             ))}

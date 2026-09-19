@@ -26,7 +26,7 @@ export function ScooterShowcase() {
             aria-hidden
             className="pointer-events-none absolute inset-0 -z-10 rounded-[3rem] bg-gradient-to-br from-surface via-background to-secondary/60"
           />
-          <div className="motion-safe:animate-float">
+          <div>
             <ScooterIllustration className="aspect-square w-full max-w-lg p-6 sm:p-10" />
           </div>
         </div>

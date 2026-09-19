@@ -81,10 +81,10 @@ function PlatformButton({
       {...(disabled ? {} : { onClick })}
       aria-disabled={disabled}
       className={cn(
-        "group flex items-center gap-4 rounded-2xl border border-white/15 bg-white/5 px-6 py-5 text-left backdrop-blur transition-all duration-200",
+        "group flex items-center gap-4 rounded-2xl border border-white/15 bg-white/5 px-6 py-5 text-left backdrop-blur",
         disabled
           ? "cursor-not-allowed opacity-50"
-          : "hover:-translate-y-0.5 hover:border-primary/40 hover:bg-white/10",
+          : "hover:border-primary/40 hover:bg-white/10",
       )}
     >
       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15">
@@ -96,7 +96,7 @@ function PlatformButton({
       </span>
       {!disabled && (
         <ArrowRight
-          className="h-4 w-4 shrink-0 text-white/40 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-primary"
+          className="h-4 w-4 shrink-0 text-white/40 group-hover:text-primary"
           aria-hidden
         />
       )}

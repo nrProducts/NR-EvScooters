@@ -72,14 +72,14 @@ function ReasonCard({ icon: Icon, title, description, size }: Reason) {
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-3xl border border-border bg-card p-7 transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-card",
+        "group relative overflow-hidden rounded-3xl border border-border bg-card p-7 hover:border-primary/30 hover:shadow-card",
         large ? "lg:col-span-6 lg:min-h-[15rem]" : "lg:col-span-3 lg:min-h-[15rem]",
       )}
     >
       {large && (
         <div
           aria-hidden
-          className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/10 blur-2xl transition-transform duration-300 group-hover:scale-110"
+          className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/10 blur-2xl"
         />
       )}
       <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-secondary">

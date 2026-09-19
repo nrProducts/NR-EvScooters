@@ -55,7 +55,7 @@ function ContactRow({
   href?: string;
 }) {
   const content = (
-    <div className="flex items-start gap-4 rounded-2xl border border-border bg-card p-4 transition-colors duration-200 hover:border-primary/40">
+    <div className="flex items-start gap-4 rounded-2xl border border-border bg-card p-4 hover:border-primary/40">
       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-secondary">
         <Icon className="h-5 w-5 text-primary" aria-hidden />
       </div>

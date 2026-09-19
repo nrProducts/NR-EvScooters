@@ -3,6 +3,7 @@ export const CONTACT_EMAIL = "contact@swapngo.in";
 export const CONTACT_IS_PLACEHOLDER = false;
 
 export const CONTACT_ADDRESS = "No. 5/61, Pillaiyar Kovil Street, Medavakkam, Chennai - 600100";
+export const MAPS_URL = "https://maps.app.goo.gl/y8Z32prKGeUHQrSBA";
 
 /** Real and DB-backed: the initial battery-swap network is Chennai-only. */
 export const SERVICE_CITY = "Chennai";

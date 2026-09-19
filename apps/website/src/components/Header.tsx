@@ -68,7 +68,7 @@ export function Header() {
 
       <div
         className={cn(
-          "w-full transition-all duration-300",
+          "w-full",
           scrolled
             ? "border-b border-border bg-background/80 shadow-soft backdrop-blur-xl"
             : "border-b border-transparent bg-background/40 backdrop-blur-md",
@@ -91,7 +91,7 @@ export function Header() {
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "text-[15px] font-semibold transition-colors",
+                    "text-[15px] font-semibold",
                     active ? "text-primary" : "text-foreground/70 hover:text-foreground",
                   )}
                 >
@@ -110,7 +110,7 @@ export function Header() {
 
           <button
             type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-foreground transition-colors hover:bg-secondary/60 lg:hidden"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-secondary/60 lg:hidden"
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}

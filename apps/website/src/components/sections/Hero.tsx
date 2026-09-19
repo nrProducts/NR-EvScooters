@@ -24,7 +24,7 @@ export function Hero() {
       />
 
       <Container className="relative grid min-h-[80vh] items-center gap-16 py-16 sm:py-20 lg:min-h-[86vh] lg:grid-cols-[1.05fr_1fr] lg:gap-12 lg:py-24">
-        <div className="animate-fade-up">
+        <div>
           <Badge tone="outline">Chennai's EV Mobility</Badge>
 
           <h1 className="mt-6 text-balance text-hero-mobile font-extrabold text-foreground sm:text-hero lg:text-hero-lg">
@@ -58,15 +58,15 @@ export function Hero() {
           </ul>
         </div>
 
-        <div className="relative animate-fade-up [animation-delay:120ms]">
-          <div className="relative mx-auto max-w-md motion-safe:animate-float lg:max-w-none">
+        <div className="relative">
+          <div className="relative mx-auto max-w-md lg:max-w-none">
             <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-secondary via-white to-surface p-2 shadow-lift ring-1 ring-primary/15 sm:p-4">
               <div className="overflow-hidden rounded-[1.5rem]">
                 <ScooterIllustration className="aspect-[4/3] w-full scale-110" priority />
               </div>
             </div>
 
-            <div className="absolute -left-4 top-6 flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-lift ring-1 ring-border motion-safe:animate-float-sm sm:-left-8 sm:top-10">
+            <div className="absolute -left-4 top-6 flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-lift ring-1 ring-border sm:-left-8 sm:top-10">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15">
                 <MapPin className="h-4 w-4 text-primary" aria-hidden />
               </span>
@@ -78,7 +78,7 @@ export function Hero() {
               </div>
             </div>
 
-            <div className="absolute -right-2 bottom-6 flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-lift ring-1 ring-border motion-safe:animate-float-sm [animation-delay:600ms] sm:-right-6 sm:bottom-10">
+            <div className="absolute -right-2 bottom-6 flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-lift ring-1 ring-border sm:-right-6 sm:bottom-10">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15">
                 <BatteryCharging className="h-4 w-4 text-primary" aria-hidden />
               </span>
