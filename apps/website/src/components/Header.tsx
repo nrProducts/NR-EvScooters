@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
-import { Menu, X, ArrowRight } from "lucide-react";
+import { Menu, X, ArrowRight, Phone, Mail } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
 import { TopBar } from "@/components/TopBar";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
+import { CONTACT_EMAIL, CONTACT_PHONES } from "@/content/contact";
 
 const NAV_ITEMS = [
   { label: "Home", href: "#home" },
-  { label: "How It Works", href: "#how-it-works" },
+  { label: "How it works", href: "#how-it-works" },
   { label: "Pricing", href: "#pricing" },
   { label: "About", href: "#about" },
   { label: "FAQ", href: "#faq" },
@@ -52,11 +53,34 @@ export function Header() {
     return () => observer.disconnect();
   }, []);
 
-  // Lock body scroll while the mobile menu is open.
+  /**
+   * While the menu is open: lock background scroll, close on Escape, and
+   * push a history entry so the phone's back gesture dismisses the menu
+   * instead of leaving the site — the behaviour people expect from a
+   * full-screen drawer. The popstate listener only ever closes, and the
+   * cleanup pops our own entry back off if the menu was closed some other
+   * way (link tap, outside tap, Escape).
+   */
   useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
+    if (!open) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onPopState = () => setOpen(false);
+
+    window.history.pushState({ swapngoMenu: true }, "");
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("popstate", onPopState);
+
     return () => {
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("popstate", onPopState);
+      if (window.history.state?.swapngoMenu) window.history.back();
     };
   }, [open]);
 
@@ -66,16 +90,16 @@ export function Header() {
           background below — this bar never goes translucent or disappears. */}
       <TopBar />
 
-      <div
-        className={cn(
-          "w-full",
-          scrolled
-            ? "border-b border-border bg-background/80 shadow-soft backdrop-blur-xl"
-            : "border-b border-transparent bg-background/40 backdrop-blur-md",
-        )}
-      >
-        <Container className="flex h-[4.5rem] items-center justify-between py-3">
-          <a href="#home" aria-label="Swapngo home" className="shrink-0">
+      {/* A floating pill rather than a full-bleed bar — inset 16px each side so
+          it reads as an object resting on the page, not a chrome edge. */}
+      <div className="px-4 pt-3">
+        <div
+          className={cn(
+            "mx-auto flex h-16 max-w-6xl items-center justify-between rounded-full border pl-5 pr-3 backdrop-blur-[20px]",
+            scrolled ? "border-border bg-white/70 shadow-soft" : "border-transparent bg-white/50",
+          )}
+        >
+          <a href="#home" aria-label="Swapngo home" className="flex min-h-[44px] shrink-0 items-center">
             <Logo />
           </a>
 
@@ -91,7 +115,7 @@ export function Header() {
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "text-[15px] font-semibold",
+                    "text-sm font-medium",
                     active ? "text-primary" : "text-foreground/70 hover:text-foreground",
                   )}
                 >
@@ -102,8 +126,13 @@ export function Header() {
           </nav>
 
           <div className="hidden items-center gap-3 lg:flex">
-            <Button href="#get-app" size="sm" onClick={() => trackEvent("click_book_now", { placement: "header" })}>
-              Book Now
+            <Button
+              href="#get-app"
+              variant="dark"
+              size="sm"
+              onClick={() => trackEvent("click_book_now", { placement: "header" })}
+            >
+              Book now
               <ArrowRight className="h-3.5 w-3.5" aria-hidden />
             </Button>
           </div>
@@ -117,11 +146,17 @@ export function Header() {
           >
             {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
-        </Container>
+        </div>
       </div>
 
       {open && (
-        <div className="fixed inset-x-0 top-[4.5rem] bottom-0 z-40 overflow-y-auto border-t border-border bg-background lg:hidden">
+        <div
+          className="fixed inset-x-0 top-[5.25rem] bottom-0 z-40 overflow-y-auto bg-background/95 backdrop-blur-xl lg:hidden"
+          onClick={(e) => {
+            // Tapping the panel's own padding (i.e. outside the links) closes it.
+            if (e.target === e.currentTarget) setOpen(false);
+          }}
+        >
           <Container className="flex h-full flex-col py-6">
             <nav className="flex flex-col" aria-label="Primary mobile">
               {NAV_ITEMS.map((item) => {
@@ -133,7 +168,7 @@ export function Header() {
                     onClick={() => setOpen(false)}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "border-b border-border py-4 text-xl font-bold",
+                      "border-b border-border py-4 text-xl font-medium",
                       active ? "text-primary" : "text-foreground",
                     )}
                   >
@@ -142,6 +177,31 @@ export function Header() {
                 );
               })}
             </nav>
+            {/* Phone and email live in the desktop top bar, which is hidden on
+                phones — so they are surfaced here instead, where a rider who
+                wants to talk to someone can reach them in one tap. */}
+            <div className="mt-8 space-y-2">
+              {CONTACT_PHONES.map((p) => (
+                <a
+                  key={p.href}
+                  href={p.href}
+                  onClick={() => trackEvent("click_phone", { placement: "mobile_menu" })}
+                  className="flex min-h-[48px] items-center gap-3 rounded-2xl bg-sage/60 px-4 text-[15px] font-medium text-foreground"
+                >
+                  <Phone className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                  {p.display}
+                </a>
+              ))}
+              <a
+                href={`mailto:${CONTACT_EMAIL}`}
+                onClick={() => trackEvent("click_email", { placement: "mobile_menu" })}
+                className="flex min-h-[48px] items-center gap-3 rounded-2xl bg-sage/60 px-4 text-[15px] font-medium text-foreground"
+              >
+                <Mail className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                <span className="truncate">{CONTACT_EMAIL}</span>
+              </a>
+            </div>
+
             <div className="mt-auto pt-8">
               <Button
                 href="#get-app"
@@ -152,7 +212,7 @@ export function Header() {
                   setOpen(false);
                 }}
               >
-                Book Now
+                Book now
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Button>
             </div>

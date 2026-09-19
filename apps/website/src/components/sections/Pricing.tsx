@@ -3,6 +3,7 @@ import { Container } from "@/components/ui/Container";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Reveal } from "@/components/ui/Reveal";
 import { useSiteData } from "@/lib/siteData";
 import { formatCurrency } from "@/lib/utils";
 
@@ -24,13 +25,15 @@ export function Pricing() {
   const multiple = plans.length > 1;
 
   return (
-    <section id="pricing" className="bg-surface/60 py-12 sm:py-16">
+    <section id="pricing" className="bg-sage/50 py-12 sm:py-16">
       <Container>
+        <Reveal>
         <SectionHeading
           eyebrow="Pricing"
           title={"One simple plan.\nNo surprises."}
           description="Flexible EV scooter rental for everyday Chennai travel — pricing is managed centrally, so it's always accurate here."
         />
+        </Reveal>
 
         <div
           className={
@@ -39,25 +42,26 @@ export function Pricing() {
               : "mx-auto mt-14 max-w-lg"
           }
         >
-          {plans.map((plan) => (
-            <div
-              key={plan.name}
-              className="relative overflow-hidden rounded-3xl border-2 border-primary bg-white p-8 shadow-glow sm:p-10"
-            >
-              <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
+          {plans.map((plan, i) => (
+            <Reveal key={plan.name} delay={i * 100} className="overflow-hidden rounded-[2.5rem] bg-white shadow-soft">
+              {/* Price sits in its own sage panel so the eye lands on the number
+                  before the detail underneath — no border needed to divide them. */}
+              <div className="bg-sage/70 px-8 pb-8 pt-7 sm:px-10">
+                <Badge tone="outline">Most popular</Badge>
+                <h3 className="mt-5 text-2xl font-medium text-foreground">{plan.name}</h3>
 
-              <Badge tone="soft">Most popular</Badge>
-              <h3 className="mt-5 text-2xl font-extrabold text-foreground">{plan.name}</h3>
-
-              <div className="mt-5 flex items-baseline gap-1.5">
-                <span className="text-5xl font-extrabold tracking-tight text-foreground sm:text-6xl">
-                  {formatCurrency(plan.price)}
-                </span>
-                <span className="text-base font-semibold text-muted-foreground">
-                  / {CYCLE_LABEL[plan.billingCycle] ?? plan.billingCycle}
-                </span>
+                <div className="mt-4 flex items-baseline gap-1.5">
+                  <span className="text-5xl font-semibold text-foreground sm:text-6xl">
+                    {formatCurrency(plan.price)}
+                  </span>
+                  <span className="text-base font-medium text-muted-foreground">
+                    / {CYCLE_LABEL[plan.billingCycle] ?? plan.billingCycle}
+                  </span>
+                </div>
               </div>
-              <p className="mt-2 text-sm text-muted-foreground">
+
+              <div className="px-8 pb-8 pt-7 sm:px-10 sm:pb-10">
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 {plan.onboardingChargeAmount > 0 ? (
                   <>
                     {formatCurrency(plan.onboardingChargeAmount + plan.depositAmount)} due up front —{" "}
@@ -74,7 +78,7 @@ export function Pricing() {
               <ul className="mt-7 space-y-3.5">
                 {plan.highlights.map((h) => (
                   <li key={h} className="flex items-start gap-3 text-[15px] font-medium text-foreground">
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sage">
                       <Check className="h-3 w-3 text-primary" aria-hidden />
                     </span>
                     {h}
@@ -82,11 +86,12 @@ export function Pricing() {
                 ))}
               </ul>
 
-              <Button href="#get-app" size="lg" className="relative mt-9 w-full">
-                Book Your Scooter
+              <Button href="#get-app" size="lg" className="mt-9 w-full">
+                Book your scooter
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Button>
-            </div>
+              </div>
+            </Reveal>
           ))}
         </div>
       </Container>

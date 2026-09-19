@@ -12,13 +12,13 @@ import { trackEvent } from "@/lib/analytics";
  */
 export function TopBar() {
   return (
-    <div className="hidden bg-primary text-white lg:block">
+    <div className="hidden bg-dark text-white/80 lg:block">
       <Container className="flex h-10 items-center justify-between text-[13px]">
         <div className="flex items-center gap-6">
           <a
             href={`mailto:${CONTACT_EMAIL}`}
             onClick={() => trackEvent("click_email", { placement: "topbar" })}
-            className="flex items-center gap-2 hover:text-dark"
+            className="flex min-h-[32px] items-center gap-2 hover:text-white"
           >
             <Mail className="h-3.5 w-3.5" aria-hidden />
             {CONTACT_EMAIL}
@@ -29,7 +29,7 @@ export function TopBar() {
                 key={p.href}
                 href={p.href}
                 onClick={() => trackEvent("click_phone", { placement: "topbar" })}
-                className="flex items-center gap-2 hover:text-dark"
+                className="flex min-h-[32px] items-center gap-2 hover:text-white"
               >
                 <Phone className="h-3.5 w-3.5" aria-hidden />
                 {p.display}
@@ -41,7 +41,7 @@ export function TopBar() {
             target="_blank"
             rel="noreferrer"
             onClick={() => trackEvent("click_location", { placement: "topbar" })}
-            className="flex items-center gap-2 text-white/85 hover:text-dark"
+            className="flex min-h-[32px] items-center gap-2 text-white/85 hover:text-white"
           >
             <MapPin className="h-3.5 w-3.5" aria-hidden />
             {CONTACT_ADDRESS}
@@ -55,7 +55,7 @@ export function TopBar() {
             rel="noreferrer"
             aria-label="Swapngo on Instagram"
             onClick={() => trackEvent("social_link_click", { platform: "instagram", placement: "topbar" })}
-            className="flex h-7 w-7 items-center justify-center rounded-md bg-white/15 hover:bg-white hover:text-primary"
+            className="flex h-8 w-8 items-center justify-center rounded-md bg-white/10 hover:bg-white hover:text-dark"
           >
             <InstagramIcon className="h-3.5 w-3.5" />
           </a>

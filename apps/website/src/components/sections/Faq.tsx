@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { Badge } from "@/components/ui/Badge";
+import { Reveal } from "@/components/ui/Reveal";
 import { FAQ_ITEMS } from "@/content/faq";
 import { cn } from "@/lib/utils";
 
@@ -23,18 +24,18 @@ export function Faq() {
       {/* Mirrors FAQ_ITEMS exactly, so it can never advertise an answer the page doesn't show. */}
       <script type="application/ld+json">{FAQ_JSON_LD}</script>
       <Container className="grid gap-12 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16">
-        <div className="lg:sticky lg:top-28 lg:self-start">
+        <Reveal className="lg:sticky lg:top-28 lg:self-start">
           <Badge>FAQ</Badge>
-          <h2 className="mt-4 text-balance text-section-mobile font-extrabold tracking-tight text-foreground sm:text-section">
+          <h2 className="mt-4 text-balance text-section-mobile font-semibold tracking-tight text-foreground sm:text-section">
             Questions? We've got answers.
           </h2>
           <p className="mt-5 max-w-sm text-lg leading-relaxed text-muted-foreground">
             Everything you need to know before renting your first Swapngo scooter — booking, KYC,
             payments, and battery swapping.
           </p>
-        </div>
+        </Reveal>
 
-        <div className="divide-y divide-border rounded-3xl border border-border bg-card">
+        <Reveal className="divide-y divide-border rounded-3xl border border-border bg-card" delay={100}>
           {FAQ_ITEMS.map((item, i) => {
             const open = openIndex === i;
             return (
@@ -47,10 +48,10 @@ export function Faq() {
                     aria-controls={`faq-panel-${i}`}
                     onClick={() => setOpenIndex(open ? null : i)}
                   >
-                    <span className="text-lg font-bold text-foreground">{item.question}</span>
+                    <span className="text-lg font-medium text-foreground">{item.question}</span>
                     <span
                       className={cn(
-                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground",
+                        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sage text-secondary-foreground transition-transform duration-500 ease-in-out",
                         open && "rotate-45 bg-primary text-primary-foreground",
                       )}
                     >
@@ -58,10 +59,12 @@ export function Faq() {
                     </span>
                   </button>
                 </h3>
+                {/* grid-rows 0fr→1fr is the height:auto transition the spec asks
+                    for — it animates, which height:auto still cannot. */}
                 <div
                   id={`faq-panel-${i}`}
                   className={cn(
-                    "grid overflow-hidden",
+                    "grid overflow-hidden transition-all duration-500 ease-in-out",
                     open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
                   )}
                 >
@@ -72,7 +75,7 @@ export function Faq() {
               </div>
             );
           })}
-        </div>
+        </Reveal>
       </Container>
     </section>
   );

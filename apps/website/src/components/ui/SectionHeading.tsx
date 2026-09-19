@@ -20,7 +20,7 @@ export function SectionHeading({
   return (
     <div className={cn("max-w-2xl", align === "center" && "mx-auto text-center", className)}>
       {eyebrow && <Badge>{eyebrow}</Badge>}
-      <h2 className="mt-4 text-balance text-section-mobile font-extrabold tracking-tight text-foreground sm:text-section">
+      <h2 className="mt-4 text-balance text-section-mobile font-semibold text-foreground sm:text-section">
         {lines.map((line, i) => (
           <span key={i} className="block">
             {line}

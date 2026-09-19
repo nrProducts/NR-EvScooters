@@ -1,6 +1,8 @@
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight, Smartphone, Globe } from "lucide-react";
 import { Container } from "@/components/ui/Container";
+import { Blob } from "@/components/ui/Blob";
+import { Reveal } from "@/components/ui/Reveal";
 import { PLAY_STORE_URL, ADMIN_CONSOLE_URL } from "@/content/links";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
@@ -18,22 +20,26 @@ export function GetApp() {
   return (
     <section id="get-app" className="relative overflow-hidden bg-dark py-12 sm:py-16">
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-grid-pattern opacity-[0.06]" />
-      <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/25 blur-[130px]" />
+      <Blob tone="primary" className="left-1/2 top-0 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 opacity-40" />
 
       <Container className="relative text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15">
-          <Smartphone className="h-7 w-7 text-primary" aria-hidden />
-        </div>
+        <Reveal>
+          {/* The conversion mark: a dark tile with a single accent dot, per the spec's icon treatment. */}
+          <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-[1.25rem] border border-white/10 bg-near-black">
+            <Smartphone className="h-7 w-7 text-white" aria-hidden />
+            <span aria-hidden className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full bg-primary ring-4 ring-dark" />
+          </div>
 
-        <h2 className="mx-auto mt-7 max-w-xl text-balance text-section-mobile font-extrabold tracking-tight text-white sm:text-section">
-          Ready to move?
-        </h2>
-        <p className="mx-auto mt-4 max-w-md text-lg leading-relaxed text-white/70">
-          Book your Swapngo EV and start riding — booking, KYC, and payments all happen wherever
-          you ride from.
-        </p>
+          <h2 className="mx-auto mt-7 max-w-xl text-balance text-section-mobile font-semibold text-white sm:text-section">
+            Ready to move?
+          </h2>
+          <p className="mx-auto mt-4 max-w-[500px] text-lg leading-relaxed text-white/70">
+            Book your Swapngo EV and start riding — booking, KYC, and payments all happen wherever
+            you ride from.
+          </p>
+        </Reveal>
 
-        <div className="mx-auto mt-9 grid max-w-xl gap-4 sm:grid-cols-2">
+        <Reveal className="mx-auto mt-9 grid max-w-xl gap-4 sm:grid-cols-2" delay={120}>
           <PlatformButton
             icon={Smartphone}
             eyebrow="Android"
@@ -50,7 +56,7 @@ export function GetApp() {
             external
             onClick={() => trackEvent("click_get_app", { platform: "iphone_web" })}
           />
-        </div>
+        </Reveal>
       </Container>
     </section>
   );
@@ -81,18 +87,18 @@ function PlatformButton({
       {...(disabled ? {} : { onClick })}
       aria-disabled={disabled}
       className={cn(
-        "group flex items-center gap-4 rounded-2xl border border-white/15 bg-white/5 px-6 py-5 text-left backdrop-blur",
+        "group flex items-center gap-4 rounded-[1.75rem] border border-white/15 bg-white/5 px-6 py-5 text-left backdrop-blur",
         disabled
           ? "cursor-not-allowed opacity-50"
           : "hover:border-primary/40 hover:bg-white/10",
       )}
     >
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1rem] bg-primary/15">
         <Icon className="h-5 w-5 text-primary" aria-hidden />
       </span>
       <span className="flex-1">
         <span className="block text-xs font-semibold uppercase tracking-wide text-white/50">{eyebrow}</span>
-        <span className="block text-base font-bold text-white">{label}</span>
+        <span className="block text-base font-semibold text-white">{label}</span>
       </span>
       {!disabled && (
         <ArrowRight

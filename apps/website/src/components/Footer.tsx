@@ -50,7 +50,7 @@ export function Footer() {
                       placement: "footer",
                     })
                   }
-                  className="text-sm font-semibold text-white/60 hover:text-primary"
+                  className="-mx-2 inline-flex min-h-[40px] items-center px-2 text-sm font-semibold text-white/60 hover:text-primary"
                 >
                   {s.label}
                 </a>
@@ -60,11 +60,11 @@ export function Footer() {
         </div>
 
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white/40">Company</h3>
-          <ul className="mt-5 space-y-3.5">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Company</h3>
+          <ul className="mt-4 space-y-1">
             {COMPANY_LINKS.map((l) => (
               <li key={l.href}>
-                <a href={l.href} className="text-[15px] font-medium text-white/70 hover:text-primary">
+                <a href={l.href} className="-mx-2 inline-flex min-h-[40px] items-center px-2 text-[15px] font-medium text-white/70 hover:text-primary">
                   {l.label}
                 </a>
               </li>
@@ -73,13 +73,13 @@ export function Footer() {
         </div>
 
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white/40">Get in Touch</h3>
-          <ul className="mt-5 space-y-3.5">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Get in Touch</h3>
+          <ul className="mt-4 space-y-1">
             <li>
               <a
                 href={`mailto:${CONTACT_EMAIL}`}
                 onClick={() => trackEvent("click_email", { placement: "footer" })}
-                className="text-[15px] font-medium text-white/70 hover:text-primary"
+                className="-mx-2 inline-flex min-h-[40px] items-center px-2 text-[15px] font-medium text-white/70 hover:text-primary"
               >
                 {CONTACT_EMAIL}
               </a>
@@ -89,13 +89,13 @@ export function Footer() {
                 <a
                   href={p.href}
                   onClick={() => trackEvent("click_phone", { placement: "footer" })}
-                  className="text-[15px] font-medium text-white/70 hover:text-primary"
+                  className="-mx-2 inline-flex min-h-[40px] items-center px-2 text-[15px] font-medium text-white/70 hover:text-primary"
                 >
                   {p.display}
                 </a>
               </li>
             ))}
-            <li className="text-[15px] leading-relaxed text-white/50">{CONTACT_ADDRESS}</li>
+            <li className="pt-2 text-[15px] leading-relaxed text-white/50">{CONTACT_ADDRESS}</li>
           </ul>
         </div>
       </Container>
@@ -105,7 +105,7 @@ export function Footer() {
           <p>© {year} Swapngo. All rights reserved.</p>
           <div className="flex gap-6">
             {LEGAL_LINKS.map((l) => (
-              <a key={l.label} href={l.href} className="hover:text-white">
+              <a key={l.label} href={l.href} className="-mx-2 inline-flex min-h-[40px] items-center px-2 hover:text-white">
                 {l.label}
               </a>
             ))}

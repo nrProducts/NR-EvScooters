@@ -12,11 +12,13 @@ import { Faq } from "@/components/sections/Faq";
 import { GetApp } from "@/components/sections/GetApp";
 import { Contact } from "@/components/sections/Contact";
 import { SiteDataProvider } from "@/lib/siteData";
+import { GrainOverlay } from "@/components/ui/GrainOverlay";
 
 export default function App() {
   return (
     <SiteDataProvider>
       <div className="min-h-screen bg-background">
+        <GrainOverlay />
         <Header />
         <main>
           <Hero />

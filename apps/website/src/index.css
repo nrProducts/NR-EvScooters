@@ -1,48 +1,56 @@
-@import "@fontsource-variable/manrope";
+@import "@fontsource-variable/outfit";
+@import "@fontsource/reenie-beanie";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
- * Design tokens for the Swapngo marketing site — a single premium palette
- * built around the brand green (#21C45D), used sparingly (CTAs, highlights,
- * active states) against a mostly-neutral canvas, plus a near-black pair
- * (`--dark` / `--near-black`) for high-contrast sections like the closing
- * CTA and footer. Values are stored as "H S% L%" triplets (not hex) so
- * `hsl(var(--x))` can take Tailwind's `/opacity` modifier — e.g. `bg-primary/20`
- * — which is used throughout the site.
+ * Design tokens for the Swapngo marketing site — the "digital living room"
+ * palette: desaturated sage and mist greens carry the page, a paper-white
+ * canvas sits under everything, and the saturated brand green (#21C45D) is
+ * held back for CTAs and active states only. The near-black pair
+ * (`--dark` / `--near-black`) is a soft, green-leaning black rather than a
+ * true one, so dark sections still feel warm. Values are stored as
+ * "H S% L%" triplets (not hex) so `hsl(var(--x))` can take Tailwind's
+ * `/opacity` modifier — e.g. `bg-sage/40` — which is used throughout.
  */
 @layer base {
   :root {
-    --background: 140 23% 97%; /* #F7FAF8 */
-    --foreground: 166 26% 10%; /* #13201D */
+    --background: 100 27% 98%; /* #F9FBF8 — paper white with a faint green cast */
+    --foreground: 150 10% 15%; /* #222B26 — soft black, never pure #000 */
 
     --card: 0 0% 100%; /* #FFFFFF */
-    --card-foreground: 166 26% 10%;
+    --card-foreground: 150 10% 15%;
 
-    --surface: 142 50% 95%; /* #EAF8EF — soft green, used sparingly for section bands */
+    /* The two calm section tints. Sage is the warmer/greener of the pair,
+       mist the cooler — they alternate down the page in place of the old
+       single `surface` band. `--surface` stays as an alias so any component
+       still asking for it lands on sage. */
+    --sage: 120 18% 92%; /* #E8EFE8 */
+    --mist: 140 17% 93%; /* #EAF0EC */
+    --surface: 120 18% 92%;
 
-    --dark: 171 48% 8%; /* #0B1F1C — closing CTA / dark sections */
-    --near-black: 166 48% 5%; /* #071411 — footer */
+    --dark: 158 20% 12%; /* #18241F — closing CTA / dark sections */
+    --near-black: 156 22% 8%; /* #0F1814 — footer */
 
-    /* Brand green #21C45D */
+    /* Brand green #21C45D — CTAs and active states only. */
     --primary: 142 71% 45%;
     --primary-hover: 142 72% 37%; /* #1AA34D */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 142 45% 92%;
-    --secondary-foreground: 142 39% 22%;
+    --secondary: 120 18% 92%; /* sage */
+    --secondary-foreground: 150 12% 25%;
 
     /* Danger #FF4D4F — same value as apps/web, for form validation states. */
     --destructive: 359 100% 65%;
     --destructive-foreground: 210 40% 98%;
 
-    --muted: 147 19% 94%;
-    --muted-foreground: 162 6% 43%; /* #66736F */
+    --muted: 140 14% 95%;
+    --muted-foreground: 150 8% 45%; /* #6B7A72 */
 
-    --border: 147 19% 89%; /* #DDE8E2 */
-    --radius: 0.875rem;
+    --border: 140 14% 89%; /* #DEE7E1 */
+    --radius: 1.5rem; /* containers land at 2rem–3rem via the rounded-2xl/3xl steps */
   }
 
   * {
@@ -55,11 +63,14 @@
 
   body {
     @apply bg-background text-foreground antialiased font-sans;
-    font-feature-settings:
-      "cv02",
-      "cv03",
-      "cv04",
-      "cv11";
+  }
+
+  /* Sentence-case, tight tracking — the spec's heading rule, applied once here
+     rather than repeated as utilities on every heading. */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.025em;
   }
 
   ::selection {
@@ -82,5 +93,52 @@
 
   .text-balance {
     text-wrap: balance;
+  }
+
+  /*
+   * Reveal-on-scroll. The element starts shifted down and transparent and is
+   * released when <Reveal> adds `is-visible`. Set on mount by an
+   * IntersectionObserver, so anything already in the first viewport animates
+   * immediately rather than waiting for a scroll that may never come.
+   */
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition:
+      opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * Global paper grain. feTurbulence at the spec's 0.65 base frequency,
+ * overlaid across the viewport so flat fills pick up a slight tooth.
+ * Non-interactive and unprintable-thin: purely a texture pass.
+ */
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
+/*
+ * Motion is opt-out, not opt-in: everything below is disabled wholesale for
+ * anyone who has asked their OS for reduced motion. Reveal elements are
+ * forced visible so the content is never left stuck at opacity 0.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
 }

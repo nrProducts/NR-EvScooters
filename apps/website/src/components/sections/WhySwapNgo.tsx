@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import { Wallet, Smartphone, SlidersHorizontal, ShieldCheck, LifeBuoy, BatteryCharging, Zap } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { Reveal } from "@/components/ui/Reveal";
 import { cn } from "@/lib/utils";
 
 interface Reason {
@@ -53,13 +54,15 @@ const REASONS: Reason[] = [
 
 export function WhySwapngo() {
   return (
-    <section id="why" className="py-12 sm:py-16">
+    <section id="why" className="bg-mist/40 py-12 sm:py-16">
       <Container>
-        <SectionHeading eyebrow="Why Swapngo" title={"Everything you need.\nNothing you don't."} />
+        <Reveal>
+          <SectionHeading eyebrow="Why Swapngo" title={"Everything you need.\nNothing you don't."} />
+        </Reveal>
 
         <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-12">
-          {REASONS.map((reason) => (
-            <ReasonCard key={reason.title} {...reason} />
+          {REASONS.map((reason, i) => (
+            <ReasonCard key={reason.title} {...reason} index={i} />
           ))}
         </div>
       </Container>
@@ -67,10 +70,11 @@ export function WhySwapngo() {
   );
 }
 
-function ReasonCard({ icon: Icon, title, description, size }: Reason) {
+function ReasonCard({ icon: Icon, title, description, size, index }: Reason & { index: number }) {
   const large = size === "lg";
   return (
-    <div
+    <Reveal
+      delay={index * 80}
       className={cn(
         "group relative overflow-hidden rounded-3xl border border-border bg-card p-7 hover:border-primary/30 hover:shadow-card",
         large ? "lg:col-span-6 lg:min-h-[15rem]" : "lg:col-span-3 lg:min-h-[15rem]",
@@ -79,13 +83,13 @@ function ReasonCard({ icon: Icon, title, description, size }: Reason) {
       {large && (
         <div
           aria-hidden
-          className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/10 blur-2xl"
+          className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-sage blur-2xl"
         />
       )}
-      <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-secondary">
+      <div className="relative flex h-11 w-11 items-center justify-center rounded-[1rem] bg-sage">
         <Icon className="h-5 w-5 text-primary" aria-hidden />
       </div>
-      <h3 className={cn("relative mt-5 font-bold text-foreground", large ? "text-xl" : "text-base")}>{title}</h3>
+      <h3 className={cn("relative mt-5 font-semibold text-foreground", large ? "text-xl" : "text-base")}>{title}</h3>
       <p className={cn("relative mt-2 leading-relaxed text-muted-foreground", large ? "max-w-sm text-base" : "text-sm")}>
         {description}
       </p>
@@ -101,6 +105,6 @@ function ReasonCard({ icon: Icon, title, description, size }: Reason) {
           <Zap className="ml-1 h-4 w-4 shrink-0 text-primary" />
         </div>
       )}
-    </div>
+    </Reveal>
   );
 }

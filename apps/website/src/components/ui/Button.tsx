@@ -3,15 +3,15 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground shadow-glow hover:bg-primary-hover",
-        outline: "border border-border bg-transparent text-foreground hover:border-foreground/30 hover:bg-secondary/60",
-        ghost: "text-foreground hover:bg-secondary/60",
-        light: "bg-white text-foreground shadow-soft hover:bg-secondary",
-        /** For colored/dark full-bleed backgrounds. */
+        default: "bg-primary text-primary-foreground shadow-soft hover:bg-primary-hover",
+        outline: "border border-border bg-transparent text-foreground hover:border-foreground/30 hover:bg-sage/60",
+        ghost: "text-foreground hover:bg-sage/60",
+        light: "bg-white text-foreground shadow-soft hover:bg-sage",
+        /** Soft-black pill — the spec's dark CTA. For colored/dark full-bleed backgrounds. */
         dark: "bg-foreground text-white hover:bg-foreground/85",
         /** Outline tuned for dark backgrounds (e.g. the closing CTA section). */
         "outline-dark": "border border-white/25 bg-white/5 text-white backdrop-blur hover:border-white/40 hover:bg-white/10",
@@ -19,7 +19,7 @@ const buttonVariants = cva(
       size: {
         default: "h-11 px-5 text-sm",
         lg: "h-14 px-7 text-base",
-        sm: "h-9 px-4 text-xs",
+        sm: "h-10 px-4 text-xs",
       },
     },
     defaultVariants: { variant: "default", size: "default" },

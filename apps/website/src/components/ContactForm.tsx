@@ -195,10 +195,10 @@ export function ContactForm() {
         role="status"
         className="rounded-2xl border border-primary/30 bg-secondary/50 p-8 text-center"
       >
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/15">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-sage">
           <CheckCircle2 className="h-6 w-6 text-primary" aria-hidden />
         </div>
-        <h3 className="mt-4 text-lg font-bold text-foreground">Thank you for contacting Swapngo!</h3>
+        <h3 className="mt-4 text-lg font-semibold text-foreground">Thank you for contacting Swapngo!</h3>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Your query has been submitted successfully. Our team will get back to you soon.
         </p>
@@ -322,14 +322,16 @@ export function ContactForm() {
               Preferred Contact Method{" "}
               <span className="font-normal text-muted-foreground">(optional)</span>
             </legend>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <div className="mt-2 flex flex-wrap gap-2">
               {CONTACT_METHODS.map((m) => {
                 const checked = values.preferred_contact === m.value;
                 return (
                   <label
                     key={m.value}
                     className={cn(
-                      "cursor-pointer rounded-full border px-3 py-1 text-xs font-medium",
+                      // min-h-[40px] rather than padding alone: these are the only
+                      // tap targets in the form that aren't a full-width control.
+                      "inline-flex min-h-[40px] cursor-pointer items-center rounded-full border px-4 text-sm font-medium",
                       "focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2",
                       checked
                         ? "border-primary bg-secondary text-secondary-foreground"
@@ -383,7 +385,9 @@ export function ContactForm() {
 
 function inputClass(invalid: boolean): string {
   return cn(
-    "h-11 w-full rounded-xl border bg-background px-3 text-sm text-foreground",
+    // 16px on phones is deliberate: iOS Safari zooms the viewport when a
+    // focused input is under 16px, and the page never recovers the zoom.
+    "h-11 w-full rounded-xl border bg-background px-3 text-[16px] text-foreground sm:text-sm",
     "placeholder:text-muted-foreground/70",
     "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1",
     invalid ? "border-destructive" : "border-border hover:border-primary/40",

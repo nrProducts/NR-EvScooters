@@ -1,6 +1,7 @@
 import { ArrowRight, Gauge, BatteryCharging, Zap, Sparkles } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { Badge } from "@/components/ui/Badge";
+import { Reveal } from "@/components/ui/Reveal";
 import { Button } from "@/components/ui/Button";
 import { ScooterIllustration } from "@/components/ui/ScooterIllustration";
 
@@ -21,19 +22,19 @@ export function ScooterShowcase() {
   return (
     <section className="overflow-hidden py-12 sm:py-16">
       <Container className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
-        <div className="relative order-2 lg:order-1">
+        <Reveal className="relative order-2 lg:order-1">
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 -z-10 rounded-[3rem] bg-gradient-to-br from-surface via-background to-secondary/60"
+            className="pointer-events-none absolute inset-0 -z-10 rounded-[3rem] bg-gradient-to-br from-sage via-background to-mist"
           />
           <div>
             <ScooterIllustration className="aspect-square w-full max-w-lg p-6 sm:p-10" />
           </div>
-        </div>
+        </Reveal>
 
-        <div className="order-1 lg:order-2">
+        <Reveal className="order-1 lg:order-2" delay={120}>
           <Badge>Meet your ride</Badge>
-          <h2 className="mt-4 text-balance text-section-mobile font-extrabold tracking-tight text-foreground sm:text-section">
+          <h2 className="mt-4 text-balance text-section-mobile font-semibold tracking-tight text-foreground sm:text-section">
             Meet your next ride.
           </h2>
           <p className="mt-5 max-w-md text-lg leading-relaxed text-muted-foreground">
@@ -46,16 +47,16 @@ export function ScooterShowcase() {
               <div key={label} className="rounded-2xl border border-border bg-card p-4">
                 <Icon className="h-4 w-4 text-primary" aria-hidden />
                 <dt className="mt-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</dt>
-                <dd className="mt-1 text-sm font-bold text-foreground">{value}</dd>
+                <dd className="mt-1 text-sm font-semibold text-foreground">{value}</dd>
               </div>
             ))}
           </dl>
 
           <Button href="#get-app" size="lg" className="mt-9">
-            Book This Scooter
+            Book this scooter
             <ArrowRight className="h-4 w-4" aria-hidden />
           </Button>
-        </div>
+        </Reveal>
       </Container>
     </section>
   );
