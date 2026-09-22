@@ -739,12 +739,30 @@ async function advanceToNextPeriod(subscriptionId: string, currentPeriodId: stri
 
     const { data: subscription, error: subError } = await supabaseAdmin
         .from("subscriptions")
-        .select("duration_days_snapshot, plan_price_snapshot")
+        .select("duration_days_snapshot, plan_id")
         .eq("id", subscriptionId)
         .maybeSingle();
     if (subError) throw subError;
     if (!subscription) {
         throw new Error(`advanceToNextPeriod: subscription ${subscriptionId} not found.`);
+    }
+
+    // The LIVE plan price, not subscriptions.plan_price_snapshot — that
+    // column freezes what the rider agreed to at booking time and is correct
+    // for showing where THAT figure came from, but a renewal period being
+    // minted now is a fresh billing decision, and must reflect a price
+    // change published since the rider first booked. Using the stale
+    // snapshot here meant a plan-price update never reached any period
+    // created after it — a renewal invoiced 5 days after the price moved to
+    // ₹1899 was still quoting ₹1800.
+    const { data: plan, error: planError } = await supabaseAdmin
+        .from("plans")
+        .select("price_amount")
+        .eq("id", subscription.plan_id)
+        .maybeSingle();
+    if (planError) throw planError;
+    if (!plan) {
+        throw new Error(`advanceToNextPeriod: plan ${subscription.plan_id} not found.`);
     }
 
     // Fixed noon-to-noon cycle: the next period always starts exactly where
@@ -766,7 +784,7 @@ async function advanceToNextPeriod(subscriptionId: string, currentPeriodId: stri
             starts_on: period.startDate,
             ends_on: period.endDate,
             due_on: period.endDate,
-            base_amount_snapshot: subscription.plan_price_snapshot,
+            base_amount_snapshot: Number(plan.price_amount),
             status: "scheduled",
         })
         .select("id")
