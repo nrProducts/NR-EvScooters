@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { Spinner } from '../../components/Spinner';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { Badge } from '../../components/ui/Badge';
 import { pullToRefresh, useRefresh } from '../../components/ui/PullToRefresh';
+import { PageScroll } from '../../components/ui/PageScroll';
 import { COLORS } from '../../constants/theme';
 import { useMyBilling } from '../../hooks/useMyBilling';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -1064,8 +1065,7 @@ export default function BillingScreen() {
         // history here, AND any invoice they still owe on — e.g. an ad-hoc
         // charge an admin raised against them (lost key, fine) while they
         // have no rental. That still has to be payable.
-        <ScrollView
-          className="flex-1 px-5 pt-5"
+        <PageScroll
           contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
@@ -1081,7 +1081,7 @@ export default function BillingScreen() {
             </>
           ) : null}
           {paymentHistoryItems.length > 0 ? renderPaymentHistory() : null}
-        </ScrollView>
+        </PageScroll>
       ) : !bookingId ? (
         <EmptyState
           icon={CreditCard}
@@ -1089,8 +1089,7 @@ export default function BillingScreen() {
           subtitle={t('billing.bookToSeeDetails')}
         />
       ) : (
-        <ScrollView
-          className="flex-1 px-5 pt-5"
+        <PageScroll
           contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
@@ -1285,7 +1284,7 @@ export default function BillingScreen() {
               from the app entirely, since it was only ever shown when
               there was NO active plan. */}
           {renderPaymentHistory()}
-        </ScrollView>
+        </PageScroll>
       )}
     </AppShell>
   );

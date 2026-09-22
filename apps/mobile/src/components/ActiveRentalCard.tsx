@@ -140,22 +140,34 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
             source={SCOOTER_HERO}
             accessibilityLabel={vehicle?.name ?? t('home.yourScooter')}
             contentFit="contain"
-            style={{ width: 64, height: 52, marginRight: 12 }}
+            style={{ width: 64, height: 52, marginRight: 12, flexShrink: 0 }}
           />
-          <View className="flex-1">
+          {/* minWidth: 0 is the load-bearing part on web: react-native-web maps
+              flex-1 to real CSS flexbox, whose items default to min-width:auto
+              (shrink-to-content, not below it) — the image + badge on either
+              side never budge, so a long name/reg-number pushed the row wider
+              than the card and it clipped. Native's Yoga engine has no such
+              default, which is why this only ever broke on the web build. */}
+          <View className="flex-1" style={{ minWidth: 0 }}>
             <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold" numberOfLines={1}>
               {vehicle?.name ?? t('home.yourScooter')}
             </Text>
             {vehicle ? (
               <View className="flex-row items-center mt-1">
                 <Hash size={11} color={COLORS.textSecondary} />
-                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold ml-1">
+                <Text
+                  style={{ color: COLORS.textSecondary }}
+                  className="text-[11px] font-semibold ml-1"
+                  numberOfLines={1}
+                >
                   {vehicle.registration_number}
                 </Text>
               </View>
             ) : null}
           </View>
-          <Badge label={t('rental.assigned')} tone="success" />
+          <View style={{ flexShrink: 0, marginLeft: 8 }}>
+            <Badge label={t('rental.assigned')} tone="success" />
+          </View>
         </View>
 
         {/* Once a return is requested there's nothing left to tap here —

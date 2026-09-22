@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { Spinner } from '../../components/Spinner';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
@@ -11,6 +11,7 @@ import { DetailRow } from '../../components/ui/DetailRow';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { pullToRefresh, useRefresh } from '../../components/ui/PullToRefresh';
+import { PageScroll } from '../../components/ui/PageScroll';
 import { VehicleDocumentsCard } from '../../components/VehicleDocumentsCard';
 import { ReturnGate } from '../../components/ReturnGate';
 import { ReturnStatusCard } from '../../components/ReturnStatusCard';
@@ -165,8 +166,7 @@ export default function MyScooterScreen() {
       ) : error ? (
         <ErrorState message={error} onRetry={() => void reload()} />
       ) : (
-        <ScrollView
-          className="flex-1 px-5 pt-5"
+        <PageScroll
           contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
@@ -393,7 +393,7 @@ export default function MyScooterScreen() {
               />
             </>
           )}
-        </ScrollView>
+        </PageScroll>
       )}
     </AppShell>
   );

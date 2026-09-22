@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Home, Bike, IndianRupee, User, BatteryCharging } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
@@ -14,6 +14,9 @@ import { COLORS } from '../../constants/theme';
  */
 const BAR_HEIGHT = 64;
 const BAR_MARGIN = 24;
+/** Above this width the pill stops growing and centers instead — otherwise a phone-shaped floating bar stretches to ~edge-to-edge on a desktop browser. */
+const DESKTOP_BREAKPOINT = 768;
+const DESKTOP_BAR_MAX_WIDTH = 420;
 /** How far the floating pill sits above the true screen edge — on top of the safe-area inset. */
 const BAR_BOTTOM_GAP = 16;
 const ICON_SIZE = 22;
@@ -60,6 +63,17 @@ export default function TabsLayout() {
   // edge bar was) — on a 3-button-nav Android phone the pill now clears the
   // system bar with room to spare instead of needing to grow into it.
   const insets = useSafeAreaInsets();
+  // useWindowDimensions(), not Dimensions.get — the latter freezes at import
+  // time on the static web export's build machine, which has no real window.
+  const { width: windowWidth } = useWindowDimensions();
+  const isWide = windowWidth >= DESKTOP_BREAKPOINT;
+  // left/right both stretch the bar to fill (width = container - left - right)
+  // — equal margins computed to cap the pill at DESKTOP_BAR_MAX_WIDTH and
+  // center it, instead of the fixed 24px margin letting it stretch to nearly
+  // the full browser width on desktop.
+  const barSideMargin = isWide
+    ? Math.max(BAR_MARGIN, (windowWidth - DESKTOP_BAR_MAX_WIDTH) / 2)
+    : BAR_MARGIN;
 
   return (
     <Tabs
@@ -88,10 +102,10 @@ export default function TabsLayout() {
           // physical left/right whenever both are present on the same
           // element — so left/right alone here was silently overridden and
           // the bar stayed edge-to-edge no matter what those two said.
-          left: BAR_MARGIN,
-          right: BAR_MARGIN,
-          start: BAR_MARGIN,
-          end: BAR_MARGIN,
+          left: barSideMargin,
+          right: barSideMargin,
+          start: barSideMargin,
+          end: barSideMargin,
           bottom: insets.bottom + BAR_BOTTOM_GAP,
           height: BAR_HEIGHT,
           // The library's own default style (applied before ours, but never

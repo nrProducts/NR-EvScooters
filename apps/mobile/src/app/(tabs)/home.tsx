@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Linking, Platform } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
   ChevronRight, MapPin, Calendar, Navigation, XCircle, CreditCard,
@@ -18,6 +18,7 @@ import { NeedHelpCard } from '../../components/home/NeedHelpCard';
 import { Badge } from '../../components/ui/Badge';
 import { SkeletonList } from '../../components/ui/Skeleton';
 import { pullToRefresh } from '../../components/ui/PullToRefresh';
+import { PageScroll } from '../../components/ui/PageScroll';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useVehicleCatalogStore } from '../../store/useVehicleCatalogStore';
@@ -237,8 +238,7 @@ export default function HomeScreen() {
 
   return (
     <AppShell title={t('home.title')}>
-      <ScrollView
-        className="flex-1 px-5 pt-5"
+      <PageScroll
         contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
         refreshControl={pullToRefresh(refreshing, () => void handleRefresh())}
       >
@@ -464,7 +464,7 @@ export default function HomeScreen() {
             the backend will refuse. See lib/returnLock.ts. */}
         <HomeQuickLinks returnLocked={isReturnLocked(activeRental)} />
         <NeedHelpCard />
-      </ScrollView>
+      </PageScroll>
     </AppShell>
   );
 }

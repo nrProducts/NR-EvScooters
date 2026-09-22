@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity,
+  View, Text, TextInput, TouchableOpacity, useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
@@ -32,6 +32,19 @@ export default function OtpVerifyScreen() {
   const [error, setError] = useState('');
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
   const inputRef = useRef<TextInput>(null);
+
+  // Six fixed 48px boxes (288px) plus the screen's px-6 padding (48px) is
+  // 336px of required width — already wider than the smallest supported
+  // viewport (320px), so at native's own default size this row silently
+  // overflowed there. Shrinking the box (never growing past 48) keeps every
+  // real device this ships to (375px+) pixel-identical to before.
+  const { width: windowWidth } = useWindowDimensions();
+  const OTP_BOX_COUNT = 6;
+  const otpAvailableWidth = windowWidth - 48 /* px-6 both sides */;
+  const otpBoxWidth = Math.max(
+    40,
+    Math.min(48, Math.floor((otpAvailableWidth - 6 * (OTP_BOX_COUNT - 1)) / OTP_BOX_COUNT)),
+  );
 
   useEffect(() => {
     const t = setInterval(() => setSecondsLeft((s) => (s > 0 ? s - 1 : 0)), 1000);
@@ -128,7 +141,7 @@ export default function OtpVerifyScreen() {
                 key={i}
                 className="rounded-2xl items-center justify-center border"
                 style={{
-                  width: 48,
+                  width: otpBoxWidth,
                   height: 58,
                   backgroundColor: COLORS.card,
                   borderColor: error ? COLORS.danger : active ? COLORS.primary : COLORS.border,

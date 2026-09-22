@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, Linking } from 'react-native';
 import { Spinner } from '../components/Spinner';
 import { AppShell } from '../components/AppShell';
+import { PageScroll } from '../components/ui/PageScroll';
 import { Badge } from '../components/ui/Badge';
 import { FormField } from '../components/ui/FormField';
 import { SkeletonList } from '../components/ui/Skeleton';
@@ -108,8 +109,7 @@ export default function SupportScreen() {
 
   return (
     <AppShell title={t('support.title')}>
-      <ScrollView
-        className="flex-1 px-5 pt-5"
+      <PageScroll
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
       >
         <View className="items-center mb-6">
@@ -221,7 +221,7 @@ export default function SupportScreen() {
             ))}
           </View>
         )}
-      </ScrollView>
+      </PageScroll>
     </AppShell>
   );
 }

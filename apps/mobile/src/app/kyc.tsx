@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity,
+  View, Text, TouchableOpacity,
   Modal, Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -13,6 +13,7 @@ import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { ErrorState } from '../components/ui/ErrorState';
 import { pullToRefresh } from '../components/ui/PullToRefresh';
+import { PageScroll } from '../components/ui/PageScroll';
 import { Spinner } from '../components/Spinner';
 import { FormField } from '../components/ui/FormField';
 import { DatePickerField } from '../components/ui/DatePickerField';
@@ -255,8 +256,7 @@ export default function KycScreen() {
 
   return (
     <Shell>
-      <ScrollView
-        className="flex-1 px-5 pt-5"
+      <PageScroll
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
         refreshControl={pullToRefresh(refreshing, () => void refresh())}
@@ -362,7 +362,7 @@ export default function KycScreen() {
             ) : null}
           </>
         )}
-      </ScrollView>
+      </PageScroll>
 
       {previewLoading ? (
         <View

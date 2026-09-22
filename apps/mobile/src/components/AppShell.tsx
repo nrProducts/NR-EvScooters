@@ -99,7 +99,13 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
       {/* HEADER */}
       <View
         className="flex-row items-center justify-between px-4 border-b"
-        style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, paddingTop: 52, paddingBottom: 14 }}
+        style={{
+          backgroundColor: COLORS.card, borderColor: COLORS.border,
+          // insets.top, not a flat 52 — that was tuned to clear a phone's
+          // notch/status bar and is dead whitespace on web, where insets.top
+          // is 0 and the browser chrome already owns that space.
+          paddingTop: insets.top + 16, paddingBottom: 14,
+        }}
         accessibilityLabel={title}
       >
         <View className="flex-row items-center">

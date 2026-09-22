@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { AppShell } from '../components/AppShell';
+import { PageScroll } from '../components/ui/PageScroll';
 import { Badge } from '../components/ui/Badge';
 import { SkeletonList } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
@@ -73,8 +74,7 @@ export default function BookingHistoryScreen() {
       ) : bookings.length === 0 ? (
         <EmptyState icon={History} title={t('bookingHistory.empty.title')} subtitle={t('bookingHistory.empty.subtitle')} />
       ) : (
-        <ScrollView
-          className="flex-1 px-5 pt-4"
+        <PageScroll
           contentContainerStyle={{ paddingBottom: insets.bottom + 28 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
@@ -144,7 +144,7 @@ export default function BookingHistoryScreen() {
                 </View>
               ))}
           </View>
-        </ScrollView>
+        </PageScroll>
       )}
     </AppShell>
   );
