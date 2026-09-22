@@ -714,8 +714,8 @@ export const en = {
     'bookingGate.completeKyc': 'Complete KYC',
 
     // --- request return -------------------------------------------------------
-    'requestReturn.deadline.todayByMidnight': 'today by 11:59 PM',
-    'requestReturn.deadline.dateByMidnight': '{date} by 11:59 PM',
+    'requestReturn.deadline.todayByMidnight': 'today by 12:00 PM',
+    'requestReturn.deadline.dateByMidnight': '{date} by 12:00 PM',
     'requestReturn.deadline.daysAgoOne': '1 day ago',
     'requestReturn.deadline.daysAgoOther': '{days} days ago',
     'requestReturn.requested.title': 'Return Requested',

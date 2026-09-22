@@ -24,7 +24,7 @@ export const ACTIVE_PLANS: RentalPlan[] = [
   {
     name: "Weekly Unlimited",
     billingCycle: "weekly",
-    price: 1800,
+    price: 1899,
     durationDays: 7,
     depositAmount: 1500,
     onboardingChargeAmount: 500,

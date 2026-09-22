@@ -12,16 +12,6 @@ const COMPANY_LINKS = [
   { label: "Contact", href: "#contact" },
 ];
 
-// Left as "#" deliberately: /privacy.html and /terms.html are generated from
-// docs/legal/*.md, which still has unresolved [PLACEHOLDER] markers awaiting
-// legal review, and the generated files are gitignored until that's done —
-// so they aren't live on the deployed site yet. Point these at "/privacy.html"
-// and "/terms.html" once that review lands and the files are committed.
-const LEGAL_LINKS = [
-  { label: "Privacy Policy", href: "#" },
-  { label: "Terms & Conditions", href: "#" },
-];
-
 export function Footer() {
   const year = new Date().getFullYear();
 
@@ -101,15 +91,8 @@ export function Footer() {
       </Container>
 
       <div className="border-t border-white/10">
-        <Container className="flex flex-col items-center justify-between gap-3 py-6 text-sm text-white/40 sm:flex-row">
+        <Container className="flex items-center justify-center py-6 text-sm text-white/40">
           <p>© {year} Swapngo. All rights reserved.</p>
-          <div className="flex gap-6">
-            {LEGAL_LINKS.map((l) => (
-              <a key={l.label} href={l.href} className="-mx-2 inline-flex min-h-[40px] items-center px-2 hover:text-white">
-                {l.label}
-              </a>
-            ))}
-          </div>
         </Container>
       </div>
     </footer>

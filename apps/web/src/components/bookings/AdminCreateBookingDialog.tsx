@@ -79,17 +79,20 @@ export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean
     if (plan && vehicle && plan.vehicle_model_id !== vehicle.vehicle_model_id) setPlanId(null);
   }, [vehicle, plan]);
 
-  // Default end date = start + (plan duration − 1), inclusive. The admin can
-  // override it; a manual end date drives a custom duration.
+  // Every rental runs the fixed noon-to-noon cycle: an N-day plan is
+  // start -> start + N, exclusive of the end date (12:00 PM on both ends —
+  // see calculateRentalPeriod, apps/backend/src/common/dates.ts). Default
+  // end date mirrors that; the admin can override it, and a manual end date
+  // then drives a custom duration using the same exclusive math.
   const addDays = (iso: string, n: number) =>
     new Date(new Date(`${iso}T00:00:00`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
   useEffect(() => {
     if (endTouched || !startDay || !plan) return;
-    setEndDay(addDays(startDay, plan.duration_days - 1));
+    setEndDay(addDays(startDay, plan.duration_days));
   }, [startDay, plan, endTouched]);
 
   const durationDays = startDay && endDay
-    ? Math.round((new Date(`${endDay}T00:00:00`).getTime() - new Date(`${startDay}T00:00:00`).getTime()) / 86_400_000) + 1
+    ? Math.round((new Date(`${endDay}T00:00:00`).getTime() - new Date(`${startDay}T00:00:00`).getTime()) / 86_400_000)
     : plan?.duration_days ?? 0;
   const durationInvalid = !!endDay && durationDays < 1;
 
@@ -277,7 +280,7 @@ export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean
           {startDay && endDay && (
             <p className={cn("text-[0.6875rem]", durationInvalid ? "text-destructive" : "text-muted-foreground")}>
               {durationInvalid
-                ? "End date must be on or after the start date."
+                ? "End date must be after the start date."
                 : `${durationDays} day${durationDays === 1 ? "" : "s"}${
                     plan && durationDays !== plan.duration_days ? ` (plan default: ${plan.duration_days})` : ""
                   }`}

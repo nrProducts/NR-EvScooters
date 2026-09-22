@@ -935,8 +935,8 @@ export const hi: Copy = {
     'bookingGate.completeKyc': 'केवाईसी पूरा करें',
 
     // --- request return -------------------------------------------------------
-    'requestReturn.deadline.todayByMidnight': 'आज रात 11:59 बजे तक',
-    'requestReturn.deadline.dateByMidnight': '{date} रात 11:59 बजे तक',
+    'requestReturn.deadline.todayByMidnight': 'आज दोपहर 12:00 बजे तक',
+    'requestReturn.deadline.dateByMidnight': '{date} दोपहर 12:00 बजे तक',
     'requestReturn.deadline.daysAgoOne': '1 दिन पहले',
     'requestReturn.deadline.daysAgoOther': '{days} दिन पहले',
     'requestReturn.requested.title': 'रिटर्न का अनुरोध किया गया',

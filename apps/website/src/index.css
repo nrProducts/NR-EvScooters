@@ -58,7 +58,22 @@
   }
 
   html {
-    scroll-padding-top: 5.5rem;
+    scroll-behavior: smooth;
+    /* Must match the STICKY header's real height, or a nav click lands the
+       target section partly behind it. Below `lg` (Header.tsx's TopBar is
+       `hidden ... lg:block`): wrapper pt-3 (0.75rem) + pill h-16 (4rem) =
+       4.75rem. */
+    scroll-padding-top: 4.75rem;
+  }
+
+  /* At `lg` and up, TopBar (h-10, 2.5rem) joins the sticky header on top of
+     the pill — 2.5rem + 0.75rem + 4rem = 7.25rem. Tailwind's own `lg`
+     breakpoint (1024px), so this switches at exactly the same point TopBar
+     does. */
+  @media (min-width: 1024px) {
+    html {
+      scroll-padding-top: 7.25rem;
+    }
   }
 
   body {

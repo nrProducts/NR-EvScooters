@@ -940,8 +940,8 @@ export const ta: Copy = {
     'bookingGate.completeKyc': 'KYC-ஐ முடி',
 
     // --- request return -------------------------------------------------------
-    'requestReturn.deadline.todayByMidnight': 'இன்று இரவு 11:59 மணிக்குள்',
-    'requestReturn.deadline.dateByMidnight': '{date} இரவு 11:59 மணிக்குள்',
+    'requestReturn.deadline.todayByMidnight': 'இன்று மதியம் 12:00 மணிக்குள்',
+    'requestReturn.deadline.dateByMidnight': '{date} மதியம் 12:00 மணிக்குள்',
     'requestReturn.deadline.daysAgoOne': '1 நாள் முன்பு',
     'requestReturn.deadline.daysAgoOther': '{days} நாட்கள் முன்பு',
     'requestReturn.requested.title': 'திருப்பு கோரப்பட்டது',

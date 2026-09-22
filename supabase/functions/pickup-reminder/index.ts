@@ -80,7 +80,7 @@ Deno.serve(async (_req) => {
             subjectType: "booking",
             subjectId: row.id,
             title: "Pickup Tomorrow",
-            body: `Your ${model?.name ?? "scooter"} is ready for pickup tomorrow at ${hub?.name ?? "your hub"}.`,
+            body: `Your ${model?.name ?? "scooter"} is ready for pickup tomorrow at ${hub?.name ?? "your hub"}. Your rental starts at 12:00 PM — arrive any time before or after, the cycle still runs from noon.`,
             screen: "home",
         });
         if (result.logged) logged++;

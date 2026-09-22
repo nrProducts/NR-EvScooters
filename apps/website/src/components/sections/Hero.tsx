@@ -19,7 +19,7 @@ export function Hero() {
       <Blob tone="sage" className="-right-40 -top-40 h-[42rem] w-[42rem]" />
       <Blob tone="mist" className="-bottom-48 -left-32 h-[34rem] w-[34rem]" delay="-3s" />
 
-      <Container className="relative grid min-h-[80vh] items-center gap-16 py-16 sm:py-20 lg:min-h-[86vh] lg:grid-cols-[1.05fr_1fr] lg:gap-12 lg:py-24">
+      <Container className="relative grid items-center gap-12 py-10 sm:gap-14 sm:py-14 lg:grid-cols-[1.05fr_1fr] lg:gap-12 lg:py-16">
         <Reveal>
           <Badge tone="outline">Chennai's EV mobility</Badge>
 
@@ -59,10 +59,10 @@ export function Hero() {
         </Reveal>
 
         <Reveal className="relative" delay={150}>
-          <div className="relative mx-auto max-w-md lg:max-w-none">
+          <div className="relative mx-auto max-w-xs sm:max-w-sm lg:max-w-md">
             <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-sage via-white to-mist p-2 shadow-soft ring-1 ring-border sm:p-4">
               <div className="overflow-hidden rounded-[1.5rem]">
-                <ScooterIllustration className="aspect-[4/3] w-full scale-110" priority />
+                <ScooterIllustration className="aspect-[4/3] w-full" priority />
               </div>
             </div>
 

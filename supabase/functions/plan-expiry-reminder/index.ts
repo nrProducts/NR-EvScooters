@@ -31,7 +31,7 @@
 // =========================================================================
 
 import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
-import { addDays, businessToday } from "../_shared/dates.ts";
+import { addDays, businessToday, formatBusinessDayForCopy } from "../_shared/dates.ts";
 import { notifyUser } from "../_shared/notify.ts";
 import { notifyStaff } from "../_shared/notifyStaff.ts";
 
@@ -113,13 +113,14 @@ Deno.serve(async (_req) => {
         }
 
         const vehicleName = await currentVehicleName(admin, row.id);
+        const dueDay = formatBusinessDayForCopy(row.due_back_at.slice(0, 10));
 
         const result = await notifyUser(admin, row.user_id, {
             typeCode: "plan_expiring",
             subjectType: "rental",
             subjectId: row.id,
             title: "Your Plan Ends Soon",
-            body: `Your plan for ${vehicleName ?? "your scooter"} ends in ${WARN_DAYS_BEFORE} days. `
+            body: `Your plan for ${vehicleName ?? "your scooter"} ends at 12:00 PM on ${dueDay} (in ${WARN_DAYS_BEFORE} days). `
                 + (feePerDay > 0
                     ? `Renew or return it by then, or a ₹${feePerDay}/day late fee applies.`
                     : "Renew or return it by then."),
@@ -134,7 +135,7 @@ Deno.serve(async (_req) => {
             subjectType: "rental",
             subjectId: row.id,
             title: "Plan Ending Soon",
-            body: `${vehicleName ?? "A scooter"}'s plan ends in ${WARN_DAYS_BEFORE} days.`,
+            body: `${vehicleName ?? "A scooter"}'s plan ends at 12:00 PM on ${dueDay} (in ${WARN_DAYS_BEFORE} days).`,
             screen: "/bookings",
             payload: { due_back_at: row.due_back_at, rider_id: row.user_id },
         });

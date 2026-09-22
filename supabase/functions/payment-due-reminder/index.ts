@@ -29,7 +29,7 @@
 // =========================================================================
 
 import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
-import { addDays, businessToday } from "../_shared/dates.ts";
+import { addDays, businessToday, formatBusinessDayForCopy } from "../_shared/dates.ts";
 import { notifyUser } from "../_shared/notify.ts";
 
 const SOURCE = "payment-due-reminder";
@@ -54,16 +54,17 @@ function unwrap<T>(raw: unknown): T | null {
     return (v as T) ?? null;
 }
 
-function messageFor(daysUntilDue: number, amount: number): { title: string; body: string } {
+function messageFor(daysUntilDue: number, amount: number, dueOn: string): { title: string; body: string } {
+    const dueDay = formatBusinessDayForCopy(dueOn);
     if (daysUntilDue === 0) {
         return {
             title: "Payment Due Today",
-            body: `Your rental payment of ₹${amount} is due today.`,
+            body: `Your rental payment of ₹${amount} is due today by 12:00 PM.`,
         };
     }
     return {
         title: "Payment Due Soon",
-        body: `Your rental payment of ₹${amount} is due in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}.`,
+        body: `Your rental payment of ₹${amount} is due at 12:00 PM on ${dueDay} (in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}).`,
     };
 }
 
@@ -113,7 +114,7 @@ Deno.serve(async (_req) => {
                 continue;
             }
 
-            const { title, body } = messageFor(offsetDays, Number(period.base_amount_snapshot));
+            const { title, body } = messageFor(offsetDays, Number(period.base_amount_snapshot), period.due_on);
             const result = await notifyUser(admin, subscription.user_id, {
                 typeCode: "payment_due",
                 subjectType: "subscription_period",

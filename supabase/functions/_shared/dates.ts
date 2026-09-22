@@ -31,3 +31,15 @@ export function daysBetween(a: string, b: string): number {
     const ms = Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`);
     return Math.round(ms / 86_400_000);
 }
+
+/**
+ * "20 Sep" — for rider-facing push copy that names a rental-cycle boundary.
+ * Every rental starts and ends at noon IST (see apps/backend/src/common/dates.ts
+ * calculateRentalPeriod, the single JS authority this mirrors), so copy that
+ * states a boundary date should pair it with the literal "12:00 PM", not
+ * re-derive a clock time from the instant.
+ */
+export function formatBusinessDayForCopy(dateStr: string): string {
+    const d = new Date(`${dateStr}T00:00:00Z`);
+    return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "UTC" }).format(d);
+}
