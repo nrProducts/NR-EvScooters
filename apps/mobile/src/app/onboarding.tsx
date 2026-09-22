@@ -90,6 +90,14 @@ export default function OnboardingScreen() {
 
   const goToSlide = (index: number) => {
     scrollRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
+    // Set directly rather than waiting on onMomentumScrollEnd below to catch
+    // up. That handler exists for the user's own swipe gesture, and on web
+    // it's react-native-web's best-effort simulation of native momentum-end
+    // (a 100ms debounce over real `scroll` events, not a true event) — it
+    // does not reliably fire from a programmatic scrollTo(). Without this,
+    // the ScrollView visually reaches the next slide but activeIndex stays
+    // put, so the NEXT tap recomputes the same target index and looks dead.
+    setActiveIndex(index);
   };
 
   const onMomentumScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
