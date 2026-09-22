@@ -33,7 +33,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "What happens after I book?",
     answer:
-      "You'll get a pickup station and a reminder as your slot approaches. Hand over is confirmed in the app, and your rental period starts from pickup.",
+      "You'll get a pickup station and a reminder as your slot approaches. Hand over is confirmed in the app. Every rental runs a fixed 12:00 PM to 12:00 PM cycle based on your booked date, whatever time you actually collect the scooter.",
   },
   {
     question: "How long does a rental plan last?",

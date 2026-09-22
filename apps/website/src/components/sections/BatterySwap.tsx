@@ -20,11 +20,11 @@ export function BatterySwap() {
         <Reveal className="mx-auto max-w-2xl text-center">
           <Badge tone="dark">Battery swapping</Badge>
           <h2 className="mt-4 text-balance text-section-mobile font-semibold tracking-tight text-white sm:text-section">
-            Never wait around to charge.
+            Battery swap in Chennai — never wait around to charge.
           </h2>
           <p className="mt-5 text-lg leading-relaxed text-white/70">
-            Swap your battery and get back on the road in minutes — at any Swapngo swap station
-            across Chennai.
+            Swap your battery and get back on the road in minutes — at any Swapngo battery-swap
+            station across Chennai.
           </p>
         </Reveal>
 

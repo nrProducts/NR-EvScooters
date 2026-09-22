@@ -36,7 +36,11 @@ export function HowItWorks() {
     <section id="how-it-works" className="py-12 sm:py-16">
       <Container>
         <Reveal>
-          <SectionHeading eyebrow="How it works" title={"From signup to riding\nin four simple steps."} />
+          <SectionHeading
+            eyebrow="How it works"
+            title={"From signup to riding\nin four simple steps."}
+            description="Everything you need for EV scooter rental in Chennai — verify, choose a plan, pay, and pick up your scooter."
+          />
         </Reveal>
 
         <ol className="relative mt-16 grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
