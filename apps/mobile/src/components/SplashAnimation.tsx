@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, Dimensions } from 'react-native';
+import { View, Text, useWindowDimensions } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import Animated, {
   useSharedValue,
@@ -11,10 +11,6 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { COLORS } from '../constants/theme';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const MARK_SIZE = Math.min(150, SCREEN_WIDTH * 0.38);
-const RING_SIZE = MARK_SIZE * 1.9;
 
 /**
  * The SwapNgo brand mark (apps/web/src/assets/logo-mark.svg — the single green
@@ -36,6 +32,15 @@ const MARK_PATH =
  * new dependency.
  */
 export const SplashAnimation: React.FC = () => {
+  // Read live, not Dimensions.get('window') captured once at module load —
+  // this is the first screen the app renders, including on the web export,
+  // where a module-scope capture runs on the build machine (no real window)
+  // and freezes at a wrong/stale value. See the identical fix in
+  // app/onboarding.tsx for the full explanation.
+  const { width: screenWidth } = useWindowDimensions();
+  const markSize = Math.min(150, screenWidth * 0.38);
+  const ringSize = markSize * 1.9;
+
   const markScale = useSharedValue(0.55);
   const markOpacity = useSharedValue(0);
   const ringScale = useSharedValue(0.35);
@@ -94,21 +99,21 @@ export const SplashAnimation: React.FC = () => {
 
   return (
     <View className="flex-1 items-center justify-center" style={{ backgroundColor: COLORS.background }}>
-      <View style={{ width: RING_SIZE, height: RING_SIZE, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: ringSize, height: ringSize, alignItems: 'center', justifyContent: 'center' }}>
         <Animated.View
           style={[
             {
               position: 'absolute',
-              width: RING_SIZE,
-              height: RING_SIZE,
-              borderRadius: RING_SIZE / 2,
+              width: ringSize,
+              height: ringSize,
+              borderRadius: ringSize / 2,
               backgroundColor: COLORS.primary,
             },
             ringStyle,
           ]}
         />
         <Animated.View style={markStyle}>
-          <Svg width={MARK_SIZE} height={MARK_SIZE} viewBox={MARK_VIEWBOX}>
+          <Svg width={markSize} height={markSize} viewBox={MARK_VIEWBOX}>
             <Path d={MARK_PATH} fill={COLORS.primary} fillRule="evenodd" />
           </Svg>
         </Animated.View>

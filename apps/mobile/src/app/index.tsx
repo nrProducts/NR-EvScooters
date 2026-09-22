@@ -74,7 +74,13 @@ export default function LoginScreen() {
           <Image
             source={require('../../assets/images/logo-wordmark.png')}
             accessibilityLabel="Swapngo"
-            className="h-10 w-48 mb-4"
+            // Explicit style, not className — sizing this via NativeWind
+            // className doesn't reliably constrain <Image> on web (the
+            // static export renders it at the asset's intrinsic pixel size
+            // instead), which is why this was showing huge and cropped on
+            // the rider web build. AppShell.tsx's header logo uses the same
+            // pattern for the identical asset and has never had this problem.
+            style={{ height: 40, width: 192, marginBottom: 16 }}
             resizeMode="contain"
           />
           <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium mt-1.5 text-center px-4">

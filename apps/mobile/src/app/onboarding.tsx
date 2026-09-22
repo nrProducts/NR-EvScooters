@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, Animated, Easing, Dimensions,
+  View, Text, TouchableOpacity, ScrollView, Animated, Easing, useWindowDimensions,
   type NativeSyntheticEvent, type NativeScrollEvent,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -11,8 +11,6 @@ import {
 import { COLORS } from '../constants/theme';
 import { useOnboardingStore } from '../store/useOnboardingStore';
 import { useT, type CopyKey } from '../i18n';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 /**
  * The slides hold translation KEYS, not text.
@@ -66,6 +64,13 @@ export default function OnboardingScreen() {
   const { replay } = useLocalSearchParams<{ replay?: string }>();
   const markSeen = useOnboardingStore((s) => s.markSeen);
   const { t } = useT();
+  // Read live, not Dimensions.get('window') captured once at module load —
+  // Expo's static web export pre-renders this route on the build machine,
+  // which has no real browser window, so a module-scope capture freezes at
+  // 0/stale and every scrollTo(index * SCREEN_WIDTH) lands on the same wrong
+  // offset. useWindowDimensions re-reads (and re-renders on resize) once a
+  // real window exists, on both web and native.
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
 
   const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
