@@ -4,23 +4,19 @@ import { Home, Bike, IndianRupee, User, BatteryCharging } from 'lucide-react-nat
 import type { LucideIcon } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/theme';
+import {
+  BAR_HEIGHT, BAR_MARGIN, BAR_BOTTOM_GAP, ICON_SIZE, ACTIVE_DISC,
+  DESKTOP_BREAKPOINT, DESKTOP_BAR_MAX_WIDTH,
+} from '../../lib/tabBar';
 
 /**
  * Sized for a thumb, not for a cursor. At 45 tall with 18px glyphs the pill
  * was below the 44pt minimum touch target both platforms' HIG asks for, and
- * the five icons read as decoration rather than navigation. TAB_BAR_FOOTPRINT
- * in lib/tabBar.ts mirrors BAR_HEIGHT + BAR_BOTTOM_GAP — change one and the
- * other has to move with it or every screen's scroll tail tucks under the bar.
+ * the five icons read as decoration rather than navigation. The bar's actual
+ * dimensions live in lib/tabBar.ts, alongside TAB_BAR_FOOTPRINT (which every
+ * screen's scroll tail pads by) — one source of truth for both, and one
+ * place a web-vs-native size difference is decided.
  */
-const BAR_HEIGHT = 64;
-const BAR_MARGIN = 24;
-/** Above this width the pill stops growing and centers instead — otherwise a phone-shaped floating bar stretches to ~edge-to-edge on a desktop browser. */
-const DESKTOP_BREAKPOINT = 768;
-const DESKTOP_BAR_MAX_WIDTH = 420;
-/** How far the floating pill sits above the true screen edge — on top of the safe-area inset. */
-const BAR_BOTTOM_GAP = 16;
-const ICON_SIZE = 22;
-const ACTIVE_DISC = 46;
 
 /** Active tab gets a filled circle behind its icon; inactive is just the icon. */
 function TabIcon({ focused, color, Icon }: { focused: boolean; color: string; Icon: LucideIcon }) {
