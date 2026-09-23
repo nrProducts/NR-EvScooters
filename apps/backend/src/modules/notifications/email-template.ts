@@ -5,8 +5,16 @@ export interface EmailField {
 
 export interface NotificationEmailInput {
     heading: string;
-    introText: string;
+    /** Lead paragraph, rendered directly under the heading. Omit to skip it. */
+    introText?: string;
     fields: EmailField[];
+    /**
+     * Free-text block rendered AFTER the fields table, not before it —
+     * for content that reads better as "here's who/what, then here's what
+     * they said" (e.g. the website contact form's message) rather than as
+     * the lead paragraph `introText` is for.
+     */
+    messageBlock?: { label: string; text: string };
     ctaLabel: string;
     ctaUrl: string;
 }
@@ -68,10 +76,22 @@ export function renderNotificationEmail(input: NotificationEmailInput): string {
                     <tr>
                         <td bgcolor="#ffffff" style="background-color:#ffffff;padding:28px;">
                             <h1 style="margin:0 0 12px;font-size:19px;line-height:1.3;color:#111827;">${escapeHtml(input.heading)}</h1>
-                            <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563;">${escapeHtml(input.introText)}</p>
+                            ${
+                                input.introText
+                                    ? `<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563;">${escapeHtml(input.introText)}</p>`
+                                    : ""
+                            }
                             ${
                                 rows
                                     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #eef0ef;margin-bottom:24px;">${rows}</table>`
+                                    : ""
+                            }
+                            ${
+                                input.messageBlock
+                                    ? `<div style="margin-bottom:24px;">
+                                <p style="margin:0 0 6px;font-size:13px;font-weight:600;color:#111827;">${escapeHtml(input.messageBlock.label)}</p>
+                                <p style="margin:0;font-size:14px;line-height:1.6;color:#4b5563;white-space:pre-wrap;">${escapeHtml(input.messageBlock.text)}</p>
+                            </div>`
                                     : ""
                             }
                             <table role="presentation" cellpadding="0" cellspacing="0">
