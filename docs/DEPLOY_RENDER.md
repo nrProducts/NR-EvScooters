@@ -63,7 +63,7 @@ deploy in this order and paste the URL forward:
 
 1. **backend** → note its URL, e.g. `https://nr-evscooters-backend.onrender.com`
 2. **web** → set `VITE_API_BASE_URL` to `<backend-url>/api/v1`; note the web URL
-3. **website** → set `VITE_ADMIN_CONSOLE_URL` to the web URL
+3. **website** → set `VITE_RIDER_WEB_URL` to the rider-web URL (e.g. `https://swapngo-rider-web.onrender.com`) — this is what the "iPhone" button on the Get the App section links to
 4. Back on **backend**, set `INVITE_REDIRECT_URL` / `ADMIN_APP_URL` to the web URL
 
 ## Option A — Blueprint (does all three at once)
@@ -146,7 +146,7 @@ Changing any `VITE_*` requires a redeploy — they're compile-time, not runtime.
 
 | Key | Notes |
 |---|---|
-| `VITE_ADMIN_CONSOLE_URL` | the deployed web console URL — powers the "Login" link |
+| `VITE_RIDER_WEB_URL` | the deployed rider-web URL (apps/mobile exported to static web, e.g. `https://swapngo-rider-web.onrender.com`) — the "iPhone" button's destination. Blank = "Coming soon" CTA, never a localhost fallback |
 | `VITE_API_BASE_URL` | `https://<backend-url>/api/v1` — live plan pricing + fleet/station counts (`GET /public/*`). Blank = bundled fallback content only |
 | `VITE_PLAY_STORE_URL` / `VITE_APP_STORE_URL` | app listing URLs; blank = "coming soon" CTA |
 

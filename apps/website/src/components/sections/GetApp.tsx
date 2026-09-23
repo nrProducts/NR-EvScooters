@@ -3,18 +3,18 @@ import { ArrowRight, Smartphone, Globe } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { Blob } from "@/components/ui/Blob";
 import { Reveal } from "@/components/ui/Reveal";
-import { PLAY_STORE_URL, ADMIN_CONSOLE_URL } from "@/content/links";
+import { PLAY_STORE_URL, RIDER_WEB_URL } from "@/content/links";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 
 /**
  * Booking, KYC, and payment all happen in the Swapngo mobile app (Expo,
- * Android-only for now). There's no iOS app planned — iPhone riders are
- * meant to use the rider role inside apps/web instead (the same login form
- * used by staff — it detects a rider account and routes to /rider
- * automatically, see LoginPage.tsx). Both platforms are shown as equal,
- * parallel options here rather than one primary CTA plus a buried fallback,
- * since neither path is more "correct" than the other for a given rider.
+ * Android-only for now). There's no iOS app planned, so this offers the
+ * SAME Expo app exported to static web (swapngo-rider-web) as the second
+ * option — labeled "Web", not "iPhone": it works from any browser, Android
+ * included, not just iOS. Both platforms are shown as equal, parallel
+ * options here rather than one primary CTA plus a buried fallback, since
+ * neither path is more "correct" than the other for a given rider.
  */
 export function GetApp() {
   return (
@@ -42,7 +42,7 @@ export function GetApp() {
         <Reveal className="mx-auto mt-9 grid max-w-xl gap-4 sm:grid-cols-2" delay={120}>
           <PlatformButton
             icon={Smartphone}
-            eyebrow="Android"
+            eyebrow="Android App"
             label={PLAY_STORE_URL ? "Get the app" : "Coming soon"}
             href={PLAY_STORE_URL}
             disabled={!PLAY_STORE_URL}
@@ -50,11 +50,12 @@ export function GetApp() {
           />
           <PlatformButton
             icon={Globe}
-            eyebrow="iPhone"
-            label="Ride from your browser"
-            href={ADMIN_CONSOLE_URL}
+            eyebrow="Web"
+            label={RIDER_WEB_URL ? "Ride from your browser" : "Coming soon"}
+            href={RIDER_WEB_URL}
+            disabled={!RIDER_WEB_URL}
             external
-            onClick={() => trackEvent("click_get_app", { platform: "iphone_web" })}
+            onClick={() => trackEvent("click_get_app", { platform: "web" })}
           />
         </Reveal>
       </Container>

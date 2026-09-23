@@ -5,13 +5,17 @@
  */
 
 /**
- * apps/web (staff console) — its own auth, its own deploy. Also where iOS
- * riders are meant to book: there's no iOS app planned, so the rider role
- * lives in the browser instead. The console's login form is shared across
- * roles and auto-routes a rider account to /rider (see LoginPage.tsx), so
- * this same URL works as both the staff login and the rider web entry point.
+ * apps/mobile exported to static web (swapngo-rider-web on Render) — the
+ * actual rider app running in a browser, not apps/web's separate plain-React
+ * /rider portal. There's no iOS app planned, so this is where an iPhone
+ * rider is meant to land instead.
+ *
+ * No localhost fallback: this is a production marketing site, and a build
+ * with the env var unset must degrade to "coming soon" (see PLAY_STORE_URL's
+ * identical pattern below), never silently link out to a dev URL nobody but
+ * a developer's own machine can reach.
  */
-export const ADMIN_CONSOLE_URL = import.meta.env.VITE_ADMIN_CONSOLE_URL || "http://localhost:5173";
+export const RIDER_WEB_URL = import.meta.env.VITE_RIDER_WEB_URL || "";
 
 /** Empty until the Android rider app is published — the CTA falls back to "coming soon". */
 export const PLAY_STORE_URL = import.meta.env.VITE_PLAY_STORE_URL || "";
