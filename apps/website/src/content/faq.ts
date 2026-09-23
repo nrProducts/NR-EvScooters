@@ -41,6 +41,11 @@ export const FAQ_ITEMS: FaqItem[] = [
       "The current plan is Weekly Unlimited — a 7-day rental period. Plans and durations are managed centrally, so this page always reflects what's actually on offer.",
   },
   {
+    question: "Can I rent an electric scooter for a month in Chennai?",
+    answer:
+      "Yes — Swapngo runs on a Weekly Unlimited plan that renews automatically, so you can keep the same scooter for a month or longer just by continuing to ride. There's no separate monthly plan or fixed monthly lock-in: you pay week to week and can stop whenever you like, which works out to a flexible month-long (or longer) rental without committing upfront.",
+  },
+  {
     question: "What if my scooter's battery runs low?",
     answer:
       "Swapngo scooters use swappable batteries — head to any of our battery-swap stations across Chennai and swap in under 2 minutes instead of waiting to charge.",
