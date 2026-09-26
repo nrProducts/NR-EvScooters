@@ -167,6 +167,44 @@
 }
 
 /*
+ * The hero scooter's "sketch to full colour" reveal (ScooterReveal.tsx): a
+ * desaturated pass draws in first, then a glowing line sweeps across it and
+ * the full-colour photo is left behind. Two stacked copies of the same photo
+ * do the reveal (see the component); these keyframes only handle the
+ * clip-path wipe and the scan line's travel — not layout, which lives with
+ * the component's own classes.
+ */
+@keyframes sg-sketch-in {
+  0% { clip-path: inset(0 100% 0 0); opacity: 0.4; }
+  100% { clip-path: inset(0 0 0 0); opacity: 1; }
+}
+@keyframes sg-color-in {
+  0% { clip-path: inset(0 100% 0 0); }
+  100% { clip-path: inset(0 0 0 0); }
+}
+@keyframes sg-scanline {
+  0% { left: 0%; opacity: 1; }
+  92% { opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+@keyframes sg-ring {
+  0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0.45; }
+  100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
+}
+.sg-sketch {
+  animation: sg-sketch-in 1.1s ease-out both;
+}
+.sg-color {
+  animation: sg-color-in 1.3s cubic-bezier(0.7, 0, 0.3, 1) 1.1s both;
+}
+.sg-scanline {
+  animation: sg-scanline 1.3s cubic-bezier(0.7, 0, 0.3, 1) 1.1s both;
+}
+.sg-ring {
+  animation: sg-ring 2.6s ease-out 2.6s infinite;
+}
+
+/*
  * Motion is opt-out, not opt-in: everything below is disabled wholesale for
  * anyone who has asked their OS for reduced motion. Reveal elements are
  * forced visible so the content is never left stuck at opacity 0.
@@ -181,5 +219,20 @@
   .dot-flow {
     animation: none;
     box-shadow: none;
+  }
+
+  .sg-sketch {
+    display: none;
+  }
+  .sg-color,
+  .sg-scanline,
+  .sg-ring {
+    animation: none;
+    clip-path: none;
+    opacity: 1;
+  }
+  .sg-scanline,
+  .sg-ring {
+    display: none;
   }
 }

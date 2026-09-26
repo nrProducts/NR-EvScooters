@@ -2,7 +2,7 @@ import { ArrowRight, BatteryCharging, MapPin, Check } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { ScooterIllustration } from "@/components/ui/ScooterIllustration";
+import { ScooterReveal } from "@/components/ui/ScooterReveal";
 import { Blob } from "@/components/ui/Blob";
 import { Reveal } from "@/components/ui/Reveal";
 import { useSiteData } from "@/lib/siteData";
@@ -62,7 +62,7 @@ export function Hero() {
           <div className="relative mx-auto max-w-xs sm:max-w-sm lg:max-w-md">
             <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-sage via-white to-mist p-2 shadow-soft ring-1 ring-border sm:p-4">
               <div className="overflow-hidden rounded-[1.5rem]">
-                <ScooterIllustration className="aspect-[4/3] w-full" priority />
+                <ScooterReveal className="aspect-[4/3] w-full" priority />
               </div>
               {/* Same handwritten accent as the Motovolt MVS7 card further down
                   the page — the two scooter visuals on the site read as one
