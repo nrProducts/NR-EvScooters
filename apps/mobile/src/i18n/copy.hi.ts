@@ -1002,6 +1002,8 @@ export const hi: Copy = {
     // --- root layout: profile load failure ----------------------------------
     'rootLayout.settingUpAccount': 'आपका खाता सेट किया जा रहा है…',
     'rootLayout.couldNotLoadProfile': 'आपकी प्रोफ़ाइल लोड नहीं हो सकी',
+    'rootLayout.staffAccountTitle': 'यह एक स्टाफ खाता है',
+    'rootLayout.staffAccountBody': 'यह ऐप केवल राइडर्स के लिए है। साइन आउट करें और किसी राइडर के मोबाइल नंबर या व्यक्तिगत Google खाते से साइन इन करें।',
 
     // --- shared error state --------------------------------------------------
     'errorState.offline': 'सर्वर तक नहीं पहुंच सके',

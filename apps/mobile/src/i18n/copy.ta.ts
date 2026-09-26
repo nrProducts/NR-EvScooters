@@ -1007,6 +1007,8 @@ export const ta: Copy = {
     // --- root layout: profile load failure ----------------------------------
     'rootLayout.settingUpAccount': 'உங்கள் கணக்கை அமைக்கிறோம்…',
     'rootLayout.couldNotLoadProfile': 'உங்கள் சுயவிவரத்தை ஏற்ற முடியவில்லை',
+    'rootLayout.staffAccountTitle': 'இது ஒரு பணியாளர் கணக்கு',
+    'rootLayout.staffAccountBody': 'இந்த ஆப் சவாரி செய்பவர்களுக்கு மட்டுமே. வெளியேறிவிட்டு, ஒரு சவாரி செய்பவரின் மொபைல் எண் அல்லது தனிப்பட்ட Google கணக்கில் உள்நுழையவும்.',
 
     // --- shared error state --------------------------------------------------
     'errorState.offline': 'சேவையகத்தை அடைய முடியவில்லை',

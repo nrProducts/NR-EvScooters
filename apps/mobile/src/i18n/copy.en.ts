@@ -781,6 +781,8 @@ export const en = {
     // --- root layout: profile load failure ----------------------------------
     'rootLayout.settingUpAccount': 'Setting up your account…',
     'rootLayout.couldNotLoadProfile': "Couldn't load your profile",
+    'rootLayout.staffAccountTitle': 'This is a staff account',
+    'rootLayout.staffAccountBody': "This app is for riders only. Sign out and sign in with a rider's mobile number or personal Google account instead.",
 
     // --- shared error state --------------------------------------------------
     'errorState.offline': "Can't reach the server",

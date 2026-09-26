@@ -66,10 +66,14 @@ export function Hero() {
               </div>
               {/* Same handwritten accent as the Motovolt MVS7 card further down
                   the page — the two scooter visuals on the site read as one
-                  pair now instead of two unrelated treatments. */}
+                  pair now instead of two unrelated treatments. Hidden below
+                  `sm`: on a phone-width card the photo is small enough that
+                  this large script text reads as too big and crowds the
+                  scooter itself — the "Battery swap" badge already carries
+                  the page's message there. */}
               <span
                 aria-hidden
-                className="pointer-events-none absolute right-5 top-5 -rotate-3 font-script text-2xl leading-[0.85] text-primary sm:right-7 sm:top-7 sm:text-3xl"
+                className="pointer-events-none absolute right-7 top-7 hidden -rotate-3 font-script text-3xl leading-[0.85] text-primary sm:block"
               >
                 Ride
                 <br />
@@ -77,25 +81,25 @@ export function Hero() {
               </span>
             </div>
 
-            <div className="absolute -left-4 top-6 flex items-center gap-3 rounded-[1.75rem] bg-white px-4 py-3 shadow-soft ring-1 ring-border sm:-left-8 sm:top-10">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sage">
-                <MapPin className="h-4 w-4 text-primary" aria-hidden />
+            <div className="absolute -left-3 top-5 flex items-center gap-2 rounded-2xl bg-white px-3 py-2 shadow-soft ring-1 ring-border sm:-left-8 sm:top-10 sm:gap-3 sm:rounded-[1.75rem] sm:px-4 sm:py-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sage sm:h-10 sm:w-10">
+                <MapPin className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" aria-hidden />
               </span>
               <div className="leading-tight">
-                <p className="text-sm font-semibold text-foreground">Available nearby</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs font-semibold text-foreground sm:text-sm">Available nearby</p>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">
                   {stats.scootersAvailable != null ? `${stats.scootersAvailable} scooters ready` : "Scooters ready now"}
                 </p>
               </div>
             </div>
 
-            <div className="absolute -right-2 bottom-6 flex items-center gap-3 rounded-[1.75rem] bg-white px-4 py-3 shadow-soft ring-1 ring-border sm:-right-6 sm:bottom-10">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-mist">
-                <BatteryCharging className="h-4 w-4 text-primary" aria-hidden />
+            <div className="absolute bottom-4 right-3 flex items-center gap-2 rounded-2xl bg-white px-3 py-2 shadow-soft ring-1 ring-border sm:-right-6 sm:bottom-10 sm:gap-3 sm:rounded-[1.75rem] sm:px-4 sm:py-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-mist sm:h-10 sm:w-10">
+                <BatteryCharging className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" aria-hidden />
               </span>
               <div className="leading-tight">
-                <p className="text-sm font-semibold text-foreground">Battery swap</p>
-                <p className="text-xs text-muted-foreground">~2 min, and you're riding</p>
+                <p className="text-xs font-semibold text-foreground sm:text-sm">Battery swap</p>
+                <p className="text-[11px] text-muted-foreground sm:text-xs">~2 min, and you're riding</p>
               </div>
             </div>
           </div>

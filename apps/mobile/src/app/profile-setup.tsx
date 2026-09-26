@@ -146,7 +146,7 @@ export default function ProfileSetupScreen() {
         </Text>
         <View
           className="flex-row items-center rounded-2xl px-4 py-3.5 mb-4 border"
-          style={{ backgroundColor: COLORS.card, borderColor: error ? COLORS.danger : COLORS.border }}
+          style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
         >
           <User size={18} color={COLORS.textSecondary} />
           <TextInput

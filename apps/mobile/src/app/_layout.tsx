@@ -315,6 +315,17 @@ export default function RootLayout() {
     // than bouncing the user to the wrong home screen and back.
     if (!profile) return;
 
+    // A staff/admin account has no `rider_profiles` row by design (see
+    // handle_new_auth_user) — `profile_completed` can NEVER become true for
+    // one, since markOnboardingComplete() is a plain UPDATE that matches zero
+    // rows when there is nothing to flip. Without this check, a staff member
+    // who opens this rider-only app with their staff Google account would
+    // save profile-setup successfully (200) and land right back on
+    // profile-setup every time, looking exactly like a broken Continue
+    // button. The blocking screen below (not a redirect) is what actually
+    // stops that loop.
+    if (profile.role !== 'rider') return;
+
     // First-ever sign-in → finish the profile first. Not just "no name yet":
     // Google sign-in auto-fills full_name from the provider profile, so
     // full_name alone can't tell "brand new" from "done onboarding".
@@ -426,6 +437,32 @@ export default function RootLayout() {
               </TouchableOpacity>
             </>
           )}
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
+  // Same shape as the "couldn't load profile" screen above, for the other
+  // reason a signed-in account can never proceed: it's staff/admin, not a
+  // rider. See the routing effect's `profile.role !== 'rider'` guard.
+  if (session && profile && profile.role !== 'rider') {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="dark" backgroundColor={COLORS.background} />
+        <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
+          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
+            {t('rootLayout.staffAccountTitle')}
+          </Text>
+          <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-3 leading-relaxed">
+            {t('rootLayout.staffAccountBody')}
+          </Text>
+          <TouchableOpacity
+            onPress={() => void signOut()}
+            className="mt-6 px-6 py-3 rounded-2xl"
+            style={{ backgroundColor: COLORS.primary }}
+          >
+            <Text style={{ color: '#FFF' }} className="font-bold text-sm">{t('auth.signOut')}</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaProvider>
     );
