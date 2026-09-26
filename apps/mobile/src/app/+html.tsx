@@ -58,6 +58,28 @@ function TextScaleOverride() {
   );
 }
 
+/**
+ * react-native-web renders every <TextInput> as a real DOM <input>/
+ * <textarea>, so it inherits the browser's default focus ring — a thick
+ * blue rectangle Chrome/Safari draw on focus. Native has no such thing (a
+ * focused TextInput there just shows the blinking caret our own borderColor
+ * styling already reacts to), so the ring reads as a bug import from the
+ * web platform, not a native behaviour reproduced correctly. Stripping
+ * `outline` site-wide removes only that ring — the text caret itself is a
+ * separate, unaffected browser feature and keeps blinking normally.
+ */
+function FocusRingReset() {
+  return (
+    <style
+      id="focus-ring-reset"
+      // eslint-disable-next-line react/no-danger
+      dangerouslySetInnerHTML={{
+        __html: `input, textarea, select { outline: none !important; }`,
+      }}
+    />
+  );
+}
+
 export default function Root({ children }: PropsWithChildren) {
   return (
     <html lang="en">
@@ -67,6 +89,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
         <ScrollViewStyleReset />
         <TextScaleOverride />
+        <FocusRingReset />
       </head>
       <body>{children}</body>
     </html>
