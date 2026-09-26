@@ -575,7 +575,13 @@ export default function BookingScreen() {
                   </View>
                 ) : null}
 
-                <PaymentMethodsCard />
+                {/* Purely informational card describing what Razorpay Checkout's
+                    own sheet offers — but that sheet is native-only (see
+                    lib/razorpayCheckout.ts, which throws PaymentUnavailableError
+                    for Platform.OS === 'web'), so advertising UPI/cards/net
+                    banking/wallets here on web would promise a screen that
+                    never opens. */}
+                {Platform.OS !== 'web' ? <PaymentMethodsCard /> : null}
 
                 <TrustRow />
 

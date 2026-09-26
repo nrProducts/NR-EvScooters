@@ -1172,9 +1172,9 @@ export const en = {
     'booking.availableHere': '{count} available here',
     'booking.unavailable': 'Unavailable',
     'booking.available': 'Available',
-    'booking.startsNow.title': 'Your plan starts right now',
+    'booking.startsNow.title': 'Your plan starts at 12:00 PM today',
     'booking.startsNow.body':
-        'Once you pay, head straight to the pickup station and collect your scooter today. Pickup 8 AM – 8 PM.',
+        'Once you pay, head to the pickup station and collect your scooter today between 8 AM – 8 PM. Every rental runs a fixed 12:00 PM to 12:00 PM cycle, whatever time you actually pick up.',
     'booking.choosePlan': 'Choose a plan',
     'booking.choosePlanHint': 'Pick how long you want the scooter for.',
     'booking.noPlansHint': 'No plans are on sale for this scooter yet.',

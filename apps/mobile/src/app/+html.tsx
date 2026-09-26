@@ -80,6 +80,36 @@ function FocusRingReset() {
   );
 }
 
+/**
+ * iOS Safari (and every other browser on iOS — WebKit is mandatory there, so
+ * this hits Chrome/Edge-on-iOS too) auto-zooms the whole page in the instant
+ * a focused <input>/<textarea> renders text under 16px, as an accessibility
+ * measure so the user can read what they're typing. TextScaleOverride above
+ * shrinks --text-base to 14px on web, so almost every field in the app
+ * (phone number, OTP boxes, every FormField) sat under that threshold —
+ * tapping into ANY of them zoomed the page in, and because this is a
+ * single-page app, client-side navigation never reloads to reset it: the
+ * zoom then rode along to every screen after, exactly as reported ("zooming
+ * automatically after entering any values or while loading").
+ *
+ * Flooring input text at 16px is the standard fix (vs. fighting it with
+ * viewport `maximum-scale`/`user-scalable=no`, which also blocks the user's
+ * own pinch-zoom — an accessibility regression in the other direction, and
+ * one modern iOS ignores anyway). The rest of the page keeps the smaller
+ * scale; only the text actually inside a field grows those few px.
+ */
+function InputZoomFix() {
+  return (
+    <style
+      id="input-zoom-fix"
+      // eslint-disable-next-line react/no-danger
+      dangerouslySetInnerHTML={{
+        __html: `input, textarea, select { font-size: 16px !important; }`,
+      }}
+    />
+  );
+}
+
 export default function Root({ children }: PropsWithChildren) {
   return (
     <html lang="en">
@@ -90,6 +120,7 @@ export default function Root({ children }: PropsWithChildren) {
         <ScrollViewStyleReset />
         <TextScaleOverride />
         <FocusRingReset />
+        <InputZoomFix />
       </head>
       <body>{children}</body>
     </html>
