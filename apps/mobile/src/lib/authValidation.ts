@@ -41,3 +41,15 @@ export function formatPhoneForDisplay(e164: string): string {
     if (!m) return e164;
     return `+${m[1]} ${m[2]} ${m[3]}`;
 }
+
+/**
+ * "+919876543210" or "919876543210" -> "9876543210" — every rider is Indian
+ * (the app's only market), so the +91 in front of their own number on
+ * screen is just noise, never information. Anything that isn't that exact
+ * shape (already local, or some other country code) is returned unchanged
+ * rather than mangled.
+ */
+export function formatPhoneLocal(raw: string): string {
+    const digits = raw.replace(/^\+/, '');
+    return /^91[6-9]\d{9}$/.test(digits) ? digits.slice(2) : raw;
+}

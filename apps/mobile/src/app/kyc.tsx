@@ -25,6 +25,7 @@ import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { pickDocument, pickPhoto } from '../lib/filePicker';
 import { computeInitialKycStep } from '../lib/kycProgress';
+import { formatPhoneLocal } from '../lib/authValidation';
 import { COLORS } from '../constants/theme';
 import {
   DOC_TYPE_LABEL_KEY, KYC_STATUS_LABEL_KEY, KYC_STATUS_TONE, VERIFICATION_LABEL_KEY,
@@ -1011,14 +1012,14 @@ const ReviewStep: React.FC<{
 
     <ReadOnlyRow label={t('kyc.review.fullName')} value={profile?.full_name ?? t('common.dash')} />
     <ReadOnlyRow label={t('kyc.review.dob')} value={profile?.date_of_birth ?? t('common.dash')} />
-    <ReadOnlyRow label={t('kyc.review.phone')} value={profile?.phone ?? t('common.dash')} />
+    <ReadOnlyRow label={t('kyc.review.phone')} value={profile?.phone ? formatPhoneLocal(profile.phone) : t('common.dash')} />
     <ReadOnlyRow
       label={t('kyc.review.profilePhoto')}
       value={t(profile?.profile_photo_url ? 'kyc.review.uploaded' : 'kyc.review.notUploaded')}
     />
     <ReadOnlyRow
       label={t('kyc.review.emergencyContact')}
-      value={profile?.emergency_contact_phone ? `${profile.emergency_contact_name || ''} ${profile.emergency_contact_phone}`.trim()  : t('common.dash')}
+      value={profile?.emergency_contact_phone ? `${profile.emergency_contact_name || ''} ${formatPhoneLocal(profile.emergency_contact_phone)}`.trim()  : t('common.dash')}
     />
 
     <View className="mt-4" style={{ gap: 10 }}>
@@ -1063,11 +1064,11 @@ const ReviewStep: React.FC<{
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onSubmit}
-        disabled={submitting || !kyc.can_submit}
+        disabled={submitting || !kyc.can_submit || !declared}
         accessibilityRole="button"
-        accessibilityState={{ disabled: submitting || !kyc.can_submit }}
+        accessibilityState={{ disabled: submitting || !kyc.can_submit || !declared }}
         className="flex-1 py-3.5 rounded-2xl flex-row justify-center items-center"
-        style={{ backgroundColor: submitting || !kyc.can_submit ? COLORS.gray[300] : COLORS.primary }}
+        style={{ backgroundColor: submitting || !kyc.can_submit || !declared ? COLORS.gray[300] : COLORS.primary }}
       >
         {submitting ? (
           <Spinner size={16} color="#FFF" />

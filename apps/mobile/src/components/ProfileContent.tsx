@@ -14,6 +14,7 @@ import { pickPhoto } from '../lib/filePicker';
 import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { notify } from '../lib/confirm';
+import { formatPhoneLocal } from '../lib/authValidation';
 import { useT, LANG_LABELS } from '../i18n';
 
 /**
@@ -146,7 +147,7 @@ export function ProfileContent(
         </View>
         <View className="flex-row items-center">
           <Phone size={15} color={COLORS.textSecondary} />
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold ml-2.5">{profile.phone ?? '—'}</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold ml-2.5">{profile.phone ? formatPhoneLocal(profile.phone) : '—'}</Text>
         </View>
       </View>
 
