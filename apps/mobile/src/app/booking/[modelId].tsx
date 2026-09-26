@@ -15,7 +15,7 @@ import { vehicleCatalogRepository, billingRepository } from '../../services';
 import { notify, notifyError } from '../../lib/confirm';
 import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
 import { getNextBookableDay, rentalPeriodEndDay } from '../../lib/bookingDays';
-import { assertPaymentAvailable, openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
+import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
 import { DEFAULT_CANCELLATION_TIERS } from '../../lib/cancellationPolicy';
 import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
@@ -213,7 +213,6 @@ export default function BookingScreen() {
     setPayError(null);
     setPaying(true);
     try {
-      assertPaymentAvailable();
       // Pay-first: this creates ONLY a payment intent — no booking exists until
       // the payment captures and the backend materialises it.
       const order = await billingRepository.createBookingOrder({
@@ -576,13 +575,7 @@ export default function BookingScreen() {
                   </View>
                 ) : null}
 
-                {/* Purely informational card describing what Razorpay Checkout's
-                    own sheet offers — but that sheet is native-only (see
-                    lib/razorpayCheckout.ts, which throws PaymentUnavailableError
-                    for Platform.OS === 'web'), so advertising UPI/cards/net
-                    banking/wallets here on web would promise a screen that
-                    never opens. */}
-                {Platform.OS !== 'web' ? <PaymentMethodsCard /> : null}
+                <PaymentMethodsCard />
 
                 <TrustRow />
 
