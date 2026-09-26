@@ -13,6 +13,7 @@ import { GetApp } from "@/components/sections/GetApp";
 import { Contact } from "@/components/sections/Contact";
 import { SiteDataProvider } from "@/lib/siteData";
 import { GrainOverlay } from "@/components/ui/GrainOverlay";
+import { ScrollToTop } from "@/components/ui/ScrollToTop";
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
           <Contact />
         </main>
         <Footer />
+        <ScrollToTop />
       </div>
     </SiteDataProvider>
   );

@@ -99,7 +99,11 @@ function ReasonCard({ icon: Icon, title, description, size, index }: Reason & { 
           {Array.from({ length: 10 }).map((_, i) => (
             <span
               key={i}
-              className={cn("h-1 flex-1 rounded-full bg-primary/30", i % 3 === 0 && "bg-primary/70")}
+              className={cn(
+                "dot-flow h-1 flex-1 rounded-full bg-primary/30",
+                i % 3 === 0 && "bg-primary/70",
+              )}
+              style={{ animationDelay: `${i * 120}ms` }}
             />
           ))}
           <Zap className="ml-1 h-4 w-4 shrink-0 text-primary" />

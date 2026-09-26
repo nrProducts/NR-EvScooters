@@ -44,9 +44,13 @@ export function Pricing() {
         >
           {plans.map((plan, i) => (
             <Reveal key={plan.name} delay={i * 100} className="overflow-hidden rounded-[2.5rem] bg-white shadow-soft">
-              {/* Price sits in its own sage panel so the eye lands on the number
-                  before the detail underneath — no border needed to divide them. */}
-              <div className="bg-sage/70 px-8 pb-8 pt-7 sm:px-10">
+              {/* One continuous card background — the price still reads first
+                  through size/weight alone, so a color-block panel isn't
+                  needed to earn that, and a hard sage-to-white cut there read
+                  as two stacked boxes rather than one card. A hairline
+                  border still separates price from detail, just without the
+                  seam. */}
+              <div className="border-b border-border px-8 pb-8 pt-7 sm:px-10">
                 <Badge tone="outline">Most popular</Badge>
                 <h3 className="mt-5 text-2xl font-medium text-foreground">{plan.name}</h3>
 

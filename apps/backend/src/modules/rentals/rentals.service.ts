@@ -64,7 +64,7 @@ const SETTLEMENT_EMBED = "rental_settlements(late_fee_amount, settled_at)";
 const SUBSCRIPTION_EMBED = `
     subscriptions(
         id, booking_id, status, plan_price_snapshot, duration_days_snapshot,
-        plans(id, name, billing_period),
+        plans(id, name, billing_period, price_amount),
         bookings(hubs(id, name, code))
     )
 `;
@@ -374,7 +374,9 @@ function toRentalView(
     lateReturnFeePerDay: number,
 ): RentalView {
     const subscription = unwrap<SubscriptionSlice>(row.subscriptions);
-    const plan = subscription ? unwrap<{ id: string; name: string; billing_period: string }>(subscription.plans) : null;
+    const plan = subscription
+        ? unwrap<{ id: string; name: string; billing_period: string; price_amount: number | string }>(subscription.plans)
+        : null;
     const booking = subscription ? unwrap<{ hubs: unknown }>(subscription.bookings) : null;
     const period = subscription ? periods.get(subscription.id) : undefined;
 
@@ -391,7 +393,15 @@ function toRentalView(
                 id: plan.id,
                 name: plan.name,
                 billing_cycle: plan.billing_period,
-                price: Number(subscription!.plan_price_snapshot),
+                // The LIVE plan price, not subscriptions.plan_price_snapshot —
+                // that column freezes what the rider agreed to at signup and
+                // is correct for billing math (what's actually charged), but
+                // this "My Scooter" summary is informational — "what plan/
+                // rate is this" — and showing a stale price here just because
+                // the admin updated it since is confusing, not more correct.
+                // plan.name/billing_cycle already come from this same live
+                // join; price was the one field still reading the snapshot.
+                price: Number(plan.price_amount),
             }
             : null,
         plan_status: narrowPlanStatus(subscription?.status),

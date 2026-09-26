@@ -2,7 +2,11 @@ import { env } from "../../config/env";
 import { getResend, isEmailConfigured } from "../../config/resend";
 import { serviceUnavailable } from "../../common/AppError";
 import { renderNotificationEmail } from "../notifications/email-template";
-import { ContactQueryBody, QUERY_TYPE_LABELS } from "./public.validation";
+import {
+    CONTACT_METHOD_LABELS,
+    ContactQueryBody,
+    QUERY_TYPE_LABELS,
+} from "./public.validation";
 
 /**
  * The public website's "contact us" query.
@@ -20,6 +24,16 @@ import { ContactQueryBody, QUERY_TYPE_LABELS } from "./public.validation";
 /** Rendered as `+91 98765 43210` from the 10 digits the schema stores. */
 function formatPhone(tenDigits: string): string {
     return `+91 ${tenDigits.slice(0, 5)} ${tenDigits.slice(5)}`;
+}
+
+/** e.g. "5 September 2026, 11:45 PM" in IST — the team's own timezone. */
+function formatSubmittedAt(now: Date): string {
+    return new Intl.DateTimeFormat("en-IN", {
+        dateStyle: "long",
+        timeStyle: "short",
+        timeZone: "Asia/Kolkata",
+        hour12: true,
+    }).format(now);
 }
 
 export interface ContactQueryResult {
@@ -41,19 +55,27 @@ export async function submitContactQuery(input: ContactQueryBody): Promise<Conta
     }
 
     const queryTypeLabel = QUERY_TYPE_LABELS[input.query_type];
+    const submittedAt = formatSubmittedAt(new Date());
 
     // Every value here is escaped by renderNotificationEmail before it reaches
     // the markup, and stripped of control characters by the schema before it
     // reaches the subject.
     const html = renderNotificationEmail({
         heading: "New Website Query",
+        introText: input.message,
         fields: [
             { label: "Name", value: input.full_name },
             { label: "Email", value: input.email },
             { label: "Phone", value: formatPhone(input.phone) },
             { label: "Query Type", value: queryTypeLabel },
+            {
+                label: "Preferred Contact",
+                value: input.preferred_contact
+                    ? CONTACT_METHOD_LABELS[input.preferred_contact]
+                    : "Not specified",
+            },
+            { label: "Submitted", value: submittedAt },
         ],
-        messageBlock: { label: "Message", text: input.message },
         ctaLabel: `Reply to ${input.full_name}`,
         // A mailto CTA rather than an admin-console deep link: there is no
         // console screen for website enquiries (nothing is stored), so the
@@ -72,7 +94,7 @@ export async function submitContactQuery(input: ContactQueryBody): Promise<Conta
         // control character that could break out of this header.
         replyTo: input.email,
         html,
-        text: buildPlainText(input, queryTypeLabel),
+        text: buildPlainText(input, queryTypeLabel, submittedAt),
     });
 
     if (sent.error) {
@@ -83,14 +105,26 @@ export async function submitContactQuery(input: ContactQueryBody): Promise<Conta
 }
 
 /** Plain-text alternative, for clients that don't render the HTML part. */
-function buildPlainText(input: ContactQueryBody, queryTypeLabel: string): string {
+function buildPlainText(
+    input: ContactQueryBody,
+    queryTypeLabel: string,
+    submittedAt: string,
+): string {
     return [
+        "New Website Query",
+        "",
+        "Customer Details",
         `Name: ${input.full_name}`,
         `Email: ${input.email}`,
         `Phone: ${formatPhone(input.phone)}`,
         `Query Type: ${queryTypeLabel}`,
+        `Preferred Contact: ${
+            input.preferred_contact ? CONTACT_METHOD_LABELS[input.preferred_contact] : "Not specified"
+        }`,
         "",
-        "Message:",
+        "Message",
         input.message,
+        "",
+        `Submitted: ${submittedAt}`,
     ].join("\n");
 }

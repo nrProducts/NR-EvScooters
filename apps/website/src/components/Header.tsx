@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Menu, X, ArrowRight, Phone, Mail } from "lucide-react";
+import { Menu, X, ArrowRight, ChevronRight, Phone, Mail } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
@@ -151,14 +151,17 @@ export function Header() {
 
       {open && (
         <div
-          className="fixed inset-x-0 top-[5.25rem] bottom-0 z-40 overflow-y-auto bg-background/95 backdrop-blur-xl lg:hidden"
+          className="fixed inset-x-0 top-[5.25rem] bottom-0 z-40 overflow-y-auto bg-background lg:hidden"
           onClick={(e) => {
             // Tapping the panel's own padding (i.e. outside the links) closes it.
             if (e.target === e.currentTarget) setOpen(false);
           }}
         >
           <Container className="flex h-full flex-col py-6">
-            <nav className="flex flex-col" aria-label="Primary mobile">
+            <span className="px-1 text-xs font-semibold uppercase tracking-wide text-foreground/45">
+              Menu
+            </span>
+            <nav className="mt-3 flex flex-col gap-1.5" aria-label="Primary mobile">
               {NAV_ITEMS.map((item) => {
                 const active = activeHref === item.href;
                 return (
@@ -168,11 +171,17 @@ export function Header() {
                     onClick={() => setOpen(false)}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "border-b border-border py-4 text-xl font-medium",
-                      active ? "text-primary" : "text-foreground",
+                      "flex min-h-[56px] items-center justify-between gap-3 rounded-2xl px-4 text-lg font-semibold transition-colors",
+                      active
+                        ? "bg-primary/10 text-primary"
+                        : "text-foreground hover:bg-sage/60 active:bg-sage/80",
                     )}
                   >
                     {item.label}
+                    <ChevronRight
+                      className={cn("h-4 w-4 shrink-0", active ? "text-primary" : "text-foreground/25")}
+                      aria-hidden
+                    />
                   </a>
                 );
               })}
@@ -180,24 +189,31 @@ export function Header() {
             {/* Phone and email live in the desktop top bar, which is hidden on
                 phones — so they are surfaced here instead, where a rider who
                 wants to talk to someone can reach them in one tap. */}
-            <div className="mt-8 space-y-2">
+            <span className="mt-8 px-1 text-xs font-semibold uppercase tracking-wide text-foreground/45">
+              Get in touch
+            </span>
+            <div className="mt-3 space-y-2">
               {CONTACT_PHONES.map((p) => (
                 <a
                   key={p.href}
                   href={p.href}
                   onClick={() => trackEvent("click_phone", { placement: "mobile_menu" })}
-                  className="flex min-h-[48px] items-center gap-3 rounded-2xl bg-sage/60 px-4 text-[15px] font-medium text-foreground"
+                  className="flex min-h-[52px] items-center gap-3 rounded-2xl bg-sage/60 px-4 text-[15px] font-medium text-foreground transition-colors hover:bg-sage active:bg-sage"
                 >
-                  <Phone className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-primary">
+                    <Phone className="h-4 w-4" aria-hidden />
+                  </span>
                   {p.display}
                 </a>
               ))}
               <a
                 href={`mailto:${CONTACT_EMAIL}`}
                 onClick={() => trackEvent("click_email", { placement: "mobile_menu" })}
-                className="flex min-h-[48px] items-center gap-3 rounded-2xl bg-sage/60 px-4 text-[15px] font-medium text-foreground"
+                className="flex min-h-[52px] items-center gap-3 rounded-2xl bg-sage/60 px-4 text-[15px] font-medium text-foreground transition-colors hover:bg-sage active:bg-sage"
               >
-                <Mail className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-primary">
+                  <Mail className="h-4 w-4" aria-hidden />
+                </span>
                 <span className="truncate">{CONTACT_EMAIL}</span>
               </a>
             </div>

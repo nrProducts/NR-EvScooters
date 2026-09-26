@@ -158,6 +158,7 @@ export default function ProfileSetupScreen() {
             placeholder={t('profileSetup.fullNamePlaceholder')}
             placeholderTextColor={COLORS.textSecondary}
             autoCapitalize="words"
+            autoComplete="name"
             accessibilityLabel={t('profileSetup.fullName')}
             className="flex-1 text-base font-semibold ml-3"
             style={{ color: COLORS.textPrimary }}
@@ -258,6 +259,7 @@ export default function ProfileSetupScreen() {
           placeholder={t('profileSetup.addressPlaceholder')}
           returnKeyType="next"
           onSubmitEditing={() => cityRef.current?.focus()}
+          autoComplete="street-address"
         />
         <View className="flex-row" style={{ gap: 10 }}>
           <View className="flex-1">
@@ -270,6 +272,11 @@ export default function ProfileSetupScreen() {
               placeholder={t('profileSetup.cityPlaceholder')}
               returnKeyType="next"
               onSubmitEditing={() => postalCodeRef.current?.focus()}
+              // No RN-cross-platform token maps to "city" specifically (see
+              // the allowed list on TextInput.autoComplete) — 'off' beats
+              // leaving it unset, since unset silently becomes RNW's 'on'
+              // default and reopens the same ambiguous-autofill exposure.
+              autoComplete="off"
             />
           </View>
           <View className="flex-1">
@@ -293,6 +300,7 @@ export default function ProfileSetupScreen() {
           keyboardType="number-pad"
           returnKeyType="done"
           onSubmitEditing={() => void save()}
+          autoComplete="postal-code"
         />
 
         {/*

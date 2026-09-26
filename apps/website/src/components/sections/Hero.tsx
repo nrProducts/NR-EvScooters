@@ -64,6 +64,17 @@ export function Hero() {
               <div className="overflow-hidden rounded-[1.5rem]">
                 <ScooterIllustration className="aspect-[4/3] w-full" priority />
               </div>
+              {/* Same handwritten accent as the Motovolt MVS7 card further down
+                  the page — the two scooter visuals on the site read as one
+                  pair now instead of two unrelated treatments. */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute right-5 top-5 -rotate-3 font-script text-2xl leading-[0.85] text-primary sm:right-7 sm:top-7 sm:text-3xl"
+              >
+                Ride
+                <br />
+                Green
+              </span>
             </div>
 
             <div className="absolute -left-4 top-6 flex items-center gap-3 rounded-[1.75rem] bg-white px-4 py-3 shadow-soft ring-1 ring-border sm:-left-8 sm:top-10">

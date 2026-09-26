@@ -146,6 +146,27 @@
 }
 
 /*
+ * The dotted "energy flow" line under the two large WhySwapngo cards — each
+ * dot pulses brighter with a soft green glow, staggered by animation-delay
+ * per dot (set inline, proportional to index) so the brightness appears to
+ * travel left to right toward the lightning icon, then loops. One shared
+ * keyframe, not a per-dot animation, so every dot's timing stays in sync.
+ */
+@keyframes dot-flow {
+  0%, 100% {
+    opacity: 0.35;
+    box-shadow: none;
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 6px 1px hsl(var(--primary) / 0.55);
+  }
+}
+.dot-flow {
+  animation: dot-flow 1.6s ease-in-out infinite;
+}
+
+/*
  * Motion is opt-out, not opt-in: everything below is disabled wholesale for
  * anyone who has asked their OS for reduced motion. Reveal elements are
  * forced visible so the content is never left stuck at opacity 0.
@@ -155,5 +176,10 @@
     opacity: 1;
     transform: none;
     transition: none;
+  }
+
+  .dot-flow {
+    animation: none;
+    box-shadow: none;
   }
 }
