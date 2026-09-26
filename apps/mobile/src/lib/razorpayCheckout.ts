@@ -82,6 +82,23 @@ function cleanPrefill(prefill: RazorpayCheckoutOptions['prefill']): RazorpayChec
 }
 
 /**
+ * Every payment flow (booking, resumed-booking, invoice, recharge, overdue
+ * late fee, settlement) calls this FIRST, before creating its own backend
+ * order — openRazorpayCheckout below already refuses on web, but only after
+ * the caller has already called createOrderForX() and a real, unpaid order
+ * row exists for nothing. A web rider tapping Pay would see the order
+ * succeed (a 201 in the network tab) immediately followed by "payment isn't
+ * available," which reads as a broken/inconsistent failure rather than the
+ * known, deliberate gap it is. Throwing here instead means no order is ever
+ * created on web, and the same message is the ONLY thing that happens.
+ */
+export function assertPaymentAvailable(): void {
+    if (Platform.OS === 'web') {
+        throw new PaymentUnavailableError();
+    }
+}
+
+/**
  * Opens Razorpay's native checkout sheet and returns the verify-callback
  * payload on success. Never resolves with a "failed" state — a decline,
  * cancel, or the native module being absent (e.g. a dev-client build that

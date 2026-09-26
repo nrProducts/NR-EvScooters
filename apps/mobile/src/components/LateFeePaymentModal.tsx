@@ -10,7 +10,7 @@ import {
   LATE_FEE_POLICY_TITLE_KEY, lateFeePolicyExample, lateFeePolicySections,
 } from '../constants/lateFeePolicy';
 import { billingRepository, rentalRepository } from '../services';
-import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
+import { assertPaymentAvailable, openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
 import { ApiError } from '../lib/ApiError';
 import { useAuthStore } from '../store/useAuthStore';
 import { formatDate } from '../constants/status';
@@ -54,6 +54,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
     setPayError(null);
     setPaying(true);
     try {
+      assertPaymentAvailable();
       const invoice = await rentalRepository.payOverdueLateFee();
       if (!invoice.isPaid) {
         const order = await billingRepository.createOrderForInvoice(invoice.invoiceId);

@@ -4,7 +4,7 @@ import { Spinner } from './Spinner';
 import { CheckCircle2, Clock, CreditCard, PackageCheck, RefreshCw, X } from 'lucide-react-native';
 import { COLORS } from '../constants/theme';
 import { billingRepository } from '../services';
-import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
+import { assertPaymentAvailable, openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
 import { ApiError } from '../lib/ApiError';
 import { useAuthStore } from '../store/useAuthStore';
 import type { ApiReturnSettlement } from '../types/api';
@@ -103,6 +103,7 @@ export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => 
     setPayError(null);
     setPaying(true);
     try {
+      assertPaymentAvailable();
       const order = await billingRepository.createOrderForInvoice(settlement.due_invoice_id);
       const verifyPayload = await openRazorpayCheckout({
         key: order.keyId,

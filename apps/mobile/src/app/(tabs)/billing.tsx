@@ -14,7 +14,7 @@ import { COLORS } from '../../constants/theme';
 import { useMyBilling } from '../../hooks/useMyBilling';
 import { useAuthStore } from '../../store/useAuthStore';
 import { billingRepository, rentalRepository } from '../../services';
-import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
+import { assertPaymentAvailable, openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
 import { getRenewalEligibility } from '../../lib/returnPolicy';
 import { SettlementCard } from '../../components/SettlementCard';
 import { DepositStatusCard } from '../../components/DepositStatusCard';
@@ -590,6 +590,7 @@ export default function BillingScreen() {
     setPayError(null);
     setPayingInvoiceId(invoice.id);
     try {
+      assertPaymentAvailable();
       const order = await billingRepository.createOrderForInvoice(invoice.id);
       // Checkout is the only way a payment happens. The backend can no
       // longer reply `mock: true` to say it settled the order itself.
@@ -632,6 +633,7 @@ export default function BillingScreen() {
     setBookingPaymentError(null);
     setCompletingBookingPayment(true);
     try {
+      assertPaymentAvailable();
       const order = await billingRepository.createOrderForBooking(bookingId);
       // The real, authoritative lines — same reasoning as booking/billing.tsx:
       // if the rider cancels Checkout and lands back here, the breakdown
@@ -695,6 +697,7 @@ export default function BillingScreen() {
     setRechargeError(null);
     setRecharging(true);
     try {
+      assertPaymentAvailable();
       const order = await billingRepository.createOrderForInvoice(rechargePreview.invoiceId);
       const verifyPayload = await openRazorpayCheckout({
         key: order.keyId,
