@@ -1189,8 +1189,8 @@ export const en = {
     'deposit.title': 'Your deposit',
     'deposit.securityDeposit': 'Security deposit',
     'deposit.refundableNow': 'Refundable after deductions',
-    'deposit.daysRemaining':
-        '{completed} of {required} rental days completed — {remaining} more before this deposit can be refunded.',
+    'deposit.refundableAfterDays':
+        'Refundable only after {days} days of rental usage.',
     'deposit.afterReturn':
         'Refundable after you return the scooter and the holding period ends.',
     'deposit.eligible': 'Eligible for refund. We will process it shortly.',

@@ -697,8 +697,8 @@ export const hi: Copy = {
     'deposit.title': 'आपकी जमा राशि',
     'deposit.securityDeposit': 'सुरक्षा जमा राशि',
     'deposit.refundableNow': 'कटौती के बाद वापस मिलने वाली',
-    'deposit.daysRemaining':
-        '{required} में से {completed} किराया दिन पूरे हुए — जमा राशि वापस पाने के लिए {remaining} दिन और।',
+    'deposit.refundableAfterDays':
+        '{days} दिनों के किराया उपयोग के बाद ही वापसी योग्य।',
     'deposit.afterReturn':
         'स्कूटर लौटाने और होल्डिंग अवधि पूरी होने के बाद वापस मिलेगी।',
     'deposit.eligible': 'रिफंड के लिए पात्र। हम इसे जल्द ही प्रोसेस करेंगे।',

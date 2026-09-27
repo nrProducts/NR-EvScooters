@@ -140,7 +140,12 @@ export default function MyScooterScreen() {
           below the fold. VehicleStage always honours `height` now, so this no
           longer has to defend against the stage resizing itself on load. */}
       {imageUrl ? (
-        <VehicleStage imageUrl={imageUrl} height={160} compact accessibilityLabel={title} />
+        // zoom=1: the catalog photo is already cropped tight to the vehicle,
+        // with none of the generous transparent padding the default zoom
+        // (see VehicleStage's own doc comment) assumes — at the default it
+        // scaled past the stage's edges and got clipped there, cutting into
+        // the scooter itself rather than trimming empty margin.
+        <VehicleStage imageUrl={imageUrl} height={160} compact zoom={1} accessibilityLabel={title} />
       ) : null}
       <View className="p-5 items-center">
         {imageUrl ? null : (

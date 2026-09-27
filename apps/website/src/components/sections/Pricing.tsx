@@ -75,7 +75,11 @@ export function Pricing() {
                       && `, refundable after ${plan.minRentalDaysForRefund} rental days`}
                   </>
                 ) : (
-                  <>{formatCurrency(plan.depositAmount)} refundable security deposit</>
+                  <>
+                    {formatCurrency(plan.depositAmount)} refundable security deposit
+                    {plan.minRentalDaysForRefund > 0
+                      && `, refundable after ${plan.minRentalDaysForRefund} rental days`}
+                  </>
                 )}
               </p>
 

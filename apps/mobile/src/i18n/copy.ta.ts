@@ -702,8 +702,8 @@ export const ta: Copy = {
     'deposit.title': 'உங்கள் வைப்புத்தொகை',
     'deposit.securityDeposit': 'பாதுகாப்பு வைப்புத்தொகை',
     'deposit.refundableNow': 'கழிவுகளுக்குப் பிறகு திரும்பத் தரப்படும்',
-    'deposit.daysRemaining':
-        '{required} இல் {completed} வாடகை நாட்கள் முடிந்தன — வைப்புத்தொகை திரும்பப் பெற இன்னும் {remaining} நாட்கள்.',
+    'deposit.refundableAfterDays':
+        '{days} நாட்கள் வாடகை பயன்பாட்டுக்குப் பிறகே திரும்பப் பெறத் தகுதி பெறும்.',
     'deposit.afterReturn':
         'ஸ்கூட்டரைத் திருப்பி ஒப்படைத்து, நிறுத்தி வைக்கும் காலம் முடிந்த பிறகு திரும்பத் தரப்படும்.',
     'deposit.eligible': 'பணத்தைத் திரும்பப் பெற தகுதியானது. விரைவில் செயல்படுத்துவோம்.',

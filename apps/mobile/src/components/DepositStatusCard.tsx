@@ -29,7 +29,6 @@ export function DepositStatusCard({
   const { t } = useT();
 
   const hasThreshold = deposit.min_rental_days_required > 0;
-  const remaining = Math.max(0, deposit.min_rental_days_required - deposit.rental_days_completed);
   const forfeited = deposit.status === 'forfeited';
   const refunded = deposit.refund_eligibility === 'refund_processed';
   const eligible = deposit.refund_eligibility === 'eligible';
@@ -42,18 +41,17 @@ export function DepositStatusCard({
 
   const Icon = forfeited ? XCircle : refunded || eligible ? CheckCircle2 : Clock;
 
+  // A flat statement of the rule, not a live day-by-day counter — a rider
+  // mid-rental doesn't need a running tally to know their money is safe,
+  // just the one condition that has to be met before it's refundable.
   const statusLine = forfeited
     ? (deposit.forfeit_reason ?? t('deposit.forfeited'))
     : refunded
       ? t('deposit.refunded')
       : eligible
         ? t('deposit.eligible')
-        : hasThreshold && remaining > 0
-          ? t('deposit.daysRemaining', {
-              completed: deposit.rental_days_completed,
-              required: deposit.min_rental_days_required,
-              remaining,
-            })
+        : hasThreshold
+          ? t('deposit.refundableAfterDays', { days: deposit.min_rental_days_required })
           : t('deposit.afterReturn');
 
   return (
@@ -85,26 +83,6 @@ export function DepositStatusCard({
           <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">
             ₹{deposit.refundable_amount.toFixed(0)}
           </Text>
-        </View>
-      ) : null}
-
-      {hasThreshold && !forfeited && !refunded ? (
-        <View className="mt-2 mb-1">
-          <View
-            className="h-1.5 rounded-full overflow-hidden"
-            style={{ backgroundColor: COLORS.border }}
-          >
-            <View
-              className="h-full rounded-full"
-              style={{
-                backgroundColor: eligible ? COLORS.success : COLORS.primary,
-                width: `${Math.min(
-                  100,
-                  (deposit.rental_days_completed / deposit.min_rental_days_required) * 100,
-                )}%`,
-              }}
-            />
-          </View>
         </View>
       ) : null}
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Menu, X, ArrowRight, ChevronRight, Phone, Mail } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
@@ -54,12 +54,25 @@ export function Header() {
   }, []);
 
   /**
+   * Set right before closing the menu via a nav/contact link tap — those
+   * already navigate for real (a hash change, pushing their own history
+   * entry). The effect's cleanup below must NOT call history.back() in that
+   * case: doing so unconditionally used to pop straight past the link's own
+   * new entry, landing back on the pre-menu URL with the scroll position
+   * reset to wherever the user was before opening the menu — the link tap
+   * visibly did nothing. Escape / backdrop tap / the X button never
+   * navigate, so those still need the pop to keep the synthetic entry from
+   * lingering in history.
+   */
+  const closingViaLinkRef = useRef(false);
+
+  /**
    * While the menu is open: lock background scroll, close on Escape, and
    * push a history entry so the phone's back gesture dismisses the menu
    * instead of leaving the site — the behaviour people expect from a
    * full-screen drawer. The popstate listener only ever closes, and the
    * cleanup pops our own entry back off if the menu was closed some other
-   * way (link tap, outside tap, Escape).
+   * way (outside tap, Escape) — never for a link tap, see closingViaLinkRef.
    */
   useEffect(() => {
     if (!open) return;
@@ -80,9 +93,18 @@ export function Header() {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("popstate", onPopState);
-      if (window.history.state?.swapngoMenu) window.history.back();
+      if (closingViaLinkRef.current) {
+        closingViaLinkRef.current = false;
+      } else if (window.history.state?.swapngoMenu) {
+        window.history.back();
+      }
     };
   }, [open]);
+
+  const closeMenuForLink = () => {
+    closingViaLinkRef.current = true;
+    setOpen(false);
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full">
@@ -168,7 +190,7 @@ export function Header() {
                   <a
                     key={item.href}
                     href={item.href}
-                    onClick={() => setOpen(false)}
+                    onClick={closeMenuForLink}
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex min-h-[56px] items-center justify-between gap-3 rounded-2xl px-4 text-lg font-semibold transition-colors",
@@ -225,7 +247,7 @@ export function Header() {
                 className="w-full"
                 onClick={() => {
                   trackEvent("click_book_now", { placement: "mobile_menu" });
-                  setOpen(false);
+                  closeMenuForLink();
                 }}
               >
                 Book now
