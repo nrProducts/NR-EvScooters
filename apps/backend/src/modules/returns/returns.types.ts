@@ -102,10 +102,27 @@ export interface ReturnStage {
     totalCharges: number;
     /** > 0 only once inspected and charges exceed the deposit. */
     additionalDue: number;
-    /** > 0 only once inspected and the deposit exceeds charges. */
+    /**
+     * > 0 only once inspected, the deposit exceeds charges, AND the rider
+     * has completed the plan's minimum rental days — 0 whenever
+     * `depositForfeited` is true, regardless of charges.
+     */
     refundDue: number;
     additionalDueInvoiceId: string | null;
     paymentVerifiedAt: string | null;
+    /**
+     * True when the rider is returning short of the plan's
+     * `min_rental_days_for_refund` — the whole deposit is forfeited (not
+     * merely reduced by charges) the moment this return actually completes
+     * (see settleDepositOnReturn/forfeitForShortRental in
+     * deposits.service.ts). This preview mirrors that outcome ahead of time
+     * so nothing shown here promises a refund the real settlement won't pay.
+     */
+    depositForfeited: boolean;
+    /** The plan's snapshot at booking time — 0 for plans with no minimum. */
+    minRentalDaysRequired: number;
+    /** As of "now" (or the return's own reference point once completed). */
+    rentalDaysCompleted: number;
 }
 
 /** Everything the admin Return Detail page needs in one call. */

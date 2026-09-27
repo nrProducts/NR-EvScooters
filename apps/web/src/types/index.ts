@@ -1076,9 +1076,14 @@ export interface ReturnStage {
   otherChargesAmount: number;
   totalCharges: number;
   additionalDue: number;
+  /** 0 whenever `depositForfeited` is true, regardless of charges. */
   refundDue: number;
   additionalDueInvoiceId: string | null;
   paymentVerifiedAt: string | null;
+  /** Rider is returning short of the plan's minimum rental days — the whole deposit is forfeited, not just reduced by charges. */
+  depositForfeited: boolean;
+  minRentalDaysRequired: number;
+  rentalDaysCompleted: number;
 }
 
 export interface PaymentReviewView {

@@ -83,15 +83,14 @@ export async function resolveStaffSession(): Promise<StaffUser> {
 
   const role = resolveRole(session.role);
   if (!role) {
-    // A rider reached the staff login form. Their Supabase session is valid —
-    // do NOT sign them out; let LoginPage catch this and route them to the
-    // rider web app (/rider). Any other non-staff role is a real 403.
-    if (session.role === "rider") {
-      throw new ApiError("Redirecting you to the rider app…", 403, "RIDER_ACCOUNT");
-    }
+    // No rider web app exists here any more — riders use the Expo mobile app
+    // exclusively, so a rider account reaching this admin login form is
+    // rejected outright, same as any other non-staff role.
     await supabase.auth.signOut();
     throw new ApiError(
-      "This account doesn't have staff or admin access.",
+      session.role === "rider"
+        ? "This is a rider account. The admin console is for staff only — use the SwapNgo rider app instead."
+        : "This account doesn't have staff or admin access.",
       403,
       "FORBIDDEN",
     );

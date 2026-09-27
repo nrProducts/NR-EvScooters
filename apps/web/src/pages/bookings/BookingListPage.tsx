@@ -170,6 +170,7 @@ export default function BookingListPage() {
   const [page, setPage] = useState(1);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [vehicleSearch, setVehicleSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
@@ -183,6 +184,15 @@ export default function BookingListPage() {
   });
   const { data: availableVehicles, isLoading: vehiclesLoading } = useAvailableVehicles(
     pickupTarget && !pickupTarget.vehicle ? pickupTarget.id : undefined,
+  );
+  // Case/space-insensitive so "22ab0005" or "TN 22 AB 0005" still matches
+  // "TN22AB0005" — a staff member reading a plate aloud won't type it back
+  // exactly as stored.
+  const normalizedVehicleSearch = vehicleSearch.trim().toLowerCase().replace(/\s+/g, "");
+  const filteredAvailableVehicles = (availableVehicles ?? []).filter(
+    (v) =>
+      !normalizedVehicleSearch ||
+      v.registration_number.toLowerCase().replace(/\s+/g, "").includes(normalizedVehicleSearch),
   );
   const confirmPickup = useConfirmPickup();
 
@@ -321,6 +331,7 @@ export default function BookingListPage() {
               onClick={() => {
                 setPickupTarget(b);
                 setSelectedVehicleId(null);
+                setVehicleSearch("");
               }}
             >
               <PackageCheck className="h-3.5 w-3.5" /> Confirm pickup
@@ -545,26 +556,39 @@ export default function BookingListPage() {
           ) : (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">Select a scooter to hand over:</p>
-              {availableVehicles.map((v) => (
-                <label
-                  key={v.id}
-                  className="flex cursor-pointer items-center justify-between rounded-lg border border-border p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-accent"
-                >
-                  <div>
-                    <p className="font-medium">{v.registration_number}</p>
-                    <p className="text-xs text-muted-foreground">{v.name}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{v.battery_percentage}%</span>
-                    <input
-                      type="radio"
-                      name="vehicle"
-                      checked={selectedVehicleId === v.id}
-                      onChange={() => setSelectedVehicleId(v.id)}
-                    />
-                  </div>
-                </label>
-              ))}
+              <SearchBar
+                value={vehicleSearch}
+                onChange={setVehicleSearch}
+                placeholder="Search by registration number…"
+              />
+              {filteredAvailableVehicles.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No scooter matches "{vehicleSearch}".
+                </p>
+              ) : (
+                <div className="max-h-64 space-y-2 overflow-y-auto">
+                  {filteredAvailableVehicles.map((v) => (
+                    <label
+                      key={v.id}
+                      className="flex cursor-pointer items-center justify-between rounded-lg border border-border p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-accent"
+                    >
+                      <div>
+                        <p className="font-medium">{v.registration_number}</p>
+                        <p className="text-xs text-muted-foreground">{v.name}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{v.battery_percentage}%</span>
+                        <input
+                          type="radio"
+                          name="vehicle"
+                          checked={selectedVehicleId === v.id}
+                          onChange={() => setSelectedVehicleId(v.id)}
+                        />
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

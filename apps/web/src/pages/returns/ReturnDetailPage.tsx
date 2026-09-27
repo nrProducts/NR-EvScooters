@@ -500,7 +500,7 @@ export default function ReturnDetailPage() {
                   damageFee={previewDamageAmount}
                   otherCharges={previewOtherCharges}
                   totalCharges={previewTotalCharges}
-                  refund={Math.max(0, depositAmount - previewTotalCharges)}
+                  refund={stage?.depositForfeited ? 0 : Math.max(0, depositAmount - previewTotalCharges)}
                   due={previewDue}
                   paidByRider={0}
                   renewalLateFee={rental.overdue_late_fee}

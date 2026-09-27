@@ -96,8 +96,20 @@ export function renderNotificationEmail(input: NotificationEmailInput): string {
                             }
                             <table role="presentation" cellpadding="0" cellspacing="0">
                                 <tr>
-                                    <td bgcolor="${BRAND_GREEN}" style="background-color:${BRAND_GREEN};border-radius:8px;">
-                                        <a href="${input.ctaUrl}" style="display:inline-block;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:11px 22px;">${escapeHtml(input.ctaLabel)}</a>
+                                    <td bgcolor="${BRAND_GREEN}" style="background-color:${BRAND_GREEN} !important;border-radius:8px;">
+                                        <!--
+                                          Gmail's mobile apps re-theme an <a>'s text colour for dark
+                                          mode even with color-scheme:light set above (that meta pair
+                                          stops the NAVY/WHITE remapping seen elsewhere in this
+                                          template, but Gmail treats a hyperlink's colour as its own
+                                          concern and overrides it anyway) — the button's green
+                                          background survived, but "Review" itself rendered near-black
+                                          on green. !important alone isn't reliably honoured on an
+                                          <a> by every client that does this; wrapping the label in its
+                                          own <span> with the same forced colour is the combination
+                                          that actually held in Gmail's Android/iOS apps.
+                                        -->
+                                        <a href="${input.ctaUrl}" style="display:inline-block;color:#ffffff !important;text-decoration:none;font-size:14px;font-weight:600;padding:11px 22px;"><span style="color:#ffffff !important;">${escapeHtml(input.ctaLabel)}</span></a>
                                     </td>
                                 </tr>
                             </table>

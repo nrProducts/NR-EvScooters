@@ -312,17 +312,32 @@ export async function computeReturnStage(rentalId: string, subscriptionId: strin
 
     const deposit = await getDepositForSubscriptionOrNull(subscriptionId);
     const depositAmount = deposit?.amount ?? 0;
+    // `deposit` is already a full DepositRow — min_rental_days_required and
+    // rental_days_completed are computed by getDepositForSubscriptionOrNull
+    // itself (toDepositRow -> cumulativeRentalDaysForUser), the SAME numbers
+    // settleDepositOnReturn will check when this return actually completes
+    // (deposits.service.ts). Mirroring that check HERE, in the pre-completion
+    // preview, is what this was missing: this function used to compute
+    // refundDue as a bare `deposit - charges` with no day-count gate at all,
+    // so a return requested well short of the plan's minimum still showed the
+    // full deposit as refund due — a number settleDepositOnReturn was always
+    // going to zero out at actual completion, just not yet visible here.
+    const minRentalDaysRequired = deposit?.min_rental_days_required ?? 0;
+    const rentalDaysCompleted = deposit?.rental_days_completed ?? 0;
+    const depositForfeited = minRentalDaysRequired > 0 && rentalDaysCompleted < minRentalDaysRequired;
 
     if (row.status === "rejected") {
         return {
             status: "rejected", depositAmount, damageAmount: 0, otherChargesAmount: 0,
             totalCharges: 0, additionalDue: 0, refundDue: 0, additionalDueInvoiceId: null, paymentVerifiedAt: null,
+            depositForfeited, minRentalDaysRequired, rentalDaysCompleted,
         };
     }
     if (row.status === "approved") {
         return {
             status: "return_completed", depositAmount, damageAmount: 0, otherChargesAmount: 0,
             totalCharges: 0, additionalDue: 0, refundDue: 0, additionalDueInvoiceId: null, paymentVerifiedAt: null,
+            depositForfeited, minRentalDaysRequired, rentalDaysCompleted,
         };
     }
     // Damage can now be recorded incrementally, ahead of the final "Save
@@ -343,13 +358,18 @@ export async function computeReturnStage(rentalId: string, subscriptionId: strin
     if (row.status === "requested") {
         return {
             status: "return_requested", depositAmount, damageAmount, otherChargesAmount, totalCharges,
-            additionalDue: 0, refundDue: depositAmount,
+            additionalDue: 0, refundDue: depositForfeited ? 0 : depositAmount,
             additionalDueInvoiceId: null, paymentVerifiedAt: null,
+            depositForfeited, minRentalDaysRequired, rentalDaysCompleted,
         };
     }
 
     const additionalDue = round2(Math.max(0, totalCharges - depositAmount));
-    const refundDue = round2(Math.max(0, depositAmount - totalCharges));
+    // Short of the plan's minimum rental days forfeits the WHOLE deposit —
+    // not "deposit minus charges" — same rule settleDepositOnReturn applies
+    // (forfeitForShortRental), so this preview doesn't promise a refund the
+    // actual settlement will never pay.
+    const refundDue = depositForfeited ? 0 : round2(Math.max(0, depositAmount - totalCharges));
 
     let status: ReturnStageStatus;
     let paymentVerifiedAt = row.payment_verified_at;
@@ -388,6 +408,7 @@ export async function computeReturnStage(rentalId: string, subscriptionId: strin
         status, depositAmount, damageAmount, otherChargesAmount, totalCharges,
         additionalDue, refundDue,
         additionalDueInvoiceId: row.additional_due_invoice_id, paymentVerifiedAt,
+        depositForfeited, minRentalDaysRequired, rentalDaysCompleted,
     };
 }
 

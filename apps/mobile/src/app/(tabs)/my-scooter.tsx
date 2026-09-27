@@ -350,7 +350,13 @@ export default function MyScooterScreen() {
                 ),
               )}
 
-              {state.booking.vehicle ? (
+              {/* Registration number is the only row that genuinely needs a
+                  vehicle — plan and pickup station are already known from the
+                  booking itself. Gating the whole card on `vehicle` (as this
+                  used to) meant a rider whose scooter isn't assigned yet saw
+                  nothing here at all but the badge above: a mostly-blank
+                  screen instead of the plan/station info they still have. */}
+              {(state.booking.vehicle || state.booking.plan || state.booking.station) ? (
                 <View
                   className="rounded-2xl border overflow-hidden"
                   style={{
@@ -358,21 +364,29 @@ export default function MyScooterScreen() {
                     shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1,
                   }}
                 >
-                  <DetailRow
-                    icon={Hash}
-                    label={t('scooter.registrationNumber')}
-                    value={state.booking.vehicle.registration_number}
-                    first
-                  />
+                  {state.booking.vehicle ? (
+                    <DetailRow
+                      icon={Hash}
+                      label={t('scooter.registrationNumber')}
+                      value={state.booking.vehicle.registration_number}
+                      first
+                    />
+                  ) : null}
                   {state.booking.plan ? (
                     <DetailRow
                       icon={CreditCard}
                       label={t('scooter.plan')}
                       value={`${state.booking.plan.name} · ₹${state.booking.plan.price.toFixed(0)}/${t(BILLING_CYCLE_LABEL_KEY[state.booking.plan.billing_cycle])}`}
+                      first={!state.booking.vehicle}
                     />
                   ) : null}
                   {state.booking.station ? (
-                    <DetailRow icon={MapPin} label={t('scooter.pickupStation')} value={state.booking.station.name} />
+                    <DetailRow
+                      icon={MapPin}
+                      label={t('scooter.pickupStation')}
+                      value={state.booking.station.name}
+                      first={!state.booking.vehicle && !state.booking.plan}
+                    />
                   ) : null}
                 </View>
               ) : null}

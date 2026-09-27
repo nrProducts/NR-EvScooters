@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ArrowRight, Mail, Lock, Check } from "lucide-react";
@@ -11,24 +11,18 @@ import { AuthBrand } from "@/components/auth/AuthBrand";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { toastError } from "@/lib/toastHelpers";
-import { ApiError } from "@/services/api/httpClient";
-import { useRiderAuthStore } from "@/store/riderAuthStore";
-
 interface LoginForm {
   identifier: string;
   password: string;
 }
 
 /**
- * Single sign-in surface for every role. Staff, admin and rider accounts are
- * all one kind of account now — email + password — and the role is resolved
- * from GET /auth/session after the session is established, routing the user to
- * the console (/dashboard) or the rider web app (/rider).
+ * Single sign-in surface for staff/admin. There is no rider web app anymore —
+ * riders use the Expo mobile app (and its web export) exclusively; a rider
+ * account presenting here is rejected outright, not redirected anywhere.
  *
- * Rider phone-OTP / Google sign-in was removed from the web console; it lives
- * only in the Expo mobile app. A new account self-registers here, lands as
- * pending, and an admin approves it as staff or rider from Users → Awaiting
- * approval.
+ * A new account self-registers here, lands as pending, and an admin approves
+ * it from Users → Awaiting approval.
  */
 export default function LoginPage() {
   const { login } = useAuth();
@@ -36,35 +30,15 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
-  const riderProfile = useRiderAuthStore((s) => s.profile);
-  const riderInitialising = useRiderAuthStore((s) => s.initialising);
-
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<LoginForm>({ defaultValues: { identifier: "", password: "" } });
 
-  // Already signed in as a rider — skip straight to the rider app.
-  useEffect(() => {
-    if (!riderInitialising && riderProfile?.role === "rider") navigate("/rider", { replace: true });
-  }, [riderInitialising, riderProfile, navigate]);
-
   const onSubmit = (values: LoginForm) => {
     login.mutate(values, {
-      onError: async (err) => {
-        if (err instanceof ApiError && err.code === "RIDER_ACCOUNT") {
-          // A rider signed in on the console login form. Their Supabase
-          // session is live but the rider store bootstrapped at app mount
-          // with no session — pull the profile now so RiderProtectedRoute
-          // sees profile_completed / consent and routes to profile-setup
-          // instead of needing a manual reload.
-          await useRiderAuthStore.getState().bootstrap();
-          navigate("/rider", { replace: true });
-          return;
-        }
-        toastError(err, "Could not sign in");
-      },
+      onError: (err) => toastError(err, "Could not sign in"),
     });
   };
 
