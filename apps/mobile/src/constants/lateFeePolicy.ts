@@ -12,9 +12,12 @@ import type { CopyKey, TranslateFn } from '../i18n';
  * taps on Home and the policy they accepted can never disagree.
  *
  * The rule these sections describe is enforced server-side in
- * apps/backend/src/modules/payments/renewalFee.ts (computeLateRenewalFee's
- * `chargeCurrentDay`) and apps/backend/src/modules/rentals/overdueLateFee.ts.
- * If the maths changes there, this text changes with it.
+ * apps/backend/src/modules/payments/renewalFee.ts (computeLateRenewalFee /
+ * lateDaysSince) and apps/backend/src/modules/rentals/overdueLateFee.ts.
+ * If the maths changes there, this text changes with it — it last did, from
+ * "renewing pays for today, returning doesn't" (a calendar-day rule with a
+ * one-day gap between the two) to a single instant-based rule with no grace
+ * window and no renew/return distinction at all.
  *
  * ── On translation ───────────────────────────────────────────────────────
  *
@@ -48,16 +51,12 @@ export function lateFeePolicySections(t: TranslateFn, feePerDay = 0): LateFeePol
 
   return [
     {
-      heading: t('lateFee.lastDay.heading'),
-      body: t('lateFee.lastDay.body'),
+      heading: t('lateFee.dueInstant.heading'),
+      body: t('lateFee.dueInstant.body'),
     },
     {
-      heading: t('lateFee.renewing.heading'),
-      body: t('lateFee.renewing.body'),
-    },
-    {
-      heading: t('lateFee.returning.heading'),
-      body: t('lateFee.returning.body'),
+      heading: t('lateFee.perDay.heading'),
+      body: t('lateFee.perDay.body'),
     },
     {
       heading: t('lateFee.oneFee.heading'),
@@ -68,7 +67,7 @@ export function lateFeePolicySections(t: TranslateFn, feePerDay = 0): LateFeePol
 
 /**
  * A worked example, which is the only part of this most riders will actually
- * read. Dates are illustrative and deliberately NOT the rider's own — a
+ * read. The time is illustrative and deliberately NOT the rider's own — a
  * generic example survives a rider reading it on a different day, and reading
  * their own live figures back to them in the explainer adds nothing the screen
  * behind it is not already showing.
@@ -78,7 +77,8 @@ export function lateFeePolicyExample(t: TranslateFn, feePerDay = 0): string[] {
     feePerDay > 0 ? t('lateFee.example.equals', { amount: `₹${(feePerDay * days).toFixed(0)}` }) : '';
   return [
     t('lateFee.example.intro'),
-    t('lateFee.example.renew', { amount: money(2) }),
-    t('lateFee.example.return', { amount: money(3) }),
+    t('lateFee.example.onTime'),
+    t('lateFee.example.sameDay', { amount: money(1) }),
+    t('lateFee.example.nextDay', { amount: money(2) }),
   ];
 }

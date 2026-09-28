@@ -197,23 +197,21 @@ export const en = {
 
     // --- late fee policy explainer ----------------------------------------
     'lateFee.title': 'How your late fee is counted',
-    'lateFee.lastDay.heading': 'The last day of your plan is yours',
-    'lateFee.lastDay.body':
-        'Your plan covers its final day in full. The late fee only begins the day AFTER your plan ends.',
-    'lateFee.renewing.heading': 'Renewing pays for today',
-    'lateFee.renewing.body':
-        'When you renew, your new plan starts today — so today is charged as plan time, not as a penalty. Renew on the very first day after your plan ends and you owe no late fee at all.',
-    'lateFee.returning.heading': 'Returning uses up today',
-    'lateFee.returning.body':
-        'When you hand the scooter back, you have already ridden it through today, so today is counted. That is why returning always shows one day more than renewing on the same date.',
+    'lateFee.dueInstant.heading': 'Late begins the instant your plan ends',
+    'lateFee.dueInstant.body':
+        'Your plan runs to an exact time, not just a date. Pay at or before that exact moment and there is no fee. The moment it passes — even by a minute — the first day’s late fee is already owed.',
+    'lateFee.perDay.heading': 'Every day, or part of one, adds a full day’s fee',
+    'lateFee.perDay.body':
+        'The fee is charged per 24-hour block past your plan’s exact end time, and any part of a block counts as a whole one. 10 minutes late and 20 hours late cost the same one day; cross the 24-hour mark and a second day is added straight away.',
     'lateFee.oneFee.heading': 'It is one fee, paid once',
     'lateFee.oneFee.withRate':
-        'The rate is {rate} per day either way. Whichever way you clear it — renewing or paying before a return — it is the same debt, and paying it once settles it for this cycle.',
+        'The rate is {rate} per day. Whichever way you clear it — renewing or paying before a return — it is the same debt, and paying it once settles it for this cycle.',
     'lateFee.oneFee.noRate':
-        'The rate is the same either way. Whichever way you clear it — renewing or paying before a return — it is the same debt, and paying it once settles it for this cycle.',
-    'lateFee.example.intro': 'Say your plan ended on the 1st and today is the 4th:',
-    'lateFee.example.renew': '· Renew today → 2 days (the 2nd and 3rd){amount}',
-    'lateFee.example.return': '· Return today → 3 days (the 2nd, 3rd and 4th){amount}',
+        'Whichever way you clear it — renewing or paying before a return — it is the same debt, and paying it once settles it for this cycle.',
+    'lateFee.example.intro': 'Say your plan ends at 12:00 PM on the 1st:',
+    'lateFee.example.onTime': '· Pay at 12:00 PM or earlier → on time, no fee',
+    'lateFee.example.sameDay': '· Pay any time after 12:00 PM the same day → 1 day{amount}',
+    'lateFee.example.nextDay': '· Pay after 12:00 PM the next day → 2 days{amount}',
     // The " = ₹668" tail. Its own key because the equals sign and spacing are
     // typography, not arithmetic, and a language may want them differently.
     'lateFee.example.equals': ' = {amount}',

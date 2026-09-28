@@ -125,27 +125,56 @@ export async function lateFeeReferenceDate(
  * EXACT instant it was due (noon on `dueDate`), same as a return's deadline
  * always has. There is now one precise cutover instant, not a fuzzy calendar
  * day two different actions used to interpret two different ways, so both
- * actions measure lateness identically: whole 24-hour blocks elapsed since
- * noon on `dueDate`.
+ * actions measure lateness identically from it.
  *
- * `daysLate` — and therefore the fee — is still 0 for anything under a full
- * 24 hours late (a rider back at 12:30 PM owes nothing yet, same as the old
- * day-rate model never billed a fraction of a day). `hoursLate` is exposed
- * alongside it purely for DISPLAY — "30 minutes late" is a fact worth
- * showing a rider or admin even while the fee itself is still ₹0.
+ * `daysLate` — and therefore the fee — is 0 for anything AT OR BEFORE the
+ * due instant, and immediately 1 the moment it passes, even by a second:
+ * there is no 24-hour grace window. Each additional full 24-hour block past
+ * that adds one more day (`Math.ceil(elapsedMs / 24h)`, not floor) — a
+ * rider back one minute late owes the same one day as a rider back 20 hours
+ * late, and a rider back at exactly +24h owes a second day the instant that
+ * boundary is crossed. `hoursLate` is exposed purely for DISPLAY — "30
+ * minutes late" is worth showing a rider or admin even though, unlike the
+ * old rule, that's no longer also the moment the fee changed from ₹0 to
+ * something.
  *
  * `isLate` means A FEE IS OWED (`daysLate > 0`), not "the plan has lapsed" —
  * the lapsed-plan question is answered by subscriptions.status /
  * getRenewalEligibility on the client.
  */
+/**
+ * The date-only half of the rule above, pulled out so it is testable without
+ * a live rate lookup — same reason computeLateReturnPenalty (rentals.service.ts)
+ * takes its own optional `now`. Pure and synchronous: no Supabase call, no
+ * clock read unless the caller omits `now`.
+ */
+export function lateDaysSince(
+    dueAt: Date,
+    now: Date = new Date(),
+): { isLate: boolean; daysLate: number; hoursLate: number } {
+    if (Number.isNaN(dueAt.getTime())) return { isLate: false, daysLate: 0, hoursLate: 0 };
+
+    const elapsedMs = now.getTime() - dueAt.getTime();
+    const hoursLate = Math.max(0, elapsedMs / (60 * 60 * 1000));
+    // AT the due instant is still on time — only strictly past it is late.
+    if (elapsedMs <= 0) return { isLate: false, daysLate: 0, hoursLate };
+
+    // Immediately late: the first, even partial, day already counts as a
+    // whole day. Was Math.floor(hoursLate / 24), which gave every rider a
+    // free 24-hour grace window after the due instant before the fee ever
+    // started — not the intended rule.
+    const daysLate = Math.ceil(elapsedMs / (24 * 60 * 60 * 1000));
+    return { isLate: true, daysLate, hoursLate };
+}
+
 export async function computeLateRenewalFee(
     subscriptionId: string,
     dueDate: string,
+    now: Date = new Date(),
 ): Promise<{ isLate: boolean; lateFee: number; daysLate: number; feePerDay: number; hoursLate: number }> {
     const dueAt = new Date(noonOfBusinessDay(dueDate));
-    const hoursLate = Math.max(0, (Date.now() - dueAt.getTime()) / (60 * 60 * 1000));
-    const daysLate = Math.floor(hoursLate / 24);
-    if (daysLate <= 0) return { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0, hoursLate };
+    const { isLate, daysLate, hoursLate } = lateDaysSince(dueAt, now);
+    if (!isLate) return { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0, hoursLate };
 
     // The rate lookup — subscription override first, then the global rule —
     // lives in lateFeeRateFor, so the return path resolves the same rate from

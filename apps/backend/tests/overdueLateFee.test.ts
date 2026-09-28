@@ -64,9 +64,9 @@ beforeEach(() => {
     stubsByTable = {};
     vi.useFakeTimers();
     // Due noon IST on the 23rd; "now" is 46 hours later (25th, 10am IST) —
-    // one full 24-hour block elapsed since the due instant, with 22 hours
-    // left over. daysLate floors to 1; the 22-hour remainder owes nothing
-    // yet (no charge under a full day), same as the old day-rate model.
+    // one full 24-hour block elapsed since the due instant, plus a 22-hour
+    // remainder. Under Math.ceil (no grace window), that partial second
+    // block already counts as a whole day too: daysLate is 2, not 1.
     vi.setSystemTime(new Date("2026-08-25T10:00:00+05:30"));
 });
 
@@ -99,30 +99,36 @@ describe("previewOverdueLateFee", () => {
         queue("pricing_rules", { data: null, error: null }); // no per-subscription override
         queue("pricing_rules", { data: { amount: 450, is_active: true }, error: null }); // global rule
 
-        // 46 hours past noon on the 23rd => 1 whole day late. The renewal
-        // pair is now identical to the return pair — see OverdueLateFeePreview's
-        // docblock for why the two are no longer priced differently.
+        // 46 hours past noon on the 23rd => ceil(46/24) = 2 days late. The
+        // renewal pair is now identical to the return pair — see
+        // OverdueLateFeePreview's docblock for why the two are no longer
+        // priced differently.
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
         expect(preview).toEqual({
-            isLate: true, daysLate: 1, feePerDay: 450, lateFee: 450, hoursLate: 46, dueOn: "2026-08-23",
-            renewalDaysLate: 1, renewalLateFee: 450,
+            isLate: true, daysLate: 2, feePerDay: 450, lateFee: 900, hoursLate: 46, dueOn: "2026-08-23",
+            renewalDaysLate: 2, renewalLateFee: 900,
         });
     });
 });
 
 /**
  * ONE precise cutover instant now — noon IST on due_on — governs both a
- * renewal and a return identically. No charge accrues until a full 24-hour
- * block has elapsed past it (matching the old day-rate model's granularity);
- * time short of that is still reported via `hoursLate`, for display only.
+ * renewal and a return identically. There is NO grace window: the instant
+ * that passes, even by a second, the first day's fee is already owed, and
+ * `Math.ceil` (not floor) means a partial extra day past any later 24-hour
+ * mark counts as a whole additional day too. `hoursLate` stays purely a
+ * display figure alongside it.
  */
-describe("previewOverdueLateFee — noon-anchored, no charge under 24 hours", () => {
-    it("owes nothing 22 hours past the due instant — under a full day", async () => {
+describe("previewOverdueLateFee — noon-anchored, immediate lateness, no grace window", () => {
+    it("is already one day late 22 hours past the due instant — no grace", async () => {
         // Due noon on the 24th; "now" is 25th 10am IST, 22 hours later.
+        // ceil(22/24) = 1: the partial day already counts as a whole one.
         queue("subscription_periods", { data: { id: PERIOD_ID, due_on: "2026-08-24" }, error: null });
+        queue("pricing_rules", { data: null, error: null });
+        queue("pricing_rules", { data: { amount: 450, is_active: true }, error: null });
 
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
-        expect(preview).toMatchObject({ isLate: false, daysLate: 0, lateFee: 0, hoursLate: 22 });
+        expect(preview).toMatchObject({ isLate: true, daysLate: 1, lateFee: 450, hoursLate: 22 });
     });
 
     it("charges nothing before the due date has passed", async () => {
@@ -136,17 +142,18 @@ describe("previewOverdueLateFee — noon-anchored, no charge under 24 hours", ()
         });
     });
 
-    it("charges one whole day once a full 24 hours has elapsed past due", async () => {
-        // Due noon on the 23rd, "now" 25th 10am IST — 46 hours past due,
-        // one whole 24-hour block elapsed (with 22 hours left uncharged).
+    it("owes two days once a 24-hour block plus a partial second one has elapsed", async () => {
+        // Due noon on the 23rd, "now" 25th 10am IST — 46 hours past due.
+        // ceil(46/24) = 2: the 22-hour remainder past the first day already
+        // counts as a second whole day.
         queue("subscription_periods", { data: { id: PERIOD_ID, due_on: "2026-08-23" }, error: null });
         queue("pricing_rules", { data: null, error: null });
         queue("pricing_rules", { data: { amount: 450, is_active: true }, error: null });
 
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
         expect(preview).toMatchObject({
-            isLate: true, daysLate: 1, lateFee: 450, hoursLate: 46,
-            renewalDaysLate: 1, renewalLateFee: 450,
+            isLate: true, daysLate: 2, lateFee: 900, hoursLate: 46,
+            renewalDaysLate: 2, renewalLateFee: 900,
         });
     });
 
@@ -156,11 +163,11 @@ describe("previewOverdueLateFee — noon-anchored, no charge under 24 hours", ()
         queue("pricing_rules", { data: null, error: null });
         queue("pricing_rules", { data: { amount: 450, is_active: true }, error: null });
 
-        // 94 hours past noon on the 23rd => 3 whole days.
+        // 94 hours past noon on the 23rd => ceil(94/24) = 4 whole days.
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
         expect(preview).toMatchObject({
-            isLate: true, daysLate: 3, lateFee: 1350, hoursLate: 94,
-            renewalDaysLate: 3, renewalLateFee: 1350,
+            isLate: true, daysLate: 4, lateFee: 1800, hoursLate: 94,
+            renewalDaysLate: 4, renewalLateFee: 1800,
         });
     });
 
@@ -230,14 +237,15 @@ describe("ensureOverdueLateFeeInvoice", () => {
         queue("invoice_items", { data: null, error: null });
 
         const result = await ensureOverdueLateFeeInvoice(SUBSCRIPTION_ID, USER_ID);
-        expect(result).toEqual({ invoiceId: "new-invoice-id", amount: 450, isPaid: false });
+        // Default fixture "now" is 46h past this due date => ceil(46/24) = 2 days.
+        expect(result).toEqual({ invoiceId: "new-invoice-id", amount: 900, isPaid: false });
 
         const insertCall = stubsByTable.invoices[1].calls.find(([name]) => name === "insert");
         expect(insertCall?.[1][0]).toMatchObject({
             user_id: USER_ID,
             subscription_id: SUBSCRIPTION_ID,
             purpose: "adhoc",
-            total_amount: 450,
+            total_amount: 900,
             // Looked up dynamically, not the wrong hardcoded "SNG" literal —
             // trg_allocate_invoice_number matches invoice_series.code EXACTLY
             // and the live series is fiscal-year-suffixed ("SNG-FY2627").
@@ -249,22 +257,24 @@ describe("ensureOverdueLateFeeInvoice", () => {
         queuePeriod("2026-08-23");
         queue("pricing_rules", { data: null, error: null });
         queue("pricing_rules", { data: { amount: 450, is_active: true }, error: null });
-        queue("invoices", { data: { id: "existing-invoice-id", total_amount: 450 }, error: null });
+        // Default fixture "now" is 46h past due => ceil(46/24) = 2 days = 900,
+        // so the pre-existing invoice is already at the correct amount.
+        queue("invoices", { data: { id: "existing-invoice-id", total_amount: 900 }, error: null });
         queue("v_invoice_balances", { data: { is_paid: false }, error: null }); // isInvoicePaid
         queue("v_invoice_balances", { data: { allocated_amount: 0, is_paid: false }, error: null }); // reprice
 
         const result = await ensureOverdueLateFeeInvoice(SUBSCRIPTION_ID, USER_ID);
-        expect(result).toEqual({ invoiceId: "existing-invoice-id", amount: 450, isPaid: false });
+        expect(result).toEqual({ invoiceId: "existing-invoice-id", amount: 900, isPaid: false });
         // No second `invoices` insert was ever queued/consumed — reusing the
         // one from the lookup is the only call that hit the invoices table.
-        // Still one day late at the same rate, so the re-price is a no-op too.
+        // Still two days late at the same rate, so the re-price is a no-op too.
         expect(stubsByTable.invoices).toHaveLength(1);
         expect(stubsByTable.invoices[0].calls.some(([name]) => name === "update")).toBe(false);
     });
 
     it("re-prices a stale invoice to TODAY's fee instead of handing back day one's", async () => {
-        // 70 hours past noon on the 23rd => 2 whole days; the open invoice was
-        // minted on day one at 450.
+        // 70 hours past noon on the 23rd => ceil(70/24) = 3 whole days; the
+        // open invoice was minted earlier at a lower (now-stale) amount.
         vi.setSystemTime(new Date("2026-08-26T10:00:00+05:30"));
         queuePeriod("2026-08-23");
         queue("pricing_rules", { data: null, error: null });
@@ -276,18 +286,18 @@ describe("ensureOverdueLateFeeInvoice", () => {
         queue("invoice_items", { data: null, error: null }); // the line-item update
 
         const result = await ensureOverdueLateFeeInvoice(SUBSCRIPTION_ID, USER_ID);
-        expect(result).toEqual({ invoiceId: "existing-invoice-id", amount: 900, isPaid: false });
+        expect(result).toEqual({ invoiceId: "existing-invoice-id", amount: 1350, isPaid: false });
 
         const invoiceUpdate = stubsByTable.invoices[1].calls.find(([name]) => name === "update");
-        expect(invoiceUpdate?.[1][0]).toEqual({ subtotal_amount: 900, total_amount: 900 });
+        expect(invoiceUpdate?.[1][0]).toEqual({ subtotal_amount: 1350, total_amount: 1350 });
 
         // The day count lives IN the description, so it has to be rewritten
         // with the amount or the bill contradicts itself.
         const itemUpdate = stubsByTable.invoice_items[0].calls.find(([name]) => name === "update");
         expect(itemUpdate?.[1][0]).toMatchObject({
-            description: "Overdue plan renewal — late fee (2 days @ ₹450/day)",
-            unit_amount: 900,
-            amount: 900,
+            description: "Overdue plan renewal — late fee (3 days @ ₹450/day)",
+            unit_amount: 1350,
+            amount: 1350,
         });
     });
 
@@ -334,8 +344,9 @@ describe("syncOverdueLateFeeInvoiceForUser", () => {
 
         await syncOverdueLateFeeInvoiceForUser(USER_ID);
 
+        // 70 hours past noon on the 23rd => ceil(70/24) = 3 days @ 450.
         expect(stubsByTable.invoices[1].calls.find(([name]) => name === "update")?.[1][0])
-            .toEqual({ subtotal_amount: 900, total_amount: 900 });
+            .toEqual({ subtotal_amount: 1350, total_amount: 1350 });
     });
 
     it("does nothing at all for a rider with no active rental", async () => {

@@ -76,6 +76,29 @@ function lifecycleStatus(b: PickupBooking): { label: string; tone: "success" | "
 }
 
 /**
+ * Days overdue on a past-due renewal, for the "Payment due" column's display
+ * label only — never used to compute or charge money; the actual late fee is
+ * always the backend's own number (payments/renewalFee.ts's
+ * computeLateRenewalFee, surfaced through the rider app's overdue-late-fee
+ * gate).
+ *
+ * Mirrors that backend rule exactly rather than inventing a second one:
+ * anchored to 12:00 PM IST on the due date (not local midnight — a due date
+ * is an IST calendar day, and this ran in the browser's own timezone before,
+ * which could read a different day depending on where the admin's browser
+ * was set), and late starts the INSTANT that passes — the first, even
+ * partial, day already counts as a full day. No 24-hour grace.
+ */
+function daysLateSinceNoon(dueDate: string | null): number {
+  if (!dueDate) return 0;
+  const dueAt = new Date(`${dueDate}T12:00:00+05:30`);
+  if (Number.isNaN(dueAt.getTime())) return 0;
+  const elapsedMs = Date.now() - dueAt.getTime();
+  if (elapsedMs <= 0) return 0;
+  return Math.ceil(elapsedMs / 86_400_000);
+}
+
+/**
  * Read-only summary of return_recovery_settings.max_late_fee_days — the
  * actual editing happens on Billing & Charges now, in the same card as the
  * late-fee amount, so there's one place to configure "the late fee" instead
@@ -265,7 +288,7 @@ export default function BookingListPage() {
           // Active (paid up) or paused (clock frozen) — just the date, no warning.
           return <span className="text-muted-foreground">{formatDate(b.next_due_at)}</span>;
         }
-        const daysLate = Math.max(0, Math.round((Date.now() - new Date(`${b.next_due_at}T00:00:00`).getTime()) / 86_400_000));
+        const daysLate = daysLateSinceNoon(b.next_due_at);
         return (
           <div className="text-destructive">
             <p className="font-medium">Due {formatDate(b.next_due_at)}</p>
