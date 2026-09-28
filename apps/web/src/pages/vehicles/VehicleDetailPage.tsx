@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Pencil, FileText, Recycle, Plus, Trash2, ExternalLink } from "lucide-react";
+import { ArrowLeft, Pencil, FileText, Recycle, Plus, Trash2, ExternalLink, UserX } from "lucide-react";
 import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistorySplitView } from "@/components/vehicles/VehicleHistorySplitView";
 import {
-  useVehicle, useUpdateVehicle, useScrapVehicle, useCreateVehicleDocument, useDeleteVehicleDocument,
+  useVehicle, useUpdateVehicle, useScrapVehicle, useUnassignVehicle, useCreateVehicleDocument, useDeleteVehicleDocument,
 } from "@/hooks/useVehicles";
 import { getVehicleDocumentUrl, type VehicleDocumentFormInput } from "@/services/api/vehicles";
 import { ApiError } from "@/services/api/httpClient";
@@ -36,10 +36,12 @@ export default function VehicleDetailPage() {
   const { data: vehicle, isLoading, isError, refetch } = useVehicle(id);
   const updateVehicle = useUpdateVehicle();
   const scrapVehicle = useScrapVehicle();
+  const unassignVehicle = useUnassignVehicle();
   const createDocument = useCreateVehicleDocument();
   const deleteDocument = useDeleteVehicleDocument();
   const [editOpen, setEditOpen] = useState(false);
   const [scrapOpen, setScrapOpen] = useState(false);
+  const [unassignOpen, setUnassignOpen] = useState(false);
   const [addDocOpen, setAddDocOpen] = useState(false);
   const [deleteDoc, setDeleteDoc] = useState<VehicleDocument | null>(null);
   const [openingDocId, setOpeningDocId] = useState<string | null>(null);
@@ -81,6 +83,11 @@ export default function VehicleDetailPage() {
           </p>
         </div>
         <StatusBadge status={vehicle.status} />
+        {vehicle.current_rider && hasAction(user, "vehicles", "assign") && (
+          <Button variant="outline" size="sm" onClick={() => setUnassignOpen(true)}>
+            <UserX className="h-4 w-4" /> Unassign
+          </Button>
+        )}
         {vehicle.status === "maintenance" && hasAction(user, "vehicles", "delete") && (
           <Button variant="outline" size="sm" onClick={() => setScrapOpen(true)}>
             <Recycle className="h-4 w-4" /> Scrap
@@ -250,6 +257,24 @@ export default function VehicleDetailPage() {
         }
         isPending={scrapVehicle.isPending}
         error={scrapVehicle.error}
+      />
+
+      <UnassignDialog
+        open={unassignOpen}
+        onOpenChange={setUnassignOpen}
+        riderName={vehicle.current_rider?.full_name ?? "the current rider"}
+        onSubmit={(reason) =>
+          unassignVehicle.mutate({ id: vehicle.id, reason }, {
+            onSuccess: ({ rentalId }) => {
+              toastSuccess("Return started — continue in the review flow");
+              setUnassignOpen(false);
+              navigate(`/bookings/returns/${rentalId}`);
+            },
+            onError: (err) => toastError(err, "Could not unassign vehicle"),
+          })
+        }
+        isPending={unassignVehicle.isPending}
+        error={unassignVehicle.error}
       />
 
       <AddDocumentDialog
@@ -481,6 +506,76 @@ function ScrapDialog({
           >
             {isPending && <Spinner className="h-4 w-4" />}
             Scrap vehicle
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function UnassignDialog({
+  open,
+  onOpenChange,
+  riderName,
+  onSubmit,
+  isPending,
+  error,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  riderName: string;
+  onSubmit: (reason: string) => void;
+  isPending: boolean;
+  error: unknown;
+}) {
+  const [reason, setReason] = useState("");
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) setReason("");
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Unassign this vehicle?</DialogTitle>
+        </DialogHeader>
+
+        <p className="text-sm text-muted-foreground">
+          This ends {riderName}&rsquo;s current plan on this vehicle. You&rsquo;ll land on the same
+          return-review screen used for a rider-requested return — record any damage, settle the
+          deposit, and choose whether the vehicle goes to Maintenance or back to Available there.
+        </p>
+
+        <div className="space-y-1.5">
+          <Label>Reason</Label>
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            placeholder="e.g. Rider unreachable, reclaiming vehicle for another assignment"
+          />
+        </div>
+
+        {!!error && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {error instanceof ApiError ? error.message : "Something went wrong. Please try again."}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={reason.trim().length < 3 || isPending}
+            onClick={() => onSubmit(reason.trim())}
+          >
+            {isPending && <Spinner className="h-4 w-4" />}
+            Unassign & start return
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -145,6 +145,11 @@ export interface RejectReturnInput {
     reason: string;
 }
 
+/** Staff reclaiming a vehicle straight from its Vehicle Detail page — see adminUnassignVehicle. */
+export interface AdminUnassignVehicleInput {
+    reason: string;
+}
+
 export interface ListRentalsFilters {
     page: number;
     pageSize: number;

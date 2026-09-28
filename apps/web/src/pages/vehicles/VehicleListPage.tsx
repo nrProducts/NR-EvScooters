@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, Zap, ChevronDown, ChevronRight,
+  BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, Zap, ChevronDown, ChevronRight, UserX,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistoryDialog } from "@/components/vehicles/VehicleHistoryDialog";
 import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
-import { useVehicles, useCreateVehicle, useUpdateVehicle } from "@/hooks/useVehicles";
+import { useVehicles, useCreateVehicle, useUpdateVehicle, useUnassignVehicle } from "@/hooks/useVehicles";
 import { useCreateMaintenanceTicket } from "@/hooks/useMaintenance";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
@@ -47,6 +47,8 @@ export default function VehicleListPage() {
   const [maintenanceTarget, setMaintenanceTarget] = useState<Vehicle | null>(null);
   const [issueDescription, setIssueDescription] = useState("");
   const [assignTarget, setAssignTarget] = useState<Vehicle | null>(null);
+  const [unassignTarget, setUnassignTarget] = useState<Vehicle | null>(null);
+  const [unassignReason, setUnassignReason] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
@@ -69,10 +71,31 @@ export default function VehicleListPage() {
   const createVehicle = useCreateVehicle();
   const updateVehicle = useUpdateVehicle();
   const createMaintenanceTicket = useCreateMaintenanceTicket();
+  const unassignVehicle = useUnassignVehicle();
 
   const closeMaintenanceDialog = () => {
     setMaintenanceTarget(null);
     setIssueDescription("");
+  };
+
+  const closeUnassignDialog = () => {
+    setUnassignTarget(null);
+    setUnassignReason("");
+  };
+
+  const confirmUnassign = () => {
+    if (!unassignTarget) return;
+    unassignVehicle.mutate(
+      { id: unassignTarget.id, reason: unassignReason },
+      {
+        onSuccess: ({ rentalId }) => {
+          toastSuccess("Return started — continue in the review flow");
+          closeUnassignDialog();
+          navigate(`/bookings/returns/${rentalId}`);
+        },
+        onError: (err) => toastError(err, "Could not unassign vehicle"),
+      },
+    );
   };
 
   // Opening the ticket IS putting the scooter into maintenance.
@@ -173,6 +196,11 @@ export default function VehicleListPage() {
             {v.status === "available" && hasAction(user, "vehicles", "assign") && (
               <DropdownMenuItem onClick={() => setAssignTarget(v)}>
                 <Zap className="mr-2 h-4 w-4" /> Assign to rider
+              </DropdownMenuItem>
+            )}
+            {v.current_rider && hasAction(user, "vehicles", "assign") && (
+              <DropdownMenuItem onClick={() => setUnassignTarget(v)}>
+                <UserX className="mr-2 h-4 w-4" /> Unassign
               </DropdownMenuItem>
             )}
             {v.status !== "maintenance" && v.status !== "retired" && v.status !== "assigned" &&
@@ -328,6 +356,49 @@ export default function VehicleListPage() {
                 <Spinner className="h-4 w-4" />
               )}
               Mark in maintenance
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!unassignTarget} onOpenChange={(o) => !o && closeUnassignDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unassign {unassignTarget?.current_rider?.full_name ?? "rider"}?</DialogTitle>
+            <DialogDescription>
+              This ends their current plan on {unassignTarget?.name}. You&rsquo;ll land on the same
+              return-review screen used for a rider-requested return — record any damage, settle the
+              deposit, and choose whether the vehicle goes to Maintenance or back to Available there.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-1.5">
+            <Label>Reason</Label>
+            <Textarea
+              value={unassignReason}
+              onChange={(e) => setUnassignReason(e.target.value)}
+              placeholder="e.g. Rider unreachable, reclaiming vehicle for another assignment"
+              rows={3}
+            />
+          </div>
+
+          {!!unassignVehicle.error && (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {unassignVehicle.error instanceof ApiError ? unassignVehicle.error.message : "Something went wrong. Please try again."}
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeUnassignDialog}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={unassignVehicle.isPending || unassignReason.trim().length < 3}
+              onClick={confirmUnassign}
+            >
+              {unassignVehicle.isPending && <Spinner className="h-4 w-4" />}
+              Unassign &amp; start return
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -91,6 +91,17 @@ export async function scrapVehicle(id: string, input: ScrapVehicleInput): Promis
 }
 
 /**
+ * POST /vehicles/:id/unassign — requireStaff. Reclaims the vehicle from its
+ * current rider by opening the same return-review flow a rider's own
+ * "Request Return" would (Inspection → Payment Gate → Approve Return,
+ * maintenance-or-available choice included). Returns the rental id so the
+ * caller can navigate straight to that review page.
+ */
+export async function unassignVehicle(id: string, reason: string): Promise<{ rentalId: string }> {
+  return apiClient.post<{ rentalId: string }>(`/vehicles/${id}/unassign`, { reason });
+}
+
+/**
  * POST /vehicles/:id/assign-to-user — requireStaff. Direct handover, no booking involved.
  * If the rider already holds a different vehicle, the backend 409s (ApiError.fields carries
  * the existing vehicle's name/id) unless `unassignExisting` is passed to close that rental first.

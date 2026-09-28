@@ -69,6 +69,10 @@ export const scrapVehicleBody = z.object({
     scrapped_on: dateSchema.optional(),
 });
 
+export const unassignVehicleBody = z.object({
+    reason: z.string().trim().min(3, "Give a reason of at least 3 characters.").max(500),
+});
+
 export const assignVehicleToUserBody = z.object({
     user_id: z.string().uuid("Pick a rider to assign this vehicle to."),
     unassign_existing: z.boolean().optional(),

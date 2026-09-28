@@ -8,8 +8,8 @@ import { getDepositForSubscriptionOrNull, settleDepositOnReturn } from "../depos
 import { paymentForRefund, processRefund } from "../refunds/refunds.service";
 import { AuthContext, Paginated } from "../../types";
 import {
-    AdminRentalRow, CompleteRideInput, ListRentalsFilters, MoveToMaintenanceInput, RejectReturnInput, RentalView,
-    RequestReturnInput,
+    AdminRentalRow, AdminUnassignVehicleInput, CompleteRideInput, ListRentalsFilters, MoveToMaintenanceInput,
+    RejectReturnInput, RentalView, RequestReturnInput,
 } from "./rentals.types";
 import { LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS } from "./returnPolicy.constants";
 import { paidPeriodIds } from "../payments/renewalPeriod";
@@ -680,6 +680,136 @@ export async function requestReturn(
     });
 
     return getMyCurrentRental(actor.id);
+}
+
+/**
+ * Staff-initiated counterpart to requestReturn — reached from the admin
+ * console's Vehicle Detail page ("Unassign" next to Current rider), not the
+ * rider app. Same effect: opens a `rental_returns` row so the existing
+ * Inspection → Payment Gate → Approve Return pipeline runs exactly as it
+ * does for a rider-requested return — deposit settlement, any late fee, and
+ * the maintenance-or-available choice all happen there, unchanged.
+ *
+ * Deliberately skips two of requestReturn's own gates:
+ *
+ *   - The rider-ownership check: this IS an admin acting on someone else's
+ *     rental, by design.
+ *   - "can't return mid-period" and "late fee must be settled first": both
+ *     exist to stop a RIDER backing out of a period they already committed
+ *     to, or dodging a fee, by self-service. They protect the business
+ *     FROM the rider. An admin reclaiming a vehicle is the opposite
+ *     direction — staff choosing to end it early for an operational reason
+ *     (an unreachable or non-paying rider is exactly the case this exists
+ *     for) — and blocking on an unpaid fee would trap the vehicle with that
+ *     same non-paying rider forever. The debt itself is untouched: it still
+ *     exists as an invoice the business can pursue separately.
+ *
+ * Takes a VEHICLE id, not a rental id — that's what the Vehicle Detail page
+ * actually has in hand. Resolves it to the vehicle's open assignment and the
+ * rental underneath.
+ */
+export async function adminUnassignVehicle(
+    vehicleId: string,
+    input: AdminUnassignVehicleInput,
+    actor: AuthContext,
+): Promise<{ rentalId: string }> {
+    const { data: assignment, error: assignmentError } = await supabaseAdmin
+        .from("rental_vehicle_assignments")
+        .select(`
+            rental_id,
+            rentals!inner(
+                id, user_id, status, due_back_at, subscription_id,
+                rental_returns(status),
+                subscriptions(id, booking_id)
+            )
+        `)
+        .eq("vehicle_id", vehicleId)
+        .is("released_at", null)
+        .maybeSingle();
+    if (assignmentError) throw assignmentError;
+    if (!assignment) throw notFound("This vehicle has no rider currently assigned.");
+
+    const rental = unwrap<{
+        id: string; user_id: string; status: string; due_back_at: string;
+        subscription_id: string | null;
+        rental_returns: unknown;
+        subscriptions: unknown;
+    }>(assignment.rentals);
+    if (!rental || rental.status !== "active") throw conflict("This rental is no longer active.");
+
+    if (openReturn(rental.rental_returns)) {
+        throw conflict("A return is already in progress for this vehicle — open it from Rental Operations to continue.");
+    }
+
+    const subscription = unwrap<{ id: string; booking_id: string }>(rental.subscriptions);
+
+    const now = new Date();
+    // Same deadline shape as a rider's own request (returnDeadlineFor,
+    // clamped to whatever the rental's own due date already was) — an
+    // admin-initiated reclaim does not hand the rider a MORE generous
+    // deadline than they would have had asking themselves.
+    const rentalDue = new Date(rental.due_back_at);
+    const requestDeadline = returnDeadlineFor(now);
+    const dueAt = !Number.isNaN(rentalDue.getTime()) && rentalDue < requestDeadline
+        ? rentalDue
+        : requestDeadline;
+
+    const { error } = await supabaseAdmin.from("rental_returns").insert({
+        rental_id: rental.id,
+        requested_at: now.toISOString(),
+        requested_reason: `Unassigned by staff: ${input.reason}`,
+        due_back_at: dueAt.toISOString(),
+        status: "requested",
+    });
+    if (error) {
+        // A unique index on one open return per rental — the same guard
+        // requestReturn relies on — makes a double-tap safe here too.
+        if ((error as { code?: string }).code === "23505") {
+            throw conflict("A return is already in progress for this vehicle.");
+        }
+        throw error;
+    }
+
+    // Same reasoning as requestReturn: the next period is never going to be
+    // bought once the vehicle is being reclaimed, so any renewal invoice a
+    // "Review & Renew" preview left behind is a bill for it. Best-effort.
+    if (subscription) {
+        try {
+            const voided = await voidAbandonedRenewalInvoice(subscription.id);
+            if (voided) {
+                console.info("[rentals] voided abandoned renewal invoice on admin unassign", {
+                    rentalId: rental.id, invoiceId: voided.invoiceId, amount: voided.amount,
+                });
+            }
+        } catch (voidError) {
+            console.error("[rentals] failed to void abandoned renewal invoice", {
+                rentalId: rental.id,
+                subscriptionId: subscription.id,
+                error: voidError instanceof Error ? voidError.message : String(voidError),
+            });
+        }
+    }
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: rental.user_id,
+        // Same action as a rider's own request — it genuinely is the same
+        // event (a return got requested), just via a different actor path.
+        // `initiated_by` is what distinguishes the two in the audit trail.
+        action: "rental.return_requested",
+        entityType: "rental_return",
+        entityId: rental.id,
+        after: { initiated_by: "staff", reason: input.reason, due_back_at: dueAt.toISOString() },
+    });
+
+    await notifyUser(rental.user_id, {
+        template: "rental_return_requested",
+        title: "Your scooter has been unassigned",
+        body: "Our team has ended your current plan on this scooter. Contact support if you have questions.",
+        screen: "my-scooter",
+    });
+
+    return { rentalId: rental.id };
 }
 
 /** All of the rider's own rentals, most recent first. */

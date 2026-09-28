@@ -7,6 +7,8 @@ import {
     UpdateVehicleDocumentInput, UpdateVehicleInput,
 } from "./vehicles.types";
 import type { UploadedFile } from "../kyc/kyc.storage";
+import { adminUnassignVehicle } from "../rentals/rentals.service";
+import type { AdminUnassignVehicleInput } from "../rentals/rentals.types";
 
 export async function listVehiclesHandler(req: AuthedRequest, res: Response) {
     const filters = validatedQuery<ListVehiclesFilters>(req);
@@ -32,6 +34,19 @@ export async function updateVehicleHandler(req: AuthedRequest, res: Response) {
 export async function assignVehicleHandler(req: AuthedRequest, res: Response) {
     const vehicle = await service.assignVehicle(req.params.id as string, req.user!.id! as string);
     res.json(vehicle);
+}
+
+/**
+ * Reclaims a vehicle from whoever currently holds it — opens the same
+ * `rental_returns` row a rider's own "Request Return" would, so the existing
+ * Inspection → Payment Gate → Approve Return flow (and its
+ * maintenance-or-available choice) runs unchanged from here on. See
+ * adminUnassignVehicle's own doc comment (rentals.service.ts) for why this
+ * skips the rider-protective gates requestReturn itself enforces.
+ */
+export async function unassignVehicleHandler(req: AuthedRequest, res: Response) {
+    const result = await adminUnassignVehicle(req.params.id as string, req.body as AdminUnassignVehicleInput, req.user!);
+    res.json(result);
 }
 
 export async function assignVehicleToUserHandler(req: AuthedRequest, res: Response) {

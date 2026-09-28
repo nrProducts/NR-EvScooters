@@ -44,6 +44,17 @@ export function useScrapVehicle() {
   });
 }
 
+export function useUnassignVehicle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => api.unassignVehicle(id, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vehicles"] });
+      qc.invalidateQueries({ queryKey: ["vehicle"] });
+    },
+  });
+}
+
 export function useAssignVehicleToUser() {
   const qc = useQueryClient();
   return useMutation({

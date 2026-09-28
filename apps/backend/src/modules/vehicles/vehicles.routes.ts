@@ -41,6 +41,18 @@ router.patch(
 
 router.post("/:id/assign", requireAuth, requireAction("vehicles", "assign"), asyncHandler(c.assignVehicleHandler));
 
+// Reclaims the vehicle from its current rider — opens the same return-review
+// pipeline a rider's own "Request Return" does (Inspection → Payment Gate →
+// Approve Return, including the maintenance-or-available choice there).
+// Same permission as assigning: it governs the assignment relationship in
+// both directions.
+router.post(
+    "/:id/unassign",
+    requireAction("vehicles", "assign"),
+    validate({ params: v.uuidParam, body: v.unassignVehicleBody }),
+    asyncHandler(c.unassignVehicleHandler),
+);
+
 router.post(
     "/:id/assign-to-user",
     requireAction("vehicles", "assign"),
