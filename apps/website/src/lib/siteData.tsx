@@ -1,7 +1,25 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { ACTIVE_PLANS, type RentalPlan } from "@/content/pricing";
+import { PLAN_HIGHLIGHTS } from "@/content/pricing";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
+/** A plan card, fully assembled: every number from the live API, highlight copy from the content file. */
+export interface RentalPlan {
+  name: string;
+  billingCycle: "daily" | "weekly" | "monthly" | "yearly";
+  price: number;
+  durationDays: number;
+  /** The REFUNDABLE part of what is collected up front. */
+  depositAmount: number;
+  /** One-time non-refundable charge taken with the first payment. 0 = none. */
+  onboardingChargeAmount: number;
+  /** Rental days before the deposit becomes refundable. 0 = no minimum. Meaningless when depositRefundable is false. */
+  minRentalDaysForRefund: number;
+  /** Whether the deposit is ever refundable at all. False = forfeited outright on return, like the onboarding charge. */
+  depositRefundable: boolean;
+  vehicleModelId: string;
+  highlights: string[];
+}
 
 export interface SiteStats {
   /** Total scooters in the fleet (excludes retired). null = not loaded. */
@@ -14,23 +32,36 @@ export interface SiteStats {
   activePlans: number | null;
 }
 
+export type PlansStatus = "loading" | "ready" | "error";
+
 interface SiteData {
-  /** Always non-empty — falls back to the bundled ACTIVE_PLANS copy. */
+  /**
+   * Empty until the live fetch succeeds — there is no hardcoded numeric
+   * fallback to show in the meantime (see content/pricing.ts). Check
+   * `plansStatus` to tell "still loading" apart from "loaded, zero active
+   * plans" apart from "the API call failed".
+   */
   plans: RentalPlan[];
+  plansStatus: PlansStatus;
   stats: SiteStats;
-  /** True once the backend has answered; false while on bundled fallbacks. */
+  /** True once the backend has answered (plans call succeeded), even if it returned zero plans. */
   live: boolean;
 }
 
-const FALLBACK: SiteData = {
-  plans: ACTIVE_PLANS,
-  stats: { scootersTotal: null, scootersAvailable: null, scootersOnRoad: null, activePlans: null },
+const EMPTY_STATS: SiteStats = {
+  scootersTotal: null, scootersAvailable: null, scootersOnRoad: null, activePlans: null,
+};
+
+const INITIAL: SiteData = {
+  plans: [],
+  plansStatus: "loading",
+  stats: EMPTY_STATS,
   live: false,
 };
 
-const SiteDataContext = createContext<SiteData>(FALLBACK);
+const SiteDataContext = createContext<SiteData>(INITIAL);
 
-/** Live plans + fleet/station counts from GET /public/*, with bundled fallbacks. */
+/** Live plans + fleet/station counts from GET /public/*. No bundled numeric fallback — see PlansStatus. */
 export const useSiteData = () => useContext(SiteDataContext);
 
 interface ApiPlan {
@@ -52,19 +83,9 @@ interface ApiStats {
   active_plans?: number;
 }
 
-/**
- * Live pricing from the API; marketing copy (highlights) from the content
- * file. Matched on billingCycle + vehicleModelId TOGETHER first — several
- * plans (Daily, Weekly, ...) commonly share one vehicle model, so matching
- * on vehicleModelId alone picked whichever ACTIVE_PLANS entry came first for
- * every plan on that model, handing the Weekly copy to the Daily card too.
- */
+/** Every number is the API's; only `highlights` is borrowed from the local copy, matched by billing cycle. */
 function mergePlanCopy(p: ApiPlan): RentalPlan {
-  const copy =
-    ACTIVE_PLANS.find((c) => c.billingCycle === p.billing_cycle && c.vehicleModelId === p.vehicle_model_id) ??
-    ACTIVE_PLANS.find((c) => c.billingCycle === p.billing_cycle) ??
-    ACTIVE_PLANS.find((c) => c.vehicleModelId === p.vehicle_model_id) ??
-    ACTIVE_PLANS[0];
+  const copy = PLAN_HIGHLIGHTS.find((c) => c.billingCycle === p.billing_cycle);
   return {
     name: p.name,
     billingCycle: p.billing_cycle,
@@ -74,16 +95,19 @@ function mergePlanCopy(p: ApiPlan): RentalPlan {
     onboardingChargeAmount: p.onboarding_charge_amount,
     minRentalDaysForRefund: p.min_rental_days_for_refund,
     depositRefundable: p.deposit_refundable,
-    vehicleModelId: p.vehicle_model_id ?? copy?.vehicleModelId ?? "",
+    vehicleModelId: p.vehicle_model_id ?? "",
     highlights: copy?.highlights ?? [],
   };
 }
 
 export function SiteDataProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<SiteData>(FALLBACK);
+  const [data, setData] = useState<SiteData>(INITIAL);
 
   useEffect(() => {
-    if (!API_BASE) return;
+    if (!API_BASE) {
+      setData((d) => ({ ...d, plansStatus: "error" }));
+      return;
+    }
     const controller = new AbortController();
 
     (async () => {
@@ -93,11 +117,14 @@ export function SiteDataProvider({ children }: { children: ReactNode }) {
           fetch(`${API_BASE}/public/stats`, { signal: controller.signal }).then((r) => (r.ok ? r.json() : null)),
         ]);
 
-        const apiPlans = (plansRes?.plans ?? []) as ApiPlan[];
+        if (!plansRes) throw new Error("plans request failed");
+
+        const apiPlans = (plansRes.plans ?? []) as ApiPlan[];
         const s = (statsRes ?? {}) as ApiStats;
 
         setData({
-          plans: apiPlans.length > 0 ? apiPlans.map(mergePlanCopy) : ACTIVE_PLANS,
+          plans: apiPlans.map(mergePlanCopy),
+          plansStatus: "ready",
           stats: statsRes
             ? {
                 scootersTotal: s.scooters_total ?? null,
@@ -105,11 +132,13 @@ export function SiteDataProvider({ children }: { children: ReactNode }) {
                 scootersOnRoad: s.scooters_on_road ?? null,
                 activePlans: s.active_plans ?? null,
               }
-            : FALLBACK.stats,
+            : EMPTY_STATS,
           live: true,
         });
-      } catch {
-        // Network error / abort — keep the bundled fallback, site still renders.
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.error("[siteData] failed to load live pricing", err);
+        setData((d) => ({ ...d, plansStatus: "error" }));
       }
     })();
 

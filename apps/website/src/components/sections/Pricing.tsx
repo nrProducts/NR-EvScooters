@@ -15,13 +15,13 @@ const CYCLE_LABEL: Record<string, string> = {
 };
 
 /**
- * Maps over `plans` (from GET /public/plans, falling back to the bundled
- * ACTIVE_PLANS) rather than assuming one — today that's a single Weekly
- * plan, but the layout already supports more being activated later without
- * a rewrite.
+ * Maps over `plans` (from GET /public/plans — see lib/siteData.tsx). Every
+ * number shown here is the API's; there is no hardcoded price to fall back
+ * to, so `plansStatus` decides what renders while that call is in flight or
+ * if it fails, rather than ever showing a number that could be stale.
  */
 export function Pricing() {
-  const { plans } = useSiteData();
+  const { plans, plansStatus } = useSiteData();
   const multiple = plans.length > 1;
 
   return (
@@ -35,6 +35,35 @@ export function Pricing() {
         />
         </Reveal>
 
+        {plansStatus === "loading" && <PricingSkeleton />}
+
+        {plansStatus === "error" && (
+          <div className="mx-auto mt-14 max-w-lg rounded-[2.5rem] border border-border bg-white p-10 text-center shadow-soft">
+            <p className="text-base font-medium text-foreground">Pricing couldn&rsquo;t be loaded right now.</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Please refresh the page, or{" "}
+              <a href="#contact" className="font-medium text-primary underline underline-offset-2">
+                contact us
+              </a>{" "}
+              for current plans and pricing.
+            </p>
+          </div>
+        )}
+
+        {plansStatus === "ready" && plans.length === 0 && (
+          <div className="mx-auto mt-14 max-w-lg rounded-[2.5rem] border border-border bg-white p-10 text-center shadow-soft">
+            <p className="text-base font-medium text-foreground">No plans are on offer right now.</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Check back shortly, or{" "}
+              <a href="#contact" className="font-medium text-primary underline underline-offset-2">
+                contact us
+              </a>{" "}
+              for availability.
+            </p>
+          </div>
+        )}
+
+        {plansStatus === "ready" && plans.length > 0 && (
         <div
           className={
             multiple
@@ -118,7 +147,35 @@ export function Pricing() {
             </Reveal>
           ))}
         </div>
+        )}
       </Container>
     </section>
+  );
+}
+
+/** Shape-matched placeholder while GET /public/plans is in flight — never invented numbers, just pulsing blocks. */
+function PricingSkeleton() {
+  return (
+    <div className="mx-auto mt-14 grid max-w-5xl gap-6 sm:grid-cols-2" aria-hidden>
+      {[0, 1].map((i) => (
+        <div key={i} className="animate-pulse overflow-hidden rounded-[2.5rem] bg-white shadow-soft">
+          <div className="border-b border-border px-8 pb-8 pt-7 sm:px-10">
+            <div className="h-6 w-28 rounded-full bg-sage" />
+            <div className="mt-5 h-7 w-24 rounded-md bg-sage" />
+            <div className="mt-4 h-12 w-36 rounded-md bg-sage" />
+          </div>
+          <div className="px-8 pb-8 pt-7 sm:px-10 sm:pb-10">
+            <div className="h-4 w-full rounded-md bg-sage" />
+            <div className="mt-2 h-4 w-2/3 rounded-md bg-sage" />
+            <div className="mt-9 space-y-3.5">
+              {[0, 1, 2, 3].map((j) => (
+                <div key={j} className="h-4 w-4/5 rounded-md bg-sage" />
+              ))}
+            </div>
+            <div className="mt-9 h-12 w-full rounded-full bg-sage" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

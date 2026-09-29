@@ -1,42 +1,28 @@
 /**
- * Fallback copy only, used when GET /public/plans hasn't answered yet (or
- * fails) — live pricing/terms always come from the API once it loads (see
- * mergePlanCopy in siteData.tsx, which matches an entry here by billing
- * cycle to borrow its highlights). A Monthly row also exists in the plans
- * table but is inactive (active=false), i.e. not currently offered, so it's
- * deliberately left out here rather than shown as a fake option. Add an
- * entry here for any other plan the admin activates (Plans page in
- * apps/web) so its card has real highlight copy instead of falling through
- * to another plan's.
+ * Marketing WORDS only — the bullet copy under each plan card. There is no
+ * `plans.highlights` column, so this is the one part of a plan's card that
+ * has nowhere else to live.
+ *
+ * Every NUMBER (price, duration, deposit, onboarding charge, refund terms)
+ * and the plan's own `name` come from GET /public/plans, live, every time —
+ * see mergePlanCopy in siteData.tsx. Nothing here is ever shown as a
+ * fallback price: if the API hasn't answered yet, or fails, the Pricing
+ * section shows a loading/error state instead of inventing numbers that
+ * could drift from what plans.plans actually charges.
+ *
+ * Keyed by billing cycle, matching whichever plans the admin has active
+ * (Plans page in apps/web) — add an entry here for any new billing cycle so
+ * its card has real highlight copy instead of falling back to the first
+ * entry's.
  */
-export interface RentalPlan {
-  name: string;
+export interface PlanHighlights {
   billingCycle: "daily" | "weekly" | "monthly" | "yearly";
-  price: number;
-  durationDays: number;
-  /** The REFUNDABLE part of what is collected up front. */
-  depositAmount: number;
-  /** One-time non-refundable charge taken with the first payment. 0 = none. */
-  onboardingChargeAmount: number;
-  /** Rental days before the deposit becomes refundable. 0 = no minimum. Meaningless when depositRefundable is false. */
-  minRentalDaysForRefund: number;
-  /** Whether the deposit is ever refundable at all. False = forfeited outright on return, like the onboarding charge. */
-  depositRefundable: boolean;
-  vehicleModelId: string;
   highlights: string[];
 }
 
-export const ACTIVE_PLANS: RentalPlan[] = [
+export const PLAN_HIGHLIGHTS: PlanHighlights[] = [
   {
-    name: "Daily",
     billingCycle: "daily",
-    price: 299,
-    durationDays: 1,
-    depositAmount: 999,
-    onboardingChargeAmount: 0,
-    minRentalDaysForRefund: 0,
-    depositRefundable: false,
-    vehicleModelId: "mvs7",
     highlights: [
       "Unlimited riding for the day",
       "One MVS7 scooter, swappable battery included",
@@ -45,15 +31,7 @@ export const ACTIVE_PLANS: RentalPlan[] = [
     ],
   },
   {
-    name: "Weekly Unlimited",
     billingCycle: "weekly",
-    price: 1899,
-    durationDays: 7,
-    depositAmount: 1500,
-    onboardingChargeAmount: 500,
-    minRentalDaysForRefund: 45,
-    depositRefundable: true,
-    vehicleModelId: "mvs7",
     highlights: [
       "Unlimited riding for 7 days",
       "One MVS7 scooter, swappable battery included",
