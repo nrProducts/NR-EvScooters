@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { Reveal } from "@/components/ui/Reveal";
 import { useSiteData } from "@/lib/siteData";
 import { formatCurrency } from "@/lib/utils";
+import { useBookingCta } from "@/lib/bookingCta";
+import { PRE_BOOKING_MODE } from "@/content/launchMode";
 
 const CYCLE_LABEL: Record<string, string> = {
   daily: "day",
@@ -23,6 +25,7 @@ const CYCLE_LABEL: Record<string, string> = {
 export function Pricing() {
   const { plans, plansStatus } = useSiteData();
   const multiple = plans.length > 1;
+  const bookingCta = useBookingCta("pricing_card");
 
   return (
     <section id="pricing" className="bg-sage/50 py-12 sm:py-16">
@@ -139,8 +142,8 @@ export function Pricing() {
                   guaranteed minimum; flex-1 only ever adds MORE room above
                   the button so it still bottom-aligns across cards. */}
               <div className="mt-9 flex-1 sm:mt-6" />
-              <Button href="#get-app" size="lg" className="w-full">
-                Book your scooter
+              <Button href={bookingCta.href} size="lg" className="w-full" onClick={bookingCta.onClick}>
+                {PRE_BOOKING_MODE ? "Pre-Book Now" : "Book your scooter"}
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Button>
               </div>

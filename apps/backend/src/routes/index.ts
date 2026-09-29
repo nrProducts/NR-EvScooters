@@ -37,6 +37,7 @@ import attendanceRoutes from "../modules/attendance/attendance.routes";
 import leaveRoutes from "../modules/leave/leave.routes";
 import holidaysRoutes from "../modules/holidays/holidays.routes";
 import publicRoutes from "../modules/public/public.routes";
+import preBookingsAdminRoutes from "../modules/public/preBookings.admin.routes";
 
 const router = Router();
 
@@ -106,5 +107,8 @@ router.use("/holidays", holidaysRoutes);
 
 // Unauthenticated read-only feed for the public marketing site (apps/website).
 router.use("/public", publicRoutes);
+// Admin console read side for the pre-bookings the public site's form
+// collects — the "Pre-Bookings" tab on Rental Operations.
+router.use("/pre-bookings", preBookingsAdminRoutes);
 
 export default router;

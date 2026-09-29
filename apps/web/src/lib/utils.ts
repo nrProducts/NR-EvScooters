@@ -57,6 +57,20 @@ export function greetingForHour(hour: number) {
   return "Good Evening";
 }
 
+/**
+ * "+919876543210" or "919876543210" -> "9876543210" — every rider is Indian
+ * (the app's only market), so the +91/91 in front of their own number is
+ * just noise, never information. Mirrors formatPhoneLocal in the mobile
+ * app's authValidation.ts. Anything that isn't that exact shape (already
+ * local, or some other country code) is returned unchanged rather than
+ * mangled.
+ */
+export function formatPhoneLocal(raw: string | null | undefined): string | null {
+  if (!raw) return raw ?? null;
+  const digits = raw.replace(/^\+/, "");
+  return /^91[6-9]\d{9}$/.test(digits) ? digits.slice(2) : raw;
+}
+
 export function initials(name: string) {
   return name
     .split(" ")

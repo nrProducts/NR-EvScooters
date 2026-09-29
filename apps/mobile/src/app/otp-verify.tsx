@@ -6,7 +6,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
 import { ApiError } from '../lib/ApiError';
 import { COLORS } from '../constants/theme';
-import { formatPhoneForDisplay, isValidOtp, sanitizeOtpInput } from '../lib/authValidation';
+import { formatPhoneLocal, isValidOtp, sanitizeOtpInput } from '../lib/authValidation';
 import { ArrowLeft, ShieldCheck } from 'lucide-react-native';
 import { Spinner } from '../components/Spinner';
 import { useT } from '../i18n';
@@ -123,7 +123,7 @@ export default function OtpVerifyScreen() {
         {t('otp.title')}
       </Text>
       <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium mb-8">
-        {t('otp.sentTo', { phone: phone ? formatPhoneForDisplay(phone) : t('otp.yourNumber') })}
+        {t('otp.sentTo', { phone: phone ? formatPhoneLocal(phone) : t('otp.yourNumber') })}
       </Text>
 
       {/* The boxes are decoration; the input below is the real field, stretched

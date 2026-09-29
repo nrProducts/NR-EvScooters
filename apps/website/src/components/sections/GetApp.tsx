@@ -4,6 +4,7 @@ import { Container } from "@/components/ui/Container";
 import { Blob } from "@/components/ui/Blob";
 import { Reveal } from "@/components/ui/Reveal";
 import { PLAY_STORE_URL, RIDER_WEB_URL } from "@/content/links";
+import { PRE_BOOKING_MODE } from "@/content/launchMode";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 
@@ -34,8 +35,9 @@ export function GetApp() {
             Ready to move?
           </h2>
           <p className="mx-auto mt-4 max-w-[500px] text-lg leading-relaxed text-white/70">
-            Book your Swapngo EV and start riding — booking, KYC, and payments all happen wherever
-            you ride from.
+            {PRE_BOOKING_MODE
+              ? "Pre-book your Swapngo ride and get the app ready — booking, KYC, and payments will all happen wherever you ride from, the moment we launch in your area."
+              : "Book your Swapngo EV and start riding — booking, KYC, and payments all happen wherever you ride from."}
           </p>
         </Reveal>
 

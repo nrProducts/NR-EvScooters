@@ -5,7 +5,8 @@ import { AppError } from "../../common/AppError";
 import { clientIp, createRateLimiter } from "../../common/rateLimit";
 import * as service from "./public.service";
 import { submitContactQuery } from "./contact.service";
-import { contactQueryBody, type ContactQueryBody } from "./public.validation";
+import { submitPreBooking } from "./preBooking.service";
+import { contactQueryBody, preBookingBody, type ContactQueryBody, type PreBookingBody } from "./public.validation";
 
 /**
  * Unauthenticated endpoints for the public marketing site (apps/website).
@@ -103,6 +104,61 @@ router.post(
             submitted: true,
             message:
                 "Thank you for contacting Swapngo! Your query has been submitted successfully. Our team will get back to you soon.",
+        });
+    }),
+);
+
+// --- Pre-booking (fleet not ready for normal bookings yet) -------------
+//
+// Same two-limiter shape as /contact, keyed on phone rather than email —
+// phone is the one field every pre-booking submission actually has (email is
+// optional here), so it's the identifier worth protecting against a flood.
+const preBookIpLimiter = createRateLimiter(5, 15 * 60 * 1000); // 5 per 15 min per IP
+const preBookPhoneLimiter = createRateLimiter(3, 60 * 60 * 1000); // 3 per hour per number
+
+router.post(
+    "/pre-book",
+    (req, res, next) => {
+        const { allowed, retryAfterSeconds } = preBookIpLimiter.check(clientIp(req));
+        if (allowed) return next();
+        res.set("Retry-After", String(retryAfterSeconds));
+        next(
+            tooManyRequests(
+                "Too many submissions from this device. Please try again in a few minutes.",
+            ),
+        );
+    },
+    validate({ body: preBookingBody }),
+    asyncHandler(async (req, res) => {
+        const body = req.body as PreBookingBody;
+
+        const perPhone = preBookPhoneLimiter.check(`phone:${body.phone}`);
+        if (!perPhone.allowed) {
+            res.set("Retry-After", String(perPhone.retryAfterSeconds));
+            throw tooManyRequests(
+                "We already have your pre-booking request. Our team will be in touch soon.",
+            );
+        }
+
+        try {
+            await submitPreBooking(body);
+        } catch (err) {
+            // Same disclosure rule as /contact: one generic 503 either way,
+            // and never the phone/email that was submitted — see spec item 8.
+            console.error("[public.preBook] submission failed", {
+                planPreference: body.plan_preference,
+                error: err instanceof Error ? err.message : String(err),
+            });
+            throw new AppError(
+                503,
+                "We couldn't submit your request right now. Please try again or contact Swapngo directly.",
+                "SERVICE_UNAVAILABLE",
+            );
+        }
+
+        res.status(202).json({
+            submitted: true,
+            message: "Thank you! Your pre-booking request has been received. Our team will contact you soon.",
         });
     }),
 );

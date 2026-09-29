@@ -16,16 +16,17 @@ import {
 import { RentalOperationsSummaryCards } from "@/components/bookings/RentalOperationsSummaryCards";
 import { AdminCreateBookingDialog } from "@/components/bookings/AdminCreateBookingDialog";
 import { usePickupQueue, useAvailableVehicles, useConfirmPickup } from "@/hooks/useBookings";
+import { usePreBookings } from "@/hooks/usePreBookings";
 import { useReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import type { PickupQueueFilters } from "@/services/api/bookings";
-import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
+import { formatDate, formatDateTime, formatCurrency, formatPhoneLocal } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
-import type { BookingRefundStatus, PickupBooking } from "@/types";
+import type { BookingRefundStatus, PickupBooking, PreBooking, PreBookingPlanPreference } from "@/types";
 
 const REFUND_STATUS_LABEL: Record<BookingRefundStatus, string> = {
   pending: "Awaiting Approval",
@@ -46,6 +47,12 @@ const REFUND_STATUS_VARIANT: Record<BookingRefundStatus, "success" | "warning" |
 function RefundStatusBadge({ status }: { status: BookingRefundStatus }) {
   return <Badge variant={REFUND_STATUS_VARIANT[status]}>{REFUND_STATUS_LABEL[status]}</Badge>;
 }
+
+const PLAN_PREFERENCE_LABEL: Record<PreBookingPlanPreference, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  not_sure: "Not Sure Yet",
+};
 
 /**
  * Was the booking's own "Status" plus a separate "Return Status" column —
@@ -145,7 +152,7 @@ function RecoveryPolicyNote() {
  * highlighting/matchPath recognise it as part of Rental Operations; every
  * row below still navigates there exactly as it did on the old Returns page.
  */
-type RentalOpsView = "pending" | "active" | "return_requests" | "completed" | "cancelled" | "all";
+type RentalOpsView = "pending" | "active" | "return_requests" | "completed" | "cancelled" | "all" | "pre_bookings";
 
 const VIEW_TABS: { value: RentalOpsView; label: string }[] = [
   { value: "pending", label: "Pending Bookings" },
@@ -155,6 +162,11 @@ const VIEW_TABS: { value: RentalOpsView; label: string }[] = [
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
   { value: "all", label: "All" },
+  // Interest submissions from the public website's pre-booking form
+  // (fleet not ready for normal bookings yet) — a different shape entirely
+  // (no vehicle, no plan, no status), so this tab renders its own grid
+  // rather than another PickupBooking column set. See usePreBookings.
+  { value: "pre_bookings", label: "Pre-Bookings" },
 ];
 
 function filtersForView(
@@ -167,6 +179,9 @@ function filtersForView(
     case "completed": return { status: "completed" };
     case "cancelled": return { status: "cancelled" };
     case "all": return {};
+    // Not a PickupBooking query at all — usePickupQueue still runs (hooks
+    // can't be conditional) but this view's own grid never reads its data.
+    case "pre_bookings": return {};
   }
 }
 
@@ -208,6 +223,7 @@ export default function BookingListPage() {
   const { data: availableVehicles, isLoading: vehiclesLoading } = useAvailableVehicles(
     pickupTarget && !pickupTarget.vehicle ? pickupTarget.id : undefined,
   );
+  const preBookings = usePreBookings({ page, pageSize: 8 });
   // Case/space-insensitive so "22ab0005" or "TN 22 AB 0005" still matches
   // "TN22AB0005" — a staff member reading a plate aloud won't type it back
   // exactly as stored.
@@ -499,6 +515,35 @@ export default function BookingListPage() {
     },
   ];
 
+  /** Interest submissions, not bookings — own column set, no vehicle/plan/status to show. */
+  const preBookingColumns: DataTableColumn<PreBooking>[] = [
+    { header: "Name", key: "full_name", render: (p) => p.full_name },
+    { header: "Mobile", key: "phone", render: (p) => formatPhoneLocal(p.phone) ?? p.phone },
+    { header: "Location", key: "location", render: (p) => p.location },
+    {
+      header: "Email",
+      key: "email",
+      render: (p) => p.email ?? <span className="text-muted-foreground">—</span>,
+      hideOnMobile: true,
+    },
+    {
+      header: "Preferred Plan",
+      key: "plan_preference",
+      render: (p) => <Badge variant="muted">{PLAN_PREFERENCE_LABEL[p.plan_preference]}</Badge>,
+    },
+    {
+      header: "Message",
+      key: "message",
+      render: (p) => (
+        p.message
+          ? <span className="line-clamp-2 max-w-xs text-xs text-muted-foreground">{p.message}</span>
+          : <span className="text-muted-foreground">—</span>
+      ),
+      hideOnMobile: true,
+    },
+    { header: "Submitted", key: "created_at", render: (p) => formatDateTime(p.created_at) },
+  ];
+
   const columns = view === "cancelled"
     ? cancelledColumns
     : view === "return_requests"
@@ -518,7 +563,7 @@ export default function BookingListPage() {
               <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
             ))}
           </TabsList>
-          {hasAction(user, "bookings", "edit") && (
+          {view !== "pre_bookings" && hasAction(user, "bookings", "edit") && (
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <PackageCheck className="h-3.5 w-3.5" /> New Booking
             </Button>
@@ -526,32 +571,56 @@ export default function BookingListPage() {
         </div>
       </Tabs>
 
-      <Card>
-        <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-          <SearchBar
-            value={search}
-            onChange={(v) => {
-              setSearch(v);
-              setPage(1);
-            }}
-            placeholder="Search rider, vehicle or ID…"
-            className="w-full sm:max-w-xs"
-          />
-          <RecoveryPolicyNote />
-        </div>
+      {view === "pre_bookings" ? (
+        <Card>
+          <div className="flex flex-col gap-1 border-b border-border p-4">
+            <p className="text-sm font-medium">Interest submitted before the fleet went live</p>
+            <p className="text-xs text-muted-foreground">
+              From the public website's Pre-Book form — also emailed to contact@swapngo.in at the time of
+              submission. No booking, vehicle or payment is attached to these.
+            </p>
+          </div>
 
-        <DataTable
-          columns={columns}
-          data={data?.data ?? []}
-          isLoading={isLoading}
-          isError={isError}
-          onRetry={() => refetch()}
-          emptyTitle="No bookings match your filters"
-          sort={sort}
-          onSortChange={onSortChange}
-        />
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
-      </Card>
+          <DataTable
+            columns={preBookingColumns}
+            data={preBookings.data?.data ?? []}
+            isLoading={preBookings.isLoading}
+            isError={preBookings.isError}
+            onRetry={() => preBookings.refetch()}
+            emptyTitle="No pre-booking requests yet"
+          />
+          {preBookings.data && (
+            <Pagination page={page} pageSize={8} total={preBookings.data.total} onPageChange={setPage} />
+          )}
+        </Card>
+      ) : (
+        <Card>
+          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+            <SearchBar
+              value={search}
+              onChange={(v) => {
+                setSearch(v);
+                setPage(1);
+              }}
+              placeholder="Search rider, vehicle or ID…"
+              className="w-full sm:max-w-xs"
+            />
+            <RecoveryPolicyNote />
+          </div>
+
+          <DataTable
+            columns={columns}
+            data={data?.data ?? []}
+            isLoading={isLoading}
+            isError={isError}
+            onRetry={() => refetch()}
+            emptyTitle="No bookings match your filters"
+            sort={sort}
+            onSortChange={onSortChange}
+          />
+          {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        </Card>
+      )}
 
       {/* Confirm pickup dialog */}
       <Dialog open={!!pickupTarget} onOpenChange={(o) => !o && setPickupTarget(null)}>

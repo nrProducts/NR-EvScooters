@@ -3101,6 +3101,39 @@ export type Database = {
           },
         ]
       }
+      pre_bookings: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          location: string
+          message: string | null
+          phone: string
+          plan_preference: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name: string
+          id?: string
+          location: string
+          message?: string | null
+          phone: string
+          plan_preference?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id?: string
+          location?: string
+          message?: string | null
+          phone?: string
+          plan_preference?: string
+        }
+        Relationships: []
+      }
       support_tickets: {
         Row: {
           assigned_to_user_id: string | null

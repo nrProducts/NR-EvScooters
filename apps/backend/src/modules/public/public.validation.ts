@@ -140,3 +140,59 @@ export const contactQueryBody = z.object({
 });
 
 export type ContactQueryBody = z.infer<typeof contactQueryBody>;
+
+// ---------------------------------------------------------------------------
+// Pre-booking (fleet not yet ready for normal bookings — collects interest
+// instead). Same email-only, not-persisted shape as the contact query above,
+// for the same reason: there is no owning rider account to hang a row off.
+// ---------------------------------------------------------------------------
+
+export const RENTAL_PLAN_PREFERENCES = ["daily", "weekly", "not_sure"] as const;
+
+export const RENTAL_PLAN_PREFERENCE_LABELS: Record<(typeof RENTAL_PLAN_PREFERENCES)[number], string> = {
+    daily: "Daily",
+    weekly: "Weekly",
+    not_sure: "Not Sure Yet",
+};
+
+export const PRE_BOOKING_MESSAGE_MAX = 1000;
+
+/** Like singleLine, but the field itself is optional — empty/absent collapses to undefined rather than "". */
+const optionalSingleLine = (max: number) =>
+    z
+        .string()
+        .optional()
+        .transform((v) => stripControlChars(v ?? "", false).replace(/\s+/g, " ").trim())
+        .pipe(z.string().max(max))
+        .transform((v) => (v === "" ? undefined : v));
+
+export const preBookingBody = z.object({
+    full_name: singleLine(100).pipe(z.string().min(2, "Enter your full name.")),
+
+    phone: indianPhone,
+
+    location: singleLine(150).pipe(z.string().min(2, "Enter your location or area.")),
+
+    /** Optional — validated as an email only when the visitor actually provides one. */
+    email: optionalSingleLine(254)
+        .refine((v) => v === undefined || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v), {
+            message: "Enter a valid email address.",
+        })
+        .transform((v) => v?.toLowerCase()),
+
+    plan_preference: z.enum(RENTAL_PLAN_PREFERENCES).optional().default("not_sure"),
+
+    message: z
+        .string()
+        .optional()
+        .transform((v) => stripControlChars(v ?? "", true).trim())
+        .pipe(
+            z.string().max(PRE_BOOKING_MESSAGE_MAX, `Please keep this under ${PRE_BOOKING_MESSAGE_MAX} characters.`),
+        )
+        .transform((v) => (v === "" ? undefined : v)),
+
+    /** Honeypot — same trap as the contact form's. */
+    company: z.string().max(0).optional(),
+});
+
+export type PreBookingBody = z.infer<typeof preBookingBody>;

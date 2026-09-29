@@ -32,7 +32,7 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
-import { initials, formatDate } from "@/lib/utils";
+import { initials, formatDate, formatPhoneLocal } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "pending", "partially_verified", "verified", "rejected"];
@@ -131,7 +131,7 @@ export default function UserListPage() {
           </Avatar>
           <div className="min-w-0">
             <p className="truncate font-medium">{u.full_name || "—"}</p>
-            <p className="truncate text-xs text-muted-foreground">{u.phone ?? "No phone on file"}</p>
+            <p className="truncate text-xs text-muted-foreground">{formatPhoneLocal(u.phone) ?? "No phone on file"}</p>
           </div>
         </div>
       ),

@@ -96,6 +96,23 @@
     outline: 2px solid hsl(var(--primary));
     outline-offset: 2px;
   }
+
+  /*
+   * Chrome/Edge paint autofilled inputs with their own blue/yellow tint that
+   * ignores background-color entirely — the only way to override it is this
+   * absurdly-large inset box-shadow trick, filling the field with our own
+   * --muted before the browser's colour shows through. Without this, an
+   * autofilled name/phone/email field visibly breaks from every sibling
+   * field on the same form (ContactForm, PreBookModal).
+   */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: hsl(var(--foreground));
+    -webkit-box-shadow: 0 0 0px 1000px hsl(var(--muted)) inset;
+    box-shadow: 0 0 0px 1000px hsl(var(--muted)) inset;
+    transition: background-color 9999s ease-in-out 0s;
+  }
 }
 
 @layer utilities {

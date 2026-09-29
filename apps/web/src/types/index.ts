@@ -443,6 +443,27 @@ export interface AvailableVehicle {
 }
 
 // ---------------------------------------------------------------------------
+// Pre-bookings — interest submissions from the public website's pre-booking
+// form (apps/website), collected while the fleet isn't ready for normal
+// bookings. Anonymous: no rider account behind these. Mirrors
+// apps/backend/src/modules/public/preBooking.service.ts's PreBookingRow.
+// ---------------------------------------------------------------------------
+
+export type PreBookingPlanPreference = "daily" | "weekly" | "not_sure";
+
+export interface PreBooking {
+  id: string;
+  full_name: string;
+  /** Bare 10 digits — no +91 prefix stored or shown. */
+  phone: string;
+  email: string | null;
+  location: string;
+  plan_preference: PreBookingPlanPreference;
+  message: string | null;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
 // Vehicles (fleet inventory) — mirrors apps/backend/src/modules/vehicles/vehicles.types.ts
 // ---------------------------------------------------------------------------
 

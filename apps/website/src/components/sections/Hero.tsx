@@ -6,11 +6,14 @@ import { ScooterIllustration } from "@/components/ui/ScooterIllustration";
 import { Blob } from "@/components/ui/Blob";
 import { Reveal } from "@/components/ui/Reveal";
 import { useSiteData } from "@/lib/siteData";
+import { useBookingCta } from "@/lib/bookingCta";
+import { PRE_BOOKING_MODE } from "@/content/launchMode";
 
 const TRUST_POINTS = ["Flexible plans", "Unlimited kilometres", "Battery swapping", "Easy booking"];
 
 export function Hero() {
   const { stats } = useSiteData();
+  const bookingCta = useBookingCta("hero");
 
   return (
     <section id="home" className="relative overflow-hidden bg-background">
@@ -37,14 +40,22 @@ export function Hero() {
           </p>
 
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-            <Button href="#get-app" size="lg" className="w-full sm:w-auto">
-              Book a scooter
+            <Button href={bookingCta.href} size="lg" className="w-full sm:w-auto" onClick={bookingCta.onClick}>
+              {PRE_BOOKING_MODE ? "Pre-Book Now" : "Book a scooter"}
               <ArrowRight className="h-4 w-4" aria-hidden />
             </Button>
             <Button href="#how-it-works" variant="light" size="lg" className="border border-border">
               How it works
             </Button>
           </div>
+
+          {/* Subtle, not a warning banner — per spec, the site should read as
+              "getting ready", never "unavailable". */}
+          {PRE_BOOKING_MODE && (
+            <p className="mt-4 text-sm font-medium text-muted-foreground">
+              Swapngo rides are coming soon in Chennai. Pre-book your ride today.
+            </p>
+          )}
 
           <ul className="mt-10 grid grid-cols-2 gap-x-6 gap-y-3 sm:flex sm:flex-wrap sm:gap-x-8">
             {TRUST_POINTS.map((point) => (

@@ -7,6 +7,8 @@ import { TopBar } from "@/components/TopBar";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 import { CONTACT_EMAIL, CONTACT_PHONES } from "@/content/contact";
+import { PRE_BOOKING_MODE } from "@/content/launchMode";
+import { useBookingCta } from "@/lib/bookingCta";
 
 const NAV_ITEMS = [
   { label: "Home", href: "#home" },
@@ -18,6 +20,8 @@ const NAV_ITEMS = [
 ];
 
 export function Header() {
+  const desktopCta = useBookingCta("header_desktop");
+  const mobileCta = useBookingCta("header_mobile_menu");
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeHref, setActiveHref] = useState("#home");
@@ -148,13 +152,8 @@ export function Header() {
           </nav>
 
           <div className="hidden items-center gap-3 lg:flex">
-            <Button
-              href="#get-app"
-              variant="dark"
-              size="sm"
-              onClick={() => trackEvent("click_book_now", { placement: "header" })}
-            >
-              Book now
+            <Button href={desktopCta.href} variant="dark" size="sm" onClick={desktopCta.onClick}>
+              {PRE_BOOKING_MODE ? "Pre-Book" : "Book now"}
               <ArrowRight className="h-3.5 w-3.5" aria-hidden />
             </Button>
           </div>
@@ -242,15 +241,15 @@ export function Header() {
 
             <div className="mt-auto pt-8">
               <Button
-                href="#get-app"
+                href={mobileCta.href}
                 size="lg"
                 className="w-full"
-                onClick={() => {
-                  trackEvent("click_book_now", { placement: "mobile_menu" });
+                onClick={(e) => {
+                  mobileCta.onClick(e);
                   closeMenuForLink();
                 }}
               >
-                Book now
+                {PRE_BOOKING_MODE ? "Pre-Book Now" : "Book now"}
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Button>
             </div>

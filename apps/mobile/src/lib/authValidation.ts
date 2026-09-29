@@ -35,13 +35,6 @@ export function sanitizeOtpInput(raw: string): string {
     return raw.replace(/\D/g, '').slice(0, 6);
 }
 
-/** "+919876543210" -> "+91 98765 43210"-ish for display. Best-effort. */
-export function formatPhoneForDisplay(e164: string): string {
-    const m = /^\+(\d{1,3})(\d{5})(\d{5})$/.exec(e164);
-    if (!m) return e164;
-    return `+${m[1]} ${m[2]} ${m[3]}`;
-}
-
 /**
  * "+919876543210" or "919876543210" -> "9876543210" — every rider is Indian
  * (the app's only market), so the +91 in front of their own number on

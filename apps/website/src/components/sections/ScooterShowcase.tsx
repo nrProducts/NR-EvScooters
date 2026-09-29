@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Reveal } from "@/components/ui/Reveal";
 import { Button } from "@/components/ui/Button";
 import { ScooterIllustration } from "@/components/ui/ScooterIllustration";
+import { useBookingCta } from "@/lib/bookingCta";
+import { PRE_BOOKING_MODE } from "@/content/launchMode";
 
 /**
  * Deliberately non-numeric. There's no verified range/top-speed spec in the
@@ -21,6 +23,7 @@ const SPECS = [
 ];
 
 export function ScooterShowcase() {
+  const bookingCta = useBookingCta("scooter_showcase");
   return (
     <section className="py-12 sm:py-16">
       <Container>
@@ -49,8 +52,8 @@ export function ScooterShowcase() {
                 ))}
               </dl>
 
-              <Button href="#get-app" size="lg" className="mt-9">
-                Book this scooter
+              <Button href={bookingCta.href} size="lg" className="mt-9" onClick={bookingCta.onClick}>
+                {PRE_BOOKING_MODE ? "Pre-Book Now" : "Book this scooter"}
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Button>
             </div>
