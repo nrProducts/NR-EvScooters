@@ -104,7 +104,13 @@ export function Pricing() {
                 ))}
               </ul>
 
-              <Button href="#get-app" size="lg" className="mt-9 w-full sm:mt-auto">
+              {/* A spacer, not margin-auto on the button itself — margin-auto
+                  would let a longer card (more list items, taller deposit
+                  note) squeeze this gap down to almost nothing. mt-9 is the
+                  guaranteed minimum; flex-1 only ever adds MORE room above
+                  the button so it still bottom-aligns across cards. */}
+              <div className="mt-9 flex-1 sm:mt-6" />
+              <Button href="#get-app" size="lg" className="w-full">
                 Book your scooter
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Button>

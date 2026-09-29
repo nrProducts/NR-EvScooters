@@ -52,11 +52,18 @@ interface ApiStats {
   active_plans?: number;
 }
 
-/** Live pricing from the API; marketing copy (highlights) from the content file. */
+/**
+ * Live pricing from the API; marketing copy (highlights) from the content
+ * file. Matched on billingCycle + vehicleModelId TOGETHER first — several
+ * plans (Daily, Weekly, ...) commonly share one vehicle model, so matching
+ * on vehicleModelId alone picked whichever ACTIVE_PLANS entry came first for
+ * every plan on that model, handing the Weekly copy to the Daily card too.
+ */
 function mergePlanCopy(p: ApiPlan): RentalPlan {
   const copy =
-    ACTIVE_PLANS.find((c) => c.vehicleModelId === p.vehicle_model_id) ??
+    ACTIVE_PLANS.find((c) => c.billingCycle === p.billing_cycle && c.vehicleModelId === p.vehicle_model_id) ??
     ACTIVE_PLANS.find((c) => c.billingCycle === p.billing_cycle) ??
+    ACTIVE_PLANS.find((c) => c.vehicleModelId === p.vehicle_model_id) ??
     ACTIVE_PLANS[0];
   return {
     name: p.name,
