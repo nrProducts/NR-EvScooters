@@ -36,6 +36,32 @@ export interface PreBookingResult {
 }
 
 /**
+ * Has this number already pre-booked? Checked by public.routes.ts BEFORE
+ * submitPreBooking runs, same layer as the per-phone rate limiter it sits
+ * beside — a deliberate, disclosed business rule (like the contact form's
+ * "already received several messages from this address"), not a masked
+ * provider failure, so it belongs outside submitPreBooking's own
+ * mask-everything try/catch.
+ */
+export async function preBookingExistsForPhone(phone: string): Promise<boolean> {
+    const { data, error } = await supabaseAdmin
+        .from("pre_bookings")
+        .select("id")
+        .eq("phone", phone)
+        .limit(1)
+        .maybeSingle();
+    if (error) {
+        // Fail OPEN: a duplicate check that can't run (a transient DB blip)
+        // must never block a legitimate new submission — same reasoning as
+        // the best-effort insert below. Worst case on a false negative here
+        // is one extra row in the grid, not a lost lead.
+        console.error("[preBooking] duplicate check failed", { error: error.message });
+        return false;
+    }
+    return !!data;
+}
+
+/**
  * Emails one pre-booking request to the team inbox.
  *
  * Throws `serviceUnavailable` when email is not configured, and lets a

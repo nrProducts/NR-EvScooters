@@ -167,7 +167,10 @@ export function PreBookModal({ open, onClose }: { open: boolean; onClose: () => 
           | { message?: string; fields?: Record<string, string> }
           | null;
 
-        if (res.status === 400 && payload?.fields) {
+        // 400 (field validation) and 409 (this number already pre-booked)
+        // both carry per-field messages worth showing next to the field,
+        // not just in the banner — the same shape, different meaning.
+        if ((res.status === 400 || res.status === 409) && payload?.fields) {
           setErrors(payload.fields as FieldErrors);
           setStatus("error");
           setFormError(payload.message ?? "Please correct the highlighted fields.");
@@ -179,7 +182,9 @@ export function PreBookModal({ open, onClose }: { open: boolean; onClose: () => 
         setFormError(
           res.status === 429
             ? "You've already sent a pre-booking request. Our team will be in touch soon."
-            : "We couldn't submit your request right now. Please try again or contact Swapngo directly.",
+            : res.status === 409
+              ? (payload?.message ?? "You've already submitted a pre-booking request with this number.")
+              : "We couldn't submit your request right now. Please try again or contact Swapngo directly.",
         );
         errorSummaryRef.current?.focus();
         return;
