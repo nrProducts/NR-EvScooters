@@ -203,7 +203,13 @@ export function PreBookModal({ open, onClose }: { open: boolean; onClose: () => 
   return (
     <div
       role="presentation"
-      className="fixed inset-0 z-[100] flex items-end justify-center overflow-y-auto bg-near-black/60 backdrop-blur-sm sm:items-center sm:p-4"
+      // Only the panel scrolls — the backdrop used to carry its own
+      // overflow-y-auto too, and on touch devices that second scroll
+      // container is what "scroll is not good" was: dragging inside the
+      // form would hand off to the backdrop mid-scroll and rubber-band,
+      // since the backdrop has nothing to reveal (its one child is already
+      // pinned bottom/center by the flex layout below).
+      className="fixed inset-0 z-[100] flex items-end justify-center bg-near-black/60 backdrop-blur-sm sm:items-center sm:p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -213,7 +219,11 @@ export function PreBookModal({ open, onClose }: { open: boolean; onClose: () => 
         role="dialog"
         aria-modal="true"
         aria-labelledby={`${formId}-title`}
-        className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-border bg-card p-6 sm:max-w-lg sm:rounded-3xl sm:p-8"
+        // overscroll-contain stops a scroll that reaches the top/bottom of
+        // the panel from "chaining" into the page behind it (the classic
+        // iOS bug where the whole background jumps once a modal's own
+        // content is done scrolling).
+        className="relative max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl border border-border bg-card p-6 sm:max-w-lg sm:rounded-3xl sm:p-8"
       >
         <button
           type="button"
