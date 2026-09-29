@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { asyncHandler } from "../../common/asyncHandler";
 import { validate } from "../../middleware/validate.middleware";
-import { AppError, conflict } from "../../common/AppError";
+import { AppError } from "../../common/AppError";
 import { clientIp, createRateLimiter } from "../../common/rateLimit";
 import * as service from "./public.service";
 import { submitContactQuery } from "./contact.service";
-import { submitPreBooking, preBookingExistsForPhone } from "./preBooking.service";
+import { submitPreBooking } from "./preBooking.service";
 import { contactQueryBody, preBookingBody, type ContactQueryBody, type PreBookingBody } from "./public.validation";
 
 /**
@@ -140,23 +140,16 @@ router.post(
             );
         }
 
-        // A deliberate, disclosed rule — same spirit as /contact's per-email
-        // limiter message above — not the masked "something went wrong" the
-        // catch below gives a genuine provider failure. Checked OUTSIDE that
-        // catch so it is never swallowed into the generic 503. Unlike the
-        // rate limiter (which only blocks WITHIN its window), this blocks a
-        // repeat submission from the same number forever, since one lead is
-        // all the grid needs per person.
-        if (await preBookingExistsForPhone(body.phone)) {
-            throw conflict(
-                "You've already submitted a pre-booking request with this number. Our team will contact you soon.",
-                { phone: "This number has already been used to pre-book." },
-            );
-        }
-
         try {
             await submitPreBooking(body);
         } catch (err) {
+            // The "you've already pre-booked" business rule (409, thrown by
+            // submitPreBooking itself once past the email-configured check)
+            // is deliberate and disclosed — same spirit as /contact's
+            // per-email limiter message above — so it passes through as-is,
+            // unlike a genuine provider failure below, which never should.
+            if (err instanceof AppError && err.status === 409) throw err;
+
             // Same disclosure rule as /contact: one generic 503 either way,
             // and never the phone/email that was submitted — see spec item 8.
             console.error("[public.preBook] submission failed", {

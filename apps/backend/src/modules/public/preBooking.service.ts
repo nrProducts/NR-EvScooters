@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "../../config/supabase";
 import { env } from "../../config/env";
 import { getResend, isEmailConfigured } from "../../config/resend";
-import { serviceUnavailable } from "../../common/AppError";
+import { conflict, serviceUnavailable } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { Paginated } from "../../types";
 import { renderNotificationEmail } from "../notifications/email-template";
@@ -36,29 +36,48 @@ export interface PreBookingResult {
 }
 
 /**
- * Has this number already pre-booked? Checked by public.routes.ts BEFORE
- * submitPreBooking runs, same layer as the per-phone rate limiter it sits
- * beside — a deliberate, disclosed business rule (like the contact form's
- * "already received several messages from this address"), not a masked
- * provider failure, so it belongs outside submitPreBooking's own
- * mask-everything try/catch.
+ * Has this number already pre-booked? Checked inside submitPreBooking,
+ * AFTER the isEmailConfigured() guard — deliberately, not just for
+ * ordering's sake: that guard is a synchronous, network-free check, so it's
+ * also what keeps this DB read from ever running when email isn't
+ * configured (every test environment). Throws a 409 `conflict`, which
+ * public.routes.ts's catch block special-cases to pass through unmasked —
+ * a deliberate, disclosed business rule (like the contact form's "already
+ * received several messages from this address"), not a masked provider
+ * failure.
  */
-export async function preBookingExistsForPhone(phone: string): Promise<boolean> {
-    const { data, error } = await supabaseAdmin
-        .from("pre_bookings")
-        .select("id")
-        .eq("phone", phone)
-        .limit(1)
-        .maybeSingle();
-    if (error) {
-        // Fail OPEN: a duplicate check that can't run (a transient DB blip)
-        // must never block a legitimate new submission — same reasoning as
-        // the best-effort insert below. Worst case on a false negative here
-        // is one extra row in the grid, not a lost lead.
-        console.error("[preBooking] duplicate check failed", { error: error.message });
+async function preBookingExistsForPhone(phone: string): Promise<boolean> {
+    // Bounded, not just try/caught: this runs on every submission BEFORE the
+    // actual work, so a slow/unreachable DB must not be able to stall the
+    // whole request indefinitely (a plain network hang isn't a rejected
+    // promise — nothing here would catch it without an explicit deadline).
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    try {
+        const { data, error } = await supabaseAdmin
+            .from("pre_bookings")
+            .select("id")
+            .eq("phone", phone)
+            .limit(1)
+            .abortSignal(controller.signal)
+            .maybeSingle();
+        if (error) {
+            // Fail OPEN: a duplicate check that can't run (a transient DB
+            // blip) must never block a legitimate new submission — same
+            // reasoning as the best-effort insert below. Worst case on a
+            // false negative here is one extra row in the grid, not a lost lead.
+            console.error("[preBooking] duplicate check failed", { error: error.message });
+            return false;
+        }
+        return !!data;
+    } catch (err) {
+        console.error("[preBooking] duplicate check failed", {
+            error: err instanceof Error ? err.message : String(err),
+        });
         return false;
+    } finally {
+        clearTimeout(timeout);
     }
-    return !!data;
 }
 
 /**
@@ -68,11 +87,20 @@ export async function preBookingExistsForPhone(phone: string): Promise<boolean> 
  * provider failure propagate — the caller (public.routes.ts) turns both into
  * the same generic "try again shortly" response, exactly as the contact form
  * does, so a visitor can act on neither and a prober learns nothing about
- * which dependency is down.
+ * which dependency is down. Throws `conflict` (409) when this number has
+ * already pre-booked — that one DOES pass through with its real message;
+ * see preBookingExistsForPhone's own comment for why.
  */
 export async function submitPreBooking(input: PreBookingBody): Promise<PreBookingResult> {
     if (!isEmailConfigured()) {
         throw serviceUnavailable("Email provider is not configured.");
+    }
+
+    if (await preBookingExistsForPhone(input.phone)) {
+        throw conflict(
+            "You've already submitted a pre-booking request with this number. Our team will contact you soon.",
+            { phone: "This number has already been used to pre-book." },
+        );
     }
 
     // Best-effort: the admin console's grid is a convenience on top of the
