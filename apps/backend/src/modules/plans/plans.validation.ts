@@ -26,6 +26,7 @@ export const createPlanBody = z.object({
         .number().min(0, "Onboarding charge can't be negative.").optional(),
     min_rental_days_for_refund: z.coerce
         .number().int().min(0, "Minimum rental days can't be negative.").optional(),
+    deposit_refundable: z.boolean().optional(),
     vehicle_model_id: z.string().uuid("A valid vehicle model id is required."),
     included_minutes: z.coerce.number().int().positive().optional(),
     active: z.boolean().optional(),
@@ -41,6 +42,7 @@ export const updatePlanBody = z.object({
         .number().min(0, "Onboarding charge can't be negative.").optional(),
     min_rental_days_for_refund: z.coerce
         .number().int().min(0, "Minimum rental days can't be negative.").optional(),
+    deposit_refundable: z.boolean().optional(),
     included_minutes: z.coerce.number().int().positive().nullable().optional(),
     active: z.boolean().optional(),
 });

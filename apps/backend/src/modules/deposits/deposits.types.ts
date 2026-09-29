@@ -56,6 +56,13 @@ export interface DepositRow {
      */
     min_rental_days_required: number;
     /**
+     * Whether this deposit is ever refundable at all, frozen from
+     * `plans.deposit_refundable` when the rider paid. False = forfeited
+     * outright on return, like the onboarding charge — `min_rental_days_required`
+     * is irrelevant when this is false.
+     */
+    is_refundable: boolean;
+    /**
      * The rider's completed rental days, summed across their whole history
      * (see cumulativeRentalDaysForUser). 0 when there is no threshold to
      * measure against — the count is not computed for deposits that do not

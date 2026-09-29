@@ -280,8 +280,10 @@ export interface ApiPlan {
     deposit_amount: number;
     /** One-time non-refundable charge taken with the first payment. 0 = none. */
     onboarding_charge_amount: number;
-    /** Cumulative rental days before the deposit becomes refundable. 0 = no minimum. */
+    /** Cumulative rental days before the deposit becomes refundable. 0 = no minimum. Meaningless when deposit_refundable is false. */
     min_rental_days_for_refund: number;
+    /** Whether the deposit is ever refundable at all. False = forfeited outright on return, like the onboarding charge. */
+    deposit_refundable: boolean;
 }
 
 export interface ApiAvailability {
@@ -631,8 +633,10 @@ export interface ApiDeposit {
     refund_id: string | null;
     /** Deposit minus non-disputed damage deductions — the deposit's own amount when not yet `held`. */
     refundable_amount: number;
-    /** Rental days required before this deposit is refundable. 0 = no minimum. */
+    /** Rental days required before this deposit is refundable. 0 = no minimum. Meaningless when is_refundable is false. */
     min_rental_days_required: number;
+    /** Whether this deposit is ever refundable at all, frozen from the plan when the rider paid. */
+    is_refundable: boolean;
     /** The rider's completed rental days, across their whole history. */
     rental_days_completed: number;
     refund_eligibility: 'not_eligible' | 'eligible' | 'refund_processed';

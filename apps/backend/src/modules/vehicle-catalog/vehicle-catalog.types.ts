@@ -28,6 +28,8 @@ export interface PlanSummary {
      * BEFORE payment, so it travels with the price.
      */
     min_rental_days_for_refund: number;
+    /** Whether the deposit above is ever refundable at all. False = forfeited outright on return. */
+    deposit_refundable: boolean;
 }
 
 export interface VehicleModelListItem {

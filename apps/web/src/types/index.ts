@@ -843,8 +843,10 @@ export interface Plan {
   deposit_amount: number;
   /** One-time non-refundable charge taken with the first payment. 0 = none. */
   onboarding_charge_amount: number;
-  /** Cumulative rental days before this plan's deposit is refundable. 0 = no threshold. */
+  /** Cumulative rental days before this plan's deposit is refundable. 0 = no threshold. Meaningless when deposit_refundable is false. */
   min_rental_days_for_refund: number;
+  /** Whether the deposit is ever refundable at all. False = forfeited outright on return, like the onboarding charge. */
+  deposit_refundable: boolean;
   vehicle_model_id: string | null;
   active: boolean;
   created_at: string;
@@ -900,6 +902,8 @@ export interface Deposit {
    * keep the terms they originally agreed to.
    */
   min_rental_days_required: number;
+  /** Whether this deposit is ever refundable at all, frozen from the plan when the rider paid. False = forfeited outright on return. */
+  is_refundable: boolean;
   /** The rider's completed rental days, across their whole history. */
   rental_days_completed: number;
   refund_eligibility: DepositRefundEligibility;

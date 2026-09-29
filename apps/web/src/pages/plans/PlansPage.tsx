@@ -32,6 +32,7 @@ const emptyForm: PlanInput = {
   deposit_amount: 1500,
   onboarding_charge_amount: 500,
   min_rental_days_for_refund: 45,
+  deposit_refundable: true,
   vehicle_model_id: "",
   active: true,
 };
@@ -45,6 +46,7 @@ function toForm(plan: Plan): PlanInput {
     deposit_amount: plan.deposit_amount,
     onboarding_charge_amount: plan.onboarding_charge_amount,
     min_rental_days_for_refund: plan.min_rental_days_for_refund,
+    deposit_refundable: plan.deposit_refundable,
     vehicle_model_id: plan.vehicle_model_id ?? "",
     included_minutes: plan.included_minutes ?? undefined,
     active: plan.active,
@@ -76,7 +78,9 @@ export default function PlansPage() {
           <p className="text-xs text-muted-foreground">
             {formatCurrency(p.onboarding_charge_amount)} onboarding ·{" "}
             {formatCurrency(p.deposit_amount)} deposit
-            {p.min_rental_days_for_refund > 0 && ` · refundable after ${p.min_rental_days_for_refund}d`}
+            {!p.deposit_refundable
+              ? " · non-refundable"
+              : p.min_rental_days_for_refund > 0 && ` · refundable after ${p.min_rental_days_for_refund}d`}
           </p>
         </div>
       ),
@@ -253,8 +257,30 @@ function PlanFormDialog({
                 value={form.deposit_amount}
                 onChange={(e) => setForm((f) => ({ ...f, deposit_amount: Number(e.target.value) }))}
               />
-              <p className="text-xs text-muted-foreground">Refundable, subject to deductions.</p>
+              <p className="text-xs text-muted-foreground">
+                {form.deposit_refundable ?? true ? "Refundable, subject to deductions." : "Non-refundable."}
+              </p>
             </div>
+          </div>
+
+          <div className="flex items-center justify-between rounded-md border border-border p-3">
+            <div>
+              <Label htmlFor="deposit-refundable">Deposit refundable</Label>
+              <p className="text-xs text-muted-foreground">
+                Off means the security deposit is forfeited outright on return, like the onboarding charge.
+              </p>
+            </div>
+            <Switch
+              id="deposit-refundable"
+              checked={form.deposit_refundable ?? true}
+              onCheckedChange={(checked) =>
+                setForm((f) => ({
+                  ...f,
+                  deposit_refundable: checked,
+                  min_rental_days_for_refund: checked ? f.min_rental_days_for_refund : 0,
+                }))
+              }
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -275,13 +301,16 @@ function PlanFormDialog({
               <Input
                 type="number"
                 min={0}
+                disabled={!(form.deposit_refundable ?? true)}
                 value={form.min_rental_days_for_refund ?? 0}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, min_rental_days_for_refund: Number(e.target.value) }))
                 }
               />
               <p className="text-xs text-muted-foreground">
-                Counted across all the rider's rentals. 0 for no minimum.
+                {form.deposit_refundable ?? true
+                  ? "Counted across all the rider's rentals. 0 for no minimum."
+                  : "Disabled — this deposit is never refunded."}
               </p>
             </div>
           </div>

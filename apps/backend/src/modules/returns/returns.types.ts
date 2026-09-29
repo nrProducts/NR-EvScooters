@@ -111,10 +111,11 @@ export interface ReturnStage {
     additionalDueInvoiceId: string | null;
     paymentVerifiedAt: string | null;
     /**
-     * True when the rider is returning short of the plan's
-     * `min_rental_days_for_refund` — the whole deposit is forfeited (not
-     * merely reduced by charges) the moment this return actually completes
-     * (see settleDepositOnReturn/forfeitForShortRental in
+     * True when the plan's deposit is non-refundable outright, OR the rider
+     * is returning short of the plan's `min_rental_days_for_refund` — either
+     * way the whole deposit is forfeited (not merely reduced by charges) the
+     * moment this return actually completes (see settleDepositOnReturn /
+     * forfeitNonRefundableDeposit / forfeitForShortRental in
      * deposits.service.ts). This preview mirrors that outcome ahead of time
      * so nothing shown here promises a refund the real settlement won't pay.
      */

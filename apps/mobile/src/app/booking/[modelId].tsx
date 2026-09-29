@@ -528,7 +528,7 @@ export default function BookingScreen() {
 
                 {/* What comes back and what does not, stated BEFORE payment —
                     the thing a rider is most likely to feel misled about. */}
-                {draft.plan.onboarding_charge_amount > 0 || draft.plan.min_rental_days_for_refund > 0 ? (
+                {draft.plan.onboarding_charge_amount > 0 || draft.plan.min_rental_days_for_refund > 0 || !draft.plan.deposit_refundable ? (
                   <View className="mt-3 rounded-2xl overflow-hidden" style={{ borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card }}>
                     <Text style={{ color: COLORS.textSecondary }} className="px-4 pt-4 pb-1 text-[11px] font-black uppercase tracking-wider">
                       {t('booking.upfrontBreakdown', {
@@ -549,9 +549,11 @@ export default function BookingScreen() {
                         <View className="flex-1 pr-3">
                           <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold">{t('booking.securityDeposit')}</Text>
                           <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                            {draft.plan.min_rental_days_for_refund > 0
-                              ? t('booking.refundableAfterDays', { days: draft.plan.min_rental_days_for_refund })
-                              : t('booking.refundable')}
+                            {!draft.plan.deposit_refundable
+                              ? t('booking.nonRefundable')
+                              : draft.plan.min_rental_days_for_refund > 0
+                                ? t('booking.refundableAfterDays', { days: draft.plan.min_rental_days_for_refund })
+                                : t('booking.refundable')}
                           </Text>
                         </View>
                         <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold">{money(draft.plan.deposit_amount)}</Text>
@@ -561,16 +563,21 @@ export default function BookingScreen() {
                       style={{ color: COLORS.textSecondary, backgroundColor: COLORS.secondary, borderTopWidth: 1, borderTopColor: COLORS.border }}
                       className="px-4 py-2.5 text-[11px] font-medium leading-4"
                     >
-                      {draft.plan.min_rental_days_for_refund > 0
-                        ? t('booking.depositTermsWithDays', {
+                      {!draft.plan.deposit_refundable
+                        ? t('booking.depositTermsNonRefundable', {
                             onboarding: money(draft.plan.onboarding_charge_amount),
                             deposit: money(draft.plan.deposit_amount),
-                            days: draft.plan.min_rental_days_for_refund,
                           })
-                        : t('booking.depositTerms', {
-                            onboarding: money(draft.plan.onboarding_charge_amount),
-                            deposit: money(draft.plan.deposit_amount),
-                          })}
+                        : draft.plan.min_rental_days_for_refund > 0
+                          ? t('booking.depositTermsWithDays', {
+                              onboarding: money(draft.plan.onboarding_charge_amount),
+                              deposit: money(draft.plan.deposit_amount),
+                              days: draft.plan.min_rental_days_for_refund,
+                            })
+                          : t('booking.depositTerms', {
+                              onboarding: money(draft.plan.onboarding_charge_amount),
+                              deposit: money(draft.plan.deposit_amount),
+                            })}
                     </Text>
                   </View>
                 ) : null}

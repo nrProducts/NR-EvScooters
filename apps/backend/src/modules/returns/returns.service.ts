@@ -324,7 +324,9 @@ export async function computeReturnStage(rentalId: string, subscriptionId: strin
     // going to zero out at actual completion, just not yet visible here.
     const minRentalDaysRequired = deposit?.min_rental_days_required ?? 0;
     const rentalDaysCompleted = deposit?.rental_days_completed ?? 0;
-    const depositForfeited = minRentalDaysRequired > 0 && rentalDaysCompleted < minRentalDaysRequired;
+    const isRefundable = deposit?.is_refundable ?? true;
+    const depositForfeited = !isRefundable
+        || (minRentalDaysRequired > 0 && rentalDaysCompleted < minRentalDaysRequired);
 
     if (row.status === "rejected") {
         return {

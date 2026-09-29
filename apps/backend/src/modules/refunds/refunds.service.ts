@@ -283,12 +283,18 @@ async function existingRefund(subscriptionId: string, reason: RefundType): Promi
 export async function initiateRefund(depositId: string, actor: AuthContext | null): Promise<RefundRow> {
     const { data: deposit, error } = await supabaseAdmin
         .from("deposits")
-        .select("id, subscription_id, amount, status, refund_eligible_on, min_rental_days_required, subscriptions!inner(user_id)")
+        .select("id, subscription_id, amount, status, refund_eligible_on, min_rental_days_required, is_refundable, subscriptions!inner(user_id)")
         .eq("id", depositId)
         .maybeSingle();
     if (error) throw error;
     if (!deposit) throw notFound("Deposit not found.");
     if (deposit.status !== "held") throw businessRule("Only a held deposit can be refunded.");
+    // Last line of defense: settleDepositOnReturn already forfeits a
+    // non-refundable deposit the moment the rental ends, so reaching here
+    // still 'held' on such a deposit means something skipped that path.
+    if (deposit.is_refundable === false) {
+        throw businessRule("This plan's security deposit is non-refundable.");
+    }
 
     // A DATE comparison now: eligibility begins at the start of the day.
     const today = businessToday();

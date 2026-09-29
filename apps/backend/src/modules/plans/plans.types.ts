@@ -20,8 +20,10 @@ export interface PlanRow {
     deposit_amount: number;
     /** One-time non-refundable charge taken with the first payment. 0 = none. */
     onboarding_charge_amount: number;
-    /** Cumulative rental days before this plan's deposit is refundable. 0 = no threshold. */
+    /** Cumulative rental days before this plan's deposit is refundable. 0 = no threshold. Meaningless when deposit_refundable is false. */
     min_rental_days_for_refund: number;
+    /** Whether the deposit is ever refundable at all. False = forfeited outright on return, like the onboarding charge. */
+    deposit_refundable: boolean;
     /** NOT NULL in the new schema: a plan is always for one model. */
     vehicle_model_id: string;
     /** `plans.is_active`. */
@@ -47,6 +49,7 @@ export interface CreatePlanInput {
     deposit_amount: number;
     onboarding_charge_amount?: number;
     min_rental_days_for_refund?: number;
+    deposit_refundable?: boolean;
     vehicle_model_id: string;
     /** Accepted and ignored — there is nowhere to store it. */
     included_minutes?: number | null;

@@ -1194,6 +1194,7 @@ export const en = {
     'deposit.eligible': 'Eligible for refund. We will process it shortly.',
     'deposit.refunded': 'Your refund has been processed.',
     'deposit.forfeited': 'This deposit is not refundable.',
+    'deposit.nonRefundable': "This plan's security deposit is non-refundable.",
     'deposit.onboardingNote':
         'The {amount} onboarding charge paid at booking is non-refundable and is not part of this deposit.',
     'booking.rentalPeriod': 'Rental Period',
@@ -1209,6 +1210,8 @@ export const en = {
         'The {onboarding} onboarding charge is non-refundable. The {deposit} security deposit is refundable, subject to applicable deductions for damages, dues, penalties or other eligible charges.',
     'booking.depositTermsWithDays':
         'The {onboarding} onboarding charge is non-refundable. The {deposit} security deposit is refundable after you complete a minimum of {days} rental days, subject to applicable deductions for damages, dues, penalties or other eligible charges.',
+    'booking.depositTermsNonRefundable':
+        'The {onboarding} onboarding charge and the {deposit} security deposit are both non-refundable under this plan.',
     'booking.totalPayable': 'Total Payable',
     'booking.estimatedTotal': 'Estimated Total',
     'booking.confirmedOnPaymentScreen': 'Confirmed on the payment screen',

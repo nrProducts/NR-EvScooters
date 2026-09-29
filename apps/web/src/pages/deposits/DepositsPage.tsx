@@ -174,6 +174,10 @@ function eligibilityReason(d: Deposit): string {
   if (d.status === "released") return "The refund for this deposit has been processed.";
   if (d.status === "pending") return "The rider's payment has not been captured yet.";
 
+  if (!d.is_refundable) {
+    return "This plan's security deposit is non-refundable — it will be forfeited when the rental ends.";
+  }
+
   if (d.min_rental_days_required > 0 && d.rental_days_completed < d.min_rental_days_required) {
     const remaining = d.min_rental_days_required - d.rental_days_completed;
     return (
@@ -218,7 +222,7 @@ function DepositDrawer({ deposit, onClose }: { deposit: Deposit | null; onClose:
             />
             <Row
               label="Security deposit"
-              value={`${formatCurrency(deposit.amount)} · refundable`}
+              value={`${formatCurrency(deposit.amount)} · ${deposit.is_refundable ? "refundable" : "non-refundable"}`}
             />
           </div>
         </div>

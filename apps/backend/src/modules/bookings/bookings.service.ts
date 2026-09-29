@@ -631,7 +631,7 @@ export async function assertVehicleAvailable(modelId: string, hubId: string): Pr
 export async function requireBookablePlan(planId: string, modelId: string) {
     const { data, error } = await supabaseAdmin
         .from("plans")
-        .select("id, is_active, vehicle_model_id, price_amount, duration_days, deposit_amount, onboarding_charge_amount, min_rental_days_for_refund, billing_period")
+        .select("id, is_active, vehicle_model_id, price_amount, duration_days, deposit_amount, onboarding_charge_amount, min_rental_days_for_refund, deposit_refundable, billing_period")
         .eq("id", planId)
         .is("deleted_at", null)
         .maybeSingle();

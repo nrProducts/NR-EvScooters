@@ -702,6 +702,7 @@ export const hi: Copy = {
     'deposit.eligible': 'रिफंड के लिए पात्र। हम इसे जल्द ही प्रोसेस करेंगे।',
     'deposit.refunded': 'आपका रिफंड प्रोसेस हो चुका है।',
     'deposit.forfeited': 'यह जमा राशि वापस नहीं मिलेगी।',
+    'deposit.nonRefundable': 'इस प्लान की सुरक्षा जमा राशि वापस नहीं मिलेगी।',
     'deposit.onboardingNote':
         'बुकिंग के समय दिया गया {amount} का ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा और यह इस जमा राशि का हिस्सा नहीं है।',
     'booking.rentalPeriod': 'किराया अवधि',
@@ -717,6 +718,8 @@ export const hi: Copy = {
         '{onboarding} का ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा। {deposit} की सुरक्षा जमा राशि वापस मिलेगी, जिसमें नुकसान, बकाया, जुर्माना या अन्य लागू शुल्क की कटौती की जा सकती है।',
     'booking.depositTermsWithDays':
         '{onboarding} का ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा। {deposit} की सुरक्षा जमा राशि कम से कम {days} किराया दिन पूरे करने के बाद वापस मिलेगी, जिसमें नुकसान, बकाया, जुर्माना या अन्य लागू शुल्क की कटौती की जा सकती है।',
+    'booking.depositTermsNonRefundable':
+        'इस प्लान के तहत {onboarding} का ऑनबोर्डिंग शुल्क और {deposit} की सुरक्षा जमा राशि, दोनों वापस नहीं मिलेंगे।',
     'booking.totalPayable': 'कुल देय राशि',
     'booking.estimatedTotal': 'अनुमानित कुल राशि',
     'booking.confirmedOnPaymentScreen': 'भुगतान स्क्रीन पर पक्का किया जाएगा',

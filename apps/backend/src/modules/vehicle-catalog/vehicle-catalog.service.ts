@@ -39,7 +39,7 @@ const DETAIL_COLUMNS = `
     id, name, category, tagline, description, battery_range_km, top_speed_kmph, charging_time_hours,
     motor_power_watts, battery_capacity, features, safety_features, is_featured, ${MEDIA_EMBED},
     vendors(id, name, description, logo_storage_path),
-    plans(id, name, billing_period, price_amount, duration_days, deposit_amount, onboarding_charge_amount, min_rental_days_for_refund)
+    plans(id, name, billing_period, price_amount, duration_days, deposit_amount, onboarding_charge_amount, min_rental_days_for_refund, deposit_refundable)
 `;
 
 /**
@@ -108,6 +108,7 @@ export function toPlans(raw: unknown): PlanSummary[] {
         id?: string; name?: string; billing_period: PlanSummary["billing_cycle"];
         price_amount: number; duration_days?: number; deposit_amount?: number;
         onboarding_charge_amount?: number; min_rental_days_for_refund?: number;
+        deposit_refundable?: boolean;
     }>;
     const order: Record<string, number> = { daily: 0, weekly: 1, monthly: 2, yearly: 3 };
     return rows
@@ -124,6 +125,7 @@ export function toPlans(raw: unknown): PlanSummary[] {
             deposit_amount: Number(r.deposit_amount ?? 0),
             onboarding_charge_amount: Number(r.onboarding_charge_amount ?? 0),
             min_rental_days_for_refund: Number(r.min_rental_days_for_refund ?? 0),
+            deposit_refundable: r.deposit_refundable ?? true,
         }))
         .sort((a, b) => (order[a.billing_cycle] ?? 99) - (order[b.billing_cycle] ?? 99));
 }

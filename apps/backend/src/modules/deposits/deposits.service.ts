@@ -26,7 +26,7 @@ import { businessToday } from "../../common/dates";
 // whose money it is.
 const DEPOSIT_COLUMNS = `
     id, subscription_id, amount, status, held_at, refund_eligible_on,
-    released_at, forfeited_at, forfeit_reason, min_rental_days_required,
+    released_at, forfeited_at, forfeit_reason, min_rental_days_required, is_refundable,
     created_at,
     subscriptions!inner(
         user_id,
@@ -46,6 +46,7 @@ interface RawDepositRow {
     forfeited_at: string | null;
     forfeit_reason: string | null;
     min_rental_days_required: number | string | null;
+    is_refundable: boolean | null;
     created_at: string;
     /** Joined so eligibility can be measured without a second round trip. */
     subscriptions: RawSubscriptionSlice | RawSubscriptionSlice[] | null;
@@ -114,9 +115,11 @@ export function deriveEligibility(
     refundEligibleOn: string | null,
     minRentalDays: number,
     rentalDaysCompleted: number,
+    isRefundable: boolean = true,
 ): DepositRefundEligibility {
     if (status === "released") return "refund_processed";
     if (status !== "held") return "not_eligible";
+    if (!isRefundable) return "not_eligible";
     if (minRentalDays > 0 && rentalDaysCompleted < minRentalDays) return "not_eligible";
     if (!refundEligibleOn || refundEligibleOn > businessToday()) return "not_eligible";
     return "eligible";
@@ -125,6 +128,7 @@ export function deriveEligibility(
 async function toDepositRow(row: RawDepositRow): Promise<DepositRow> {
     const amount = Number(row.amount);
     const minRentalDays = Number(row.min_rental_days_required ?? 0);
+    const isRefundable = row.is_refundable ?? true;
     const subscription = one(row.subscriptions);
 
     // Only counted when there is a threshold to measure against. Deposits
@@ -157,9 +161,10 @@ async function toDepositRow(row: RawDepositRow): Promise<DepositRow> {
             ? await refundableAmountForSubscription(row.subscription_id, amount)
             : amount,
         min_rental_days_required: minRentalDays,
+        is_refundable: isRefundable,
         rental_days_completed: rentalDaysCompleted,
         refund_eligibility: deriveEligibility(
-            row.status, row.refund_eligible_on, minRentalDays, rentalDaysCompleted,
+            row.status, row.refund_eligible_on, minRentalDays, rentalDaysCompleted, isRefundable,
         ),
         created_at: row.created_at,
     };
@@ -269,7 +274,7 @@ export async function settleDepositOnReturn(
 ): Promise<void> {
     const { data: deposit, error } = await supabaseAdmin
         .from("deposits")
-        .select("id, amount, min_rental_days_required, refund_eligible_on, subscriptions!inner(user_id)")
+        .select("id, amount, min_rental_days_required, is_refundable, refund_eligible_on, subscriptions!inner(user_id)")
         .eq("subscription_id", subscriptionId)
         .eq("status", "held")
         .maybeSingle();
@@ -279,6 +284,17 @@ export async function settleDepositOnReturn(
     const subscription = Array.isArray(deposit.subscriptions)
         ? deposit.subscriptions[0]
         : deposit.subscriptions;
+
+    // Never refundable by plan design — same outcome as finishing short of
+    // the day threshold below, just with no threshold to measure against.
+    if (deposit.is_refundable === false && subscription) {
+        await forfeitNonRefundableDeposit(
+            { id: deposit.id, amount: Number(deposit.amount), userId: subscription.user_id },
+            actorId,
+        );
+        return;
+    }
+
     const minRentalDays = Number(deposit.min_rental_days_required ?? 0);
 
     if (minRentalDays > 0 && subscription) {
@@ -347,6 +363,48 @@ async function forfeitForShortRental(
         bodyFallback:
             `Your ₹${deposit.amount} security deposit is not refundable: ${daysCompleted} of the ` +
             `${minRentalDays} rental days required were completed.`,
+        riderId: deposit.userId,
+    });
+}
+
+/**
+ * Forfeits a deposit whose PLAN never allows a refund at all
+ * (`deposit_refundable = false`) — there is no day count to fall short of,
+ * so this fires unconditionally the moment the rental ends, exactly like
+ * the onboarding charge was never coming back either.
+ */
+async function forfeitNonRefundableDeposit(
+    deposit: { id: string; amount: number; userId: string },
+    actorId: string,
+): Promise<void> {
+    const reason = "This plan's security deposit is non-refundable.";
+
+    const { error } = await supabaseAdmin
+        .from("deposits")
+        .update({
+            status: "forfeited",
+            forfeited_at: new Date().toISOString(),
+            forfeit_reason: reason,
+        })
+        .eq("id", deposit.id)
+        .eq("status", "held");
+    if (error) throw error;
+
+    await writeAudit({
+        actorId,
+        targetUserId: deposit.userId,
+        action: "deposit.forfeited",
+        entityType: "deposit",
+        entityId: deposit.id,
+        after: { amount: deposit.amount, reason },
+    });
+
+    await notify({
+        notificationType: "deposit_forfeited",
+        referenceType: "deposit",
+        referenceId: deposit.id,
+        title: "Security deposit forfeited",
+        bodyFallback: `Your ₹${deposit.amount} security deposit is non-refundable under this plan.`,
         riderId: deposit.userId,
     });
 }

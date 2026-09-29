@@ -32,14 +32,15 @@ export function DepositStatusCard({
   const forfeited = deposit.status === 'forfeited';
   const refunded = deposit.refund_eligibility === 'refund_processed';
   const eligible = deposit.refund_eligibility === 'eligible';
+  const nonRefundable = !forfeited && !refunded && !deposit.is_refundable;
 
-  const tone = forfeited
+  const tone = forfeited || nonRefundable
     ? COLORS.danger
     : refunded || eligible
       ? COLORS.success
       : COLORS.textSecondary;
 
-  const Icon = forfeited ? XCircle : refunded || eligible ? CheckCircle2 : Clock;
+  const Icon = forfeited || nonRefundable ? XCircle : refunded || eligible ? CheckCircle2 : Clock;
 
   // A flat statement of the rule, not a live day-by-day counter — a rider
   // mid-rental doesn't need a running tally to know their money is safe,
@@ -48,11 +49,13 @@ export function DepositStatusCard({
     ? (deposit.forfeit_reason ?? t('deposit.forfeited'))
     : refunded
       ? t('deposit.refunded')
-      : eligible
-        ? t('deposit.eligible')
-        : hasThreshold
-          ? t('deposit.refundableAfterDays', { days: deposit.min_rental_days_required })
-          : t('deposit.afterReturn');
+      : nonRefundable
+        ? t('deposit.nonRefundable')
+        : eligible
+          ? t('deposit.eligible')
+          : hasThreshold
+            ? t('deposit.refundableAfterDays', { days: deposit.min_rental_days_required })
+            : t('deposit.afterReturn');
 
   return (
     <View

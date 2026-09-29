@@ -41,4 +41,22 @@ describe("settlementDepositAmount", () => {
     it("is 0 when there is no deposit at all", () => {
         expect(settlementDepositAmount(null)).toBe(0);
     });
+
+    it("excludes a held deposit whose plan marks the deposit non-refundable, even with no day threshold", () => {
+        expect(settlementDepositAmount({
+            status: "held", amount: 999, min_rental_days_required: 0, rental_days_completed: 0, is_refundable: false,
+        })).toBe(0);
+    });
+
+    it("includes the full amount for a refundable deposit that met its threshold", () => {
+        expect(settlementDepositAmount({
+            status: "held", amount: 999, min_rental_days_required: 0, rental_days_completed: 0, is_refundable: true,
+        })).toBe(999);
+    });
+
+    it("includes the full amount for a non-refundable-flagged deposit already forfeited by damage, not double-counted", () => {
+        expect(settlementDepositAmount({
+            status: "forfeited", amount: 999, min_rental_days_required: 0, rental_days_completed: 0, is_refundable: false,
+        })).toBe(999);
+    });
 });

@@ -70,15 +70,21 @@ export function Pricing() {
                   <>
                     {formatCurrency(plan.onboardingChargeAmount + plan.depositAmount)} due up front —{" "}
                     {formatCurrency(plan.onboardingChargeAmount)} one-time onboarding charge (non-refundable) +{" "}
-                    {formatCurrency(plan.depositAmount)} refundable security deposit
-                    {plan.minRentalDaysForRefund > 0
-                      && `, refundable after ${plan.minRentalDaysForRefund} rental days`}
+                    {formatCurrency(plan.depositAmount)} security deposit
+                    {!plan.depositRefundable
+                      ? " (non-refundable)"
+                      : plan.minRentalDaysForRefund > 0
+                        ? `, refundable after ${plan.minRentalDaysForRefund} rental days`
+                        : ", refundable"}
                   </>
                 ) : (
                   <>
-                    {formatCurrency(plan.depositAmount)} refundable security deposit
-                    {plan.minRentalDaysForRefund > 0
-                      && `, refundable after ${plan.minRentalDaysForRefund} rental days`}
+                    {formatCurrency(plan.depositAmount)} security deposit
+                    {!plan.depositRefundable
+                      ? " (non-refundable)"
+                      : plan.minRentalDaysForRefund > 0
+                        ? `, refundable after ${plan.minRentalDaysForRefund} rental days`
+                        : ", refundable"}
                   </>
                 )}
               </p>

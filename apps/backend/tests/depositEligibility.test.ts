@@ -44,4 +44,13 @@ describe("deriveEligibility", () => {
     it("treats the eligible-on date as starting at the beginning of that day", () => {
         expect(deriveEligibility("held", businessToday(), 0, 0)).toBe("eligible");
     });
+
+    it("is never eligible for a plan whose deposit is flagged non-refundable, even past every other gate", () => {
+        expect(deriveEligibility("held", YESTERDAY, 0, 0, false)).toBe("not_eligible");
+        expect(deriveEligibility("held", YESTERDAY, 45, 45, false)).toBe("not_eligible");
+    });
+
+    it("defaults to refundable when the flag is omitted, for callers that predate it", () => {
+        expect(deriveEligibility("held", YESTERDAY, 0, 0)).toBe("eligible");
+    });
 });

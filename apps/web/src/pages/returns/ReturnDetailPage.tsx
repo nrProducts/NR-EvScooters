@@ -743,13 +743,13 @@ function DepositTermsNotice({ deposit }: { deposit: Deposit | null }) {
   const hasThreshold = deposit.min_rental_days_required > 0;
   const shortOfThreshold = hasThreshold
     && deposit.rental_days_completed < deposit.min_rental_days_required;
-  if (!hasThreshold && deposit.onboarding_charge_amount <= 0) return null;
+  if (!hasThreshold && deposit.onboarding_charge_amount <= 0 && deposit.is_refundable) return null;
 
   return (
     <div
       className={cn(
         "mt-3 space-y-1 rounded-lg border p-3 text-[0.6875rem]",
-        shortOfThreshold || deposit.status === "forfeited"
+        shortOfThreshold || !deposit.is_refundable || deposit.status === "forfeited"
           ? "border-destructive/40 bg-destructive/5"
           : "border-border bg-muted/40",
       )}
@@ -763,7 +763,14 @@ function DepositTermsNotice({ deposit }: { deposit: Deposit | null }) {
           the settlement above.
         </p>
       )}
-      {hasThreshold && (
+      {!deposit.is_refundable && (
+        <p className="font-medium text-destructive">
+          This plan's security deposit is non-refundable — the{" "}
+          {formatCurrency(deposit.amount)} deposit is forfeited, not refunded, regardless of
+          rental days completed.
+        </p>
+      )}
+      {deposit.is_refundable && hasThreshold && (
         <p className={shortOfThreshold ? "font-medium text-destructive" : "text-muted-foreground"}>
           {shortOfThreshold ? (
             <>

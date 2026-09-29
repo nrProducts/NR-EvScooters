@@ -41,6 +41,7 @@ interface ApiPlan {
   deposit_amount: number;
   onboarding_charge_amount: number;
   min_rental_days_for_refund: number;
+  deposit_refundable: boolean;
   vehicle_model_id: string | null;
 }
 
@@ -65,6 +66,7 @@ function mergePlanCopy(p: ApiPlan): RentalPlan {
     depositAmount: p.deposit_amount,
     onboardingChargeAmount: p.onboarding_charge_amount,
     minRentalDaysForRefund: p.min_rental_days_for_refund,
+    depositRefundable: p.deposit_refundable,
     vehicleModelId: p.vehicle_model_id ?? copy?.vehicleModelId ?? "",
     highlights: copy?.highlights ?? [],
   };

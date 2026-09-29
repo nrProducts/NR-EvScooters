@@ -1042,13 +1042,17 @@ export async function issueSettlementRefund(
  * net it against.
  */
 export function settlementDepositAmount(
-    deposit: { status: string; amount: number; min_rental_days_required: number; rental_days_completed: number } | null,
+    deposit: {
+        status: string; amount: number; min_rental_days_required: number; rental_days_completed: number;
+        is_refundable?: boolean;
+    } | null,
 ): number {
+    const nonRefundableByPlan = !!deposit && deposit.status === "held" && deposit.is_refundable === false;
     const forfeitedForShortRental = !!deposit
         && deposit.status === "held"
         && deposit.min_rental_days_required > 0
         && deposit.rental_days_completed < deposit.min_rental_days_required;
-    return forfeitedForShortRental ? 0 : (deposit?.amount ?? 0);
+    return nonRefundableByPlan || forfeitedForShortRental ? 0 : (deposit?.amount ?? 0);
 }
 
 /**

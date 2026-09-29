@@ -14,8 +14,10 @@ export interface RentalPlan {
   depositAmount: number;
   /** One-time non-refundable charge taken with the first payment. 0 = none. */
   onboardingChargeAmount: number;
-  /** Rental days before the deposit becomes refundable. 0 = no minimum. */
+  /** Rental days before the deposit becomes refundable. 0 = no minimum. Meaningless when depositRefundable is false. */
   minRentalDaysForRefund: number;
+  /** Whether the deposit is ever refundable at all. False = forfeited outright on return, like the onboarding charge. */
+  depositRefundable: boolean;
   vehicleModelId: string;
   highlights: string[];
 }
@@ -29,6 +31,7 @@ export const ACTIVE_PLANS: RentalPlan[] = [
     depositAmount: 1500,
     onboardingChargeAmount: 500,
     minRentalDaysForRefund: 45,
+    depositRefundable: true,
     vehicleModelId: "mvs7",
     highlights: [
       "Unlimited riding for 7 days",

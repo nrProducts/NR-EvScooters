@@ -187,6 +187,7 @@ export async function createBookingOrder(
         // Frozen with the money it governs: the refund terms this rider is
         // agreeing to are the ones on the plan at the moment they pay.
         min_rental_days_required: Number(plan.min_rental_days_for_refund ?? 0),
+        deposit_refundable_snapshot: plan.deposit_refundable ?? true,
         billing_period_snapshot: plan.billing_period,
     } as unknown as Json;
 
@@ -322,7 +323,7 @@ export async function ensureBookingInvoice(
         .select(`
             id, user_id, status, requested_start_on,
             plan_price_snapshot, duration_days_snapshot, deposit_amount_snapshot,
-            plans(id, billing_period, min_rental_days_for_refund)
+            plans(id, billing_period, min_rental_days_for_refund, deposit_refundable)
         `)
         .eq("id", bookingId)
         .maybeSingle();
@@ -335,6 +336,7 @@ export async function ensureBookingInvoice(
         id: string;
         billing_period: "daily" | "weekly" | "monthly";
         min_rental_days_for_refund: number | null;
+        deposit_refundable: boolean | null;
     }>(booking.plans);
     if (!plan) throw businessRule("This booking has no plan attached.");
 
@@ -528,6 +530,7 @@ async function ensureSubscription(
         id: string;
         billing_period: "daily" | "weekly" | "monthly";
         min_rental_days_for_refund?: number | null;
+        deposit_refundable?: boolean | null;
     },
 ): Promise<string> {
     const { data: existing, error: readError } = await supabaseAdmin
@@ -596,6 +599,7 @@ async function ensureSubscription(
         // Frozen here for the same reason as every other snapshot above: the
         // refund terms are the plan's terms as they stand when the rider pays.
         min_rental_days_required: Number(plan.min_rental_days_for_refund ?? 0),
+        is_refundable: plan.deposit_refundable ?? true,
     });
     if (depositError && (depositError as { code?: string }).code !== "23505") throw depositError;
 

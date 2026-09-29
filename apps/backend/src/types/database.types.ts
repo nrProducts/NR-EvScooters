@@ -556,6 +556,7 @@ export type Database = {
           forfeited_at: string | null
           held_at: string | null
           id: string
+          is_refundable: boolean
           min_rental_days_required: number
           refund_eligible_on: string | null
           released_at: string | null
@@ -570,6 +571,7 @@ export type Database = {
           forfeited_at?: string | null
           held_at?: string | null
           id?: string
+          is_refundable?: boolean
           min_rental_days_required?: number
           refund_eligible_on?: string | null
           released_at?: string | null
@@ -584,6 +586,7 @@ export type Database = {
           forfeited_at?: string | null
           held_at?: string | null
           id?: string
+          is_refundable?: boolean
           min_rental_days_required?: number
           refund_eligible_on?: string | null
           released_at?: string | null
@@ -1950,6 +1953,7 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           deposit_amount: number
+          deposit_refundable: boolean
           duration_days: number
           id: string
           is_active: boolean
@@ -1965,6 +1969,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           deposit_amount: number
+          deposit_refundable?: boolean
           duration_days: number
           id?: string
           is_active?: boolean
@@ -1980,6 +1985,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           deposit_amount?: number
+          deposit_refundable?: boolean
           duration_days?: number
           id?: string
           is_active?: boolean
