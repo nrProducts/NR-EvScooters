@@ -1143,6 +1143,9 @@ export const en = {
     'booking.paymentMethods.wallets': 'Wallets',
     'booking.paymentMethods.walletsSubtitle': 'Paytm · PhonePe · Mobikwik',
     'booking.paymentMethods.chooseOnRazorpay': 'Choose on the secure Razorpay screen',
+    'booking.paymentMethods.payUsing': 'Pay using',
+    'booking.paymentMethods.anyMethod': 'UPI, cards, netbanking & more',
+    'booking.paymentMethods.change': 'Change',
     'booking.error.loadModel': 'Could not load this scooter.',
     'booking.error.modelNotFound': 'This scooter could not be found.',
     'booking.blocked.findingStation': 'Finding a pickup station near you…',
@@ -1177,6 +1180,7 @@ export const en = {
     'booking.choosePlanHint': 'Pick how long you want the scooter for.',
     'booking.noPlansHint': 'No plans are on sale for this scooter yet.',
     'booking.minutesIncluded': '{minutes} minutes included',
+    'booking.offers.title': 'Offers & benefits',
     'booking.dealApplied': 'Deal applied',
     'booking.youSave': 'You save {amount} on this booking',
     'booking.paymentSummary': 'Payment summary',
@@ -1222,6 +1226,7 @@ export const en = {
     'booking.amount': 'Amount',
     'booking.processing': 'Processing…',
     'booking.continue': 'Continue',
+    'booking.payCta': 'Pay {amount}',
 
     // --- battery stations map --------------------------------------------
     'stations.goBack': 'Go back',

@@ -3,11 +3,12 @@ import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'rea
 import { Spinner } from '../../components/Spinner';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  ChevronLeft, MapPin, Bike, Navigation, Check, AlertTriangle, CheckCircle2,
+  ChevronLeft, ChevronRight, ChevronsRight, MapPin, Bike, Navigation, Check, AlertTriangle, CheckCircle2,
   ShieldCheck, Zap, Lock, BadgePercent, Calendar, ArrowRight,
   CreditCard, Landmark, Wallet, Smartphone,
 } from 'lucide-react-native';
 import { Badge } from '../../components/ui/Badge';
+import { Sheet } from '../../components/ui/Sheet';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { useBookingStore } from '../../store/useBookingStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -65,35 +66,67 @@ const PAYMENT_METHOD_KEYS = [
   { Icon: Wallet, titleKey: 'booking.paymentMethods.wallets', subtitleKey: 'booking.paymentMethods.walletsSubtitle' },
 ] as const satisfies readonly { Icon: typeof Smartphone; titleKey: CopyKey; subtitleKey: CopyKey }[];
 
-const PaymentMethodsCard: React.FC = () => {
+/**
+ * A single collapsed row ("Pay using · UPI, Cards & more · Change") that
+ * opens a sheet with the real detail — the four-method list moved off the
+ * main scroll and behind a tap. "Change" is honest, not decorative: it
+ * opens something, it just isn't an in-app method picker (Razorpay owns
+ * that, same as PaymentMethodsCard's old footnote said).
+ */
+const PaymentMethodRow: React.FC = () => {
   const { t } = useT();
+  const [open, setOpen] = useState(false);
   return (
-    <View className="rounded-2xl border overflow-hidden" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-      <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider px-4 pt-4 pb-1">
-        {t('booking.paymentMethods.title')}
-      </Text>
-      {PAYMENT_METHOD_KEYS.map(({ Icon, titleKey, subtitleKey }, i) => (
-        <View
-          key={titleKey}
-          className="flex-row items-center px-4 py-3"
-          style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
-        >
-          <View className="w-9 h-9 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: COLORS.primary + '14' }}>
-            <Icon size={17} color={COLORS.primary} />
-          </View>
-          <View className="flex-1">
-            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{t(titleKey)}</Text>
-            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">{t(subtitleKey)}</Text>
+    <>
+      <TouchableOpacity
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        className="rounded-2xl border flex-row items-center px-4 py-3.5"
+        style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, gap: 12 }}
+      >
+        <View className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.primary + '14' }}>
+          <Wallet size={18} color={COLORS.primary} />
+        </View>
+        <View className="flex-1">
+          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
+            {t('booking.paymentMethods.payUsing')}
+          </Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mt-0.5">
+            {t('booking.paymentMethods.anyMethod')}
+          </Text>
+        </View>
+        <Text style={{ color: COLORS.primary }} className="text-xs font-extrabold mr-0.5">
+          {t('booking.paymentMethods.change')}
+        </Text>
+        <ChevronRight size={16} color={COLORS.primary} />
+      </TouchableOpacity>
+
+      <Sheet visible={open} onClose={() => setOpen(false)} title={t('booking.paymentMethods.title')}>
+        <View className="px-6 pb-2">
+          {PAYMENT_METHOD_KEYS.map(({ Icon, titleKey, subtitleKey }, i) => (
+            <View
+              key={titleKey}
+              className="flex-row items-center py-3"
+              style={i < PAYMENT_METHOD_KEYS.length - 1 ? { borderBottomWidth: 1, borderColor: COLORS.border } : undefined}
+            >
+              <View className="w-9 h-9 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: COLORS.primary + '14' }}>
+                <Icon size={17} color={COLORS.primary} />
+              </View>
+              <View className="flex-1">
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{t(titleKey)}</Text>
+                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">{t(subtitleKey)}</Text>
+              </View>
+            </View>
+          ))}
+          <View className="flex-row items-center mt-3" style={{ gap: 6 }}>
+            <Lock size={12} color={COLORS.textSecondary} />
+            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium flex-1">
+              {t('booking.paymentMethods.chooseOnRazorpay')}
+            </Text>
           </View>
         </View>
-      ))}
-      <View className="px-4 py-2.5 flex-row items-center" style={{ backgroundColor: COLORS.background, gap: 6 }}>
-        <Lock size={12} color={COLORS.textSecondary} />
-        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
-          {t('booking.paymentMethods.chooseOnRazorpay')}
-        </Text>
-      </View>
-    </View>
+      </Sheet>
+    </>
   );
 };
 
@@ -423,13 +456,23 @@ export default function BookingScreen() {
             {draft.plan ? (
               <View className="mt-6" style={{ gap: 12 }}>
                 {saved > 0 ? (
-                  <View className="flex-row items-center rounded-2xl px-4 py-3" style={{ backgroundColor: COLORS.primary, gap: 10 }}>
-                    <BadgePercent size={18} color="#FFF" />
-                    <View className="flex-1">
-                      <Text className="text-white text-sm font-black">{t('booking.dealApplied')}</Text>
-                      <Text className="text-white/85 text-[11px] font-semibold">
-                        {t('booking.youSave', { amount: money(saved) })}
-                      </Text>
+                  <View>
+                    <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold uppercase tracking-wider mb-2">
+                      {t('booking.offers.title')}
+                    </Text>
+                    <View
+                      className="rounded-2xl border flex-row items-center px-4 py-3.5"
+                      style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, gap: 12 }}
+                    >
+                      <View className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.primary + '14' }}>
+                        <BadgePercent size={18} color={COLORS.primary} />
+                      </View>
+                      <View className="flex-1">
+                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">{t('booking.dealApplied')}</Text>
+                        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold mt-0.5">
+                          {t('booking.youSave', { amount: money(saved) })}
+                        </Text>
+                      </View>
                     </View>
                   </View>
                 ) : null}
@@ -582,7 +625,7 @@ export default function BookingScreen() {
                   </View>
                 ) : null}
 
-                <PaymentMethodsCard />
+                <PaymentMethodRow />
 
                 <TrustRow />
 
@@ -608,15 +651,16 @@ export default function BookingScreen() {
             ) : null}
           </ScrollView>
 
-          {/* Sticky checkout bar */}
+          {/* Sticky checkout bar — one full-width pill carries the amount in
+              its own label rather than sitting beside a separate total, with
+              a circular leading badge standing in for a slide gesture. */}
           <View
-            className="px-4 pt-3 flex-row items-center"
+            className="px-4 pt-3"
             style={{
               backgroundColor: COLORS.card,
               borderTopWidth: 1,
               borderColor: COLORS.border,
               paddingBottom: 12 + insets.bottom,
-              gap: 14,
               shadowColor: COLORS.black,
               shadowOpacity: 0.08,
               shadowRadius: 12,
@@ -624,30 +668,32 @@ export default function BookingScreen() {
               elevation: 12,
             }}
           >
-            <View className="shrink-0">
-              <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">
-                {draft.plan ? t('booking.totalPayable') : t('booking.amount')}
-              </Text>
-              <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">
-                {draft.plan ? money(total) : t('common.dash')}
-              </Text>
-            </View>
             <TouchableOpacity
               onPress={handlePay}
               disabled={busy || blockedReason() !== null}
               accessibilityRole="button"
-              className="flex-1 rounded-2xl items-center flex-row justify-center"
+              className="rounded-full flex-row items-center overflow-hidden"
               style={{
                 backgroundColor: COLORS.primary,
                 opacity: busy || blockedReason() !== null ? 0.5 : 1,
-                minHeight: 52,
+                minHeight: 56,
               }}
             >
-              {busy ? <Spinner size={16} color="#FFF" /> : null}
-              <Text className="text-white text-base font-black ml-2" numberOfLines={1}>
-                {busy ? t('booking.processing') : (blockedReason() ?? t('booking.continue'))}
+              <View
+                className="items-center justify-center"
+                style={{ width: 56, height: 56, backgroundColor: 'rgba(255,255,255,0.18)' }}
+              >
+                {busy ? <Spinner size={18} color="#FFF" /> : <ChevronsRight size={22} color="#FFF" />}
+              </View>
+              <Text className="flex-1 text-white text-base font-black text-center pr-14" numberOfLines={1}>
+                {busy
+                  ? t('booking.processing')
+                  : blockedReason()
+                    ? (blockedReason() as string)
+                    : draft.plan
+                      ? t('booking.payCta', { amount: money(total) })
+                      : t('booking.continue')}
               </Text>
-              {!busy && !blockedReason() ? <ArrowRight size={18} color="#FFF" style={{ marginLeft: 6 }} /> : null}
             </TouchableOpacity>
           </View>
         </>

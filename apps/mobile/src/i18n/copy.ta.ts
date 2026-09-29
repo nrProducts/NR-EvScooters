@@ -656,6 +656,9 @@ export const ta: Copy = {
     'booking.paymentMethods.wallets': 'வாலட்கள்',
     'booking.paymentMethods.walletsSubtitle': 'Paytm · PhonePe · Mobikwik',
     'booking.paymentMethods.chooseOnRazorpay': 'பாதுகாப்பான Razorpay திரையில் தேர்ந்தெடுக்கவும்',
+    'booking.paymentMethods.payUsing': 'இதன் மூலம் செலுத்துங்கள்',
+    'booking.paymentMethods.anyMethod': 'UPI, கார்டுகள், நெட்பேங்கிங் மற்றும் பல',
+    'booking.paymentMethods.change': 'மாற்று',
     'booking.error.loadModel': 'இந்த ஸ்கூட்டரை ஏற்ற முடியவில்லை.',
     'booking.error.modelNotFound': 'இந்த ஸ்கூட்டரைக் கண்டுபிடிக்க முடியவில்லை.',
     'booking.blocked.findingStation': 'உங்களுக்கு அருகில் ஒரு பிக்கப் நிலையத்தைக் கண்டறிகிறது…',
@@ -690,6 +693,7 @@ export const ta: Copy = {
     'booking.choosePlanHint': 'ஸ்கூட்டர் எவ்வளவு காலத்திற்கு வேண்டும் என்பதைத் தேர்ந்தெடுக்கவும்.',
     'booking.noPlansHint': 'இந்த ஸ்கூட்டருக்கு இன்னும் திட்டங்கள் விற்பனையில் இல்லை.',
     'booking.minutesIncluded': '{minutes} நிமிடங்கள் சேர்க்கப்பட்டுள்ளன',
+    'booking.offers.title': 'சலுகைகள் & பலன்கள்',
     'booking.dealApplied': 'சலுகை பயன்படுத்தப்பட்டது',
     'booking.youSave': 'இந்த முன்பதிவில் {amount} சேமிக்கிறீர்கள்',
     'booking.paymentSummary': 'கட்டணச் சுருக்கம்',
@@ -735,6 +739,7 @@ export const ta: Copy = {
     'booking.amount': 'தொகை',
     'booking.processing': 'செயலாக்கத்தில்…',
     'booking.continue': 'தொடரவும்',
+    'booking.payCta': '{amount} செலுத்துங்கள்',
 
     // --- battery stations map --------------------------------------------
     'stations.goBack': 'திரும்பிச் செல்',

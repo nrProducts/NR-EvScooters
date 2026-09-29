@@ -651,6 +651,9 @@ export const hi: Copy = {
     'booking.paymentMethods.wallets': 'वॉलेट',
     'booking.paymentMethods.walletsSubtitle': 'Paytm · PhonePe · Mobikwik',
     'booking.paymentMethods.chooseOnRazorpay': 'सुरक्षित Razorpay स्क्रीन पर चुनें',
+    'booking.paymentMethods.payUsing': 'इससे भुगतान करें',
+    'booking.paymentMethods.anyMethod': 'UPI, कार्ड, नेटबैंकिंग और अधिक',
+    'booking.paymentMethods.change': 'बदलें',
     'booking.error.loadModel': 'यह स्कूटर लोड नहीं हो सका।',
     'booking.error.modelNotFound': 'यह स्कूटर नहीं मिला।',
     'booking.blocked.findingStation': 'आपके पास एक पिकअप स्टेशन खोजा जा रहा है…',
@@ -685,6 +688,7 @@ export const hi: Copy = {
     'booking.choosePlanHint': 'चुनें कि आपको स्कूटर कितने समय के लिए चाहिए।',
     'booking.noPlansHint': 'इस स्कूटर के लिए अभी कोई प्लान उपलब्ध नहीं है।',
     'booking.minutesIncluded': '{minutes} मिनट शामिल हैं',
+    'booking.offers.title': 'ऑफ़र और लाभ',
     'booking.dealApplied': 'ऑफ़र लागू हो गया',
     'booking.youSave': 'इस बुकिंग पर आप {amount} बचाते हैं',
     'booking.paymentSummary': 'भुगतान सारांश',
@@ -730,6 +734,7 @@ export const hi: Copy = {
     'booking.amount': 'राशि',
     'booking.processing': 'प्रक्रिया जारी है…',
     'booking.continue': 'जारी रखें',
+    'booking.payCta': '{amount} भुगतान करें',
 
     // --- battery stations map --------------------------------------------
     'stations.goBack': 'वापस जाएं',
