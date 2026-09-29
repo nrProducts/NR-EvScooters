@@ -43,7 +43,11 @@ export function Pricing() {
           }
         >
           {plans.map((plan, i) => (
-            <Reveal key={plan.name} delay={i * 100} className="overflow-hidden rounded-[2.5rem] bg-white shadow-soft">
+            <Reveal
+              key={plan.name}
+              delay={i * 100}
+              className="flex h-full flex-col overflow-hidden rounded-[2.5rem] bg-white shadow-soft"
+            >
               {/* One continuous card background — the price still reads first
                   through size/weight alone, so a color-block panel isn't
                   needed to earn that, and a hard sage-to-white cut there read
@@ -64,8 +68,8 @@ export function Pricing() {
                 </div>
               </div>
 
-              <div className="px-8 pb-8 pt-7 sm:px-10 sm:pb-10">
-              <p className="text-sm leading-relaxed text-muted-foreground">
+              <div className="flex flex-1 flex-col px-8 pb-8 pt-7 sm:px-10 sm:pb-10">
+              <p className="min-h-[4.25rem] text-sm leading-relaxed text-muted-foreground sm:min-h-[3.75rem]">
                 {plan.onboardingChargeAmount > 0 ? (
                   <>
                     {formatCurrency(plan.onboardingChargeAmount + plan.depositAmount)} due up front —{" "}
@@ -100,7 +104,7 @@ export function Pricing() {
                 ))}
               </ul>
 
-              <Button href="#get-app" size="lg" className="mt-9 w-full">
+              <Button href="#get-app" size="lg" className="mt-9 w-full sm:mt-auto">
                 Book your scooter
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Button>

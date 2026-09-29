@@ -15,6 +15,15 @@
 --
 -- GRANDFATHERING is free: both default to true, so every existing plan and
 -- deposit keeps behaving exactly as it does today.
+--
+-- NOTE: the two functions below carry the CURRENT deployed rental-period
+-- math (v_start + (v_duration - 1), inclusive-day) exactly as it runs live
+-- in the Swapngo project today. 20260918100000_fixed_noon_rental_cycle.sql's
+-- noon-to-noon change (v_start + v_duration) is sitting in this repo but was
+-- never actually deployed — this migration does not change that, on
+-- purpose, to avoid smuggling an unrelated behaviour change in here. If/when
+-- the noon-cycle migration is deployed for real, these two functions need
+-- deposit_refundable_snapshot/deposit_refundable carried forward into it.
 -- =========================================================================
 
 alter table public.plans
@@ -120,9 +129,9 @@ begin
     )
     returning id into v_subscription_id;
 
-    -- Fixed noon-to-noon cycle: a plan of N days runs start -> start + N,
-    -- noon to noon. NOT start + (N - 1).
-    v_end := v_start + v_duration;
+    -- Same rule as planExpiryFor / ensureSubscription: day 1 is the pickup
+    -- day, so an N-day plan runs through start + (N - 1).
+    v_end := v_start + (v_duration - 1);
 
     insert into public.subscription_periods (
         subscription_id, sequence_number, starts_on, ends_on, due_on,
@@ -167,7 +176,8 @@ begin
     end if;
 
     v_start := coalesce(p_starts_on, public.business_today());
-    v_end   := v_start + v_plan.duration_days;
+    -- Mirrors ensureSubscription: a period runs duration_days INCLUSIVE.
+    v_end   := v_start + (v_plan.duration_days - 1);
 
     return query
         select 'Plan fee — period 1'::text, v_plan.price_amount, 1
