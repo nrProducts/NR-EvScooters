@@ -1,4 +1,4 @@
-import { Check, ArrowRight } from "lucide-react";
+import { Check, ArrowRight, Sparkles } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Badge } from "@/components/ui/Badge";
@@ -33,11 +33,19 @@ export function Pricing() {
         <Reveal>
         <SectionHeading
           eyebrow="Pricing"
-          title={"One simple plan.\nNo surprises."}
-          description="Flexible EV scooter rental for everyday Chennai travel — pricing is managed centrally, so it's always accurate here."
+          title={PRE_BOOKING_MODE ? "Pricing is on its way." : "One simple plan.\nNo surprises."}
+          description={
+            PRE_BOOKING_MODE
+              ? "We're finalising our rental plans ahead of launch. Pre-book now and we'll let you know the moment pricing goes live in your area."
+              : "Flexible EV scooter rental for everyday Chennai travel — pricing is managed centrally, so it's always accurate here."
+          }
         />
         </Reveal>
 
+        {PRE_BOOKING_MODE ? (
+          <PricingComingSoon onPreBook={bookingCta} />
+        ) : (
+        <>
         {plansStatus === "loading" && <PricingSkeleton />}
 
         {plansStatus === "error" && (
@@ -151,8 +159,35 @@ export function Pricing() {
           ))}
         </div>
         )}
+        </>
+        )}
       </Container>
     </section>
+  );
+}
+
+/**
+ * Plans aren't finalised yet, so no card here ever shows a Daily/Weekly
+ * price — that reappears automatically once PRE_BOOKING_MODE flips back to
+ * false, same as every other CTA on the site. One quiet card, a Pre-Book
+ * CTA, no numbers.
+ */
+function PricingComingSoon({ onPreBook }: { onPreBook: ReturnType<typeof useBookingCta> }) {
+  return (
+    <div className="mx-auto mt-14 max-w-lg overflow-hidden rounded-[2.5rem] bg-white p-10 text-center shadow-soft sm:p-12">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-sage">
+        <Sparkles className="h-6 w-6 text-primary" aria-hidden />
+      </div>
+      <h3 className="mt-6 text-xl font-semibold text-foreground">Plans &amp; pricing will be announced soon</h3>
+      <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-muted-foreground">
+        We're putting the final touches on our Daily and Weekly rental plans. Pre-book your ride
+        today and be the first to know your price when we launch in your area.
+      </p>
+      <Button href={onPreBook.href} size="lg" className="mt-8 w-full sm:w-auto" onClick={onPreBook.onClick}>
+        Pre-Book Now
+        <ArrowRight className="h-4 w-4" aria-hidden />
+      </Button>
+    </div>
   );
 }
 

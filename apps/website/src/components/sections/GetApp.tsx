@@ -42,20 +42,24 @@ export function GetApp() {
         </Reveal>
 
         <Reveal className="mx-auto mt-9 grid max-w-xl gap-4 sm:grid-cols-2" delay={120}>
+          {/* While the fleet isn't ready, these stay "Coming Soon" even when
+              a real Play Store / rider-web URL IS configured — a working
+              download link would be a back door straight into the real
+              booking/payment flow every other CTA on the site now avoids. */}
           <PlatformButton
             icon={Smartphone}
             eyebrow="Android App"
-            label={PLAY_STORE_URL ? "Get the app" : "Coming soon"}
+            label={PRE_BOOKING_MODE ? "Coming Soon" : PLAY_STORE_URL ? "Get the app" : "Coming soon"}
             href={PLAY_STORE_URL}
-            disabled={!PLAY_STORE_URL}
+            disabled={PRE_BOOKING_MODE || !PLAY_STORE_URL}
             onClick={() => trackEvent("click_get_app", { platform: "android" })}
           />
           <PlatformButton
             icon={Globe}
             eyebrow="Web"
-            label={RIDER_WEB_URL ? "Ride from your browser" : "Coming soon"}
+            label={PRE_BOOKING_MODE ? "Coming Soon" : RIDER_WEB_URL ? "Ride from your browser" : "Coming soon"}
             href={RIDER_WEB_URL}
-            disabled={!RIDER_WEB_URL}
+            disabled={PRE_BOOKING_MODE || !RIDER_WEB_URL}
             external
             onClick={() => trackEvent("click_get_app", { platform: "web" })}
           />
