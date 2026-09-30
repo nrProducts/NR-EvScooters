@@ -50,8 +50,16 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
   const totalDays =
     rental.plan_duration_days ??
     (daysLeft != null ? rentalDayNumber(periodStart) + daysLeft : null);
+  // The day number shown here used to be re-derived from totalDays - daysLeft
+  // — a second formula for the same fact rentalDayNumber(periodStart) already
+  // computes (and which the header badge and My Scooter both use directly).
+  // The two formulas agree only on day 1; every day after that this one came
+  // out a day short (e.g. showing "Day 2" on what was actually Day 3
+  // everywhere else), because daysLeft counts the days FROM now TO the due
+  // date exclusive of today, not inclusive of it the way totalDays does.
+  const dayNumber = totalDays != null ? Math.max(1, Math.min(totalDays, rentalDayNumber(periodStart))) : null;
   const progress =
-    totalDays && daysLeft != null ? Math.max(0.04, Math.min(1, (totalDays - daysLeft) / totalDays)) : null;
+    totalDays && dayNumber != null ? Math.max(0.04, Math.min(1, dayNumber / totalDays)) : null;
 
   const returnRequested = isReturnLocked(rental);
   const lock = useReturnLock(returnRequested);
@@ -106,12 +114,9 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
                     ? t('rental.daysRemaining.one')
                     : t('rental.daysRemaining.other', { count: daysLeft })}
               </Text>
-              {totalDays ? (
+              {totalDays && dayNumber != null ? (
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
-                  {/* daysLeft is exclusive of today (calendarDaysBetween(now, due)),
-                      so on the first day of a 7-day period daysLeft is 6 and this
-                      is Day 1 — no +1. */}
-                  {t('rental.dayOf', { day: Math.max(1, Math.min(totalDays, totalDays - daysLeft)), total: totalDays })}
+                  {t('rental.dayOf', { day: dayNumber, total: totalDays })}
                 </Text>
               ) : null}
             </View>
