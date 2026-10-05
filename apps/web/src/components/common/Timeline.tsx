@@ -23,7 +23,7 @@ export function Timeline({ items }: { items: TimelineItem[] }) {
         <li key={item.id} className="relative">
           <span
             className={cn(
-              "absolute -left-[25px] top-1 h-2.5 w-2.5 rounded-full ring-4 ring-background",
+              "absolute -left-[1.5625rem] top-1 h-2.5 w-2.5 rounded-full ring-4 ring-background",
               dotTone[item.tone ?? "default"],
             )}
           />

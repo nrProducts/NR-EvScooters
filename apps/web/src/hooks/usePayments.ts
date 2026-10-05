@@ -23,3 +23,29 @@ export function useRefundInvoice() {
     },
   });
 }
+
+export function useRecordInvoicePayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, method }: { id: string; method: "upi" | "card" | "netbanking" | "wallet" | "cash" }) =>
+      api.recordInvoicePayment(id, method),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoice"] });
+      qc.invalidateQueries({ queryKey: ["pickup-queue"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+}
+
+export function useAddAdhocCharge() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: api.AdhocChargeInput) => api.addAdhocCharge(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["user"] });
+    },
+  });
+}

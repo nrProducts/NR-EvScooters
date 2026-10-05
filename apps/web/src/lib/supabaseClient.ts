@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database.types";
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -17,4 +18,4 @@ if (!url || !anonKey) {
  * Supabase Auth. The Express API (apps/backend) never brokers login — it's a
  * resource server that verifies the resulting JWT (see docs/auth/README.md).
  */
-export const supabase = createClient(url ?? "", anonKey ?? "");
+export const supabase = createClient<Database>(url ?? "", anonKey ?? "");

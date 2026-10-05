@@ -4,6 +4,7 @@ import { useUiStore } from "@/store/uiStore";
 import { useAuthStore } from "@/store/authStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { RealtimeProvider } from "@/providers/RealtimeProvider";
+import { BrandedLoader } from "@/components/common/BrandedLoader";
 import { fetchCurrentSession } from "@/services/api/staff";
 
 export default function App() {
@@ -39,7 +40,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!checkedSession) return null;
+  if (!checkedSession) return <BrandedLoader />;
 
   return (
     <TooltipProvider delayDuration={200}>

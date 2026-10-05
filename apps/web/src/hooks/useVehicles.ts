@@ -33,27 +33,21 @@ export function useUpdateVehicle() {
   });
 }
 
-export function useUploadVehiclePhoto() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, file, isPrimary }: { id: string; file: File; isPrimary?: boolean }) =>
-      api.uploadVehiclePhoto(id, file, isPrimary),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle"] }),
-  });
-}
-
-export function useDeleteVehiclePhoto() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, photoId }: { id: string; photoId: string }) => api.deleteVehiclePhoto(id, photoId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle"] }),
-  });
-}
-
 export function useScrapVehicle() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: api.ScrapVehicleInput }) => api.scrapVehicle(id, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vehicles"] });
+      qc.invalidateQueries({ queryKey: ["vehicle"] });
+    },
+  });
+}
+
+export function useUnassignVehicle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => api.unassignVehicle(id, reason),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["vehicles"] });
       qc.invalidateQueries({ queryKey: ["vehicle"] });
@@ -70,5 +64,22 @@ export function useAssignVehicleToUser() {
       qc.invalidateQueries({ queryKey: ["vehicles"] });
       qc.invalidateQueries({ queryKey: ["vehicle"] });
     },
+  });
+}
+
+export function useCreateVehicleDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ vehicleId, input }: { vehicleId: string; input: api.VehicleDocumentFormInput }) =>
+      api.createVehicleDocument(vehicleId, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle"] }),
+  });
+}
+
+export function useDeleteVehicleDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: string) => api.deleteVehicleDocument(documentId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle"] }),
   });
 }

@@ -37,15 +37,17 @@ describe("otpTestBody", () => {
 describe("deriveSessionFlags", () => {
     const base = { full_name: "Asha", kyc_status: "verified" as const, account_status: "active" as const };
 
+    // One role, not an array — `users.role` replaced the `user_roles` join.
     it("marks admins", () => {
-        expect(deriveSessionFlags(base, ["admin"]).is_admin).toBe(true);
-        expect(deriveSessionFlags(base, ["rider"]).is_admin).toBe(false);
+        expect(deriveSessionFlags(base, "admin").is_admin).toBe(true);
+        expect(deriveSessionFlags(base, "rider").is_admin).toBe(false);
+        expect(deriveSessionFlags(base, "staff").is_admin).toBe(false);
     });
 
     it("allows renting only when verified AND active", () => {
-        expect(deriveSessionFlags(base, ["rider"]).can_rent).toBe(true);
-        expect(deriveSessionFlags({ ...base, kyc_status: "pending" }, ["rider"]).can_rent).toBe(false);
-        expect(deriveSessionFlags({ ...base, account_status: "suspended" }, ["rider"]).can_rent).toBe(false);
+        expect(deriveSessionFlags(base, "rider").can_rent).toBe(true);
+        expect(deriveSessionFlags({ ...base, kyc_status: "pending" }, "rider").can_rent).toBe(false);
+        expect(deriveSessionFlags({ ...base, account_status: "suspended" }, "rider").can_rent).toBe(false);
     });
 
     it("flags a blank name as needing profile setup", () => {

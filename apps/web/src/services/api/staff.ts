@@ -1,22 +1,37 @@
 import { supabase } from "@/lib/supabaseClient";
 import { apiClient, ApiError } from "./httpClient";
-import type { BackendRoleName, Capability, ModulePermission, Role, StaffUser } from "@/types";
+import type {
+  BackendRoleName, ModulePermission, PermissionKey, Role, StaffUser,
+} from "@/types";
 
-const STAFF_ROLES: BackendRoleName[] = ["staff", "technician", "station_manager", "admin"];
-
+/**
+ * GET /auth/session.
+ *
+ * `roles: BackendRoleName[]` became `role`, because `users.role` is one
+ * column now — the `roles`/`user_roles` join is gone, and with it the two
+ * role names (`technician`, `station_manager`) that had no distinct grants
+ * behind them.
+ *
+ * `capabilities` is gone too. `kyc_reviewer`, `rights_officer` and
+ * `pii_exporter` are ordinary permissions now, so they arrive inside
+ * `permission_keys` alongside everything else rather than on their own axis.
+ */
 interface SessionResponse {
   id: string;
   full_name: string;
   email: string | null;
   phone: string | null;
   profile_photo_url: string | null;
-  roles: BackendRoleName[];
-  capabilities?: Capability[];
+  role: BackendRoleName;
   is_admin: boolean;
   /** null = unrestricted (admin). Array = exact granted module+action pairs (staff). */
   permissions: ModulePermission[] | null;
+  /** The same grants flattened to `"<module>.<action>"`. Empty for admin. */
+  permission_keys: PermissionKey[];
   /** True for a staff account still on its admin-issued temporary password — gates every route to /change-password until cleared. */
   must_change_password: boolean;
+  staff_code: string | null;
+  joined_on: string | null;
 }
 
 /** One place to build the client-side user, so login and refresh cannot drift. */
@@ -28,16 +43,25 @@ function toStaffUser(session: SessionResponse, role: Role): StaffUser {
     phone: session.phone ?? undefined,
     avatarUrl: session.profile_photo_url ?? undefined,
     role,
-    roles: session.roles,
+    backendRole: session.role,
     permissions: session.permissions,
-    capabilities: session.capabilities ?? [],
+    permissionKeys: session.permission_keys ?? [],
     mustChangePassword: session.must_change_password,
+    staffCode: session.staff_code ?? undefined,
+    joinedOn: session.joined_on,
   };
 }
 
-function resolveRole(roles: BackendRoleName[]): Role | null {
-  if (roles.includes("admin")) return "admin";
-  if (roles.some((r) => STAFF_ROLES.includes(r))) return "staff";
+/**
+ * Narrows the backend role to what the console's nav and route guards use.
+ *
+ * Very nearly a pass-through now: `rider` is the only value that cannot open
+ * the console, and the "does this account hold any of four staff-ish roles?"
+ * scan is gone with the roles it scanned.
+ */
+function resolveRole(role: BackendRoleName): Role | null {
+  if (role === "admin") return "admin";
+  if (role === "staff") return "staff";
   return null;
 }
 
@@ -57,11 +81,16 @@ export async function resolveStaffSession(): Promise<StaffUser> {
     throw err;
   }
 
-  const role = resolveRole(session.roles);
+  const role = resolveRole(session.role);
   if (!role) {
+    // No rider web app exists here any more — riders use the Expo mobile app
+    // exclusively, so a rider account reaching this admin login form is
+    // rejected outright, same as any other non-staff role.
     await supabase.auth.signOut();
     throw new ApiError(
-      "This account doesn't have staff or admin access. Riders should use the mobile app.",
+      session.role === "rider"
+        ? "This is a rider account. The admin console is for staff only — use the SwapNgo rider app instead."
+        : "This account doesn't have staff or admin access.",
       403,
       "FORBIDDEN",
     );
@@ -91,9 +120,36 @@ export async function login(identifier: string, password: string): Promise<Staff
   const { error } = looksLikeEmail(trimmed)
     ? await supabase.auth.signInWithPassword({ email: trimmed.toLowerCase(), password })
     : await supabase.auth.signInWithPassword({ phone: trimmed.replace(/[\s()-]/g, ""), password });
-  if (error) throw new ApiError(error.message, 401, "UNAUTHENTICATED");
+
+  if (error) {
+    // Supabase deliberately returns the same generic error for "no such
+    // account" and "wrong password" (anti-enumeration). GET /auth/account-exists
+    // lets us tell them apart so a first-time visitor is pointed at sign-up
+    // instead of being told their (nonexistent) password is wrong.
+    const exists = await accountExists(trimmed);
+    if (!exists) {
+      throw new ApiError(
+        "No account found for this email or phone. Create one to get started.",
+        401,
+        "ACCOUNT_NOT_FOUND",
+      );
+    }
+    throw new ApiError(error.message, 401, "UNAUTHENTICATED");
+  }
 
   return resolveStaffSession();
+}
+
+/** GET /auth/account-exists — public, used to disambiguate login errors (see login() above). */
+async function accountExists(identifier: string): Promise<boolean> {
+  try {
+    const { exists } = await apiClient.get<{ exists: boolean }>("/auth/account-exists", { identifier });
+    return exists;
+  } catch {
+    // If the check itself fails, fall back to the generic Supabase message
+    // rather than misreporting a real account as missing.
+    return true;
+  }
 }
 
 export async function fetchCurrentSession(): Promise<StaffUser | null> {
@@ -102,7 +158,7 @@ export async function fetchCurrentSession(): Promise<StaffUser | null> {
 
   try {
     const session = await apiClient.get<SessionResponse>("/auth/session");
-    const role = resolveRole(session.roles);
+    const role = resolveRole(session.role);
     if (!role) return null;
     return toStaffUser(session, role);
   } catch {

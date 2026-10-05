@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Pencil, Plus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -12,10 +13,12 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { usePlans, useCreatePlan, useUpdatePlan } from "@/hooks/usePlans";
 import { useVehicleModelOptions } from "@/hooks/useVehicleModelOptions";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import type { PlanInput } from "@/services/api/plans";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { useAuthStore } from "@/store/authStore";
 import type { BillingCycle, Plan } from "@/types";
 
@@ -26,7 +29,10 @@ const emptyForm: PlanInput = {
   billing_cycle: "weekly",
   price: 0,
   duration_days: 7,
-  deposit_amount: 2000,
+  deposit_amount: 1500,
+  onboarding_charge_amount: 500,
+  min_rental_days_for_refund: 45,
+  deposit_refundable: true,
   vehicle_model_id: "",
   active: true,
 };
@@ -38,6 +44,9 @@ function toForm(plan: Plan): PlanInput {
     price: plan.price,
     duration_days: plan.duration_days,
     deposit_amount: plan.deposit_amount,
+    onboarding_charge_amount: plan.onboarding_charge_amount,
+    min_rental_days_for_refund: plan.min_rental_days_for_refund,
+    deposit_refundable: plan.deposit_refundable,
     vehicle_model_id: plan.vehicle_model_id ?? "",
     included_minutes: plan.included_minutes ?? undefined,
     active: plan.active,
@@ -60,7 +69,22 @@ export default function PlansPage() {
     { header: "Billing cycle", key: "billing_cycle", render: (p) => <span className="capitalize">{p.billing_cycle}</span> },
     { header: "Duration", key: "duration_days", render: (p) => `${p.duration_days} day${p.duration_days === 1 ? "" : "s"}` },
     { header: "Price", key: "price", sortKey: "price", render: (p) => formatCurrency(p.price) },
-    { header: "Deposit", key: "deposit_amount", render: (p) => formatCurrency(p.deposit_amount) },
+    {
+      header: "Upfront charges",
+      key: "deposit_amount",
+      render: (p) => (
+        <div className="min-w-0">
+          <p className="text-sm">{formatCurrency(p.deposit_amount + p.onboarding_charge_amount)} total</p>
+          <p className="text-xs text-muted-foreground">
+            {formatCurrency(p.onboarding_charge_amount)} onboarding ·{" "}
+            {formatCurrency(p.deposit_amount)} deposit
+            {!p.deposit_refundable
+              ? " · non-refundable"
+              : p.min_rental_days_for_refund > 0 && ` · refundable after ${p.min_rental_days_for_refund}d`}
+          </p>
+        </div>
+      ),
+    },
     { header: "Status", key: "active", render: (p) => <StatusBadge status={p.active ? "active" : "inactive"} /> },
     { header: "Created", key: "created_at", sortKey: "created_at", render: (p) => formatDate(p.created_at), hideOnMobile: true },
     {
@@ -68,30 +92,30 @@ export default function PlansPage() {
       key: "actions",
       render: (p) =>
         canEdit ? (
-          <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setEditing(p); }}>
+          <IconButton
+            variant="ghost"
+            label="Edit plan"
+            onClick={(e) => { e.stopPropagation(); setEditing(p); }}
+          >
             <Pencil className="h-4 w-4" />
-          </Button>
+          </IconButton>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         ),
     },
   ];
 
+  usePageSubtitle(`${data?.total ?? 0} plans · price, duration, deposit and onboarding charge are configured here, never hardcoded`);
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Rental Plans</h1>
-          <p className="text-sm text-muted-foreground">
-            {data?.total ?? 0} plans · price, duration and deposit are configured here, never hardcoded
-          </p>
-        </div>
-        {canCreate && (
+      {canCreate && (
+        <div className="flex justify-end">
           <Button onClick={() => setCreating(true)}>
             <Plus className="mr-1.5 h-4 w-4" /> New plan
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <Card>
         <DataTable
@@ -133,10 +157,22 @@ function PlanFormDialog({
 
   const submit = () => {
     if (mode === "create") {
-      create.mutate(form, { onSuccess: () => onOpenChange(false) });
+      create.mutate(form, {
+        onSuccess: () => {
+          toastSuccess("Plan created");
+          onOpenChange(false);
+        },
+        onError: (err) => toastError(err, "Could not create plan"),
+      });
     } else if (plan) {
       const { vehicle_model_id: _ignored, ...patch } = form;
-      update.mutate({ id: plan.id, patch }, { onSuccess: () => onOpenChange(false) });
+      update.mutate({ id: plan.id, patch }, {
+        onSuccess: () => {
+          toastSuccess("Plan updated");
+          onOpenChange(false);
+        },
+        onError: (err) => toastError(err, "Could not update plan"),
+      });
     }
   };
 
@@ -221,8 +257,81 @@ function PlanFormDialog({
                 value={form.deposit_amount}
                 onChange={(e) => setForm((f) => ({ ...f, deposit_amount: Number(e.target.value) }))}
               />
+              <p className="text-xs text-muted-foreground">
+                {form.deposit_refundable ?? true ? "Refundable, subject to deductions." : "Non-refundable."}
+              </p>
             </div>
           </div>
+
+          <div className="flex items-center justify-between rounded-md border border-border p-3">
+            <div>
+              <Label htmlFor="deposit-refundable">Deposit refundable</Label>
+              <p className="text-xs text-muted-foreground">
+                Off means the security deposit is forfeited outright on return, like the onboarding charge.
+              </p>
+            </div>
+            <Switch
+              id="deposit-refundable"
+              checked={form.deposit_refundable ?? true}
+              onCheckedChange={(checked) =>
+                setForm((f) => ({
+                  ...f,
+                  deposit_refundable: checked,
+                  min_rental_days_for_refund: checked ? f.min_rental_days_for_refund : 0,
+                }))
+              }
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Onboarding charge (₹)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={form.onboarding_charge_amount ?? 0}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, onboarding_charge_amount: Number(e.target.value) }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">Non-refundable. 0 to charge none.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Refundable after (rental days)</Label>
+              <Input
+                type="number"
+                min={0}
+                disabled={!(form.deposit_refundable ?? true)}
+                value={form.min_rental_days_for_refund ?? 0}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, min_rental_days_for_refund: Number(e.target.value) }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                {form.deposit_refundable ?? true
+                  ? "Counted across all the rider's rentals. 0 for no minimum."
+                  : "Disabled — this deposit is never refunded."}
+              </p>
+            </div>
+          </div>
+
+          {/* Stated plainly because this is the number the rider is actually
+              asked to pay, and it is the sum of two fields edited separately. */}
+          <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+            Riders pay{" "}
+            <span className="font-semibold text-foreground">
+              {formatCurrency(form.price + form.deposit_amount + (form.onboarding_charge_amount ?? 0))}
+            </span>{" "}
+            up front ({formatCurrency(form.price)} plan +{" "}
+            {formatCurrency(form.onboarding_charge_amount ?? 0)} onboarding +{" "}
+            {formatCurrency(form.deposit_amount)} deposit).
+            {(form.min_rental_days_for_refund ?? 0) > 0 && (
+              <>
+                {" "}Changing these affects new bookings only — existing riders keep the terms
+                they paid under.
+              </>
+            )}
+          </p>
 
           <div className="flex items-center justify-between rounded-md border border-border p-3">
             <Label htmlFor="plan-active">Active (bookable by riders)</Label>

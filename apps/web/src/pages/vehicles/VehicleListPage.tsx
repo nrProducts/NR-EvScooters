@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, MoreHorizontal, Loader2, Zap } from "lucide-react";
+import {
+  BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, Zap, ChevronDown, ChevronRight, UserX,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,22 +15,26 @@ import { SearchBar } from "@/components/common/SearchBar";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { Spinner } from "@/components/common/Spinner";
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistoryDialog } from "@/components/vehicles/VehicleHistoryDialog";
 import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
-import { useVehicles, useCreateVehicle, useUpdateVehicle } from "@/hooks/useVehicles";
+import { useVehicles, useCreateVehicle, useUpdateVehicle, useUnassignVehicle } from "@/hooks/useVehicles";
 import { useCreateMaintenanceTicket } from "@/hooks/useMaintenance";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { formatDate } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { Vehicle, VehicleStatus } from "@/types";
 
-const STATUS_OPTIONS: (VehicleStatus | "all")[] = ["all", "available", "booked", "assigned", "maintenance", "scrap"];
+const STATUS_OPTIONS: (VehicleStatus | "all")[] = ["all", "available", "reserved", "assigned", "maintenance", "retired"];
 
 export default function VehicleListPage() {
   const navigate = useNavigate();
@@ -41,7 +47,10 @@ export default function VehicleListPage() {
   const [maintenanceTarget, setMaintenanceTarget] = useState<Vehicle | null>(null);
   const [issueDescription, setIssueDescription] = useState("");
   const [assignTarget, setAssignTarget] = useState<Vehicle | null>(null);
+  const [unassignTarget, setUnassignTarget] = useState<Vehicle | null>(null);
+  const [unassignReason, setUnassignReason] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get("new")) {
@@ -57,56 +66,99 @@ export default function VehicleListPage() {
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useVehicles({
     search, status, page, pageSize: 8,
-    sortBy: sort.by as "created_at" | "name" | "battery_percentage" | "next_service_due_date", sortDir: sort.dir,
+    sortBy: sort.by as "created_at" | "display_name" | "registration_number", sortDir: sort.dir,
   });
   const createVehicle = useCreateVehicle();
   const updateVehicle = useUpdateVehicle();
   const createMaintenanceTicket = useCreateMaintenanceTicket();
+  const unassignVehicle = useUnassignVehicle();
 
   const closeMaintenanceDialog = () => {
     setMaintenanceTarget(null);
     setIssueDescription("");
   };
 
+  const closeUnassignDialog = () => {
+    setUnassignTarget(null);
+    setUnassignReason("");
+  };
+
+  const confirmUnassign = () => {
+    if (!unassignTarget) return;
+    unassignVehicle.mutate(
+      { id: unassignTarget.id, reason: unassignReason },
+      {
+        onSuccess: ({ rentalId }) => {
+          toastSuccess("Return started — continue in the review flow");
+          closeUnassignDialog();
+          navigate(`/bookings/returns/${rentalId}`);
+        },
+        onError: (err) => toastError(err, "Could not unassign vehicle"),
+      },
+    );
+  };
+
+  // Opening the ticket IS putting the scooter into maintenance.
+  //
+  // This used to open a ticket and then PATCH the vehicle's status, which was
+  // two writes that could disagree — and the second one no longer does
+  // anything: `recompute_vehicle_status()` derives the status from the open
+  // ticket, and a trigger applies it in the same transaction as the insert.
   const confirmMaintenance = () => {
     if (!maintenanceTarget) return;
     createMaintenanceTicket.mutate(
       { vehicle_id: maintenanceTarget.id, description: issueDescription.trim() },
       {
         onSuccess: () => {
-          updateVehicle.mutate(
-            { id: maintenanceTarget.id, patch: { status: "maintenance" } },
-            { onSuccess: closeMaintenanceDialog },
-          );
+          toastSuccess("Vehicle marked in maintenance");
+          closeMaintenanceDialog();
         },
+        onError: (err) => toastError(err, "Could not open maintenance ticket"),
       },
     );
   };
 
   const columns: DataTableColumn<Vehicle>[] = [
     {
+      header: "",
+      key: "expand",
+      className: "w-8",
+      render: (v) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpandedRowId((cur) => (cur === v.id ? null : v.id));
+          }}
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-smooth hover:bg-card-hover hover:text-foreground"
+          aria-label={expandedRowId === v.id ? "Collapse plan details" : "Expand plan details"}
+        >
+          {expandedRowId === v.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
+      ),
+    },
+    {
       header: "Vehicle",
       key: "name",
-      sortKey: "name",
+      sortKey: "display_name",
       render: (v) => (
         <div className="min-w-0">
           <p className="truncate font-medium">{v.name}</p>
           <p className="truncate text-xs text-muted-foreground">
-            {v.manufacturer} {v.model} · {v.registration_number}
+            {v.model} · {v.registration_number}
           </p>
         </div>
       ),
     },
     {
-      header: "Battery",
-      key: "battery",
-      sortKey: "battery_percentage",
-      render: (v) => (
-        <div className="flex items-center gap-1.5">
-          <BatteryMedium className="h-4 w-4 text-muted-foreground" />
-          {v.battery_percentage}%
-        </div>
-      ),
+      header: "Rider",
+      key: "current_rider",
+      render: (v) =>
+        v.current_rider ? (
+          <span className="truncate">{v.current_rider.full_name}</span>
+        ) : (
+          <span className="text-muted-foreground">Unassigned</span>
+        ),
     },
     { header: "Status", key: "status", render: (v) => <StatusBadge status={v.status} /> },
     {
@@ -114,12 +166,17 @@ export default function VehicleListPage() {
       key: "payment_status",
       render: (v) => (v.payment_status ? <StatusBadge status={v.payment_status} /> : <span className="text-muted-foreground">—</span>),
     },
-    { header: "VIN", key: "vin", render: (v) => v.vin, hideOnMobile: true },
     {
-      header: "Next service",
-      key: "service",
-      sortKey: "next_service_due_date",
-      render: (v) => v.next_service_due_date ?? "—",
+      header: "Batch #",
+      key: "batch_number",
+      render: (v) => v.batch_number ?? <span className="text-muted-foreground">—</span>,
+      hideOnMobile: true,
+    },
+    {
+      header: "VIN",
+      key: "vin",
+      sortKey: "registration_number",
+      render: (v) => v.vin,
       hideOnMobile: true,
     },
     { header: "Added", key: "created_at", sortKey: "created_at", render: (v) => formatDate(v.created_at), hideOnMobile: true },
@@ -128,11 +185,7 @@ export default function VehicleListPage() {
       key: "actions",
       render: (v) => (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
+          <RowActionsButton label="Vehicle actions" onClick={(e) => e.stopPropagation()} />
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={() => navigate(`/vehicles/${v.id}`)}>
               <Eye className="mr-2 h-4 w-4" /> View details
@@ -145,37 +198,41 @@ export default function VehicleListPage() {
                 <Zap className="mr-2 h-4 w-4" /> Assign to rider
               </DropdownMenuItem>
             )}
-            {v.status !== "maintenance" && v.status !== "scrap" && v.status !== "assigned" &&
-              hasAction(user, "maintenance", "create") && hasAction(user, "vehicles", "edit") && (
+            {v.current_rider && hasAction(user, "vehicles", "assign") && (
+              <DropdownMenuItem onClick={() => setUnassignTarget(v)}>
+                <UserX className="mr-2 h-4 w-4" /> Unassign
+              </DropdownMenuItem>
+            )}
+            {v.status !== "maintenance" && v.status !== "retired" && v.status !== "assigned" &&
+              hasAction(user, "maintenance", "create") && (
               <DropdownMenuItem onClick={() => setMaintenanceTarget(v)}>
                 <Wrench className="mr-2 h-4 w-4" /> Mark in maintenance
               </DropdownMenuItem>
             )}
-            {v.status !== "available" && v.status !== "scrap" && v.status !== "assigned" &&
-              hasAction(user, "vehicles", "edit") && (
-              <DropdownMenuItem onClick={() => updateVehicle.mutate({ id: v.id, patch: { status: "available" } })}>
-                <CheckCircle2 className="mr-2 h-4 w-4" /> Mark available
-              </DropdownMenuItem>
-            )}
+            {/*
+              "Mark available" is gone. `vehicles.status` is derived, so the
+              way back to available is resolving the maintenance ticket that
+              made it unavailable — which is what the Maintenance page does.
+              A button here would have written a value the next recompute
+              immediately overwrote.
+            */}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
     },
   ];
 
+  usePageSubtitle(`${data?.total ?? 0} vehicles in the fleet`);
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Vehicles</h1>
-          <p className="text-sm text-muted-foreground">{data?.total ?? 0} vehicles in the fleet</p>
-        </div>
-        {hasAction(user, "vehicles", "create") && (
+      {hasAction(user, "vehicles", "create") && (
+        <div className="flex justify-end">
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" /> Add vehicle
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
@@ -185,7 +242,7 @@ export default function VehicleListPage() {
               setSearch(v);
               setPage(1);
             }}
-            placeholder="Search by name, registration or VIN..."
+            placeholder="Search name, reg. or VIN…"
             className="sm:max-w-xs"
           />
           <Select
@@ -218,6 +275,27 @@ export default function VehicleListPage() {
           emptyTitle="No vehicles match your filters"
           sort={sort}
           onSortChange={onSortChange}
+          expandedRowId={expandedRowId}
+          renderExpandedRow={(v) => (
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Plan</p>
+                <p className="font-medium">{v.plan_name ?? "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Plan status</p>
+                {v.plan_status ? <StatusBadge status={v.plan_status} /> : <p className="font-medium">—</p>}
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Plan start</p>
+                <p className="font-medium">{v.plan_start_date ? formatDate(v.plan_start_date) : "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Plan end</p>
+                <p className="font-medium">{v.plan_end_date ? formatDate(v.plan_end_date) : "—"}</p>
+              </div>
+            </div>
+          )}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
@@ -229,7 +307,13 @@ export default function VehicleListPage() {
         isPending={createVehicle.isPending}
         error={createVehicle.error}
         onSubmit={(input) =>
-          createVehicle.mutate(input, { onSuccess: () => setCreateOpen(false) })
+          createVehicle.mutate(input, {
+            onSuccess: () => {
+              toastSuccess("Vehicle added");
+              setCreateOpen(false);
+            },
+            onError: (err) => toastError(err, "Could not add vehicle"),
+          })
         }
       />
 
@@ -247,7 +331,7 @@ export default function VehicleListPage() {
             <Textarea
               value={issueDescription}
               onChange={(e) => setIssueDescription(e.target.value)}
-              placeholder="e.g. Front brake making a grinding noise"
+              placeholder="Issue"
               rows={3}
             />
           </div>
@@ -269,9 +353,52 @@ export default function VehicleListPage() {
               onClick={confirmMaintenance}
             >
               {(createMaintenanceTicket.isPending || updateVehicle.isPending) && (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Spinner className="h-4 w-4" />
               )}
               Mark in maintenance
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!unassignTarget} onOpenChange={(o) => !o && closeUnassignDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unassign {unassignTarget?.current_rider?.full_name ?? "rider"}?</DialogTitle>
+            <DialogDescription>
+              This ends their current plan on {unassignTarget?.name}. You&rsquo;ll land on the same
+              return-review screen used for a rider-requested return — record any damage, settle the
+              deposit, and choose whether the vehicle goes to Maintenance or back to Available there.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-1.5">
+            <Label>Reason</Label>
+            <Textarea
+              value={unassignReason}
+              onChange={(e) => setUnassignReason(e.target.value)}
+              placeholder="e.g. Rider unreachable, reclaiming vehicle for another assignment"
+              rows={3}
+            />
+          </div>
+
+          {!!unassignVehicle.error && (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {unassignVehicle.error instanceof ApiError ? unassignVehicle.error.message : "Something went wrong. Please try again."}
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeUnassignDialog}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={unassignVehicle.isPending || unassignReason.trim().length < 3}
+              onClick={confirmUnassign}
+            >
+              {unassignVehicle.isPending && <Spinner className="h-4 w-4" />}
+              Unassign &amp; start return
             </Button>
           </DialogFooter>
         </DialogContent>

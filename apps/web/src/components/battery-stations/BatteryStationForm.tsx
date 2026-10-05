@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Loader2, MapPin, Plus, X } from "lucide-react";
+import { MapPin, Plus, X } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -142,7 +143,7 @@ export function BatteryStationForm({
             <Input
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
-              placeholder="Egmore Railway Station"
+              placeholder="Station name"
               aria-invalid={!!fieldError("name")}
             />
             <FieldMessage message={fieldError("name")} />
@@ -160,7 +161,7 @@ export function BatteryStationForm({
                     addQisId();
                   }
                 }}
-                placeholder="WMQISXM1V1-00774"
+                placeholder="QIS ID"
                 aria-invalid={!!fieldError("qisIds")}
               />
               <Button type="button" variant="outline" onClick={addQisId}>
@@ -196,7 +197,7 @@ export function BatteryStationForm({
               value={form.latitude}
               onChange={(e) => set("latitude", e.target.value)}
               inputMode="decimal"
-              placeholder="13.077987"
+              placeholder="Latitude"
               aria-invalid={!!fieldError("latitude")}
             />
             <FieldMessage message={fieldError("latitude")} />
@@ -208,7 +209,7 @@ export function BatteryStationForm({
               value={form.longitude}
               onChange={(e) => set("longitude", e.target.value)}
               inputMode="decimal"
-              placeholder="80.261991"
+              placeholder="Longitude"
               aria-invalid={!!fieldError("longitude")}
             />
             <FieldMessage message={fieldError("longitude")} />
@@ -293,7 +294,7 @@ export function BatteryStationForm({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={isPending}>
-            {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isPending && <Spinner className="h-4 w-4" />}
             {station ? "Save changes" : "Add station"}
           </Button>
         </DialogFooter>

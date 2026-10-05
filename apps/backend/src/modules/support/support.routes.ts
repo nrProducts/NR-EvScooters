@@ -40,6 +40,13 @@ adminSupportRouter.get(
     asyncHandler(c.supportDetailHandler),
 );
 
+adminSupportRouter.get(
+    "/:id/rider-impact-preview",
+    requireAction("support", "reply"),
+    validate({ params: v.supportIdParam }),
+    asyncHandler(c.riderImpactPreviewHandler),
+);
+
 adminSupportRouter.patch(
     "/:id",
     // NOTE: task spec said requireAction("support","respond"), but "respond" is

@@ -1,13 +1,13 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  ArrowLeft, BatteryMedium, Pencil, FileText, Images, Upload, Trash2, Loader2, Recycle,
-} from "lucide-react";
+import { ArrowLeft, Pencil, FileText, Recycle, Plus, Trash2, ExternalLink, UserX } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -18,12 +18,16 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistorySplitView } from "@/components/vehicles/VehicleHistorySplitView";
 import {
-  useVehicle, useUpdateVehicle, useUploadVehiclePhoto, useDeleteVehiclePhoto, useScrapVehicle,
+  useVehicle, useUpdateVehicle, useScrapVehicle, useUnassignVehicle, useCreateVehicleDocument, useDeleteVehicleDocument,
 } from "@/hooks/useVehicles";
+import { getVehicleDocumentUrl, type VehicleDocumentFormInput } from "@/services/api/vehicles";
 import { ApiError } from "@/services/api/httpClient";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import type { VehicleDocument, VehicleDocumentType } from "@/types";
 
 export default function VehicleDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -31,12 +35,30 @@ export default function VehicleDetailPage() {
   const user = useAuthStore((s) => s.user);
   const { data: vehicle, isLoading, isError, refetch } = useVehicle(id);
   const updateVehicle = useUpdateVehicle();
-  const uploadPhoto = useUploadVehiclePhoto();
-  const deletePhoto = useDeleteVehiclePhoto();
   const scrapVehicle = useScrapVehicle();
+  const unassignVehicle = useUnassignVehicle();
+  const createDocument = useCreateVehicleDocument();
+  const deleteDocument = useDeleteVehicleDocument();
   const [editOpen, setEditOpen] = useState(false);
   const [scrapOpen, setScrapOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [unassignOpen, setUnassignOpen] = useState(false);
+  const [addDocOpen, setAddDocOpen] = useState(false);
+  const [deleteDoc, setDeleteDoc] = useState<VehicleDocument | null>(null);
+  const [openingDocId, setOpeningDocId] = useState<string | null>(null);
+
+  const canEdit = hasAction(user, "vehicles", "edit");
+
+  const openDocument = async (doc: VehicleDocument) => {
+    setOpeningDocId(doc.id);
+    try {
+      const url = await getVehicleDocumentUrl(doc.id);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toastError(err, "Could not open document");
+    } finally {
+      setOpeningDocId(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -57,10 +79,15 @@ export default function VehicleDetailPage() {
         <div className="flex-1">
           <h1 className="text-2xl font-semibold tracking-tight">{vehicle.name}</h1>
           <p className="text-sm text-muted-foreground">
-            {vehicle.manufacturer} {vehicle.model} · {vehicle.registration_number}
+            {vehicle.model} · {vehicle.registration_number}
           </p>
         </div>
         <StatusBadge status={vehicle.status} />
+        {vehicle.current_rider && hasAction(user, "vehicles", "assign") && (
+          <Button variant="outline" size="sm" onClick={() => setUnassignOpen(true)}>
+            <UserX className="h-4 w-4" /> Unassign
+          </Button>
+        )}
         {vehicle.status === "maintenance" && hasAction(user, "vehicles", "delete") && (
           <Button variant="outline" size="sm" onClick={() => setScrapOpen(true)}>
             <Recycle className="h-4 w-4" /> Scrap
@@ -79,53 +106,93 @@ export default function VehicleDetailPage() {
             <CardTitle>Vehicle details</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/*
+              Battery number and charge level are gone: a battery is swapped at
+              a station, so it was never a property of a scooter. Service dates
+              are the maintenance history below, and insurance is one of the
+              documents beside it — both were separately-stored copies of
+              something already recorded elsewhere.
+            */}
             <Detail label="VIN" value={vehicle.vin} />
-            <Detail label="Battery number" value={vehicle.battery_number} />
-            <Detail
-              label="Battery"
-              value={`${vehicle.battery_percentage}%`}
-              icon={BatteryMedium}
-              hint="Manually recorded — live telemetry isn't wired up yet."
-            />
-            <Detail label="Current rider" value={vehicle.current_rider?.full_name ?? "None"} />
-            <Detail label="Last service" value={vehicle.last_service_date ? formatDate(vehicle.last_service_date) : "Not recorded"} />
-            <Detail label="Next service due" value={vehicle.next_service_due_date ? formatDate(vehicle.next_service_due_date) : "Not scheduled"} />
+            <Detail label="Current rider" value={vehicle.current_rider?.full_name ?? "Unassigned"} />
             <Detail label="Color" value={vehicle.color ?? "Not recorded"} />
             <Detail label="QR code" value={vehicle.qr_code ?? "Not assigned"} />
             <Detail label="IMEI / IoT device" value={vehicle.imei ?? "Not recorded"} />
+            <Detail label="Batch number" value={vehicle.batch_number ?? "Not recorded"} />
             <Detail label="Purchase date" value={vehicle.purchase_date ? formatDate(vehicle.purchase_date) : "Not recorded"} />
-            <Detail
-              label="Insurance"
-              value={
-                vehicle.insurance_number
-                  ? `${vehicle.insurance_number}${vehicle.insurance_expiry ? ` · expires ${formatDate(vehicle.insurance_expiry)}` : ""}`
-                  : "Not recorded"
-              }
-            />
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-4 w-4" /> Documents
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            {vehicle.documents.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No registration/insurance documents on file.</p>
-            ) : (
-              vehicle.documents.map((doc) => (
-                <div key={doc.id} className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="font-medium capitalize">{doc.doc_type}</p>
-                    <p className="text-xs text-muted-foreground">expires {formatDate(doc.expiry_date)}</p>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Current plan</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-4">
+              {vehicle.plan_name ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <Detail label="Plan" value={vehicle.plan_name} />
+                    {vehicle.plan_status && <StatusBadge status={vehicle.plan_status} />}
                   </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+                  <Detail label="Start date" value={vehicle.plan_start_date ? formatDate(vehicle.plan_start_date) : "Not recorded"} />
+                  <Detail label="End date" value={vehicle.plan_end_date ? formatDate(vehicle.plan_end_date) : "Not recorded"} />
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">No active plan — this vehicle is unassigned.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-4 w-4" /> Documents
+              </CardTitle>
+              {canEdit && (
+                <Button variant="outline" size="sm" onClick={() => setAddDocOpen(true)}>
+                  <Plus className="h-4 w-4" /> Add
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {vehicle.documents.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No registration, insurance, PUC, fitness or permit documents on file.
+                </p>
+              ) : (
+                vehicle.documents.map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="font-medium capitalize">{doc.doc_type}</p>
+                      <p className="text-xs text-muted-foreground">
+                        #{doc.doc_number} · expires {formatDate(doc.expires_on)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {doc.has_file && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={openingDocId === doc.id}
+                          onClick={() => void openDocument(doc)}
+                          title="View file"
+                        >
+                          {openingDocId === doc.id ? <Spinner className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
+                        </Button>
+                      )}
+                      {canEdit && (
+                        <Button variant="ghost" size="icon" onClick={() => setDeleteDoc(doc)} title="Delete">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {vehicle.scrap_record && (
@@ -147,65 +214,15 @@ export default function VehicleDetailPage() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="flex items-center gap-2">
-            <Images className="h-4 w-4" /> Photos
-          </CardTitle>
-          {hasAction(user, "vehicles", "edit") && (
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) uploadPhoto.mutate({ id: vehicle.id, file });
-                  e.target.value = "";
-                }}
-              />
-              <Button variant="outline" size="sm" disabled={uploadPhoto.isPending} onClick={() => fileInputRef.current?.click()}>
-                {uploadPhoto.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                Upload photo
-              </Button>
-            </div>
-          )}
-        </CardHeader>
-        <CardContent>
-          {uploadPhoto.isError && (
-            <p className="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              Could not upload that photo. Please try again.
-            </p>
-          )}
-          {vehicle.photos.length === 0 ? (
-            <EmptyState title="No photos yet" description="Upload condition or inspection photos for this vehicle." />
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {vehicle.photos.map((p) => (
-                <div key={p.id} className="group relative overflow-hidden rounded-lg border border-border">
-                  <img src={p.url} alt="Vehicle" className="aspect-square w-full object-cover" />
-                  {p.is_primary && (
-                    <span className="absolute left-1.5 top-1.5 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
-                      Primary
-                    </span>
-                  )}
-                  {hasAction(user, "vehicles", "edit") && (
-                    <button
-                      type="button"
-                      onClick={() => deletePhoto.mutate({ id: vehicle.id, photoId: p.id })}
-                      className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                      aria-label="Delete photo"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/*
+        The Photos card is gone with the `vehicle_photos` table.
+
+        Every scooter of a model carried the same six studio shots, re-uploaded
+        per unit — those belong to the MODEL, and live on
+        `vehicle_model_media` now. Condition photographs, the genuinely
+        per-unit kind, are `incidents.photo_paths`, shown next to the damage
+        they evidence rather than in a gallery detached from any claim.
+      */}
 
       <VehicleHistorySplitView vehicle={vehicle} />
 
@@ -216,7 +233,13 @@ export default function VehicleDetailPage() {
         isPending={updateVehicle.isPending}
         error={updateVehicle.error}
         onSubmit={(input) =>
-          updateVehicle.mutate({ id: vehicle.id, patch: input }, { onSuccess: () => setEditOpen(false) })
+          updateVehicle.mutate({ id: vehicle.id, patch: input }, {
+            onSuccess: () => {
+              toastSuccess("Vehicle updated");
+              setEditOpen(false);
+            },
+            onError: (err) => toastError(err, "Could not update vehicle"),
+          })
         }
       />
 
@@ -224,12 +247,189 @@ export default function VehicleDetailPage() {
         open={scrapOpen}
         onOpenChange={setScrapOpen}
         onSubmit={(input) =>
-          scrapVehicle.mutate({ id: vehicle.id, input }, { onSuccess: () => setScrapOpen(false) })
+          scrapVehicle.mutate({ id: vehicle.id, input }, {
+            onSuccess: () => {
+              toastSuccess("Vehicle scrapped");
+              setScrapOpen(false);
+            },
+            onError: (err) => toastError(err, "Could not scrap vehicle"),
+          })
         }
         isPending={scrapVehicle.isPending}
         error={scrapVehicle.error}
       />
+
+      <UnassignDialog
+        open={unassignOpen}
+        onOpenChange={setUnassignOpen}
+        riderName={vehicle.current_rider?.full_name ?? "the current rider"}
+        onSubmit={(reason) =>
+          unassignVehicle.mutate({ id: vehicle.id, reason }, {
+            onSuccess: ({ rentalId }) => {
+              toastSuccess("Return started — continue in the review flow");
+              setUnassignOpen(false);
+              navigate(`/bookings/returns/${rentalId}`);
+            },
+            onError: (err) => toastError(err, "Could not unassign vehicle"),
+          })
+        }
+        isPending={unassignVehicle.isPending}
+        error={unassignVehicle.error}
+      />
+
+      <AddDocumentDialog
+        open={addDocOpen}
+        onOpenChange={setAddDocOpen}
+        isPending={createDocument.isPending}
+        error={createDocument.error}
+        onSubmit={(input) =>
+          createDocument.mutate({ vehicleId: vehicle.id, input }, {
+            onSuccess: () => {
+              toastSuccess("Document added");
+              setAddDocOpen(false);
+            },
+            onError: (err) => toastError(err, "Could not add document"),
+          })
+        }
+      />
+
+      <ConfirmDialog
+        open={!!deleteDoc}
+        onOpenChange={(o) => !o && setDeleteDoc(null)}
+        title="Delete this document?"
+        description={deleteDoc ? `This removes the ${deleteDoc.doc_type} record and its file, if any. This can't be undone.` : undefined}
+        confirmLabel="Delete"
+        destructive
+        loading={deleteDocument.isPending}
+        onConfirm={() =>
+          deleteDoc &&
+          deleteDocument.mutate(deleteDoc.id, {
+            onSuccess: () => {
+              toastSuccess("Document deleted");
+              setDeleteDoc(null);
+            },
+            onError: (err) => toastError(err, "Could not delete document"),
+          })
+        }
+      />
     </div>
+  );
+}
+
+const DOCUMENT_TYPES: { value: VehicleDocumentType; label: string }[] = [
+  { value: "registration", label: "Registration (RC)" },
+  { value: "insurance", label: "Insurance" },
+  { value: "puc", label: "PUC" },
+  { value: "fitness", label: "Fitness" },
+  { value: "permit", label: "Permit" },
+];
+
+function AddDocumentDialog({
+  open,
+  onOpenChange,
+  onSubmit,
+  isPending,
+  error,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (input: VehicleDocumentFormInput) => void;
+  isPending: boolean;
+  error: unknown;
+}) {
+  const [docType, setDocType] = useState<VehicleDocumentType>("registration");
+  const [docNumber, setDocNumber] = useState("");
+  const [issuedOn, setIssuedOn] = useState("");
+  const [expiresOn, setExpiresOn] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+
+  const reset = () => {
+    setDocType("registration");
+    setDocNumber("");
+    setIssuedOn("");
+    setExpiresOn("");
+    setFile(null);
+  };
+
+  const canSubmit = docNumber.trim().length > 0 && expiresOn.length > 0 && !isPending;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) reset();
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add a document</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-1.5">
+          <Label>Document type</Label>
+          <Select value={docType} onValueChange={(v) => setDocType(v as VehicleDocumentType)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DOCUMENT_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Document number</Label>
+          <Input value={docNumber} onChange={(e) => setDocNumber(e.target.value)} placeholder="e.g. TN01AB1234" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Issued on (optional)</Label>
+            <Input type="date" value={issuedOn} onChange={(e) => setIssuedOn(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Expires on</Label>
+            <Input type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label>File (optional — JPEG, PNG or PDF)</Label>
+          <Input
+            type="file"
+            accept="image/jpeg,image/png,application/pdf"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+        </div>
+
+        {!!error && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {error instanceof ApiError ? error.message : "Something went wrong. Please try again."}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!canSubmit}
+            onClick={() =>
+              onSubmit({
+                doc_type: docType,
+                doc_number: docNumber.trim(),
+                issued_on: issuedOn || undefined,
+                expires_on: expiresOn,
+                file: file ?? undefined,
+              })
+            }
+          >
+            {isPending && <Spinner className="h-4 w-4" />}
+            Add document
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -304,8 +504,78 @@ function ScrapDialog({
               })
             }
           >
-            {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isPending && <Spinner className="h-4 w-4" />}
             Scrap vehicle
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function UnassignDialog({
+  open,
+  onOpenChange,
+  riderName,
+  onSubmit,
+  isPending,
+  error,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  riderName: string;
+  onSubmit: (reason: string) => void;
+  isPending: boolean;
+  error: unknown;
+}) {
+  const [reason, setReason] = useState("");
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) setReason("");
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Unassign this vehicle?</DialogTitle>
+        </DialogHeader>
+
+        <p className="text-sm text-muted-foreground">
+          This ends {riderName}&rsquo;s current plan on this vehicle. You&rsquo;ll land on the same
+          return-review screen used for a rider-requested return — record any damage, settle the
+          deposit, and choose whether the vehicle goes to Maintenance or back to Available there.
+        </p>
+
+        <div className="space-y-1.5">
+          <Label>Reason</Label>
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            placeholder="e.g. Rider unreachable, reclaiming vehicle for another assignment"
+          />
+        </div>
+
+        {!!error && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {error instanceof ApiError ? error.message : "Something went wrong. Please try again."}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={reason.trim().length < 3 || isPending}
+            onClick={() => onSubmit(reason.trim())}
+          >
+            {isPending && <Spinner className="h-4 w-4" />}
+            Unassign & start return
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -321,7 +591,7 @@ function Detail({
 }: {
   label: string;
   value: string;
-  icon?: typeof BatteryMedium;
+  icon?: typeof FileText;
   hint?: string;
 }) {
   return (
@@ -330,7 +600,7 @@ function Detail({
       <div>
         <p className="text-xs text-muted-foreground">{label}</p>
         <p className="font-medium">{value}</p>
-        {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+        {hint && <p className="text-[0.6875rem] text-muted-foreground">{hint}</p>}
       </div>
     </div>
   );

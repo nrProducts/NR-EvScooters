@@ -1,5 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, TouchableOpacity } from 'react-native';
+import { TouchableOpacity } from 'react-native';
+import { Spinner } from '../../../components/Spinner';
 import type { LucideIcon } from 'lucide-react-native';
 import { COLORS } from '../../../constants/theme';
 
@@ -34,7 +35,7 @@ export const MapControlButton: React.FC<{
         }}
     >
         {busy ? (
-            <ActivityIndicator size="small" color={active ? COLORS.white : COLORS.primary} />
+            <Spinner size={16} color={active ? COLORS.white : COLORS.primary} />
         ) : (
             <Icon size={20} color={active ? COLORS.white : COLORS.textPrimary} />
         )}

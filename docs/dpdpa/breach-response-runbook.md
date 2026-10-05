@@ -45,11 +45,10 @@ Concretely, for Swapngo:
 | A staff member without `kyc_reviewer` obtains an ID image | Yes |
 | A staff member with the capability opens documents for riders they have no task for | Yes — misuse |
 | The service-role key leaks | Yes, and treat as total |
-| A `data-exports` signed URL is forwarded outside the rider | Yes |
 | A rider's account is accessed by someone else via a stolen OTP | Yes |
 | Ransomware or accidental destruction of the KYC bucket | Yes — availability |
 | An ops agent views a rider's profile to answer their ticket | No |
-| A rider downloads their own data | No |
+| A rider views their own s.11 summary | No |
 
 ---
 

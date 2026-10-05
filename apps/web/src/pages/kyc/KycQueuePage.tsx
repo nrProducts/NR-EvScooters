@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, XCircle, FileText, ExternalLink, AlertTriangle, RotateCcw, RotateCw, UserRound, ShieldAlert, Lock } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, ExternalLink, AlertTriangle, RotateCcw, RotateCw, UserRound, ShieldAlert, Lock, Eye } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -16,12 +16,14 @@ import { LoadingSkeletonRows } from "@/components/common/LoadingSkeletonRows";
 import { SearchBar } from "@/components/common/SearchBar";
 import { Pagination } from "@/components/common/Pagination";
 import {
-  useKycQueue, useApproveKyc, useRejectKyc, useKycDetail, useVerifyDocument, useRejectDocument, useOpenDocument,
+  useKycQueue, useApproveKyc, useRejectKyc, useKycDetail, useOpenDocument,
 } from "@/hooks/useKyc";
 import { useOpenUserPhoto } from "@/hooks/useUsers";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { formatDate } from "@/lib/utils";
-import { PII_ACCESS_REASON_LABELS, type KycQueueItem, type KycStatus, type PiiAccessReason } from "@/types";
+import { PII_ACCESS_REASON_LABELS, hasPermission, type KycQueueItem, type KycStatus, type PiiAccessReason } from "@/types";
 
 /** Staff can never claim "rider_self" — the server sets that one. */
 type StaffAccessReason = Exclude<PiiAccessReason, "rider_self">;
@@ -58,21 +60,21 @@ export default function KycQueuePage() {
   const handleApprove = (item: KycQueueItem) => {
     setApproveError(null);
     approveKyc.mutate(item.user_id, {
-      onError: (err) =>
+      onSuccess: () => toastSuccess("KYC approved", `${item.full_name || "Rider"} is now verified.`),
+      onError: (err) => {
         setApproveError({
           userId: item.user_id,
           message: err instanceof ApiError ? err.message : "Could not approve this rider.",
-        }),
+        });
+        toastError(err, "Could not approve this rider");
+      },
     });
   };
 
+  usePageSubtitle("Review rider identity documents before approving fleet access");
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">KYC Management</h1>
-        <p className="text-sm text-muted-foreground">Review rider identity documents before approving fleet access</p>
-      </div>
-
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs value={tab} onValueChange={(v) => { setTab(v as KycStatus); setPage(1); }}>
           <TabsList className="flex-wrap">
@@ -85,7 +87,7 @@ export default function KycQueuePage() {
           <SearchBar
             value={search}
             onChange={(v) => { setSearch(v); setPage(1); }}
-            placeholder="Search by name, email or phone..."
+            placeholder="Search name, email or phone…"
             className="sm:max-w-xs"
           />
           <Select value={sort} onValueChange={(v) => { setSort(v as typeof sort); setPage(1); }}>
@@ -177,7 +179,7 @@ export default function KycQueuePage() {
             <Textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. Document image is blurred or expired"
+              placeholder="Reason"
               rows={3}
             />
           </div>
@@ -195,7 +197,13 @@ export default function KycQueuePage() {
                 if (rejectTarget) {
                   rejectKyc.mutate(
                     { userId: rejectTarget.user_id, reason },
-                    { onSuccess: () => setRejectTarget(null) },
+                    {
+                      onSuccess: () => {
+                        toastSuccess("KYC rejected");
+                        setRejectTarget(null);
+                      },
+                      onError: (err) => toastError(err, "Could not reject this rider"),
+                    },
                   );
                 }
               }}
@@ -218,12 +226,8 @@ function isPdfUrl(url: string): boolean {
 
 function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onClose: () => void }) {
   const { data: detail, isLoading } = useKycDetail(target?.user_id);
-  const verifyDocument = useVerifyDocument();
-  const rejectDocument = useRejectDocument();
   const openDocument = useOpenDocument();
   const openUserPhoto = useOpenUserPhoto();
-  const [rejectDocId, setRejectDocId] = useState<string | null>(null);
-  const [docReason, setDocReason] = useState("");
   const [preview, setPreview] = useState<{ url: string; title: string } | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
   const [rotation, setRotation] = useState(0);
@@ -231,7 +235,13 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
   // Whether this staff member may see identity documents at all. The backend
   // enforces the same thing on every one of these routes — hiding the controls
   // is so people are not offered actions that will 403, not the control itself.
-  const canReview = useAuthStore((st) => st.user?.capabilities.includes("kyc_reviewer") ?? false);
+  //
+  // This was the `kyc_reviewer` CAPABILITY. It is an ordinary permission now,
+  // granted from the same matrix as everything else, so the check is a lookup
+  // in the caller's permission keys rather than a separate array.
+  const canReview = useAuthStore((st) =>
+    st.user ? hasPermission(st.user, "kyc", "reveal_number") : false,
+  );
 
   // Asked once per opened rider, not once per document: a reviewer working
   // through one rider's file is doing one task, and re-prompting per click
@@ -300,14 +310,15 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
               </div>
             )}
             {canReview && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={openUserPhoto.isPending}
-                onClick={viewRiderPhoto}
-              >
-                <UserRound className="h-3.5 w-3.5" /> Rider photo
-              </Button>
+              <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div className="flex items-center gap-2">
+                  <UserRound className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-sm font-medium">Rider photo</p>
+                </div>
+                <Button size="sm" variant="outline" disabled={openUserPhoto.isPending} onClick={viewRiderPhoto}>
+                  <Eye className="h-3.5 w-3.5" /> View
+                </Button>
+              </div>
             )}
             {access && (
               <p className="text-xs text-muted-foreground">
@@ -326,7 +337,7 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
               detail.documents.map((doc) => (
                 <div key={doc.id} className="space-y-2 rounded-lg border border-border p-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium capitalize">{doc.doc_type.replace(/_/g, " ")}</p>
+                    <p className="text-sm font-medium capitalize">{doc.document_type.replace(/_/g, " ")}</p>
                     <StatusBadge status={doc.verification_status} />
                   </div>
                   {doc.doc_number_masked && (
@@ -337,8 +348,8 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
                           number to compare against. */}
                     </p>
                   )}
-                  {doc.expiry_date && (
-                    <p className="text-xs text-muted-foreground">Expires {formatDate(doc.expiry_date)}</p>
+                  {doc.expires_on && (
+                    <p className="text-xs text-muted-foreground">Expires {formatDate(doc.expires_on)}</p>
                   )}
                   {doc.rejection_reason && (
                     <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">{doc.rejection_reason}</p>
@@ -349,7 +360,7 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
                         size="sm"
                         variant="outline"
                         disabled={openDocument.isPending}
-                        onClick={() => viewDocument(doc.id, "front", doc.doc_type.replace(/_/g, " "))}
+                        onClick={() => viewDocument(doc.id, "front", doc.document_type.replace(/_/g, " "))}
                       >
                         <ExternalLink className="h-3.5 w-3.5" /> Front
                       </Button>
@@ -359,31 +370,13 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
                         size="sm"
                         variant="outline"
                         disabled={openDocument.isPending}
-                        onClick={() => viewDocument(doc.id, "back", doc.doc_type.replace(/_/g, " "))}
+                        onClick={() => viewDocument(doc.id, "back", doc.document_type.replace(/_/g, " "))}
                       >
                         <ExternalLink className="h-3.5 w-3.5" /> Back
                       </Button>
                     ) : (
                       <span className="text-xs text-muted-foreground">No back side uploaded</span>
                     ))}
-                    {/* Verify and Reject are gated on the same capability: you
-                        cannot responsibly decide on a document you are not
-                        allowed to look at. */}
-                    {canReview && doc.verification_status === "pending" && (
-                      <>
-                        <Button size="sm" onClick={() => verifyDocument.mutate(doc.id)} disabled={verifyDocument.isPending}>
-                          Verify
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => { setRejectDocId(doc.id); setDocReason(""); }}
-                        >
-                          Reject
-                        </Button>
-                      </>
-                    )}
                   </div>
                 </div>
               ))
@@ -407,35 +400,6 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
           if (run) setTimeout(run, 0);
         }}
       />
-
-      <Dialog open={!!rejectDocId} onOpenChange={(o) => !o && setRejectDocId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reject document</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            <Label>Reason</Label>
-            <Textarea value={docReason} onChange={(e) => setDocReason(e.target.value)} rows={3} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectDocId(null)}>Cancel</Button>
-            <Button
-              variant="destructive"
-              disabled={docReason.trim().length < 10 || rejectDocument.isPending}
-              onClick={() => {
-                if (rejectDocId) {
-                  rejectDocument.mutate(
-                    { documentId: rejectDocId, reason: docReason },
-                    { onSuccess: () => setRejectDocId(null) },
-                  );
-                }
-              }}
-            >
-              Reject document
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={!!preview}
@@ -542,7 +506,7 @@ function AccessReasonDialog({
             <Input
               value={contextRef}
               onChange={(e) => setContextRef(e.target.value)}
-              placeholder="e.g. SUP-1042 or DPR-2026-000031"
+              placeholder="Ticket or case reference"
             />
           </div>
         </div>

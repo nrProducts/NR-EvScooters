@@ -117,7 +117,7 @@ describe('kyc: rider rules', () => {
   it('requires an expiry date on a licence', async () => {
     await asNewRider();
     await expectStatus(
-      () => kyc.uploadMine({ doc_type: 'driving_license', doc_number: 'KL0120990011111', front: FILE }),
+      () => kyc.uploadMine({ doc_type: 'driving_licence', doc_number: 'KL0120990011111', front: FILE }),
       422,
     );
   });
@@ -127,8 +127,8 @@ describe('kyc: rider rules', () => {
     await expectStatus(
       () =>
         kyc.uploadMine({
-          doc_type: 'driving_license', doc_number: 'KL0120990011111',
-          expiry_date: '2020-01-01', front: FILE,
+          doc_type: 'driving_licence', doc_number: 'KL0120990011111',
+          expires_on: '2020-01-01', front: FILE,
         }),
       422,
     );

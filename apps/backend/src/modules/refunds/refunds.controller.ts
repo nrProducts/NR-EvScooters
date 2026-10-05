@@ -2,7 +2,7 @@ import { Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import * as service from "./refunds.service";
-import { InitiateRefundBody, ListRefundsQuery } from "./refunds.validation";
+import { InitiateRefundBody, ListRefundsQuery, RejectRefundBody, ReviewRefundBody } from "./refunds.validation";
 
 export async function listRefundsHandler(req: AuthedRequest, res: Response) {
     const { status, refundType, bookingId, ...page } = validatedQuery<ListRefundsQuery>(req);
@@ -30,7 +30,19 @@ export async function getRefundSettlementHandler(req: AuthedRequest, res: Respon
     res.json(await service.getRefundSettlement(req.params.id as string));
 }
 
-/** Doubles as "Approve & Process Refund" for a refund still at status='pending' (either refund_type) — see processRefund's doc comment. */
+/** Doubles as "Approve & Process Refund" for a reviewed refund still at status='pending' (either refund_type) — see processRefund's doc comment. */
 export async function retryRefundHandler(req: AuthedRequest, res: Response) {
     res.json(await service.processRefund(req.params.id as string, req.user!));
+}
+
+/** Review — itemise deductions, stamp reviewed_at. Approval is blocked until this runs. */
+export async function reviewRefundHandler(req: AuthedRequest, res: Response) {
+    const body = req.body as ReviewRefundBody;
+    res.json(await service.reviewRefund(req.params.id as string, body, req.user!));
+}
+
+/** Reject — the refund is not owed. Terminal. */
+export async function rejectRefundHandler(req: AuthedRequest, res: Response) {
+    const body = req.body as RejectRefundBody;
+    res.json(await service.rejectRefund(req.params.id as string, { reason: body.reason }, req.user!));
 }

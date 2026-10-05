@@ -1,0 +1,11 @@
+{
+    "extends": "./_shared.json",
+    "include": [
+        "../src/modules/vehicles",
+        "../src/modules/vehicle-catalog",
+        "../src/common",
+        "../src/config",
+        "../src/middleware",
+        "../src/types"
+    ]
+}

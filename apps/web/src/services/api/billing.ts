@@ -55,6 +55,11 @@ export async function updateChargeRule(id: string, patch: UpdateChargeRuleInput)
   return apiClient.patch<ChargeRule>(`/billing/charge-rules/${id}`, patch);
 }
 
+/** DELETE /billing/charge-rules/:id — requireAction("billing","delete"). Hard-deletes the rule row. */
+export async function deleteChargeRule(id: string): Promise<void> {
+  return apiClient.delete<void>(`/billing/charge-rules/${id}`);
+}
+
 export interface RiderChargeFilters {
   bookingId?: string;
   status?: RiderChargeStatus | "all";
@@ -127,6 +132,11 @@ export type UpdateDiscountRuleInput = Partial<
 
 export async function updateDiscountRule(id: string, patch: UpdateDiscountRuleInput): Promise<DiscountRule> {
   return apiClient.patch<DiscountRule>(`/billing/discount-rules/${id}`, patch);
+}
+
+/** DELETE /billing/discount-rules/:id — requireAction("billing","delete"). Hard-deletes the rule row. */
+export async function deleteDiscountRule(id: string): Promise<void> {
+  return apiClient.delete<void>(`/billing/discount-rules/${id}`);
 }
 
 export interface RiderDiscountFilters {

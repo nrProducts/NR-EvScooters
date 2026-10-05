@@ -1,42 +1,56 @@
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/outfit";
+@import "@fontsource/reenie-beanie";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
- * Same brand-green (#22C55E) token language as apps/web/src/index.css, light
- * mode only — a public marketing site has no admin theme toggle to serve.
- * The real logo art (logo/swapngo_logo_1.png) ships with its own slightly
- * different green — recolored to this exact hue/saturation (see
- * scripts/notes in the asset pipeline) so the mark matches the site theme
- * rather than the other way around. `--surface` is new here: the very light
- * gray section background the brief calls for, one step below `--background`
- * so hero/CTA bands can alternate with plain white cards without a third
- * gray in the mix.
+ * Design tokens for the Swapngo marketing site — the "digital living room"
+ * palette: desaturated sage and mist greens carry the page, a paper-white
+ * canvas sits under everything, and the saturated brand green (#21C45D) is
+ * held back for CTAs and active states only. The near-black pair
+ * (`--dark` / `--near-black`) is a soft, green-leaning black rather than a
+ * true one, so dark sections still feel warm. Values are stored as
+ * "H S% L%" triplets (not hex) so `hsl(var(--x))` can take Tailwind's
+ * `/opacity` modifier — e.g. `bg-sage/40` — which is used throughout.
  */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 215 28% 17%;
+    --background: 100 27% 98%; /* #F9FBF8 — paper white with a faint green cast */
+    --foreground: 150 10% 15%; /* #222B26 — soft black, never pure #000 */
 
-    --card: 0 0% 100%;
-    --card-foreground: 215 28% 17%;
+    --card: 0 0% 100%; /* #FFFFFF */
+    --card-foreground: 150 10% 15%;
 
-    --surface: 210 40% 98%;
+    /* The two calm section tints. Sage is the warmer/greener of the pair,
+       mist the cooler — they alternate down the page in place of the old
+       single `surface` band. `--surface` stays as an alias so any component
+       still asking for it lands on sage. */
+    --sage: 120 18% 92%; /* #E8EFE8 */
+    --mist: 140 17% 93%; /* #EAF0EC */
+    --surface: 120 18% 92%;
 
+    --dark: 158 20% 12%; /* #18241F — closing CTA / dark sections */
+    --near-black: 156 22% 8%; /* #0F1814 — footer */
+
+    /* Brand green #21C45D — CTAs and active states only. */
     --primary: 142 71% 45%;
-    --primary-hover: 142 76% 36%;
+    --primary-hover: 142 72% 37%; /* #1AA34D */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 142 40% 90%;
-    --secondary-foreground: 142 39% 22%;
+    --secondary: 120 18% 92%; /* sage */
+    --secondary-foreground: 150 12% 25%;
 
-    --muted: 220 14% 95%;
-    --muted-foreground: 220 9% 46%;
+    /* Danger #FF4D4F — same value as apps/web, for form validation states. */
+    --destructive: 359 100% 65%;
+    --destructive-foreground: 210 40% 98%;
 
-    --border: 220 13% 91%;
-    --radius: 1.125rem;
+    --muted: 140 14% 95%;
+    --muted-foreground: 150 8% 45%; /* #6B7A72 */
+
+    --border: 140 14% 89%; /* #DEE7E1 */
+    --radius: 1.5rem; /* containers land at 2rem–3rem via the rounded-2xl/3xl steps */
   }
 
   * {
@@ -45,21 +59,144 @@
 
   html {
     scroll-behavior: smooth;
-    scroll-padding-top: 5rem;
+    /* Must match the STICKY header's real height, or a nav click lands the
+       target section partly behind it. Below `lg` (Header.tsx's TopBar is
+       `hidden ... lg:block`): wrapper pt-3 (0.75rem) + pill h-16 (4rem) =
+       4.75rem. */
+    scroll-padding-top: 4.75rem;
+  }
+
+  /* At `lg` and up, TopBar (h-10, 2.5rem) joins the sticky header on top of
+     the pill — 2.5rem + 0.75rem + 4rem = 7.25rem. Tailwind's own `lg`
+     breakpoint (1024px), so this switches at exactly the same point TopBar
+     does. */
+  @media (min-width: 1024px) {
+    html {
+      scroll-padding-top: 7.25rem;
+    }
   }
 
   body {
     @apply bg-background text-foreground antialiased font-sans;
-    font-feature-settings:
-      "cv02",
-      "cv03",
-      "cv04",
-      "cv11";
+  }
+
+  /* Sentence-case, tight tracking — the spec's heading rule, applied once here
+     rather than repeated as utilities on every heading. */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.025em;
+  }
+
+  ::selection {
+    background-color: hsl(var(--primary) / 0.25);
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--primary));
+    outline-offset: 2px;
+  }
+
+  /*
+   * Chrome/Edge paint autofilled inputs with their own blue/yellow tint that
+   * ignores background-color entirely — the only way to override it is this
+   * absurdly-large inset box-shadow trick, filling the field with our own
+   * --muted before the browser's colour shows through. Without this, an
+   * autofilled name/phone/email field visibly breaks from every sibling
+   * field on the same form (ContactForm, PreBookModal).
+   */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: hsl(var(--foreground));
+    -webkit-box-shadow: 0 0 0px 1000px hsl(var(--muted)) inset;
+    box-shadow: 0 0 0px 1000px hsl(var(--muted)) inset;
+    transition: background-color 9999s ease-in-out 0s;
   }
 }
 
+@layer utilities {
+  /* A faint dot grid used behind hero/CTA compositions — always paired with
+     a mask or fade so it reads as texture, never as a busy background. */
+  .bg-grid-pattern {
+    background-image: radial-gradient(circle, hsl(var(--foreground) / 0.08) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /*
+   * Reveal-on-scroll. The element starts shifted down and transparent and is
+   * released when <Reveal> adds `is-visible`. Set on mount by an
+   * IntersectionObserver, so anything already in the first viewport animates
+   * immediately rather than waiting for a scroll that may never come.
+   */
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition:
+      opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * Global paper grain. feTurbulence at the spec's 0.65 base frequency,
+ * overlaid across the viewport so flat fills pick up a slight tooth.
+ * Non-interactive and unprintable-thin: purely a texture pass.
+ */
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
+/*
+ * The dotted "energy flow" line under the two large WhySwapngo cards — each
+ * dot pulses brighter with a soft green glow, staggered by animation-delay
+ * per dot (set inline, proportional to index) so the brightness appears to
+ * travel left to right toward the lightning icon, then loops. One shared
+ * keyframe, not a per-dot animation, so every dot's timing stays in sync.
+ */
+@keyframes dot-flow {
+  0%, 100% {
+    opacity: 0.35;
+    box-shadow: none;
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 6px 1px hsl(var(--primary) / 0.55);
+  }
+}
+.dot-flow {
+  animation: dot-flow 1.6s ease-in-out infinite;
+}
+
+/*
+ * Motion is opt-out, not opt-in: everything below is disabled wholesale for
+ * anyone who has asked their OS for reduced motion. Reveal elements are
+ * forced visible so the content is never left stuck at opacity 0.
+ */
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .dot-flow {
+    animation: none;
+    box-shadow: none;
   }
 }

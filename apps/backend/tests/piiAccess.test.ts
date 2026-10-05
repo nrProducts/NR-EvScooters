@@ -10,9 +10,11 @@ import type { AuthContext } from "../src/types";
 
 const staff: AuthContext = {
     id: "aaaaaaaa-0000-0000-0000-000000000000",
-    roles: ["staff"],
-    capabilities: ["kyc_reviewer"],
-    accountStatus: "active",
+    role: "staff",
+    // `kyc_reviewer` was a capability; it is the `kyc.reveal_number`
+    // permission now, granted from the same matrix as everything else.
+    permissions: new Set(["kyc.view", "kyc.reveal_number"]),
+    status: "active",
     kycStatus: "not_submitted",
     isDeleted: false,
 };
@@ -37,8 +39,12 @@ describe("logPiiAccess", () => {
 
         expect(insert).toHaveBeenCalledOnce();
         expect(insert.mock.calls[0][0]).toMatchObject({
-            actor_id: staff.id,
-            actor_roles: ["staff"],
+            actor_user_id: staff.id,
+            // A SNAPSHOT of the role at access time, singular. The array was
+            // the roles the account held; this is what it was when it looked
+            // — which is the question an accountability record has to answer
+            // years later, after the account has been promoted or revoked.
+            actor_role_snapshot: "staff",
             target_user_id: RIDER,
             resource: "kyc_document_image",
             resource_id: "doc-1",

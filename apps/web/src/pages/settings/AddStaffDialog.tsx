@@ -9,14 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCreateStaffUser } from "@/hooks/useUsers";
 import { useToastStore } from "@/store/toastStore";
-import { PERMISSION_PROFILE_NAMES, PERMISSION_PROFILES } from "@/config/permissionProfiles";
-import type { PermissionProfileName } from "@/config/permissionProfiles";
-import type { AccountStatus } from "@/types";
+import { usePermissionCatalog } from "@/hooks/usePermissionCatalog";
+import type { AccountStatus, PermissionProfileName } from "@/types";
 
 const EMPTY = {
   full_name: "", email: "", phone: "", staff_code: "",
   role: "staff" as "staff" | "admin",
-  permission_profile: "" as Exclude<PermissionProfileName, "custom"> | "",
+  permission_profile: "" as PermissionProfileName,
   account_status: "active" as AccountStatus,
 };
 
@@ -25,6 +24,10 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<{ email: string; password: string } | null>(null);
   const createStaff = useCreateStaffUser();
+  // Profiles are `permission_profiles` rows now, so the list is fetched
+  // rather than imported. An empty catalogue simply offers no preset, which
+  // is the same as the "grant nothing yet" default.
+  const { data: catalog } = usePermissionCatalog();
   const push = useToastStore((s) => s.push);
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
@@ -60,10 +63,15 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
           if (data.temporary_password) {
             setRevealed({ email: form.email.trim(), password: data.temporary_password });
           } else {
+            push({ tone: "success", title: "Staff account created", message: `${form.full_name.trim()} can now sign in.` });
             close(false);
           }
         },
-        onError: (err) => setError(err instanceof Error ? err.message : "Could not create the account."),
+        onError: (err) => {
+          const message = err instanceof Error ? err.message : "Could not create the account.";
+          setError(message);
+          push({ tone: "error", title: "Could not create account", message });
+        },
       },
     );
   };
@@ -121,15 +129,15 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label>Full name</Label>
-                  <Input value={form.full_name} onChange={(e) => set("full_name", e.target.value)} placeholder="e.g. Priya Kumar" />
+                  <Input value={form.full_name} onChange={(e) => set("full_name", e.target.value)} placeholder="Full name" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Email</Label>
-                  <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="priya@swapngo.in" />
+                  <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="Email" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Phone</Label>
-                  <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+91 98765 43210" />
+                  <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="Phone" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Role</Label>
@@ -146,7 +154,7 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
                 </div>
                 <div className="space-y-1.5">
                   <Label>Staff ID <span className="text-muted-foreground">(optional)</span></Label>
-                  <Input value={form.staff_code} onChange={(e) => set("staff_code", e.target.value)} placeholder="e.g. EMP-014" />
+                  <Input value={form.staff_code} onChange={(e) => set("staff_code", e.target.value)} placeholder="Staff code" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Status</Label>
@@ -165,12 +173,12 @@ export default function AddStaffDialog({ open, onOpenChange }: { open: boolean; 
                   <Label>Permission profile</Label>
                   <Select
                     value={form.permission_profile}
-                    onValueChange={(v) => set("permission_profile", v as Exclude<PermissionProfileName, "custom">)}
+                    onValueChange={(v) => set("permission_profile", v)}
                   >
                     <SelectTrigger><SelectValue placeholder="Custom — grant permissions after creating" /></SelectTrigger>
                     <SelectContent>
-                      {PERMISSION_PROFILE_NAMES.map((name) => (
-                        <SelectItem key={name} value={name}>{PERMISSION_PROFILES[name].label}</SelectItem>
+                      {(catalog?.profiles ?? []).map((profile) => (
+                        <SelectItem key={profile.code} value={profile.code}>{profile.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

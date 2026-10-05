@@ -15,9 +15,21 @@ export interface PlanSummary {
     name: string;
     billing_cycle: "daily" | "weekly" | "monthly" | "yearly";
     price: number;
+    /** No column backs this any more; always null. See toPlans(). */
     included_minutes: number | null;
     duration_days: number;
+    /** The REFUNDABLE part of what is collected up front. */
     deposit_amount: number;
+    /** One-time non-refundable charge taken with the first payment. 0 = none. */
+    onboarding_charge_amount: number;
+    /**
+     * Cumulative rental days the rider must complete before the deposit above
+     * becomes refundable. 0 = no minimum. The rider apps must state this
+     * BEFORE payment, so it travels with the price.
+     */
+    min_rental_days_for_refund: number;
+    /** Whether the deposit above is ever refundable at all. False = forfeited outright on return. */
+    deposit_refundable: boolean;
 }
 
 export interface VehicleModelListItem {
@@ -30,7 +42,13 @@ export interface VehicleModelListItem {
     charging_time_hours: number | null;
     is_featured: boolean;
     vendor: VendorSummary | null;
-    /** vehicle_models.image — a directly-fetchable public URL, or null. */
+    /**
+     * The primary `vehicle_model_media.storage_path`, or null.
+     *
+     * Named `image_url` for the clients' sake but it is a PATH now, not a URL:
+     * `vehicle_models.image` was replaced by an ordered media table holding
+     * private storage paths. Bytes need a signed URL.
+     */
     image_url: string | null;
     starting_price: number | null;
     /** Fleet-wide, computed per model — how many units are free right now. */

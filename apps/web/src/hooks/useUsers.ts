@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/users";
-import type { BackendRoleName, Capability, ModulePermission } from "@/types";
-import type { PermissionProfileName } from "@/config/permissionProfiles";
+import type { BackendRoleName, ModulePermission, PermissionProfileName } from "@/types";
 
 export function useUsers(filters: api.UserFilters) {
   return useQuery({ queryKey: ["users", filters], queryFn: () => api.fetchUsers(filters) });
@@ -56,24 +55,45 @@ export function useRestoreUser() {
   });
 }
 
-export function useUserCapabilities(id: string | undefined) {
-  return useQuery({
-    queryKey: ["user-capabilities", id],
-    queryFn: () => api.fetchUserCapabilities(id!),
-    enabled: !!id,
-  });
-}
-
-export function useUpdateUserRoles() {
+export function useChangeUserRole() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, roles }: { id: string; roles: BackendRoleName[] }) => api.replaceUserRoles(id, roles),
+    mutationFn: ({ id, role }: { id: string; role: BackendRoleName }) => api.changeUserRole(id, role),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ["users"] });
       qc.invalidateQueries({ queryKey: ["user", id] });
       // A role change can also invalidate any previously-granted module
       // permissions (e.g. demoting away from staff) — refetch to be safe.
       qc.invalidateQueries({ queryKey: ["user-permissions", id] });
+    },
+  });
+}
+
+/**
+ * Approve a self-registered pending account and assign its role. One
+ * admin endpoint — POST /users/:id/approve — which sets the profile row,
+ * role and active status in the right order for the role/profile constraint
+ * trigger (see users.service.ts approveSignup()).
+ */
+export function useApproveSignup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, role }: { id: string; role: "staff" | "rider" }) => api.approveSignup(id, role),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["reports", "pending-approvals"] });
+    },
+  });
+}
+
+/** Reject a self-registered pending account — soft-deletes it (recoverable via restore). */
+export function useRejectSignup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteUser(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["reports", "pending-approvals"] });
     },
   });
 }
@@ -89,7 +109,7 @@ export function useUserPermissions(id: string | undefined) {
 export function useApplyPermissionProfile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, profile }: { id: string; profile: Exclude<PermissionProfileName, "custom"> }) =>
+    mutationFn: ({ id, profile }: { id: string; profile: PermissionProfileName }) =>
       api.applyUserPermissionProfile(id, profile),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ["user-permissions", id] });
@@ -103,18 +123,6 @@ export function useCreateStaffUser() {
   return useMutation({
     mutationFn: (input: api.CreateStaffInput) => api.createStaffUser(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
-  });
-}
-
-export function useReplaceCapabilities() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, capabilities }: { id: string; capabilities: Capability[] }) =>
-      api.replaceUserCapabilities(id, capabilities),
-    onSuccess: (_data, { id }) => {
-      qc.invalidateQueries({ queryKey: ["user-capabilities", id] });
-      qc.invalidateQueries({ queryKey: ["users"] });
-    },
   });
 }
 

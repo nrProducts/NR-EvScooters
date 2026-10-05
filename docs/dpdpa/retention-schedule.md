@@ -31,7 +31,6 @@ disk-space preference.
 | `kyc_abandoned` | `user_documents` + storage, for riders with no booking, rental or invoice ever | 90 d | delete | They never became customers; the purpose the documents were collected for can no longer be fulfilled |
 | **`kyc_former_customer`** | `user_documents` after the last transaction | **TBD** | **not enforced** | **See below** |
 | `inactive_accounts` | dormant `users` | 3 y | anonymise | Tracks the DPDP Rules 2025 three-year benchmark. **Adopted voluntarily** — that benchmark applies by its terms to named classes Swapngo is probably not in |
-| `data_exports` | `data-exports` bucket | 30 d | delete | A DSAR bundle is the most concentrated single-person PII artefact the system produces |
 | `financial_records` | invoices, payments, refunds, deposits, damages, bookings, rentals | 8 y | **never purged** | Statutory retention. Listed so the schedule is complete and nobody adds a purge by accident |
 
 **`geolocation` has no row, deliberately.** No rider location is stored

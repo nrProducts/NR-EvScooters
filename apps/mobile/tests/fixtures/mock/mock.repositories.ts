@@ -1,11 +1,14 @@
 ﻿import { ApiError } from '../../../src/lib/ApiError';
 import { isValidStartDay } from '../../../src/lib/bookingDays';
 import { computeCancellationCharge } from '../../../src/lib/cancellationPolicy';
-import { planExpiryFor, returnDeadlineFor } from '../../../src/lib/returnPolicy';
+import {
+    LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS, planExpiryFor, returnDeadlineFor,
+} from '../../../src/lib/returnPolicy';
 import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
     ApiAvailability, ApiBooking, ApiDocument, ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
+    ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiVehicleDocument,
     ApiStation, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, BookingRefundStatus, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
     KycStatus, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
@@ -190,7 +193,7 @@ function requireSession(): MockUserRow {
     return user;
 }
 
-const isAdminRow = (u: MockUserRow) => u.roles.includes('admin');
+const isAdminRow = (u: MockUserRow) => u.role === 'admin';
 
 /**
  * Mirrors public.compute_kyc_status() and deriveKycStatus() on the backend.
@@ -205,7 +208,7 @@ function computeKycStatus(userId: string): KycStatus {
     if (docs.some((d) => d.verification_status === 'rejected')) return 'rejected';
 
     const verified = docs.filter(
-        (d) => d.verification_status === 'verified' && !isExpired(d.expiry_date),
+        (d) => d.verification_status === 'verified' && !isExpired(d.expires_on),
     ).length;
 
     if (verified === MANDATORY_KYC_DOC_TYPES.length) return 'verified';
@@ -220,7 +223,7 @@ function completionPercent(userId: string): number {
                 d.user_id === userId &&
                 d.doc_type === type &&
                 d.verification_status === 'verified' &&
-                !isExpired(d.expiry_date),
+                !isExpired(d.expires_on),
         ),
     ).length;
     return Math.round((verified / MANDATORY_KYC_DOC_TYPES.length) * 100);
@@ -230,7 +233,14 @@ function completionPercent(userId: string): number {
 
 function toApiUser(row: MockUserRow): ApiUser {
     const { ...rest } = row;
-    return { ...rest, kyc_status: computeKycStatus(row.id) };
+    return {
+        ...rest,
+        kyc_status: computeKycStatus(row.id),
+        // Matches the column's own NOT NULL DEFAULT 'en'. Seeded rows carry no
+        // language because none of them ever picked one, which is exactly the
+        // state a real row is in before the rider first opens the picker.
+        preferred_language: 'en',
+    };
 }
 
 /**
@@ -241,12 +251,17 @@ function toApiUser(row: MockUserRow): ApiUser {
 function toApiDocument(row: MockDocumentRow): ApiDocument {
     return {
         id: row.id,
-        doc_type: row.doc_type,
+        // The wire names changed with `kyc_documents`: `doc_type` is
+        // `document_type` and `expires_on` is `expires_on`. The mock ROW
+        // keeps its own field names — it stands in for the table, not the
+        // response — so the rename happens here, in the projection, exactly
+        // as it does in the real service.
+        document_type: row.doc_type,
         doc_number_masked: maskDocNumber(row.doc_number),
         verification_status: row.verification_status,
         rejection_reason: row.rejection_reason,
-        expiry_date: row.expiry_date,
-        is_expired: isExpired(row.expiry_date),
+        expires_on: row.expires_on,
+        is_expired: isExpired(row.expires_on),
         submitted_at: row.submitted_at,
         verified_at: row.verified_at,
         has_back_side: !!row.back_uri,
@@ -261,11 +276,11 @@ function toApiUserDetail(row: MockUserRow): ApiUserDetail {
         kyc_completion_percent: completionPercent(row.id),
         documents: docs.map((d) => ({
             id: d.id,
-            doc_type: d.doc_type,
+            document_type: d.doc_type,
             doc_number_masked: maskDocNumber(d.doc_number),
             verification_status: d.verification_status,
             rejection_reason: d.rejection_reason,
-            expiry_date: d.expiry_date,
+            expires_on: d.expires_on,
             submitted_at: d.submitted_at,
             verified_at: d.verified_at,
         })),
@@ -351,7 +366,7 @@ export class MockAuthRepository implements AuthRepository {
                 created_at: nowIso(),
                 updated_at: nowIso(),
                 deleted_at: null,
-                roles: ['rider'],
+                role: 'rider',
                 assigned_vehicle: null,
                 current_plan: null,
             };
@@ -407,6 +422,11 @@ export class MockUserRepository implements UserRepository {
             // by the backend's consent.test.ts, not here.
             consent_up_to_date: true,
             consent_notice_version: '2026-08-14.1',
+            // Same reasoning as consent above: an "already accepted" fixture
+            // keeps the mock's routing identical to today's. The terms gate
+            // itself is exercised against the real API, not here.
+            terms_up_to_date: true,
+            terms_version: '2026-09-04.1-draft',
         };
     }
 
@@ -556,15 +576,15 @@ export class MockKycRepository implements KycRepository {
         await delay(700);
         const actor = requireSession();
 
-        if (input.doc_type === 'driving_license') {
-            if (!input.expiry_date) {
+        if (input.doc_type === 'driving_licence') {
+            if (!input.expires_on) {
                 throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'A driving licence must include its expiry date.', {
-                    expiry_date: 'Enter the licence expiry date.',
+                    expires_on: 'Enter the licence expiry date.',
                 });
             }
-            if (isExpired(input.expiry_date)) {
+            if (isExpired(input.expires_on)) {
                 throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'This driving licence has already expired.', {
-                    expiry_date: 'This licence has expired.',
+                    expires_on: 'This licence has expired.',
                 });
             }
         }
@@ -596,7 +616,7 @@ export class MockKycRepository implements KycRepository {
             rejection_reason: null,
             verified_by: null,
             verified_at: null,
-            expiry_date: input.expiry_date ?? null,
+            expires_on: input.expires_on ?? null,
             submitted_at: null,
             created_at: nowIso(),
             updated_at: nowIso(),
@@ -620,14 +640,14 @@ export class MockKycRepository implements KycRepository {
                 'A verified document cannot be changed. Contact support if it is wrong.',
             );
         }
-        if (input.expiry_date && doc.doc_type === 'driving_license' && isExpired(input.expiry_date)) {
+        if (input.expires_on && doc.doc_type === 'driving_licence' && isExpired(input.expires_on)) {
             throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', 'This driving licence has already expired.', {
-                expiry_date: 'This licence has expired.',
+                expires_on: 'This licence has expired.',
             });
         }
 
         if (input.doc_number) doc.doc_number = input.doc_number.trim().toUpperCase();
-        if (input.expiry_date) doc.expiry_date = input.expiry_date;
+        if (input.expires_on) doc.expires_on = input.expires_on;
         if (input.front) doc.front_uri = input.front.uri;
         if (input.back) doc.back_uri = input.back.uri;
 
@@ -773,12 +793,19 @@ function toApiBooking(row: MockBookingRow): ApiBooking {
         status: row.status,
         start_day: row.start_day,
         created_at: row.created_at,
+        // Mirrors the real API: a pending_payment booking is time-boxed,
+        // so the mock must carry a deadline too or Home renders it as a
+        // confirmed pickup in mock mode while behaving correctly live.
+        hold_expires_at: row.status === 'pending_payment'
+            ? new Date(new Date(row.created_at).getTime() + 30 * 60_000).toISOString()
+            : null,
         vehicle_model: model ? { id: model.id, name: model.name } : null,
         station: station ? { id: station.id, name: station.name, code: station.code, lat: station.lat, lng: station.lng } : null,
         plan: plan
             ? {
                 id: plan.id, name: plan.name, billing_cycle: plan.billing_cycle, price: plan.price,
                 duration_days: plan.duration_days, deposit_amount: plan.deposit_amount,
+                onboarding_charge_amount: plan.onboarding_charge_amount,
             }
             : null,
         // Mock DB has no per-unit vehicle allocation concept â€” matches
@@ -842,6 +869,10 @@ function toApiRental(row: MockRentalRow): ApiRental {
         days_late: row.days_late ?? null,
         late_penalty_amount: row.late_penalty_amount ?? null,
         late_fee_per_day: row.late_fee_per_day ?? null,
+        // Mock mode doesn't simulate vehicle-recovery-sweep — never flagged.
+        recovery_flagged_at: null,
+        max_late_fee_days: MAX_LATE_PENALTY_DAYS,
+        late_return_fee_per_day: LATE_RETURN_FEE_PER_DAY,
     };
 }
 
@@ -939,8 +970,7 @@ export class MockBookingRepository implements BookingRepository {
         // Mock bookings go straight to 'confirmed' on create (no payment
         // step — see create() above), so they're always "paid" here.
         const charge = computeCancellationCharge({
-            startDay: row.start_day,
-            planPrice: plan?.price ?? null,
+            planPaid: plan?.price ?? null,
             depositAmount: plan?.deposit_amount ?? 0,
             createdAt: row.created_at,
         });
@@ -948,7 +978,7 @@ export class MockBookingRepository implements BookingRepository {
         row.status = 'cancelled';
         row.cancelled_at = nowIso();
         row.cancellation_reason = reason ?? null;
-        row.plan_price_at_cancellation = charge.chargeableAmount;
+        row.plan_price_at_cancellation = charge.planPaid;
         row.cancellation_penalty_amount = charge.penaltyAmount;
         row.refund_amount = charge.refundAmount;
         // No real gateway in mock mode — a refund "completes" instantly,
@@ -1083,7 +1113,7 @@ export class MockRentalRepository implements RentalRepository {
             template: 'rental_return_requested',
             title: 'Return Requested',
             body: 'Hand your scooter in by 11:59 PM today. Our team will confirm the handover.',
-            screen: 'post-booking-dashboard',
+            screen: 'my-scooter',
         });
         audit('rental.return_requested', actor.id, { return_reason: payload.reason, rating: payload.rating });
 
@@ -1095,6 +1125,36 @@ export class MockRentalRepository implements RentalRepository {
     async settlement(): Promise<ApiReturnSettlement | null> {
         await delay(100);
         return null;
+    }
+
+    // Mock mode never simulates an overdue rider — every fixture rental is
+    // current on its plan, so the Return flow is never gated behind a fee.
+    async overdueLateFee(): Promise<ApiOverdueLateFee> {
+        await delay(100);
+        return {
+            isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: null,
+            renewalDaysLate: 0, renewalLateFee: 0, isSettled: true,
+        };
+    }
+
+    async payOverdueLateFee(): Promise<ApiOverdueLateFeeInvoice> {
+        throw new Error('payOverdueLateFee: mock mode never has an overdue late fee to pay.');
+    }
+
+    // Mock mode never simulates a return going through admin inspection.
+    async returnStage(): Promise<ApiReturnStage | null> {
+        await delay(100);
+        return null;
+    }
+    async vehicleDocuments(): Promise<ApiVehicleDocument[]> {
+        await delay(100);
+        // No vehicle-document seed data yet — an empty list is the real,
+        // correct response for a rider with nothing uploaded, same as live.
+        return [];
+    }
+    async vehicleDocumentUrl(_documentId: string): Promise<string> {
+        await delay(100);
+        throw new ApiError(404, 'NOT_FOUND', 'Document not found.');
     }
 }
 

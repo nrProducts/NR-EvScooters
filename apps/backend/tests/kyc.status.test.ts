@@ -4,10 +4,10 @@ import { kycCompletionPercent } from "../src/modules/users/users.service";
 import type { KycDocType, VerificationStatus } from "../src/types";
 
 const doc = (
-    doc_type: KycDocType,
+    document_type: KycDocType,
     verification_status: VerificationStatus,
-    expiry_date: string | null = null,
-) => ({ doc_type, verification_status, expiry_date });
+    expires_on: string | null = null,
+) => ({ document_type, verification_status, expires_on });
 
 const FUTURE = "2099-01-01";
 const PAST = "2020-01-01";
@@ -19,25 +19,25 @@ describe("deriveKycStatus", () => {
 
     it("is pending when every mandatory document awaits review", () => {
         expect(
-            deriveKycStatus([doc("aadhaar", "pending"), doc("driving_license", "pending", FUTURE)]),
+            deriveKycStatus([doc("aadhaar", "pending"), doc("driving_licence", "pending", FUTURE)]),
         ).toBe("pending");
     });
 
     it("is partially_verified with a mix of verified and pending", () => {
         expect(
-            deriveKycStatus([doc("aadhaar", "verified"), doc("driving_license", "pending", FUTURE)]),
+            deriveKycStatus([doc("aadhaar", "verified"), doc("driving_licence", "pending", FUTURE)]),
         ).toBe("partially_verified");
     });
 
     it("is verified only when all mandatory documents are verified", () => {
         expect(
-            deriveKycStatus([doc("aadhaar", "verified"), doc("driving_license", "verified", FUTURE)]),
+            deriveKycStatus([doc("aadhaar", "verified"), doc("driving_licence", "verified", FUTURE)]),
         ).toBe("verified");
     });
 
     it("is rejected when one mandatory document is rejected", () => {
         expect(
-            deriveKycStatus([doc("aadhaar", "verified"), doc("driving_license", "rejected", FUTURE)]),
+            deriveKycStatus([doc("aadhaar", "verified"), doc("driving_licence", "rejected", FUTURE)]),
         ).toBe("rejected");
     });
 
@@ -45,14 +45,14 @@ describe("deriveKycStatus", () => {
         expect(
             deriveKycStatus([
                 doc("aadhaar", "rejected"),
-                doc("driving_license", "verified", FUTURE),
+                doc("driving_licence", "verified", FUTURE),
             ]),
         ).toBe("rejected");
     });
 
     it("treats an expired licence as not verified", () => {
         expect(
-            deriveKycStatus([doc("aadhaar", "verified"), doc("driving_license", "verified", PAST)]),
+            deriveKycStatus([doc("aadhaar", "verified"), doc("driving_licence", "verified", PAST)]),
         ).toBe("partially_verified");
     });
 
@@ -60,13 +60,13 @@ describe("deriveKycStatus", () => {
         expect(
             deriveKycStatus([
                 doc("aadhaar", "verified"),
-                doc("driving_license", "verified", FUTURE),
+                doc("driving_licence", "verified", FUTURE),
                 doc("passport", "rejected"),
             ]),
         ).toBe("verified");
     });
 
-    it("keeps mandatory doc types to exactly aadhaar and driving_license", () => {
+    it("keeps mandatory doc types to exactly aadhaar and driving_licence", () => {
         expect(deriveKycStatus([doc("aadhaar", "verified")])).toBe("partially_verified");
         expect(deriveKycStatus([doc("passport", "verified")])).toBe("not_submitted");
     });
@@ -83,13 +83,13 @@ describe("kycCompletionPercent", () => {
 
     it("reports 100 with both verified and unexpired", () => {
         expect(
-            kycCompletionPercent([doc("aadhaar", "verified"), doc("driving_license", "verified", FUTURE)]),
+            kycCompletionPercent([doc("aadhaar", "verified"), doc("driving_licence", "verified", FUTURE)]),
         ).toBe(100);
     });
 
     it("does not count an expired document toward completion", () => {
         expect(
-            kycCompletionPercent([doc("aadhaar", "verified"), doc("driving_license", "verified", PAST)]),
+            kycCompletionPercent([doc("aadhaar", "verified"), doc("driving_licence", "verified", PAST)]),
         ).toBe(50);
     });
 });

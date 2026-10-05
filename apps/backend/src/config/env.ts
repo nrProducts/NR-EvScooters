@@ -6,6 +6,20 @@ function required(name: string): string {
     return value;
 }
 
+/**
+ * Empty string in dev, hard failure at boot in production.
+ *
+ * Fail-fast is the whole value: a payment secret that is missing must stop
+ * the process, not degrade the behaviour of the money path at runtime.
+ */
+function requiredInProduction(name: string): string {
+    const value = process.env[name] ?? "";
+    if (!value && process.env.NODE_ENV === "production") {
+        throw new Error(`Missing required environment variable in production: ${name}`);
+    }
+    return value;
+}
+
 function intFromEnv(name: string, fallback: number): number {
     const raw = process.env[name];
     if (!raw) return fallback;
@@ -29,6 +43,17 @@ export const env = {
     /** Lifetime of a minted signed URL, in seconds. Short by design. */
     kycSignedUrlTtlSeconds: intFromEnv("KYC_SIGNED_URL_TTL_SECONDS", 300),
 
+    // --- KYC field encryption (see common/fieldCrypto.ts) -----------------
+    // Deliberately optional/empty-default, never `required(...)`: the app must
+    // still boot in dev with no keys configured. The KYC paths throw a clear
+    // error at call time instead. The two secrets must be different — one
+    // decrypts, the other only searches, and that separation is the point.
+    // Generate each with: openssl rand -base64 32
+    /** AES-256-GCM key for `kyc_documents.document_number_encrypted`. */
+    kycEncryptionKey: process.env.KYC_ENCRYPTION_KEY ?? "",
+    /** HMAC-SHA256 pepper for the `document_number_hmac` blind index. */
+    kycHmacPepper: process.env.KYC_HMAC_PEPPER ?? "",
+
     /** Private bucket holding rider profile photos. Must not be public. */
     profilePhotoBucket: process.env.PROFILE_PHOTO_BUCKET ?? "profile-photos",
     /** Keep in sync with storage.buckets.file_size_limit in the migration. */
@@ -38,6 +63,13 @@ export const env = {
     vehiclePhotoBucket: process.env.VEHICLE_PHOTO_BUCKET ?? "vehicle-photos",
     /** Keep in sync with storage.buckets.file_size_limit in the migration. */
     vehiclePhotoMaxFileBytes: intFromEnv("VEHICLE_PHOTO_MAX_FILE_BYTES", 10 * 1024 * 1024),
+
+    /** Private bucket holding vehicle statutory documents (RC, insurance, PUC, ...). Must not be public. */
+    vehicleDocumentBucket: process.env.VEHICLE_DOCUMENT_BUCKET ?? "vehicle-documents",
+    /** Keep in sync with storage.buckets.file_size_limit in the migration. */
+    vehicleDocumentMaxFileBytes: intFromEnv("VEHICLE_DOCUMENT_MAX_FILE_BYTES", 10 * 1024 * 1024),
+    /** Lifetime of a minted signed URL, in seconds. Short by design. */
+    vehicleDocumentSignedUrlTtlSeconds: intFromEnv("VEHICLE_DOCUMENT_SIGNED_URL_TTL_SECONDS", 300),
 
     // --- Geocoding proxy -------------------------------------------------
     // Riders used to call this third-party endpoint straight from the handset
@@ -68,12 +100,54 @@ export const env = {
     msg91BaseUrl: process.env.MSG91_BASE_URL ?? "https://control.msg91.com",
 
     // --- Razorpay (payment gateway) -----------------------------------
-    // Deliberately optional/empty-default, never `required(...)`: the app
-    // must still boot in dev with no keys configured. Anything that actually
-    // needs them throws a clear error at call time — see config/razorpay.ts.
-    razorpayKeyId: process.env.RAZORPAY_KEY_ID ?? "",
-    razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET ?? "",
-    razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ?? "",
+    // Optional in dev so the app still boots with no keys configured;
+    // anything that needs them throws a clean 503 at call time — see
+    // config/razorpay.ts.
+    //
+    // MANDATORY in production, and that asymmetry is the point. These used
+    // to be plain optional everywhere, and a separate "gateway not
+    // configured" branch in payments.service.ts settled the order as PAID
+    // with a fabricated payment id when they were blank. A missing secret in
+    // a production deploy therefore handed out free rentals silently. The
+    // mock branch is gone; this is what stops the same deploy from merely
+    // failing later and less legibly.
+    razorpayKeyId: requiredInProduction("RAZORPAY_KEY_ID"),
+    razorpayKeySecret: requiredInProduction("RAZORPAY_KEY_SECRET"),
+    razorpayWebhookSecret: requiredInProduction("RAZORPAY_WEBHOOK_SECRET"),
+
+    /**
+     * DEVELOPMENT ONLY — makes refund payouts testable without a gateway that
+     * will actually pay out. `off` (the default) is the only value with any
+     * effect in production, because config/razorpay.ts's
+     * `resolveRefundSimulation` refuses every other value when NODE_ENV is
+     * production or the key is a `rzp_live_` one.
+     *
+     * Read the raw string here rather than validating it: an unknown value
+     * must not stop the server booting, and the resolver is where the
+     * safety rules live so there is one place to read them.
+     *
+     *   off        — real gateway call (default)
+     *   success    — payout settles immediately
+     *   processing — payout accepted, awaiting the (never-arriving) webhook
+     *   fail       — gateway rejects the payout
+     *
+     * A simulated payout is stamped `sim_refund_<uuid>` and audited with
+     * `simulated: true`, so it is never mistakable for real money leaving —
+     * which is the failure the deleted mock branch caused (see
+     * refunds.service.ts).
+     */
+    refundSimulationMode: process.env.REFUND_SIMULATION_MODE ?? "off",
+
+    /**
+     * How long a checkout session stays collectable. Matches the vehicle hold
+     * (BOOKING_PAYMENT_GRACE_MINUTES) by default so the order and the scooter
+     * reservation expire together — an order outliving its hold would send a
+     * rider to Checkout for a scooter already given away.
+     */
+    paymentOrderTtlMinutes: intFromEnv(
+        "PAYMENT_ORDER_TTL_MINUTES",
+        intFromEnv("BOOKING_PAYMENT_GRACE_MINUTES", 30),
+    ),
 
     /** Default security deposit when a plan doesn't override it, in rupees. */
     defaultDepositAmount: intFromEnv("DEFAULT_DEPOSIT_AMOUNT", 2000),
@@ -90,7 +164,22 @@ export const env = {
     // needs it throws a clear error at call time — see config/resend.ts.
     emailProvider: process.env.EMAIL_PROVIDER ?? "resend",
     resendApiKey: process.env.RESEND_API_KEY ?? "",
-    emailFrom: process.env.EMAIL_FROM ?? "",
+    emailFrom: process.env.ADMIN_NOTIFICATION_EMAIL_FROM ?? "",
+    /**
+     * From-address for the staff/admin "needs your action" emails
+     * (notify.service.ts's sendEmail — KYC review, refund approval, booking
+     * ready for pickup, etc). Separate from `emailFrom` so these operational
+     * escalations aren't tied to the same inbox as rider-facing mail and the
+     * website contact form; falls back to `EMAIL_FROM` so it isn't a second
+     * required var on top of an already-working setup.
+     */
+    adminNotificationEmailFrom: process.env.ADMIN_NOTIFICATION_EMAIL_FROM || process.env.EMAIL_FROM || "",
     /** Base URL of the admin console, for email CTA links. */
     adminAppUrl: process.env.ADMIN_APP_URL ?? "",
+    /**
+     * Where the public website's contact-form queries are delivered. Defaulted
+     * rather than required so the endpoint works out of the box and a blank
+     * env var can't silently send enquiries nowhere.
+     */
+    contactInboxEmail: process.env.CONTACT_INBOX_EMAIL ?? "contact@swapngo.in",
 };

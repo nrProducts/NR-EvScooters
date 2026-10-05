@@ -5,7 +5,6 @@ export type ConsentPurpose =
     | "safety_and_incident"
     | "service_communications"
     | "marketing_communications"
-    | "referral_program"
     | "location_services";
 
 export type ConsentAction = "granted" | "withdrawn";

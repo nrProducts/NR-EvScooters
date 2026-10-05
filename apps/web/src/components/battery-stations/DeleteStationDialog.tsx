@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { formatStationName, type BatteryStation } from "@/types/batteryStation";
 
 /**
@@ -36,7 +36,7 @@ export function DeleteStationDialog({
             Cancel
           </Button>
           <Button variant="destructive" onClick={() => station && onConfirm(station)} disabled={isPending}>
-            {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isPending && <Spinner className="h-4 w-4" />}
             Delete station
           </Button>
         </DialogFooter>

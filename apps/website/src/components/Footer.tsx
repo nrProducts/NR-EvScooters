@@ -1,36 +1,47 @@
 import { Container } from "@/components/ui/Container";
 import { Logo } from "@/components/ui/Logo";
-import { ADMIN_CONSOLE_URL } from "@/content/links";
-import { CONTACT_EMAIL, SOCIAL_LINKS } from "@/content/contact";
+import { CONTACT_EMAIL, CONTACT_PHONES, CONTACT_ADDRESS, SOCIAL_LINKS } from "@/content/contact";
+import { trackEvent } from "@/lib/analytics";
 
-const QUICK_LINKS = [
-  { label: "How It Works", href: "#how-it-works" },
-  { label: "Vehicles", href: "#vehicles" },
-  { label: "Pricing", href: "#pricing" },
+const COMPANY_LINKS = [
+  { label: "Home", href: "#home" },
   { label: "About", href: "#about" },
-];
-
-const SUPPORT_LINKS = [
+  { label: "How It Works", href: "#how-it-works" },
+  { label: "Pricing", href: "#pricing" },
   { label: "FAQ", href: "#faq" },
   { label: "Contact", href: "#contact" },
-  { label: "Admin / Staff Login", href: ADMIN_CONSOLE_URL },
 ];
 
 export function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="border-t border-border bg-surface">
-      <Container className="grid grid-cols-2 gap-10 py-14 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="col-span-2 lg:col-span-1">
-          <Logo />
-          <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
-            Smart, affordable EV scooter rentals with battery-swap charging — no waiting to charge, ever.
+    <footer className="bg-near-black text-white">
+      <Container className="grid gap-12 py-16 sm:py-20 lg:grid-cols-[1.2fr_1fr_1fr] lg:gap-8">
+        <div>
+          <Logo className="brightness-0 invert" />
+          <p className="mt-5 max-w-xs text-base leading-relaxed text-white/60">
+            Move smarter. Ride electric.
+          </p>
+          <p className="mt-3 max-w-xs text-sm leading-relaxed text-white/40">
+            EV scooter rentals with battery-swap charging — no waiting to charge, ever.
           </p>
           {SOCIAL_LINKS.length > 0 && (
-            <div className="mt-5 flex gap-3">
+            <div className="mt-6 flex gap-3">
               {SOCIAL_LINKS.map((s) => (
-                <a key={s.url} href={s.url} className="text-sm font-medium text-muted-foreground hover:text-primary">
+                <a
+                  key={s.url}
+                  href={s.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() =>
+                    trackEvent("social_link_click", {
+                      platform: s.label.toLowerCase(),
+                      placement: "footer",
+                    })
+                  }
+                  className="-mx-2 inline-flex min-h-[40px] items-center px-2 text-sm font-semibold text-white/60 hover:text-primary"
+                >
                   {s.label}
                 </a>
               ))}
@@ -39,11 +50,11 @@ export function Footer() {
         </div>
 
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Quick Links</h3>
-          <ul className="mt-4 space-y-3">
-            {QUICK_LINKS.map((l) => (
+          <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Company</h3>
+          <ul className="mt-4 space-y-1">
+            {COMPANY_LINKS.map((l) => (
               <li key={l.href}>
-                <a href={l.href} className="text-sm text-muted-foreground hover:text-primary">
+                <a href={l.href} className="-mx-2 inline-flex min-h-[40px] items-center px-2 text-[15px] font-medium text-white/70 hover:text-primary">
                   {l.label}
                 </a>
               </li>
@@ -52,42 +63,36 @@ export function Footer() {
         </div>
 
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Support</h3>
-          <ul className="mt-4 space-y-3">
-            {SUPPORT_LINKS.map((l) => (
-              <li key={l.href}>
-                <a href={l.href} className="text-sm text-muted-foreground hover:text-primary">
-                  {l.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">Get in Touch</h3>
-          <ul className="mt-4 space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Get in Touch</h3>
+          <ul className="mt-4 space-y-1">
             <li>
-              <a href={`mailto:${CONTACT_EMAIL}`} className="text-sm text-muted-foreground hover:text-primary">
+              <a
+                href={`mailto:${CONTACT_EMAIL}`}
+                onClick={() => trackEvent("click_email", { placement: "footer" })}
+                className="-mx-2 inline-flex min-h-[40px] items-center px-2 text-[15px] font-medium text-white/70 hover:text-primary"
+              >
                 {CONTACT_EMAIL}
               </a>
             </li>
-            <li className="text-sm text-muted-foreground">Chennai, India</li>
+            {CONTACT_PHONES.map((p) => (
+              <li key={p.href}>
+                <a
+                  href={p.href}
+                  onClick={() => trackEvent("click_phone", { placement: "footer" })}
+                  className="-mx-2 inline-flex min-h-[40px] items-center px-2 text-[15px] font-medium text-white/70 hover:text-primary"
+                >
+                  {p.display}
+                </a>
+              </li>
+            ))}
+            <li className="pt-2 text-[15px] leading-relaxed text-white/50">{CONTACT_ADDRESS}</li>
           </ul>
         </div>
       </Container>
 
-      <div className="bg-foreground">
-        <Container className="flex flex-col items-center justify-between gap-3 py-6 text-xs text-white/60 sm:flex-row">
-          <p>© {year} SwapNgo. All rights reserved.</p>
-          <div className="flex gap-5">
-            <a href="#" className="hover:text-white">
-              Privacy Policy
-            </a>
-            <a href="#" className="hover:text-white">
-              Terms &amp; Conditions
-            </a>
-          </div>
+      <div className="border-t border-white/10">
+        <Container className="flex items-center justify-center py-6 text-sm text-white/40">
+          <p>© {year} Swapngo. All rights reserved.</p>
         </Container>
       </div>
     </footer>

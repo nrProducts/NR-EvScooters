@@ -13,7 +13,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "How do I rent a scooter?",
     answer:
-      "Download the SwapNgo app, verify your identity (KYC), choose a plan, and pay online. Once your booking is confirmed, you'll pick up your scooter from your assigned station.",
+      "Download the Swapngo app, verify your identity (KYC), choose a plan, and pay online. Once your booking is confirmed, you'll pick up your scooter from your assigned station.",
   },
   {
     question: "What documents are required?",
@@ -23,17 +23,17 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "How does payment work?",
     answer:
-      "Payment is collected in the app when you confirm your booking, alongside a refundable security deposit. If payment isn't completed in time, the reservation is automatically released.",
+      "Payment is collected in the app when you confirm your booking, alongside a one-time onboarding charge and a refundable security deposit. If payment isn't completed in time, the reservation is automatically released.",
   },
   {
     question: "How does the security deposit work?",
     answer:
-      "A refundable deposit is charged with your first rental period (₹2,000 on the current Weekly Unlimited plan). It's held against damage and is eligible for refund a set number of days after the vehicle is returned in good condition.",
+      "₹2,000 is collected with your first rental period on the current Weekly Unlimited plan, made up of a ₹500 one-time onboarding charge and a ₹1,500 refundable security deposit. The onboarding charge is not refundable. The ₹1,500 deposit is held against damage and becomes eligible for refund once you have completed a minimum of 45 rental days and the vehicle is returned in good condition, subject to deductions for damages, outstanding dues, penalties or other applicable charges.",
   },
   {
     question: "What happens after I book?",
     answer:
-      "You'll get a pickup station and a reminder as your slot approaches. Hand over is confirmed in the app, and your rental period starts from pickup.",
+      "You'll get a pickup station and a reminder as your slot approaches. Hand over is confirmed in the app. Every rental runs a fixed 12:00 PM to 12:00 PM cycle based on your booked date, whatever time you actually collect the scooter.",
   },
   {
     question: "How long does a rental plan last?",
@@ -41,9 +41,14 @@ export const FAQ_ITEMS: FaqItem[] = [
       "The current plan is Weekly Unlimited — a 7-day rental period. Plans and durations are managed centrally, so this page always reflects what's actually on offer.",
   },
   {
+    question: "Can I rent an electric scooter for a month in Chennai?",
+    answer:
+      "Yes — Swapngo runs on a Weekly Unlimited plan that renews automatically, so you can keep the same scooter for a month or longer just by continuing to ride. There's no separate monthly plan or fixed monthly lock-in: you pay week to week and can stop whenever you like, which works out to a flexible month-long (or longer) rental without committing upfront.",
+  },
+  {
     question: "What if my scooter's battery runs low?",
     answer:
-      "SwapNgo scooters use swappable batteries — head to any of our battery-swap stations across Chennai and swap in under 2 minutes instead of waiting to charge.",
+      "Swapngo scooters use swappable batteries — head to any of our battery-swap stations across Chennai and swap in under 2 minutes instead of waiting to charge.",
   },
   {
     question: "How do I contact support?",

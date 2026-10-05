@@ -16,16 +16,17 @@ import UserListPage from "@/pages/users/UserListPage";
 import UserDetailPage from "@/pages/users/UserDetailPage";
 import KycQueuePage from "@/pages/kyc/KycQueuePage";
 import BookingListPage from "@/pages/bookings/BookingListPage";
-import ReturnsListPage from "@/pages/returns/ReturnsListPage";
 import ReturnDetailPage from "@/pages/returns/ReturnDetailPage";
 import MaintenancePage from "@/pages/maintenance/MaintenancePage";
 import SupportTicketsPage from "@/pages/support/SupportTicketsPage";
 import PaymentsPage from "@/pages/payments/PaymentsPage";
 import DamagesPage from "@/pages/damages/DamagesPage";
 import RefundsPage from "@/pages/refunds/RefundsPage";
+import DepositsPage from "@/pages/deposits/DepositsPage";
 import BillingPage from "@/pages/billing/BillingPage";
 import PlansPage from "@/pages/plans/PlansPage";
 import ReconciliationPage from "@/pages/reconciliation/ReconciliationPage";
+import RevenuePage from "@/pages/revenue/RevenuePage";
 import NotificationsPage from "@/pages/notifications/NotificationsPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
 import PermissionMatrixPage from "@/pages/settings/PermissionMatrixPage";
@@ -33,6 +34,10 @@ import NotificationManagerPage from "@/pages/settings/NotificationManagerPage";
 import PiiAccessPage from "@/pages/privacy/PiiAccessPage";
 import RightsQueuePage from "@/pages/privacy/RightsQueuePage";
 import AuditLogPage from "@/pages/audit/AuditLogPage";
+import AttendanceRouter from "@/pages/attendance/AttendanceRouter";
+import LeaveRouter from "@/pages/leave/LeaveRouter";
+import MyProfilePage from "@/pages/profile/MyProfilePage";
+import HolidaysPage from "@/pages/holidays/HolidaysPage";
 import NotFoundPage from "@/pages/errors/NotFoundPage";
 import ForbiddenPage from "@/pages/errors/ForbiddenPage";
 
@@ -74,15 +79,22 @@ export function AppRoutes() {
         <Route path="/users/:id" element={<UserDetailPage />} />
 
         <Route path="/kyc" element={<KycQueuePage />} />
+        {/* Returns no longer has its own list page — the full return-review
+            workflow (Return Requests/Recovery/Settled) now lives inside
+            Rental Operations (/bookings); the detail page is nested under
+            /bookings too (not a bare /returns/:id) so it's recognised as
+            part of Rental Operations by nav highlighting/matchPath without
+            needing a separate (and previously hidden) NAV_ITEMS entry. */}
         <Route path="/bookings" element={<BookingListPage />} />
-        <Route path="/returns" element={<ReturnsListPage />} />
-        <Route path="/returns/:rentalId" element={<ReturnDetailPage />} />
+        <Route path="/bookings/returns/:rentalId" element={<ReturnDetailPage />} />
         <Route path="/maintenance" element={<MaintenancePage />} />
         <Route path="/support" element={<SupportTicketsPage />} />
 
+        <Route path="/revenue" element={<RevenuePage />} />
         <Route path="/payments" element={<PaymentsPage />} />
         <Route path="/damages" element={<DamagesPage />} />
         <Route path="/refunds" element={<RefundsPage />} />
+        <Route path="/deposits" element={<DepositsPage />} />
         <Route path="/billing" element={<BillingPage />} />
         <Route path="/plans" element={<PlansPage />} />
         <Route path="/reconciliation" element={<ReconciliationPage />} />
@@ -93,6 +105,16 @@ export function AppRoutes() {
         <Route path="/privacy/requests" element={<RightsQueuePage />} />
         <Route path="/privacy/access-log" element={<PiiAccessPage />} />
         <Route path="/audit" element={<AuditLogPage />} />
+
+        {/* Mini HRMS — AttendanceRouter/LeaveRouter branch by role internally
+            too (see their own comments), so the two paths mounting the same
+            router component can never end up wired to the wrong page. */}
+        <Route path="/attendance" element={<AttendanceRouter />} />
+        <Route path="/my-attendance" element={<AttendanceRouter />} />
+        <Route path="/leave" element={<LeaveRouter />} />
+        <Route path="/my-leave" element={<LeaveRouter />} />
+        <Route path="/holidays" element={<HolidaysPage />} />
+        <Route path="/my-profile" element={<MyProfilePage />} />
 
         <Route path="/403" element={<ForbiddenPage />} />
       </Route>

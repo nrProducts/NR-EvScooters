@@ -3,9 +3,10 @@ import { ApiError } from '../lib/ApiError';
 import { getSupabase } from '../lib/supabase';
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiReferralSummary,
-    ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
-    ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, ListVehicleModelsParams,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
+    ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
+    ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload, ListVehicleModelsParams,
     MaintenanceHistoryParams, Paginated, ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
 } from '../types/api';
 import type {
@@ -137,9 +138,6 @@ export class ApiVehicleCatalogRepository implements VehicleCatalogRepository {
 }
 
 export class ApiBookingRepository implements BookingRepository {
-    create(payload: CreateBookingPayload): Promise<ApiBooking> {
-        return api.createBooking(payload);
-    }
     async mine(): Promise<ApiBooking | null> {
         try {
             return await api.myCurrentBooking();
@@ -163,6 +161,12 @@ export class ApiBookingRepository implements BookingRepository {
 }
 
 export class ApiBillingRepository implements BillingRepository {
+    quotePlan(planId: string, startDay?: string): Promise<ApiPlanQuote> {
+        return api.quotePlan(planId, startDay);
+    }
+    createBookingOrder(payload: CreateBookingOrderPayload): Promise<ApiPaymentOrder> {
+        return api.createBookingOrder(payload);
+    }
     createOrderForBooking(bookingId: string): Promise<ApiPaymentOrder> {
         return api.createPaymentOrderForBooking(bookingId);
     }
@@ -211,6 +215,21 @@ export class ApiRentalRepository implements RentalRepository {
     }
     settlement(): Promise<ApiReturnSettlement | null> {
         return api.myRentalSettlement();
+    }
+    overdueLateFee(): Promise<ApiOverdueLateFee> {
+        return api.myOverdueLateFee();
+    }
+    payOverdueLateFee(): Promise<ApiOverdueLateFeeInvoice> {
+        return api.payMyOverdueLateFee();
+    }
+    returnStage(): Promise<ApiReturnStage | null> {
+        return api.myReturnStage();
+    }
+    vehicleDocuments(): Promise<ApiVehicleDocument[]> {
+        return api.myVehicleDocuments();
+    }
+    vehicleDocumentUrl(documentId: string): Promise<string> {
+        return api.myVehicleDocumentUrl(documentId);
     }
 }
 

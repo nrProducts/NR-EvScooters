@@ -5,54 +5,119 @@ export interface EmailField {
 
 export interface NotificationEmailInput {
     heading: string;
-    introText: string;
+    /** Lead paragraph, rendered directly under the heading. Omit to skip it. */
+    introText?: string;
     fields: EmailField[];
+    /**
+     * Free-text block rendered AFTER the fields table, not before it —
+     * for content that reads better as "here's who/what, then here's what
+     * they said" (e.g. the website contact form's message) rather than as
+     * the lead paragraph `introText` is for.
+     */
+    messageBlock?: { label: string; text: string };
     ctaLabel: string;
     ctaUrl: string;
 }
 
+/** The brand mark, hosted on the live website — the one absolute image URL every email client can fetch. */
+const LOGO_URL = "https://swapngo.in/favicon.png";
+/** hsl(142 71% 45%) — the one brand green shared across mobile, web and the website. Keep in sync by hand; see apps/mobile/src/constants/theme.ts. */
+const BRAND_GREEN = "#21C45D";
+
 /**
  * One shared, inline-styled, email-client-safe layout for every event type —
  * differences are expressed via `fields`, not separate template files.
+ *
+ * `color-scheme`/`supported-color-schemes` opt the message OUT of Gmail's and
+ * Outlook's forced dark-mode remapping: without them, a client that "darkens"
+ * unrecognised HTML mail inverted the navy header into pale lavender rather
+ * than leaving it alone, which is what actually rendered badly. Every colour
+ * below is also repeated as an attribute (`bgcolor`, `color`) alongside its
+ * `style`, since Gmail's own sanitiser strips embedded `<style>` blocks and
+ * some inline properties before this remapping pass ever runs.
  */
 export function renderNotificationEmail(input: NotificationEmailInput): string {
     const rows = input.fields
         .map(
             (f) => `
             <tr>
-                <td style="padding:4px 0;color:#6b7280;font-size:14px;">${escapeHtml(f.label)}</td>
-                <td style="padding:4px 0;color:#111827;font-size:14px;font-weight:600;text-align:right;">${escapeHtml(f.value)}</td>
+                <td style="padding:6px 0;color:#6b7280;font-size:13px;">${escapeHtml(f.label)}</td>
+                <td style="padding:6px 0;color:#111827;font-size:13px;font-weight:600;text-align:right;">${escapeHtml(f.value)}</td>
             </tr>`,
         )
         .join("");
 
     return `<!doctype html>
 <html>
-<body style="margin:0;padding:0;background-color:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;padding:24px 0;">
+<head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+</head>
+<body style="margin:0;padding:0;background-color:#f1f5f4;font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f1f5f4" style="background-color:#f1f5f4;padding:32px 16px;">
         <tr>
             <td align="center">
-                <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;">
+                <table role="presentation" width="480" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:480px;max-width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
                     <tr>
-                        <td style="background-color:#0f172a;padding:20px 24px;">
-                            <span style="color:#ffffff;font-size:18px;font-weight:700;">SwapNgo</span>
+                        <td bgcolor="#ffffff" style="background-color:#ffffff;padding:24px 28px;border-bottom:1px solid #f0f0f0;">
+                            <table role="presentation" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td style="padding-right:12px;">
+                                        <img src="${LOGO_URL}" width="34" height="34" alt="SwapNgo" style="display:block;border-radius:8px;" />
+                                    </td>
+                                    <td>
+                                        <span style="color:#111827;font-size:19px;font-weight:700;letter-spacing:-0.2px;">Swap<span style="color:${BRAND_GREEN};">Ngo</span></span>
+                                    </td>
+                                </tr>
+                            </table>
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:24px;">
-                            <h1 style="margin:0 0 12px;font-size:20px;color:#111827;">${escapeHtml(input.heading)}</h1>
-                            <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#374151;">${escapeHtml(input.introText)}</p>
+                        <td bgcolor="#ffffff" style="background-color:#ffffff;padding:28px;">
+                            <h1 style="margin:0 0 12px;font-size:19px;line-height:1.3;color:#111827;">${escapeHtml(input.heading)}</h1>
                             ${
-                                rows
-                                    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e5e7eb;margin-bottom:20px;">${rows}</table>`
+                                input.introText
+                                    ? `<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563;">${escapeHtml(input.introText)}</p>`
                                     : ""
                             }
-                            <a href="${input.ctaUrl}" style="display:inline-block;background-color:#0f172a;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:6px;">${escapeHtml(input.ctaLabel)}</a>
+                            ${
+                                rows
+                                    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #eef0ef;margin-bottom:24px;">${rows}</table>`
+                                    : ""
+                            }
+                            ${
+                                input.messageBlock
+                                    ? `<div style="margin-bottom:24px;">
+                                <p style="margin:0 0 6px;font-size:13px;font-weight:600;color:#111827;">${escapeHtml(input.messageBlock.label)}</p>
+                                <p style="margin:0;font-size:14px;line-height:1.6;color:#4b5563;white-space:pre-wrap;">${escapeHtml(input.messageBlock.text)}</p>
+                            </div>`
+                                    : ""
+                            }
+                            <table role="presentation" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td bgcolor="${BRAND_GREEN}" style="background-color:${BRAND_GREEN} !important;border-radius:8px;">
+                                        <!--
+                                          Gmail's mobile apps re-theme an <a>'s text colour for dark
+                                          mode even with color-scheme:light set above (that meta pair
+                                          stops the NAVY/WHITE remapping seen elsewhere in this
+                                          template, but Gmail treats a hyperlink's colour as its own
+                                          concern and overrides it anyway) — the button's green
+                                          background survived, but "Review" itself rendered near-black
+                                          on green. !important alone isn't reliably honoured on an
+                                          <a> by every client that does this; wrapping the label in its
+                                          own <span> with the same forced colour is the combination
+                                          that actually held in Gmail's Android/iOS apps.
+                                        -->
+                                        <a href="${input.ctaUrl}" style="display:inline-block;color:#ffffff !important;text-decoration:none;font-size:14px;font-weight:600;padding:11px 22px;"><span style="color:#ffffff !important;">${escapeHtml(input.ctaLabel)}</span></a>
+                                    </td>
+                                </tr>
+                            </table>
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:16px 24px;background-color:#f9fafb;">
-                            <p style="margin:0;font-size:12px;color:#9ca3af;">This is an automated notification from SwapNgo Admin.</p>
+                        <td bgcolor="#fafbfa" style="padding:16px 28px;background-color:#fafbfa;border-top:1px solid #f0f0f0;">
+                            <p style="margin:0;font-size:12px;color:#9ca3af;">This is an automated notification from SwapNgo.</p>
                         </td>
                     </tr>
                 </table>

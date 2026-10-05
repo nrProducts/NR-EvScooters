@@ -2,12 +2,16 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AuthBrand } from "@/components/auth/AuthBrand";
 import * as authApi from "@/services/api/staff";
+import { ApiError } from "@/services/api/httpClient";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 
 interface SignUpForm {
   full_name: string;
@@ -18,9 +22,10 @@ interface SignUpForm {
 }
 
 /**
- * Public self-signup — always lands as an inactive `staff` account with zero
- * permissions until an admin activates it from Staff Access. See
- * apps/backend/src/modules/users/users.service.ts selfSignUpStaff().
+ * Public self-signup. Lands as a pending account (inactive, zero access) until
+ * an admin approves it from Users → Awaiting approval and assigns it a role —
+ * staff or rider. See apps/backend/src/modules/users/users.service.ts
+ * selfSignUpStaff().
  */
 export default function SignUpPage() {
   const [done, setDone] = useState(false);
@@ -28,6 +33,7 @@ export default function SignUpPage() {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors },
   } = useForm<SignUpForm>({
     defaultValues: { full_name: "", email: "", phone: "", password: "", confirmPassword: "" },
@@ -41,7 +47,24 @@ export default function SignUpPage() {
         phone: values.phone.trim(),
         password: values.password,
       }),
-    onSuccess: () => setDone(true),
+    onSuccess: () => { toastSuccess("Account created"); setDone(true); },
+    onError: (err) => {
+      // Map backend field errors onto the form so the offending input is
+      // highlighted, instead of only the generic "correct the highlighted
+      // fields" banner.
+      const fields = err instanceof ApiError ? err.fields : undefined;
+      const known: (keyof SignUpForm)[] = ["full_name", "email", "phone", "password"];
+      let matched = false;
+      if (fields) {
+        for (const key of known) {
+          if (fields[key]) {
+            setError(key, { type: "server", message: fields[key] });
+            matched = true;
+          }
+        }
+      }
+      if (!matched) toastError(err, "Could not create account");
+    },
   });
 
   const onSubmit = (values: SignUpForm) => {
@@ -50,12 +73,13 @@ export default function SignUpPage() {
 
   if (done) {
     return (
-      <Card className="animate-fade-in">
+      <Card className="animate-fade-in overflow-hidden">
+        <AuthBrand />
         <CardContent className="p-6 sm:p-8">
           <h1 className="mb-1 text-xl font-semibold">Account created</h1>
           <p className="mb-6 text-sm text-muted-foreground">
-            An administrator needs to review and activate your account before you can sign in. You'll be able to log
-            in with the password you just set once that's done.
+            An administrator will review your registration and assign your access. Once approved, sign in with the
+            email and password you just set.
           </p>
           <Link to="/login" className="text-sm font-medium text-primary hover:underline">
             Back to login
@@ -66,12 +90,13 @@ export default function SignUpPage() {
   }
 
   return (
-    <Card className="animate-fade-in">
+    <Card className="animate-fade-in overflow-hidden">
+      <AuthBrand />
       <CardContent className="p-6 sm:p-8">
         <h1 className="mb-1 text-xl font-semibold">Create an account</h1>
         <p className="mb-6 text-sm text-muted-foreground">
-          You'll start with no access to any section — an administrator grants permissions after activating your
-          account.
+          Your account starts with no access. An administrator reviews every registration and assigns your role —
+          staff or rider — before you can sign in.
         </p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -79,7 +104,7 @@ export default function SignUpPage() {
             <Label htmlFor="full_name">Full name</Label>
             <Input
               id="full_name"
-              placeholder="e.g. Priya Kumar"
+              placeholder="Full name"
               {...register("full_name", { required: "Full name is required" })}
             />
             {errors.full_name && <p className="text-xs text-destructive">{errors.full_name.message}</p>}
@@ -90,7 +115,7 @@ export default function SignUpPage() {
             <Input
               id="email"
               type="email"
-              placeholder="you@swapngo.in"
+              placeholder="Email"
               {...register("email", { required: "Email is required" })}
             />
             {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
@@ -100,7 +125,7 @@ export default function SignUpPage() {
             <Label htmlFor="phone">Phone</Label>
             <Input
               id="phone"
-              placeholder="+91 98765 43210"
+              placeholder="Phone"
               {...register("phone", { required: "Phone is required" })}
             />
             {errors.phone && <p className="text-xs text-destructive">{errors.phone.message}</p>}
@@ -151,7 +176,7 @@ export default function SignUpPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={signUp.isPending}>
-            {signUp.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {signUp.isPending && <Spinner className="h-4 w-4" />}
             Create account
           </Button>
 

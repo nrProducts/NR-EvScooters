@@ -1,28 +1,37 @@
 /**
- * Sourced from the live public.plans table. Only the currently active plan
- * is listed — a Daily and a Monthly row also exist but are inactive
- * (active=false), i.e. not currently offered, so they're deliberately left
- * out rather than shown as fake options. Update this the same way if/when
- * the admin activates another plan (Plans page in apps/web).
+ * Marketing WORDS only — the bullet copy under each plan card. There is no
+ * `plans.highlights` column, so this is the one part of a plan's card that
+ * has nowhere else to live.
+ *
+ * Every NUMBER (price, duration, deposit, onboarding charge, refund terms)
+ * and the plan's own `name` come from GET /public/plans, live, every time —
+ * see mergePlanCopy in siteData.tsx. Nothing here is ever shown as a
+ * fallback price: if the API hasn't answered yet, or fails, the Pricing
+ * section shows a loading/error state instead of inventing numbers that
+ * could drift from what plans.plans actually charges.
+ *
+ * Keyed by billing cycle, matching whichever plans the admin has active
+ * (Plans page in apps/web) — add an entry here for any new billing cycle so
+ * its card has real highlight copy instead of falling back to the first
+ * entry's.
  */
-export interface RentalPlan {
-  name: string;
+export interface PlanHighlights {
   billingCycle: "daily" | "weekly" | "monthly" | "yearly";
-  price: number;
-  durationDays: number;
-  depositAmount: number;
-  vehicleModelId: string;
   highlights: string[];
 }
 
-export const ACTIVE_PLANS: RentalPlan[] = [
+export const PLAN_HIGHLIGHTS: PlanHighlights[] = [
   {
-    name: "Weekly Unlimited",
+    billingCycle: "daily",
+    highlights: [
+      "Unlimited riding for the day",
+      "One MVS7 scooter, swappable battery included",
+      "No onboarding charge",
+      "Free battery swaps at any Chennai swap station",
+    ],
+  },
+  {
     billingCycle: "weekly",
-    price: 1800,
-    durationDays: 7,
-    depositAmount: 2000,
-    vehicleModelId: "mvs7",
     highlights: [
       "Unlimited riding for 7 days",
       "One MVS7 scooter, swappable battery included",

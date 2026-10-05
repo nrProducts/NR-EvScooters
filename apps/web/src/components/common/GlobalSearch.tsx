@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, User, Bike, Loader2 } from "lucide-react";
+import { Search, User, Bike } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Input } from "@/components/ui/input";
 import { useGlobalSearch } from "@/hooks/useGlobalSearch";
 import { cn } from "@/lib/utils";
@@ -38,14 +39,16 @@ export function GlobalSearch() {
   const showPanel = open && value.trim().length > 0;
 
   return (
-    <div ref={containerRef} className="relative hidden max-w-md flex-1 sm:block">
+    <div ref={containerRef} className="relative hidden w-56 md:w-64 sm:block">
       <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onFocus={() => setOpen(true)}
         onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
-        placeholder="Search riders, vehicles..."
+        placeholder="Search riders & vehicles…"
+        title="Search riders and vehicles — type a name, email, phone number or vehicle registration"
+        aria-label="Search riders and vehicles"
         className="h-10 rounded-full border-border/60 bg-card-hover/60 pl-10 focus-visible:bg-background"
       />
 
@@ -57,7 +60,7 @@ export function GlobalSearch() {
 
           {enabled && isLoading && (
             <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching…
+              <Spinner className="h-3.5 w-3.5" /> Searching…
             </div>
           )}
 
@@ -67,7 +70,7 @@ export function GlobalSearch() {
 
           {enabled && !isLoading && users.length > 0 && (
             <div className="mb-1">
-              <p className="px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <p className="px-3 py-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
                 Users
               </p>
               {users.map((u) => (
@@ -93,7 +96,7 @@ export function GlobalSearch() {
 
           {enabled && !isLoading && vehicles.length > 0 && (
             <div>
-              <p className="px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <p className="px-3 py-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
                 Vehicles
               </p>
               {vehicles.map((v) => (

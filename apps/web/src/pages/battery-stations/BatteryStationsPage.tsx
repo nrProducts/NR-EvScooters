@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchBar } from "@/components/common/SearchBar";
+import { FilterBar } from "@/components/common/FilterBar";
 import { Pagination } from "@/components/common/Pagination";
 import { StationSummaryCards } from "@/components/battery-stations/StationSummaryCards";
 import { BatteryStationGrid } from "@/components/battery-stations/BatteryStationGrid";
@@ -14,12 +15,14 @@ import {
   useAdminStations, useCreateStation, useDeleteStation, useStationSummary,
   useUpdateStation, useUpdateStationVisibility,
 } from "@/hooks/useBatteryStations";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import {
   BATTERY_STATION_STATUSES, STATION_STATUS_LABEL,
   type BatteryStation, type StationSortBy, type StationStatus, type StationVisibilityFilter,
 } from "@/types/batteryStation";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 
 const PAGE_SIZE = 10;
 
@@ -51,7 +54,7 @@ export default function BatteryStationsPage() {
   const [sortBy, sortDir] = sort.split(":") as [StationSortBy, "asc" | "desc"];
 
   const filters = { page, pageSize: PAGE_SIZE, search, status, visibility, sortBy, sortDir };
-  const { data, isLoading, isError, refetch, isFetching } = useAdminStations(filters);
+  const { data, isLoading, isError, refetch } = useAdminStations(filters);
   const summary = useStationSummary();
 
   const createStation = useCreateStation();
@@ -80,79 +83,75 @@ export default function BatteryStationsPage() {
     void summary.refetch();
   };
 
+  usePageSubtitle("Add, edit and control which battery swap stations riders see on the mobile map.");
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Battery Station Management</h1>
-          <p className="text-sm text-muted-foreground">
-            Add, edit and control which battery swap stations riders see on the mobile map.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={refreshAll} disabled={isFetching}>
-            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
-          </Button>
-          {canCreate && (
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Add station
-            </Button>
-          )}
-        </div>
-      </div>
-
       <StationSummaryCards summary={summary.data} isLoading={summary.isLoading} />
 
-      <Card>
-        <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center">
-          <SearchBar
-            value={search}
-            onChange={resetToFirstPage(setSearch)}
-            placeholder="Search by station name or QIS ID..."
-            className="lg:max-w-xs"
-          />
-
-          <Select value={status} onValueChange={resetToFirstPage((v) => setStatus(v as StationStatus | "all"))}>
-            <SelectTrigger className="lg:w-44">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              {BATTERY_STATION_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {STATION_STATUS_LABEL[s]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={visibility}
-            onValueChange={resetToFirstPage((v) => setVisibility(v as StationVisibilityFilter))}
-          >
-            <SelectTrigger className="lg:w-40">
-              <SelectValue placeholder="Visibility" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All visibility</SelectItem>
-              <SelectItem value="visible">Visible on mobile</SelectItem>
-              <SelectItem value="hidden">Hidden</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={sort} onValueChange={resetToFirstPage((v) => setSort(v as typeof sort))}>
-            <SelectTrigger className="lg:w-48">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              {SORT_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      {canCreate && (
+        <div className="flex justify-end">
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" /> Add station
+          </Button>
         </div>
+      )}
+
+      <Card>
+        <FilterBar
+          search={
+            <SearchBar
+              value={search}
+              onChange={resetToFirstPage(setSearch)}
+              placeholder="Search stations…"
+              className="w-full sm:max-w-xs"
+            />
+          }
+          filters={
+            <>
+              <Select value={status} onValueChange={resetToFirstPage((v) => setStatus(v as StationStatus | "all"))}>
+                <SelectTrigger className="w-full sm:w-44">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {BATTERY_STATION_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {STATION_STATUS_LABEL[s]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={visibility}
+                onValueChange={resetToFirstPage((v) => setVisibility(v as StationVisibilityFilter))}
+              >
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue placeholder="Visibility" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All visibility</SelectItem>
+                  <SelectItem value="visible">Visible on mobile</SelectItem>
+                  <SelectItem value="hidden">Hidden</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={sort} onValueChange={resetToFirstPage((v) => setSort(v as typeof sort))}>
+                <SelectTrigger className="w-full sm:w-48">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          }
+        />
 
         <BatteryStationGrid
           stations={data?.data ?? []}
@@ -162,7 +161,10 @@ export default function BatteryStationsPage() {
           onEdit={openEdit}
           onViewOnMap={setMapTarget}
           onToggleVisibility={(station) =>
-            updateVisibility.mutate({ id: station.id, isVisible: !station.isVisibleOnMobile })
+            updateVisibility.mutate(
+              { id: station.id, isVisible: !station.isVisibleOnMobile },
+              { onError: (err) => toastError(err, "Could not update visibility") },
+            )
           }
           onDelete={setDeleteTarget}
           busyId={updateVisibility.isPending ? updateVisibility.variables?.id : null}
@@ -184,11 +186,13 @@ export default function BatteryStationsPage() {
         error={editTarget ? updateStation.error : createStation.error}
         onSubmit={(payload) => {
           const onSuccess = () => {
+            toastSuccess(editTarget ? "Station updated" : "Station added");
             setFormOpen(false);
             setEditTarget(null);
           };
-          if (editTarget) updateStation.mutate({ id: editTarget.id, payload }, { onSuccess });
-          else createStation.mutate(payload, { onSuccess });
+          const onError = (err: unknown) => toastError(err, editTarget ? "Could not update station" : "Could not add station");
+          if (editTarget) updateStation.mutate({ id: editTarget.id, payload }, { onSuccess, onError });
+          else createStation.mutate(payload, { onSuccess, onError });
         }}
       />
 
@@ -199,7 +203,13 @@ export default function BatteryStationsPage() {
         onConfirm={(station) =>
           deleteStation.mutate(
             { id: station.id, name: station.name },
-            { onSuccess: () => setDeleteTarget(null) },
+            {
+              onSuccess: () => {
+                toastSuccess("Station deleted");
+                setDeleteTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not delete station"),
+            },
           )
         }
       />

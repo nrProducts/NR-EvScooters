@@ -137,5 +137,8 @@ export function assertValidDrivingLicence(docNumber: string): void {
 /** Dispatches to the right check. Types with no defined format are accepted. */
 export function assertValidDocNumber(docType: string, docNumber: string): void {
     if (docType === "aadhaar") return assertValidAadhaar(docNumber);
-    if (docType === "driving_license") return assertValidDrivingLicence(docNumber);
+    // `driving_licence`, with a C — that is what `kyc_document_type` spells.
+    // Matching on the American spelling meant this returned without checking
+    // anything, so every licence number was accepted unvalidated.
+    if (docType === "driving_licence") return assertValidDrivingLicence(docNumber);
 }

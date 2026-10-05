@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, MoreHorizontal, UserCog, UserMinus, KeyRound,
+  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, UserMinus, KeyRound, UserCheck, Bike, XCircle,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,68 +20,101 @@ import {
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import {
-  useUsers, useDeleteUser, useChangeUserStatus, useUpdateUserRoles,
+  useUsers, useDeleteUser, useChangeUserStatus, useChangeUserRole,
+  useApproveSignup, useRejectSignup,
 } from "@/hooks/useUsers";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
-import { initials, formatDate } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
+import { initials, formatDate, formatPhoneLocal } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "pending", "partially_verified", "verified", "rejected"];
 
-/** "staff" joined "rider"/"admin" as a real, grantable role — see supabase/migrations/20260813*. */
-const ROLE_TABS: { value: BackendRoleName; label: string }[] = [
+/** The role tabs plus a cross-role queue of self-registered accounts awaiting approval. */
+type UserTab = BackendRoleName | "pending";
+const USER_TABS: { value: UserTab; label: string }[] = [
   { value: "rider", label: "Rider" },
   { value: "staff", label: "Staff" },
   { value: "admin", label: "Admin" },
+  { value: "pending", label: "Awaiting approval" },
 ];
 
 export default function UserListPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const role = useAuthStore((s) => s.user?.role);
+  const initialTab = ((): UserTab => {
+    const t = searchParams.get("tab");
+    return t === "pending" && role === "admin" ? "pending" : "rider";
+  })();
   const [search, setSearch] = useState("");
   const [kycStatus, setKycStatus] = useState<KycStatus | "all">("all");
-  const [roleFilter, setRoleFilter] = useState<BackendRoleName>("rider");
+  const [tab, setTab] = useState<UserTab>(initialTab);
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<AppUser | null>(null);
+  const isPendingTab = tab === "pending";
   const [suspendTarget, setSuspendTarget] = useState<AppUser | null>(null);
   const [reason, setReason] = useState("");
   const [roleError, setRoleError] = useState<string | null>(null);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useUsers({
-    search, kycStatus, role: roleFilter, page, pageSize: 8,
+    search,
+    kycStatus: isPendingTab ? "all" : kycStatus,
+    role: isPendingTab ? "all" : tab,
+    pendingApproval: isPendingTab,
+    page, pageSize: 8,
     sortBy: sort.by as "full_name" | "created_at" | "kyc_status", sortDir: sort.dir,
   });
   const deleteUser = useDeleteUser();
   const changeStatus = useChangeUserStatus();
-  const updateRoles = useUpdateUserRoles();
+  const changeRole = useChangeUserRole();
+  const approveSignup = useApproveSignup();
+  const rejectSignup = useRejectSignup();
+
+  const approve = (u: AppUser, role: "staff" | "rider") => {
+    setRoleError(null);
+    approveSignup.mutate(
+      { id: u.id, role },
+      {
+        onSuccess: () => toastSuccess(`${u.full_name || "Account"} approved as ${role}`),
+        onError: (err) => toastError(err, "Could not approve this account"),
+      },
+    );
+  };
 
   // Admin can never edit their own roles (backend refuses it outright — see
   // users.service.ts replaceRoles) — hide the actions rather than let
   // someone click into a guaranteed error.
   const currentUserId = useAuthStore((s) => s.user?.id);
 
-  // next_due_at is the LAST usable day of the current billing period — a
-  // value <= today means due today or already overdue, regardless of
-  // whether the overdue-sweep cron has flipped payment_status to 'due' yet
-  // (it only runs the day after). 'paused'/pre-pickup bookings are excluded:
-  // nothing is actively due on those.
-  const isDueOrOverdue = (u: AppUser) =>
-    !!u.next_due_at
-    && u.next_due_at <= new Date().toISOString().slice(0, 10)
-    && (u.payment_status === "active" || u.payment_status === "due");
+  // The rider genuinely owes money right now — a real unpaid invoice balance,
+  // not a guess from a plan's due date. Stays false for a rider whose plan
+  // has ended and whose bills (including any return settlement) are all paid,
+  // even while the completed rental's records still exist.
+  const isDueOrOverdue = (u: AppUser) => u.outstanding_amount > 0;
 
+  // A demotion to `rider`, not the removal of one entry from a role array:
+  // `users.role` holds exactly one value.
   const revokeStaff = (u: AppUser) => {
     setRoleError(null);
-    updateRoles.mutate(
-      { id: u.id, roles: u.roles.filter((r) => r !== "staff") },
-      { onError: (err) => setRoleError(err instanceof Error ? err.message : "Could not revoke staff access.") },
+    changeRole.mutate(
+      { id: u.id, role: "rider" },
+      {
+        onSuccess: () => toastSuccess("Staff access revoked"),
+        onError: (err) => {
+          setRoleError(err instanceof Error ? err.message : "Could not revoke staff access.");
+          toastError(err, "Could not revoke staff access");
+        },
+      },
     );
   };
 
@@ -98,7 +131,7 @@ export default function UserListPage() {
           </Avatar>
           <div className="min-w-0">
             <p className="truncate font-medium">{u.full_name || "—"}</p>
-            <p className="truncate text-xs text-muted-foreground">{u.phone ?? "No phone on file"}</p>
+            <p className="truncate text-xs text-muted-foreground">{formatPhoneLocal(u.phone) ?? "No phone on file"}</p>
           </div>
         </div>
       ),
@@ -106,11 +139,7 @@ export default function UserListPage() {
     {
       header: "Role",
       key: "role",
-      render: (u) => (
-        <div className="flex flex-wrap gap-1">
-          {u.roles.length === 0 ? "—" : u.roles.map((r) => <StatusBadge key={r} status={r} />)}
-        </div>
-      ),
+      render: (u) => <StatusBadge status={u.role} />,
     },
     { header: "Account", key: "account", render: (u) => <StatusBadge status={u.account_status} /> },
     { header: "KYC", key: "kyc", sortKey: "kyc_status", render: (u) => <StatusBadge status={u.kyc_status} /> },
@@ -153,7 +182,30 @@ export default function UserListPage() {
     {
       header: "Payment",
       key: "payment_status",
-      render: (u) => (u.payment_status ? <StatusBadge status={u.payment_status} /> : "—"),
+      // An open return SUPERSEDES the plan status, exactly as it does in
+      // BookingListPage's merged status column. `subscriptions.status` stays
+      // "active" all the way through a return by design — the rental must not
+      // end until staff confirm the handover — so rendering it alone showed a
+      // rider who had asked to give the scooter back as an ordinary paying
+      // customer, with nothing on the row to say staff owed them an action.
+      //
+      // The plan status is kept as sub-text rather than dropped: it is still
+      // the answer to "is this rider also behind on money", which the return
+      // does not settle either way.
+      render: (u) => (u.open_return ? (
+        <div className="min-w-0">
+          <StatusBadge status={u.open_return.status === "inspected" ? "inspected" : "return_requested"} />
+          {u.payment_status ? (
+            <p className="mt-1 truncate text-xs capitalize text-muted-foreground">
+              Plan: {u.payment_status.replace(/_/g, " ")}
+            </p>
+          ) : null}
+        </div>
+      ) : u.payment_status ? (
+        <StatusBadge status={u.payment_status} />
+      ) : (
+        "—"
+      )),
       hideOnMobile: true,
     },
     {
@@ -165,20 +217,43 @@ export default function UserListPage() {
     {
       header: "Plan Ends",
       key: "next_due_at",
-      render: (u) => (u.next_due_at ? formatDate(u.next_due_at) : "—"),
+      // Muted during a return: the date is a RENEWAL date, and nothing is
+      // going to renew on a scooter being handed back. Kept visible rather
+      // than blanked — staff still need to know which period the rider is
+      // being returned out of — but it must not read as an upcoming event.
+      render: (u) => (u.next_due_at ? (
+        <span className={u.open_return ? "text-muted-foreground line-through" : undefined}>
+          {formatDate(u.next_due_at)}
+        </span>
+      ) : "—"),
       hideOnMobile: true,
     },
     { header: "Joined", key: "created_at", sortKey: "created_at", render: (u) => formatDate(u.created_at), hideOnMobile: true },
     {
       header: "Actions",
       key: "actions",
-      render: (u) => (
+      render: (u) =>
+        isPendingTab ? (
+          <DropdownMenu>
+            <RowActionsButton label="Approval actions" onClick={(e) => e.stopPropagation()} />
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem onClick={() => navigate(`/users/${u.id}`)}>
+                <Eye className="mr-2 h-4 w-4" /> View profile
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={approveSignup.isPending} onClick={() => approve(u, "rider")}>
+                <Bike className="mr-2 h-4 w-4" /> Approve as rider
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={approveSignup.isPending} onClick={() => approve(u, "staff")}>
+                <UserCheck className="mr-2 h-4 w-4" /> Approve as staff
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-destructive" onClick={() => setRejectTarget(u)}>
+                <XCircle className="mr-2 h-4 w-4" /> Reject
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
+          <RowActionsButton label="Rider actions" onClick={(e) => e.stopPropagation()} />
           {/*
             onClick here (not just on the trigger) matters: DropdownMenuContent
             renders in a portal, but React re-parents portalled content into the
@@ -198,11 +273,31 @@ export default function UserListPage() {
               </DropdownMenuItem>
             )}
             {u.account_status === "suspended" ? (
-              <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
+              <DropdownMenuItem
+                onClick={() =>
+                  changeStatus.mutate(
+                    { id: u.id, action: "activate" },
+                    {
+                      onSuccess: () => toastSuccess("Account reactivated"),
+                      onError: (err) => toastError(err, "Could not reactivate account"),
+                    },
+                  )
+                }
+              >
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Reactivate
               </DropdownMenuItem>
             ) : u.account_status === "inactive" ? (
-              <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
+              <DropdownMenuItem
+                onClick={() =>
+                  changeStatus.mutate(
+                    { id: u.id, action: "activate" },
+                    {
+                      onSuccess: () => toastSuccess("Account activated"),
+                      onError: (err) => toastError(err, "Could not activate account"),
+                    },
+                  )
+                }
+              >
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Activate account
               </DropdownMenuItem>
             ) : (
@@ -217,7 +312,7 @@ export default function UserListPage() {
             )}
             {role === "admin" && u.id !== currentUserId && (
               <>
-                {u.roles.includes("staff") ? (
+                {u.role === "staff" ? (
                   <>
                     <DropdownMenuItem onClick={() => navigate(`/settings/staff-access/${u.id}/permissions`)}>
                       <KeyRound className="mr-2 h-4 w-4" /> Manage permissions
@@ -240,17 +335,18 @@ export default function UserListPage() {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-      ),
+        ),
     },
   ];
 
+  usePageSubtitle(
+    isPendingTab
+      ? `${data?.total ?? 0} account${(data?.total ?? 0) === 1 ? "" : "s"} awaiting approval`
+      : `${data?.total ?? 0} registered users`,
+  );
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
-        <p className="text-sm text-muted-foreground">{data?.total ?? 0} registered users</p>
-      </div>
-
       {roleError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {roleError}
@@ -259,14 +355,23 @@ export default function UserListPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs
-          value={roleFilter}
+          value={tab}
           onValueChange={(v) => {
-            setRoleFilter(v as BackendRoleName);
+            const next = v as UserTab;
+            setTab(next);
             setPage(1);
+            setSearchParams(
+              (prev) => {
+                if (next === "pending") prev.set("tab", "pending");
+                else prev.delete("tab");
+                return prev;
+              },
+              { replace: true },
+            );
           }}
         >
           <TabsList className="flex-wrap">
-            {ROLE_TABS.map((t) => (
+            {USER_TABS.filter((t) => t.value !== "pending" || role === "admin").map((t) => (
               <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
             ))}
           </TabsList>
@@ -277,32 +382,38 @@ export default function UserListPage() {
             setSearch(v);
             setPage(1);
           }}
-          placeholder="Search by name, email or phone..."
+          placeholder="Search name, email or phone…"
           className="sm:max-w-xs"
         />
       </div>
 
       <Card>
-        <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
-          <Select
-            value={kycStatus}
-            onValueChange={(v) => {
-              setKycStatus(v as KycStatus | "all");
-              setPage(1);
-            }}
-          >
-            <SelectTrigger className="sm:w-52">
-              <SelectValue placeholder="KYC status" />
-            </SelectTrigger>
-            <SelectContent>
-              {KYC_OPTIONS.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s === "all" ? "All KYC statuses" : s.replace(/_/g, " ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {isPendingTab ? (
+          <div className="border-b border-border p-4 text-sm text-muted-foreground">
+            Self-registered accounts awaiting review. Approve as staff or rider, or reject to remove the request.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
+            <Select
+              value={kycStatus}
+              onValueChange={(v) => {
+                setKycStatus(v as KycStatus | "all");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="sm:w-52">
+                <SelectValue placeholder="KYC status" />
+              </SelectTrigger>
+              <SelectContent>
+                {KYC_OPTIONS.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s === "all" ? "All KYC statuses" : s.replace(/_/g, " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <DataTable
           columns={columns}
@@ -311,7 +422,7 @@ export default function UserListPage() {
           isError={isError}
           onRetry={() => refetch()}
           onRowClick={(u) => navigate(`/users/${u.id}`)}
-          emptyTitle="No users match your filters"
+          emptyTitle={isPendingTab ? "No accounts awaiting approval" : "No users match your filters"}
           sort={sort}
           onSortChange={onSortChange}
           rowClassName={(u) => (isDueOrOverdue(u) ? "border-l-4 border-l-destructive" : undefined)}
@@ -329,7 +440,36 @@ export default function UserListPage() {
         destructive
         loading={deleteUser.isPending}
         onConfirm={() => {
-          if (deleteTarget) deleteUser.mutate(deleteTarget.id, { onSuccess: () => setDeleteTarget(null) });
+          if (deleteTarget) {
+            deleteUser.mutate(deleteTarget.id, {
+              onSuccess: () => {
+                toastSuccess("User deleted");
+                setDeleteTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not delete user"),
+            });
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!rejectTarget}
+        onOpenChange={(o) => !o && setRejectTarget(null)}
+        title={`Reject ${rejectTarget?.full_name || "this registration"}?`}
+        description="The account is removed (soft-deleted). They can register again later."
+        confirmLabel="Reject"
+        destructive
+        loading={rejectSignup.isPending}
+        onConfirm={() => {
+          if (rejectTarget) {
+            rejectSignup.mutate(rejectTarget.id, {
+              onSuccess: () => {
+                toastSuccess("Registration rejected");
+                setRejectTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not reject this account"),
+            });
+          }
         }}
       />
 
@@ -353,7 +493,13 @@ export default function UserListPage() {
                 if (suspendTarget) {
                   changeStatus.mutate(
                     { id: suspendTarget.id, action: "suspend", reason },
-                    { onSuccess: () => setSuspendTarget(null) },
+                    {
+                      onSuccess: () => {
+                        toastSuccess("User suspended");
+                        setSuspendTarget(null);
+                      },
+                      onError: (err) => toastError(err, "Could not suspend user"),
+                    },
                   );
                 }
               }}

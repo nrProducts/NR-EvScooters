@@ -1,32 +1,28 @@
 import { Outlet } from "react-router-dom";
 import { useUiStore } from "@/store/uiStore";
 import { Moon, Sun } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import logoWordmark from "@/assets/logo-wordmark.svg";
-import logoWordmarkDark from "@/assets/logo-wordmark-dark.svg";
 
 export function AuthLayout() {
   const { theme, toggleTheme } = useUiStore();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-secondary via-background to-secondary px-4 py-10">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="fixed right-4 top-4"
+    <div className="relative flex min-h-screen flex-col items-center justify-center bg-white px-4 py-10 dark:bg-background">
+      <button
+        type="button"
         onClick={toggleTheme}
         aria-label="Toggle theme"
+        className="fixed right-5 top-5 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground shadow-soft backdrop-blur transition-smooth hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {theme === "light" ? <Moon className="h-[18px] w-[18px]" /> : <Sun className="h-[18px] w-[18px]" />}
-      </Button>
+        {theme === "light" ? <Moon className="h-[1.05rem] w-[1.05rem]" /> : <Sun className="h-[1.05rem] w-[1.05rem]" />}
+      </button>
 
-      <div className="w-full max-w-md">
-        <div className="mb-8 flex flex-col items-center gap-2">
-          <img src={theme === "dark" ? logoWordmarkDark : logoWordmark} alt="SwapNgo" className="h-9 w-auto" />
-          <p className="text-xs text-muted-foreground">Admin &amp; Staff Console</p>
-        </div>
+      <div className="w-full max-w-[27rem]">
         <Outlet />
       </div>
+
+      <footer className="mt-8 text-center text-xs text-muted-foreground">
+        © 2026 Swapngo. All rights reserved.
+      </footer>
     </div>
   );
 }

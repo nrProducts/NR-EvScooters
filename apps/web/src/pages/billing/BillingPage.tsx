@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, PlusCircle } from "lucide-react";
+import { CheckCircle2, Pencil, Power, PowerOff, PlusCircle, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,17 +14,23 @@ import {
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import {
-  useCancelRiderDiscount, useChargeRules, useCreateChargeRule, useCreateDiscountRule, useDiscountRules,
-  useRiderCharges, useRiderDiscounts, useUpdateChargeRule, useUpdateDiscountRule, useWaiveRiderCharge,
+  useCancelRiderDiscount, useChargeRules, useCreateChargeRule, useCreateDiscountRule, useDeleteChargeRule,
+  useDeleteDiscountRule, useDiscountRules, useRiderCharges, useRiderDiscounts, useUpdateChargeRule,
+  useUpdateDiscountRule, useWaiveRiderCharge,
 } from "@/hooks/useBilling";
-import { usePlanRenewalSettings, useUpdatePlanRenewalSettings } from "@/hooks/usePlanRenewalSettings";
+import { useCancellationTiers, useReplaceCancellationTiers } from "@/hooks/useCancellationTiers";
+import { useReturnRecoverySettings, useUpdateReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { useVehicles } from "@/hooks/useVehicles";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
 import {
-  CHARGE_CODE_LABELS, CHARGE_CODES, CHARGE_FREQUENCY_LABELS, DISCOUNT_CODE_LABELS, DISCOUNT_CODES,
+  CHARGE_CODE_LABELS, CHARGE_CODES, chargeCodeLabel, CHARGE_FREQUENCY_LABELS,
+  DISCOUNT_CODE_LABELS, DISCOUNT_CODES, discountCodeLabel,
   DISCOUNT_FREQUENCY_LABELS,
   type ChargeAmountType, type ChargeCode, type ChargeFrequencyType, type ChargeRule, type ChargeRuleScope,
   type DiscountCode, type DiscountFrequencyType, type DiscountRule, type RiderCharge, type RiderChargeStatus,
@@ -38,23 +44,19 @@ const RIDER_CHARGE_STATUS_OPTIONS: (RiderChargeStatus | "all")[] = [
 ];
 const RIDER_DISCOUNT_STATUS_OPTIONS: (RiderDiscountStatus | "all")[] = ["all", "pending", "applied", "cancelled"];
 
+type BillingTab = "rules" | "cancellation" | "charges" | "discountRules" | "discounts";
+
 export default function BillingPage() {
-  const [tab, setTab] = useState<"rules" | "charges" | "discountRules" | "discounts">("rules");
+  const [tab, setTab] = useState<BillingTab>("rules");
+
+  usePageSubtitle("Charge rules, the cancellation policy, and everything that's been applied.");
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Billing &amp; Charges</h1>
-        <p className="text-sm text-muted-foreground">
-          Configure charge and discount rules (globally or per vehicle) and review what&apos;s been applied.
-        </p>
-      </div>
-
-      <LateRenewalFeeCard />
-
-      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as BillingTab)}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="rules">Charge Rules</TabsTrigger>
+          <TabsTrigger value="cancellation">Cancellation Policy</TabsTrigger>
           <TabsTrigger value="charges">Rider Charges</TabsTrigger>
           <TabsTrigger value="discountRules">Discount Rules</TabsTrigger>
           <TabsTrigger value="discounts">Discounts</TabsTrigger>
@@ -62,6 +64,7 @@ export default function BillingPage() {
       </Tabs>
 
       {tab === "rules" && <ChargeRulesTab />}
+      {tab === "cancellation" && <CancellationTiersTab />}
       {tab === "charges" && <RiderChargesTab />}
       {tab === "discountRules" && <DiscountRulesTab />}
       {tab === "discounts" && <DiscountsTab />}
@@ -70,82 +73,175 @@ export default function BillingPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Late Renewal Fee — a single global setting (enable/disable + a PER-DAY
-// rate), applied whenever a rider pays their weekly plan invoice after
-// next_due_at has already passed — the charge is this rate × whole days
-// late, computed fresh every time so it keeps growing the longer a rider
-// waits. Per-booking overrides (also a per-day rate) are set from the
-// Bookings list.
+// Cancellation Policy — time slabs. `cancellation_tiers`: a cancellation at
+// N minutes after the booking was created keeps back the first tier's
+// penalty_percent of the plan amount paid; past the last tier, 100% is kept.
+// The deposit is always refunded in full. The onboarding charge is always
+// kept in full — it is held out of the plan amount rather than penalised as
+// part of it, so the rider is never charged twice for the same money.
 // ---------------------------------------------------------------------------
 
-function LateRenewalFeeCard() {
-  const { data: settings, isLoading } = usePlanRenewalSettings();
-  const updateSettings = useUpdatePlanRenewalSettings();
+/**
+ * The late-fee RATE and its on/off are edited directly on the "Late fee"
+ * charge rule row below (pencil = amount, power icon = enable/disable). The
+ * only piece with no charge-rule home is the physical-recovery day cap, so
+ * it lives here as a one-line control instead of its own card.
+ */
+function VehicleRecoveryNote() {
+  const { data } = useReturnRecoverySettings();
+  const update = useUpdateReturnRecoverySettings();
+  const [days, setDays] = useState("");
 
-  const [enabled, setEnabled] = useState(false);
-  const [amount, setAmount] = useState("0");
-  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (data) setDays(String(data.max_late_fee_days)); }, [data]);
+  if (!data) return null;
 
-  useEffect(() => {
-    if (!settings) return;
-    setEnabled(settings.late_fee_enabled);
-    setAmount(String(settings.late_fee_amount));
-  }, [settings]);
-
-  if (isLoading || !settings) {
-    return <Card className="p-4"><p className="text-sm text-muted-foreground">Loading late renewal fee settings…</p></Card>;
-  }
-
-  const parsedAmount = Number(amount);
-  const dirty = enabled !== settings.late_fee_enabled || parsedAmount !== settings.late_fee_amount;
-  const invalid = Number.isNaN(parsedAmount) || parsedAmount < 0;
+  const n = Number(days);
+  const invalid = !Number.isInteger(n) || n < 1;
+  const dirty = n !== data.max_late_fee_days;
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <div>
-          <CardTitle className="text-base">Late Renewal Fee</CardTitle>
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm">
+      <span className="text-muted-foreground">Flag a scooter for physical recovery once it&apos;s</span>
+      <Input
+        type="number" min={1} value={days} onChange={(e) => setDays(e.target.value)}
+        className="h-8 w-20"
+      />
+      <span className="text-muted-foreground">days past its return date. Current late-fee rate: <span className="font-medium text-foreground">{formatCurrency(data.late_fee_per_day)}/day</span> (edit on the &ldquo;Late fee&rdquo; rule below).</span>
+      <Button
+        size="sm" variant="outline" disabled={!dirty || invalid || update.isPending}
+        onClick={() => update.mutate({ max_late_fee_days: n }, {
+          onSuccess: () => toastSuccess("Recovery day cap saved"),
+          onError: (err) => toastError(err, "Could not save"),
+        })}
+      >
+        {update.isPending ? "Saving…" : "Save"}
+      </Button>
+      {invalid && <span className="text-xs text-destructive">Enter a whole number ≥ 1.</span>}
+    </div>
+  );
+}
+
+interface TierDraft { upto_minutes: string; penalty_percent: string }
+
+function CancellationTiersTab() {
+  const { data, isLoading, isError, refetch } = useCancellationTiers();
+  const save = useReplaceCancellationTiers();
+
+  const [rows, setRows] = useState<TierDraft[]>([]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!data) return;
+    setRows(data.map((t) => ({ upto_minutes: String(t.upto_minutes), penalty_percent: String(t.penalty_percent) })));
+  }, [data]);
+
+  if (isLoading) return <Card className="p-4"><p className="text-sm text-muted-foreground">Loading cancellation policy…</p></Card>;
+  if (isError) return <Card className="p-4"><p className="text-sm text-destructive">Couldn&apos;t load the cancellation policy. <button className="underline" onClick={() => refetch()}>Retry</button></p></Card>;
+
+  const parsed = rows.map((r) => ({ upto_minutes: Number(r.upto_minutes), penalty_percent: Number(r.penalty_percent) }));
+  const sorted = [...parsed].sort((a, b) => a.upto_minutes - b.upto_minutes);
+  const minutesSet = new Set(parsed.map((p) => p.upto_minutes));
+  const invalid = parsed.some((p) =>
+    !Number.isInteger(p.upto_minutes) || p.upto_minutes < 1 ||
+    Number.isNaN(p.penalty_percent) || p.penalty_percent < 0 || p.penalty_percent > 100,
+  ) || minutesSet.size !== parsed.length;
+
+  const addRow = () => {
+    const lastMin = sorted.length ? sorted[sorted.length - 1].upto_minutes : 0;
+    setRows((rs) => [...rs, { upto_minutes: String(lastMin + 30), penalty_percent: "75" }]);
+  };
+  const removeRow = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
+  const patchRow = (i: number, patch: Partial<TierDraft>) =>
+    setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+
+  const handleSave = () => {
+    setSaveError(null);
+    save.mutate(sorted, {
+      onSuccess: () => toastSuccess("Cancellation policy saved"),
+      onError: (err) => { setSaveError(err instanceof Error ? err.message : "Could not save."); toastError(err, "Could not save cancellation policy"); },
+    });
+  };
+
+  // A worked example off the current draft, sorted.
+  const exampleRows = [
+    ...sorted.map((t, i) => ({
+      label: `${i === 0 ? "0" : sorted[i - 1].upto_minutes}–${t.upto_minutes} min after booking`,
+      value: `keep ${t.penalty_percent}%`,
+    })),
+    { label: sorted.length ? `after ${sorted[sorted.length - 1].upto_minutes} min` : "any time", value: "keep 100% (no plan refund)" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Cancellation Policy</CardTitle>
           <CardDescription>
-            Charged per day when a rider renews their plan after it has already ended — total = days late × rate below.
+            When a rider cancels a paid booking before pickup. Each tier: cancel within this many minutes of booking and
+            the business keeps that percent of the plan amount the rider paid. The security deposit is always refunded in
+            full; any onboarding charge is always kept in full. Past the last tier, nothing of the plan is refunded.
           </CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
-          <div>
-            <Label className="text-sm font-normal">Enable late renewal fee</Label>
-            <p className="text-xs text-muted-foreground">When off, a late renewal costs nothing extra.</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[420px] text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <th className="px-2 py-2 font-medium">Within (minutes of booking)</th>
+                  <th className="px-2 py-2 font-medium">Keep back (% of plan paid)</th>
+                  <th className="px-2 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rows.map((r, i) => (
+                  <tr key={i}>
+                    <td className="px-2 py-2">
+                      <Input type="number" min={1} value={r.upto_minutes} className="w-32"
+                        onChange={(e) => { setSaveError(null); patchRow(i, { upto_minutes: e.target.value }); }} />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input type="number" min={0} max={100} value={r.penalty_percent} className="w-28"
+                        onChange={(e) => { setSaveError(null); patchRow(i, { penalty_percent: e.target.value }); }} />
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive"
+                        title="Remove tier" onClick={() => removeRow(i)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr><td colSpan={3} className="px-2 py-3 text-xs text-muted-foreground">No tiers — cancellations are free (deposit and plan both refunded).</td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
-          <Switch checked={enabled} onCheckedChange={(v) => { setError(null); setEnabled(v); }} />
-        </div>
-        <div className="flex items-end gap-3">
-          <div className="space-y-1.5">
-            <Label>Fee amount (₹ per day)</Label>
-            <Input
-              type="number"
-              min={0}
-              value={amount}
-              onChange={(e) => { setError(null); setAmount(e.target.value); }}
-              className="w-40"
-              disabled={!enabled}
-            />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" onClick={addRow}><PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Add tier</Button>
+            <Button size="sm" disabled={invalid || save.isPending || rows.length === 0 && (data?.length ?? 0) === 0} onClick={handleSave}>
+              {save.isPending ? "Saving…" : "Save Policy"}
+            </Button>
+            {invalid && <span className="text-xs text-destructive">Minutes must be unique whole numbers ≥ 1; percent 0–100.</span>}
+            {saveError && <span className="text-xs text-destructive">{saveError}</span>}
           </div>
-          <Button
-            disabled={!dirty || invalid || updateSettings.isPending}
-            onClick={() => {
-              updateSettings.mutate(
-                { late_fee_enabled: enabled, late_fee_amount: parsedAmount },
-                { onError: (err) => setError(err instanceof Error ? err.message : "Could not save.") },
-              );
-            }}
-          >
-            {updateSettings.isPending ? "Saving..." : "Save"}
-          </Button>
-        </div>
-        {invalid && <p className="text-xs text-destructive">Enter a valid, non-negative amount.</p>}
-        {error && <p className="text-xs text-destructive">{error}</p>}
-      </CardContent>
-    </Card>
+
+          <div className="rounded-lg bg-secondary/40 p-3 text-sm">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">How this reads</p>
+            {exampleRows.map((row) => (
+              <div key={row.label} className="flex items-center justify-between">
+                <span className="text-muted-foreground">{row.label}</span>
+                <span className="font-medium">{row.value}</span>
+              </div>
+            ))}
+            <p className="mt-2 text-[0.6875rem] text-muted-foreground">
+              Set the first tier&apos;s percent to <span className="font-medium text-foreground">0</span> for a free-cancellation window.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -158,6 +254,8 @@ function ChargeRulesTab() {
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
   const [page, setPage] = useState(1);
   const [editTarget, setEditTarget] = useState<ChargeRule | null>(null);
+  const [toggleTarget, setToggleTarget] = useState<ChargeRule | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ChargeRule | null>(null);
   const [creating, setCreating] = useState(false);
 
   const { data, isLoading, isError, refetch } = useChargeRules({
@@ -166,12 +264,14 @@ function ChargeRulesTab() {
     page,
     pageSize: 8,
   });
+  const toggleActive = useUpdateChargeRule();
+  const deleteRule = useDeleteChargeRule();
 
-  const columns: DataTableColumn<ChargeRule>[] = [
+  const chargeRuleColumns: DataTableColumn<ChargeRule>[] = [
     { header: "Charge", key: "charge_name", render: (r) => (
       <div className="min-w-0">
         <p className="truncate font-medium">{r.charge_name}</p>
-        <p className="text-xs text-muted-foreground">{CHARGE_CODE_LABELS[r.charge_code]}</p>
+        <p className="text-xs text-muted-foreground">{chargeCodeLabel(r.charge_code)}</p>
       </div>
     ) },
     {
@@ -210,15 +310,45 @@ function ChargeRulesTab() {
       header: "Actions",
       key: "actions",
       render: (r) => (
-        <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditTarget(r); }}>
-          Edit
-        </Button>
+        <div className="inline-flex items-center gap-0.5">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            title="Edit"
+            aria-label="Edit"
+            onClick={(e) => { e.stopPropagation(); setEditTarget(r); }}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            title={r.active ? "Deactivate" : "Activate"}
+            aria-label={r.active ? "Deactivate" : "Activate"}
+            onClick={(e) => { e.stopPropagation(); setToggleTarget(r); }}
+          >
+            {r.active ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-destructive hover:text-destructive"
+            title="Delete"
+            aria-label="Delete"
+            onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       ),
     },
   ];
 
   return (
     <div className="space-y-4">
+      <VehicleRecoveryNote />
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -251,7 +381,7 @@ function ChargeRulesTab() {
         </div>
 
         <DataTable
-          columns={columns}
+          columns={chargeRuleColumns}
           data={data?.data ?? []}
           isLoading={isLoading}
           isError={isError}
@@ -269,6 +399,60 @@ function ChargeRulesTab() {
         onOpenChange={(o) => !o && setEditTarget(null)}
       />
       <ChargeRuleDialog rule={null} mode="create" open={creating} onOpenChange={setCreating} />
+
+      <ConfirmDialog
+        open={!!toggleTarget}
+        onOpenChange={(o) => !o && setToggleTarget(null)}
+        title={toggleTarget?.active ? "Deactivate this charge rule?" : "Activate this charge rule?"}
+        description={
+          toggleTarget
+            ? toggleTarget.active
+              ? `"${toggleTarget.charge_name}" will stop applying to new charges. Rider charges already generated from it are unaffected. You can reactivate it later.`
+              : `"${toggleTarget.charge_name}" will start applying to new charges again.`
+            : undefined
+        }
+        confirmLabel={toggleTarget?.active ? "Deactivate" : "Activate"}
+        destructive={!!toggleTarget?.active}
+        loading={toggleActive.isPending}
+        onConfirm={() => {
+          if (!toggleTarget) return;
+          const nextActive = !toggleTarget.active;
+          toggleActive.mutate(
+            { id: toggleTarget.id, patch: { active: nextActive } },
+            {
+              onSuccess: () => {
+                toastSuccess(nextActive ? "Charge rule activated" : "Charge rule deactivated");
+                setToggleTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not update charge rule"),
+            },
+          );
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title="Permanently delete this charge rule?"
+        description={
+          deleteTarget
+            ? `"${deleteTarget.charge_name}" will be permanently removed from the database. This cannot be undone. Rider charges already generated from it are unaffected.`
+            : undefined
+        }
+        confirmLabel="Delete permanently"
+        destructive
+        loading={deleteRule.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteRule.mutate(deleteTarget.id, {
+            onSuccess: () => {
+              toastSuccess("Charge rule deleted");
+              setDeleteTarget(null);
+            },
+            onError: (err) => toastError(err, "Could not delete charge rule"),
+          });
+        }}
+      />
     </div>
   );
 }
@@ -399,7 +583,10 @@ function ChargeRuleDialog({
           effective_to: effectiveTo || undefined,
           active,
         },
-        { onSuccess: close },
+        {
+          onSuccess: () => { toastSuccess("Charge rule created"); close(); },
+          onError: (err) => toastError(err, "Could not create charge rule"),
+        },
       );
     } else if (rule) {
       update.mutate(
@@ -417,7 +604,10 @@ function ChargeRuleDialog({
             active,
           },
         },
-        { onSuccess: close },
+        {
+          onSuccess: () => { toastSuccess("Charge rule updated"); close(); },
+          onError: (err) => toastError(err, "Could not update charge rule"),
+        },
       );
     }
   };
@@ -479,15 +669,14 @@ function ChargeRuleDialog({
             <Select
               value={chargeCode}
               onValueChange={(v) => {
-                const code = v as ChargeCode;
-                setChargeCode(code);
-                if (mode === "create") setChargeName(CHARGE_CODE_LABELS[code]);
+                setChargeCode(v);
+                if (mode === "create") setChargeName(chargeCodeLabel(v));
               }}
               disabled={mode === "edit"}
             >
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {CHARGE_CODES.map((c) => <SelectItem key={c} value={c}>{CHARGE_CODE_LABELS[c]}</SelectItem>)}
+                {CHARGE_CODES.map((c) => <SelectItem key={c} value={c}>{chargeCodeLabel(c)}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -707,7 +896,7 @@ function WaiveChargeDialog({
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Reason (at least 3 characters)</Label>
-            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="e.g. First-time late payment" />
+            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason" />
           </div>
         </div>
 
@@ -725,7 +914,10 @@ function WaiveChargeDialog({
               if (!charge) return;
               waive.mutate(
                 { id: charge.id, input: { waived_amount: Number(waivedAmount), reason: reason.trim() } },
-                { onSuccess: close },
+                {
+                  onSuccess: () => { toastSuccess("Charge waived"); close(); },
+                  onError: (err) => toastError(err, "Could not waive charge"),
+                },
               );
             }}
           >
@@ -750,6 +942,8 @@ function DiscountRulesTab() {
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
   const [page, setPage] = useState(1);
   const [editTarget, setEditTarget] = useState<DiscountRule | null>(null);
+  const [toggleTarget, setToggleTarget] = useState<DiscountRule | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DiscountRule | null>(null);
   const [creating, setCreating] = useState(false);
 
   const { data, isLoading, isError, refetch } = useDiscountRules({
@@ -758,12 +952,14 @@ function DiscountRulesTab() {
     page,
     pageSize: 8,
   });
+  const toggleActive = useUpdateDiscountRule();
+  const deleteRule = useDeleteDiscountRule();
 
   const columns: DataTableColumn<DiscountRule>[] = [
     { header: "Discount", key: "discount_name", render: (r) => (
       <div className="min-w-0">
         <p className="truncate font-medium">{r.discount_name}</p>
-        <p className="text-xs text-muted-foreground">{DISCOUNT_CODE_LABELS[r.discount_code]}</p>
+        <p className="text-xs text-muted-foreground">{discountCodeLabel(r.discount_code)}</p>
       </div>
     ) },
     {
@@ -802,9 +998,38 @@ function DiscountRulesTab() {
       header: "Actions",
       key: "actions",
       render: (r) => (
-        <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditTarget(r); }}>
-          Edit
-        </Button>
+        <div className="inline-flex items-center gap-0.5">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            title="Edit"
+            aria-label="Edit"
+            onClick={(e) => { e.stopPropagation(); setEditTarget(r); }}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            title={r.active ? "Deactivate" : "Activate"}
+            aria-label={r.active ? "Deactivate" : "Activate"}
+            onClick={(e) => { e.stopPropagation(); setToggleTarget(r); }}
+          >
+            {r.active ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-destructive hover:text-destructive"
+            title="Delete"
+            aria-label="Delete"
+            onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -861,6 +1086,60 @@ function DiscountRulesTab() {
         onOpenChange={(o) => !o && setEditTarget(null)}
       />
       <DiscountRuleDialog rule={null} mode="create" open={creating} onOpenChange={setCreating} />
+
+      <ConfirmDialog
+        open={!!toggleTarget}
+        onOpenChange={(o) => !o && setToggleTarget(null)}
+        title={toggleTarget?.active ? "Deactivate this discount rule?" : "Activate this discount rule?"}
+        description={
+          toggleTarget
+            ? toggleTarget.active
+              ? `"${toggleTarget.discount_name}" will stop applying to new discounts. Discounts already applied from it are unaffected. You can reactivate it later.`
+              : `"${toggleTarget.discount_name}" will start applying to new discounts again.`
+            : undefined
+        }
+        confirmLabel={toggleTarget?.active ? "Deactivate" : "Activate"}
+        destructive={!!toggleTarget?.active}
+        loading={toggleActive.isPending}
+        onConfirm={() => {
+          if (!toggleTarget) return;
+          const nextActive = !toggleTarget.active;
+          toggleActive.mutate(
+            { id: toggleTarget.id, patch: { active: nextActive } },
+            {
+              onSuccess: () => {
+                toastSuccess(nextActive ? "Discount rule activated" : "Discount rule deactivated");
+                setToggleTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not update discount rule"),
+            },
+          );
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title="Permanently delete this discount rule?"
+        description={
+          deleteTarget
+            ? `"${deleteTarget.discount_name}" will be permanently removed from the database. This cannot be undone. Discounts already applied from it are unaffected.`
+            : undefined
+        }
+        confirmLabel="Delete permanently"
+        destructive
+        loading={deleteRule.isPending}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteRule.mutate(deleteTarget.id, {
+            onSuccess: () => {
+              toastSuccess("Discount rule deleted");
+              setDeleteTarget(null);
+            },
+            onError: (err) => toastError(err, "Could not delete discount rule"),
+          });
+        }}
+      />
     </div>
   );
 }
@@ -948,7 +1227,10 @@ function DiscountRuleDialog({
           effective_to: effectiveTo || undefined,
           active,
         },
-        { onSuccess: close },
+        {
+          onSuccess: () => { toastSuccess("Discount rule created"); close(); },
+          onError: (err) => toastError(err, "Could not create discount rule"),
+        },
       );
     } else if (rule) {
       update.mutate(
@@ -966,7 +1248,10 @@ function DiscountRuleDialog({
             active,
           },
         },
-        { onSuccess: close },
+        {
+          onSuccess: () => { toastSuccess("Discount rule updated"); close(); },
+          onError: (err) => toastError(err, "Could not update discount rule"),
+        },
       );
     }
   };
@@ -1030,13 +1315,13 @@ function DiscountRuleDialog({
               onValueChange={(v) => {
                 const code = v as DiscountCode;
                 setDiscountCode(code);
-                if (mode === "create") setDiscountName(DISCOUNT_CODE_LABELS[code]);
+                if (mode === "create") setDiscountName(discountCodeLabel(code));
               }}
               disabled={mode === "edit"}
             >
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {DISCOUNT_CODES.map((c) => <SelectItem key={c} value={c}>{DISCOUNT_CODE_LABELS[c]}</SelectItem>)}
+                {DISCOUNT_CODES.map((c) => <SelectItem key={c} value={c}>{discountCodeLabel(c)}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -1241,7 +1526,7 @@ function CancelDiscountDialog({
 
         <div className="space-y-1">
           <Label className="text-xs">Reason (at least 3 characters)</Label>
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="e.g. Applied in error" />
+          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason" />
         </div>
 
         {cancel.isError && (
@@ -1257,7 +1542,13 @@ function CancelDiscountDialog({
             disabled={cancel.isPending || !reasonValid}
             onClick={() => {
               if (!discount) return;
-              cancel.mutate({ id: discount.id, input: { reason: reason.trim() } }, { onSuccess: close });
+              cancel.mutate(
+                { id: discount.id, input: { reason: reason.trim() } },
+                {
+                  onSuccess: () => { toastSuccess("Discount cancelled"); close(); },
+                  onError: (err) => toastError(err, "Could not cancel discount"),
+                },
+              );
             }}
           >
             {cancel.isPending ? "Cancelling..." : "Confirm Cancel"}

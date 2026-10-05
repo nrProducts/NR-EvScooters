@@ -28,6 +28,11 @@ export async function updateChargeRuleHandler(req: AuthedRequest, res: Response)
     res.json(await service.updateChargeRule(req.params.id as string, body, req.user!));
 }
 
+export async function deleteChargeRuleHandler(req: AuthedRequest, res: Response) {
+    await service.deleteChargeRule(req.params.id as string, req.user!);
+    res.status(204).send();
+}
+
 export async function listRiderChargesHandler(req: AuthedRequest, res: Response) {
     const { bookingId, status, ...page } = validatedQuery<ListRiderChargesQuery>(req);
     res.json(await service.listRiderCharges({ ...page, bookingId, status }));
@@ -56,6 +61,11 @@ export async function createDiscountRuleHandler(req: AuthedRequest, res: Respons
 export async function updateDiscountRuleHandler(req: AuthedRequest, res: Response) {
     const body = req.body as UpdateDiscountRuleBody;
     res.json(await service.updateDiscountRule(req.params.id as string, body, req.user!));
+}
+
+export async function deleteDiscountRuleHandler(req: AuthedRequest, res: Response) {
+    await service.deleteDiscountRule(req.params.id as string, req.user!);
+    res.status(204).send();
 }
 
 export async function listRiderDiscountsHandler(req: AuthedRequest, res: Response) {

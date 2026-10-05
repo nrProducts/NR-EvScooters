@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  formatPhoneForDisplay, isValidOtp, isValidPhone, normalizePhone, sanitizeOtpInput, toE164,
+  formatPhoneLocal, isValidOtp, isValidPhone, normalizePhone, sanitizeOtpInput, toE164,
 } from '../src/lib/authValidation';
 
 describe('normalizePhone', () => {
@@ -48,11 +48,17 @@ describe('isValidOtp / sanitizeOtpInput', () => {
   });
 });
 
-describe('formatPhoneForDisplay', () => {
-  it('groups an E.164 number for display', () => {
-    expect(formatPhoneForDisplay('+919876543210')).toBe('+91 98765 43210');
+describe('formatPhoneLocal', () => {
+  it('strips the +91 country code from an Indian mobile number', () => {
+    expect(formatPhoneLocal('+919876543210')).toBe('9876543210');
   });
-  it('returns the input unchanged when it does not match', () => {
-    expect(formatPhoneForDisplay('+1 415')).toBe('+1 415');
+  it('strips a bare 91 country code with no leading +', () => {
+    expect(formatPhoneLocal('919876543210')).toBe('9876543210');
+  });
+  it('leaves an already-local 10-digit number unchanged', () => {
+    expect(formatPhoneLocal('9876543210')).toBe('9876543210');
+  });
+  it('leaves a non-Indian country code unchanged rather than mangling it', () => {
+    expect(formatPhoneLocal('+14155552671')).toBe('+14155552671');
   });
 });

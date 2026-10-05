@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
+import { ArrowLeft, Mail } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -10,8 +10,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/common/ErrorState";
 import { useNotificationSettings, useUpdateNotificationSetting } from "@/hooks/useNotificationSettings";
 import { useUsers } from "@/hooks/useUsers";
-import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_LABELS } from "@/types";
-import type { NotificationSetting, NotificationType } from "@/types";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
+import { cn } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
+import type { NotificationSetting } from "@/types";
 
 interface PendingState {
   enabled: boolean;
@@ -47,6 +49,8 @@ export default function NotificationManagerPage() {
     [admins, staff],
   );
 
+  usePageSubtitle("Choose who gets notified — and how — for each rider action that needs review.");
+
   if (isLoading || adminsLoading || staffLoading) {
     return (
       <div className="space-y-4">
@@ -60,17 +64,16 @@ export default function NotificationManagerPage() {
   }
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+    <div className="space-y-3 animate-fade-in">
+      <div className="flex items-center justify-between gap-2">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">Notification Manager</h1>
-          <p className="text-sm text-muted-foreground">
-            Choose who gets notified — and how — for each rider action that needs review.
-          </p>
-        </div>
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/notifications">
+            <Mail className="h-3.5 w-3.5" /> View email delivery log
+          </Link>
+        </Button>
       </div>
 
       {recipientOptions.length === 0 && (
@@ -79,32 +82,31 @@ export default function NotificationManagerPage() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {NOTIFICATION_TYPES.map((type) => {
-          const setting = settings.find((s) => s.notification_type === type);
-          if (!setting) return null;
-          return (
-            <NotificationTypeCard
-              key={type}
-              type={type}
-              setting={setting}
-              recipientOptions={recipientOptions}
-            />
-          );
-        })}
+      {/*
+        Driven by what the server actually has, not by a hard-coded list.
+        `notification_types` is a table; a code added by migration appears
+        here without a front-end change, and — more to the point — a code the
+        console had never heard of is no longer silently unconfigurable.
+      */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {settings.map((setting) => (
+          <NotificationTypeCard
+            key={setting.notification_type}
+            setting={setting}
+            recipientOptions={recipientOptions}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
 function NotificationTypeCard({
-  type,
   setting,
   recipientOptions,
 }: {
-  type: NotificationType;
   setting: NotificationSetting;
-  recipientOptions: Array<{ id: string; full_name: string; roles: string[] }>;
+  recipientOptions: Array<{ id: string; full_name: string; role: string }>;
 }) {
   const updateSetting = useUpdateNotificationSetting();
   const saved = useMemo(() => toPending(setting), [setting]);
@@ -130,45 +132,50 @@ function NotificationTypeCard({
   };
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-        <div>
-          <CardTitle className="text-sm">{NOTIFICATION_TYPE_LABELS[type]}</CardTitle>
+    <Card className={cn(dirty && "border-primary/40")}>
+      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0 p-3.5 pb-2">
+        <div className="min-w-0">
+          <CardTitle className="truncate text-sm">{setting.label}</CardTitle>
           <CardDescription>{pending.recipient_user_ids.length} recipient{pending.recipient_user_ids.length === 1 ? "" : "s"}</CardDescription>
         </div>
-        {setting.enabled && <Badge variant="success">Enabled</Badge>}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {setting.requires_action && <Badge variant="outline">Needs action</Badge>}
+          {setting.enabled && <Badge variant="success">Enabled</Badge>}
+        </div>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-2.5">
-          <Label className="cursor-pointer text-sm font-normal">Enable notification</Label>
-          <Switch checked={pending.enabled} onCheckedChange={(v) => { setError(null); setPending((p) => ({ ...p, enabled: v })); }} />
-        </div>
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-2.5">
-          <Label className="cursor-pointer text-sm font-normal">Send email</Label>
-          <Switch checked={pending.send_email} onCheckedChange={(v) => { setError(null); setPending((p) => ({ ...p, send_email: v })); }} />
-        </div>
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-2.5">
-          <Label className="cursor-pointer text-sm font-normal">In-app notification</Label>
-          <Switch checked={pending.send_in_app} onCheckedChange={(v) => { setError(null); setPending((p) => ({ ...p, send_in_app: v })); }} />
+      <CardContent className="space-y-2.5 p-3.5 pt-0">
+        <div className="divide-y divide-border rounded-lg border border-border">
+          <div className="flex items-center justify-between gap-3 px-2.5 py-1.5">
+            <Label className="cursor-pointer text-xs font-normal">Enable notification</Label>
+            <Switch checked={pending.enabled} onCheckedChange={(v) => { setError(null); setPending((p) => ({ ...p, enabled: v })); }} />
+          </div>
+          <div className="flex items-center justify-between gap-3 px-2.5 py-1.5">
+            <Label className="cursor-pointer text-xs font-normal">Send email</Label>
+            <Switch checked={pending.send_email} onCheckedChange={(v) => { setError(null); setPending((p) => ({ ...p, send_email: v })); }} />
+          </div>
+          <div className="flex items-center justify-between gap-3 px-2.5 py-1.5">
+            <Label className="cursor-pointer text-xs font-normal">In-app notification</Label>
+            <Switch checked={pending.send_in_app} onCheckedChange={(v) => { setError(null); setPending((p) => ({ ...p, send_in_app: v })); }} />
+          </div>
         </div>
 
-        <div className="space-y-1 pt-1">
+        <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground">Recipients</p>
-          <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+          <div className="max-h-32 space-y-0.5 overflow-y-auto rounded-lg border border-border p-1.5">
             {recipientOptions.length === 0 && (
               <p className="px-1 py-1 text-xs text-muted-foreground">No accounts available.</p>
             )}
             {recipientOptions.map((user) => (
-              <label key={user.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-secondary">
+              <label key={user.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs hover:bg-secondary">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-border accent-primary"
+                  className="h-3.5 w-3.5 rounded border-border accent-primary"
                   checked={pending.recipient_user_ids.includes(user.id)}
                   onChange={(e) => toggleRecipient(user.id, e.target.checked)}
                 />
                 <span className="truncate">
                   {user.full_name}
-                  {user.roles.includes("admin") && <span className="ml-1 text-xs text-muted-foreground">(Admin)</span>}
+                  {user.role === "admin" && <span className="ml-1 text-muted-foreground">(Admin)</span>}
                 </span>
               </label>
             ))}
@@ -177,24 +184,40 @@ function NotificationTypeCard({
 
         {error && <p className="text-xs text-destructive">{error}</p>}
 
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="outline" size="sm" disabled={!dirty} onClick={() => setPending(saved)}>
-            Discard
-          </Button>
-          <Button
-            size="sm"
-            disabled={!dirty || updateSetting.isPending}
-            onClick={() => {
-              updateSetting.mutate(
-                { type, input: pending },
-                { onError: (err) => setError(err instanceof Error ? err.message : "Could not save.") },
-              );
-            }}
-          >
-            {updateSetting.isPending ? "Saving..." : "Save"}
-          </Button>
-        </div>
+        {/* Save/Discard only take up space once there's actually something to save — with
+            one card per notification type, showing a permanently-visible (if disabled) button
+            pair on every untouched card is what made this screen feel like "lots of save". */}
+        {dirty && (
+          <div className="flex items-center justify-between gap-2 pt-0.5">
+            <span className="text-xs text-muted-foreground">Unsaved changes</span>
+            <div className="flex gap-1.5">
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setPending(saved)}>
+                Discard
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 px-2.5 text-xs"
+                disabled={updateSetting.isPending}
+                onClick={() => {
+                  updateSetting.mutate(
+                    { type: setting.notification_type, input: pending },
+                    {
+                      onSuccess: () => toastSuccess("Notification settings saved"),
+                      onError: (err) => {
+                        setError(err instanceof Error ? err.message : "Could not save.");
+                        toastError(err, "Could not save notification settings");
+                      },
+                    },
+                  );
+                }}
+              >
+                {updateSetting.isPending ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
+

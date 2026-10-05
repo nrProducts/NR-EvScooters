@@ -1,11 +1,9 @@
 import { z } from "zod";
 
 export const rentalIdParam = z.object({ id: z.string().uuid("A valid rental id is required.") });
-
-const damageItemSchema = z.object({
-    amount: z.number().positive("Damage amount must be greater than 0."),
-    description: z.string().trim().min(3, "Describe the damage in at least 3 characters."),
-    photoPaths: z.array(z.string()).default([]),
+export const rentalDamageIdParam = z.object({
+    id: z.string().uuid("A valid rental id is required."),
+    damageId: z.string().uuid("A valid damage id is required."),
 });
 
 const otherChargeSchema = z.object({
@@ -13,10 +11,14 @@ const otherChargeSchema = z.object({
     amount: z.number().positive("Charge amount must be greater than 0."),
 });
 
-export const approveReturnSettlementBody = z.object({
-    damageItems: z.array(damageItemSchema).default([]),
-    lateFeeOverride: z.number().min(0).optional(),
+/** Admin Inspection — "Save Inspection" / "Request Payment from Rider". */
+export const saveInspectionBody = z.object({
     otherCharges: z.array(otherChargeSchema).default([]),
+    confirmNoDamage: z.boolean().default(false),
+});
+export type SaveInspectionBody = z.infer<typeof saveInspectionBody>;
+
+export const approveReturnSettlementBody = z.object({
     endBatteryPct: z.number().min(0).max(100).optional(),
 });
 export type ApproveReturnSettlementBody = z.infer<typeof approveReturnSettlementBody>;
@@ -28,7 +30,7 @@ export const listSettlementsQuery = z.object({
         "pending_refund", "refund_processing", "refund_completed",
         "no_refund_required", "amount_due", "settlement_completed",
     ]).optional(),
-    sortBy: z.enum(["created_at", "processed_at"]).default("created_at"),
+    sortBy: z.enum(["created_at", "settled_at"]).default("created_at"),
     sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 export type ListSettlementsQuery = z.infer<typeof listSettlementsQuery>;

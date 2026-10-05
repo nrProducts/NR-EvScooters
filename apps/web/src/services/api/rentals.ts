@@ -1,4 +1,5 @@
-import { apiClient } from "./httpClient";
+import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
+import type { PaginatedResult } from "@/types";
 
 export type RentalStatus = "active" | "completed" | "force_ended" | "cancelled";
 
@@ -23,6 +24,27 @@ export interface AdminRentalRow {
   late_fee_per_day: number | null;
   inspected_at: string | null;
   inspected_by: { id: string; full_name: string } | null;
+  /** Set once by vehicle-recovery-sweep; never cleared. */
+  recovery_flagged_at: string | null;
+  /** RENEWAL late fee for a lapsed, unpaid plan — the "pay before returning" gate. Distinct from late_fee_per_day above (the RETURN-lateness fee). Null when there's no subscription to be overdue against. */
+  overdue_late_fee: { isLate: boolean; daysLate: number; lateFee: number; isSettled: boolean } | null;
+}
+
+export interface RentalFilters {
+  page?: number;
+  pageSize?: number;
+  status?: RentalStatus;
+  /** Active rentals flagged by vehicle-recovery-sweep — the "awaiting recovery" tab. */
+  recoveryRequired?: boolean;
+}
+
+/** GET /rentals — requireStaff. Fleet-wide "Ride Management" list. */
+export async function fetchRentals(filters: RentalFilters = {}): Promise<PaginatedResult<AdminRentalRow>> {
+  const { page = 1, pageSize = 8, status, recoveryRequired } = filters;
+  const res = await apiClient.get<BackendPaginated<AdminRentalRow>>("/rentals", {
+    page, pageSize, status, recoveryRequired,
+  });
+  return toPaginatedResult(res);
 }
 
 export interface CompleteRideInput {

@@ -22,12 +22,22 @@ import { adminRouter as adminDepositsRouter, riderRouter as riderDepositsRouter 
 import refundsRoutes from "../modules/refunds/refunds.routes";
 import billingRoutes from "../modules/billing/billing.routes";
 import reconciliationRoutes from "../modules/reconciliation/reconciliation.routes";
+import revenueRoutes from "../modules/revenue/revenue.routes";
 import { consentRouter, riderConsentRouter } from "../modules/consent/consent.routes";
+import { legalRouter, riderLegalRouter } from "../modules/legal/legal.routes";
 import geocodeRoutes from "../modules/geocode/geocode.routes";
 import { adminPrivacyRouter, riderPrivacyRouter } from "../modules/privacy/privacy.routes";
 import notificationSettingsRoutes from "../modules/notification-settings/notification-settings.routes";
 import planRenewalSettingsRoutes from "../modules/plan-renewal-settings/plan-renewal-settings.routes";
+import returnRecoverySettingsRoutes from "../modules/return-recovery-settings/return-recovery-settings.routes";
+import cancellationTiersRoutes from "../modules/cancellation-tiers/cancellation-tiers.routes";
 import returnsRoutes from "../modules/returns/returns.routes";
+import permissionsRoutes from "../modules/permissions/permissions.routes";
+import attendanceRoutes from "../modules/attendance/attendance.routes";
+import leaveRoutes from "../modules/leave/leave.routes";
+import holidaysRoutes from "../modules/holidays/holidays.routes";
+import publicRoutes from "../modules/public/public.routes";
+import preBookingsAdminRoutes from "../modules/public/preBookings.admin.routes";
 
 const router = Router();
 
@@ -42,9 +52,16 @@ router.use("/users/me/notifications", riderNotificationsRouter);
 router.use("/users/me/support", riderSupportRouter);
 router.use("/users/me/consents", riderConsentRouter);
 router.use("/users/me/privacy", riderPrivacyRouter);
+router.use("/users/me/legal", riderLegalRouter);
 router.use("/users", usersRoutes);
+// The permission catalogue — modules, permissions and profiles. Read-only,
+// and the console's replacement for the deleted permissionProfiles.ts.
+router.use("/permissions", permissionsRoutes);
 router.use("/kyc", adminKycRouter);
 router.use("/consent", consentRouter);
+// Terms & Conditions. Separate from /consent: that establishes a lawful basis
+// for processing data, this forms the rental contract.
+router.use("/legal", legalRouter);
 router.use("/privacy", adminPrivacyRouter);
 router.use("/support", adminSupportRouter);
 router.use("/notifications", adminNotificationsRouter);
@@ -65,6 +82,7 @@ router.use("/maintenance", maintenanceRoutes);
 router.use("/invoices/me", riderInvoicesRouter);
 router.use("/invoices", invoicesRoutes);
 router.use("/reports", reportsRoutes);
+router.use("/revenue", revenueRoutes);
 router.use("/audit-logs", auditRoutes);
 router.use("/pii-access", piiAccessRouter);
 router.use("/referrals", referralsRoutes);
@@ -78,8 +96,19 @@ router.use("/deposits", adminDepositsRouter);
 router.use("/refunds", refundsRoutes);
 router.use("/notification-settings", notificationSettingsRoutes);
 router.use("/plan-renewal-settings", planRenewalSettingsRoutes);
+router.use("/return-recovery-settings", returnRecoverySettingsRoutes);
+router.use("/cancellation-tiers", cancellationTiersRoutes);
 router.use("/returns", returnsRoutes);
 router.use("/billing", billingRoutes);
 router.use("/reconciliation", reconciliationRoutes);
+router.use("/attendance", attendanceRoutes);
+router.use("/leave", leaveRoutes);
+router.use("/holidays", holidaysRoutes);
+
+// Unauthenticated read-only feed for the public marketing site (apps/website).
+router.use("/public", publicRoutes);
+// Admin console read side for the pre-bookings the public site's form
+// collects — the "Pre-Bookings" tab on Rental Operations.
+router.use("/pre-bookings", preBookingsAdminRoutes);
 
 export default router;

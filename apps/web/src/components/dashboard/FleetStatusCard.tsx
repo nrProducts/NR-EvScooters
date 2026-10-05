@@ -8,18 +8,18 @@ import type { VehicleStatus } from "@/types";
 
 export const VEHICLE_STATUS_LABEL: Record<VehicleStatus, string> = {
   available: "Available",
-  booked: "Booked",
+  reserved: "Reserved",
   assigned: "Assigned",
   maintenance: "Maintenance",
-  scrap: "Scrapped",
+  retired: "Retired",
 };
 
 const FLEET_BAR_COLOR: Record<VehicleStatus, string> = {
   available: "bg-success",
-  booked: "bg-info",
+  reserved: "bg-info",
   assigned: "bg-primary",
   maintenance: "bg-warning",
-  scrap: "bg-muted-foreground/50",
+  retired: "bg-muted-foreground/50",
 };
 
 function FleetStatusRow({ status, count, total }: { status: VehicleStatus; count: number; total: number }) {
@@ -68,7 +68,7 @@ export function FleetStatusCard({
             <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
             <CardTitle className="text-xs">Fleet Status</CardTitle>
           </div>
-          <span className="text-[11px] font-semibold text-muted-foreground">{total} total</span>
+          <span className="text-[0.6875rem] font-semibold text-muted-foreground">{total} total</span>
         </CardHeader>
         <CardContent className="space-y-2 p-3 pt-1">
           {isLoading || !byStatus ? (
@@ -90,7 +90,7 @@ export function FleetStatusCard({
                   );
                 })}
               </div>
-              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[0.6875rem]">
                 {statuses.map((status) => (
                   <div key={status} className="flex items-center gap-1.5">
                     <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", FLEET_BAR_COLOR[status])} />

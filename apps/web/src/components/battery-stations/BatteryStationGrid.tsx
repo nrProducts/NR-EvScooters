@@ -1,10 +1,10 @@
-import { Eye, EyeOff, Map as MapIcon, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Eye, EyeOff, Map as MapIcon, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { formatCoordinate } from "@/lib/mapConfig";
 import { formatStationName, type BatteryStation, type StationStatus } from "@/types/batteryStation";
 
@@ -131,11 +131,11 @@ export function BatteryStationGrid({
       key: "actions",
       render: (s) => (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="icon" aria-label={`Actions for ${formatStationName(s.name)}`} disabled={busyId === s.id}>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
+          <RowActionsButton
+            label={`Actions for ${formatStationName(s.name)}`}
+            onClick={(e) => e.stopPropagation()}
+            disabled={busyId === s.id}
+          />
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             {canEdit && (
               <DropdownMenuItem onClick={() => onEdit(s)}>

@@ -109,9 +109,27 @@ async function postFormData<T>(path: string, formData: FormData): Promise<T> {
   return payload as T;
 }
 
+/** GET returning a binary body (file downloads) — carries the bearer token, unlike a plain <a href>. */
+async function getBlob(
+  path: string,
+  query?: Record<string, string | number | boolean | undefined>,
+): Promise<{ blob: Blob; filename: string }> {
+  const headers = await authHeader();
+  const res = await fetch(`${BASE_URL}${path}${buildQuery(query)}`, { method: "GET", headers });
+  if (!res.ok) {
+    let body: ApiErrorBody | null = null;
+    try { body = (await res.json()) as ApiErrorBody; } catch { /* non-JSON */ }
+    throw new ApiError(body?.error?.message ?? "Download failed.", res.status, body?.error?.code);
+  }
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  return { blob: await res.blob(), filename: match?.[1] ?? "download" };
+}
+
 export const apiClient = {
   get: <T>(path: string, query?: Record<string, string | number | boolean | undefined>) =>
     request<T>("GET", path, { query }),
+  getBlob,
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, { body }),
   postForm: <T>(path: string, formData: FormData) => postFormData<T>(path, formData),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, { body }),

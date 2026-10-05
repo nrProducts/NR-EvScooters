@@ -3,13 +3,13 @@ import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import { isStaff, isAdmin, resolveTargetUserId } from "../../middleware/authorize.middleware";
 import { badRequest, forbidden } from "../../common/AppError";
-import { AccountStatus, RoleName, StaffCapability } from "../../types";
-import { PermissionProfileName } from "../../config/permissionProfiles";
+import { UserRole, UserStatus } from "../../types";
 import { ListUsersFilters } from "./users.types";
 import * as service from "./users.service";
 import * as permissionsService from "./staff-permissions.service";
 import { hasActiveBookingForUser } from "../bookings/bookings.service";
 import { getConsentState } from "../consent/consent.service";
+import { getAcceptanceState as getTermsAcceptanceState } from "../legal/legal.service";
 import { logPiiAccess } from "../../common/piiAccess";
 
 export async function listUsersHandler(req: AuthedRequest, res: Response) {
@@ -75,32 +75,30 @@ export async function updateStatusHandler(req: AuthedRequest, res: Response) {
     res.json(await service.changeAccountStatus(req.params.id as string, action, reason, req.user!, req));
 }
 
+/**
+ * A user has one role now, but the response still carries a one-element
+ * `roles` array. Both clients read `roles[]`, and reshaping the wire format
+ * is frontend work the schema change does not require — Stage 10 collapses it.
+ */
 export async function getRolesHandler(req: AuthedRequest, res: Response) {
     const id = resolveTargetUserId(req);
     if (id !== req.user!.id && !isStaff(req)) throw forbidden("You may only view your own roles.");
-    res.json({ roles: await service.getRoles(id) });
+    const role = await service.getRole(id);
+    res.json({ role, roles: [role] });
+}
+
+export async function approveSignupHandler(req: AuthedRequest, res: Response) {
+    const { role } = req.body as { role: "staff" | "rider" };
+    res.json(await service.approveSignup(req.params.id as string, role, req.user!, req));
 }
 
 export async function updateRolesHandler(req: AuthedRequest, res: Response) {
-    const { roles } = req.body as { roles: RoleName[] };
-    res.json({ roles: await service.replaceRoles(req.params.id as string, roles, req.user!, req) });
-}
-
-export async function getCapabilitiesHandler(req: AuthedRequest, res: Response) {
-    const id = resolveTargetUserId(req);
-    if (id !== req.user!.id && !isStaff(req)) {
-        throw forbidden("You may only view your own capabilities.");
-    }
-    res.json({ capabilities: await service.getCapabilities(id) });
-}
-
-export async function updateCapabilitiesHandler(req: AuthedRequest, res: Response) {
-    const { capabilities } = req.body as { capabilities: StaffCapability[] };
-    res.json({
-        capabilities: await service.replaceCapabilities(
-            req.params.id as string, capabilities, req.user!, req,
-        ),
-    });
+    // Accepts either shape: `{ role }` or the legacy `{ roles: [one] }`.
+    const body = req.body as { role?: UserRole; roles?: UserRole[] };
+    const role = body.role ?? body.roles?.[0];
+    if (!role) throw badRequest("A role is required.");
+    const next = await service.changeRole(req.params.id as string, role, req.user!, req);
+    res.json({ role: next, roles: [next] });
 }
 
 /**
@@ -132,6 +130,33 @@ async function safeConsentState(userId: string) {
     }
 }
 
+/**
+ * Terms acceptance state for the profile payload, degrading the same way and
+ * for the same reason as safeConsentState above.
+ *
+ * Fails OPEN for the same reason too: this flag only decides whether the
+ * mobile routing gate shows the terms screen. It is NOT what makes the terms
+ * binding — that is the acceptance row itself, written server-side and
+ * checked against the live version by acceptDocument(). A terms outage means
+ * riders are not prompted; it does not mean anyone is treated as having
+ * accepted something they did not.
+ *
+ * Note what this deliberately does NOT do: it does not gate booking or
+ * payment. If that gate is ever wanted it belongs in the booking service
+ * where it can fail closed, never here.
+ */
+async function safeTermsState(userId: string) {
+    try {
+        return await getTermsAcceptanceState(userId, "terms");
+    } catch (err) {
+        console.error("[users.me] terms state unavailable; serving profile without it", {
+            userId,
+            error: (err as Error)?.message ?? "unknown",
+        });
+        return { up_to_date: true, current_version: "" };
+    }
+}
+
 export async function getPermissionsHandler(req: AuthedRequest, res: Response) {
     res.json({ modules: await permissionsService.getModulePermissions(req.params.id as string) });
 }
@@ -144,7 +169,7 @@ export async function updatePermissionsHandler(req: AuthedRequest, res: Response
 }
 
 export async function applyPermissionProfileHandler(req: AuthedRequest, res: Response) {
-    const { profile } = req.body as { profile: Exclude<PermissionProfileName, "custom"> };
+    const { profile } = req.body as { profile: string };
     res.json({
         modules: await permissionsService.applyPermissionProfile(req.params.id as string, profile, req.user!, req),
     });
@@ -154,14 +179,15 @@ export async function applyPermissionProfileHandler(req: AuthedRequest, res: Res
 /** Exposed for the mobile "am I allowed to unlock?" check. */
 export async function meHandler(req: AuthedRequest, res: Response) {
     const detail = await service.getUserById(req.user!.id, req.user!);
-    const [hasActiveRental, hasActiveBooking, consent] = await Promise.all([
+    const [hasActiveRental, hasActiveBooking, consent, terms] = await Promise.all([
         service.hasActiveRentalForUser(req.user!.id),
         hasActiveBookingForUser(req.user!.id),
         safeConsentState(req.user!.id),
+        safeTermsState(req.user!.id),
     ]);
     res.json({
         ...detail,
-        can_rent: detail.kyc_status === "verified" && (detail.account_status as AccountStatus) === "active",
+        can_rent: detail.kyc_status === "verified" && (detail.account_status as UserStatus) === "active",
         is_admin: isAdmin(req),
         has_active_rental: hasActiveRental,
         has_active_booking: hasActiveBooking,
@@ -171,6 +197,11 @@ export async function meHandler(req: AuthedRequest, res: Response) {
         // rather than whenever the rider happens to open Privacy.
         consent_up_to_date: consent.up_to_date,
         consent_notice_version: consent.current_notice_version,
+        // Same round-trip argument as consent above: the routing gate must know
+        // whether the rider owes an acceptance before it renders, and a newly
+        // published version has to re-prompt on the next profile refresh.
+        terms_up_to_date: terms.up_to_date,
+        terms_version: terms.current_version,
     });
 }
 
@@ -212,7 +243,7 @@ export async function getUserPhotoUrlHandler(req: AuthedRequest, res: Response) 
 }
 
 export async function registerPushTokenHandler(req: AuthedRequest, res: Response) {
-    const { token } = req.body as { token: string };
-    await service.registerPushToken(req.user!.id, token);
+    const { token, platform } = req.body as { token: string; platform?: "ios" | "android" };
+    await service.registerPushToken(req.user!.id, token, platform);
     res.status(204).send();
 }

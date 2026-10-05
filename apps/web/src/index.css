@@ -4,36 +4,41 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The three staggered dots under BrandedLoader (components/common/BrandedLoader.tsx). */
+@keyframes loader-dot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
 /*
- * Premium dark-first SaaS palette, brand green #22C55E family. Light mode is
+ * Premium dark-first SaaS palette, brand green #21C45D family. Light mode is
  * a complementary palette built from the same primary/radius/shadow
  * language, not an afterthought — the theme toggle in Header.tsx stays live.
  *
- * NOTE: apps/mobile/src/constants/theme.ts previously mirrored this file's
- * hex values by hand (no shared package, just matching literals — see the
- * mobile theme file's own header comment). This redesign intentionally
- * diverges the web admin console's brand green (#22C55E, 142Β°) from the
- * mobile rider app's green (#4CAF50, 122Β°); the two are no longer meant to
- * match hue-for-hue. If the rider app should follow, that's a separate,
- * explicit change to apps/mobile.
+ * BRAND GREEN: #21C45D (hsl 142 71% 45%) is the single SwapNgo primary green
+ * across every surface — admin web, staff web, rider mobile
+ * (apps/mobile/src/constants/theme.ts), the website (apps/website) and all
+ * logo/icon assets. There is no shared package, so the value is mirrored by
+ * hand in each theme file; keep them in sync.
  */
 @layer base {
   :root {
-    --background: 210 40% 98%;
+    /* SwapNgo design spec: page bg #F7F9F8, a faint green-gray. */
+    --background: 150 13% 97%;
     --foreground: 215 28% 17%;
 
     --card: 0 0% 100%;
     --card-foreground: 215 28% 17%;
     /* Subtle depth step used for row/card hover — one notch darker than card. */
-    --card-hover: 210 30% 96%;
+    --card-hover: 150 13% 96%;
 
     --popover: 0 0% 100%;
     --popover-foreground: 215 28% 17%;
 
-    /* Brand green #22C55E */
+    /* Brand green #21C45D */
     --primary: 142 71% 45%;
-    --primary-hover: 142 76% 36%;
-    --primary-pressed: 142 76% 36%;
+    --primary-hover: 142 72% 37%; /* #1AA34D — darkened brand green */
+    --primary-pressed: 142 72% 37%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 142 40% 90%;
@@ -45,22 +50,25 @@
     --accent: 142 45% 95%;
     --accent-foreground: 142 39% 26%;
 
-    --destructive: 0 84% 60%;
+    /* Danger #FF4D4F */
+    --destructive: 359 100% 65%;
     --destructive-foreground: 210 40% 98%;
 
     /* Accent green #10B981 — success chips, positive trend arrows. */
     --success: 160 84% 39%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
+    /* Warning #FFB020 */
+    --warning: 39 100% 56%;
     --warning-foreground: 26 40% 15%;
 
-    /* Blue Info #3B82F6 — the 4th status-chip color (in-progress/scheduled). */
-    --info: 217 91% 60%;
+    /* Blue Info #1677FF — the 4th status-chip color (in-progress/scheduled). */
+    --info: 215 100% 54%;
     --info-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
+    /* Spec border #E6ECE8 — a faint green-tinted hairline. */
+    --border: 146 13% 91%;
+    --input: 146 13% 91%;
     --ring: 142 71% 45%;
 
     /* Matches --card (table/panel background) — a whiter sidebar than before. */
@@ -68,7 +76,8 @@
     --sidebar-foreground: 215 28% 17%;
 
     --radius: 1.125rem;
-    --shadow-card: 0 8px 30px rgb(15 23 42 / 0.10);
+    /* Spec: "very subtle shadows, avoid heavy black shadows." */
+    --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 4px 12px rgb(16 24 40 / 0.05);
   }
 
   .dark {
@@ -82,10 +91,10 @@
     --popover: 217 33% 17%;
     --popover-foreground: 0 0% 100%;
 
-    /* Brand green #22C55E */
+    /* Brand green #21C45D */
     --primary: 142 71% 45%;
-    --primary-hover: 142 76% 36%; /* #16A34A */
-    --primary-pressed: 142 76% 36%;
+    --primary-hover: 142 72% 37%; /* #1AA34D — darkened brand green */
+    --primary-pressed: 142 72% 37%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 142 25% 22%;
@@ -97,18 +106,18 @@
     --accent: 142 25% 20%;
     --accent-foreground: 142 45% 85%;
 
-    --destructive: 0 84% 60%; /* #EF4444 */
+    --destructive: 359 100% 65%; /* #FF4D4F */
     --destructive-foreground: 0 0% 100%;
 
     /* Accent green #10B981 */
     --success: 160 84% 39%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%; /* #F59E0B */
+    --warning: 39 100% 56%; /* #FFB020 */
     --warning-foreground: 26 40% 10%;
 
-    /* Blue Info #3B82F6 */
-    --info: 217 91% 60%;
+    /* Blue Info #1677FF */
+    --info: 215 100% 54%;
     --info-foreground: 0 0% 100%;
 
     /* Flattened equivalent of rgba(255,255,255,.08) over #0F172A — the
@@ -122,7 +131,29 @@
     --sidebar: 217 33% 17%; /* #1E293B */
     --sidebar-foreground: 0 0% 100%;
 
-    --shadow-card: 0 8px 30px rgb(0 0 0 / 0.25);
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.24), 0 6px 16px rgb(0 0 0 / 0.28);
+  }
+
+  /*
+   * Global density scale. Tailwind's default spacing/sizing/font-size/
+   * border-radius steps (h-*, w-*, p-*, gap-*, text-*, rounded-*, and this
+   * project's own --radius token) are all `rem`, not hardcoded px — `1rem`
+   * always equals the root element's font-size, so this one rule uniformly
+   * scales every one of those utilities across the entire app at once,
+   * instead of hand-editing height/padding/gap classes component by
+   * component (which for an app this size would be both enormous in scope
+   * and impossible to keep consistent). 80% mirrors the ask precisely: "100%
+   * zoom should look like today's 80% zoom" IS "shrink the rem baseline to
+   * 80%" — that's mathematically what browser zoom does to rem-derived
+   * sizing. The literal handful of icon sizes and micro-text labels that
+   * were hardcoded in px (not rem) were converted alongside this change so
+   * they keep scaling in step rather than becoming comparatively oversized;
+   * a few explicit page/viewport-width layout thresholds (dialog/table
+   * max-widths) were deliberately left in px — those are breakpoint
+   * decisions, not density ones.
+   */
+  html {
+    font-size: 80%;
   }
 
   * {
@@ -145,7 +176,17 @@
     height: 6px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-border rounded-full;
+    background-color: #bef4d2; /* light tint of brand green #21C45D */
+    border-radius: 9999px;
+  }
+
+  /* Narrower than .scrollbar-thin — for the sidebar nav, where a 6px thumb crowds the icon column. */
+  .scrollbar-nav::-webkit-scrollbar {
+    width: 3px;
+  }
+  .scrollbar-nav::-webkit-scrollbar-thumb {
+    background-color: #bef4d2; /* light tint of brand green #21C45D */
+    border-radius: 9999px;
   }
 
   .transition-smooth {

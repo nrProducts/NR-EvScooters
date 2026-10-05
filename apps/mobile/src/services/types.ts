@@ -1,8 +1,9 @@
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
-    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiPaymentOrder, ApiReferralSummary,
-    ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleModel,
-    ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload, KycDocType,
+    ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
+    ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
+    ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload, KycDocType,
     ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
     UpdateUserPayload, VerifyPaymentPayload,
 } from '../types/api';
@@ -36,14 +37,14 @@ export interface NotificationRepository {
 export interface UploadDocumentInput {
     doc_type: KycDocType;
     doc_number: string;
-    expiry_date?: string;
+    expires_on?: string;
     front: LocalFile;
     back?: LocalFile;
 }
 
 export interface UpdateDocumentInput {
     doc_number?: string;
-    expiry_date?: string;
+    expires_on?: string;
     front?: LocalFile;
     back?: LocalFile;
 }
@@ -77,7 +78,6 @@ export interface HistoryParams {
 }
 
 export interface BookingRepository {
-    create(payload: CreateBookingPayload): Promise<ApiBooking>;
     /**
      * The rider's current in-progress booking, or null if none exists. The
      * real implementation's object actually carries the plan/billing fields
@@ -105,6 +105,21 @@ export interface BookingRepository {
  * backend hands back — this repository never accepts one as input.
  */
 export interface BillingRepository {
+    /**
+     * Itemised price for a plan BEFORE any booking exists. Read-only —
+     * creates no booking, subscription or invoice.
+     *
+     * The app cannot compute this: pricing rules live in the database.
+     */
+    quotePlan(planId: string, startDay?: string): Promise<ApiPlanQuote>;
+    /**
+     * Pay-first booking checkout. Creates ONLY a payment intent — no booking,
+     * subscription or invoice. The booking is materialised by the backend when
+     * this order's payment captures. Retrying with the same plan/date reuses
+     * the one open intent.
+     */
+    createBookingOrder(payload: CreateBookingOrderPayload): Promise<ApiPaymentOrder>;
+    /** Legacy — pays an admin-created `pending_payment` booking. */
     createOrderForBooking(bookingId: string): Promise<ApiPaymentOrder>;
     createOrderForInvoice(invoiceId: string): Promise<ApiPaymentOrder>;
     verifyPayment(payload: VerifyPaymentPayload): Promise<void>;
@@ -130,6 +145,16 @@ export interface RentalRepository {
     requestReturn(rentalId: string, payload: ReturnRequestPayload): Promise<ApiRental>;
     /** The rider's most recent return settlement, or null if none exists. Powers the Home/My Scooter settlement card. */
     settlement(): Promise<ApiReturnSettlement | null>;
+    /** Pure preview of the overdue renewal late fee — safe on every screen load, creates nothing. */
+    overdueLateFee(): Promise<ApiOverdueLateFee>;
+    /** Creates (or reuses) the payable invoice for the overdue late fee — pay it via billingRepository.createOrderForInvoice. */
+    payOverdueLateFee(): Promise<ApiOverdueLateFeeInvoice>;
+    /** Vehicle Return → Inspection → Payment Gate → Approve Return, from the rider's own side. Null once there's no return to report on. */
+    returnStage(): Promise<ApiReturnStage | null>;
+    /** The paperwork (RC/insurance/PUC/...) for whichever scooter the rider currently holds. Empty, not an error, if nothing's assigned or nothing's been uploaded yet. */
+    vehicleDocuments(): Promise<ApiVehicleDocument[]>;
+    /** Short-lived signed URL for one document's file. */
+    vehicleDocumentUrl(documentId: string): Promise<string>;
 }
 
 export interface MaintenanceRepository {

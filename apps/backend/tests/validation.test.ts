@@ -97,6 +97,37 @@ describe("selfUpdateUserBody", () => {
     it("refuses an empty patch", () => {
         expect(() => selfUpdateUserBody.parse({})).toThrow();
     });
+
+    // Multi-language rider app: preferred_language is the one field the
+    // language picker writes to /users/me on its own, so it must be
+    // acceptable alone as well as alongside other fields — see
+    // apps/mobile/src/i18n/index.ts's pushToServer.
+    it("accepts a supported preferred_language on its own", () => {
+        expect(selfUpdateUserBody.parse({ preferred_language: "ta" })).toEqual({
+            preferred_language: "ta",
+        });
+        expect(selfUpdateUserBody.parse({ preferred_language: "hi" })).toEqual({
+            preferred_language: "hi",
+        });
+        expect(selfUpdateUserBody.parse({ preferred_language: "en" })).toEqual({
+            preferred_language: "en",
+        });
+    });
+
+    it("refuses a language the app has no translations for", () => {
+        // Not a free string: this value is read straight into a dictionary
+        // lookup on the device, so an unsupported language must fail loudly
+        // here (400) rather than reach the client and degrade silently.
+        expect(() => selfUpdateUserBody.parse({ preferred_language: "te" })).toThrow();
+        expect(() => selfUpdateUserBody.parse({ preferred_language: "TA" })).toThrow();
+        expect(() => selfUpdateUserBody.parse({ preferred_language: "" })).toThrow();
+    });
+
+    it("accepts preferred_language alongside other self-update fields", () => {
+        expect(
+            selfUpdateUserBody.parse({ city: "Kochi", preferred_language: "hi" }),
+        ).toEqual({ city: "Kochi", preferred_language: "hi" });
+    });
 });
 
 describe("updateStatusBody", () => {
@@ -115,33 +146,71 @@ describe("updateStatusBody", () => {
     });
 });
 
+/**
+ * A user has exactly ONE role now. The body accepts either shape — `{ role }`,
+ * or the one-element `{ roles: [x] }` both clients still send — so the wire
+ * did not have to change on the same day the column did.
+ */
 describe("updateRolesBody", () => {
     it("refuses an empty role list", () => {
-        expect(() => updateRolesBody.parse({ roles: [] })).toThrow(/at least one role/);
+        expect(() => updateRolesBody.parse({ roles: [] })).toThrow();
+    });
+
+    it("refuses more than one role, which is no longer expressible", () => {
+        expect(() => updateRolesBody.parse({ roles: ["staff", "admin"] })).toThrow();
     });
 
     it("refuses an unknown role", () => {
         expect(() => updateRolesBody.parse({ roles: ["superuser"] })).toThrow();
+        expect(() => updateRolesBody.parse({ role: "technician" })).toThrow();
     });
 
-    it("accepts a known role", () => {
+    it("accepts either the singular or the legacy one-element shape", () => {
+        expect(updateRolesBody.parse({ role: "staff" }).role).toBe("staff");
         expect(updateRolesBody.parse({ roles: ["staff"] }).roles).toEqual(["staff"]);
+    });
+
+    it("refuses a body carrying neither", () => {
+        expect(() => updateRolesBody.parse({})).toThrow();
     });
 });
 
+/**
+ * Modules carry ACTIONS now, so the body is a list of
+ * `{ module_key, actions[] }` rather than a list of bare keys.
+ *
+ * It also no longer validates the key against a hard-coded union. `modules`
+ * and `permissions` are tables, so "is this a real permission?" is a lookup
+ * the service does against the catalogue — a check the schema can answer and
+ * a literal union in a validator could only approximate.
+ */
 describe("updatePermissionsBody", () => {
     it("accepts an empty module list (revoke everything is valid, unlike roles)", () => {
         expect(updatePermissionsBody.parse({ modules: [] }).modules).toEqual([]);
     });
 
-    it("accepts known module keys", () => {
-        expect(updatePermissionsBody.parse({ modules: ["vehicles", "bookings"] }).modules).toEqual([
-            "vehicles", "bookings",
+    it("accepts module keys with their granted actions", () => {
+        const parsed = updatePermissionsBody.parse({
+            modules: [
+                { module_key: "vehicles", actions: ["view", "edit"] },
+                { module_key: "bookings", actions: ["view"] },
+            ],
+        });
+        expect(parsed.modules).toEqual([
+            { module_key: "vehicles", actions: ["view", "edit"] },
+            { module_key: "bookings", actions: ["view"] },
         ]);
     });
 
-    it("refuses an unknown module key", () => {
-        expect(() => updatePermissionsBody.parse({ modules: ["reconciliation"] })).toThrow();
+    it("accepts a module with no actions, which grants nothing", () => {
+        const parsed = updatePermissionsBody.parse({
+            modules: [{ module_key: "vehicles", actions: [] }],
+        });
+        expect(parsed.modules[0]!.actions).toEqual([]);
+    });
+
+    it("refuses a bare module key without its actions", () => {
+        expect(() => updatePermissionsBody.parse({ modules: ["vehicles"] })).toThrow();
     });
 });
 

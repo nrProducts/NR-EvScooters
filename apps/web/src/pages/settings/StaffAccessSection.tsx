@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, KeyRound, UserMinus, Ban, CheckCircle2, RefreshCw, UserPlus, MoreHorizontal, Shield } from "lucide-react";
+import { Eye, KeyRound, UserMinus, Ban, CheckCircle2, RefreshCw, UserPlus, Shield } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -9,13 +9,16 @@ import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import {
-  useUsers, useUserPermissions, useChangeUserStatus, useUpdateUserRoles, useUpdateUserPermissions,
+  useUsers, useUserPermissions, useChangeUserStatus, useChangeUserRole, useUpdateUserPermissions,
 } from "@/hooks/useUsers";
 import { initials, formatDate } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import type { AppUser } from "@/types";
-import { PERMISSION_PROFILES, matchProfileName } from "@/config/permissionProfiles";
+import { matchProfileName, usePermissionCatalog } from "@/hooks/usePermissionCatalog";
+import { CUSTOM_PROFILE } from "@/types";
 import AddStaffDialog from "./AddStaffDialog";
 
 export default function StaffAccessSection() {
@@ -26,15 +29,29 @@ export default function StaffAccessSection() {
 
   const { data, isLoading, isError, refetch } = useUsers({ role: "staff", page, pageSize: 12 });
   const changeStatus = useChangeUserStatus();
-  const updateRoles = useUpdateUserRoles();
+  const changeRole = useChangeUserRole();
   const updatePermissions = useUpdateUserPermissions();
 
+  // Revoking staff access is a demotion to `rider` now, not the removal of
+  // one entry from a role array — `users.role` holds exactly one value.
   const revokeStaff = (u: AppUser) => {
-    updateRoles.mutate({ id: u.id, roles: u.roles.filter((r) => r !== "staff") });
+    changeRole.mutate(
+      { id: u.id, role: "rider" },
+      {
+        onSuccess: () => toastSuccess("Staff access revoked"),
+        onError: (err) => toastError(err, "Could not revoke staff access"),
+      },
+    );
   };
 
   const resetPermissions = (u: AppUser) => {
-    updatePermissions.mutate({ id: u.id, modules: [] });
+    updatePermissions.mutate(
+      { id: u.id, modules: [] },
+      {
+        onSuccess: () => toastSuccess("Permissions reset"),
+        onError: (err) => toastError(err, "Could not reset permissions"),
+      },
+    );
   };
 
   const columns: DataTableColumn<AppUser>[] = [
@@ -59,9 +76,7 @@ export default function StaffAccessSection() {
     { header: "Last Login", key: "last", render: (u) => u.last_login_at ? formatDate(u.last_login_at) : "Never", hideOnMobile: true },
     { header: "Actions", key: "actions", render: (u) => (
       <DropdownMenu>
-        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
-        </DropdownMenuTrigger>
+        <RowActionsButton label="Staff member actions" onClick={(e) => e.stopPropagation()} />
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => navigate(`/users/${u.id}`)}>
             <Eye className="mr-2 h-4 w-4" /> View profile
@@ -70,16 +85,44 @@ export default function StaffAccessSection() {
             <KeyRound className="mr-2 h-4 w-4" /> View / Edit permissions
           </DropdownMenuItem>
           {u.account_status === "suspended" ? (
-            <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
+            <DropdownMenuItem
+              onClick={() =>
+                changeStatus.mutate(
+                  { id: u.id, action: "activate" },
+                  {
+                    onSuccess: () => toastSuccess("Access restored"),
+                    onError: (err) => toastError(err, "Could not restore access"),
+                  },
+                )
+              }
+            >
               <CheckCircle2 className="mr-2 h-4 w-4" /> Restore access
             </DropdownMenuItem>
           ) : u.account_status === "inactive" ? (
-            <DropdownMenuItem onClick={() => changeStatus.mutate({ id: u.id, action: "activate" })}>
+            <DropdownMenuItem
+              onClick={() =>
+                changeStatus.mutate(
+                  { id: u.id, action: "activate" },
+                  {
+                    onSuccess: () => toastSuccess("Account activated"),
+                    onError: (err) => toastError(err, "Could not activate account"),
+                  },
+                )
+              }
+            >
               <CheckCircle2 className="mr-2 h-4 w-4" /> Activate account
             </DropdownMenuItem>
           ) : (
             <DropdownMenuItem
-              onClick={() => changeStatus.mutate({ id: u.id, action: "suspend", reason: "Suspended by admin" })}
+              onClick={() =>
+                changeStatus.mutate(
+                  { id: u.id, action: "suspend", reason: "Suspended by admin" },
+                  {
+                    onSuccess: () => toastSuccess("Access suspended"),
+                    onError: (err) => toastError(err, "Could not suspend access"),
+                  },
+                )
+              }
             >
               <Ban className="mr-2 h-4 w-4" /> Suspend access
             </DropdownMenuItem>
@@ -126,12 +169,18 @@ export default function StaffAccessSection() {
         title={`Promote ${promoteTarget?.full_name || "this account"} to admin?`}
         description="Grants full, unconditional access to every module — this replaces their staff role and permissions, not adds to them."
         confirmLabel="Promote to admin"
-        loading={updateRoles.isPending}
+        loading={changeRole.isPending}
         onConfirm={() => {
           if (promoteTarget) {
-            updateRoles.mutate(
-              { id: promoteTarget.id, roles: ["admin"] },
-              { onSuccess: () => setPromoteTarget(null) },
+            changeRole.mutate(
+              { id: promoteTarget.id, role: "admin" },
+              {
+                onSuccess: () => {
+                  toastSuccess("Promoted to admin");
+                  setPromoteTarget(null);
+                },
+                onError: (err) => toastError(err, "Could not promote to admin"),
+              },
             );
           }
         }}
@@ -142,10 +191,14 @@ export default function StaffAccessSection() {
 
 function ProfileBadge({ user }: { user: AppUser }) {
   const { data: modules, isLoading } = useUserPermissions(user.id);
-  if (isLoading) return <span className="text-xs text-muted-foreground">Loading...</span>;
-  const profile = matchProfileName(modules ?? []);
-  if (profile === "custom") return <Badge variant="outline">Custom</Badge>;
-  return <Badge variant="secondary">{PERMISSION_PROFILES[profile].label}</Badge>;
+  const { data: catalog } = usePermissionCatalog();
+  if (isLoading || !catalog) return <span className="text-xs text-muted-foreground">Loading...</span>;
+
+  const code = matchProfileName(catalog, modules ?? []);
+  if (code === CUSTOM_PROFILE) return <Badge variant="outline">Custom</Badge>;
+
+  const profile = catalog.profiles.find((p) => p.code === code);
+  return <Badge variant="secondary">{profile?.label ?? code}</Badge>;
 }
 
 function PermissionsCount({ user }: { user: AppUser }) {

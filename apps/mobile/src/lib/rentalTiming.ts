@@ -6,26 +6,36 @@
  * derive one. Anything that decides what a rider OWES belongs in
  * lib/returnPolicy.ts alongside its backend mirror.
  *
- * Computes in DEVICE-local time, same caveat as returnPolicy.ts: fine for
- * "12 days left", never for money.
+ * Day boundaries are IST (Asia/Kolkata), NOT the device's timezone — every
+ * `date` in this system is an IST calendar day (see apps/backend/src/common/
+ * dates.ts). A rider whose phone is set to another zone must still see "Day 1"
+ * on the pickup day, so the day math is anchored to the business day, not the
+ * handset clock. Fine for "12 days left", never for money.
  */
 
 const DAY_MS = 86_400_000;
+const BUSINESS_TZ = 'Asia/Kolkata';
 
-/** Midnight of the calendar day `d` falls on, device-local. */
-function startOfDay(d: Date): Date {
-  const copy = new Date(d);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
+// en-CA renders as YYYY-MM-DD, which is exactly the IST calendar-day key.
+const istDayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TZ });
+
+/**
+ * Midnight (as a UTC millisecond count) of the IST calendar day that instant
+ * `d` falls on. Only ever subtracted from another such value, so the fictional
+ * "IST-day-at-UTC-midnight" instant is just a stable, DST-free sort key.
+ */
+function startOfDayMs(d: Date): number {
+  const istDay = istDayFormat.format(d); // e.g. "2026-08-31"
+  return Date.parse(`${istDay}T00:00:00Z`);
 }
 
 /**
- * Whole calendar days between two instants. Math.round rather than floor so a
- * DST shift (a 23- or 25-hour gap) doesn't slide the boundary by a whole day —
- * same reasoning as computeLateReturnPenalty.
+ * Whole IST calendar days between two instants. Both ends are bucketed to their
+ * IST day first, so the result is a clean integer regardless of the time of day
+ * or the device timezone.
  */
 function calendarDaysBetween(from: Date, to: Date): number {
-  return Math.round((startOfDay(to).getTime() - startOfDay(from).getTime()) / DAY_MS);
+  return Math.round((startOfDayMs(to) - startOfDayMs(from)) / DAY_MS);
 }
 
 /**

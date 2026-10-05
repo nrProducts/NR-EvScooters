@@ -22,7 +22,7 @@ than retrofitted onto a live one, which is the only reason it was cheap.
 | [consent-purposes.md](consent-purposes.md) | Each consent purpose → its notice paragraph → the code that checks it |
 | [retention-schedule.md](retention-schedule.md) | How long each category is kept, and why |
 | [rights-request-sop.md](rights-request-sop.md) | How ops actually works the rights queue |
-| [dsar-export-schema.md](dsar-export-schema.md) | What the data export contains, and what it deliberately omits |
+| [s11-access-summary.md](s11-access-summary.md) | What the s.11 access summary shows, and why it is not a downloadable file |
 | [breach-response-runbook.md](breach-response-runbook.md) | Detection → escalation → notification |
 | [processor-dpa-checklist.md](processor-dpa-checklist.md) | Every third party that touches rider data |
 | [cross-border-and-residency.md](cross-border-and-residency.md) | Where the data physically lives |
@@ -58,8 +58,11 @@ left no trace. `pii_access_log` now records who opened whose data, which
 fields, and **why**, with the reason captured in the console before the first
 document opens. Riders can read their own entries.
 
-**Data-principal rights (ss.11-14).** Self-serve export, correction, erasure,
-grievance and nomination in the app; a queue with SLA tracking in the console.
+**Data-principal rights (ss.11-14).** Self-serve access summary, correction,
+erasure, grievance and nomination in the app; a queue with SLA tracking in the
+console. Access is answered on screen, not as a file: s.11(1)(a) is a right to
+a *summary*, India has no portability right, and the summary is the only place
+s.11(1)(b) — who the data is shared with — is actually served.
 Erasure runs in two steps — approve starts a cooling-off window, execute
 destroys — and one person cannot do both when skipping the window.
 
@@ -168,7 +171,7 @@ Ordered by what blocks what.
 | Concern | Path |
 |---|---|
 | Consent | `apps/backend/src/modules/consent/` |
-| Rights + erasure + export | `apps/backend/src/modules/privacy/` |
+| Rights + erasure + access summary | `apps/backend/src/modules/privacy/` |
 | Access logging | `apps/backend/src/common/piiAccess.ts` |
 | Audit redaction | `apps/backend/src/common/mask.ts` |
 | Capabilities | `apps/backend/src/middleware/capability.middleware.ts` |

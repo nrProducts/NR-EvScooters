@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
@@ -9,6 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useMyNotifications, useUnreadCount, useMarkNotificationRead, useMarkAllNotificationsRead } from "@/hooks/useMyNotifications";
 import { subscribeNotificationBell, unsubscribeNotificationBell } from "@/lib/notificationRealtime";
 import { timeAgo, cn } from "@/lib/utils";
+import { notificationLink } from "@/lib/notificationLink";
 import type { MyNotification } from "@/types";
 
 export function NotificationBell() {
@@ -29,23 +31,31 @@ export function NotificationBell() {
 
   const handleSelect = (n: MyNotification) => {
     if (!n.read_at) markRead.mutate(n.id);
-    if (n.payload?.screen) navigate(n.payload.screen);
+    const target = notificationLink(n);
+    if (target) navigate(target);
   };
 
   const count = unread ?? 0;
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
-          <Bell className="h-[18px] w-[18px]" />
-          {count > 0 && (
-            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground">
-              {count > 9 ? "9+" : count}
-            </span>
-          )}
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
+              <Bell className="h-[1.125rem] w-[1.125rem]" />
+              {count > 0 && (
+                <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold leading-none text-destructive-foreground">
+                  {count > 9 ? "9+" : count}
+                </span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {count > 0 ? `Notifications (${count} unread)` : "Notifications"}
+        </TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align="end" className="w-80">
         <DropdownMenuLabel className="flex items-center justify-between gap-2">
           <span>Notifications</span>
@@ -75,7 +85,7 @@ export function NotificationBell() {
               >
                 <span className="text-sm font-medium">{n.payload?.title ?? "Notification"}</span>
                 {n.payload?.body && <span className="text-xs text-muted-foreground">{n.payload.body}</span>}
-                <span className="text-[11px] text-muted-foreground">{timeAgo(n.created_at)}</span>
+                <span className="text-[0.6875rem] text-muted-foreground">{timeAgo(n.created_at)}</span>
               </DropdownMenuItem>
             ))
           )}

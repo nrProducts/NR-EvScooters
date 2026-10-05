@@ -1,7 +1,12 @@
-import { Menu, Sun, Moon, LogOut, Settings as SettingsIcon } from "lucide-react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Menu, Sun, Moon, LogOut, RotateCw, Settings as SettingsIcon } from "lucide-react";
 import { GlobalSearch } from "@/components/common/GlobalSearch";
 import { NotificationBell } from "@/components/common/NotificationBell";
+import { PendingApprovalsBell } from "@/components/common/PendingApprovalsBell";
+import { HeaderAttendanceControl } from "@/components/common/HeaderAttendanceControl";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -14,22 +19,72 @@ import {
 import { useUiStore } from "@/store/uiStore";
 import { useAuth } from "@/hooks/useAuth";
 import { cn, initials, formatDate } from "@/lib/utils";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import { matchPath } from "@/routes/roleConfig";
+import { usePageHeaderStore } from "@/store/pageHeaderStore";
 
 export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const { theme, toggleTheme } = useUiStore();
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const pageTitle = matchPath(location.pathname)?.label ?? "";
+  const pageSubtitle = usePageHeaderStore((s) => s.subtitle);
+
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  // Refetch every query the current screen has mounted — the page's own hooks
+  // then re-render with fresh data, no per-page wiring needed.
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await queryClient.refetchQueries({ type: "active" });
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur-md sm:px-6">
-      <Button variant="ghost" size="icon" className="md:hidden" onClick={onOpenMobileNav}>
+      <IconButton
+        variant="ghost"
+        label="Open navigation menu"
+        tooltipSide="bottom"
+        className="md:hidden"
+        onClick={onOpenMobileNav}
+      >
         <Menu className="h-5 w-5" />
-      </Button>
+      </IconButton>
 
-      <GlobalSearch />
+      <div className="flex flex-1 min-w-0 items-baseline gap-2">
+        {/*
+          shrink-0 is the fix: without it, flexbox shrinks the title and the
+          subtitle proportionally whenever they don't both fit, so even a
+          short title like "Privacy Requests" was getting clipped to "Privacy
+          Req...". The title now always renders at its full natural width —
+          the (less important) subtitle gives up space first, down to
+          nothing on narrow screens. max-w/truncate/title stay only as a
+          last-resort safety net for a hypothetically very long future label;
+          none of today's labels are anywhere near wide enough to hit it.
+        */}
+        <h1
+          className="max-w-[60%] shrink-0 truncate text-base font-semibold text-foreground sm:max-w-[50%] sm:text-lg"
+          title={pageTitle}
+        >
+          {pageTitle}
+        </h1>
+        {pageSubtitle && (
+          <span className="hidden min-w-0 flex-1 items-baseline gap-2 text-xs font-medium text-muted-foreground sm:inline-flex sm:text-sm">
+            <span aria-hidden="true" className="shrink-0">-</span>
+            <span className="truncate" title={typeof pageSubtitle === "string" ? pageSubtitle : undefined}>
+              {pageSubtitle}
+            </span>
+          </span>
+        )}
+      </div>
 
-      <div className="flex flex-1 items-center justify-end gap-1.5 sm:gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-3">
+        <GlobalSearch />
         {user?.role && (
           <div className="hidden items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 lg:flex">
             <span
@@ -41,9 +96,29 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
         <span className="hidden h-4 w-px bg-border lg:inline" />
         <span className="hidden text-xs text-muted-foreground lg:inline">{formatDate(new Date())}</span>
 
-        <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
-          {theme === "light" ? <Moon className="h-[18px] w-[18px]" /> : <Sun className="h-[18px] w-[18px]" />}
-        </Button>
+        <IconButton
+          variant="ghost"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          label="Refresh this page"
+          tooltipSide="bottom"
+          className="bg-primary/10 text-primary hover:bg-primary/20"
+        >
+          <RotateCw className={cn("h-[1.125rem] w-[1.125rem]", refreshing && "animate-spin")} />
+        </IconButton>
+
+        <IconButton
+          variant="ghost"
+          onClick={toggleTheme}
+          label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+          tooltipSide="bottom"
+        >
+          {theme === "light" ? <Moon className="h-[1.125rem] w-[1.125rem]" /> : <Sun className="h-[1.125rem] w-[1.125rem]" />}
+        </IconButton>
+
+        <HeaderAttendanceControl role={user?.role} />
+
+        <PendingApprovalsBell />
 
         <NotificationBell />
 
@@ -59,7 +134,7 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuLabel>
               <p className="truncate">{user?.name}</p>
-              <p className="truncate text-[11px] font-normal capitalize text-muted-foreground">{user?.role}</p>
+              <p className="truncate text-[0.6875rem] font-normal capitalize text-muted-foreground">{user?.role}</p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {user?.role === "admin" && (

@@ -30,6 +30,10 @@ export async function supportDetailHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getSupportDetail(req.params.id as string));
 }
 
+export async function riderImpactPreviewHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.getRiderImpactPreview(req.params.id as string));
+}
+
 export async function updateSupportRequestHandler(req: AuthedRequest, res: Response) {
     const body = req.body as UpdateSupportBody;
     res.json(await service.updateSupportRequest(req.params.id as string, body, req.user!));

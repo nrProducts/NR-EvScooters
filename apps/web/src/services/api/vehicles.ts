@@ -1,12 +1,13 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
-import type { PaginatedResult, Vehicle, VehicleDetail, VehiclePhoto, VehicleStatus } from "@/types";
+import type { PaginatedResult, Vehicle, VehicleDetail, VehicleDocument, VehicleDocumentType, VehicleStatus } from "@/types";
 
 export interface VehicleFilters {
   search?: string;
   status?: VehicleStatus | "all";
   page?: number;
   pageSize?: number;
-  sortBy?: "created_at" | "name" | "battery_percentage" | "next_service_due_date";
+  /** `battery_percentage` and `next_service_due_date` are gone — no columns back them. */
+  sortBy?: "created_at" | "display_name" | "registration_number";
   sortDir?: "asc" | "desc";
 }
 
@@ -29,24 +30,34 @@ export async function fetchVehicleById(id: string): Promise<VehicleDetail> {
   return apiClient.get<VehicleDetail>(`/vehicles/${id}`);
 }
 
+/**
+ * What POST /vehicles accepts.
+ *
+ * `model` is chosen by id now — the model is a row, and the vehicle points at
+ * it — and `status` is not accepted at all: `recompute_vehicle_status()`
+ * derives it from the vehicle's maintenance ticket, rental assignment and
+ * booking hold, so a value sent here would be overwritten and, worse, would
+ * disagree with the facts it claims to summarise.
+ *
+ * Insurance moved to `vehicle_documents` and service dates are derived from
+ * maintenance tickets, so neither is set from this form any more.
+ */
 export interface VehicleFormInput {
-  name: string;
+  /** Stored as `display_name`. Optional — a vehicle can just be its plate. */
+  name?: string;
   registration_number: string;
-  battery_number: string;
-  manufacturer: string;
-  model: string;
   vin: string;
-  battery_percentage?: number;
-  status?: VehicleStatus;
-  last_service_date?: string;
-  next_service_due_date?: string;
+  vehicle_model_id: string;
+  hub_id?: string;
   color?: string;
   qr_code?: string;
   imei?: string;
   purchase_date?: string;
-  insurance_number?: string;
-  insurance_expiry?: string;
+  batch_number?: string;
 }
+
+/** The model a vehicle belongs to is fixed at creation. */
+export type VehicleUpdateInput = Partial<Omit<VehicleFormInput, "vehicle_model_id">>;
 
 /** POST /vehicles — requireStaff. */
 export async function createVehicle(input: VehicleFormInput): Promise<Vehicle> {
@@ -54,22 +65,19 @@ export async function createVehicle(input: VehicleFormInput): Promise<Vehicle> {
 }
 
 /** PATCH /vehicles/:id — requireStaff. Accepts any subset of the create fields. */
-export async function updateVehicle(id: string, patch: Partial<VehicleFormInput>): Promise<Vehicle> {
+export async function updateVehicle(id: string, patch: VehicleUpdateInput): Promise<Vehicle> {
   return apiClient.patch<Vehicle>(`/vehicles/${id}`, patch);
 }
 
-/** POST /vehicles/:id/photos — requireStaff. Multipart upload. */
-export async function uploadVehiclePhoto(id: string, file: File, isPrimary = false): Promise<VehiclePhoto> {
-  const form = new FormData();
-  form.append("photo", file);
-  if (isPrimary) form.append("is_primary", "true");
-  return apiClient.postForm<VehiclePhoto>(`/vehicles/${id}/photos`, form);
-}
-
-/** DELETE /vehicles/:id/photos/:photoId — requireStaff. */
-export async function deleteVehiclePhoto(id: string, photoId: string): Promise<void> {
-  await apiClient.delete(`/vehicles/${id}/photos/${photoId}`);
-}
+/*
+ * The photo endpoints are gone with the `vehicle_photos` table.
+ *
+ * A photo of a SCOOTER was a photo of its model — the same six studio shots
+ * re-uploaded per unit — so the imagery lives on `vehicle_model_media` and is
+ * shown once for the model. Condition photographs, the genuinely per-unit
+ * kind, are `incidents.photo_paths`, where they sit next to the damage they
+ * evidence.
+ */
 
 export interface ScrapVehicleInput {
   reason: string;
@@ -83,6 +91,17 @@ export async function scrapVehicle(id: string, input: ScrapVehicleInput): Promis
 }
 
 /**
+ * POST /vehicles/:id/unassign — requireStaff. Reclaims the vehicle from its
+ * current rider by opening the same return-review flow a rider's own
+ * "Request Return" would (Inspection → Payment Gate → Approve Return,
+ * maintenance-or-available choice included). Returns the rental id so the
+ * caller can navigate straight to that review page.
+ */
+export async function unassignVehicle(id: string, reason: string): Promise<{ rentalId: string }> {
+  return apiClient.post<{ rentalId: string }>(`/vehicles/${id}/unassign`, { reason });
+}
+
+/**
  * POST /vehicles/:id/assign-to-user — requireStaff. Direct handover, no booking involved.
  * If the rider already holds a different vehicle, the backend 409s (ApiError.fields carries
  * the existing vehicle's name/id) unless `unassignExisting` is passed to close that rental first.
@@ -92,4 +111,37 @@ export async function assignVehicleToUser(id: string, userId: string, unassignEx
     user_id: userId,
     unassign_existing: unassignExisting,
   });
+}
+
+// --- vehicle documents (RC / insurance / PUC / fitness / permit) --------
+
+export interface VehicleDocumentFormInput {
+  doc_type: VehicleDocumentType;
+  doc_number: string;
+  issued_on?: string;
+  expires_on: string;
+  /** Optional — a document can be recorded with no file yet, same as it can today with none of this UI. */
+  file?: File;
+}
+
+/** POST /vehicles/:id/documents — requireStaff, multipart. */
+export async function createVehicleDocument(vehicleId: string, input: VehicleDocumentFormInput): Promise<VehicleDocument> {
+  const form = new FormData();
+  form.append("doc_type", input.doc_type);
+  form.append("doc_number", input.doc_number);
+  if (input.issued_on) form.append("issued_on", input.issued_on);
+  form.append("expires_on", input.expires_on);
+  if (input.file) form.append("file", input.file);
+  return apiClient.postForm<VehicleDocument>(`/vehicles/${vehicleId}/documents`, form);
+}
+
+/** DELETE /vehicles/documents/:documentId — requireStaff. */
+export async function deleteVehicleDocument(documentId: string): Promise<void> {
+  await apiClient.delete(`/vehicles/documents/${documentId}`);
+}
+
+/** GET /vehicles/documents/:documentId/url — requireStaff. Short-lived signed URL for the file. */
+export async function getVehicleDocumentUrl(documentId: string): Promise<string> {
+  const { url } = await apiClient.get<{ url: string }>(`/vehicles/documents/${documentId}/url`);
+  return url;
 }

@@ -2,13 +2,16 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AuthBrand } from "@/components/auth/AuthBrand";
 import { useAuthStore } from "@/store/authStore";
 import * as authApi from "@/services/api/staff";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 
 interface ChangePasswordForm {
   password: string;
@@ -29,9 +32,11 @@ export default function ChangePasswordPage() {
   const changePassword = useMutation({
     mutationFn: (password: string) => authApi.confirmPasswordReset(password),
     onSuccess: () => {
+      toastSuccess("Password changed");
       if (user) setUser({ ...user, mustChangePassword: false });
       navigate("/dashboard", { replace: true });
     },
+    onError: (err) => toastError(err, "Could not change password"),
   });
 
   const onSubmit = (values: ChangePasswordForm) => {
@@ -39,7 +44,8 @@ export default function ChangePasswordPage() {
   };
 
   return (
-    <Card className="animate-fade-in">
+    <Card className="animate-fade-in overflow-hidden">
+      <AuthBrand />
       <CardContent className="p-6 sm:p-8">
         <h1 className="mb-1 text-xl font-semibold">Set a new password</h1>
         <p className="mb-6 text-sm text-muted-foreground">
@@ -92,7 +98,7 @@ export default function ChangePasswordPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={changePassword.isPending}>
-            {changePassword.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {changePassword.isPending && <Spinner className="h-4 w-4" />}
             Set password
           </Button>
         </form>

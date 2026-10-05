@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { PackageCheck, Undo2 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { PackageCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,16 +14,19 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { RentalOperationsSummaryCards } from "@/components/bookings/RentalOperationsSummaryCards";
-import { usePickupQueue, useAvailableVehicles, useConfirmPickup, useSetLateFeeOverride } from "@/hooks/useBookings";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { AdminCreateBookingDialog } from "@/components/bookings/AdminCreateBookingDialog";
+import { usePickupQueue, useAvailableVehicles, useConfirmPickup } from "@/hooks/useBookings";
+import { usePreBookings } from "@/hooks/usePreBookings";
+import { useReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import type { PickupQueueFilters } from "@/services/api/bookings";
-import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
+import { formatDate, formatDateTime, formatCurrency, formatPhoneLocal } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
-import type { BookingRefundStatus, PickupBooking } from "@/types";
+import type { BookingRefundStatus, PickupBooking, PreBooking, PreBookingPlanPreference } from "@/types";
 
 const REFUND_STATUS_LABEL: Record<BookingRefundStatus, string> = {
   pending: "Awaiting Approval",
@@ -45,67 +48,168 @@ function RefundStatusBadge({ status }: { status: BookingRefundStatus }) {
   return <Badge variant={REFUND_STATUS_VARIANT[status]}>{REFUND_STATUS_LABEL[status]}</Badge>;
 }
 
+const PLAN_PREFERENCE_LABEL: Record<PreBookingPlanPreference, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  not_sure: "Not Sure Yet",
+};
+
+/**
+ * Was the booking's own "Status" plus a separate "Return Status" column —
+ * two columns for what is really one lifecycle position. Collapsed to the
+ * plain four-stage flow: Booked -> Active -> Return Requested -> Completed.
+ * `b.status` already carries the backend's derived "completed" value
+ * (fulfilled + subscription ended), so no new data is needed here — this is
+ * a display simplification, not a new source of truth. "Plan Status"
+ * (Active/Past Due/Paused — the subscription's independent billing state)
+ * stays its own separate column; only Status + Return Status merge.
+ */
+function lifecycleStatus(b: PickupBooking): { label: string; tone: "success" | "warning" | "info" | "destructive" | "muted" } {
+  if (b.status === "cancelled") return { label: "Cancelled", tone: "destructive" };
+  if (b.status === "expired") return { label: "Expired", tone: "destructive" };
+  // Rider bookings are only created after payment now, so this is always an
+  // admin-created booking still awaiting its offline/online payment — never a
+  // confirmed booking.
+  if (b.status === "pending_payment") return { label: "Awaiting payment", tone: "muted" };
+  // "completed" must win over "return requested": return_requested_at is a
+  // historical timestamp that's never cleared once set, so a booking whose
+  // return was requested AND has since been approved (the booking's own
+  // status has already flipped to the backend's derived "completed") would
+  // otherwise show "Return Requested" forever.
+  if (b.status === "completed") return { label: "Completed", tone: "success" };
+  if (b.active_rental?.return_requested_at) return { label: "Return Requested", tone: "warning" };
+  if (b.status === "fulfilled") return { label: "Active", tone: "success" };
+  return { label: "Booked", tone: "info" }; // confirmed
+}
+
+/**
+ * Days overdue on a past-due renewal, for the "Payment due" column's display
+ * label only — never used to compute or charge money; the actual late fee is
+ * always the backend's own number (payments/renewalFee.ts's
+ * computeLateRenewalFee, surfaced through the rider app's overdue-late-fee
+ * gate).
+ *
+ * Mirrors that backend rule exactly rather than inventing a second one:
+ * anchored to 12:00 PM IST on the due date (not local midnight — a due date
+ * is an IST calendar day, and this ran in the browser's own timezone before,
+ * which could read a different day depending on where the admin's browser
+ * was set), and late starts the INSTANT that passes — the first, even
+ * partial, day already counts as a full day. No 24-hour grace.
+ */
+function daysLateSinceNoon(dueDate: string | null): number {
+  if (!dueDate) return 0;
+  const dueAt = new Date(`${dueDate}T12:00:00+05:30`);
+  if (Number.isNaN(dueAt.getTime())) return 0;
+  const elapsedMs = Date.now() - dueAt.getTime();
+  if (elapsedMs <= 0) return 0;
+  return Math.ceil(elapsedMs / 86_400_000);
+}
+
+/**
+ * Read-only summary of return_recovery_settings.max_late_fee_days — the
+ * actual editing happens on Billing & Charges now, in the same card as the
+ * late-fee amount, so there's one place to configure "the late fee" instead
+ * of two. This just surfaces the current value here with a shortcut to it.
+ */
+function RecoveryPolicyNote() {
+  const navigate = useNavigate();
+  const { data: settings } = useReturnRecoverySettings();
+
+  return (
+    <p className="text-xs text-muted-foreground">
+      Recovery flagged{" "}
+      <span className="font-medium text-foreground">{settings ? settings.max_late_fee_days : "…"} days</span>{" "}
+      past return due ·{" "}
+      <button type="button" onClick={() => navigate("/billing")} className="underline hover:text-foreground">
+        edit
+      </button>
+    </p>
+  );
+}
+
 /**
  * Admin-facing view, one tab per stage of the full rental lifecycle:
- *   Payment successful -> Pending (confirmed) -> Admin confirms -> Assigned
- *   (fulfilled) -> Active/Due (fulfilled, split by plan_status) -> rider
- *   requests a return -> Return Requests -> staff approve/reject -> Completed.
- * Distinct from BookingStatus/PickupQueueFilters — several of these views
- * (Active, Due, Return Requests) are the SAME status filtered further, and
- * "All" is deliberately no filter at all, so this can't just be the raw
- * status type.
+ *   Payment successful -> Pending (confirmed) -> Admin confirms pickup ->
+ *   Active (fulfilled — Plan Status/Renewal columns show past-due/paused/
+ *   scheduled-renewal without needing their own tabs) -> rider requests a
+ *   return -> Return Requests -> staff review/inspect/settle -> Completed.
+ * Distinct from BookingStatus/PickupQueueFilters — "Active" and "Return
+ * Requests" are the SAME raw status filtered further, and "All" is
+ * deliberately no filter at all, so this can't just be the raw status type.
+ *
+ * Deliberately few tabs: what used to be split into Due, Scheduled
+ * Renewals, Recovery, Settled and Expired tabs is still fully visible —
+ * via the Plan Status/Renewal columns on Active, via Status + the
+ * per-row Review/View Return action on Return Requests/Completed, or via
+ * All + search — just not as separate top-level filters for something
+ * that's a variant of an existing stage, not a new one.
+ *
+ * Return Requests used to live on its own page ("Returns", /returns) —
+ * merged in here so the whole lifecycle, booking through settlement, is
+ * managed from one place. Only the actual return-processing detail
+ * workflow (/bookings/returns/:rentalId — inspection, charges, payment,
+ * Complete Return) stays a separate page, nested under /bookings so nav
+ * highlighting/matchPath recognise it as part of Rental Operations; every
+ * row below still navigates there exactly as it did on the old Returns page.
  */
-type RentalOpsView =
-  | "pending" | "assigned" | "active" | "return_requests" | "due" | "scheduled_renewals"
-  | "completed" | "cancelled" | "expired" | "all";
+type RentalOpsView = "pending" | "active" | "return_requests" | "completed" | "cancelled" | "all" | "pre_bookings";
 
 const VIEW_TABS: { value: RentalOpsView; label: string }[] = [
   { value: "pending", label: "Pending Bookings" },
-  { value: "assigned", label: "Assigned" },
   { value: "active", label: "Active" },
+  // Merged in from the old standalone Returns page.
   { value: "return_requests", label: "Return Requests" },
-  { value: "due", label: "Due" },
-  // Upcoming/scheduled renewals — a rider already paid ahead, current plan
-  // stays active until scheduled_start_date, kept separate from Active so
-  // staff can see who's already renewed vs. who hasn't.
-  { value: "scheduled_renewals", label: "Scheduled Renewals" },
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
   { value: "all", label: "All" },
-  // Not part of the required tab set, but existing functionality — keeping
-  // it rather than losing visibility into expired reservations.
-  { value: "expired", label: "Expired" },
+  // Interest submissions from the public website's pre-booking form
+  // (fleet not ready for normal bookings yet) — a different shape entirely
+  // (no vehicle, no plan, no status), so this tab renders its own grid
+  // rather than another PickupBooking column set. See usePreBookings.
+  { value: "pre_bookings", label: "Pre-Bookings" },
 ];
 
 function filtersForView(
   view: RentalOpsView,
-): Pick<PickupQueueFilters, "status" | "planStatus" | "renewalStatus" | "returnRequested"> {
+): Pick<PickupQueueFilters, "status" | "returnRequested"> {
   switch (view) {
     case "pending": return { status: "confirmed" };
-    case "assigned": return { status: "fulfilled" };
-    case "active": return { status: "fulfilled", planStatus: "active" };
+    case "active": return { status: "fulfilled" };
     case "return_requests": return { status: "fulfilled", returnRequested: true };
-    case "due": return { status: "fulfilled", planStatus: "due" };
-    case "scheduled_renewals": return { status: "fulfilled", renewalStatus: "scheduled" };
     case "completed": return { status: "completed" };
     case "cancelled": return { status: "cancelled" };
-    case "expired": return { status: "expired" };
     case "all": return {};
+    // Not a PickupBooking query at all — usePickupQueue still runs (hooks
+    // can't be conditional) but this view's own grid never reads its data.
+    case "pre_bookings": return {};
   }
 }
 
 export default function BookingListPage() {
-  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const [view, setView] = useState<RentalOpsView>("pending");
+  const navigate = useNavigate();
+  // Kept in the URL, not plain component state — the Return Detail page's
+  // back button uses browser history (navigate(-1)), which only restores
+  // the tab that was open if that tab is actually part of the URL this page
+  // remounts from. A plain useState here would reset to "Pending Bookings"
+  // every time an admin came back from reviewing a return, even one opened
+  // from Return Requests/Recovery/Settled.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawView = searchParams.get("tab");
+  const view: RentalOpsView = VIEW_TABS.some((t) => t.value === rawView) ? (rawView as RentalOpsView) : "pending";
+  const setView = (next: RentalOpsView) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      params.set("tab", next);
+      return params;
+    });
+  };
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
-  const [lateFeeTarget, setLateFeeTarget] = useState<PickupBooking | null>(null);
-  const [lateFeeInput, setLateFeeInput] = useState("");
-  const [lateFeeError, setLateFeeError] = useState<string | null>(null);
-  const setLateFeeOverride = useSetLateFeeOverride();
+  const [vehicleSearch, setVehicleSearch] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = usePickupQueue({
@@ -119,6 +223,16 @@ export default function BookingListPage() {
   const { data: availableVehicles, isLoading: vehiclesLoading } = useAvailableVehicles(
     pickupTarget && !pickupTarget.vehicle ? pickupTarget.id : undefined,
   );
+  const preBookings = usePreBookings({ page, pageSize: 8 });
+  // Case/space-insensitive so "22ab0005" or "TN 22 AB 0005" still matches
+  // "TN22AB0005" — a staff member reading a plate aloud won't type it back
+  // exactly as stored.
+  const normalizedVehicleSearch = vehicleSearch.trim().toLowerCase().replace(/\s+/g, "");
+  const filteredAvailableVehicles = (availableVehicles ?? []).filter(
+    (v) =>
+      !normalizedVehicleSearch ||
+      v.registration_number.toLowerCase().replace(/\s+/g, "").includes(normalizedVehicleSearch),
+  );
   const confirmPickup = useConfirmPickup();
 
   const baseColumns: DataTableColumn<PickupBooking>[] = [
@@ -129,10 +243,26 @@ export default function BookingListPage() {
     {
       header: "Price",
       key: "price",
+      className: "text-right tabular-nums",
       render: (b) => (b.plan ? formatCurrency(b.plan.price) : "—"),
       hideOnMobile: true,
     },
-    { header: "Start day", key: "start", sortKey: "start_day", render: (b) => formatDate(b.start_day) },
+    {
+      // Every rental runs a fixed noon-to-noon cycle (see calculateRentalPeriod,
+      // apps/backend/src/common/dates.ts) — stated explicitly here rather than
+      // leaving staff to assume a bare date means "whenever pickup happened."
+      header: "Rental Period",
+      key: "start",
+      sortKey: "start_day",
+      render: (b) => (
+        <div className="min-w-0">
+          <p className="text-sm">{formatDate(b.start_day)} · 12:00 PM</p>
+          {b.next_due_at && (
+            <p className="text-xs text-muted-foreground">to {formatDate(b.next_due_at)} · 12:00 PM</p>
+          )}
+        </div>
+      ),
+    },
     {
       header: "Vehicle",
       key: "vehicle",
@@ -142,26 +272,39 @@ export default function BookingListPage() {
     {
       header: "Status",
       key: "status",
-      render: (b) => (
-        <div className="flex flex-wrap gap-1">
-          <StatusBadge status={b.status} />
-          {/* plan_status is only meaningful once fulfilled (still riding) —
-              null before pickup and after a genuine completion. */}
-          {b.plan_status ? <StatusBadge status={b.plan_status} /> : null}
-          {b.active_rental?.return_requested_at ? <StatusBadge status="return_requested" /> : null}
-        </div>
-      ),
+      render: (b) => {
+        const { label, tone } = lifecycleStatus(b);
+        return <Badge variant={tone}>{label}</Badge>;
+      },
+    },
+    {
+      // Separate from the booking's lifecycle status: plan_status is the
+      // subscription's billing state (active/past_due/paused), only
+      // meaningful once fulfilled (still riding) — null before pickup and
+      // after a genuine completion. An independent fact about the same
+      // booking, not a variant of its status.
+      header: "Plan Status",
+      key: "plan_status",
+      render: (b) => {
+        if (b.plan_status) return <StatusBadge status={b.plan_status} />;
+        // A cancelled/expired/completed booking's plan is over — say so
+        // rather than showing a bare "—" that reads like "no plan".
+        if (b.status === "cancelled" || b.status === "expired" || b.status === "completed") {
+          return <Badge variant="muted">Ended</Badge>;
+        }
+        return <span className="text-muted-foreground">—</span>;
+      },
     },
     {
       header: "Payment due",
       key: "payment_due",
       render: (b) => {
         if (!b.next_due_at) return "—";
-        if (b.plan_status !== "due") {
+        if (b.plan_status !== "past_due") {
           // Active (paid up) or paused (clock frozen) — just the date, no warning.
           return <span className="text-muted-foreground">{formatDate(b.next_due_at)}</span>;
         }
-        const daysLate = Math.max(0, Math.round((Date.now() - new Date(`${b.next_due_at}T00:00:00`).getTime()) / 86_400_000));
+        const daysLate = daysLateSinceNoon(b.next_due_at);
         return (
           <div className="text-destructive">
             <p className="font-medium">Due {formatDate(b.next_due_at)}</p>
@@ -195,7 +338,31 @@ export default function BookingListPage() {
     {
       header: "Actions",
       key: "actions",
+      className: "text-right",
       render: (b) => {
+        const rentalId = b.active_rental?.id;
+        // Checked before "return requested" for the same reason
+        // lifecycleStatus() does: return_requested_at is a historical
+        // timestamp that never clears, so an already-completed return would
+        // otherwise still show the in-progress "Review Return" action
+        // instead of a plain link back to its (now read-only) settlement.
+        if (b.status === "completed" && rentalId) {
+          return (
+            <Button size="sm" variant="outline" onClick={() => navigate(`/bookings/returns/${rentalId}`)}>
+              View Return
+            </Button>
+          );
+        }
+        // A return in progress outranks Confirm Pickup — mutually exclusive
+        // in practice anyway, since return_requested_at only ever applies to
+        // a fulfilled booking, which can't simultaneously be "confirmed".
+        if (b.active_rental?.return_requested_at && rentalId) {
+          return (
+            <Button size="sm" onClick={() => navigate(`/bookings/returns/${rentalId}`)}>
+              Review Return
+            </Button>
+          );
+        }
         if (b.status === "confirmed" && hasAction(user, "bookings", "edit")) {
           return (
             <Button
@@ -203,86 +370,15 @@ export default function BookingListPage() {
               onClick={() => {
                 setPickupTarget(b);
                 setSelectedVehicleId(null);
+                setVehicleSearch("");
               }}
             >
               <PackageCheck className="h-3.5 w-3.5" /> Confirm pickup
             </Button>
           );
         }
-        if (b.status === "fulfilled" && hasAction(user, "bookings", "edit")) {
-          return (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setLateFeeTarget(b);
-                setLateFeeInput(b.late_fee_override != null ? String(b.late_fee_override) : "");
-                setLateFeeError(null);
-              }}
-            >
-              Late fee override
-            </Button>
-          );
-        }
         return "—";
       },
-    },
-  ];
-
-  /** Return Requests gets its own, narrower column set — the fields staff actually need to triage a queue of pending returns. */
-  const returnColumns: DataTableColumn<PickupBooking>[] = [
-    { header: "Rider", key: "rider", render: (b) => b.rider.full_name },
-    {
-      header: "Vehicle",
-      key: "vehicle",
-      render: (b) => (
-        <div>
-          <p className="font-medium">{b.vehicle?.registration_number ?? "—"}</p>
-          <p className="text-xs text-muted-foreground">{b.vehicle_model?.name ?? "—"}</p>
-        </div>
-      ),
-    },
-    {
-      header: "Booking / Rental",
-      key: "ids",
-      render: (b) => (
-        <div className="font-mono text-[11px] text-muted-foreground">
-          <p>B {b.id.slice(0, 8)}</p>
-          {b.active_rental && <p>R {b.active_rental.id.slice(0, 8)}</p>}
-        </div>
-      ),
-      hideOnMobile: true,
-    },
-    {
-      header: "Rental started",
-      key: "started",
-      render: (b) => (b.active_rental ? formatDate(b.active_rental.started_at) : "—"),
-      hideOnMobile: true,
-    },
-    {
-      header: "Return requested",
-      key: "return_requested",
-      render: (b) => (b.active_rental?.return_requested_at ? formatDateTime(b.active_rental.return_requested_at) : "—"),
-    },
-    {
-      header: "Rental status",
-      key: "rental_status",
-      render: (b) => (b.active_rental ? <StatusBadge status={b.active_rental.status} /> : "—"),
-      hideOnMobile: true,
-    },
-    {
-      header: "Return status",
-      key: "return_status",
-      render: () => <StatusBadge status="return_requested" />,
-    },
-    {
-      header: "Actions",
-      key: "actions",
-      render: (b) => (
-        <Button size="sm" variant="outline" onClick={() => b.active_rental && navigate(`/returns/${b.active_rental.id}`)}>
-          <Undo2 className="h-3.5 w-3.5" /> Review Return
-        </Button>
-      ),
     },
   ];
 
@@ -360,51 +456,171 @@ export default function BookingListPage() {
     },
   ];
 
-  const columns = view === "return_requests" ? returnColumns : view === "cancelled" ? cancelledColumns : baseColumns;
+  /** Ported from the old Returns page's "Pending" tab — return-requested rentals awaiting inspection. */
+  const returnRequestColumns: DataTableColumn<PickupBooking>[] = [
+    { header: "Rider", key: "rider", render: (b) => b.rider.full_name },
+    {
+      header: "Vehicle",
+      key: "vehicle",
+      render: (b) => (
+        <div>
+          <p className="font-medium">{b.vehicle?.registration_number ?? "—"}</p>
+          <p className="text-xs text-muted-foreground">{b.vehicle_model?.name ?? "—"}</p>
+        </div>
+      ),
+    },
+    {
+      header: "Rental started",
+      key: "started",
+      render: (b) => (b.active_rental ? formatDate(b.active_rental.started_at) : "—"),
+      hideOnMobile: true,
+    },
+    {
+      header: "Return requested",
+      key: "return_requested",
+      render: (b) => (b.active_rental?.return_requested_at ? formatDateTime(b.active_rental.return_requested_at) : "—"),
+    },
+    {
+      header: "Charges",
+      key: "charges",
+      render: (b) => (b.active_rental?.charges != null ? formatCurrency(b.active_rental.charges) : "—"),
+      hideOnMobile: true,
+    },
+    {
+      header: "Amount Due",
+      key: "amount_due",
+      render: (b) => (
+        b.active_rental?.amount_due != null
+          ? (b.active_rental.amount_due > 0
+            ? <span className="font-semibold text-destructive">{formatCurrency(b.active_rental.amount_due)}</span>
+            : <span className="text-muted-foreground">₹0</span>)
+          : "—"
+      ),
+    },
+    {
+      header: "Payment Status",
+      key: "payment_status",
+      render: (b) => <StatusBadge status={b.active_rental?.payment_status ?? "not_required"} />,
+    },
+    { header: "Status", key: "status", render: () => <StatusBadge status="return_requested" /> },
+    {
+      header: "Actions",
+      key: "actions",
+      className: "text-right",
+      render: (b) => (
+        <Button size="sm" onClick={() => b.active_rental && navigate(`/bookings/returns/${b.active_rental.id}`)}>
+          Review Return
+        </Button>
+      ),
+    },
+  ];
+
+  /** Interest submissions, not bookings — own column set, no vehicle/plan/status to show. */
+  const preBookingColumns: DataTableColumn<PreBooking>[] = [
+    { header: "Name", key: "full_name", render: (p) => p.full_name },
+    { header: "Mobile", key: "phone", render: (p) => formatPhoneLocal(p.phone) ?? p.phone },
+    { header: "Location", key: "location", render: (p) => p.location },
+    {
+      header: "Email",
+      key: "email",
+      render: (p) => p.email ?? <span className="text-muted-foreground">—</span>,
+      hideOnMobile: true,
+    },
+    {
+      header: "Preferred Plan",
+      key: "plan_preference",
+      render: (p) => <Badge variant="muted">{PLAN_PREFERENCE_LABEL[p.plan_preference]}</Badge>,
+    },
+    {
+      header: "Message",
+      key: "message",
+      render: (p) => (
+        p.message
+          ? <span className="line-clamp-2 max-w-xs text-xs text-muted-foreground">{p.message}</span>
+          : <span className="text-muted-foreground">—</span>
+      ),
+      hideOnMobile: true,
+    },
+    { header: "Submitted", key: "created_at", render: (p) => formatDateTime(p.created_at) },
+  ];
+
+  const columns = view === "cancelled"
+    ? cancelledColumns
+    : view === "return_requests"
+      ? returnRequestColumns
+      : baseColumns;
+
+  usePageSubtitle("Manage the full rental lifecycle, from booking to return.");
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Rental Operations</h1>
-        <p className="text-sm text-muted-foreground">Manage the full rental lifecycle, from booking to return.</p>
-      </div>
-
       <RentalOperationsSummaryCards />
 
       <Tabs value={view} onValueChange={(v) => { setView(v as RentalOpsView); setPage(1); }}>
-        <TabsList className="flex-wrap">
-          {VIEW_TABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
-          ))}
-        </TabsList>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <TabsList className="flex-wrap">
+            {VIEW_TABS.map((t) => (
+              <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
+            ))}
+          </TabsList>
+          {view !== "pre_bookings" && hasAction(user, "bookings", "edit") && (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <PackageCheck className="h-3.5 w-3.5" /> New Booking
+            </Button>
+          )}
+        </div>
       </Tabs>
 
-      <Card>
-        <div className="border-b border-border p-4">
-          <SearchBar
-            value={search}
-            onChange={(v) => {
-              setSearch(v);
-              setPage(1);
-            }}
-            placeholder="Search by rider, vehicle, booking id or rental id..."
-            className="sm:max-w-sm"
+      {view === "pre_bookings" ? (
+        <Card>
+          <div className="flex flex-col gap-1 border-b border-border p-4">
+            <p className="text-sm font-medium">Interest submitted before the fleet went live</p>
+            <p className="text-xs text-muted-foreground">
+              From the public website's Pre-Book form — also emailed to contact@swapngo.in at the time of
+              submission. No booking, vehicle or payment is attached to these.
+            </p>
+          </div>
+
+          <DataTable
+            columns={preBookingColumns}
+            data={preBookings.data?.data ?? []}
+            isLoading={preBookings.isLoading}
+            isError={preBookings.isError}
+            onRetry={() => preBookings.refetch()}
+            emptyTitle="No pre-booking requests yet"
           />
-        </div>
+          {preBookings.data && (
+            <Pagination page={page} pageSize={8} total={preBookings.data.total} onPageChange={setPage} />
+          )}
+        </Card>
+      ) : (
+        <Card>
+          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+            <SearchBar
+              value={search}
+              onChange={(v) => {
+                setSearch(v);
+                setPage(1);
+              }}
+              placeholder="Search rider, vehicle or ID…"
+              className="w-full sm:max-w-xs"
+            />
+            <RecoveryPolicyNote />
+          </div>
 
-        <DataTable
-          columns={columns}
-          data={data?.data ?? []}
-          isLoading={isLoading}
-          isError={isError}
-          onRetry={() => refetch()}
-          emptyTitle={view === "return_requests" ? "No pending return requests" : "No bookings match your filters"}
-          sort={sort}
-          onSortChange={onSortChange}
-        />
-
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
-      </Card>
+          <DataTable
+            columns={columns}
+            data={data?.data ?? []}
+            isLoading={isLoading}
+            isError={isError}
+            onRetry={() => refetch()}
+            emptyTitle="No bookings match your filters"
+            sort={sort}
+            onSortChange={onSortChange}
+          />
+          {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        </Card>
+      )}
 
       {/* Confirm pickup dialog */}
       <Dialog open={!!pickupTarget} onOpenChange={(o) => !o && setPickupTarget(null)}>
@@ -420,38 +636,51 @@ export default function BookingListPage() {
             <div className="rounded-lg border border-border p-3 text-sm">
               <p className="font-medium">{pickupTarget.vehicle.registration_number}</p>
               <p className="text-xs text-muted-foreground">
-                {pickupTarget.vehicle.name} · {pickupTarget.vehicle.battery_percentage}% battery · already reserved
+                {pickupTarget.vehicle.name} · already reserved
               </p>
             </div>
           ) : vehiclesLoading ? (
             <Skeleton className="h-32 w-full" />
           ) : !availableVehicles || availableVehicles.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              No vehicle has been auto-allocated yet, and none are available at this station right now.
+              No scooters are available at this station right now.
             </p>
           ) : (
             <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">No vehicle was auto-allocated yet — pick one manually:</p>
-              {availableVehicles.map((v) => (
-                <label
-                  key={v.id}
-                  className="flex cursor-pointer items-center justify-between rounded-lg border border-border p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-accent"
-                >
-                  <div>
-                    <p className="font-medium">{v.registration_number}</p>
-                    <p className="text-xs text-muted-foreground">{v.name}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{v.battery_percentage}%</span>
-                    <input
-                      type="radio"
-                      name="vehicle"
-                      checked={selectedVehicleId === v.id}
-                      onChange={() => setSelectedVehicleId(v.id)}
-                    />
-                  </div>
-                </label>
-              ))}
+              <p className="text-xs text-muted-foreground">Select a scooter to hand over:</p>
+              <SearchBar
+                value={vehicleSearch}
+                onChange={setVehicleSearch}
+                placeholder="Search by registration number…"
+              />
+              {filteredAvailableVehicles.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No scooter matches "{vehicleSearch}".
+                </p>
+              ) : (
+                <div className="max-h-64 space-y-2 overflow-y-auto">
+                  {filteredAvailableVehicles.map((v) => (
+                    <label
+                      key={v.id}
+                      className="flex cursor-pointer items-center justify-between rounded-lg border border-border p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-accent"
+                    >
+                      <div>
+                        <p className="font-medium">{v.registration_number}</p>
+                        <p className="text-xs text-muted-foreground">{v.name}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{v.battery_percentage}%</span>
+                        <input
+                          type="radio"
+                          name="vehicle"
+                          checked={selectedVehicleId === v.id}
+                          onChange={() => setSelectedVehicleId(v.id)}
+                        />
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -471,7 +700,13 @@ export default function BookingListPage() {
                 if (pickupTarget) {
                   confirmPickup.mutate(
                     { bookingId: pickupTarget.id, vehicleId: pickupTarget.vehicle ? undefined : selectedVehicleId! },
-                    { onSuccess: () => setPickupTarget(null) },
+                    {
+                      onSuccess: () => {
+                        toastSuccess("Handover confirmed");
+                        setPickupTarget(null);
+                      },
+                      onError: (err) => toastError(err, "Could not confirm handover"),
+                    },
                   );
                 }
               }}
@@ -482,58 +717,7 @@ export default function BookingListPage() {
         </DialogContent>
       </Dialog>
 
-
-      {/* Late fee override — per-booking, wins over the global setting on billing/BillingPage whenever this rider renews late. */}
-      <Dialog open={!!lateFeeTarget} onOpenChange={(o) => !o && setLateFeeTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Late renewal fee override</DialogTitle>
-            <DialogDescription>
-              {lateFeeTarget?.rider.full_name} — a per-day rate; leave blank to use the global rate instead.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-1.5">
-            <Label>Override rate (₹ per day)</Label>
-            <Input
-              type="number"
-              min={0}
-              placeholder="Use global setting"
-              value={lateFeeInput}
-              onChange={(e) => { setLateFeeError(null); setLateFeeInput(e.target.value); }}
-            />
-          </div>
-
-          {lateFeeError && <p className="text-xs text-destructive">{lateFeeError}</p>}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLateFeeTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={setLateFeeOverride.isPending}
-              onClick={() => {
-                if (!lateFeeTarget) return;
-                const trimmed = lateFeeInput.trim();
-                const parsed = trimmed === "" ? null : Number(trimmed);
-                if (parsed != null && (Number.isNaN(parsed) || parsed < 0)) {
-                  setLateFeeError("Enter a valid, non-negative amount, or leave it blank.");
-                  return;
-                }
-                setLateFeeOverride.mutate(
-                  { bookingId: lateFeeTarget.id, lateFeeOverride: parsed },
-                  {
-                    onSuccess: () => setLateFeeTarget(null),
-                    onError: (err) => setLateFeeError(err instanceof Error ? err.message : "Could not save."),
-                  },
-                );
-              }}
-            >
-              {setLateFeeOverride.isPending ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AdminCreateBookingDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   );
 }

@@ -40,24 +40,27 @@ export function useMyBilling() {
 
     const load = (background = false): Promise<void> => {
         if (rideLoading) return Promise.resolve();
-        if (!bookingId) {
-            setBilling(EMPTY);
-            setLoading(false);
-            return Promise.resolve();
-        }
 
         if (!background) setLoading(true);
         setError(null);
+
+        // booking/deposit/damages are genuinely tied to a specific booking —
+        // null/empty when there isn't one right now. Invoices are not: Payment
+        // History is meant to be a persistent record of every invoice this
+        // rider has EVER had, across every past booking, so it's always
+        // fetched unscoped rather than emptying out the moment there's no
+        // current bookingId (which is what made the whole screen — not just
+        // this one section — go blank between plans).
         return Promise.all([
-            bookingRepository.byId(bookingId),
-            billingRepository.myDeposit(bookingId),
-            billingRepository.myDamages(bookingId),
-            billingRepository.myInvoices({ bookingId, pageSize: 50 }),
+            bookingId ? bookingRepository.byId(bookingId) : Promise.resolve(null),
+            bookingId ? billingRepository.myDeposit(bookingId) : Promise.resolve(null),
+            bookingId ? billingRepository.myDamages(bookingId) : Promise.resolve([]),
+            billingRepository.myInvoices({ pageSize: 50 }),
         ])
             .then(([booking, deposit, damages, invoicesPage]) => {
                 setBilling({
                     bookingId,
-                    booking: booking as ApiBookingWithPlan,
+                    booking: booking as ApiBookingWithPlan | null,
                     deposit,
                     damages,
                     invoices: invoicesPage.data,

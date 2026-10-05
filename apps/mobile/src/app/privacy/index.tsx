@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { Spinner } from '../../components/Spinner';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FileText, Lock, Mail, ChevronRight } from 'lucide-react-native';
@@ -41,9 +42,9 @@ export default function PrivacyHubScreen() {
         <AppShell title={t('privacy.title')}>
             <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 32 }}>
                 {loading && !state ? (
-                    <ActivityIndicator color={COLORS.primary} />
+                    <Spinner size={18} color={COLORS.primary} />
                 ) : !state ? (
-                    <ErrorState message={error ?? 'Could not load your privacy settings.'} onRetry={reload} />
+                    <ErrorState message={error ?? t('privacy.loadFailed')} onRetry={reload} />
                 ) : (
                     <>
                         <LanguageToggle label={t('lang.label')} />
@@ -103,9 +104,9 @@ export default function PrivacyHubScreen() {
                         <Heading>{t('privacy.data.heading')}</Heading>
 
                         <LinkRow
-                            title={t('privacy.data.export')}
-                            help={t('privacy.data.export.help')}
-                            onPress={() => router.push('/privacy/requests?type=access_export' as never)}
+                            title={t('privacy.summary')}
+                            help={t('privacy.summary.help')}
+                            onPress={() => router.push('/privacy/summary' as never)}
                         />
                         <LinkRow
                             title={t('privacy.data.correct')}

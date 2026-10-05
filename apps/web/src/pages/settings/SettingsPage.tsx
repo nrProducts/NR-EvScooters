@@ -13,28 +13,32 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { NotConnected } from "@/components/common/NotConnected";
 import { useUiStore } from "@/store/uiStore";
 import { useUsers, useUserPermissions } from "@/hooks/useUsers";
+import { usePermissionCatalog } from "@/hooks/usePermissionCatalog";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
 import { initials } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MODULE_LABELS } from "@/types";
 import type { AppUser } from "@/types";
-import { CapabilitiesSection } from "./CapabilitiesSection";
 import StaffAccessSection from "./StaffAccessSection";
 
-const ADMIN_ONLY_SECTIONS = ["roles", "staff-access", "capabilities"] as const;
+const ADMIN_ONLY_SECTIONS = ["roles", "staff-access"] as const;
 
 /**
  * "settings" module grant only ever unlocks the generic tabs below —
- * Roles & Staff / Capabilities / Staff Access stay hard-coded to
- * role === "admin" regardless of any staff_permissions row, since they are
- * where staff/permission management itself lives (requirement: only an
- * Admin may manage Staff permissions — see users.routes.ts, every one of
- * those endpoints is requireAdmin, not requireModule/requireAction).
+ * Roles & Staff / Staff Access stay hard-coded to role === "admin"
+ * regardless of any grant, since they are where staff/permission management
+ * itself lives (requirement: only an Admin may manage Staff permissions —
+ * see users.routes.ts, every one of those endpoints is requireAdmin).
+ *
+ * The Capabilities tab is gone. kyc_reviewer, rights_officer and pii_exporter
+ * were a second authorisation axis with its own screen and its own endpoints;
+ * they are ordinary permissions now — kyc.reveal_number, privacy.process,
+ * privacy.export — granted from the permission matrix alongside everything
+ * else, which is one screen fewer and one fewer place for the two to disagree.
  */
 const SECTIONS = [
   { value: "roles", label: "Roles & Staff" },
   { value: "staff-access", label: "Staff Access" },
-  { value: "capabilities", label: "Capabilities" },
   { value: "company", label: "Company" },
   { value: "security", label: "Security" },
   { value: "api-keys", label: "API Keys" },
@@ -53,21 +57,19 @@ export default function SettingsPage() {
   const adminAccounts = admins?.data ?? [];
   const staffAccounts = staff?.data ?? [];
 
+  usePageSubtitle("Company, roles and platform configuration");
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-          <p className="text-sm text-muted-foreground">Company, roles and platform configuration</p>
-        </div>
-        {role === "admin" && (
+      {role === "admin" && (
+        <div className="flex justify-end">
           <Button variant="outline" size="sm" asChild>
             <Link to="/settings/notification-manager">
               Notification Manager <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
             </Link>
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
         <TabsList className="flex-wrap">
@@ -137,12 +139,6 @@ export default function SettingsPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-        )}
-
-        {role === "admin" && (
-        <TabsContent value="capabilities">
-          <CapabilitiesSection />
         </TabsContent>
         )}
 
@@ -243,6 +239,12 @@ export default function SettingsPage() {
 /** Read-only overview row — one per staff account, showing its granted module badges. Editing lives on the Users page. */
 function StaffAccountRow({ user }: { user: AppUser }) {
   const { data: modules, isLoading } = useUserPermissions(user.id);
+  // Module labels come from the catalogue rather than a hard-coded map, so a
+  // module added by migration reads as its label here instead of its key.
+  const { data: catalog } = usePermissionCatalog();
+  const moduleLabels = Object.fromEntries(
+    (catalog?.modules ?? []).map((m) => [m.key, m.label]),
+  );
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -263,7 +265,7 @@ function StaffAccountRow({ user }: { user: AppUser }) {
         ) : (
           modules.map((m) => (
             <Badge key={m.module_key} variant="secondary">
-              {MODULE_LABELS[m.module_key]} · {m.actions.length}
+              {moduleLabels[m.module_key] ?? m.module_key} · {m.actions.length}
             </Badge>
           ))
         )}

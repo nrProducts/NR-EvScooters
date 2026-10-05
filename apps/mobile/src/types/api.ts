@@ -4,8 +4,16 @@
  * API contract, not on the backend's internal row types.
  */
 
-export type RoleName = 'rider' | 'staff' | 'technician' | 'station_manager' | 'admin';
-export const ROLE_NAMES: RoleName[] = ['rider', 'staff', 'technician', 'station_manager', 'admin'];
+/**
+ * Three values, on one column.
+ *
+ * `roles`/`user_roles` collapsed into `users.role`, and `technician` and
+ * `station_manager` did not survive: they were role names with no distinct
+ * grants behind them, and what they reached for is now expressed by giving an
+ * account the operations permissions instead.
+ */
+export type RoleName = 'rider' | 'staff' | 'admin';
+export const ROLE_NAMES: RoleName[] = ['rider', 'staff', 'admin'];
 
 export type AccountStatus = 'active' | 'inactive' | 'suspended';
 export const ACCOUNT_STATUSES: AccountStatus[] = ['active', 'inactive', 'suspended'];
@@ -15,8 +23,16 @@ export const KYC_STATUSES: KycStatus[] = [
     'not_submitted', 'pending', 'partially_verified', 'verified', 'rejected',
 ];
 
-export type KycDocType = 'aadhaar' | 'driving_license' | 'passport' | 'voter_id' | 'address_proof';
-export const MANDATORY_KYC_DOC_TYPES: KycDocType[] = ['aadhaar', 'driving_license'];
+/**
+ * `driving_licence`, with a C.
+ *
+ * The app spelled it `driving_license`; `kyc_document_type` spells it
+ * `driving_licence`, and the enum is the authority. Sending the American
+ * spelling is not a display quirk — it fails the insert, so a rider's licence
+ * upload would have been rejected outright.
+ */
+export type KycDocType = 'aadhaar' | 'driving_licence' | 'passport' | 'voter_id' | 'address_proof';
+export const MANDATORY_KYC_DOC_TYPES: KycDocType[] = ['aadhaar', 'driving_licence'];
 
 export type VerificationStatus = 'pending' | 'verified' | 'rejected';
 
@@ -55,10 +71,25 @@ export interface ApiUser {
     profile_photo_url: string | null;
     /** Has the rider completed the initial onboarding profile form (spec Step 1)? */
     profile_completed: boolean;
+    /**
+     * `users.preferred_language` — 'en' | 'ta' | 'hi'.
+     *
+     * The ONLY localisation state the server holds. Every translated string
+     * ships inside the app (src/i18n/copy.*.ts); the database remembers which
+     * of them to use and nothing else, so a copy fix is an app release and
+     * never a data migration.
+     *
+     * Typed `string | null` rather than `Lang` on purpose: this is a wire
+     * type, and a value the app does not recognise (a language added by a
+     * newer build, then read by an older one) must narrow at the boundary —
+     * `isLang()` in src/i18n/types.ts — rather than lie about itself here.
+     */
+    preferred_language: string | null;
     created_at: string;
     updated_at: string;
     deleted_at: string | null;
-    roles: RoleName[];
+    /** One value now — `users.role`. Was an array off `user_roles`. */
+    role: RoleName;
     assigned_vehicle: { id: string; vin: string; model: string } | null;
     current_plan: { id: string; name: string; status: string } | null;
 }
@@ -67,11 +98,11 @@ export interface ApiUserDetail extends ApiUser {
     kyc_completion_percent: number;
     documents: Array<{
         id: string;
-        doc_type: KycDocType;
+        document_type: KycDocType;
         doc_number_masked: string | null;
         verification_status: VerificationStatus;
         rejection_reason: string | null;
-        expiry_date: string | null;
+        expires_on: string | null;
         submitted_at: string | null;
         verified_at: string | null;
     }>;
@@ -95,6 +126,41 @@ export interface ApiMe extends ApiUserDetail {
      */
     consent_up_to_date: boolean;
     consent_notice_version: string;
+    /**
+     * False when the rider has never accepted the Terms, OR accepted an older
+     * version. Same shape and same purpose as `consent_up_to_date` above —
+     * but a different instrument: consent is the lawful basis for processing
+     * data, this is acceptance of the rental contract. A rider can be up to
+     * date on one and owe the other.
+     */
+    terms_up_to_date: boolean;
+    terms_version: string;
+}
+
+/** The live Terms & Conditions, served from the API and rendered as Markdown. */
+export interface ApiLegalDocument {
+    id: string;
+    doc_type: 'terms';
+    version: string;
+    effective_from: string;
+    /**
+     * The language ACTUALLY served, which is not always the one requested:
+     * no reviewed Tamil text exists yet, so a Tamil request falls back to
+     * English and says so here rather than mislabelling it.
+     */
+    language: 'en' | 'ta';
+    /** Markdown, limited to what components/Markdown.tsx renders. */
+    body: string;
+    body_sha256: string;
+}
+
+/** Whether this rider still owes an acceptance, and of which version. */
+export interface ApiLegalAcceptanceState {
+    doc_type: 'terms';
+    current_version: string;
+    up_to_date: boolean;
+    accepted_version: string | null;
+    accepted_at: string | null;
 }
 
 /**
@@ -116,11 +182,14 @@ export interface UpdateUserPayload {
     country?: string;
     emergency_contact_name?: string;
     emergency_contact_phone?: string;
+    /** 'en' | 'ta' | 'hi'. Sent alone by the language picker; see src/i18n. */
+    preferred_language?: string;
 }
 
 export interface ApiDocument {
     id: string;
-    doc_type: KycDocType;
+    /** `kyc_documents.document_type`. Was `doc_type`. */
+    document_type: KycDocType;
     /**
      * Display-only tail, e.g. "•••• 0124". The full Aadhaar/DL number is
      * validated at upload and deliberately never stored, so there is no
@@ -129,7 +198,8 @@ export interface ApiDocument {
     doc_number_masked: string | null;
     verification_status: VerificationStatus;
     rejection_reason: string | null;
-    expiry_date: string | null;
+    /** `kyc_documents.expires_on`. Was `expires_on`. */
+    expires_on: string | null;
     is_expired: boolean;
     submitted_at: string | null;
     verified_at: string | null;
@@ -206,7 +276,14 @@ export interface ApiPlan {
     included_minutes: number | null;
     /** Source of truth for the recurring-billing cadence — billing_cycle is display-only. */
     duration_days: number;
+    /** The REFUNDABLE part of what is collected up front. */
     deposit_amount: number;
+    /** One-time non-refundable charge taken with the first payment. 0 = none. */
+    onboarding_charge_amount: number;
+    /** Cumulative rental days before the deposit becomes refundable. 0 = no minimum. Meaningless when deposit_refundable is false. */
+    min_rental_days_for_refund: number;
+    /** Whether the deposit is ever refundable at all. False = forfeited outright on return, like the onboarding charge. */
+    deposit_refundable: boolean;
 }
 
 export interface ApiAvailability {
@@ -281,7 +358,16 @@ export interface CreateBookingPayload {
     start_day: string; // YYYY-MM-DD
 }
 
-export type VehicleStatus = 'available' | 'booked' | 'assigned' | 'maintenance' | 'scrap';
+/** POST /payments/bookings/order — pay-first: creates a payment intent, not a booking. */
+export type CreateBookingOrderPayload = CreateBookingPayload;
+
+/**
+ * `booked` is `reserved`, and `scrap` is `retired`.
+ *
+ * Read-only either way: `recompute_vehicle_status()` derives it from the
+ * vehicle's maintenance ticket, rental assignment and booking hold.
+ */
+export type VehicleStatus = 'available' | 'reserved' | 'assigned' | 'maintenance' | 'retired';
 
 /**
  * No payment is captured in this phase, so a refund is a recorded request for
@@ -295,11 +381,19 @@ export interface ApiBooking {
     status: BookingStatus;
     start_day: string;
     created_at: string;
+    /**
+     * When an unpaid hold lapses, ISO-8601. Null once the booking is no
+     * longer pending. A `pending_payment` booking is NOT a confirmed
+     * pickup — it is a scooter held on a clock — and the UI must say so.
+     */
+    hold_expires_at: string | null;
     vehicle_model: { id: string; name: string } | null;
     station: { id: string; name: string; code: string; lat: number; lng: number } | null;
     plan: {
         id: string; name: string; billing_cycle: BillingCycle; price: number;
         duration_days: number; deposit_amount: number;
+        /** Non-refundable, snapshotted at booking. 0 for bookings taken before the split. */
+        onboarding_charge_amount: number;
     } | null;
     /**
      * The specific physical unit reserved for this booking, if any —
@@ -361,12 +455,52 @@ export interface ApiPaymentOrder {
     /** Razorpay's PUBLIC key id — safe on-device, never the secret. */
     keyId: string;
     /**
-     * True when the backend has no Razorpay keys configured yet — the order
-     * is already settled server-side with temp data. Skip Checkout and
-     * /payments/verify entirely and treat this as paid immediately.
+     * When this checkout session stops being collectable, ISO-8601. The
+     * scooter hold expires with it.
      */
-    mock: boolean;
+    expiresAt: string | null;
+    /**
+     * The itemised breakdown behind `amount`, computed server-side.
+     *
+     * The app MUST render this rather than adding up plan price + deposit
+     * itself: pricing rules (transaction fee, welcome discount, plan-scoped
+     * charges) are resolved by the backend and are invisible to the client.
+     * Computing locally is what made the review screen quote a total the
+     * gateway then disagreed with.
+     */
+    lines: ApiOrderLine[];
 }
+
+/**
+ * The bill for a plan, resolved server-side, shown BEFORE checkout.
+ *
+ * The app cannot compute this: pricing rules (welcome discount, fees) live
+ * in the database and are invisible on-device. Adding `plan.price +
+ * deposit` locally is what made the review screen quote a total that
+ * Razorpay then disagreed with.
+ */
+export interface ApiPlanQuote {
+    lines: ApiOrderLine[];
+    /** Rupees. The sum of `lines`, computed server-side. */
+    amount: number;
+    currency: string;
+}
+
+export interface ApiOrderLine {
+    description: string;
+    /** Rupees. Negative for a discount. */
+    amount: number;
+}
+
+/**
+ * The `mock` flag is gone.
+ *
+ * It meant "the backend has no Razorpay keys, so it already settled this
+ * order — skip Checkout and treat it as paid", and the app honoured it. Any
+ * deploy with a blank secret therefore confirmed bookings for free. There is
+ * no longer a path where a payment succeeds without the gateway saying so, on
+ * either side.
+ */
 
 export interface VerifyPaymentPayload {
     razorpay_order_id: string;
@@ -380,7 +514,8 @@ export interface VerifyPaymentPayload {
 // views the rider payment screen reads.
 // ---------------------------------------------------------------------------
 
-export type PlanStatus = 'active' | 'due' | 'paused';
+/** `subscriptions.status`, narrowed. `due` was renamed `past_due`. */
+export type PlanStatus = 'active' | 'past_due' | 'paused';
 export type RenewalStatus = 'none' | 'scheduled';
 
 export interface ApiBookingWithPlan extends ApiBooking {
@@ -398,36 +533,64 @@ export interface ApiBookingWithPlan extends ApiBooking {
     scheduled_duration_days: number | null;
 }
 
-export type InvoicePaymentType = 'rental' | 'deposit' | 'damage' | 'penalty' | 'refund' | 'other';
-export type InvoicePaymentStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'refunded';
+/** Why the invoice exists. Was `InvoicePaymentType` (rental/deposit/damage/...). */
+export type InvoicePurpose = 'initial' | 'subscription_period' | 'settlement' | 'adhoc';
 
-/** A single invoice line — see 20260817100000_billing_charge_engine.sql. Empty on every invoice minted before that migration. */
+/**
+ * Paid-ness, DERIVED by the backend from the money actually allocated.
+ *
+ * Was `InvoicePaymentStatus` ('pending' | 'processing' | 'succeeded' | ...),
+ * read off an `invoices.payment_status` column that no longer exists — the
+ * flag was removed precisely because it could disagree with the payments.
+ */
+export type InvoicePaymentState = 'paid' | 'partial' | 'overdue' | 'unpaid';
+
+/** A single invoice line. */
 export interface ApiInvoiceItem {
     id: string;
-    item_type: 'base_rental' | 'charge' | 'discount';
-    rider_charge_id: string | null;
-    label: string;
+    item_type: 'plan_fee' | 'adjustment' | 'deposit';
+    /** Was `rider_charge_id`. */
+    subscription_adjustment_id: string | null;
+    /** Was `label`. */
+    description: string;
+    quantity: number;
+    unit_amount: number;
+    /** Negative for a discount — there is no separate discount line type. */
     amount: number;
     created_at: string;
 }
 
 export interface ApiInvoice {
     id: string;
-    payment_type: InvoicePaymentType | null;
-    amount_due: number;
-    due_date: string;
-    payment_status: InvoicePaymentStatus;
+    /** Gap-free, allocated by the database. */
+    invoice_number: string;
+    /** Was `payment_type`. */
+    purpose: InvoicePurpose;
+    status: 'draft' | 'issued' | 'void';
+    /** Was `amount_due`. */
+    total_amount: number;
+    subtotal_amount: number;
+    /** What is still owed after allocations. */
+    balance_amount: number;
+    allocated_amount: number;
+    /** Was `due_date`. A date — an IST calendar day. */
+    due_on: string | null;
+    /** Was `payment_status`. Derived, not stored. */
+    payment_state: InvoicePaymentState;
     paid_at: string | null;
+    /** How it was paid — `payment_transactions.method`. Null until paid. */
+    payment_method: 'upi' | 'card' | 'netbanking' | 'wallet' | 'cash' | null;
     created_at: string;
     items: ApiInvoiceItem[];
-    /** Only ever set on GET /invoices/me for an overdue 'rental' invoice — see the backend's InvoiceRow.late_fee doc comment. */
+    /** Only ever set on GET /invoices/me for an unpaid PERIOD invoice that is late — see the backend's InvoiceRow.late_fee doc comment. */
     late_fee?: number;
     days_late?: number;
     total_due?: number;
 }
 
 export interface ApiEarlyRechargeLineItem {
-    itemType: 'base_rental' | 'charge' | 'discount';
+    /** Matches the DB enum invoice_item_type — there is no separate 'discount' type; a discount is an 'adjustment' with a negative amount. */
+    itemType: 'plan_fee' | 'adjustment' | 'deposit';
     label: string;
     amount: number;
 }
@@ -450,7 +613,12 @@ export interface ApiEarlyRecharge {
     scheduledStartDate: string;
 }
 
-export type DepositStatus = 'pending' | 'held' | 'partially_refunded' | 'refunded' | 'forfeited';
+/**
+ * Four values, not five. `partially_refunded` and `refunded` collapsed into
+ * `released` — how much came back is the refund's business, and the deposit
+ * row no longer duplicates an amount the refund already knows.
+ */
+export type DepositStatus = 'pending' | 'held' | 'released' | 'forfeited';
 
 export interface ApiDeposit {
     id: string;
@@ -461,12 +629,24 @@ export interface ApiDeposit {
     refund_eligible_at: string | null;
     refunded_at: string | null;
     forfeited_at: string | null;
+    forfeit_reason: string | null;
     refund_id: string | null;
     /** Deposit minus non-disputed damage deductions — the deposit's own amount when not yet `held`. */
     refundable_amount: number;
+    /** Rental days required before this deposit is refundable. 0 = no minimum. Meaningless when is_refundable is false. */
+    min_rental_days_required: number;
+    /** Whether this deposit is ever refundable at all, frozen from the plan when the rider paid. */
+    is_refundable: boolean;
+    /** The rider's completed rental days, across their whole history. */
+    rental_days_completed: number;
+    refund_eligibility: 'not_eligible' | 'eligible' | 'refund_processed';
 }
 
-export type DamageStatus = 'recorded' | 'disputed' | 'resolved';
+/**
+ * `recorded` is `assessed`; `settled` and `waived` are new terminal states —
+ * a scratch written off previously had nowhere to go.
+ */
+export type DamageStatus = 'assessed' | 'disputed' | 'settled' | 'waived';
 
 export interface ApiDamage {
     id: string;
@@ -488,7 +668,11 @@ export interface ApiAvailableVehicle {
     battery_percentage: number;
 }
 
-export type RentalStatus = 'active' | 'completed' | 'force_ended' | 'cancelled';
+/**
+ * Three values. `cancelled` is gone: a rental that never really happened is a
+ * booking that was cancelled, and no rental row should have existed for it.
+ */
+export type RentalStatus = 'active' | 'completed' | 'force_ended';
 
 export interface ApiRental {
     id: string;
@@ -539,7 +723,96 @@ export interface ApiRental {
     return_due_at: string | null;
     days_late: number | null;
     late_penalty_amount: number | null;
+    /**
+     * The rate a SETTLED late-return fee was charged at — null until there is
+     * a settlement. For the rate in force (what the rider's warning copy has
+     * to quote before anything is settled) read `late_return_fee_per_day`
+     * below, which is always present.
+     */
     late_fee_per_day: number | null;
+
+    // --- return recovery (20260824100000) -----------------------------------
+    // Set once by vehicle-recovery-sweep when the rental is more than
+    // max_late_fee_days past its due date; never cleared. Can be set even
+    // with no return ever requested — see ReturnStatusCard.
+    recovery_flagged_at: string | null;
+    /** return_recovery_settings.max_late_fee_days — pass into computeLateReturnPenalty as maxDays. */
+    max_late_fee_days: number;
+    /** return_recovery_settings.late_fee_per_day — admin-configured ₹/day rate, always present (unlike late_fee_per_day above, which is settlement-only). Pass into computeLateReturnPenalty as feePerDay. */
+    late_return_fee_per_day: number;
+}
+
+// ---------------------------------------------------------------------------
+// Overdue Rider → Late Fee Payment → Scooter Return
+//
+// Distinct from RentalReturnFields above: this is the RENEWAL late fee
+// (pricing_rules code='late_fee') for a plan that lapsed without ever being
+// renewed, not the return-lateness fee for a scooter coming back late after
+// a return was already requested. See apps/backend/src/modules/rentals/
+// overdueLateFee.ts for the full explanation.
+// ---------------------------------------------------------------------------
+
+export interface ApiOverdueLateFee {
+    /** RETURN-path day count: the handover day counts, because the rider rode the scooter through it. */
+    daysLate: number;
+    /** RETURN-path money — what the Return sheet collects and the adhoc invoice is raised for. */
+    lateFee: number;
+    isLate: boolean;
+    feePerDay: number;
+    dueOn: string | null;
+    /** RENEW-path day count. Always one less than daysLate: the renewal payment buys today as plan time. */
+    renewalDaysLate: number;
+    /** RENEW-path money — what Home's renew banner must quote, since its call to action is "Renew Plan Now". */
+    renewalLateFee: number;
+    /** True once paid (or if nothing was ever owed) — the Return flow is unblocked. */
+    isSettled: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Vehicle Return → Inspection → Payment Gate → Approve Return
+//
+// The rider's own view of the SAME state machine the admin Return Detail
+// page drives (apps/backend/src/modules/returns/returns.types.ts's
+// ReturnStage / apps/web's ReturnStage) — computed server-side so the rider
+// and admin can never see two different answers to "what's happening with
+// my return."
+// ---------------------------------------------------------------------------
+
+export type ReturnStageStatus =
+    | 'return_requested' | 'payment_required' | 'payment_submitted'
+    | 'ready_for_approval' | 'return_completed' | 'rejected';
+
+export interface ApiReturnStage {
+    status: ReturnStageStatus;
+    depositAmount: number;
+    damageAmount: number;
+    otherChargesAmount: number;
+    totalCharges: number;
+    additionalDue: number;
+    refundDue: number;
+    additionalDueInvoiceId: string | null;
+    paymentVerifiedAt: string | null;
+}
+
+export interface ApiOverdueLateFeeInvoice {
+    invoiceId: string;
+    amount: number;
+    isPaid: boolean;
+}
+
+/**
+ * One statutory document (RC, insurance, PUC, ...) for whichever scooter the
+ * rider currently holds. No document number here — that's fleet-admin detail
+ * the rider has no reason to see; this is just enough to know it exists, when
+ * it expires, and whether there's a file to view.
+ */
+export type VehicleDocType = 'registration' | 'insurance' | 'puc' | 'fitness' | 'permit';
+
+export interface ApiVehicleDocument {
+    id: string;
+    doc_type: VehicleDocType;
+    expires_on: string;
+    has_file: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -569,6 +842,8 @@ export interface ApiReturnSettlement {
     net_settlement: number;
     refund_amount: number;
     due_amount: number;
+    /** What the rider paid directly (beyond the deposit) toward total_charges — survives due_amount reading 0 once that payment is confirmed. */
+    paid_by_rider_amount: number;
     status: ReturnSettlementStatus;
     refund_id: string | null;
     due_invoice_id: string | null;
@@ -582,7 +857,9 @@ export interface ReturnRequestPayload {
     rating: number;
 }
 
-export type MaintenanceStatus = 'reported' | 'in_progress' | 'resolved' | 'cancelled';
+/** `maintenance_status` gained a `triaged` state between reported and in progress. */
+export type MaintenanceStatus =
+    'reported' | 'triaged' | 'in_progress' | 'resolved' | 'cancelled';
 
 export interface ApiMaintenanceRecord {
     id: string;
@@ -608,7 +885,12 @@ export interface MaintenanceHistoryParams {
 }
 
 /** What Home renders for a rider currently displaced by their own vehicle's maintenance. */
-export type MaintenanceNoticeStage = 'pending_triage' | 'quick_fix' | 'temp_vehicle';
+/**
+ * `replacement` is new — a permanent swap, where `temp_vehicle` is a loan the
+ * rider gives back. The old schema could not tell the two apart.
+ */
+export type MaintenanceNoticeStage =
+    'pending_triage' | 'quick_fix' | 'temp_vehicle' | 'replacement';
 
 export interface ApiMaintenanceNotice {
     ticket_id: string;
@@ -766,8 +1048,34 @@ export interface ApiNominee {
     updated_at: string | null;
 }
 
-export interface ApiExportResult {
-    request: ApiPrivacyRequest;
-    url: string;
-    expires_in: number;
+/**
+ * The rider's DPDPA s.11 summary.
+ *
+ * A summary, not a copy: `categories` carries counts rather than rows, and
+ * `shared_with` is s.11(1)(b) — the processors the data reaches, which is not
+ * derivable from the rider's own records.
+ */
+export interface ApiPrivacySummary {
+    generated_at: string;
+    controller: string;
+    identity: {
+        full_name: string | null;
+        email: string | null;
+        phone: string | null;
+        date_of_birth: string | null;
+        gender: string | null;
+        address: string | null;
+        kyc_status: string | null;
+        identity_documents: { document_type: string; last4: string | null; status: string }[];
+    };
+    categories: {
+        key: string;
+        label: string;
+        what: string;
+        count: number;
+        retention: string;
+    }[];
+    consents: { purpose: string; granted: boolean; decided_at: string | null }[];
+    shared_with: { name: string; receives: string; why: string }[];
+    not_held: string[];
 }

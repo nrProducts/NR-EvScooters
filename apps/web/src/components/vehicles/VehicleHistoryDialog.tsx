@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { CheckCircle2, Loader2, Wrench, UserX, Zap, Bike, CornerDownRight, Undo2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Wrench, UserX, Zap, Bike, CornerDownRight, Undo2 } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -10,10 +12,10 @@ import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ErrorState } from "@/components/common/ErrorState";
 import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
-import { useVehicle } from "@/hooks/useVehicles";
-import { useCompleteRide, useMoveRideToMaintenance } from "@/hooks/useRentals";
+import { useVehicle, useUnassignVehicle } from "@/hooks/useVehicles";
 import { ApiError } from "@/services/api/httpClient";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { VehicleMaintenanceRecord, VehicleRentalRecord } from "@/types";
@@ -36,34 +38,46 @@ export function VehicleHistoryDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
   const { data: vehicle, isLoading, isError, refetch } = useVehicle(vehicleId ?? undefined);
   const [unassignOpen, setUnassignOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [nextStatus, setNextStatus] = useState<"available" | "maintenance">("available");
-  const [description, setDescription] = useState("");
-  const completeRide = useCompleteRide();
-  const moveToMaintenance = useMoveRideToMaintenance();
+  const [reason, setReason] = useState("");
+  const unassignVehicle = useUnassignVehicle();
 
   const current = vehicle?.rental_history.find((r) => r.status === "active") ?? null;
-  const isPending = completeRide.isPending || moveToMaintenance.isPending;
-  const error = completeRide.error ?? moveToMaintenance.error;
 
   const closeUnassign = () => {
     setUnassignOpen(false);
-    setNextStatus("available");
-    setDescription("");
+    setReason("");
   };
 
+  /**
+   * Used to call completeRide/moveRideToMaintenance directly — which meant
+   * an "Available"/"Maintenance" choice right in this dialog completed the
+   * ride immediately, no inspection. That only works when there is nothing
+   * to inspect: assertInspected (rentals.service.ts) blocks it outright the
+   * moment a deposit is actually held, which is the common case — every
+   * click here failed with "Record the vehicle inspection..." and no way
+   * to actually do that from this dialog. It now opens the same
+   * admin-initiated return requestReturn's rider-facing counterpart does
+   * (adminUnassignVehicle) and hands off to the real Inspection → Payment
+   * Gate → Approve Return flow, where that choice already lives.
+   */
   const handleConfirmUnassign = () => {
-    if (!current) return;
-    if (nextStatus === "available") {
-      completeRide.mutate({ id: current.id }, { onSuccess: closeUnassign });
-    } else {
-      moveToMaintenance.mutate(
-        { id: current.id, input: { description: description.trim() } },
-        { onSuccess: closeUnassign },
-      );
-    }
+    if (!vehicle) return;
+    unassignVehicle.mutate(
+      { id: vehicle.id, reason },
+      {
+        onSuccess: ({ rentalId }) => {
+          toastSuccess("Return started — continue in the review flow");
+          closeUnassign();
+          onOpenChange(false);
+          navigate(`/bookings/returns/${rentalId}`);
+        },
+        onError: (err) => toastError(err, "Could not unassign vehicle"),
+      },
+    );
   };
 
   const nodes: TimelineNode[] = vehicle
@@ -150,7 +164,7 @@ export function VehicleHistoryDialog({
                     const isLast = i === nodes.length - 1;
                     return (
                       <div key={`${node.kind}-${node.id}`} className={cn("relative pl-6", !isLast && "pb-5")}>
-                        {!isLast && <span className="absolute left-[7px] top-3 h-full w-px bg-border" />}
+                        {!isLast && <span className="absolute left-[0.4375rem] top-3 h-full w-px bg-border" />}
                         {node.kind === "assignment" ? (
                           <>
                             <span className="absolute left-0 top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-secondary ring-4 ring-card">
@@ -187,11 +201,13 @@ export function VehicleHistoryDialog({
                             </div>
 
                             {/* Branch: temp vehicle issued during this ticket */}
-                            {node.ticket.outcome === "standard_temp" && node.ticket.temp_vehicle && (
+                            {(node.ticket.outcome === "temp_vehicle"
+                              || node.ticket.outcome === "replacement") && node.ticket.temp_vehicle && (
                               <div className="mt-2 flex items-center gap-1.5 border-l border-dashed border-border pl-3">
                                 <CornerDownRight className="h-3 w-3 shrink-0 text-muted-foreground" />
                                 <span className="text-xs text-muted-foreground">
-                                  Temp vehicle used: <span className="font-medium text-foreground">{node.ticket.temp_vehicle.name}</span>
+                                  {node.ticket.outcome === "replacement" ? "Replaced with" : "Temp vehicle used"}:{" "}
+                                  <span className="font-medium text-foreground">{node.ticket.temp_vehicle.name}</span>
                                 </span>
                               </div>
                             )}
@@ -210,50 +226,27 @@ export function VehicleHistoryDialog({
       <Dialog open={unassignOpen} onOpenChange={(o) => (o ? setUnassignOpen(true) : closeUnassign())}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Unassign {current?.rider?.full_name ?? "rider"}</DialogTitle>
-            <DialogDescription>Ends the current ride. Choose what happens to the vehicle next.</DialogDescription>
+            <DialogTitle>Unassign {current?.rider?.full_name ?? "rider"}?</DialogTitle>
+            <DialogDescription>
+              This ends their current plan on this vehicle. You&rsquo;ll land on the same return-review
+              screen used for a rider-requested return — record any damage, settle the deposit, and
+              choose whether the vehicle goes to Maintenance or back to Available there.
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setNextStatus("available")}
-              className={cn(
-                "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-sm transition-smooth",
-                nextStatus === "available" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
-              )}
-            >
-              <CheckCircle2 className="h-5 w-5" />
-              Available
-            </button>
-            <button
-              type="button"
-              onClick={() => setNextStatus("maintenance")}
-              className={cn(
-                "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-sm transition-smooth",
-                nextStatus === "maintenance" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
-              )}
-            >
-              <Wrench className="h-5 w-5" />
-              Maintenance
-            </button>
+          <div className="space-y-1.5">
+            <Label>Reason</Label>
+            <Textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Rider unreachable, reclaiming vehicle for another assignment"
+              rows={3}
+            />
           </div>
 
-          {nextStatus === "maintenance" && (
-            <div className="space-y-1.5">
-              <Label>Reason (at least 3 characters)</Label>
-              <Textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. Brake noise reported by rider"
-                rows={3}
-              />
-            </div>
-          )}
-
-          {!!error && (
+          {!!unassignVehicle.error && (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              {error instanceof ApiError ? error.message : "Something went wrong. Please try again."}
+              {unassignVehicle.error instanceof ApiError ? unassignVehicle.error.message : "Something went wrong. Please try again."}
             </p>
           )}
 
@@ -262,11 +255,12 @@ export function VehicleHistoryDialog({
               Cancel
             </Button>
             <Button
-              disabled={isPending || (nextStatus === "maintenance" && description.trim().length < 3)}
+              variant="destructive"
+              disabled={unassignVehicle.isPending || reason.trim().length < 3}
               onClick={handleConfirmUnassign}
             >
-              {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Confirm unassign
+              {unassignVehicle.isPending && <Spinner className="h-4 w-4" />}
+              Unassign &amp; start return
             </Button>
           </DialogFooter>
         </DialogContent>

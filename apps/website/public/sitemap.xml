@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://swapngo.in/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <!--
+    privacy.html and terms.html are deliberately omitted: they are generated
+    by scripts/build-legal.mjs from docs/legal/*.md, which still carry
+    [PLACEHOLDER] markers awaiting legal review, and the generated files are
+    gitignored (never committed) until that review is done — so they do not
+    exist on the deployed site yet. Add them here once
+    apps/website/.gitignore's public/privacy.html and public/terms.html
+    lines are removed and the generated files are committed.
+  -->
+</urlset>

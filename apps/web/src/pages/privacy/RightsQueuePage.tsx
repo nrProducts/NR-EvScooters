@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
+import { FilterBar } from "@/components/common/FilterBar";
 import { Pagination } from "@/components/common/Pagination";
 import { SideDrawer } from "@/components/common/SideDrawer";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -16,6 +17,7 @@ import {
   useApproveErasure, useExecuteErasure,
 } from "@/hooks/usePrivacyRequests";
 import { useToastStore } from "@/store/toastStore";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
@@ -100,46 +102,45 @@ export default function RightsQueuePage() {
     },
   ];
 
+  usePageSubtitle(
+    "Access, correction, erasure and grievance requests from riders. Each has a published response period we have committed to in the privacy notice.",
+  );
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Privacy requests</h1>
-        <p className="text-sm text-muted-foreground">
-          Access, correction, erasure and grievance requests from riders. Each has a published
-          response period we have committed to in the privacy notice.
-        </p>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Select value={type} onValueChange={(v) => { setType(v as DpRequestType | "all"); setPage(1); }}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Any type" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Any type</SelectItem>
-            {Object.entries(DP_REQUEST_TYPE_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>{label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={status} onValueChange={(v) => { setStatus(v as DpRequestStatus | "all"); setPage(1); }}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Any status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Any status</SelectItem>
-            {Object.entries(DP_REQUEST_STATUS_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>{label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Button
-          variant={overdueOnly ? "default" : "outline"}
-          onClick={() => { setOverdueOnly(!overdueOnly); setPage(1); }}
-        >
-          <AlertTriangle className="h-3.5 w-3.5" /> Overdue only
-        </Button>
-      </div>
-
       <Card>
+        <FilterBar
+          filters={
+            <>
+              <Select value={type} onValueChange={(v) => { setType(v as DpRequestType | "all"); setPage(1); }}>
+                <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="Any type" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any type</SelectItem>
+                  {Object.entries(DP_REQUEST_TYPE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={status} onValueChange={(v) => { setStatus(v as DpRequestStatus | "all"); setPage(1); }}>
+                <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="Any status" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any status</SelectItem>
+                  {Object.entries(DP_REQUEST_STATUS_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant={overdueOnly ? "default" : "outline"}
+                onClick={() => { setOverdueOnly(!overdueOnly); setPage(1); }}
+              >
+                <AlertTriangle className="h-3.5 w-3.5" /> Overdue only
+              </Button>
+            </>
+          }
+        />
         <CardContent className="p-0">
           <DataTable
             data={data?.data ?? []}
@@ -263,7 +264,7 @@ function RequestDrawer({
                 <Input
                   value={ticketRef}
                   onChange={(e) => setTicketRef(e.target.value)}
-                  placeholder="e.g. SUP-1042"
+                  placeholder="Helpdesk reference"
                 />
               </div>
 

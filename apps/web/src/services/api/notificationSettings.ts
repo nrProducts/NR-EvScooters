@@ -1,9 +1,26 @@
-import { apiClient } from "./httpClient";
-import type { NotificationSetting, NotificationType } from "@/types";
+import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
+import type { EmailDeliveryLogEntry, NotificationSetting, NotificationType, NotificationTypeSummary, PaginatedResult } from "@/types";
 
-/** GET /notification-settings — requireAdmin. All 7 event types with current config + recipients. */
+/**
+ * GET /notification-settings — requireAdmin. Every event type with current
+ * config AND its subscriber list, for the Notification Manager screen.
+ */
 export async function fetchNotificationSettings(): Promise<NotificationSetting[]> {
   return apiClient.get<NotificationSetting[]>("/notification-settings");
+}
+
+/**
+ * GET /notification-settings/types — requireStaff. The catalogue WITHOUT
+ * subscriber lists.
+ *
+ * Separate from the call above because the realtime layer runs for staff too,
+ * and it only needs to know whether an incoming notification is a task
+ * (`requires_action`) and where acting on it goes (`action_path`). Asking the
+ * admin-only endpoint for that returned 403 to every staff session, which
+ * silently turned every approval popup into a bell tick.
+ */
+export async function fetchNotificationTypeSummaries(): Promise<NotificationTypeSummary[]> {
+  return apiClient.get<NotificationTypeSummary[]>("/notification-settings/types");
 }
 
 export interface UpdateNotificationSettingInput {
@@ -19,4 +36,22 @@ export async function updateNotificationSetting(
   input: UpdateNotificationSettingInput,
 ): Promise<NotificationSetting> {
   return apiClient.put<NotificationSetting>(`/notification-settings/${type}`, input);
+}
+
+export interface EmailLogParams {
+  page?: number;
+  pageSize?: number;
+  notificationType?: string;
+  status?: "pending" | "sent" | "failed";
+}
+
+/** GET /notification-settings/email-log — requireAdmin. The mail grid: every email notify() has sent to staff/admins. */
+export async function fetchEmailDeliveryLog(params: EmailLogParams): Promise<PaginatedResult<EmailDeliveryLogEntry>> {
+  const res = await apiClient.get<BackendPaginated<EmailDeliveryLogEntry>>("/notification-settings/email-log", {
+    page: params.page,
+    pageSize: params.pageSize,
+    notificationType: params.notificationType,
+    status: params.status,
+  });
+  return toPaginatedResult(res);
 }

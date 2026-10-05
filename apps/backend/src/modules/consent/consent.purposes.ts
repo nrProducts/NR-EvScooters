@@ -19,12 +19,15 @@ export const REQUIRED_PURPOSES = [
 ] as const satisfies readonly ConsentPurpose[];
 
 /**
- * Refusing any of these must leave the core service entirely intact. All three
+ * Refusing any of these must leave the core service entirely intact. Both
  * default to OFF — a pre-ticked optional consent is not consent.
+ *
+ * `referral_program` was here until the referral module was dropped: a purpose
+ * with nothing behind it is a consent request for data we do not collect, so
+ * it left the `consent_purpose` enum and this list together.
  */
 export const OPTIONAL_PURPOSES = [
     "marketing_communications",
-    "referral_program",
     "location_services",
 ] as const satisfies readonly ConsentPurpose[];
 

@@ -1,31 +1,52 @@
 import { Mail, Phone, MapPin } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { CONTACT_EMAIL, CONTACT_PHONE_DISPLAY, CONTACT_PHONE_HREF, CONTACT_IS_PLACEHOLDER, SERVICE_CITY } from "@/content/contact";
+import { ContactForm } from "@/components/ContactForm";
+import { Reveal } from "@/components/ui/Reveal";
+import { CONTACT_EMAIL, CONTACT_PHONES, CONTACT_IS_PLACEHOLDER, CONTACT_ADDRESS } from "@/content/contact";
 
 export function Contact() {
   return (
-    <section id="contact" className="py-20 sm:py-28">
-      <Container className="max-w-3xl">
-        <SectionHeading eyebrow="Contact" title="We're here to help" />
-
-        {CONTACT_IS_PLACEHOLDER && (
-          <p className="mx-auto mt-4 max-w-md text-center text-xs text-muted-foreground">
-            Contact details below are placeholders pending confirmation from the SwapNgo team.
+    <section id="contact" className="bg-sage/40 py-12 sm:py-16">
+      <Container className="grid gap-12 lg:grid-cols-[1fr_1.3fr] lg:gap-16">
+        <Reveal>
+          <SectionHeading align="left" eyebrow="Contact" title="We're here to help" />
+          <p className="mt-5 max-w-sm text-lg leading-relaxed text-muted-foreground">
+            Send us a query and our team will get back to you, or reach us directly using the
+            details below.
           </p>
-        )}
 
-        <div className="mt-12 grid gap-6 sm:grid-cols-3">
-          <ContactCard icon={Mail} label="Email" value={CONTACT_EMAIL} href={`mailto:${CONTACT_EMAIL}`} />
-          <ContactCard icon={Phone} label="Phone" value={CONTACT_PHONE_DISPLAY} href={CONTACT_PHONE_HREF} />
-          <ContactCard icon={MapPin} label="Location" value={SERVICE_CITY} />
-        </div>
+          {CONTACT_IS_PLACEHOLDER && (
+            <p className="mt-4 max-w-sm text-xs text-muted-foreground">
+              Contact details below are placeholders pending confirmation from the Swapngo team.
+            </p>
+          )}
+
+          <div className="mt-9 space-y-5">
+            <ContactRow icon={Mail} label="Email" value={CONTACT_EMAIL} href={`mailto:${CONTACT_EMAIL}`} />
+            {/* One row per number: a single joined row can only link to one
+                of them, so tapping the second would dial the first. */}
+            {CONTACT_PHONES.map((p) => (
+              <ContactRow key={p.href} icon={Phone} label="Phone" value={p.display} href={p.href} />
+            ))}
+            <ContactRow
+              icon={MapPin}
+              label="Office"
+              value={CONTACT_ADDRESS}
+              href={`https://maps.google.com/?q=${encodeURIComponent(CONTACT_ADDRESS)}`}
+            />
+          </div>
+        </Reveal>
+
+        <Reveal delay={120}>
+          <ContactForm />
+        </Reveal>
       </Container>
     </section>
   );
 }
 
-function ContactCard({
+function ContactRow({
   icon: Icon,
   label,
   value,
@@ -37,13 +58,21 @@ function ContactCard({
   href?: string;
 }) {
   const content = (
-    <div className="flex h-full flex-col items-center rounded-2xl border border-border bg-card p-6 text-center transition-colors duration-200 hover:border-primary/40">
-      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-secondary">
-        <Icon className="h-5 w-5 text-primary" aria-hidden />
+    <div className="flex items-start gap-3.5 rounded-[1.25rem] border border-border bg-card p-3.5 hover:border-primary/40">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[0.8rem] bg-sage">
+        <Icon className="h-4 w-4 text-primary" aria-hidden />
       </div>
-      <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
+      <div>
+        <p className="text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">{label}</p>
+        <p className="mt-0.5 text-sm font-medium leading-snug text-foreground">{value}</p>
+      </div>
     </div>
   );
-  return href ? <a href={href}>{content}</a> : content;
+  if (!href) return content;
+  const external = href.startsWith("http");
+  return (
+    <a href={href} className="block" {...(external ? { target: "_blank", rel: "noreferrer" } : {})}>
+      {content}
+    </a>
+  );
 }

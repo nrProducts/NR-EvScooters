@@ -1,44 +1,60 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, Linking } from 'react-native';
+import { Spinner } from '../components/Spinner';
 import { AppShell } from '../components/AppShell';
+import { PageScroll } from '../components/ui/PageScroll';
 import { Badge } from '../components/ui/Badge';
 import { FormField } from '../components/ui/FormField';
 import { SkeletonList } from '../components/ui/Skeleton';
 import { supportRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { notifyError } from '../lib/confirm';
-import { SUPPORT_EMAIL, SUPPORT_PHONE, SUPPORT_PHONE_DISPLAY } from '../constants/support';
-import { SUPPORT_STATUS_LABEL, SUPPORT_STATUS_TONE, formatDate } from '../constants/status';
+import { SUPPORT_EMAIL, SUPPORT_PHONES } from '../constants/support';
+import { SUPPORT_STATUS_LABEL_KEY, SUPPORT_STATUS_TONE, formatDate } from '../constants/status';
 import { COLORS } from '../constants/theme';
 import { LifeBuoy, Mail, Phone, Send, CheckCircle2 } from 'lucide-react-native';
 import type { ApiSupportRequest } from '../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useT, type CopyKey, type TranslateFn } from '../i18n';
 
-const CHANNELS = [
-  {
-    label: 'Call Support',
-    desc: SUPPORT_PHONE_DISPLAY,
+/**
+ * `labelKey` rather than a label: this is module scope, so a resolved string
+ * here would be fixed at import time and would not follow a language change.
+ * `desc` stays literal — a phone number and an email address are the same in
+ * every language, and translating them would be a bug.
+ *
+ * Built from constants/support.ts, one row per support number, so a number
+ * added or removed there needs no change here.
+ */
+const CHANNELS: { labelKey: CopyKey; desc: string; icon: typeof Phone; url: string }[] = [
+  ...SUPPORT_PHONES.map((phone) => ({
+    labelKey: 'support.callSupport' as const,
+    desc: phone.display,
     icon: Phone,
-    url: `tel:${SUPPORT_PHONE}`,
-  },
+    url: `tel:${phone.e164}`,
+  })),
   {
-    label: 'Email Us',
+    labelKey: 'support.emailUs',
     desc: SUPPORT_EMAIL,
     icon: Mail,
     url: `mailto:${SUPPORT_EMAIL}`,
   },
 ];
 
-async function openChannel(url: string) {
+/**
+ * Takes `t` as an argument instead of calling useT(): this is a plain async
+ * function outside the component, where a hook cannot be called.
+ */
+async function openChannel(url: string, t: TranslateFn) {
   try {
     const canOpen = await Linking.canOpenURL(url);
     if (!canOpen) {
-      notifyError("Can't do that", 'No app on this device can handle that action.');
+      notifyError(t('support.error.cannotOpen.title'), t('support.error.cannotOpen.message'));
       return;
     }
     await Linking.openURL(url);
   } catch {
-    notifyError('Something went wrong', 'Please try again.');
+    notifyError(t('common.somethingWentWrong'), t('common.pleaseTryAgain'));
   }
 }
 
@@ -47,6 +63,7 @@ export default function SupportScreen() {
   // pads its own scroll tail — otherwise the Android nav/gesture bar covers
   // the last rows.
   const insets = useSafeAreaInsets();
+  const { t } = useT();
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{ subject?: string; description?: string }>({});
@@ -70,8 +87,8 @@ export default function SupportScreen() {
 
   const handleSubmit = async () => {
     const errors: { subject?: string; description?: string } = {};
-    if (subject.trim().length < 3) errors.subject = 'Give your request a short subject.';
-    if (description.trim().length < 10) errors.description = 'Tell us a bit more — at least 10 characters.';
+    if (subject.trim().length < 3) errors.subject = t('support.error.subject');
+    if (description.trim().length < 10) errors.description = t('support.error.description');
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
@@ -84,33 +101,32 @@ export default function SupportScreen() {
       setJustSubmitted(true);
       loadRequests();
     } catch (err) {
-      setSubmitError(err instanceof ApiError ? err.message : 'Could not submit your request. Please try again.');
+      setSubmitError(err instanceof ApiError ? err.message : t('support.error.submitFailed'));
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <AppShell title="Support">
-      <ScrollView
-        className="flex-1 px-5 pt-5"
+    <AppShell title={t('support.title')}>
+      <PageScroll
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
       >
         <View className="items-center mb-6">
           <View className="w-14 h-14 rounded-2xl items-center justify-center mb-3" style={{ backgroundColor: COLORS.primary + '14' }}>
             <LifeBuoy size={26} color={COLORS.primary} />
           </View>
-          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">How can we help?</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">{t('support.heading')}</Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-1 text-center px-6">
-            Reach our support team directly, or send us a message below.
+            {t('support.subheading')}
           </Text>
         </View>
 
         <View className="gap-3 mb-6">
           {CHANNELS.map((c) => (
             <TouchableOpacity
-              key={c.label}
-              onPress={() => openChannel(c.url)}
+              key={c.url}
+              onPress={() => openChannel(c.url, t)}
               className="rounded-2xl p-4 border flex-row items-center"
               style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
             >
@@ -118,14 +134,14 @@ export default function SupportScreen() {
                 <c.icon size={17} color={COLORS.primary} />
               </View>
               <View>
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{c.label}</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{t(c.labelKey)}</Text>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">{c.desc}</Text>
               </View>
             </TouchableOpacity>
           ))}
         </View>
 
-        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Send us a message</Text>
+        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">{t('support.sendMessage')}</Text>
 
         {justSubmitted ? (
           <View
@@ -133,29 +149,29 @@ export default function SupportScreen() {
             style={{ backgroundColor: COLORS.success + '14', borderWidth: 1, borderColor: COLORS.success + '33' }}
           >
             <CheckCircle2 size={22} color={COLORS.success} />
-            <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold mt-2">Request submitted</Text>
+            <Text style={{ color: COLORS.textPrimary }} className="text-xs font-extrabold mt-2">{t('support.submitted')}</Text>
             <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-1">
-              We&apos;ll get back to you soon — you can track its status below.
+              {t('support.submittedHelp')}
             </Text>
             <TouchableOpacity onPress={() => setJustSubmitted(false)} className="mt-3">
-              <Text style={{ color: COLORS.primary }} className="text-xs font-bold">Send another</Text>
+              <Text style={{ color: COLORS.primary }} className="text-xs font-bold">{t('support.sendAnother')}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View className="rounded-2xl p-4 mb-4 border" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
             <FormField
-              label="Subject"
+              label={t('support.subject')}
               value={subject}
               onChangeText={setSubject}
-              placeholder="What's this about?"
+              placeholder={t('support.subjectPlaceholder')}
               required
               error={fieldErrors.subject}
             />
             <FormField
-              label="Description"
+              label={t('support.description')}
               value={description}
               onChangeText={setDescription}
-              placeholder="Tell us what's going on..."
+              placeholder={t('support.descriptionPlaceholder')}
               required
               multiline
               error={fieldErrors.description}
@@ -170,23 +186,23 @@ export default function SupportScreen() {
               style={{ backgroundColor: COLORS.primary, opacity: submitting ? 0.6 : 1 }}
             >
               {submitting ? (
-                <ActivityIndicator size="small" color="#FFF" />
+                <Spinner size={16} color="#FFF" />
               ) : (
                 <>
                   <Send size={15} color="#FFF" />
-                  <Text className="text-white text-sm font-bold ml-2">Submit Request</Text>
+                  <Text className="text-white text-sm font-bold ml-2">{t('support.submitRequest')}</Text>
                 </>
               )}
             </TouchableOpacity>
           </View>
         )}
 
-        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">Your Requests</Text>
+        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">{t('support.yourRequests')}</Text>
         {requestsLoading ? (
           <SkeletonList count={2} />
         ) : requests.length === 0 ? (
           <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
-            You haven&apos;t submitted any requests yet.
+            {t('support.noRequests')}
           </Text>
         ) : (
           <View className="gap-2.5">
@@ -196,7 +212,7 @@ export default function SupportScreen() {
                   <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold flex-1 mr-2" numberOfLines={1}>
                     {r.subject}
                   </Text>
-                  <Badge label={SUPPORT_STATUS_LABEL[r.status]} tone={SUPPORT_STATUS_TONE[r.status]} />
+                  <Badge label={t(SUPPORT_STATUS_LABEL_KEY[r.status])} tone={SUPPORT_STATUS_TONE[r.status]} />
                 </View>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
                   {formatDate(r.created_at)}
@@ -205,7 +221,7 @@ export default function SupportScreen() {
             ))}
           </View>
         )}
-      </ScrollView>
+      </PageScroll>
     </AppShell>
   );
 }

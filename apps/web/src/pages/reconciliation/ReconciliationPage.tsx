@@ -7,6 +7,7 @@ import { StatCard } from "@/components/common/StatCard";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { useReconciliation } from "@/hooks/useReconciliation";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 function isoDaysAgo(days: number): string {
@@ -20,15 +21,10 @@ export default function ReconciliationPage() {
   const [to, setTo] = useState(isoDaysAgo(0));
   const { data, isLoading, isError, refetch } = useReconciliation(from, to);
 
+  usePageSubtitle("Compares our payment ledger against Razorpay's own records for the selected date range.");
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Financial Reconciliation</h1>
-        <p className="text-sm text-muted-foreground">
-          Compares our payment ledger against Razorpay's own records for the selected date range.
-        </p>
-      </div>
-
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-end">
           <div className="space-y-1.5">

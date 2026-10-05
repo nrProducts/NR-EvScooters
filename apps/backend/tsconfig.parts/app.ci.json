@@ -1,0 +1,9 @@
+{
+    "extends": "./_shared.json",
+    "include": [
+        "../src/app.ts",
+        "../src/server.ts",
+        "../src/routes",
+        "../src/types"
+    ]
+}

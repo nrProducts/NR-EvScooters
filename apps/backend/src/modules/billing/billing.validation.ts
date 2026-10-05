@@ -1,13 +1,17 @@
 import { z } from "zod";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
-import { CHARGE_CODES, ChargeCode, DISCOUNT_CODES, DiscountCode } from "./billing.types";
 
-const chargeCodeSchema = z.enum(CHARGE_CODES as unknown as [ChargeCode, ...ChargeCode[]]);
-const discountCodeSchema = z.enum(DISCOUNT_CODES as unknown as [DiscountCode, ...DiscountCode[]]);
+// `pricing_rules.code` is free text — a new charge type must not need a
+// deploy. CHARGE_CODES is the shipped set, not the permitted one.
+const chargeCodeSchema = z.string().trim().min(1).max(60);
+const discountCodeSchema = z.string().trim().min(1).max(60);
 const amountTypeSchema = z.enum(["fixed", "percentage"]);
-const frequencyTypeSchema = z.enum(["one_time", "every_cycle", "every_n_cycles", "per_booking", "per_day"]);
-const discountFrequencyTypeSchema = z.enum(["one_time", "every_cycle", "first_n_cycles"]);
-const scopeSchema = z.enum(["global", "vehicle"]);
+// `rule_frequency`: a period, not a "cycle"; `per_booking` meant "once",
+// which `one_time` already covers; `first_n_periods` is new.
+const frequencyTypeSchema = z.enum(["one_time", "every_period", "every_n_periods", "first_n_periods", "per_day"]);
+const discountFrequencyTypeSchema = z.enum(["one_time", "every_period", "first_n_periods"]);
+// `rule_scope` gained plan / vehicle_model / subscription.
+const scopeSchema = z.enum(["global", "plan", "vehicle_model", "vehicle", "subscription"]);
 
 export const chargeRuleIdParam = z.object({ id: z.string().uuid("A valid charge rule id is required.") });
 export const riderChargeIdParam = z.object({ id: z.string().uuid("A valid rider charge id is required.") });
@@ -48,7 +52,7 @@ export const createChargeRuleBody = z
         if (v.scope === "global" && v.vehicle_id) {
             ctx.addIssue({ code: "custom", path: ["vehicle_id"], message: "A global rule can't be tied to one vehicle." });
         }
-        if (v.frequency_type === "every_n_cycles" && !v.frequency_n) {
+        if (v.frequency_type === "every_n_periods" && !v.frequency_n) {
             ctx.addIssue({ code: "custom", path: ["frequency_n"], message: "Give the cycle interval (e.g. 4)." });
         }
     });
@@ -69,7 +73,8 @@ export const listRiderChargesQuery = z.object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     bookingId: z.string().uuid().optional(),
-    status: z.enum(["pending", "invoiced", "paid", "waived", "cancelled"]).optional(),
+    // `adjustment_status`: `paid` is `settled`, `waived`/`cancelled` are `voided`.
+    status: z.enum(["pending", "invoiced", "settled", "voided"]).optional(),
 });
 
 export const waiveRiderChargeBody = z.object({
@@ -121,7 +126,7 @@ export const createDiscountRuleBody = z
         if (v.scope === "global" && v.vehicle_id) {
             ctx.addIssue({ code: "custom", path: ["vehicle_id"], message: "A global rule can't be tied to one vehicle." });
         }
-        if (v.frequency_type === "first_n_cycles" && !v.frequency_n) {
+        if (v.frequency_type === "first_n_periods" && !v.frequency_n) {
             ctx.addIssue({ code: "custom", path: ["frequency_n"], message: "Give the number of cycles (e.g. 4)." });
         }
         if (v.discount_type === "percentage" && v.value > 100) {
@@ -151,7 +156,8 @@ export const listRiderDiscountsQuery = z.object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
     bookingId: z.string().uuid().optional(),
-    status: z.enum(["pending", "applied", "cancelled"]).optional(),
+    // Same `adjustment_status` as charges — discounts share the table.
+    status: z.enum(["pending", "invoiced", "settled", "voided"]).optional(),
 });
 
 /** Reason mandatory, same convention as rejectBookingBody / waiveRiderChargeBody. */

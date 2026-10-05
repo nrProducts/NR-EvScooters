@@ -1,6 +1,6 @@
 import React, { forwardRef } from 'react';
 import {
-  View, Text, TextInput, KeyboardTypeOptions, ReturnKeyTypeOptions,
+  View, Text, TextInput, KeyboardTypeOptions, ReturnKeyTypeOptions, TextInputProps,
 } from 'react-native';
 import { COLORS } from '../../constants/theme';
 
@@ -19,6 +19,21 @@ interface FormFieldProps {
   hint?: string;
   returnKeyType?: ReturnKeyTypeOptions;
   onSubmitEditing?: () => void;
+  /**
+   * react-native-web defaults every TextInput's underlying <input> to
+   * `autocomplete="on"` when this is left unset (see its own TextInput/
+   * index.js: `autoComplete || autoCompleteType || 'on'`) — a generic value
+   * that lets Chrome fall back to its multi-field "pick a saved address"
+   * autofill overlay. That path is a known source of the browser painting a
+   * value into the DOM without firing the change event RN Web's controlled
+   * TextInput relies on, so the field LOOKS filled while the component's
+   * `value` state stays empty — a silent validation failure a rider reads
+   * as "the Continue button does nothing." Passing a specific token (e.g.
+   * 'street-address', 'postal-code') steers the browser to its normal,
+   * well-behaved single-field autofill instead. Native ignores this prop
+   * when it doesn't apply, so it's safe to always pass one.
+   */
+  autoComplete?: TextInputProps['autoComplete'];
 }
 
 /**
@@ -30,6 +45,7 @@ interface FormFieldProps {
 export const FormField = forwardRef<TextInput, FormFieldProps>(({
   label, value, onChangeText, placeholder, keyboardType, autoCapitalize,
   required, error, editable = true, multiline, hint, returnKeyType, onSubmitEditing,
+  autoComplete,
 }, ref) => (
   <View className="mb-3.5">
     <View className="flex-row items-center mb-1.5">
@@ -54,6 +70,7 @@ export const FormField = forwardRef<TextInput, FormFieldProps>(({
       autoCapitalize={autoCapitalize ?? 'sentences'}
       editable={editable}
       multiline={multiline}
+      autoComplete={autoComplete}
       returnKeyType={returnKeyType}
       onSubmitEditing={onSubmitEditing}
       blurOnSubmit={!multiline && !!onSubmitEditing}

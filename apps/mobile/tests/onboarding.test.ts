@@ -28,12 +28,12 @@ describe('deriveOnboardingUiState', () => {
   });
 
   it('is kyc_submitted once documents are submitted but not all mandatory ones yet', () => {
-    const docs = [doc(true), { doc_type: 'driving_license' as const, submitted_at: null }];
+    const docs = [doc(true), { doc_type: 'driving_licence' as const, submitted_at: null }];
     expect(deriveOnboardingUiState(profile('pending'), docs)).toBe('kyc_submitted');
   });
 
   it('is kyc_under_review once every mandatory document has been submitted', () => {
-    const docs = [doc(true), { doc_type: 'driving_license' as const, submitted_at: '2026-01-01T00:00:00Z' }];
+    const docs = [doc(true), { doc_type: 'driving_licence' as const, submitted_at: '2026-01-01T00:00:00Z' }];
     expect(deriveOnboardingUiState(profile('pending'), docs)).toBe('kyc_under_review');
     expect(deriveOnboardingUiState(profile('partially_verified'), docs)).toBe('kyc_under_review');
   });

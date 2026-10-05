@@ -5,37 +5,39 @@ import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { maskLast4 } from "../../common/mask";
 import {
-    AuthContext, KycDocType, KycStatus, MANDATORY_KYC_DOC_TYPES, Paginated, VerificationStatus,
+    AuthContext, KycDocType, KycStatus, MANDATORY_KYC_DOC_TYPES, Paginated, UserStatus,
+    VerificationStatus,
 } from "../../types";
 import { kycCompletionPercent } from "../users/users.service";
 import { hasGrantedConsent } from "../consent/consent.service";
 import { assertValidDocNumber, last4 } from "./kyc.docnumber";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
+import { businessToday } from "../../common/dates";
 import {
     assertValidFile, buildStoragePath, createSignedUrl, pathBelongsToUser,
     removeKycFiles, UploadedFile, uploadKycFile,
 } from "./kyc.storage";
 
 const DOC_COLUMNS = `
-    id, user_id, doc_type, doc_number_last4, storage_path, back_storage_path,
-    verification_status, rejection_reason, verified_by, verified_at,
-    expiry_date, submitted_at, created_at, updated_at
+    id, user_id, document_type, document_number_last4, front_storage_path, back_storage_path,
+    verification_status, rejection_reason, verified_by_user_id, verified_at,
+    expires_on, submitted_at, created_at, updated_at
 `;
 
 export interface DocumentRow {
     id: string;
     user_id: string;
-    doc_type: KycDocType;
+    document_type: KycDocType;
     /** Only the last four characters are stored — see kyc.docnumber.ts. */
-    doc_number_last4: string | null;
-    storage_path: string | null;
+    document_number_last4: string | null;
+    front_storage_path: string | null;
     back_storage_path: string | null;
     verification_status: VerificationStatus;
     rejection_reason: string | null;
-    verified_by: string | null;
+    verified_by_user_id: string | null;
     verified_at: string | null;
-    expiry_date: string | null;
+    expires_on: string | null;
     submitted_at: string | null;
     created_at: string;
     updated_at: string;
@@ -50,11 +52,11 @@ export interface DocumentRow {
  */
 export interface DocumentView {
     id: string;
-    doc_type: KycDocType;
+    document_type: KycDocType;
     doc_number_masked: string | null;
     verification_status: VerificationStatus;
     rejection_reason: string | null;
-    expiry_date: string | null;
+    expires_on: string | null;
     is_expired: boolean;
     submitted_at: string | null;
     verified_at: string | null;
@@ -70,12 +72,12 @@ export interface DocumentView {
 export function toDocumentView(row: DocumentRow): DocumentView {
     return {
         id: row.id,
-        doc_type: row.doc_type,
-        doc_number_masked: maskLast4(row.doc_number_last4),
+        document_type: row.document_type,
+        doc_number_masked: maskLast4(row.document_number_last4),
         verification_status: row.verification_status,
         rejection_reason: row.rejection_reason,
-        expiry_date: row.expiry_date,
-        is_expired: isExpired(row.expiry_date),
+        expires_on: row.expires_on,
+        is_expired: isExpired(row.expires_on),
         submitted_at: row.submitted_at,
         verified_at: row.verified_at,
         has_back_side: !!row.back_storage_path,
@@ -83,7 +85,7 @@ export function toDocumentView(row: DocumentRow): DocumentView {
     };
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => businessToday();
 const isExpired = (date: string | null): boolean => !!date && date < today();
 
 // ---------------------------------------------------------------------------
@@ -95,14 +97,14 @@ const isExpired = (date: string | null): boolean => !!date && date < today();
  * round trip. The DB trigger remains authoritative; if these ever disagree,
  * the DB wins and this function is the bug.
  */
-export function deriveKycStatus(docs: Array<Pick<DocumentRow, "doc_type" | "verification_status" | "expiry_date">>): KycStatus {
-    const mandatory = docs.filter((d) => MANDATORY_KYC_DOC_TYPES.includes(d.doc_type));
+export function deriveKycStatus(docs: Array<Pick<DocumentRow, "document_type" | "verification_status" | "expires_on">>): KycStatus {
+    const mandatory = docs.filter((d) => MANDATORY_KYC_DOC_TYPES.includes(d.document_type));
     if (mandatory.length === 0) return "not_submitted";
 
     if (mandatory.some((d) => d.verification_status === "rejected")) return "rejected";
 
     const verified = mandatory.filter(
-        (d) => d.verification_status === "verified" && !isExpired(d.expiry_date),
+        (d) => d.verification_status === "verified" && !isExpired(d.expires_on),
     ).length;
 
     if (verified === MANDATORY_KYC_DOC_TYPES.length) return "verified";
@@ -123,7 +125,7 @@ export function deriveKycStatus(docs: Array<Pick<DocumentRow, "doc_type" | "veri
 export async function getKycForUser(userId: string) {
     const docs = await documentsFor(userId);
     const missing = MANDATORY_KYC_DOC_TYPES.filter(
-        (type) => !docs.some((d) => d.doc_type === type && d.verification_status !== "rejected"),
+        (type) => !docs.some((d) => d.document_type === type && d.verification_status !== "rejected"),
     );
 
     return {
@@ -141,9 +143,9 @@ export async function getKycForUser(userId: string) {
 // ---------------------------------------------------------------------------
 
 export interface UploadDocumentInput {
-    doc_type: KycDocType;
+    document_type: KycDocType;
     doc_number: string;
-    expiry_date?: string;
+    expires_on?: string;
     front: UploadedFile;
     back?: UploadedFile;
 }
@@ -159,26 +161,31 @@ export async function uploadDocument(
     // direct API call walks straight past.
     await assertIdentityConsent(userId);
 
-    if (input.doc_type === "driving_license") {
-        if (!input.expiry_date) {
+    if (input.document_type === "driving_licence") {
+        if (!input.expires_on) {
             throw businessRule("A driving licence must include its expiry date.", {
-                expiry_date: "Enter the licence expiry date.",
+                expires_on: "Enter the licence expiry date.",
             });
         }
-        if (isExpired(input.expiry_date)) {
+        if (isExpired(input.expires_on)) {
             throw businessRule("This driving licence has already expired.", {
-                expiry_date: "This licence has expired.",
+                expires_on: "This licence has expired.",
             });
         }
     }
+    if ((input.document_type === "aadhaar" || input.document_type === "driving_licence") && !input.back) {
+        throw businessRule("Upload both the front and back of this document.", {
+            back: "The back side is required for this document type.",
+        });
+    }
     // Validated in memory, then discarded. From here on the full number is
     // out of scope and only last4() survives into the insert below.
-    assertValidDocNumber(input.doc_type, input.doc_number);
+    assertValidDocNumber(input.document_type, input.doc_number);
 
-    // uq_user_documents_active_type covers pending+verified. Check first so the
+    // the partial unique index on (user_id, document_type) covers pending+verified. Check first so the
     // rider gets a clear 409 rather than a raw constraint error, and so an
     // orphan object is never uploaded for a doomed insert.
-    const existing = await activeDocumentOfType(userId, input.doc_type);
+    const existing = await activeDocumentOfType(userId, input.document_type);
     if (existing) {
         throw conflict(
             existing.verification_status === "verified"
@@ -190,21 +197,21 @@ export async function uploadDocument(
     const frontMime = assertValidFile(input.front, "front");
     const backMime = input.back ? assertValidFile(input.back, "back") : null;
 
-    const frontPath = buildStoragePath(userId, input.doc_type, frontMime, "front");
-    const backPath = backMime && input.back ? buildStoragePath(userId, input.doc_type, backMime, "back") : null;
+    const frontPath = buildStoragePath(userId, input.document_type, frontMime, "front");
+    const backPath = backMime && input.back ? buildStoragePath(userId, input.document_type, backMime, "back") : null;
 
     await uploadKycFile(frontPath, input.front, frontMime);
     if (backPath && input.back && backMime) await uploadKycFile(backPath, input.back, backMime);
 
     const { data, error } = await supabaseAdmin
-        .from("user_documents")
+        .from("kyc_documents")
         .insert({
             user_id: userId,
-            doc_type: input.doc_type,
-            doc_number_last4: last4(input.doc_number),
-            storage_path: frontPath,
+            document_type: input.document_type,
+            document_number_last4: last4(input.doc_number),
+            front_storage_path: frontPath,
             back_storage_path: backPath,
-            expiry_date: input.expiry_date ?? null,
+            expires_on: input.expires_on ?? null,
             verification_status: "pending",
         })
         .select(DOC_COLUMNS)
@@ -223,11 +230,11 @@ export async function uploadDocument(
         actorId: actor.id,
         targetUserId: userId,
         action: "kyc.document_uploaded",
-        entityType: "user_document",
+        entityType: "kyc_document",
         entityId: row.id,
         // doc_number is deliberately absent: audit_logs is retained for
         // years and there is no version of this number worth putting there.
-        after: { doc_type: row.doc_type, expiry_date: row.expiry_date },
+        after: { document_type: row.document_type, expires_on: row.expires_on },
         req,
     });
 
@@ -237,7 +244,7 @@ export async function uploadDocument(
 export async function updateOwnDocument(
     userId: string,
     documentId: string,
-    patch: { doc_number?: string; expiry_date?: string; front?: UploadedFile; back?: UploadedFile },
+    patch: { doc_number?: string; expires_on?: string; front?: UploadedFile; back?: UploadedFile },
     actor: AuthContext,
     req?: Request,
 ): Promise<DocumentView> {
@@ -256,28 +263,28 @@ export async function updateOwnDocument(
     if (patch.doc_number) {
         // Same rule as the upload path: checked in memory, only the tail
         // persisted. See kyc.docnumber.ts.
-        assertValidDocNumber(row.doc_type, patch.doc_number);
-        next.doc_number_last4 = last4(patch.doc_number);
+        assertValidDocNumber(row.document_type, patch.doc_number);
+        next.document_number_last4 = last4(patch.doc_number);
     }
-    if (patch.expiry_date) {
-        if (row.doc_type === "driving_license" && isExpired(patch.expiry_date)) {
+    if (patch.expires_on) {
+        if (row.document_type === "driving_licence" && isExpired(patch.expires_on)) {
             throw businessRule("This driving licence has already expired.", {
-                expiry_date: "This licence has expired.",
+                expires_on: "This licence has expired.",
             });
         }
-        next.expiry_date = patch.expiry_date;
+        next.expires_on = patch.expires_on;
     }
 
     if (patch.front) {
         const mime = assertValidFile(patch.front, "front");
-        const path = buildStoragePath(userId, row.doc_type, mime, "front");
+        const path = buildStoragePath(userId, row.document_type, mime, "front");
         await uploadKycFile(path, patch.front, mime);
-        next.storage_path = path;
-        staleObjects.push(row.storage_path);
+        next.front_storage_path = path;
+        staleObjects.push(row.front_storage_path);
     }
     if (patch.back) {
         const mime = assertValidFile(patch.back, "back");
-        const path = buildStoragePath(userId, row.doc_type, mime, "back");
+        const path = buildStoragePath(userId, row.document_type, mime, "back");
         await uploadKycFile(path, patch.back, mime);
         next.back_storage_path = path;
         staleObjects.push(row.back_storage_path);
@@ -290,14 +297,14 @@ export async function updateOwnDocument(
     if (row.verification_status === "rejected") {
         next.verification_status = "pending";
         next.rejection_reason = null;
-        next.verified_by = null;
+        next.verified_by_user_id = null;
         next.verified_at = null;
         next.submitted_at = new Date().toISOString();
     }
 
     const { data, error } = await supabaseAdmin
-        .from("user_documents")
-        .update(next)
+        .from("kyc_documents")
+        .update(next as never)
         .eq("id", documentId)
         .eq("user_id", userId)
         .select(DOC_COLUMNS)
@@ -311,7 +318,7 @@ export async function updateOwnDocument(
         actorId: actor.id,
         targetUserId: userId,
         action: "kyc.document_updated",
-        entityType: "user_document",
+        entityType: "kyc_document",
         entityId: documentId,
         before: { verification_status: row.verification_status },
         after: { verification_status: next.verification_status ?? row.verification_status },
@@ -332,26 +339,26 @@ export async function deleteOwnDocument(
     if (row.verification_status === "verified") {
         throw businessRule("A verified document cannot be deleted.");
     }
-    if (!pathBelongsToUser(row.storage_path ?? `${userId}/`, userId)) {
+    if (!pathBelongsToUser(row.front_storage_path ?? `${userId}/`, userId)) {
         throw forbidden("This document does not belong to you.");
     }
 
     const { error } = await supabaseAdmin
-        .from("user_documents")
+        .from("kyc_documents")
         .delete()
         .eq("id", documentId)
         .eq("user_id", userId);
     if (error) throw error;
 
-    await removeKycFiles([row.storage_path, row.back_storage_path]);
+    await removeKycFiles([row.front_storage_path, row.back_storage_path]);
 
     await writeAudit({
         actorId: actor.id,
         targetUserId: userId,
         action: "kyc.document_deleted",
-        entityType: "user_document",
+        entityType: "kyc_document",
         entityId: documentId,
-        before: { doc_type: row.doc_type, verification_status: row.verification_status },
+        before: { document_type: row.document_type, verification_status: row.verification_status },
         req,
     });
 }
@@ -364,7 +371,7 @@ export async function submitKyc(userId: string, actor: AuthContext, req?: Reques
     const docs = await documentsFor(userId);
 
     const missing = MANDATORY_KYC_DOC_TYPES.filter(
-        (type) => !docs.some((d) => d.doc_type === type && d.verification_status !== "rejected"),
+        (type) => !docs.some((d) => d.document_type === type && d.verification_status !== "rejected"),
     );
     if (missing.length > 0) {
         throw businessRule(
@@ -380,7 +387,7 @@ export async function submitKyc(userId: string, actor: AuthContext, req?: Reques
 
     const stamp = new Date().toISOString();
     const { error } = await supabaseAdmin
-        .from("user_documents")
+        .from("kyc_documents")
         .update({ submitted_at: stamp })
         .eq("user_id", userId)
         .is("submitted_at", null)
@@ -398,10 +405,9 @@ export async function submitKyc(userId: string, actor: AuthContext, req?: Reques
     });
 
     await notify({
-        notificationType: "kyc",
+        notificationType: "kyc_review_needed",
         referenceType: "user",
         referenceId: userId,
-        template: "kyc_review_needed",
         title: "KYC Review Needed",
         bodyFallback: "{rider} submitted documents for review.",
         screen: "/kyc",
@@ -443,13 +449,15 @@ export interface KycQueueItem {
 }
 
 export async function listKycQueue(filters: KycListFilters): Promise<Paginated<KycQueueItem>> {
+    // kyc_status moved to rider_profiles. `!inner` keeps the queue to riders
+    // who actually have a profile — staff accounts have none and have no KYC.
     let query = supabaseAdmin
         .from("users")
-        .select("id, full_name, email, phone, kyc_status", { count: "exact" })
+        .select("id, full_name, email, phone, rider_profiles!inner(kyc_status)", { count: "exact" })
         .is("deleted_at", null);
 
-    if (filters.status) query = query.eq("kyc_status", filters.status);
-    else query = query.neq("kyc_status", "not_submitted");
+    if (filters.status) query = query.eq("rider_profiles.kyc_status", filters.status);
+    else query = query.neq("rider_profiles.kyc_status", "not_submitted");
 
     if (filters.search) {
         const term = filters.search.replace(/[%_\\,()]/g, "");
@@ -471,9 +479,16 @@ export async function listKycQueue(filters: KycListFilters): Promise<Paginated<K
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const rows = (data ?? []) as Array<{
-        id: string; full_name: string; email: string | null; phone: string | null; kyc_status: KycStatus;
-    }>;
+    const rows = ((data ?? []) as unknown as Array<{
+        id: string; full_name: string; email: string | null; phone: string | null;
+        rider_profiles: { kyc_status: KycStatus } | { kyc_status: KycStatus }[];
+    }>).map((r) => ({
+        id: r.id,
+        full_name: r.full_name,
+        email: r.email,
+        phone: r.phone,
+        kyc_status: (Array.isArray(r.rider_profiles) ? r.rider_profiles[0] : r.rider_profiles).kyc_status,
+    }));
     const docsByUser = await documentsForMany(rows.map((r) => r.id));
 
     const items: KycQueueItem[] = rows.map((row) => {
@@ -488,29 +503,81 @@ export async function listKycQueue(filters: KycListFilters): Promise<Paginated<K
             completion_percent: kycCompletionPercent(docs),
             document_count: docs.length,
             earliest_submitted_at: submitted[0] ?? null,
-            has_expired_document: docs.some((d) => isExpired(d.expiry_date)),
+            has_expired_document: docs.some((d) => isExpired(d.expires_on)),
         };
     });
 
     return paginate(items, count ?? 0, filters);
 }
 
-/** Full detail for the review screen. Staff see unmasked numbers here only. */
+/**
+ * Full detail for the review screen. Staff see unmasked numbers here only.
+ *
+ * Seven of the columns this used to select off `users` moved in the v2
+ * schema, so the whole endpoint 500d with "column users.address_line_1 does
+ * not exist" (Postgres names only the first casualty; kyc_status, city,
+ * state, postal_code, country and account_status were equally gone). The
+ * review modal therefore rendered "No documents uploaded" for every rider,
+ * and approval was unreachable behind it — the 422 from /approve is correct
+ * and stays correct, because documents are verified one at a time from this
+ * screen.
+ *
+ *   kyc_status     -> rider_profiles
+ *   address_*      -> user_addresses (one row per address, line_1/line_2)
+ *   account_status -> users.status
+ *
+ * listKycQueue was migrated for the first of those and this was missed. The
+ * flat `rider` shape is rebuilt below because both apps read it — see
+ * KycDetail in apps/web/src/types/index.ts.
+ */
 export async function getKycDetail(userId: string) {
     const { data, error } = await supabaseAdmin
         .from("users")
-        .select("id, full_name, email, phone, date_of_birth, address_line_1, city, state, postal_code, country, kyc_status, account_status")
+        .select(
+            "id, full_name, email, phone, date_of_birth, status, " +
+            "rider_profiles(kyc_status), " +
+            "user_addresses(line_1, city, state, postal_code, country, is_primary)",
+        )
         .eq("id", userId)
         .is("deleted_at", null)
         .maybeSingle();
     if (error) throw error;
     if (!data) throw notFound("User not found.");
 
+    const row = data as unknown as {
+        id: string; full_name: string; email: string | null; phone: string | null;
+        date_of_birth: string | null; status: UserStatus;
+        rider_profiles: { kyc_status: KycStatus } | { kyc_status: KycStatus }[] | null;
+        user_addresses: Array<{
+            line_1: string; city: string; state: string;
+            postal_code: string; country: string; is_primary: boolean;
+        }> | null;
+    };
+
+    const profile = Array.isArray(row.rider_profiles) ? row.rider_profiles[0] : row.rider_profiles;
+    // Same choice toProfile() makes: the primary address, else whatever exists
+    // — a rider with only a billing address on file should still show one.
+    const addresses = row.user_addresses ?? [];
+    const address = addresses.find((a) => a.is_primary) ?? addresses[0] ?? null;
+
     const docs = await documentsFor(userId);
     const history = await verificationHistory(userId);
 
     return {
-        rider: data,
+        rider: {
+            id: row.id,
+            full_name: row.full_name,
+            email: row.email,
+            phone: row.phone,
+            date_of_birth: row.date_of_birth,
+            address_line_1: address?.line_1 ?? null,
+            city: address?.city ?? null,
+            state: address?.state ?? null,
+            postal_code: address?.postal_code ?? null,
+            country: address?.country ?? null,
+            kyc_status: profile?.kyc_status ?? "not_submitted",
+            account_status: row.status,
+        },
         kyc_status: deriveKycStatus(docs),
         completion_percent: kycCompletionPercent(docs),
         documents: docs.map((d) => toDocumentView(d)),
@@ -527,14 +594,14 @@ export async function getDocumentSignedUrl(
     side: "front" | "back",
     actor: AuthContext,
     isStaffCaller: boolean,
-    // user_id and doc_type are returned alongside the URL so the controller can
+    // user_id and document_type are returned alongside the URL so the controller can
     // record WHOSE document and WHICH document was opened, without a second
     // lookup. The controller strips them before responding.
-): Promise<{ url: string; expires_in: number; user_id: string; doc_type: KycDocType }> {
+): Promise<{ url: string; expires_in: number; user_id: string; document_type: KycDocType }> {
     const row = await requireDocument(documentId);
     if (!isStaffCaller && row.user_id !== actor.id) throw notFound("Document not found.");
 
-    const path = side === "front" ? row.storage_path : row.back_storage_path;
+    const path = side === "front" ? row.front_storage_path : row.back_storage_path;
     if (!path) throw notFound(`This document has no ${side} side.`);
     if (!pathBelongsToUser(path, row.user_id)) {
         // Defence in depth: a path outside the owner's prefix means the row
@@ -543,7 +610,7 @@ export async function getDocumentSignedUrl(
     }
 
     const url = await createSignedUrl(path);
-    return { url, expires_in: 300, user_id: row.user_id, doc_type: row.doc_type };
+    return { url, expires_in: 300, user_id: row.user_id, document_type: row.document_type };
 }
 
 // ---------------------------------------------------------------------------
@@ -561,14 +628,14 @@ export async function verifyDocument(
     // a clean 403 beats a mapped constraint error.
     if (row.user_id === actor.id) throw forbidden("You cannot verify your own document.");
     if (row.verification_status === "verified") throw conflict("This document is already verified.");
-    if (isExpired(row.expiry_date)) {
+    if (isExpired(row.expires_on)) {
         throw businessRule("This document has expired and cannot be verified.");
     }
 
     const updated = await applyVerification(documentId, actor.id, {
         verification_status: "verified",
         rejection_reason: null,
-        verified_by: actor.id,
+        verified_by_user_id: actor.id,
         verified_at: new Date().toISOString(),
     });
 
@@ -576,7 +643,7 @@ export async function verifyDocument(
         actorId: actor.id,
         targetUserId: row.user_id,
         action: "kyc.document_verified",
-        entityType: "user_document",
+        entityType: "kyc_document",
         entityId: documentId,
         before: { verification_status: row.verification_status },
         after: { verification_status: "verified" },
@@ -599,7 +666,7 @@ export async function rejectDocument(
     const updated = await applyVerification(documentId, actor.id, {
         verification_status: "rejected",
         rejection_reason: reason.trim(),
-        verified_by: actor.id,
+        verified_by_user_id: actor.id,
         verified_at: new Date().toISOString(),
     });
 
@@ -607,7 +674,7 @@ export async function rejectDocument(
         actorId: actor.id,
         targetUserId: row.user_id,
         action: "kyc.document_rejected",
-        entityType: "user_document",
+        entityType: "kyc_document",
         entityId: documentId,
         before: { verification_status: row.verification_status },
         after: { verification_status: "rejected", reason: reason.trim() },
@@ -623,17 +690,47 @@ export async function rejectDocument(
 
 export async function approveKyc(userId: string, actor: AuthContext, req?: Request) {
     if (userId === actor.id) throw forbidden("You cannot approve your own KYC.");
-    const docs = await documentsFor(userId);
+    let docs = await documentsFor(userId);
+
+    // Single-action approve: rather than requiring the admin to verify each
+    // mandatory document first (a separate click per document), Approve
+    // verifies every eligible pending one itself, then finalizes. A document
+    // already rejected or expired is left alone — those still block approval
+    // below, same as before.
+    const toAutoVerify = docs.filter(
+        (d) => MANDATORY_KYC_DOC_TYPES.includes(d.document_type)
+            && d.verification_status === "pending"
+            && !isExpired(d.expires_on),
+    );
+    for (const doc of toAutoVerify) {
+        const updated = await applyVerification(doc.id, actor.id, {
+            verification_status: "verified",
+            rejection_reason: null,
+            verified_by_user_id: actor.id,
+            verified_at: new Date().toISOString(),
+        });
+        await writeAudit({
+            actorId: actor.id,
+            targetUserId: userId,
+            action: "kyc.document_verified",
+            entityType: "kyc_document",
+            entityId: doc.id,
+            before: { verification_status: doc.verification_status },
+            after: { verification_status: "verified" },
+            req,
+        });
+        docs = docs.map((d) => (d.id === updated.id ? updated : d));
+    }
 
     const unverified = MANDATORY_KYC_DOC_TYPES.filter(
-        (type) => !docs.some((d) => d.doc_type === type && d.verification_status === "verified"),
+        (type) => !docs.some((d) => d.document_type === type && d.verification_status === "verified"),
     );
     if (unverified.length > 0) {
         throw businessRule(
             `Every required document must be verified first. Outstanding: ${unverified.join(", ")}.`,
         );
     }
-    if (docs.some((d) => d.verification_status === "verified" && isExpired(d.expiry_date))) {
+    if (docs.some((d) => d.verification_status === "verified" && isExpired(d.expires_on))) {
         throw businessRule("A verified document has expired. The rider must upload a current one.");
     }
 
@@ -652,6 +749,17 @@ export async function approveKyc(userId: string, actor: AuthContext, req?: Reque
         title: "KYC Approved",
         body: "You're verified — go ahead and book a scooter.",
         screen: "home",
+    });
+
+    await notify({
+        notificationType: "kyc_approved",
+        referenceType: "user",
+        referenceId: userId,
+        title: "KYC Approved",
+        bodyFallback: "{rider}'s KYC was approved.",
+        screen: "/kyc",
+        riderId: userId,
+        excludeUserId: actor.id,
     });
 
     // No direct write to users.kyc_status: the trigger derives it. This
@@ -673,7 +781,7 @@ export async function rejectKyc(userId: string, reason: string, actor: AuthConte
         await applyVerification(doc.id, actor.id, {
             verification_status: "rejected",
             rejection_reason: reason.trim(),
-            verified_by: actor.id,
+            verified_by_user_id: actor.id,
             verified_at: new Date().toISOString(),
         });
     }
@@ -695,6 +803,17 @@ export async function rejectKyc(userId: string, reason: string, actor: AuthConte
         screen: "kyc",
     });
 
+    await notify({
+        notificationType: "kyc_rejected",
+        referenceType: "user",
+        referenceId: userId,
+        title: "KYC Rejected",
+        bodyFallback: "{rider}'s KYC was rejected.",
+        screen: "/kyc",
+        riderId: userId,
+        excludeUserId: actor.id,
+    });
+
     return getKycForUser(userId);
 }
 
@@ -713,7 +832,13 @@ async function applyVerification(
     actorId: string,
     patch: Record<string, unknown>,
 ): Promise<DocumentRow> {
-    const { error: setError } = await supabaseAdmin.rpc("set_config", {
+    // `set_config` is a Postgres built-in, not one of ours, so it is absent
+    // from the generated RPC union — hence the cast. Whether it is callable
+    // at all depends on the role's grants, which is why the failure below is
+    // a debug line rather than an error.
+    const { error: setError } = await (supabaseAdmin.rpc as unknown as (
+        fn: string, args: Record<string, unknown>,
+    ) => Promise<{ error: unknown }>)("set_config", {
         setting_name: "app.actor_id",
         new_value: actorId,
         is_local: false,
@@ -726,8 +851,8 @@ async function applyVerification(
     }
 
     const { data, error } = await supabaseAdmin
-        .from("user_documents")
-        .update(patch)
+        .from("kyc_documents")
+        .update(patch as never)
         .eq("id", documentId)
         .select(DOC_COLUMNS)
         .single();
@@ -741,7 +866,7 @@ async function applyVerification(
 
 async function requireDocument(documentId: string): Promise<DocumentRow> {
     const { data, error } = await supabaseAdmin
-        .from("user_documents")
+        .from("kyc_documents")
         .select(DOC_COLUMNS)
         .eq("id", documentId)
         .maybeSingle();
@@ -770,10 +895,10 @@ async function assertIdentityConsent(userId: string): Promise<void> {
 
 async function activeDocumentOfType(userId: string, docType: KycDocType): Promise<DocumentRow | null> {
     const { data, error } = await supabaseAdmin
-        .from("user_documents")
+        .from("kyc_documents")
         .select(DOC_COLUMNS)
         .eq("user_id", userId)
-        .eq("doc_type", docType)
+        .eq("document_type", docType)
         .in("verification_status", ["pending", "verified"])
         .maybeSingle();
     if (error) throw error;
@@ -782,7 +907,7 @@ async function activeDocumentOfType(userId: string, docType: KycDocType): Promis
 
 async function documentsFor(userId: string): Promise<DocumentRow[]> {
     const { data, error } = await supabaseAdmin
-        .from("user_documents")
+        .from("kyc_documents")
         .select(DOC_COLUMNS)
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
@@ -794,7 +919,7 @@ async function documentsForMany(userIds: string[]): Promise<Map<string, Document
     const map = new Map<string, DocumentRow[]>();
     if (userIds.length === 0) return map;
     const { data, error } = await supabaseAdmin
-        .from("user_documents")
+        .from("kyc_documents")
         .select(DOC_COLUMNS)
         .in("user_id", userIds);
     if (error) throw error;
@@ -807,11 +932,11 @@ async function documentsForMany(userIds: string[]): Promise<Map<string, Document
 }
 
 async function userIdsMatchingDocumentFilters(filters: KycListFilters): Promise<string[]> {
-    let q = supabaseAdmin.from("user_documents").select("user_id");
-    if (filters.docType) q = q.eq("doc_type", filters.docType);
+    let q = supabaseAdmin.from("kyc_documents").select("user_id");
+    if (filters.docType) q = q.eq("document_type", filters.docType);
     if (filters.submittedFrom) q = q.gte("submitted_at", filters.submittedFrom);
     if (filters.submittedTo) q = q.lte("submitted_at", filters.submittedTo);
-    if (filters.expiringBefore) q = q.lte("expiry_date", filters.expiringBefore);
+    if (filters.expiringBefore) q = q.lte("expires_on", filters.expiringBefore);
     const { data, error } = await q.limit(1000);
     if (error) throw error;
     return [...new Set((data ?? []).map((r) => (r as { user_id: string }).user_id))];
@@ -821,7 +946,9 @@ async function userIdsMatchingDocumentFilters(filters: KycListFilters): Promise<
 async function verificationHistory(userId: string) {
     const { data, error } = await supabaseAdmin
         .from("audit_logs")
-        .select("id, action, actor_id, created_at, after_data")
+        // actor_user_id, not actor_id — the v2 audit_logs column carries the
+        // _user_id suffix, matching target_user_id beside it.
+        .select("id, action, actor_user_id, created_at, after_data")
         .eq("target_user_id", userId)
         .in("action", [
             "kyc.document_verified", "kyc.document_rejected",

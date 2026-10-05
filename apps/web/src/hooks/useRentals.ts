@@ -1,5 +1,13 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/rentals";
+
+/** The "awaiting recovery" admin tab — active rentals past the late-fee window. */
+export function useRentals(filters: api.RentalFilters) {
+  return useQuery({
+    queryKey: ["rentals", filters],
+    queryFn: () => api.fetchRentals(filters),
+  });
+}
 
 /**
  * Every rental-settling mutation (complete/maintenance/reject-return) also
@@ -11,6 +19,7 @@ function invalidateAfterRentalMutation(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["vehicles"] });
   qc.invalidateQueries({ queryKey: ["vehicle"] });
   qc.invalidateQueries({ queryKey: ["pickup-queue"] });
+  qc.invalidateQueries({ queryKey: ["rentals"] });
 }
 
 export function useCompleteRide() {

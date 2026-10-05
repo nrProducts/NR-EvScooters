@@ -8,12 +8,20 @@ import * as v from "./auth.validation";
 
 const router = Router();
 
-// The one public route in this file — must stay before router.use(requireAuth)
-// below. Always creates an inactive `staff` account; see selfSignUpStaff().
+// Public routes in this file — must stay before router.use(requireAuth) below.
+// Always creates an inactive `staff` account; see selfSignUpStaff().
 router.post(
     "/signup",
     validate({ body: v.staffSignupBody }),
     asyncHandler(c.staffSignupHandler),
+);
+
+// Also public — the login screen calls this after a failed sign-in to tell
+// "no account exists" apart from "wrong password" (see checkAccountExists()).
+router.get(
+    "/account-exists",
+    validate({ query: v.accountExistsQuery }),
+    asyncHandler(c.accountExistsHandler),
 );
 
 // Everything below needs a verified Supabase token. Login itself (phone OTP /

@@ -31,7 +31,7 @@ export function buildVehicleTimeline(vehicle: VehicleDetail): VehicleEvent[] {
     ...vehicle.booking_history.map((b) => ({
       id: `booking-${b.id}`,
       kind: "booking" as const,
-      status: "booked" as VehicleStatus,
+      status: "reserved" as VehicleStatus,
       label: b.rider ? `Booked by ${b.rider.full_name}` : "Booked",
       subLabel: `Start day ${b.start_day}`,
       at: b.created_at,
@@ -62,14 +62,16 @@ export function buildVehicleTimeline(vehicle: VehicleDetail): VehicleEvent[] {
 
   if (vehicle.scrap_record) {
     events.push({
-      id: `scrap-${vehicle.scrap_record.id}`,
+      // `vehicle_disposals` has no id of its own — it is keyed by the
+      // vehicle, one disposal per scooter — so the vehicle id is the key.
+      id: `scrap-${vehicle.id}`,
       kind: "scrap",
-      status: "scrap",
+      status: "retired",
       label: "Scrapped",
       subLabel: vehicle.scrap_record.reason,
       at: vehicle.scrap_record.scrapped_on,
       endAt: null,
-      badgeStatus: "scrap",
+      badgeStatus: "retired",
     });
   }
 
@@ -89,10 +91,10 @@ export function occurrencesByStatus(vehicle: VehicleDetail): Record<VehicleStatu
 
   return {
     available: 1 + completedRentals + resolvedMaintenance,
-    booked: vehicle.booking_history.length,
+    reserved: vehicle.booking_history.length,
     assigned: vehicle.rental_history.length,
     maintenance: vehicle.maintenance_history.length,
-    scrap: vehicle.scrap_record ? 1 : 0,
+    retired: vehicle.scrap_record ? 1 : 0,
   };
 }
 

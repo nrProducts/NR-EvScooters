@@ -25,7 +25,7 @@ export function NotConnected({
         </div>
         {missingEndpoints && missingEndpoints.length > 0 && (
           <div className="mt-2 rounded-lg border border-dashed border-border px-4 py-3 text-left">
-            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
               Would need
             </p>
             <ul className="space-y-1 font-mono text-xs text-muted-foreground">

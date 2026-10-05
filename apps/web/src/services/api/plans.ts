@@ -16,6 +16,9 @@ export interface PlanInput {
   price: number;
   duration_days: number;
   deposit_amount: number;
+  onboarding_charge_amount?: number;
+  min_rental_days_for_refund?: number;
+  deposit_refundable?: boolean;
   vehicle_model_id: string;
   included_minutes?: number;
   active?: boolean;

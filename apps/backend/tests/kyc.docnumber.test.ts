@@ -118,7 +118,7 @@ describe("assertValidDocNumber", () => {
     it("dispatches on document type", () => {
         expect(() => assertValidDocNumber("aadhaar", "234567890123")).toThrow();
         expect(() => assertValidDocNumber("aadhaar", VALID_AADHAAR[0])).not.toThrow();
-        expect(() => assertValidDocNumber("driving_license", "123")).toThrow();
+        expect(() => assertValidDocNumber("driving_licence", "123")).toThrow();
     });
 
     it("accepts types with no defined format", () => {
@@ -161,15 +161,15 @@ describe("DocumentView carries no full identity number", () => {
     const row: DocumentRow = {
         id: "d1",
         user_id: "u1",
-        doc_type: "aadhaar",
-        doc_number_last4: "0124",
-        storage_path: "u1/aadhaar/front.jpg",
+        document_type: "aadhaar",
+        document_number_last4: "0124",
+        front_storage_path: "u1/aadhaar/front.jpg",
         back_storage_path: null,
         verification_status: "pending",
         rejection_reason: null,
-        verified_by: null,
+        verified_by_user_id: null,
         verified_at: null,
-        expiry_date: null,
+        expires_on: null,
         submitted_at: null,
         created_at: "2026-08-14T00:00:00Z",
         updated_at: "2026-08-14T00:00:00Z",
@@ -193,6 +193,6 @@ describe("DocumentView carries no full identity number", () => {
     });
 
     it("passes a missing tail through as null", () => {
-        expect(toDocumentView({ ...row, doc_number_last4: null }).doc_number_masked).toBeNull();
+        expect(toDocumentView({ ...row, document_number_last4: null }).doc_number_masked).toBeNull();
     });
 });

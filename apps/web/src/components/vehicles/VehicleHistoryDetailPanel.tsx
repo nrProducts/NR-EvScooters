@@ -6,10 +6,10 @@ import type { VehicleDetail, VehicleStatus } from "@/types";
 
 const STATUS_LABEL: Record<VehicleStatus, string> = {
   available: "Available",
-  booked: "Booked",
+  reserved: "Reserved",
   assigned: "Assigned",
   maintenance: "Maintenance",
-  scrap: "Scrap",
+  retired: "Retired",
 };
 
 export function VehicleHistoryDetailPanel({

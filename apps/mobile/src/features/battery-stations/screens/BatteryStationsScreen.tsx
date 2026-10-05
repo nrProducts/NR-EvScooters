@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    View, Text, ActivityIndicator, BackHandler, Linking, Platform, TouchableOpacity,
+    View, Text, BackHandler, Linking, Platform, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -12,6 +12,7 @@ import { buildMapsUrl, buildWebMapsUrl } from '../../../lib/maps';
 import { copyToClipboard } from '../../../lib/clipboard';
 import { notifyError, notifySuccess } from '../../../lib/confirm';
 import { ErrorState } from '../../../components/ui/ErrorState';
+import { Spinner } from '../../../components/Spinner';
 import { BatteryStationMap, type BatteryStationMapHandle } from '../components/BatteryStationMap';
 import { StationDetailsBottomSheet } from '../components/StationDetailsBottomSheet';
 import { StationSearch } from '../components/StationSearch';
@@ -27,6 +28,7 @@ import { filterStations } from '../utils/geojson';
 import { distanceOrNull, formatDistance, recommendStationsNear } from '../utils/distance';
 import { formatStationName, type BatteryStation } from '../types/batteryStation.types';
 import type { AreaResult } from '../api/geocodeService';
+import { useT } from '../../../i18n';
 
 /**
  * Full-screen battery-station map.
@@ -37,6 +39,14 @@ import type { AreaResult } from '../api/geocodeService';
  */
 export default function BatteryStationsScreen() {
     const router = useRouter();
+    const { t } = useT();
+    // Stations is a bottom-tab root now, not a pushed screen — router.back()
+    // from here has nothing to pop and expo-router logs an unhandled GO_BACK.
+    // Fall back to Home (also covers a deep link that opened the map directly).
+    const goBack = () => {
+        if (router.canGoBack()) router.back();
+        else router.navigate('/home');
+    };
     const insets = useSafeAreaInsets();
     const mapRef = useRef<BatteryStationMapHandle>(null);
 
@@ -203,22 +213,24 @@ export default function BatteryStationsScreen() {
             await Linking.openURL(buildWebMapsUrl(station.latitude, station.longitude));
         } catch {
             notifyError(
-                'No navigation app found',
-                `Install a maps app, or use the coordinates: ${station.latitude.toFixed(6)}, ${station.longitude.toFixed(6)}`,
+                t('stations.error.noNavApp.title'),
+                t('stations.error.noNavApp.message', {
+                    coordinates: `${station.latitude.toFixed(6)}, ${station.longitude.toFixed(6)}`,
+                }),
             );
         }
-    }, []);
+    }, [t]);
 
     const handleCopyCoordinates = useCallback(async (station: BatteryStation) => {
         const coordinates = `${station.latitude.toFixed(6)}, ${station.longitude.toFixed(6)}`;
         if (await copyToClipboard(coordinates)) {
-            notifySuccess('Coordinates copied', coordinates);
+            notifySuccess(t('stations.coordinatesCopied'), coordinates);
         } else {
             // Still shows the value, so it can be read off or long-pressed in
             // the sheet's selectable rows.
-            notifyError('Could not copy', coordinates);
+            notifyError(t('stations.error.copyFailed'), coordinates);
         }
-    }, []);
+    }, [t]);
 
     const showPermissionNotice = permission === 'denied' && !permissionNoticeDismissed;
 
@@ -228,16 +240,16 @@ export default function BatteryStationsScreen() {
         return (
             <View className="flex-1 justify-center" style={{ backgroundColor: COLORS.background, paddingTop: insets.top }}>
                 <ErrorState
-                    message={error?.message ?? 'Could not load battery stations.'}
+                    message={error?.message ?? t('stations.error.load')}
                     offline={error?.isOffline}
                     onRetry={() => void refetch()}
                 />
                 <TouchableOpacity
-                    onPress={() => router.back()}
+                    onPress={goBack}
                     accessibilityRole="button"
                     className="self-center mt-2 px-4 py-2"
                 >
-                    <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold">Go back</Text>
+                    <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold">{t('stations.goBack')}</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -261,7 +273,7 @@ export default function BatteryStationsScreen() {
                 pointerEvents="box-none"
             >
                 <View className="flex-row items-start" style={{ gap: 10 }}>
-                    <MapControlButton icon={ArrowLeft} label="Go back" onPress={() => router.back()} />
+                    <MapControlButton icon={ArrowLeft} label={t('stations.goBack')} onPress={goBack} />
                     <View className="flex-1">
                         <StationSearch
                             value={search}
@@ -283,13 +295,13 @@ export default function BatteryStationsScreen() {
                     <TouchableOpacity
                         onPress={() => setPermissionNoticeDismissed(true)}
                         accessibilityRole="button"
-                        accessibilityLabel="Dismiss location permission notice"
+                        accessibilityLabel={t('stations.dismissLocationNotice')}
                         className="flex-row items-center mt-2 px-3.5 py-2.5 rounded-2xl"
                         style={{ backgroundColor: COLORS.warning + '1F' }}
                     >
                         <TriangleAlert size={14} color={COLORS.warning} />
                         <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-bold ml-2 flex-1">
-                            Location is off — stations still show, but distances don&apos;t. Tap the location button to allow it.
+                            {t('stations.locationOff')}
                         </Text>
                     </TouchableOpacity>
                 ) : null}
@@ -298,13 +310,19 @@ export default function BatteryStationsScreen() {
                     <TouchableOpacity
                         onPress={() => handleSearchSelect(nearest)}
                         accessibilityRole="button"
-                        accessibilityLabel={`Nearest station ${formatStationName(nearest.name)}, ${formatDistance(nearest.distanceKm)} away`}
+                        accessibilityLabel={t('stations.nearest', {
+                            name: formatStationName(nearest.name),
+                            distance: formatDistance(nearest.distanceKm),
+                        })}
                         className="flex-row items-center mt-2 px-3.5 py-2.5 rounded-2xl"
                         style={{ backgroundColor: COLORS.card }}
                     >
                         <MapPin size={14} color={COLORS.primary} />
                         <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-bold ml-2 flex-1" numberOfLines={1}>
-                            Nearest station: {formatStationName(nearest.name)} — {formatDistance(nearest.distanceKm)}
+                            {t('stations.nearestLine', {
+                                name: formatStationName(nearest.name),
+                                distance: formatDistance(nearest.distanceKm),
+                            })}
                         </Text>
                     </TouchableOpacity>
                 ) : null}
@@ -320,12 +338,12 @@ export default function BatteryStationsScreen() {
                     <>
                         <MapControlButton
                             icon={RefreshCw}
-                            label="Refresh stations"
+                            label={t('stations.refresh')}
                             onPress={() => void refetch()}
                             busy={isRefreshing}
                         />
-                        <MapControlButton icon={Plus} label="Zoom in" onPress={() => mapRef.current?.zoomBy(1)} />
-                        <MapControlButton icon={Minus} label="Zoom out" onPress={() => mapRef.current?.zoomBy(-1)} />
+                        <MapControlButton icon={Plus} label={t('stations.zoomIn')} onPress={() => mapRef.current?.zoomBy(1)} />
+                        <MapControlButton icon={Minus} label={t('stations.zoomOut')} onPress={() => mapRef.current?.zoomBy(-1)} />
                         <FitStationsButton
                             onPress={() => mapRef.current?.fitAll()}
                             disabled={stations.length === 0}
@@ -340,10 +358,10 @@ export default function BatteryStationsScreen() {
                 <View className="absolute left-6 right-6 items-center" style={{ bottom: insets.bottom + 110 }}>
                     <View className="px-4 py-3 rounded-2xl" style={{ backgroundColor: COLORS.card }}>
                         <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold text-center">
-                            No battery stations available yet
+                            {t('stations.empty.title')}
                         </Text>
                         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-1">
-                            Pull the refresh button once your admin publishes them.
+                            {t('stations.empty.subtitle')}
                         </Text>
                     </View>
                 </View>
@@ -361,9 +379,9 @@ export default function BatteryStationsScreen() {
                     className="absolute inset-0 items-center justify-center"
                     style={{ backgroundColor: COLORS.background }}
                 >
-                    <ActivityIndicator size="large" color={COLORS.primary} />
+                    <Spinner size={32} color={COLORS.primary} />
                     <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold mt-3">
-                        Loading battery stations…
+                        {t('stations.loading')}
                     </Text>
                 </View>
             ) : null}

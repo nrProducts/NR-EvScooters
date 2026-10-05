@@ -1,24 +1,38 @@
 // =========================================================================
 // payment-due-reminder  —  daily pg_cron job  →  Expo push
 //
-// Reminds a rider whose plan is 'active' that their weekly payment is
-// coming up: 3 days before, 1 day before, and on the due date itself
-// (configurable via PAYMENT_DUE_REMINDER_DAYS). Runs once/day, so a given
-// booking's fixed next_due_at only ever matches each offset exactly once —
-// same reasoning pickup-reminder relies on for not needing a separate
-// already-reminded tracking column.
+// Reminds a rider on a running plan that their payment is coming up: 3 days
+// before, 1 day before, and on the due date itself (configurable via
+// PAYMENT_DUE_REMINDER_DAYS). Runs once a day against a period's fixed
+// due_on, so each offset matches exactly once per period — the same reason
+// pickup-reminder needs no already-reminded tracking.
 //
-// Mirrors the "log first, best-effort send" contract of
-// apps/backend/src/modules/notifications/notifications.service.ts's
-// notifyUser(), re-implemented here in Deno because this function can't
-// import the backend's TS modules.
+// ── What the new schema changed ──────────────────────────────────────────
+//
+// The due date is `subscription_periods.due_on`, not `bookings.next_due_at`,
+// and the amount owed is the PERIOD's `base_amount_snapshot` rather than the
+// plan's current price. That difference is the point of the snapshot: a
+// rider mid-plan owes what they agreed to, so a price rise published today
+// must not change the figure in tonight's reminder.
+//
+// A rider who has already RENEWED is skipped. The old version could not tell
+// — `bookings.plan_status` said 'active' whether or not the cycle's invoice
+// was settled — so a rider who paid early still got nagged. Paid-ness now
+// comes from v_invoice_balances, which derives it from the allocations.
+//
+// Which INVOICE that is matters: see isRenewalPaid. Periods are paid for in
+// advance, so "is the current period paid?" is true for everyone and skipped
+// the reminder for every rider in good standing.
+//
+// Offsets are counted from business_today(), so "due in 1 day" means the
+// business day, not whatever day it is in UTC.
 // =========================================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
+import { addDays, businessToday, formatBusinessDayForCopy } from "../_shared/dates.ts";
+import { notifyUser } from "../_shared/notify.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+const SOURCE = "payment-due-reminder";
 
 /** Days-before-due to remind at. 0 = due today. */
 const REMINDER_DAYS: number[] = (Deno.env.get("PAYMENT_DUE_REMINDER_DAYS") ?? "3,1,0")
@@ -26,12 +40,13 @@ const REMINDER_DAYS: number[] = (Deno.env.get("PAYMENT_DUE_REMINDER_DAYS") ?? "3
     .map((s) => Number.parseInt(s.trim(), 10))
     .filter((n) => Number.isFinite(n) && n >= 0);
 
-interface BookingRow {
+interface PeriodRow {
     id: string;
-    user_id: string;
-    next_due_at: string;
-    plans: { name: string; price: number } | { name: string; price: number }[] | null;
-    users: { push_token: string | null } | { push_token: string | null }[] | null;
+    subscription_id: string;
+    sequence_number: number;
+    due_on: string;
+    base_amount_snapshot: number;
+    subscriptions: { id: string; user_id: string; status: string } | null;
 }
 
 function unwrap<T>(raw: unknown): T | null {
@@ -39,89 +54,118 @@ function unwrap<T>(raw: unknown): T | null {
     return (v as T) ?? null;
 }
 
-function dateOffsetIso(offsetDays: number): string {
-    const d = new Date();
-    d.setDate(d.getDate() + offsetDays);
-    return d.toISOString().slice(0, 10);
-}
-
-function messageFor(daysUntilDue: number, price: number): { title: string; body: string } {
+function messageFor(daysUntilDue: number, amount: number, dueOn: string): { title: string; body: string } {
+    const dueDay = formatBusinessDayForCopy(dueOn);
     if (daysUntilDue === 0) {
-        return { title: "Payment Due Today", body: `Your weekly rental payment of ₹${price} is due today.` };
+        return {
+            title: "Payment Due Today",
+            body: `Your rental payment of ₹${amount} is due today by 12:00 PM.`,
+        };
     }
     return {
         title: "Payment Due Soon",
-        body: `Your weekly rental payment of ₹${price} is due in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}.`,
+        body: `Your rental payment of ₹${amount} is due at 12:00 PM on ${dueDay} (in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}).`,
     };
 }
 
 Deno.serve(async (_req) => {
-    if (!SUPABASE_URL || !SERVICE_ROLE) return json({ error: "Function not configured." }, 500);
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { autoRefreshToken: false, persistSession: false } });
+    if (!isConfigured()) return notConfigured();
+    const admin = adminClient();
 
+    let today: string;
+    try {
+        today = await businessToday(admin);
+    } catch (err) {
+        console.error(`[${SOURCE}] could not read business_today()`, err);
+        return json({ error: "Could not resolve the business date." }, 500);
+    }
+
+    let matched = 0;
     let logged = 0;
     let sent = 0;
-    let matched = 0;
+    let skippedPaid = 0;
 
     for (const offsetDays of REMINDER_DAYS) {
-        const { data: bookings, error } = await admin
-            .from("bookings")
-            // users aliased + fkey-qualified: bookings has two fkeys to users
-            // (user_id and cancelled_by), so the plain embed is ambiguous.
-            .select("id, user_id, next_due_at, plans(name, price), users:users!bookings_user_id_fkey(push_token)")
-            .eq("plan_status", "active")
-            .eq("next_due_at", dateOffsetIso(offsetDays));
+        const { data: periods, error } = await admin
+            .from("subscription_periods")
+            .select(
+                "id, subscription_id, sequence_number, due_on, base_amount_snapshot, subscriptions(id, user_id, status)",
+            )
+            .eq("status", "current")
+            .eq("due_on", addDays(today, offsetDays));
 
         if (error) {
-            console.error("[payment-due-reminder] query failed", { offsetDays, error });
+            console.error(`[${SOURCE}] query failed`, { offsetDays, error });
             continue;
         }
 
-        for (const row of (bookings ?? []) as unknown as BookingRow[]) {
+        for (const period of (periods ?? []) as unknown as PeriodRow[]) {
+            const subscription = unwrap<{ id: string; user_id: string; status: string }>(
+                period.subscriptions,
+            );
+            if (!subscription) continue;
+            // Reminding a paused, ended or cancelled plan about a payment is
+            // a message about something that is not happening.
+            if (subscription.status !== "active" && subscription.status !== "past_due") continue;
             matched++;
-            const plan = unwrap<{ name: string; price: number }>(row.plans);
-            const user = unwrap<{ push_token: string | null }>(row.users);
-            const { title, body } = messageFor(offsetDays, plan?.price ?? 0);
 
-            const { data: inserted, error: insertError } = await admin
-                .from("notifications_log")
-                .insert({
-                    user_id: row.user_id, channel: "push", template: "payment_due_reminder",
-                    payload: { title, body, screen: "billing" }, status: "pending",
-                })
-                .select("id")
-                .single();
-
-            if (insertError || !inserted) {
-                console.error("[payment-due-reminder] failed to log", { bookingId: row.id, error: insertError });
+            if (await isRenewalPaid(admin, period)) {
+                skippedPaid++;
                 continue;
             }
-            logged++;
-            if (!user?.push_token) continue;
 
-            try {
-                const res = await fetch(EXPO_PUSH_URL, {
-                    method: "POST",
-                    headers: { "content-type": "application/json", accept: "application/json" },
-                    body: JSON.stringify({ to: user.push_token, title, body, sound: "default", data: { screen: "billing" } }),
-                });
-                const result = await res.json().catch(() => null);
-                const ok = res.ok && result?.data?.status !== "error";
-                await admin
-                    .from("notifications_log")
-                    .update({ status: ok ? "sent" : "failed", sent_at: ok ? new Date().toISOString() : null })
-                    .eq("id", inserted.id);
-                if (ok) sent++;
-            } catch (err) {
-                console.error("[payment-due-reminder] push send threw", { bookingId: row.id, err });
-                await admin.from("notifications_log").update({ status: "failed" }).eq("id", inserted.id);
-            }
+            const { title, body } = messageFor(offsetDays, Number(period.base_amount_snapshot), period.due_on);
+            const result = await notifyUser(admin, subscription.user_id, {
+                typeCode: "payment_due",
+                subjectType: "subscription_period",
+                subjectId: period.id,
+                title,
+                body,
+                screen: "billing",
+                payload: { subscription_id: subscription.id, due_on: period.due_on },
+            });
+            if (result.logged) logged++;
+            if (result.sent) sent++;
         }
     }
 
-    return json({ matched, logged, sent }, 200);
+    return json({ matched, logged, sent, skippedPaid }, 200);
 });
 
-function json(body: unknown, status: number): Response {
-    return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+/**
+ * Has the rider already RENEWED — i.e. paid for the period after this one?
+ *
+ * This used to ask whether the CURRENT period's own invoice was settled,
+ * which sounds equivalent and is not. Periods are billed in ADVANCE: the
+ * period now running was paid for before it began, so that question answers
+ * "yes" for every rider in good standing, every time — and the reminder that
+ * their plan is about to run out was skipped for exactly the people who
+ * needed it. Only a rider already in arrears got told anything.
+ *
+ * What is due three days before the plan ends is the NEXT period. A period
+ * with no row yet has certainly not been paid for.
+ */
+async function isRenewalPaid(admin: Admin, period: PeriodRow): Promise<boolean> {
+    const { data: next } = await admin
+        .from("subscription_periods")
+        .select("id")
+        .eq("subscription_id", period.subscription_id)
+        .eq("sequence_number", period.sequence_number + 1)
+        .maybeSingle();
+    if (!next) return false;
+
+    const { data: invoice } = await admin
+        .from("invoices")
+        .select("id")
+        .eq("subscription_period_id", next.id)
+        .neq("status", "void")
+        .maybeSingle();
+    if (!invoice) return false;
+
+    const { data: balance } = await admin
+        .from("v_invoice_balances")
+        .select("is_paid")
+        .eq("invoice_id", invoice.id)
+        .maybeSingle();
+    return balance?.is_paid === true;
 }

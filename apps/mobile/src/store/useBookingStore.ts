@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { bookingRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
-import type { ApiBooking, ApiPlan, ApiStation, ApiVehicleModelDetail } from '../types/api';
+import type { ApiPlan, ApiStation, ApiVehicleModelDetail } from '../types/api';
 
 interface BookingDraft {
     // Full detail (not the list-item shape) so plan-selection can read
@@ -19,26 +19,23 @@ interface BookingState {
     loadingStation: boolean;
     stationError: string | null;
 
-    creating: boolean;
-    createError: string | null;
-    created: ApiBooking | null;
-
     setVehicleModel: (model: ApiVehicleModelDetail) => void;
     setStartDay: (day: string) => void;
     setPlan: (plan: ApiPlan) => void;
     loadNearestStation: (lat: number, lng: number) => Promise<void>;
-    createBooking: () => Promise<ApiBooking>;
     reset: () => void;
 }
 
-export const useBookingStore = create<BookingState>((set, get) => ({
+/**
+ * Draft state for the book+pay screen. There is no `createBooking` any more:
+ * a booking is created by the backend only after payment captures (pay-first).
+ * The screen calls `billingRepository.createBookingOrder(...)` with these draft
+ * fields to open checkout.
+ */
+export const useBookingStore = create<BookingState>((set) => ({
     draft: { ...EMPTY_DRAFT },
     loadingStation: false,
     stationError: null,
-
-    creating: false,
-    createError: null,
-    created: null,
 
     setVehicleModel: (model) => set((s) => ({ draft: { ...s.draft, vehicleModel: model } })),
     setStartDay: (day) => set((s) => ({ draft: { ...s.draft, startDay: day } })),
@@ -55,28 +52,5 @@ export const useBookingStore = create<BookingState>((set, get) => ({
         }
     },
 
-    createBooking: async () => {
-        const { vehicleModel, station, startDay, plan } = get().draft;
-        if (!vehicleModel || !station || !startDay || !plan) {
-            throw new Error('Booking draft is incomplete.');
-        }
-
-        set({ creating: true, createError: null });
-        try {
-            const booking = await bookingRepository.create({
-                vehicle_model_id: vehicleModel.id,
-                station_id: station.id,
-                plan_id: plan.id,
-                start_day: startDay,
-            });
-            set({ creating: false, created: booking, draft: { ...EMPTY_DRAFT } });
-            return booking;
-        } catch (err) {
-            const message = err instanceof ApiError ? err.message : 'Could not create your booking.';
-            set({ creating: false, createError: message });
-            throw err;
-        }
-    },
-
-    reset: () => set({ draft: { ...EMPTY_DRAFT }, created: null, createError: null }),
+    reset: () => set({ draft: { ...EMPTY_DRAFT } }),
 }));

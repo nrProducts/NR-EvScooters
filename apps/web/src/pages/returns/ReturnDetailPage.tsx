@@ -1,45 +1,151 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Plus, ShieldCheck, Trash2, Wrench, XCircle } from "lucide-react";
+import {
+  ArrowLeft, CheckCircle2, Plus, ShieldCheck, Wrench, XCircle, Clock, CreditCard, CircleCheck,
+  AlertTriangle, Image as ImageIcon,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/common/ErrorState";
-import { useReturnDetail, useApproveReturnSettlement } from "@/hooks/useReturns";
+import {
+  useReturnDetail, useSaveInspection, usePaymentReview, useVerifyReturnPayment, useApproveReturnSettlement,
+  useAddDamageCharge,
+} from "@/hooks/useReturns";
 import { useMoveRideToMaintenance, useRejectReturn } from "@/hooks/useRentals";
 import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
-
-interface DamageItemForm {
-  amount: string;
-  description: string;
-}
+import { ReturnStageStepper } from "./ReturnStageStepper";
+import { DamageChargeCard } from "./DamageChargeCard";
+import { AddDamageChargeModal, type DamageDraft } from "./AddDamageChargeModal";
+import { paymentMethodLabel, type DamageCategory, type Deposit, type ReturnStageStatus } from "@/types";
 
 interface OtherChargeForm {
   label: string;
   amount: string;
 }
 
+const DAMAGE_TYPE_LABEL: Record<DamageCategory, string> = {
+  body: "Body Damage",
+  panel: "Panel Damage",
+  battery: "Battery Damage",
+  tyre: "Tyre Damage",
+  brake: "Brake Damage",
+  electrical: "Electrical Damage",
+  other: "Other Damage",
+};
+
+/**
+ * Pre-fills the maintenance ticket description from the damage charges
+ * already recorded on this return, so the admin isn't re-typing what's
+ * already on screen — they can still edit it before completing the return.
+ */
+function buildMaintenanceNotesFromDamages(damages: { damage_category: DamageCategory | null; description: string; status: string }[]): string {
+  return damages
+    .filter((d) => d.status !== "waived")
+    .map((d) => `${d.damage_category ? DAMAGE_TYPE_LABEL[d.damage_category] : "Damage"}: ${d.description}`)
+    .join("; ");
+}
+
+/** A staged damage draft, not yet saved — rendered like a real damage card but removable locally, no API call. */
+function StagedDamageCard({ draft, onRemove }: { draft: DamageDraft; onRemove: () => void }) {
+  return (
+    <div className="rounded-xl border border-dashed border-border bg-card p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 text-destructive">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span className="text-sm font-semibold">{DAMAGE_TYPE_LABEL[draft.damageType]}</span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[0.625rem] font-medium text-muted-foreground">
+            Not yet saved
+          </span>
+        </div>
+        <span className="shrink-0 text-sm font-bold text-destructive">{formatCurrency(draft.amount)}</span>
+      </div>
+      <p className="mt-1.5 text-sm text-foreground/90">{draft.description}</p>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
+          {draft.photos.length > 0 && (
+            <>
+              <ImageIcon className="h-3.5 w-3.5" /> {draft.photos.length} photo{draft.photos.length > 1 ? "s" : ""}
+            </>
+          )}
+        </span>
+        <Button
+          variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+          onClick={onRemove}
+        >
+          Remove
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Vehicle Return → Inspection → Payment Gate → Approve Return.
+ *
+ * `stage.status` (computed server-side, see returns.types.ts's ReturnStage)
+ * drives most of what's on screen. Only the backend's settleReturn gate is
+ * the real enforcement (a return with money owed and not yet verified is
+ * rejected outright, not just hidden) — this page just makes the same rule
+ * visible before a click is wasted on it.
+ */
 export default function ReturnDetailPage() {
   const { rentalId } = useParams<{ rentalId: string }>();
   const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useReturnDetail(rentalId);
+  const saveInspection = useSaveInspection();
+  const addDamageCharge = useAddDamageCharge();
   const approveSettlement = useApproveReturnSettlement();
   const moveToMaintenance = useMoveRideToMaintenance();
   const rejectReturn = useRejectReturn();
+  const verifyPayment = useVerifyReturnPayment();
 
-  const [damageItems, setDamageItems] = useState<DamageItemForm[]>([]);
-  const [inspectedClean, setInspectedClean] = useState(false);
-  const [lateFeeOverride, setLateFeeOverride] = useState("");
+  const [confirmNoDamage, setConfirmNoDamage] = useState(false);
   const [otherCharges, setOtherCharges] = useState<OtherChargeForm[]>([]);
-  const [outcome, setOutcome] = useState<"available" | "maintenance">("available");
-  const [maintenanceNotes, setMaintenanceNotes] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [addDamageOpen, setAddDamageOpen] = useState(false);
+  // Entered but not yet saved — POSTed one at a time only when Save
+  // Inspection is clicked, instead of each Add Damage Charge click firing
+  // its own immediate save.
+  const [stagedDamages, setStagedDamages] = useState<DamageDraft[]>([]);
+  const [savingDamages, setSavingDamages] = useState(false);
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [outcome, setOutcome] = useState<"available" | "maintenance">("available");
+  const [maintenanceNotes, setMaintenanceNotes] = useState("");
+  // A ref, not state: `isPending` below only reflects the mutation's status
+  // as of the last render, so a second click landing before that render
+  // flushes (a fast double-click/double-tap on the dialog's Complete Return
+  // button) would still see `disabled={false}` and fire a real duplicate
+  // request. This flag flips synchronously inside the click handler itself.
+  const completingReturn = useRef(false);
+
+  const { rental, deposit, stage, damages } = data ?? {};
+  const settlement = data?.settlement;
+  const alreadySettled = rental?.status === "completed";
+  const stageStatus: ReturnStageStatus = alreadySettled
+    ? "return_completed"
+    : stage?.status ?? "return_requested";
+
+  // Only a return that actually raised a payable invoice has anything to
+  // review here — a clean, nothing-owed return reaches "ready_for_approval"
+  // too, but GET /returns/:id/payment 404s for it (no additional_due_invoice_id),
+  // and the panel below has no way to distinguish "still loading" from "there
+  // was never a payment to check" if this query runs anyway.
+  const hasPaymentToReview = !!stage?.additionalDueInvoiceId;
+  const paymentReview = usePaymentReview(
+    rentalId,
+    hasPaymentToReview && (stageStatus === "payment_submitted" || stageStatus === "ready_for_approval"),
+  );
 
   if (isLoading) {
     return (
@@ -49,80 +155,126 @@ export default function ReturnDetailPage() {
       </div>
     );
   }
-  if (isError || !data) return <ErrorState message="Return not found." onRetry={() => refetch()} />;
+  if (isError || !data || !rental) return <ErrorState message="Return not found." onRetry={() => refetch()} />;
 
-  const { rental, deposit, latePreview } = data;
-  const settlement = data.settlement;
-  const alreadySettled = rental.status === "completed";
-
-  const itemValid = (item: DamageItemForm) => Number(item.amount) > 0 && item.description.trim().length >= 3;
-  const hasDamageItems = damageItems.length > 0;
-  const damageValid = hasDamageItems ? damageItems.every(itemValid) : true;
-  const hasInspection = inspectedClean || (hasDamageItems && damageItems.every(itemValid));
-
+  const hasDamage = (damages ?? []).some((d) => d.status !== "waived") || stagedDamages.length > 0;
   const otherChargeValid = (c: OtherChargeForm) => c.label.trim().length >= 2 && Number(c.amount) > 0;
   const otherChargesValid = otherCharges.every(otherChargeValid);
+  const canSaveInspection = hasDamage || confirmNoDamage;
 
-  const hasLateFeeOverride = lateFeeOverride.trim().length > 0;
-  const lateFeeOverrideValid = !hasLateFeeOverride
-    || (!Number.isNaN(Number(lateFeeOverride)) && Number(lateFeeOverride) >= 0);
-
-  // Live settlement preview — mirrors the backend's exact formula
-  // (deposit - late fee - damage - other charges) so admin sees the real
-  // number before submitting.
-  const previewLateFee = hasLateFeeOverride ? Number(lateFeeOverride) : latePreview.penaltyAmount;
-  const previewDamageFee = damageItems.filter(itemValid).reduce((sum, i) => sum + Number(i.amount), 0);
-  const previewOtherCharges = otherCharges.filter(otherChargeValid).reduce((sum, c) => sum + Number(c.amount), 0);
   const depositAmount = deposit?.amount ?? 0;
-  const previewTotalCharges = previewLateFee + previewDamageFee + previewOtherCharges;
-  const previewNet = depositAmount - previewTotalCharges;
-  const previewRefund = Math.max(0, previewNet);
-  const previewDue = Math.max(0, -previewNet);
-
-  const addDamageItem = () => {
-    setInspectedClean(false);
-    setDamageItems((items) => [...items, { amount: "", description: "" }]);
-  };
-  const removeDamageItem = (index: number) => setDamageItems((items) => items.filter((_, i) => i !== index));
-  const updateDamageItem = (index: number, patch: Partial<DamageItemForm>) =>
-    setDamageItems((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  const previewOtherCharges = otherCharges.filter(otherChargeValid).reduce((sum, c) => sum + Number(c.amount), 0);
+  const stagedDamagesAmount = stagedDamages.reduce((sum, d) => sum + d.amount, 0);
+  const previewDamageAmount = (stage?.damageAmount ?? 0) + stagedDamagesAmount;
+  const previewTotalCharges = previewDamageAmount + previewOtherCharges;
+  const previewDue = Math.max(0, previewTotalCharges - depositAmount);
 
   const addOtherCharge = () => setOtherCharges((items) => [...items, { label: "", amount: "" }]);
   const removeOtherCharge = (index: number) => setOtherCharges((items) => items.filter((_, i) => i !== index));
   const updateOtherCharge = (index: number, patch: Partial<OtherChargeForm>) =>
     setOtherCharges((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
 
-  const handleApprove = () => {
+  // No separate "Save Inspection" step any more — damages and other charges
+  // can be added/removed freely at any point while the return is still
+  // return_requested, and this one click both finalizes them (staged
+  // damages, one POST per draft, then the inspection itself) and, if
+  // nothing further is owed, immediately opens the outcome dialog to finish
+  // the return in the same click. Only a genuine payment gate (additionalDue
+  // > 0) stops it short — the return can't complete until the rider pays.
+  const handleCompleteReturnClick = async () => {
     if (!rentalId) return;
     setFormError(null);
+
+    if (stagedDamages.length > 0) {
+      setSavingDamages(true);
+      try {
+        for (const draft of stagedDamages) {
+          await addDamageCharge.mutateAsync({
+            rentalId,
+            input: {
+              amount: draft.amount, description: draft.description,
+              damageCategory: draft.damageType, photos: draft.photos,
+            },
+          });
+        }
+        setStagedDamages([]);
+      } catch (err) {
+        setFormError(err instanceof ApiError ? err.message : "Something went wrong.");
+        toastError(err, "Could not save damage charges");
+        return;
+      } finally {
+        setSavingDamages(false);
+      }
+    }
+
+    try {
+      const result = await saveInspection.mutateAsync({
+        rentalId,
+        input: {
+          otherCharges: otherCharges.filter(otherChargeValid).map((c) => ({ label: c.label.trim(), amount: Number(c.amount) })),
+          confirmNoDamage,
+        },
+      });
+      if (result.stage?.status === "ready_for_approval") {
+        // Don't auto-open the outcome dialog here — the Financial Settlement
+        // card's own "Complete Return" button (which appears now that the
+        // inspection is saved) is the one and only place that opens it, so
+        // there's never a moment with two different buttons both able to
+        // trigger the same popup.
+        toastSuccess("Inspection saved — complete the return from the Financial Settlement panel.");
+      } else {
+        toastSuccess("Payment requested from rider — this return will be ready to complete once they pay.");
+      }
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : "Something went wrong.");
+      toastError(err, "Could not complete return");
+    }
+  };
+
+  const handleConfirmPayment = () => {
+    if (!rentalId) return;
+    verifyPayment.mutate(rentalId, {
+      onSuccess: () => toastSuccess("Payment confirmed — return ready to complete"),
+      onError: (err) => toastError(err, "Could not confirm payment"),
+    });
+  };
+
+  const handleCompleteReturn = () => {
+    if (!rentalId || completingReturn.current) return;
+    completingReturn.current = true;
+    setFormError(null);
+
+    const done = () => { completingReturn.current = false; };
 
     if (outcome === "maintenance") {
       if (maintenanceNotes.trim().length < 3) {
         setFormError("Describe why this vehicle needs maintenance (at least 3 characters).");
+        done();
         return;
       }
       moveToMaintenance.mutate(
         { id: rentalId, input: { description: maintenanceNotes.trim(), inspected: true } },
         {
-          onError: (err) => setFormError(err instanceof ApiError ? err.message : "Something went wrong."),
+          onSuccess: () => { done(); toastSuccess("Return completed — vehicle sent to maintenance"); setCompleteDialogOpen(false); },
+          onError: (err) => {
+            done();
+            setFormError(err instanceof ApiError ? err.message : "Something went wrong.");
+            toastError(err, "Could not complete return");
+          },
         },
       );
       return;
     }
 
     approveSettlement.mutate(
+      { rentalId, input: {} },
       {
-        rentalId,
-        input: {
-          damageItems: damageItems.filter(itemValid).map((i) => ({
-            amount: Number(i.amount), description: i.description.trim(), photoPaths: [],
-          })),
-          lateFeeOverride: hasLateFeeOverride ? Number(lateFeeOverride) : undefined,
-          otherCharges: otherCharges.filter(otherChargeValid).map((c) => ({ label: c.label.trim(), amount: Number(c.amount) })),
+        onSuccess: () => { done(); toastSuccess("Return completed"); setCompleteDialogOpen(false); },
+        onError: (err) => {
+          done();
+          setFormError(err instanceof ApiError ? err.message : "Something went wrong.");
+          toastError(err, "Could not complete return");
         },
-      },
-      {
-        onError: (err) => setFormError(err instanceof ApiError ? err.message : "Something went wrong."),
       },
     );
   };
@@ -131,213 +283,181 @@ export default function ReturnDetailPage() {
     if (!rentalId) return;
     rejectReturn.mutate(
       { id: rentalId, input: { reason: rejectReason.trim() } },
-      { onSuccess: () => navigate("/returns") },
+      {
+        onSuccess: () => {
+          toastSuccess("Return rejected");
+          // Returns no longer has its own page — the "Return Requests" tab
+          // on Rental Operations is where this rental was reviewed from.
+          navigate("/bookings?tab=return_requests");
+        },
+        onError: (err) => toastError(err, "Could not reject return"),
+      },
     );
   };
 
-  const isPending = approveSettlement.isPending || moveToMaintenance.isPending || rejectReturn.isPending;
+  const isPending = saveInspection.isPending || approveSettlement.isPending || moveToMaintenance.isPending
+    || rejectReturn.isPending || verifyPayment.isPending || savingDamages;
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/returns")}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">
-            {rental.rider?.full_name ?? "Rider"} — {rental.vehicle?.registration_number ?? "Vehicle"}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Rental started {formatDateTime(rental.started_at)}
-            {rental.return_requested_at ? ` · Return requested ${formatDateTime(rental.return_requested_at)}` : ""}
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-1.5">
-          {/* Two SEPARATE statuses — never merge scooter-return state with financial settlement state. */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-muted-foreground">Scooter Return:</span>
-            <StatusBadge status={alreadySettled ? "completed" : "return_requested"} />
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost" size="icon"
+            // Browser back, not a hardcoded path — Returns no longer has its
+            // own page; this could have been opened from any of Rental
+            // Operations' Return Requests/Recovery/Settled tabs, which keep
+            // their tab in the URL precisely so going back restores it.
+            onClick={() => navigate(-1)}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-2xl font-semibold tracking-tight">
+              {rental.rider?.full_name ?? "Rider"} — {rental.vehicle?.registration_number ?? "Vehicle"}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Rental started {formatDateTime(rental.started_at)}
+              {rental.return_requested_at ? ` · Return requested ${formatDateTime(rental.return_requested_at)}` : ""}
+            </p>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-muted-foreground">Financial Settlement:</span>
-            <StatusBadge status={settlement?.status ?? "pending_refund"} />
-          </div>
+          <StatusBadge status={stageStatus} />
         </div>
+
+        {stageStatus !== "rejected" && (
+          <Card>
+            <CardContent className="p-3.5">
+              <ReturnStageStepper status={stageStatus} />
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Left — Charges */}
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        {/* Left — Vehicle Inspection */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Charges / Adjustments</CardTitle>
-            <CardDescription>Everything that affects this rider&apos;s deposit/refund.</CardDescription>
+            <CardTitle className="text-base">Vehicle Inspection</CardTitle>
+            <CardDescription>Damage charges and inspection notes for this return.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border border-border p-3">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-xs font-semibold text-muted-foreground">Security Deposit</span>
+            <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3 text-sm">
+              <div>
+                <p className="text-[0.6875rem] text-muted-foreground">Vehicle</p>
+                <p className="font-medium">{rental.vehicle?.registration_number ?? "—"}</p>
+                <p className="text-xs text-muted-foreground">{rental.vehicle?.name ?? "—"}</p>
               </div>
-              <span className="font-semibold">{formatCurrency(depositAmount)}</span>
+              <div>
+                <p className="text-[0.6875rem] text-muted-foreground">Battery</p>
+                <p className="font-medium">
+                  {rental.vehicle?.battery_percentage != null ? `${rental.vehicle.battery_percentage}%` : "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-[0.6875rem] text-muted-foreground">Inspected</p>
+                <p className="font-medium">
+                  {rental.inspected_at ? formatDateTime(rental.inspected_at) : "Not yet"}
+                </p>
+              </div>
+              <div>
+                <p className="text-[0.6875rem] text-muted-foreground">Inspected By</p>
+                <p className="font-medium">{rental.inspected_by?.full_name ?? "—"}</p>
+              </div>
             </div>
 
-            {alreadySettled ? (
-              settlement && (
-                <div className="space-y-1.5 text-sm">
-                  {settlement.late_fee_amount > 0 && <SettledLine label="Late Fee" amount={settlement.late_fee_amount} />}
-                  {settlement.damage_fee_amount > 0 && <SettledLine label="Damage Fee" amount={settlement.damage_fee_amount} />}
-                  {settlement.other_charges.map((c, i) => <SettledLine key={i} label={c.label} amount={c.amount} />)}
-                </div>
-              )
-            ) : (
-              <>
-                <div className="space-y-3 rounded-lg border border-border p-3">
-                  <Label className="text-xs font-semibold">Vehicle inspection</Label>
-                  {damageItems.map((item, index) => (
-                    <div key={index} className="space-y-2 rounded-lg border border-border p-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-muted-foreground">Damage item {index + 1}</span>
-                        <button type="button" onClick={() => removeDamageItem(index)} className="text-muted-foreground hover:text-destructive" aria-label="Remove">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <Input
-                        type="number" min={0} value={item.amount} placeholder="Amount (₹)"
-                        onChange={(e) => updateDamageItem(index, { amount: e.target.value })}
-                      />
-                      <Textarea
-                        value={item.description} rows={2}
-                        placeholder="Describe the damage (at least 3 characters)"
-                        onChange={(e) => updateDamageItem(index, { description: e.target.value })}
-                      />
-                    </div>
-                  ))}
-                  <Button type="button" variant="outline" size="sm" onClick={addDamageItem}>
-                    <Plus className="h-3.5 w-3.5" /> Add damage item
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">Damage Charges</Label>
+                {stageStatus === "return_requested" && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setAddDamageOpen(true)}>
+                    <Plus className="h-3.5 w-3.5" /> Add Damage Charge
                   </Button>
-                  {!hasDamageItems && (
-                    <label className="flex items-center gap-2 pt-1 text-xs">
-                      <input
-                        type="checkbox" className="h-3.5 w-3.5 accent-primary"
-                        checked={inspectedClean} onChange={(e) => setInspectedClean(e.target.checked)}
+                )}
+              </div>
+              {(damages ?? []).filter((d) => d.status !== "waived").length === 0 && stagedDamages.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+                  No damage charges recorded.
+                </p>
+              ) : (
+                <>
+                  {(damages ?? [])
+                    .filter((d) => d.status !== "waived")
+                    .map((d) => (
+                      <DamageChargeCard
+                        key={d.id} rentalId={rentalId!} damage={d}
+                        canRemove={stageStatus === "return_requested"}
                       />
-                      I have physically inspected this vehicle — no damage found
-                    </label>
-                  )}
-                </div>
-
-                <div className="space-y-2 rounded-lg border border-border p-3">
-                  <Label className="text-xs font-semibold">Late fee</Label>
-                  <p className="text-xs text-muted-foreground">
-                    {latePreview.daysLate > 0
-                      ? `System-computed: ${formatCurrency(latePreview.penaltyAmount)} (${latePreview.daysLate} day${latePreview.daysLate === 1 ? "" : "s"} late).`
-                      : "No late fee was computed for this return."}{" "}
-                    Leave blank to use the computed amount, or enter a custom figure.
-                  </p>
-                  <Input
-                    type="number" min={0} value={lateFeeOverride}
-                    placeholder={String(latePreview.penaltyAmount)}
-                    onChange={(e) => setLateFeeOverride(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-3 rounded-lg border border-border p-3">
-                  <Label className="text-xs font-semibold">Other charges</Label>
-                  {otherCharges.map((c, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <Input
-                        value={c.label} placeholder="Label" className="flex-1"
-                        onChange={(e) => updateOtherCharge(index, { label: e.target.value })}
-                      />
-                      <Input
-                        type="number" min={0} value={c.amount} placeholder="₹" className="w-28"
-                        onChange={(e) => updateOtherCharge(index, { amount: e.target.value })}
-                      />
-                      <button type="button" onClick={() => removeOtherCharge(index)} className="text-muted-foreground hover:text-destructive" aria-label="Remove">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                  <Button type="button" variant="outline" size="sm" onClick={addOtherCharge}>
-                    <Plus className="h-3.5 w-3.5" /> Add charge
-                  </Button>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Right — Settlement */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Final Settlement</CardTitle>
-            <CardDescription>Updates live as charges are added, edited, or removed.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {alreadySettled && settlement ? (
-              <SettlementSummary
-                depositAmount={settlement.deposit_amount}
-                totalCharges={settlement.total_charges}
-                refund={settlement.refund_amount}
-                due={settlement.due_amount}
-              />
-            ) : (
-              <SettlementSummary
-                depositAmount={depositAmount}
-                totalCharges={previewTotalCharges}
-                refund={previewRefund}
-                due={previewDue}
-              />
-            )}
-
-            {!alreadySettled && (
-              <>
-                <div className="space-y-2 pt-2">
-                  <Label className="text-xs font-semibold">Approve return — vehicle goes to</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button" onClick={() => setOutcome("available")}
-                      className={cn(
-                        "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-sm",
-                        outcome === "available" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
-                      )}
-                    >
-                      <CheckCircle2 className="h-5 w-5" /> Available
-                    </button>
-                    <button
-                      type="button" onClick={() => setOutcome("maintenance")}
-                      className={cn(
-                        "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-sm",
-                        outcome === "maintenance" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
-                      )}
-                    >
-                      <Wrench className="h-5 w-5" /> Maintenance
-                    </button>
-                  </div>
-                  {outcome === "maintenance" && (
-                    <Textarea
-                      value={maintenanceNotes} rows={2}
-                      placeholder="e.g. Front brake noise reported by rider"
-                      onChange={(e) => setMaintenanceNotes(e.target.value)}
+                    ))}
+                  {stagedDamages.map((draft, i) => (
+                    <StagedDamageCard
+                      key={i} draft={draft}
+                      onRemove={() => setStagedDamages((prev) => prev.filter((_, idx) => idx !== i))}
                     />
+                  ))}
+                </>
+              )}
+            </div>
+
+            {stageStatus === "return_requested" && (
+              <>
+                {!hasDamage && (
+                  <label className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox" className="h-3.5 w-3.5 accent-primary"
+                      checked={confirmNoDamage} onChange={(e) => setConfirmNoDamage(e.target.checked)}
+                    />
+                    I have physically inspected this vehicle — no damage found
+                  </label>
+                )}
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold">Other Charges</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addOtherCharge}>
+                      <Plus className="h-3.5 w-3.5" /> Add Charge
+                    </Button>
+                  </div>
+                  {otherCharges.length > 0 && (
+                    <div className="space-y-2 rounded-lg border border-border p-3">
+                      {otherCharges.map((c, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <Input
+                            value={c.label} placeholder="Label" className="flex-1"
+                            onChange={(e) => updateOtherCharge(index, { label: e.target.value })}
+                          />
+                          <Input
+                            type="number" min={0} value={c.amount} placeholder="₹" className="w-28"
+                            onChange={(e) => updateOtherCharge(index, { amount: e.target.value })}
+                          />
+                          <button
+                            type="button" onClick={() => removeOtherCharge(index)}
+                            className="text-muted-foreground hover:text-destructive" aria-label="Remove"
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                  <Button
-                    className="w-full"
-                    disabled={
-                      isPending || !damageValid || !hasInspection || !lateFeeOverrideValid || !otherChargesValid
-                      || (outcome === "maintenance" && maintenanceNotes.trim().length < 3)
-                    }
-                    onClick={handleApprove}
-                  >
-                    Approve Return
-                  </Button>
                 </div>
+
+                <Button
+                  className="w-full"
+                  disabled={isPending || !canSaveInspection || !otherChargesValid}
+                  onClick={() => void handleCompleteReturnClick()}
+                >
+                  {savingDamages
+                    ? "Saving damage charges..."
+                    : saveInspection.isPending
+                      ? "Saving..."
+                      : previewDue > 0 ? "Save Inspection — Request Payment from Rider" : "Save Inspection"}
+                </Button>
 
                 <div className="space-y-2 border-t border-border pt-3">
                   <Label className="text-xs font-semibold">Reject return — reason</Label>
                   <Textarea
                     value={rejectReason} rows={2}
-                    placeholder="e.g. Vehicle still due for the current billing period"
+                    placeholder="Reason"
                     onChange={(e) => setRejectReason(e.target.value)}
                   />
                   <Button
@@ -348,60 +468,419 @@ export default function ReturnDetailPage() {
                     <XCircle className="h-4 w-4" /> Reject Return
                   </Button>
                 </div>
-
-                {formError && <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{formError}</p>}
               </>
             )}
           </CardContent>
         </Card>
+
+        {/* Right — Financial Settlement + Payment Status + Next Action */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Financial Settlement</CardTitle>
+              <CardDescription>Updates live as charges are added, edited, or removed.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {alreadySettled && settlement ? (
+                <SettlementBreakdown
+                  depositAmount={settlement.deposit_amount}
+                  lateFee={settlement.late_fee_amount}
+                  damageFee={settlement.damage_fee_amount}
+                  otherCharges={settlement.other_charges_amount}
+                  totalCharges={settlement.total_charges}
+                  refund={settlement.refund_amount}
+                  due={settlement.due_amount}
+                  paidByRider={settlement.paid_by_rider_amount}
+                  renewalLateFee={rental.overdue_late_fee}
+                />
+              ) : stageStatus === "return_requested" ? (
+                <SettlementBreakdown
+                  depositAmount={depositAmount}
+                  lateFee={0}
+                  damageFee={previewDamageAmount}
+                  otherCharges={previewOtherCharges}
+                  totalCharges={previewTotalCharges}
+                  refund={stage?.depositForfeited ? 0 : Math.max(0, depositAmount - previewTotalCharges)}
+                  due={previewDue}
+                  paidByRider={0}
+                  renewalLateFee={rental.overdue_late_fee}
+                />
+              ) : (
+                <SettlementBreakdown
+                  depositAmount={stage!.depositAmount}
+                  lateFee={0}
+                  damageFee={stage!.damageAmount}
+                  otherCharges={stage!.otherChargesAmount}
+                  totalCharges={stage!.totalCharges}
+                  refund={stage!.refundDue}
+                  due={stage!.additionalDue}
+                  // Payment verified but the return not yet approved — the
+                  // rider's money has already landed even though the final
+                  // rental_settlements row (and its due_amount=0 self-heal)
+                  // doesn't exist until Complete Return actually runs.
+                  paidByRider={stage!.paymentVerifiedAt ? stage!.additionalDue : 0}
+                  renewalLateFee={rental.overdue_late_fee}
+                />
+              )}
+              <DepositTermsNotice deposit={deposit ?? null} />
+            </CardContent>
+          </Card>
+
+          {!alreadySettled && hasPaymentToReview && (stageStatus === "payment_submitted" || stageStatus === "ready_for_approval") && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Payment Status</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <PaymentStatusPanel
+                  review={paymentReview.data}
+                  isLoading={paymentReview.isLoading}
+                  onConfirm={handleConfirmPayment}
+                  confirming={verifyPayment.isPending}
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Next-action panel. Not sticky — on a right column this short,
+              `sticky bottom-4` stuck it near the viewport's bottom edge well
+              before the page actually scrolled that far, overlapping the
+              Payment Status card sitting above it in normal flow. */}
+          <Card className="border-primary/30">
+            <CardContent className="space-y-3 p-4">
+              {alreadySettled ? (
+                  <div className="flex items-center gap-2 text-success">
+                    <CircleCheck className="h-5 w-5" />
+                    <div>
+                      <p className="text-sm font-bold">Return Completed</p>
+                      <p className="text-xs text-muted-foreground">
+                        {rental.return_approved_by?.full_name
+                          ? `Completed by ${rental.return_approved_by.full_name}`
+                          : "This return has been fully processed."}
+                      </p>
+                    </div>
+                  </div>
+                ) : stageStatus === "return_requested" ? (
+                  <p className="text-xs text-muted-foreground">
+                    Finish the vehicle inspection on the left to move this return forward.
+                  </p>
+                ) : stageStatus === "payment_required" ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-destructive">
+                      <Clock className="h-4 w-4" />
+                      <p className="text-sm font-bold">Payment Required</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Additional Amount Due <span className="font-bold text-destructive">{formatCurrency(stage?.additionalDue ?? 0)}</span>.
+                      The rider has been notified — this page updates once they pay.
+                    </p>
+                  </div>
+                ) : stageStatus === "ready_for_approval" ? (
+                  <>
+                    <div className="flex items-center gap-2 text-success">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <p className="text-sm font-bold">Ready to Complete</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {(stage?.additionalDue ?? 0) > 0
+                        ? "Payment has been verified. Return is ready to be completed."
+                        : "No amount is due. Return is ready to be completed."}
+                    </p>
+                    <Button className="w-full" onClick={() => setCompleteDialogOpen(true)}>
+                      Complete Return
+                    </Button>
+                  </>
+                ) : null}
+              {formError && <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{formError}</p>}
+            </CardContent>
+          </Card>
+        </div>
       </div>
+
+      {rentalId && (
+        <AddDamageChargeModal
+          open={addDamageOpen} onOpenChange={setAddDamageOpen}
+          onAdd={(draft) => setStagedDamages((prev) => [...prev, draft])}
+        />
+      )}
+
+      <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Complete Vehicle Return</DialogTitle>
+            <DialogDescription>What should happen to this vehicle?</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button" onClick={() => setOutcome("available")}
+                className={cn(
+                  "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-center text-sm",
+                  outcome === "available" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
+                )}
+              >
+                <CheckCircle2 className="h-5 w-5" />
+                Available
+                <span className="text-[0.6875rem] font-normal text-muted-foreground">Ready for another rider.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOutcome("maintenance");
+                  if (!maintenanceNotes.trim()) {
+                    setMaintenanceNotes(buildMaintenanceNotesFromDamages(damages ?? []));
+                  }
+                }}
+                className={cn(
+                  "flex flex-col items-center gap-1.5 rounded-lg border border-border p-3 text-center text-sm",
+                  outcome === "maintenance" ? "border-primary bg-primary/10 text-primary" : "hover:bg-card-hover",
+                )}
+              >
+                <Wrench className="h-5 w-5" />
+                Maintenance
+                <span className="text-[0.6875rem] font-normal text-muted-foreground">Needs work before rental.</span>
+              </button>
+            </div>
+            {outcome === "maintenance" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Maintenance notes</Label>
+                <Textarea
+                  value={maintenanceNotes} rows={3}
+                  placeholder="Maintenance notes"
+                  onChange={(e) => setMaintenanceNotes(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCompleteDialogOpen(false)}>Cancel</Button>
+            <Button
+              disabled={isPending || (outcome === "maintenance" && maintenanceNotes.trim().length < 3)}
+              onClick={handleCompleteReturn}
+            >
+              Complete Return
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function SettledLine({ label, amount }: { label: string; amount: number }) {
+function PaymentStatusPanel({
+  review, isLoading, onConfirm, confirming,
+}: {
+  review: import("@/types").PaymentReviewView | undefined;
+  isLoading: boolean;
+  onConfirm: () => void;
+  confirming: boolean;
+}) {
+  if (isLoading || !review) {
+    return <Skeleton className="h-32 w-full" />;
+  }
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium text-destructive">-{formatCurrency(amount)}</span>
+    <div className="space-y-2 text-sm">
+      {review.status === "verified" ? (
+        <div className="flex items-center gap-2 text-success">
+          <CheckCircle2 className="h-4 w-4" /> <span className="font-semibold">Payment Successful</span>
+        </div>
+      ) : review.status === "paid" ? (
+        <div className="flex items-center gap-2 text-warning">
+          <Clock className="h-4 w-4" /> <span className="font-semibold">Paid — Awaiting Confirmation</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-destructive">
+          <CreditCard className="h-4 w-4" /> <span className="font-semibold">Not Paid Yet</span>
+        </div>
+      )}
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">Amount Paid</span>
+        <span className="font-semibold">{formatCurrency(review.amount)}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">Payment Type</span>
+        <span>{paymentMethodLabel(review.method)}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">Charge</span>
+        <span>Damage / Additional Return Charge</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">Transaction ID</span>
+        <span className="font-mono text-xs">{review.reference ?? "—"}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">Paid On</span>
+        <span>{review.paidAt ? formatDateTime(review.paidAt) : "—"}</span>
+      </div>
+      {review.status === "paid" && (
+        <Button className="w-full" onClick={onConfirm} disabled={confirming}>
+          {confirming ? "Confirming..." : "Confirm Payment"}
+        </Button>
+      )}
+      {review.status === "unpaid" && (
+        <p className="text-xs text-destructive">
+          This payment has not been captured yet. The rider can retry payment from the app.
+        </p>
+      )}
     </div>
   );
 }
 
-function SettlementSummary({
-  depositAmount, totalCharges, refund, due,
+/**
+ * What the rider actually gets back, and why.
+ *
+ * The settlement above is deposit arithmetic; this is the separate question
+ * of whether the deposit is refundable at all. Two things are easy to get
+ * wrong at a return desk and expensive to get wrong in front of a rider: the
+ * onboarding charge is not part of the refund and never was, and a rider who
+ * finished short of their plan's minimum rental days has forfeited the
+ * deposit outright.
+ */
+function DepositTermsNotice({ deposit }: { deposit: Deposit | null }) {
+  if (!deposit) return null;
+
+  const hasThreshold = deposit.min_rental_days_required > 0;
+  const shortOfThreshold = hasThreshold
+    && deposit.rental_days_completed < deposit.min_rental_days_required;
+  if (!hasThreshold && deposit.onboarding_charge_amount <= 0 && deposit.is_refundable) return null;
+
+  return (
+    <div
+      className={cn(
+        "mt-3 space-y-1 rounded-lg border p-3 text-[0.6875rem]",
+        shortOfThreshold || !deposit.is_refundable || deposit.status === "forfeited"
+          ? "border-destructive/40 bg-destructive/5"
+          : "border-border bg-muted/40",
+      )}
+    >
+      {deposit.onboarding_charge_amount > 0 && (
+        <p className="text-muted-foreground">
+          <span className="font-semibold text-foreground">
+            {formatCurrency(deposit.onboarding_charge_amount)} onboarding charge
+          </span>{" "}
+          was collected alongside this deposit and is non-refundable. It is not part of
+          the settlement above.
+        </p>
+      )}
+      {!deposit.is_refundable && (
+        <p className="font-medium text-destructive">
+          This plan's security deposit is non-refundable — the{" "}
+          {formatCurrency(deposit.amount)} deposit is forfeited, not refunded, regardless of
+          rental days completed.
+        </p>
+      )}
+      {deposit.is_refundable && hasThreshold && (
+        <p className={shortOfThreshold ? "font-medium text-destructive" : "text-muted-foreground"}>
+          {shortOfThreshold ? (
+            <>
+              Rider has completed {deposit.rental_days_completed} of the{" "}
+              {deposit.min_rental_days_required} rental days this plan requires — the{" "}
+              {formatCurrency(deposit.amount)} security deposit is forfeited, not refunded.
+            </>
+          ) : (
+            <>
+              Rider has completed {deposit.rental_days_completed} of the{" "}
+              {deposit.min_rental_days_required} rental days required, so the security
+              deposit is refundable subject to the deductions above.
+            </>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SettlementBreakdown({
+  depositAmount, lateFee, damageFee, otherCharges, totalCharges, refund, due, paidByRider, renewalLateFee,
 }: {
   depositAmount: number;
+  lateFee: number;
+  damageFee: number;
+  otherCharges: number;
   totalCharges: number;
   refund: number;
   due: number;
+  /** What the rider paid directly, beyond the deposit — so Total Charges visibly reconciles to Deposit Used + Paid by Rider (+ Due, if anything is still outstanding). */
+  paidByRider: number;
+  /**
+   * The plan-renewal late fee, collected in the rider app BEFORE a return can
+   * be requested — a separate debt from the deposit settlement below (and
+   * from the return-lateness `lateFee`). Shown here for a complete picture of
+   * what the rider owed on this rental, kept visually apart so it's never
+   * confused with the deposit maths.
+   */
+  renewalLateFee: { isLate: boolean; lateFee: number; isSettled: boolean } | null;
 }) {
   return (
-    <div className="space-y-1.5 rounded-lg border border-border p-3 text-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-muted-foreground">Security Deposit</span>
-        <span className="font-medium">{formatCurrency(depositAmount)}</span>
-      </div>
-      <div className="flex items-center justify-between">
-        <span className="text-muted-foreground">Total Charges</span>
-        <span className="font-medium text-destructive">-{formatCurrency(totalCharges)}</span>
-      </div>
-      <div className="h-px my-1.5 bg-border" />
+    <div className="space-y-2 text-sm">
+      {renewalLateFee?.isLate && renewalLateFee.lateFee > 0 && (
+        <>
+          <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              Plan Renewal Late Fee
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.5 text-[0.625rem] font-semibold",
+                  renewalLateFee.isSettled ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
+                )}
+              >
+                {renewalLateFee.isSettled ? "Paid in app" : "Unpaid"}
+              </span>
+            </span>
+            <span className="font-medium">{formatCurrency(renewalLateFee.lateFee)}</span>
+          </div>
+          <p className="px-1 text-[0.6875rem] text-muted-foreground">
+            Collected separately in the rider app — not part of the deposit settlement below.
+          </p>
+          <div className="h-px bg-border" />
+        </>
+      )}
+      <Row icon={<ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />} label="Security Deposit" value={formatCurrency(depositAmount)} />
+      <Row label="Late Fee (return)" value={formatCurrency(lateFee)} muted />
+      <Row label="Damage Fee" value={damageFee > 0 ? `-${formatCurrency(damageFee)}` : formatCurrency(0)} negative={damageFee > 0} />
+      <Row label="Other Charges" value={otherCharges > 0 ? `-${formatCurrency(otherCharges)}` : formatCurrency(0)} negative={otherCharges > 0} />
+      <div className="h-px bg-border" />
+      <Row label="Total Charges" value={formatCurrency(totalCharges)} bold />
+      <Row label="Deposit Used" value={formatCurrency(Math.min(depositAmount, totalCharges))} />
+      {paidByRider > 0 && (
+        <Row label="Paid by Rider" value={formatCurrency(paidByRider)} />
+      )}
+      <div className="h-px bg-border" />
       {due > 0 ? (
-        <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-2">
-          <span className="text-sm font-bold text-destructive">Amount Due from Rider</span>
-          <span className="text-lg font-black text-destructive">{formatCurrency(due)}</span>
+        <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-3">
+          <span className="text-sm font-bold text-destructive">Additional Amount Due</span>
+          <span className="text-xl font-black text-destructive">{formatCurrency(due)}</span>
         </div>
       ) : (
-        <div className="flex items-center justify-between rounded-lg bg-success/10 p-2">
-          <span className="text-sm font-bold text-success">
-            {refund > 0 ? "Refund to Rider" : "Settlement"}
-          </span>
-          <span className="text-lg font-black text-success">
-            {refund > 0 ? formatCurrency(refund) : "Fully Adjusted"}
-          </span>
+        <div className="flex items-center justify-between rounded-lg bg-success/10 p-3">
+          <span className="text-sm font-bold text-success">{refund > 0 ? "Refund to Rider" : "Settlement"}</span>
+          <span className="text-xl font-black text-success">{refund > 0 ? formatCurrency(refund) : "Fully Adjusted"}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+function Row({
+  icon, label, value, muted, negative, bold,
+}: {
+  icon?: React.ReactNode;
+  label: string;
+  value: string;
+  muted?: boolean;
+  negative?: boolean;
+  bold?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className={cn("flex items-center gap-1.5 text-muted-foreground", bold && "font-semibold text-foreground")}>
+        {icon}
+        {label}
+      </span>
+      <span className={cn(bold && "font-semibold", negative && "text-destructive", muted && "text-muted-foreground")}>
+        {value}
+      </span>
     </div>
   );
 }

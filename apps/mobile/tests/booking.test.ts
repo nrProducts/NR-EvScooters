@@ -1,13 +1,13 @@
 ﻿import { beforeEach, describe, expect, it } from 'vitest';
 import { buildMapsUrl, buildWebMapsUrl } from '../src/lib/maps';
-import { getNextDays, isValidStartDay } from '../src/lib/bookingDays';
+import { getNextBookableDay, getNextDays, isValidStartDay } from '../src/lib/bookingDays';
 import {
   MockBookingRepository, MockUserRepository, signInAs,
   backdateBookingCreatedAt as backdateBooking, resetMockDb,
 } from './fixtures/mock/mock.repositories';
 import { ApiError } from '../src/lib/ApiError';
 import {
-  FREE_CANCELLATION_GRACE_MINUTES, computeCancellationCharge,
+  computeCancellationCharge,
 } from '../src/lib/cancellationPolicy';
 
 const fmt = (d: Date): string => {
@@ -178,49 +178,38 @@ describe('MockBookingRepository.cancel', () => {
     expect((await users.me()).has_active_booking).toBe(false);
   });
 
-  it('records no fee and a full refund when cancelling well before pickup', async () => {
+  it('keeps back the first tier (25%) on a booking cancelled within 30 min — deposit refunded in full', async () => {
     await asVerifiedRider();
     const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(5) });
-
-    const cancelled = await bookings.cancel(created.id);
-    expect(cancelled.cancellation_penalty_amount).toBe(0);
-    // Mock mode has no real gateway, so a nonzero refund "completes" instantly.
-    expect(cancelled.refund_status).toBe('processed');
-    expect(cancelled.refund_amount).toBe((created.plan?.price ?? 0) + (created.plan?.deposit_amount ?? 0));
-  });
-
-  it('charges nothing for a booking cancelled right after it was made, even for tomorrow', async () => {
-    // The reported bug: booking FOR TOMORROW and cancelling minutes later was
-    // charged 25%, because the notice rule only asks how close pickup is.
-    await asVerifiedRider();
-    const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(1) });
-
-    const cancelled = await bookings.cancel(created.id);
-    expect(cancelled.cancellation_penalty_amount).toBe(0);
-    expect(cancelled.refund_amount).toBe((created.plan?.price ?? 0) + (created.plan?.deposit_amount ?? 0));
-  });
-
-  it('keeps back 25% on the rental only once the grace period has passed and pickup is imminent — the deposit is always refunded in full', async () => {
-    await asVerifiedRider();
-    // startDayIn(1) can land on a Sunday and be pushed to +2 (which is free),
-    // so assert against the rule's own verdict rather than a fixed amount.
-    const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(1) });
     const price = created.plan?.price ?? 0;
     const deposit = created.plan?.deposit_amount ?? 0;
 
-    // Age the booking past the grace window â€” otherwise a freshly created mock
-    // booking is always free and the late path is unreachable.
-    const createdAt = new Date(Date.now() - (FREE_CANCELLATION_GRACE_MINUTES + 5) * 60_000).toISOString();
+    const cancelled = await bookings.cancel(created.id);
+    const charge = computeCancellationCharge({ planPaid: price, depositAmount: deposit, createdAt: created.created_at });
+
+    expect(charge.penaltyPercent).toBe(25);
+    expect(cancelled.cancellation_penalty_amount).toBe(charge.penaltyAmount);
+    expect(cancelled.refund_amount).toBe(charge.refundAmount);
+    // Mock mode has no real gateway, so a nonzero refund "completes" instantly.
+    expect(cancelled.refund_status).toBe('processed');
+  });
+
+  it('keeps back 100% (no plan refund) once past every tier — deposit still refunded', async () => {
+    await asVerifiedRider();
+    const created = await bookings.create({ ...VALID_PAYLOAD(), start_day: startDayIn(5) });
+    const deposit = created.plan?.deposit_amount ?? 0;
+
+    const createdAt = new Date(Date.now() - 120 * 60_000).toISOString(); // 2h ago — past 60-min tier
     backdateBooking(created.id, createdAt);
 
     const cancelled = await bookings.cancel(created.id);
     const charge = computeCancellationCharge({
-      startDay: created.start_day, planPrice: price, depositAmount: deposit, createdAt,
+      planPaid: created.plan?.price ?? 0, depositAmount: deposit, createdAt,
     });
 
+    expect(charge.penaltyPercent).toBe(100);
     expect(cancelled.cancellation_penalty_amount).toBe(charge.penaltyAmount);
-    expect(cancelled.refund_amount).toBe(charge.refundAmount);
-    if (charge.isLate) expect(cancelled.cancellation_penalty_amount).toBeGreaterThan(0);
+    expect(cancelled.refund_amount).toBe(deposit);
   });
 
   it('refuses a second cancellation', async () => {
@@ -257,4 +246,54 @@ describe('MockBookingRepository.cancel', () => {
     expect(row?.refund_status).toBe('processed');
     expect(row?.cancelled_at).not.toBeNull();
   });
+});
+
+/**
+ * The start day the app picks for itself.
+ *
+ * There is no date picker in the booking flow any more — the screen sets the
+ * start day directly for immediate pickup. While that was plain `getToday()`,
+ * every Sunday sent a date the backend rejects (hubs are closed; see
+ * isValidStartDay), and the rider got "Please correct the highlighted fields"
+ * on a screen that has no fields. Booking was impossible one day in seven.
+ *
+ * Dates are constructed relative to a fixed anchor rather than to `now`, so
+ * these assertions do not rot the moment the week turns over.
+ */
+describe('getNextBookableDay', () => {
+    // 2026-08-23 is a Sunday. Local-time construction matches how the helper
+    // and isValidStartDay both parse dates.
+    const sunday = new Date(2026, 7, 23);
+
+    it('rolls a Sunday forward to Monday', () => {
+        expect(getNextBookableDay(sunday)).toBe('2026-08-24');
+    });
+
+    it('leaves Monday through Saturday untouched', () => {
+        const expected = [
+            '2026-08-24', '2026-08-25', '2026-08-26',
+            '2026-08-27', '2026-08-28', '2026-08-29',
+        ];
+        expected.forEach((date, i) => {
+            const day = new Date(2026, 7, 24 + i);
+            expect(getNextBookableDay(day)).toBe(date);
+        });
+    });
+
+    it('never returns a Sunday, for any day of any week', () => {
+        for (let i = 0; i < 28; i++) {
+            const day = new Date(2026, 7, 23 + i);
+            const picked = getNextBookableDay(day);
+            expect(new Date(`${picked}T00:00:00`).getDay()).not.toBe(0);
+        }
+    });
+
+    it('agrees with isValidStartDay, which is the rule the backend mirrors', () => {
+        for (let i = 0; i < 28; i++) {
+            const day = new Date(2026, 7, 23 + i);
+            // Only meaningful for days that are not already in the past.
+            if (day < new Date(new Date().setHours(0, 0, 0, 0))) continue;
+            expect(isValidStartDay(getNextBookableDay(day))).toBe(true);
+        }
+    });
 });

@@ -1,0 +1,10 @@
+{
+    "extends": "./_shared.json",
+    "include": [
+        "../src/modules/maintenance",
+        "../src/common",
+        "../src/config",
+        "../src/middleware",
+        "../src/types"
+    ]
+}

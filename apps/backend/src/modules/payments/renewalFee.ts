@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../../config/supabase";
-import { wholeDaysBetween } from "../../common/dates";
+import { noonOfBusinessDay } from "../../common/dates";
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
@@ -9,42 +9,375 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
  * createOrderForInvoice) compute the late-renewal fee, so they can never
  * drift from each other.
  *
- * plan_renewal_settings.late_fee_amount (and any per-booking override) is a
- * PER-DAY rate — the actual charge is that rate multiplied by how many whole
- * days have passed since next_due_at, computed fresh every time so it keeps
- * growing the longer a rider waits, same as the late-return fee already does.
+ * The rate is a PER-DAY figure — the charge is that rate multiplied by how
+ * many whole days have passed since the period was due, computed fresh every
+ * time so it keeps growing the longer a rider waits, same as the late-return
+ * fee already does.
  *
- * A per-booking override (set by an admin) always wins over the global
- * setting; the global setting only applies at all when its own enabled flag
- * is on.
+ * Two things moved underneath:
+ *
+ *   The global setting is `pricing_rules` code `late_fee` (`is_active` is the
+ *   on/off switch, `amount` the rate), not `plan_renewal_settings`.
+ *
+ *   `bookings.late_fee_override` has no column in the new schema. It is a
+ *   live feature (PATCH /bookings/:id/late-fee-override), so it is not
+ *   dropped — it is expressed the way the new schema intends, as a
+ *   `pricing_rules` row scoped to the subscription. That is what `scope` and
+ *   `scope_ref_id` are for, and it gains effective dates and an audit trail
+ *   the column never had.
+ *
+ *   The code carries the subscription id (`late_fee:<uuid>`) because
+ *   `pricing_rules.code` is globally UNIQUE — a second plain `late_fee` row
+ *   cannot exist. Matching is by scope and scope_ref_id, with the code prefix
+ *   only to distinguish a late-fee override from any other subscription-scoped
+ *   charge someone might add later.
  */
-export async function computeLateRenewalFee(
-    bookingId: string,
-    dueDate: string,
-): Promise<{ isLate: boolean; lateFee: number; daysLate: number; feePerDay: number }> {
-    const today = new Date();
-    const isLate = today.toISOString().slice(0, 10) > dueDate;
-    if (!isLate) return { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0 };
+/**
+ * Underscores, not a colon, and not the raw uuid.
+ *
+ * `pricing_rules.code` is constrained to `^[a-z][a-z0-9_]*$`, which allows
+ * neither `:` nor `-`. The previous form — `late_fee:<uuid>` — could
+ * therefore NEVER be inserted: setLateFeeOverride's insert failed the check
+ * constraint every time, so a per-subscription override was impossible to
+ * create. The read paths matched a code that could not exist, which is why
+ * nothing ever surfaced an error — the lookup simply always missed and the
+ * global rate was used instead.
+ *
+ * Both hyphens and the separator become underscores so the result conforms.
+ */
+export const lateFeeOverrideCode = (subscriptionId: string): string =>
+    `late_fee_${subscriptionId.replace(/-/g, '_')}`;
 
-    const daysLate = Math.max(1, wholeDaysBetween(new Date(`${dueDate}T00:00:00Z`), today));
+/**
+ * The date a renewal invoice's lateness is actually measured against.
+ *
+ * Usually that IS the invoice's own `due_on` — the sweep's markPastDue
+ * re-invoices the SAME lapsed period, so its due_on never moves. But
+ * billing.service.ts's generatePeriodInvoice advances to a fresh period once
+ * the current one's own invoice is already settled (see
+ * resolveInvoiceablePeriod / advanceToNextPeriod), and a period created that
+ * way carries its OWN forward-looking due_on (when IT will next be due) —
+ * not the date the rider was actually late against. Using it directly would
+ * make every late renewal price as if paid on time, because the "due" date
+ * on the invoice is now in the future.
+ *
+ * The tell is the immediately preceding period: this invoice's period only
+ * exists because that one is being renewed out of, so ITS due_on is the date
+ * lateness is measured against. Where there is no previous period (period 1,
+ * the opening invoice) the invoice's own due_on is already right.
+ *
+ * NOT gated on the previous period being `closed`, though it reads as if it
+ * should be. The preview runs BEFORE payment and nothing closes the running
+ * period until a capture lands (applyRenewalSuccess), so at the exact moment
+ * the rider is looking at the bill, the previous period is still `current` —
+ * and anchoring on the new period's own forward-looking due_on there scored
+ * every overdue rider as on time. A rider three days past their plan was
+ * shown, and charged, a ₹0 late fee.
+ *
+ * Using the previous period's due_on in the `current` case costs nothing: an
+ * early renewal is by definition before that date, so computeLateRenewalFee
+ * returns not-late from it just the same.
+ */
+export async function lateFeeReferenceDate(
+    subscriptionId: string,
+    subscriptionPeriodId: string | null,
+    invoiceDueOn: string | null,
+): Promise<string | null> {
+    if (!invoiceDueOn || !subscriptionPeriodId) return invoiceDueOn;
 
-    const { data: booking } = await supabaseAdmin
-        .from("bookings")
-        .select("late_fee_override")
-        .eq("id", bookingId)
+    const { data: period, error: periodError } = await supabaseAdmin
+        .from("subscription_periods")
+        .select("sequence_number")
+        .eq("id", subscriptionPeriodId)
         .maybeSingle();
-    if (booking?.late_fee_override != null) {
-        const feePerDay = Number(booking.late_fee_override);
-        return { isLate: true, lateFee: round2(feePerDay * daysLate), daysLate, feePerDay };
+    if (periodError) throw periodError;
+    if (!period || period.sequence_number <= 1) return invoiceDueOn;
+
+    const { data: previous, error: previousError } = await supabaseAdmin
+        .from("subscription_periods")
+        .select("due_on, status")
+        .eq("subscription_id", subscriptionId)
+        .eq("sequence_number", period.sequence_number - 1)
+        .maybeSingle();
+    if (previousError) throw previousError;
+
+    // 'scheduled' is the one status that is NOT an anchor: a period the rider
+    // has not started paying for yet says nothing about how late they are.
+    return previous && previous.status !== "scheduled" ? previous.due_on : invoiceDueOn;
+}
+
+/**
+ * How many days of late fee are owed, and the money for them — ONE formula
+ * now for both a late renewal and a late return.
+ *
+ * ── Why the old renew-vs-return split is gone ───────────────────────────
+ *
+ * It used to exist because "today" was genuinely ambiguous: renewing
+ * re-anchored the new period's starts_on to businessToday() (applyRenewalSuccess,
+ * payments.service.ts), so the calendar day someone happened to pay on was
+ * simultaneously "the first day of the new period" AND "a day that might or
+ * might not already be late" — hence dropping it for a renewal (it was being
+ * bought) but keeping it for a return (the rider used the scooter through it,
+ * and nothing else charged for it).
+ *
+ * That ambiguity is gone. Under the fixed noon-to-noon cycle, a late renewal
+ * no longer restarts the period on payment day — it continues from the
+ * EXACT instant it was due (noon on `dueDate`), same as a return's deadline
+ * always has. There is now one precise cutover instant, not a fuzzy calendar
+ * day two different actions used to interpret two different ways, so both
+ * actions measure lateness identically from it.
+ *
+ * `daysLate` — and therefore the fee — is 0 for anything AT OR BEFORE the
+ * due instant, and immediately 1 the moment it passes, even by a second:
+ * there is no 24-hour grace window. Each additional full 24-hour block past
+ * that adds one more day (`Math.ceil(elapsedMs / 24h)`, not floor) — a
+ * rider back one minute late owes the same one day as a rider back 20 hours
+ * late, and a rider back at exactly +24h owes a second day the instant that
+ * boundary is crossed. `hoursLate` is exposed purely for DISPLAY — "30
+ * minutes late" is worth showing a rider or admin even though, unlike the
+ * old rule, that's no longer also the moment the fee changed from ₹0 to
+ * something.
+ *
+ * `isLate` means A FEE IS OWED (`daysLate > 0`), not "the plan has lapsed" —
+ * the lapsed-plan question is answered by subscriptions.status /
+ * getRenewalEligibility on the client.
+ */
+/**
+ * The date-only half of the rule above, pulled out so it is testable without
+ * a live rate lookup — same reason computeLateReturnPenalty (rentals.service.ts)
+ * takes its own optional `now`. Pure and synchronous: no Supabase call, no
+ * clock read unless the caller omits `now`.
+ */
+export function lateDaysSince(
+    dueAt: Date,
+    now: Date = new Date(),
+): { isLate: boolean; daysLate: number; hoursLate: number } {
+    if (Number.isNaN(dueAt.getTime())) return { isLate: false, daysLate: 0, hoursLate: 0 };
+
+    const elapsedMs = now.getTime() - dueAt.getTime();
+    const hoursLate = Math.max(0, elapsedMs / (60 * 60 * 1000));
+    // AT the due instant is still on time — only strictly past it is late.
+    if (elapsedMs <= 0) return { isLate: false, daysLate: 0, hoursLate };
+
+    // Immediately late: the first, even partial, day already counts as a
+    // whole day. Was Math.floor(hoursLate / 24), which gave every rider a
+    // free 24-hour grace window after the due instant before the fee ever
+    // started — not the intended rule.
+    const daysLate = Math.ceil(elapsedMs / (24 * 60 * 60 * 1000));
+    return { isLate: true, daysLate, hoursLate };
+}
+
+export async function computeLateRenewalFee(
+    subscriptionId: string,
+    dueDate: string,
+    now: Date = new Date(),
+): Promise<{ isLate: boolean; lateFee: number; daysLate: number; feePerDay: number; hoursLate: number }> {
+    const dueAt = new Date(noonOfBusinessDay(dueDate));
+    const { isLate, daysLate, hoursLate } = lateDaysSince(dueAt, now);
+    if (!isLate) return { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0, hoursLate };
+
+    // The rate lookup — subscription override first, then the global rule —
+    // lives in lateFeeRateFor, so the return path resolves the same rate from
+    // the same place rather than a constant of its own.
+    const feePerDay = await lateFeeRateFor(subscriptionId);
+    return { isLate: true, lateFee: round2(feePerDay * daysLate), daysLate, feePerDay, hoursLate };
+}
+
+/**
+ * The per-day late-fee rate in force for one subscription, from
+ * `pricing_rules` — the subscription-scoped override if there is one, the
+ * global `late_fee` rule otherwise, and 0 when the rule is switched off or
+ * absent (an unconfigured fee is not a fee).
+ *
+ * ONE rate, for both kinds of lateness. A rider whose plan has expired is
+ * simultaneously late renewing and late returning; charging them ₹450/day at
+ * the renewal screen and ₹100/day at the return screen — which is what the
+ * hard-coded LATE_RETURN_FEE_PER_DAY did — is not two policies, it is one
+ * policy with two answers. The admin console has a single "Late Fee &
+ * Recovery Policy" card writing this rule, so this is the number an operator
+ * believes they configured.
+ *
+ * LATE_RETURN_FEE_PER_DAY survives only as the default the rule row is
+ * SEEDED at, and as the mobile mock repository's stand-in. Nothing on a
+ * server path reads it any more.
+ */
+export async function lateFeeRateFor(subscriptionId: string | null): Promise<number> {
+    return (await lateFeeRuleFor(subscriptionId))?.amount ?? 0;
+}
+
+export interface LateFeeRule {
+    id: string;
+    code: string;
+    name: string;
+    amount: number;
+}
+
+/**
+ * The rule ITSELF, not just its rate — needed when the fee is materialised as
+ * a `subscription_adjustments` row, which snapshots the rule's code and name
+ * and points at its id.
+ *
+ * Null when no late fee applies: no rule configured, or the admin toggle off.
+ */
+export async function lateFeeRuleFor(subscriptionId: string | null): Promise<LateFeeRule | null> {
+    const columns = "id, code, name, amount, is_active";
+
+    if (subscriptionId) {
+        const { data: override, error: overrideError } = await supabaseAdmin
+            .from("pricing_rules")
+            .select(columns)
+            .eq("code", lateFeeOverrideCode(subscriptionId))
+            .eq("is_active", true)
+            .maybeSingle();
+        if (overrideError) throw overrideError;
+        if (override) {
+            return {
+                id: override.id, code: override.code,
+                name: override.name, amount: Number(override.amount),
+            };
+        }
     }
 
-    const { data: settings } = await supabaseAdmin
-        .from("plan_renewal_settings")
-        .select("late_fee_enabled, late_fee_amount")
-        .limit(1)
+    const { data: rule, error } = await supabaseAdmin
+        .from("pricing_rules")
+        .select(columns)
+        .eq("code", "late_fee")
+        .eq("scope", "global")
         .maybeSingle();
-    if (!settings?.late_fee_enabled) return { isLate: true, lateFee: 0, daysLate, feePerDay: 0 };
+    if (error) throw error;
+    if (!rule?.is_active) return null;
 
-    const feePerDay = Number(settings.late_fee_amount);
-    return { isLate: true, lateFee: round2(feePerDay * daysLate), daysLate, feePerDay };
+    return { id: rule.id, code: rule.code, name: rule.name, amount: Number(rule.amount) };
+}
+
+/**
+ * The date an invoice's lateness is measured from.
+ *
+ * NOT always `invoices.due_on`. A renewal invoice belongs to the period being
+ * BOUGHT (the next one), whose due_on is that future period's own end — so
+ * measuring against it would say a three-weeks-overdue rider is early. What
+ * they are late against is the period they are still riding on: the day their
+ * plan ran out.
+ *
+ * The invoice-shaped front door to lateFeeReferenceDate, which is the one
+ * implementation of that rule — callers that already hold an invoice row
+ * (computeInvoiceLateFee) shouldn't have to unpack it into three arguments,
+ * and two implementations of "which date counts as late" is exactly the drift
+ * this file exists to prevent.
+ *
+ * Returns null when there is nothing to be late against — no period, no due
+ * date — which callers treat as "not late".
+ */
+export async function lateFeeAnchorFor(invoice: {
+    subscription_id: string;
+    subscription_period_id: string | null;
+    due_on: string | null;
+}): Promise<string | null> {
+    return lateFeeReferenceDate(
+        invoice.subscription_id, invoice.subscription_period_id, invoice.due_on,
+    );
+}
+
+/**
+ * The fee STILL OWED on an invoice, measured from the right date. The single
+ * entry point for "is this bill late, and by how much" — the renewal preview,
+ * order creation, the rider's invoice list and the capture path all call
+ * this, so the number the rider is shown and the number they are charged are
+ * computed by the same code from the same anchor.
+ *
+ * "Still owed" because the fee becomes a real line on the invoice once it has
+ * been paid (recordLateFeeCharge, payments.service.ts). Anything already
+ * charged is inside `balance_amount` from then on, so adding the gross fee on
+ * top a second time would bill it twice.
+ */
+export async function computeInvoiceLateFee(invoice: {
+    subscription_id: string;
+    subscription_period_id: string | null;
+    due_on: string | null;
+    purpose: string;
+}): Promise<{ isLate: boolean; lateFee: number; daysLate: number; feePerDay: number }> {
+    const none = { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0 };
+    if (invoice.purpose !== "subscription_period") return none;
+
+    const anchor = await lateFeeAnchorFor(invoice);
+    if (!anchor) return none;
+
+    const charge = await computeLateRenewalFee(invoice.subscription_id, anchor);
+    if (!charge.isLate || !invoice.subscription_period_id) return charge;
+
+    const alreadyCharged = await lateFeeAlreadyCharged(
+        invoice.subscription_id, invoice.subscription_period_id,
+    );
+    if (alreadyCharged <= 0) return charge;
+
+    return { ...charge, lateFee: Math.max(0, round2(charge.lateFee - alreadyCharged)) };
+}
+
+/**
+ * How much of this cycle's late fee the rider has ALREADY been charged.
+ *
+ * Two things can have collected it, and they were built independently:
+ *
+ *   · recordLateFeeCharge (payments.service.ts) writes it onto the renewal
+ *     invoice as a `subscription_adjustments` row + line, at capture.
+ *   · ensureOverdueLateFeeInvoice (rentals/overdueLateFee.ts) bills it as a
+ *     standalone `adhoc` invoice, when an overdue rider chooses to RETURN the
+ *     scooter instead of renewing.
+ *
+ * A rider who pays the return-gate invoice and then changes their mind and
+ * renews would otherwise be charged the same days × rate a second time — the
+ * adhoc invoice leaves no adjustment row for the first check to find. Netting
+ * both off here is what makes "the late fee" one debt however it is collected.
+ *
+ * The adhoc window is the current period's own created_at, matching
+ * currentPeriodWindow in overdueLateFee.ts: a fee paid off during an EARLIER
+ * overdue cycle must not silently cover a later one.
+ */
+async function lateFeeAlreadyCharged(
+    subscriptionId: string,
+    subscriptionPeriodId: string,
+): Promise<number> {
+    const { data: adjustments, error } = await supabaseAdmin
+        .from("subscription_adjustments")
+        .select("amount")
+        .eq("subscription_period_id", subscriptionPeriodId)
+        .like("code_snapshot", "late_fee%")
+        .neq("status", "voided");
+    if (error) throw error;
+
+    let total = (adjustments ?? []).reduce((sum, row) => sum + Number(row.amount), 0);
+
+    const { data: current, error: currentError } = await supabaseAdmin
+        .from("subscription_periods")
+        .select("created_at")
+        .eq("subscription_id", subscriptionId)
+        .eq("status", "current")
+        .maybeSingle();
+    if (currentError) throw currentError;
+    if (!current) return round2(total);
+
+    const { data: adhoc, error: adhocError } = await supabaseAdmin
+        .from("invoices")
+        .select("id, total_amount")
+        .eq("subscription_id", subscriptionId)
+        .eq("purpose", "adhoc")
+        .neq("status", "void")
+        .gte("created_at", current.created_at);
+    if (adhocError) throw adhocError;
+    if ((adhoc ?? []).length === 0) return round2(total);
+
+    // Only money that actually arrived counts — an unpaid adhoc invoice is a
+    // debt, not a payment, and must not reduce what the renewal collects.
+    const { data: balances, error: balanceError } = await supabaseAdmin
+        .from("v_invoice_balances")
+        .select("invoice_id, is_paid")
+        .in("invoice_id", (adhoc ?? []).map((i) => i.id));
+    if (balanceError) throw balanceError;
+
+    const paid = new Set((balances ?? []).filter((b) => b.is_paid).map((b) => b.invoice_id));
+    for (const row of adhoc ?? []) {
+        if (paid.has(row.id)) total += Number(row.total_amount);
+    }
+
+    return round2(total);
 }

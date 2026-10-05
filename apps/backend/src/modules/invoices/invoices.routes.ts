@@ -36,4 +36,22 @@ router.post(
     asyncHandler(c.refundInvoiceHandler),
 );
 
+// Record an offline payment (cash/UPI/…) against an unpaid invoice — the
+// hub-side counterpart to a rider paying in-app. Same "trusted with money"
+// gate as issuing a refund.
+router.post(
+    "/:id/record-payment",
+    requireAction("payments", "refund"),
+    validate({ params: v.uuidParam, body: v.recordPaymentBody }),
+    asyncHandler(c.recordInvoicePaymentHandler),
+);
+
+// One-off admin charge against a rider (lost key, cleaning fee, fine, …).
+router.post(
+    "/adhoc",
+    requireAction("payments", "refund"),
+    validate({ body: v.adhocChargeBody }),
+    asyncHandler(c.adhocChargeHandler),
+);
+
 export default router;

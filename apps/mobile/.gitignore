@@ -33,6 +33,13 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Firebase — google-services.json is low-sensitivity (client config) but has
+# no business being duplicated across environments in git; the service
+# account key is a real secret and must never be committed.
+google-services.json
+*firebase-adminsdk*.json
+*serviceAccountKey*.json
+
 # typescript
 *.tsbuildinfo
 

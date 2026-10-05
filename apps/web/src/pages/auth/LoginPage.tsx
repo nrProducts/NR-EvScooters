@@ -1,24 +1,35 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, Mail, Lock, Check } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { AuthBrand } from "@/components/auth/AuthBrand";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
-
+import { toastError } from "@/lib/toastHelpers";
 interface LoginForm {
   identifier: string;
   password: string;
 }
 
+/**
+ * Single sign-in surface for staff/admin. There is no rider web app anymore —
+ * riders use the Expo mobile app (and its web export) exclusively; a rider
+ * account presenting here is rejected outright, not redirected anywhere.
+ *
+ * A new account self-registers here, lands as pending, and an admin approves
+ * it from Users → Awaiting approval.
+ */
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+
   const {
     register,
     handleSubmit,
@@ -26,55 +37,87 @@ export default function LoginPage() {
   } = useForm<LoginForm>({ defaultValues: { identifier: "", password: "" } });
 
   const onSubmit = (values: LoginForm) => {
-    login.mutate(values);
+    login.mutate(values, {
+      onError: (err) => toastError(err, "Could not sign in"),
+    });
   };
 
-  return (
-    <Card className="animate-fade-in">
-      <CardContent className="p-6 sm:p-8">
-        <h1 className="mb-1 text-xl font-semibold">Welcome back</h1>
-        <p className="mb-6 text-sm text-muted-foreground">Sign in to manage your fleet.</p>
+  const fieldIcon = "pointer-events-none absolute left-3.5 top-1/2 h-[1.05rem] w-[1.05rem] -translate-y-1/2 text-muted-foreground";
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="identifier">Email or phone</Label>
-            <Input
-              id="identifier"
-              placeholder="you@swapngo.in or +91 98765 43210"
-              {...register("identifier", { required: "Email or phone is required" })}
-            />
-            {errors.identifier && <p className="text-xs text-destructive">{errors.identifier.message}</p>}
+  return (
+    <Card
+      className="animate-fade-in overflow-hidden rounded-2xl border border-primary/25"
+      style={{
+        boxShadow:
+          "0 0 0 1px rgba(33,196,93,0.18), 0 12px 32px -12px rgba(33,196,93,0.28), 0 0 40px rgba(33,196,93,0.14)",
+      }}
+    >
+      <AuthBrand />
+      <CardContent className="p-7 sm:p-9">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Welcome back</h1>
+          <p className="text-sm text-muted-foreground">Sign in to access your Swapngo dashboard.</p>
+        </div>
+
+        <form onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="identifier">Email address</Label>
+            <div className="relative">
+              <Mail className={fieldIcon} />
+              <Input
+                id="identifier"
+                autoComplete="username"
+                placeholder="Enter your email address"
+                className={cn("h-12 rounded-[0.7rem] pl-10", errors.identifier && "border-destructive focus-visible:ring-destructive")}
+                {...register("identifier", { required: "Email address is required" })}
+              />
+            </div>
+            {errors.identifier && <p className="text-xs font-medium text-destructive">{errors.identifier.message}</p>}
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <div className="relative">
+              <Lock className={fieldIcon} />
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}
-                placeholder="••••••••"
-                className="pr-10"
+                autoComplete="current-password"
+                placeholder="Enter your password"
+                className={cn("h-12 rounded-[0.7rem] pl-10 pr-10", errors.password && "border-destructive focus-visible:ring-destructive")}
                 {...register("password", { required: "Password is required" })}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-smooth hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showPassword ? <EyeOff className="h-[1.05rem] w-[1.05rem]" /> : <Eye className="h-[1.05rem] w-[1.05rem]" />}
               </button>
             </div>
-            {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
+            {errors.password && <p className="text-xs font-medium text-destructive">{errors.password.message}</p>}
           </div>
 
-          <div className="flex items-center justify-between pt-1">
-            <label className="flex items-center gap-2 text-sm">
-              <Switch checked={rememberMe} onCheckedChange={setRememberMe} />
+          <div className="flex items-center justify-between">
+            <label className="flex cursor-pointer select-none items-center gap-2.5 text-sm text-foreground">
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={rememberMe}
+                onClick={() => setRememberMe((v) => !v)}
+                className={cn(
+                  "flex h-[1.15rem] w-[1.15rem] shrink-0 items-center justify-center rounded-[0.35rem] border transition-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
+                  rememberMe ? "border-primary bg-primary text-primary-foreground" : "border-input bg-background",
+                )}
+              >
+                {rememberMe && <Check className="h-3 w-3" strokeWidth={3} />}
+              </button>
               Remember me
             </label>
             <button
               type="button"
-              className="text-sm font-medium text-primary hover:underline"
+              className="text-sm font-semibold text-primary transition-smooth hover:text-primary-hover"
               onClick={() => navigate("/forgot-password")}
             >
               Forgot password?
@@ -82,25 +125,33 @@ export default function LoginPage() {
           </div>
 
           {login.isError && (
-            <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <p className="rounded-lg bg-destructive/10 px-3 py-2.5 text-xs font-medium text-destructive">
               {(login.error as Error)?.message ?? "Something went wrong."}
             </p>
           )}
 
-          <Button type="submit" className="w-full" disabled={login.isPending}>
-            {login.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Login
+          <Button
+            type="submit"
+            className="group h-12 w-full rounded-[0.7rem] border border-primary/40 bg-transparent text-[0.9rem] font-semibold text-primary shadow-none transition-colors hover:border-primary hover:bg-primary hover:text-white focus-visible:ring-primary dark:text-primary"
+            disabled={login.isPending}
+          >
+            {login.isPending ? (
+              <>
+                <Spinner className="h-4 w-4" /> Signing in…
+              </>
+            ) : (
+              <>
+                Sign in <ArrowRight className="h-4 w-4" />
+              </>
+            )}
           </Button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          Sign in with an admin or staff account provisioned in Supabase Auth. Riders should use the mobile app.
-        </p>
-        <p className="mt-2 text-center text-xs text-muted-foreground">
+        <p className="mt-7 border-t border-border pt-5 text-center text-xs text-muted-foreground">
           New here?{" "}
           <button
             type="button"
-            className="font-medium text-primary hover:underline"
+            className="font-semibold text-primary transition-smooth hover:text-primary-hover"
             onClick={() => navigate("/signup")}
           >
             Create an account

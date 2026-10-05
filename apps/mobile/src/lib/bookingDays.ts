@@ -15,9 +15,30 @@ const fmt = (d: Date): string => {
     return `${year}-${month}-${day}`;
 };
 
-/** Today as YYYY-MM-DD — booking now always starts today (immediate pickup, no date picker). */
+/** Today as YYYY-MM-DD. */
 export function getToday(): string {
     return fmt(new Date());
+}
+
+/**
+ * The soonest day a booking may actually START — today, unless today is a
+ * Sunday, in which case Monday.
+ *
+ * There is no date picker any more: the flow sets the start day itself for
+ * immediate pickup. That made Sunday unbookable in a way nothing surfaced —
+ * the screen sent today's date, the backend rejected it via isValidStartDay
+ * (hubs are closed Sunday), and the rider saw "Please correct the highlighted
+ * fields" on a screen with no fields on it. Every Sunday, for everyone.
+ *
+ * Rolling forward rather than blocking, because a closed hub is a reason to
+ * collect tomorrow, not a reason to refuse the booking.
+ */
+export function getNextBookableDay(from = new Date()): string {
+    const d = new Date(from);
+    d.setHours(0, 0, 0, 0);
+    // Sunday === 0. At most one shift is ever needed.
+    if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+    return fmt(d);
 }
 
 export function isValidStartDay(dateStr: string): boolean {
@@ -29,6 +50,23 @@ export function isValidStartDay(dateStr: string): boolean {
     if (parsed < today) return false;
 
     return parsed.getDay() !== 0;
+}
+
+/**
+ * DISPLAY ONLY — the calendar day a rental period ends on, for showing
+ * "Rental Period: 20 Sep, 12:00 PM -> 27 Sep, 12:00 PM" before checkout.
+ *
+ * Mirrors the backend's calculateRentalPeriod exactly (apps/backend/src/
+ * common/dates.ts): every rental runs a fixed noon-to-noon cycle, so a plan
+ * of N days ends startDay + N, not startDay + (N - 1). This never decides
+ * anything — the backend recomputes the authoritative dates itself at
+ * booking creation and pickup — it only lets the rider see, before paying,
+ * the same period the backend is about to create.
+ */
+export function rentalPeriodEndDay(startDay: string, durationDays: number): string {
+    const d = new Date(`${startDay}T00:00:00`);
+    d.setDate(d.getDate() + durationDays);
+    return fmt(d);
 }
 
 export interface DayOption {

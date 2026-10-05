@@ -1,21 +1,26 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, Mail, MapPin, FileText } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, FileText, PlusCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { UserConsentCard } from "./UserConsentCard";
+import { AddChargeDialog } from "@/components/users/AddChargeDialog";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { useUser } from "@/hooks/useUsers";
-import { initials, formatDate } from "@/lib/utils";
+import { useAuthStore } from "@/store/authStore";
+import { hasAction } from "@/lib/permissions";
+import { initials, formatDate, formatCurrency } from "@/lib/utils";
 
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: user, isLoading, isError, refetch } = useUser(id);
+  const viewer = useAuthStore((s) => s.user);
+  const [chargeOpen, setChargeOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -45,10 +50,25 @@ export default function UserDetailPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{user.full_name || "Unnamed user"}</h1>
           <p className="text-sm text-muted-foreground">Joined {formatDate(user.created_at)}</p>
         </div>
-        {user.roles.map((r) => <StatusBadge key={r} status={r} />)}
+        <StatusBadge status={user.role} />
         <StatusBadge status={user.account_status} />
         <StatusBadge status={user.kyc_status} />
+
+        {user.role === "rider" && hasAction(viewer, "payments", "refund") && (
+          <Button size="sm" variant="outline" className="ml-auto" onClick={() => setChargeOpen(true)}>
+            <PlusCircle className="h-3.5 w-3.5" /> Add Charge
+          </Button>
+        )}
       </div>
+
+      {user.role === "rider" && (
+        <AddChargeDialog
+          userId={user.id}
+          riderName={user.full_name || "this rider"}
+          open={chargeOpen}
+          onOpenChange={setChargeOpen}
+        />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -96,9 +116,30 @@ export default function UserDetailPage() {
               label="Current plan"
               value={user.current_plan ? `${user.current_plan.name} — ₹${user.current_plan.price.toFixed(0)}/${user.current_plan.billing_cycle}` : "None"}
             />
+            {/* An open return is its own row here rather than replacing the
+                plan status: a detail page has the space to state both, and
+                staff opening this record need the return surfaced explicitly —
+                it is the thing waiting on them. Same fact the Users grid
+                folds into its Payment column. */}
+            {user.open_return ? (
+              <Row
+                label="Return"
+                value={
+                  <StatusBadge
+                    status={user.open_return.status === "inspected" ? "inspected" : "return_requested"}
+                  />
+                }
+              />
+            ) : null}
             <Row label="Payment status" value={user.payment_status ? <StatusBadge status={user.payment_status} /> : "—"} />
+            <Row
+              label="Outstanding balance"
+              value={user.outstanding_amount > 0
+                ? <span className="font-semibold text-destructive">{formatCurrency(user.outstanding_amount)}</span>
+                : "₹0"}
+            />
             <Row label="KYC completion" value={`${user.kyc_completion_percent}%`} />
-            <Row label="Roles" value={user.roles.join(", ") || "—"} />
+            <Row label="Role" value={user.role} />
           </CardContent>
         </Card>
       </div>
@@ -120,7 +161,7 @@ export default function UserDetailPage() {
                     <p className="font-medium capitalize">{doc.doc_type.replace(/_/g, " ")}</p>
                     <p className="text-xs text-muted-foreground">
                       {doc.doc_number_masked ?? "—"}
-                      {doc.expiry_date ? ` · expires ${formatDate(doc.expiry_date)}` : ""}
+                      {doc.expires_on ? ` · expires ${formatDate(doc.expires_on)}` : ""}
                     </p>
                   </div>
                   <StatusBadge status={doc.verification_status} />

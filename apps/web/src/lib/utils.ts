@@ -23,6 +23,12 @@ export function formatDate(value: string | Date) {
   }).format(d);
 }
 
+/** Time only, e.g. "09:12 AM" — for the header attendance control's check-in/out stamp. */
+export function formatTime(value: string | Date) {
+  const d = typeof value === "string" ? new Date(value) : value;
+  return new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).format(d);
+}
+
 export function formatDateTime(value: string | Date) {
   const d = typeof value === "string" ? new Date(value) : value;
   return new Intl.DateTimeFormat("en-IN", {
@@ -49,6 +55,20 @@ export function greetingForHour(hour: number) {
   if (hour < 12) return "Good Morning";
   if (hour < 17) return "Good Afternoon";
   return "Good Evening";
+}
+
+/**
+ * "+919876543210" or "919876543210" -> "9876543210" — every rider is Indian
+ * (the app's only market), so the +91/91 in front of their own number is
+ * just noise, never information. Mirrors formatPhoneLocal in the mobile
+ * app's authValidation.ts. Anything that isn't that exact shape (already
+ * local, or some other country code) is returned unchanged rather than
+ * mangled.
+ */
+export function formatPhoneLocal(raw: string | null | undefined): string | null {
+  if (!raw) return raw ?? null;
+  const digits = raw.replace(/^\+/, "");
+  return /^91[6-9]\d{9}$/.test(digits) ? digits.slice(2) : raw;
 }
 
 export function initials(name: string) {

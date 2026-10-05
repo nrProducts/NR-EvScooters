@@ -1,4 +1,4 @@
-import { CalendarCheck, LifeBuoy, ShieldCheck, Bike, Wrench } from "lucide-react";
+import { CalendarCheck, LifeBuoy, ShieldCheck, Wrench } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/common/StatCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -15,6 +15,7 @@ import { useKycQueue } from "@/hooks/useKyc";
 import { useReportsSummary } from "@/hooks/useReports";
 import { useAdminStations, useStationSummary } from "@/hooks/useBatteryStations";
 import { hasAction } from "@/lib/permissions";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatDate, greetingForHour } from "@/lib/utils";
 
 export default function StaffDashboardPage() {
@@ -39,6 +40,8 @@ export default function StaffDashboardPage() {
     ? summary.maintenance.by_status.reported + summary.maintenance.by_status.in_progress
     : 0;
 
+  // Task queues only — fleet composition (available / maintenance / …) is the
+  // Fleet Status card below, so it isn't repeated here.
   const statCards = [
     canViewBookings && (
       <StatCard key="pickups" label="Awaiting pickup" value={pickups?.total ?? 0} icon={CalendarCheck} />
@@ -49,23 +52,17 @@ export default function StaffDashboardPage() {
     canViewKyc && (
       <StatCard key="kyc" label="Pending KYC" value={kycQueue?.total ?? 0} icon={ShieldCheck} tone="warning" />
     ),
-    canViewVehicles && summary && (
-      <StatCard key="available" label="Available vehicles" value={summary.vehicles.by_status.available} icon={Bike} tone="success" />
-    ),
     canViewMaintenance && (
-      <StatCard key="maintenance" label="Pending maintenance" value={pendingMaintenance} icon={Wrench} tone="destructive" />
+      <StatCard key="maintenance" label="Open maintenance tickets" value={pendingMaintenance} icon={Wrench} tone="warning" />
     ),
   ].filter(Boolean);
 
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {greetingForHour(new Date().getHours())}, {user?.name?.split(" ")[0] ?? "there"} 👋
-        </h1>
-        <p className="text-sm text-muted-foreground">{formatDate(new Date())} · Today's operations</p>
-      </div>
+  usePageSubtitle(
+    `${greetingForHour(new Date().getHours())}, ${user?.name?.split(" ")[0] ?? "there"} — today's operations at a glance`,
+  );
 
+  return (
+    <div className="space-y-4 animate-fade-in">
       {statCards.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{statCards}</div>
       )}

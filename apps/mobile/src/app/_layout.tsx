@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
-import { View, Text, ActivityIndicator, TouchableOpacity, Image } from "react-native";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { useCallback, useEffect, useRef } from "react";
+import { View, Text, TouchableOpacity } from "react-native";
+import { Spinner } from "../components/Spinner";
+import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -8,11 +9,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";
 import { useAuthStore } from "../store/useAuthStore";
 import { useOnboardingStore } from "../store/useOnboardingStore";
+import { useLangStore, useT } from "../i18n";
+import { useNotificationBadgeStore } from "../store/useNotificationBadgeStore";
+import { useNotificationToastStore } from "../store/useNotificationToastStore";
 import { userRepository } from "../services";
 import { DialogHost } from "../components/ui/DialogHost";
+import { NotificationToastHost } from "../components/NotificationToastHost";
 import { registerForPushNotificationsAsync } from "../lib/pushNotifications";
+import { resolveNotificationRoute } from "../lib/notificationRoute";
 import { missingEnvVars } from "../constants/env";
 import { COLORS } from "../constants/theme";
+import { SplashAnimation } from "../components/SplashAnimation";
 import "../../global.css";
 
 /**
@@ -20,9 +27,9 @@ import "../../global.css";
  * that signs in here follows the rider flow, including staff ones; there is no
  * privileged surface left to gate.
  *
- * "booking" covers booking/[modelId] and booking/billing, and
- * "battery-stations" covers both its index and [id] — Expo Router reports a
- * route's top-level segment name, not the file's bracketed param.
+ * "booking" covers booking/[modelId] (the whole book+pay flow is one screen),
+ * and "battery-stations" covers both its index and [id] — Expo Router reports
+ * a route's top-level segment name, not the file's bracketed param.
  *
  * Any segment missing here is silently replace()d to /home by the guard below,
  * with no error — which is exactly how /billing stayed unreachable from the
@@ -31,13 +38,23 @@ import "../../global.css";
 const RIDER_ROUTES = [
   "home", "my-scooter", "my-plan", "billing", "support", "kyc", "kyc-intro",
   "browse-vehicles", "booking", "notifications", "booking-history",
-  "battery-stations",
+  "battery-stations", "profile",
   // DPDPA. "privacy" covers privacy/index, notice, requests, [id] and nominee.
   "consent", "privacy",
-  // Replayed from Profile ("How SwapNgo Works") while signed in — see the
+  // The rental agreement, readable any time from Profile. Acceptance itself
+  // happens on the consent screen, not here.
+  "terms",
+  // Replayed from Profile ("How Swapngo Works") while signed in — see the
   // !hasSeenOnboarding gate below for the signed-out first-run case, which
   // doesn't rely on this list at all.
   "onboarding",
+  // Re-opened from Profile → Language at any time. The first-launch pass is
+  // handled by its own gate below, ahead of onboarding, and does not rely on
+  // this list.
+  "language",
+  // +not-found.tsx — any URL that matches no route. Allowed so the rider sees
+  // its "page not found" message and a way home, rather than a silent jump.
+  "+not-found",
 ];
 // Screens reachable while signed OUT (the login surface).
 const AUTH_ROUTES = ["index", "otp-verify", "auth-callback"];
@@ -92,12 +109,20 @@ function MisconfiguredScreen({ missing }: { missing: string[] }) {
 }
 
 export default function RootLayout() {
+  const { t } = useT();
   const missing = missingEnvVars();
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const initialising = useAuthStore((s) => s.initialising);
   const onboardingHydrated = useOnboardingStore((s) => s.hydrated);
   const hasSeenOnboarding = useOnboardingStore((s) => s.hasSeenOnboarding);
   const hydrateOnboarding = useOnboardingStore((s) => s.hydrate);
+  // Device-level, like onboarding above and for the same reason: the picker
+  // must not reappear because the rider signed out, and the app must not
+  // flash English before the stored preference has been read.
+  const langReady = useLangStore((s) => s.ready);
+  const langChosen = useLangStore((s) => s.chosen);
+  const hydrateLang = useLangStore((s) => s.hydrate);
+  const syncLangWithProfile = useLangStore((s) => s.syncWithProfile);
   const session = useAuthStore((s) => s.session);
   const profile = useAuthStore((s) => s.profile);
   const hasSeenKycIntro = useAuthStore((s) => s.hasSeenKycIntro);
@@ -108,6 +133,34 @@ export default function RootLayout() {
 
   const router = useRouter();
   const segments = useSegments();
+  // The navigator (the <Stack> below) isn't attached yet on the very first
+  // render — most visibly right after a Fast Refresh, when zustand's stores
+  // keep their in-memory state across the remount, so this effect's guards
+  // (initialising/profile/etc.) are already satisfied before expo-router's
+  // root navigation container exists. Calling replace() before that throws
+  // "Attempted to navigate before mounting the Root Layout" — `key` is only
+  // set once the container has actually mounted.
+  const navigationState = useRootNavigationState();
+
+  // Fast Refresh can re-run the routing effect below while
+  // useRootNavigationState() still reports the *previous* mount's key — the
+  // new root <Stack> hasn't attached yet, so router.replace() throws
+  // "Attempted to navigate before mounting the Root Layout" (expo-router then
+  // tries to recover with goBack(), which throws again). The effect re-runs
+  // with a valid state the moment the navigator mounts, so swallowing that
+  // one specific throw is safe and leaves routing correct.
+  const safeReplace = useCallback(
+    (href: string) => {
+      try {
+        router.replace(href as never);
+      } catch (err) {
+        if (__DEV__) {
+          console.warn("[routing] navigator not ready, will retry:", href, err);
+        }
+      }
+    },
+    [router],
+  );
 
   useEffect(() => {
     // Every path below reaches Supabase, which needs the env vars.
@@ -124,54 +177,137 @@ export default function RootLayout() {
     void hydrateOnboarding();
   }, [hydrateOnboarding]);
 
+  // Same boot step as onboarding: read the stored language before anything
+  // renders. Deliberately not awaited alongside the session — it touches no
+  // network and must not be delayed by one.
+  useEffect(() => {
+    void hydrateLang();
+  }, [hydrateLang]);
+
+  // Reconciles this device's language against the signed-in account's
+  // `preferred_language` each time a profile lands — which covers sign-in,
+  // account switching on a shared phone, and retrying a push that failed
+  // while the rider was offline. All the branching is in the store; see
+  // syncWithProfile there for which side wins in which case.
+  useEffect(() => {
+    if (!profile) return;
+    syncLangWithProfile(profile.id, profile.preferred_language);
+  }, [profile, syncLangWithProfile]);
+
   // Registers a push token once per signed-in account, not on every profile
   // refetch — keyed on the id (not a plain boolean) so switching accounts
   // within one app session re-registers for the new account instead of
   // silently leaving the device's token on the previous one. Best-effort: a
   // permission denial or network hiccup must never block sign-in/routing.
+  //
+  // Only marked done on actual success: this used to be set unconditionally
+  // before the attempt, so a single transient failure (permission dialog
+  // dismissed, a network hiccup on the POST) permanently blocked retrying for
+  // the rest of the session — the next profile refetch would see the id
+  // already "registered" and skip it, even though no token was ever saved.
   const pushTokenRegisteredFor = useRef<string | null>(null);
   useEffect(() => {
     if (!profile || pushTokenRegisteredFor.current === profile.id) return;
-    pushTokenRegisteredFor.current = profile.id;
     void (async () => {
       try {
         const token = await registerForPushNotificationsAsync();
-        if (token) await userRepository.registerPushToken(token);
-      } catch {
-        // Notifications are a nice-to-have, not a sign-in requirement.
+        if (!token) return;
+        console.log("[push] registering token with backend for user:", profile.id);
+        await userRepository.registerPushToken(token);
+        console.log("[push] token registration request succeeded");
+        pushTokenRegisteredFor.current = profile.id;
+      } catch (err) {
+        // Notifications are a nice-to-have, not a sign-in requirement — but
+        // silent-forever was the bug, so at least this is visible in dev.
+        console.warn("[push] registration failed, will retry next profile refresh", err);
       }
     })();
   }, [profile]);
 
   // Tapping a push notification navigates straight to the screen named in
   // its payload (falls back to the notification history screen).
+  //
+  // Gated on navigationState?.key for the same reason the routing effect below
+  // is: when the app is opened by tapping a notification, expo-notifications
+  // replays that response to a listener registered right after mount — which
+  // can be BEFORE the root <Stack> has attached. Navigating then throws
+  // "Attempted to navigate before mounting the Root Layout" (expo-router then
+  // tries to recover with goBack(), which throws again). Registering only once
+  // the navigator is ready still catches the buffered response.
   useEffect(() => {
+    if (!navigationState?.key) return;
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const screen = response.notification.request.content.data?.screen;
-      router.push(`/${typeof screen === "string" ? screen : "notifications"}` as never);
+      // Unknown or missing screens open the notification list instead — see
+      // lib/notificationRoute.ts for why a stored screen can't be trusted.
+      const href = resolveNotificationRoute(screen) ?? "/notifications";
+      console.log("[push] notification tapped:", response.notification.request.content.title, "-> screen:", screen, "->", href);
+      try {
+        router.push(href as never);
+      } catch (err) {
+        console.warn("[push] tap navigation failed:", href, err);
+      }
     });
     return () => sub.remove();
-  }, [router]);
+  }, [router, navigationState?.key]);
+
+  // A notification landing while the app is foregrounded no longer shows the
+  // OS banner (shouldShowBanner:false in pushNotifications.ts) — this is what
+  // shows it instead, via the themed popup, and also refreshes the header
+  // badge/list, same instant the push actually arrives rather than waiting
+  // on AppShell's polling fallback.
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      const { title, body, data } = notification.request.content;
+      console.log("[push] notification received:", title, body);
+      void useNotificationBadgeStore.getState().refresh();
+      useNotificationToastStore.getState().enqueue({
+        id: notification.request.identifier,
+        title: title ?? "Notification",
+        body: body ?? "",
+        screen: typeof data?.screen === "string" ? data.screen : undefined,
+      });
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
-    if (initialising || !onboardingHydrated) return;
+    if (!navigationState?.key) return;
+    if (initialising || !onboardingHydrated || !langReady) return;
 
-    const segs = segments as unknown as string[];
-    const current = segs[0] ?? "index";
-    const atAuthScreen = segs.length === 0 || AUTH_ROUTES.includes(current);
+    // The (tabs) group wraps Home/My Scooter/Billing/Stations/Profile
+    // for the bottom tab bar, and doesn't affect any route's URL — but
+    // useSegments() DOES include the group name literally (["(tabs)","home"],
+    // not ["home"]), so this unwraps it before comparing against
+    // RIDER_ROUTES/AUTH_ROUTES, exactly as if the group didn't exist.
+    const rawSegs = segments as unknown as string[];
+    const current = rawSegs[0] === "(tabs)" ? (rawSegs[1] ?? "home") : (rawSegs[0] ?? "index");
+    const atAuthScreen = rawSegs.length === 0 || AUTH_ROUTES.includes(current);
+
+    // Language comes before EVERYTHING, onboarding included: onboarding is
+    // three screens of prose, and showing it in a language the rider cannot
+    // read is the one failure this whole feature exists to prevent. The gate
+    // is on `chosen`, not on the language being set — the app always has a
+    // language (guessed from the device locale, else English), so anything
+    // weaker than "the rider actually picked" would skip the picker on a
+    // Tamil phone and silently decide for them.
+    if (!langChosen) {
+      if (current !== "language") safeReplace("/language");
+      return;
+    }
 
     // Device has never completed onboarding — takes priority over everything
     // else, signed in or not, so a brand-new install always sees it first.
     // Deliberately not folded into AUTH_ROUTES: see the comment on
     // RIDER_ROUTES's "onboarding" entry for the signed-in replay case.
     if (!hasSeenOnboarding) {
-      if (current !== "onboarding") router.replace("/onboarding");
+      if (current !== "onboarding") safeReplace("/onboarding");
       return;
     }
 
     if (!session) {
       // Signed out: allow the login surface (phone, OTP), bounce anything else.
-      if (!atAuthScreen) router.replace("/");
+      if (!atAuthScreen) safeReplace("/");
       return;
     }
 
@@ -179,12 +315,23 @@ export default function RootLayout() {
     // than bouncing the user to the wrong home screen and back.
     if (!profile) return;
 
+    // A staff/admin account has no `rider_profiles` row by design (see
+    // handle_new_auth_user) — `profile_completed` can NEVER become true for
+    // one, since markOnboardingComplete() is a plain UPDATE that matches zero
+    // rows when there is nothing to flip. Without this check, a staff member
+    // who opens this rider-only app with their staff Google account would
+    // save profile-setup successfully (200) and land right back on
+    // profile-setup every time, looking exactly like a broken Continue
+    // button. The blocking screen below (not a redirect) is what actually
+    // stops that loop.
+    if (profile.role !== 'rider') return;
+
     // First-ever sign-in → finish the profile first. Not just "no name yet":
     // Google sign-in auto-fills full_name from the provider profile, so
     // full_name alone can't tell "brand new" from "done onboarding".
     const needsProfile = !profile.profile_completed;
     if (needsProfile) {
-      if (current !== "profile-setup") router.replace("/profile-setup");
+      if (current !== "profile-setup") safeReplace("/profile-setup");
       return;
     }
 
@@ -194,9 +341,22 @@ export default function RootLayout() {
     // version, so publishing a revised notice re-prompts every rider here with
     // no extra code. /privacy is exempt so a rider can always re-read the
     // notice, and mid-flow screens are left alone.
-    if (!profile.consent_up_to_date) {
-      if (current !== "consent" && current !== "privacy") {
-        router.replace("/consent?next=/kyc-intro");
+    //
+    // Terms acceptance rides the SAME gate rather than getting one of its own.
+    // Both are captured on the consent screen in one pass, so a rider who owes
+    // either is sent to the same place — and a rider who owes only the terms
+    // (because a new version was published) re-confirms consent harmlessly,
+    // since recordConsents is idempotent for unchanged choices.
+    //
+    // Two separate gates would mean two sequential full-screen interruptions
+    // for what is, to the rider, one "please agree to this" moment.
+    //
+    // /privacy and /terms are exempt so a rider can always re-read either
+    // document — including from the consent screen's own links, which would
+    // otherwise bounce straight back here.
+    if (!profile.consent_up_to_date || !profile.terms_up_to_date) {
+      if (current !== "consent" && current !== "privacy" && current !== "terms") {
+        safeReplace("/consent?next=/kyc-intro");
       }
       return;
     }
@@ -208,14 +368,17 @@ export default function RootLayout() {
     // are never sent back here; only the untouched not_submitted state is.
     const kycIntroPending = profile.kyc_status === "not_submitted" && !hasSeenKycIntro;
     if (kycIntroPending) {
-      if (current !== "kyc-intro" && current !== "kyc") router.replace("/kyc-intro");
+      if (current !== "kyc-intro" && current !== "kyc") safeReplace("/kyc-intro");
       return;
     }
 
     if (atAuthScreen || current === "profile-setup" || !RIDER_ROUTES.includes(current)) {
-      router.replace("/home");
+      safeReplace("/home");
     }
-  }, [initialising, onboardingHydrated, hasSeenOnboarding, session, profile, hasSeenKycIntro, segments, router]);
+  }, [
+    navigationState?.key, initialising, onboardingHydrated, hasSeenOnboarding, session, profile,
+    hasSeenKycIntro, segments, router, safeReplace, langReady, langChosen,
+  ]);
 
   if (missing.length > 0) return <MisconfiguredScreen missing={missing} />;
 
@@ -223,21 +386,11 @@ export default function RootLayout() {
   // native splash before this shows the SNG mark alone — Android 12+ clips
   // windowSplashScreenAnimatedIcon to a circle, so the wordmark can only be
   // shown here, once JS owns the screen.
-  if (initialising || !onboardingHydrated) {
+  if (initialising || !onboardingHydrated || !langReady) {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" backgroundColor={COLORS.background} />
-        <View className="flex-1 items-center justify-center" style={{ backgroundColor: COLORS.background }}>
-          <Image
-            source={require('../../assets/images/logo-lockup.png')}
-            accessibilityLabel="SwapNgo — Swap. Ride. Go Green."
-            className="w-60 h-16"
-            resizeMode="contain"
-          />
-          <View className="mt-8">
-            <ActivityIndicator size="large" color={COLORS.primary} />
-          </View>
-        </View>
+        <SplashAnimation />
       </SafeAreaProvider>
     );
   }
@@ -253,27 +406,63 @@ export default function RootLayout() {
         <StatusBar style="dark" backgroundColor={COLORS.background} />
         <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
           {loadingProfile ? (
-            <ActivityIndicator size="large" color={COLORS.primary} />
+            <>
+              <Spinner size={32} color={COLORS.primary} />
+              {/* A bare spinner on an otherwise blank screen reads as "frozen"
+                  rather than "loading" once the button-level spinner on the
+                  screen before this one has already disappeared — this is the
+                  ONLY thing telling the rider anything is happening while
+                  GET /users/me is in flight. */}
+              <Text style={{ color: COLORS.textSecondary }} className="text-sm font-semibold mt-4">
+                {t('rootLayout.settingUpAccount')}
+              </Text>
+            </>
           ) : (
             <>
               <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
-                Couldn't load your profile
+                {t('rootLayout.couldNotLoadProfile')}
               </Text>
               <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-3 leading-relaxed">
-                {profileError ?? "Something went wrong. Please try again."}
+                {profileError ?? t('common.genericError')}
               </Text>
               <TouchableOpacity
                 onPress={() => void refreshProfile()}
                 className="mt-6 px-6 py-3 rounded-2xl"
                 style={{ backgroundColor: COLORS.primary }}
               >
-                <Text style={{ color: '#FFF' }} className="font-bold text-sm">Try Again</Text>
+                <Text style={{ color: '#FFF' }} className="font-bold text-sm">{t('common.tryAgain')}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => void signOut()} className="mt-4 px-4 py-2">
-                <Text style={{ color: COLORS.textSecondary }} className="font-medium text-xs">Sign out</Text>
+                <Text style={{ color: COLORS.textSecondary }} className="font-medium text-xs">{t('auth.signOut')}</Text>
               </TouchableOpacity>
             </>
           )}
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
+  // Same shape as the "couldn't load profile" screen above, for the other
+  // reason a signed-in account can never proceed: it's staff/admin, not a
+  // rider. See the routing effect's `profile.role !== 'rider'` guard.
+  if (session && profile && profile.role !== 'rider') {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="dark" backgroundColor={COLORS.background} />
+        <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
+          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
+            {t('rootLayout.staffAccountTitle')}
+          </Text>
+          <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-3 leading-relaxed">
+            {t('rootLayout.staffAccountBody')}
+          </Text>
+          <TouchableOpacity
+            onPress={() => void signOut()}
+            className="mt-6 px-6 py-3 rounded-2xl"
+            style={{ backgroundColor: COLORS.primary }}
+          >
+            <Text style={{ color: '#FFF' }} className="font-bold text-sm">{t('auth.signOut')}</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaProvider>
     );
@@ -290,6 +479,8 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }} />
           {/* Every confirmAction/notify call in the app surfaces here. */}
           <DialogHost />
+          {/* Foreground push popup — see NotificationToastHost.tsx. */}
+          <NotificationToastHost />
         </KeyboardProvider>
       </SafeAreaProvider>
     </QueryClientProvider>

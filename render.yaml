@@ -1,0 +1,231 @@
+# Render Blueprint — the three web deployables in this monorepo (apps/website
+# is deliberately not deployed by this blueprint — add it back the same way
+# if it's ever needed):
+#   1. backend     (apps/backend)  — Express API, Node web service
+#   2. web         (apps/web)      — admin console + its OWN separate rider
+#                                    web portal (plain React, the /rider/*
+#                                    routes) — static site (Vite)
+#   3. rider-web   (apps/mobile)   — the Expo/React Native app, exported to
+#                                    static web via Expo Router — static site
+#
+# Services 2 and 3 are NOT the same rider experience: apps/web/src/rider is a
+# separate, plain-React implementation that predates this blueprint entry;
+# apps/mobile/dist is the actual store-bound app running in a browser. Both
+# exist today — decide which one riders should actually use before pointing
+# a domain at either.
+#
+# FOLDER STRATEGY — do NOT split the repo, and do NOT set a Render "Root
+# Directory" to apps/<name>. This is a pnpm workspace: `pnpm install` must run
+# at the repo root, where pnpm-workspace.yaml + pnpm-lock.yaml live. So every
+# service:
+#   • points at this same repo, rootDir: "."  (the repo root)
+#   • builds ONLY its own app with `pnpm --filter <name> build`
+#   • publishes a different folder:
+#       backend    → runs apps/backend/dist/server.js  (Node service)
+#       web        → serves apps/web/dist              (static)
+#       rider-web  → serves apps/mobile/dist            (static)
+#
+# `buildFilter` below means a service only rebuilds when its own apps/<name>/**
+# (or a shared root file) changes.
+#
+# Secrets / cross-service URLs are `sync: false` — Render prompts for each on
+# first deploy and never stores them here. Deploy order matters for the URLs:
+# backend first, then web / rider-web (both need the backend URL). See
+# docs/DEPLOY_RENDER.md.
+#
+# CLEAN node_modules ON EVERY BUILD — the `rm -rf` at the start of each
+# buildCommand is load-bearing. Render restores the previous build's
+# node_modules from its build cache, and .npmrc sets node-linker=hoisted (the
+# Android build on Windows needs it). When a lockfile change alters an
+# already-installed package, pnpm 9.15 updates it IN PLACE, and that path
+# failed on Render with:
+#   ERR_PNPM_EEXIST: file already exists, rename
+#   '…/node_modules/react-native-css/node_modules' -> '…/react-native-css_tmp_<pid>/node_modules'
+# First seen on 2278d82 (expo 54.0.35 -> 54.0.37 changed react-native-css's
+# lockfile snapshot), taking down all three services at once. A fresh install of
+# the same lockfile succeeds, so the builds install from scratch instead of
+# patching a cached tree. Costs some install time; a build that dies on every
+# dependency bump costs more.
+#
+# The static sites also set SKIP_INSTALL_DEPS=true. Without it Render runs its
+# OWN `pnpm install` before buildCommand — before the rm -rf can run, and on
+# the cached tree — which is exactly the step that failed for web and website.
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. Backend API
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: nr-evscooters-backend
+    runtime: node
+    plan: starter
+    region: singapore # change to your closest region
+    branch: main
+    rootDir: .
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - apps/backend/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - .node-version
+        - render.yaml
+    buildCommand: rm -rf node_modules apps/*/node_modules && corepack enable && pnpm install --frozen-lockfile --prod=false --filter backend... && pnpm --filter backend build
+    startCommand: pnpm --filter backend start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22.16.0"
+
+      # --- Supabase (all three required; service-role key is backend-only) ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+      # --- KYC field encryption (two DIFFERENT 32-byte base64 secrets) ------
+      #   openssl rand -base64 32
+      - key: KYC_ENCRYPTION_KEY
+        sync: false
+      - key: KYC_HMAC_PEPPER
+        sync: false
+
+      # --- Razorpay (mandatory in production — boot fails without them) -----
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+
+      # --- Invited-staff password-set landing page (the web console URL) ---
+      - key: INVITE_REDIRECT_URL
+        sync: false
+
+      # --- Geocoding proxy (rider battery-station area search) -------------
+      - key: GEOCODE_URL
+        value: https://photon.komoot.io/api
+
+      # --- Transactional email (Resend) — optional, blank = disabled ------
+      # REQUIRED for the public website's contact form (POST /public/contact);
+      # without them that endpoint returns 503 and enquiries are lost.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: ADMIN_NOTIFICATION_EMAIL_FROM
+        sync: false
+      - key: ADMIN_APP_URL
+        sync: false
+      # Inbox receiving website contact-form queries.
+      - key: CONTACT_INBOX_EMAIL
+        value: contact@swapngo.in
+
+      # --- MSG91 (only the /auth/otp/test diagnostic) — optional ----------
+      - key: MSG91_AUTH_KEY
+        sync: false
+      - key: MSG91_OTP_TEMPLATE_ID
+        sync: false
+      - key: MSG91_SENDER_ID
+        sync: false
+
+  # ---------------------------------------------------------------------------
+  # 2. Admin console + rider web app (static)
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: nr-evscooters-web
+    runtime: static
+    branch: main
+    rootDir: .
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - apps/web/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - .node-version
+        - render.yaml
+    buildCommand: rm -rf node_modules apps/*/node_modules && corepack enable && pnpm install --frozen-lockfile --filter web... && pnpm --filter web build
+    staticPublishPath: apps/web/dist
+    # BrowserRouter — every path must fall back to index.html.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: "22.16.0"
+      # buildCommand does the (clean) install — see the note at the top.
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
+      # Full backend base URL INCLUDING /api/v1, e.g.
+      #   https://nr-evscooters-backend.onrender.com/api/v1
+      - key: VITE_API_BASE_URL
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_MAP_STYLE_URL
+        value: https://tiles.openfreemap.org/styles/liberty
+
+  # ---------------------------------------------------------------------------
+  # 3. Rider app on the web — the SAME apps/mobile (Expo/React Native) code
+  #    that ships to the Play/App Store, exported to static HTML+JS via Expo
+  #    Router's web output and served as a static site. Any change in
+  #    apps/mobile ships to this URL on the next build, same as it ships to
+  #    the next store build — one codebase, two targets.
+  #
+  #    KNOWN GAP: apps/mobile/src/lib/razorpayCheckout.ts explicitly throws
+  #    PaymentUnavailableError when Platform.OS === 'web' — every payment flow
+  #    (booking, renewal, invoice, settlement) is a no-op on this deployment
+  #    until a web Razorpay Checkout.js integration replaces the native
+  #    react-native-razorpay call on web. Everything else (browse, KYC,
+  #    billing/return screens, account, support) runs the same code as the app.
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: nr-evscooters-rider-web
+    runtime: static
+    branch: main
+    rootDir: .
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - apps/mobile/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - .node-version
+        - render.yaml
+    buildCommand: rm -rf node_modules apps/*/node_modules && corepack enable && pnpm install --frozen-lockfile --filter mobile... && pnpm --filter mobile build:web
+    staticPublishPath: apps/mobile/dist
+    # Expo Router's static export pre-renders one HTML file per route
+    # (including literal `[param].html` files for dynamic routes), but every
+    # file loads the same JS bundle and Expo Router then takes over client-side
+    # navigation. Falling back to index.html for anything unmatched — rather
+    # than trying to map each dynamic route's bracket filename by hand — means
+    # a direct link to any route, known or not yet exported, still loads and
+    # renders correctly once the JS bundle takes over. Same approach as
+    # service 2's BrowserRouter fallback above.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: "22.16.0"
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
+      # Full backend base URL INCLUDING /api/v1.
+      - key: EXPO_PUBLIC_API_URL
+        sync: false
+      - key: EXPO_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: EXPO_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: EXPO_PUBLIC_MAP_STYLE_URL
+        value: https://tiles.openfreemap.org/styles/liberty

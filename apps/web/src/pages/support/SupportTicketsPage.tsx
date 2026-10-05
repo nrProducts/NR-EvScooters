@@ -1,23 +1,26 @@
 import { useState } from "react";
-import { LifeBuoy, MoreHorizontal, PlayCircle, CheckCircle2, XCircle } from "lucide-react";
+import { PlayCircle, CheckCircle2, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { SideDrawer } from "@/components/common/SideDrawer";
+import { RiderImpactModal } from "@/components/support/RiderImpactModal";
 import { useSupportQueue, useUpdateSupportTicket } from "@/hooks/useSupport";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDateTime } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
-import type { SupportPriority, SupportStatus, SupportTicket } from "@/types";
+import type { RiderImpactDecision, SupportPriority, SupportStatus, SupportTicket } from "@/types";
 
 const TABS: { value: SupportStatus | "all"; label: string }[] = [
   { value: "all", label: "All" },
@@ -43,15 +46,47 @@ export default function SupportTicketsPage() {
   });
   const updateTicket = useUpdateSupportTicket();
   const [actionError, setActionError] = useState<string | null>(null);
+  // The ticket currently blocked on a Replace/Pause decision — the backend
+  // rejects a plain "in_progress" update with `fields.requires_rider_impact`
+  // when the ticket's vehicle is held by an active rider (see
+  // support.service.ts's updateSupportRequest), which is what opens this.
+  const [impactTicket, setImpactTicket] = useState<SupportTicket | null>(null);
 
   const handleStatusChange = (t: SupportTicket, status: SupportStatus) => {
     setActionError(null);
     updateTicket.mutate(
       { id: t.id, input: { status } },
       {
-        onSuccess: (updated) => setSelected((cur) => (cur?.id === updated.id ? updated : cur)),
-        onError: (err) =>
-          setActionError(err instanceof ApiError ? err.message : "Could not update this ticket."),
+        onSuccess: (updated) => {
+          toastSuccess("Ticket status updated");
+          setSelected((cur) => (cur?.id === updated.id ? updated : cur));
+        },
+        onError: (err) => {
+          if (status === "in_progress" && err instanceof ApiError && err.fields?.requires_rider_impact) {
+            setImpactTicket(t);
+            return;
+          }
+          setActionError(err instanceof ApiError ? err.message : "Could not update this ticket.");
+          toastError(err, "Could not update ticket status");
+        },
+      },
+    );
+  };
+
+  const handleConfirmImpact = (decision: RiderImpactDecision) => {
+    if (!impactTicket) return;
+    updateTicket.mutate(
+      { id: impactTicket.id, input: { status: "in_progress", rider_impact: decision } },
+      {
+        onSuccess: (updated) => {
+          toastSuccess(
+            decision.action === "replace" ? "Replacement vehicle assigned" : "Rider's plan paused",
+            "Ticket moved to In progress and maintenance started.",
+          );
+          setSelected((cur) => (cur?.id === updated.id ? updated : cur));
+          setImpactTicket(null);
+        },
+        onError: (err) => toastError(err, "Could not start maintenance"),
       },
     );
   };
@@ -76,11 +111,7 @@ export default function SupportTicketsPage() {
         }
         return (
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
+            <RowActionsButton label="Ticket actions" onClick={(e) => e.stopPropagation()} />
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
               {t.status !== "in_progress" && t.status !== "resolved" && (
                 <DropdownMenuItem onClick={() => handleStatusChange(t, "in_progress")}>
@@ -105,16 +136,10 @@ export default function SupportTicketsPage() {
     },
   ];
 
+  usePageSubtitle("Rider issues awaiting a response");
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center gap-2">
-        <LifeBuoy className="h-5 w-5 text-primary" />
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Support Tickets</h1>
-          <p className="text-sm text-muted-foreground">Rider issues awaiting a response</p>
-        </div>
-      </div>
-
       <Tabs value={tab} onValueChange={(v) => { setTab(v as SupportStatus | "all"); setPage(1); }}>
         <TabsList className="flex-wrap">
           {TABS.map((t) => (
@@ -153,10 +178,14 @@ export default function SupportTicketsPage() {
             <p className="text-sm">{selected.subject}</p>
             <p className="text-xs text-muted-foreground whitespace-pre-wrap">{selected.description}</p>
             <p className="text-xs text-muted-foreground">Created {formatDateTime(selected.created_at)}</p>
-            {selected.vehicle_id && selected.status !== "in_progress" && (
+            {/* `vehicle_id` on this row is always null — a ticket names a
+                rental, never a vehicle directly, so `rental_id` is the real
+                signal. */}
+            {selected.rental_id && selected.status !== "in_progress" && (
               <p className="rounded-md bg-info/10 px-3 py-2 text-xs text-info">
-                This ticket is linked to a vehicle. Setting status to "In progress" will flag that vehicle for
-                maintenance.
+                This ticket is linked to a ride. Setting status to "In progress" will flag that vehicle for
+                maintenance — if it's still assigned to an active rider, you'll be asked how to handle their plan
+                first.
               </p>
             )}
 
@@ -184,7 +213,13 @@ export default function SupportTicketsPage() {
                 onValueChange={(v) =>
                   updateTicket.mutate(
                     { id: selected.id, input: { priority: v as SupportPriority } },
-                    { onSuccess: (updated) => setSelected(updated) },
+                    {
+                      onSuccess: (updated) => {
+                        toastSuccess("Ticket priority updated");
+                        setSelected(updated);
+                      },
+                      onError: (err) => toastError(err, "Could not update ticket priority"),
+                    },
                   )
                 }
                 disabled={!canReply}
@@ -205,6 +240,15 @@ export default function SupportTicketsPage() {
           </div>
         )}
       </SideDrawer>
+
+      <RiderImpactModal
+        open={!!impactTicket}
+        ticketId={impactTicket?.id ?? null}
+        onOpenChange={(o) => !o && setImpactTicket(null)}
+        onConfirm={handleConfirmImpact}
+        isPending={updateTicket.isPending}
+        error={updateTicket.error}
+      />
     </div>
   );
 }

@@ -1,33 +1,45 @@
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Hero } from "@/components/sections/Hero";
-import { HowItWorks } from "@/components/sections/HowItWorks";
 import { Impact } from "@/components/sections/Impact";
-import { Vehicles } from "@/components/sections/Vehicles";
-import { WhySwapNgo } from "@/components/sections/WhySwapNgo";
+import { HowItWorks } from "@/components/sections/HowItWorks";
+import { WhySwapngo } from "@/components/sections/WhySwapNgo";
+import { ScooterShowcase } from "@/components/sections/ScooterShowcase";
 import { Pricing } from "@/components/sections/Pricing";
+import { BatterySwap } from "@/components/sections/BatterySwap";
 import { About } from "@/components/sections/About";
 import { Faq } from "@/components/sections/Faq";
 import { GetApp } from "@/components/sections/GetApp";
 import { Contact } from "@/components/sections/Contact";
+import { SiteDataProvider } from "@/lib/siteData";
+import { PreBookModalProvider } from "@/lib/preBookModal";
+import { GrainOverlay } from "@/components/ui/GrainOverlay";
+import { ScrollToTop } from "@/components/ui/ScrollToTop";
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main>
-        <Hero />
-        <HowItWorks />
-        <Impact />
-        <Vehicles />
-        <WhySwapNgo />
-        <Pricing />
-        <About />
-        <Faq />
-        <GetApp />
-        <Contact />
-      </main>
-      <Footer />
-    </div>
+    <SiteDataProvider>
+      <PreBookModalProvider>
+        <div className="min-h-screen bg-background">
+          <GrainOverlay />
+          <Header />
+          <main>
+            <Hero />
+            <Impact />
+            <HowItWorks />
+            <WhySwapngo />
+            <ScooterShowcase />
+            <Pricing />
+            <BatterySwap />
+            <About />
+            <Faq />
+            <GetApp />
+            <Contact />
+          </main>
+          <Footer />
+          <ScrollToTop />
+        </div>
+      </PreBookModalProvider>
+    </SiteDataProvider>
   );
 }

@@ -112,8 +112,8 @@ export async function publishNotice(
             body_en: input.body_en,
             body_ta: input.body_ta,
             body_sha256: sha,
-            purposes: ALL_PURPOSES,
-            created_by: actor.id,
+            purposes: [...ALL_PURPOSES],
+            created_by_user_id: actor.id,
         })
         .select("id, version, effective_from, body_en, body_ta, body_sha256, purposes")
         .single();
@@ -150,7 +150,7 @@ export async function publishNotice(
 interface CurrentConsentRow {
     purpose: ConsentPurpose;
     action: ConsentAction;
-    notice_version: string;
+    notice_version_snapshot: string;
     decided_at: string;
 }
 
@@ -159,7 +159,7 @@ export async function getConsentState(userId: string): Promise<ConsentState> {
 
     const { data, error } = await supabaseAdmin
         .from("v_current_consents")
-        .select("purpose, action, notice_version, decided_at")
+        .select("purpose, action, notice_version_snapshot, decided_at")
         .eq("user_id", userId);
     if (error) throw error;
 
@@ -173,7 +173,7 @@ export async function getConsentState(userId: string): Promise<ConsentState> {
             required: isRequiredPurpose(purpose),
             granted: row?.action === "granted",
             decided_at: row?.decided_at ?? null,
-            notice_version: row?.notice_version ?? null,
+            notice_version: row?.notice_version_snapshot ?? null,
         };
     });
 
@@ -200,7 +200,7 @@ export async function hasGrantedConsent(
         .from("v_current_consents")
         .select("action")
         .eq("user_id", userId)
-        .eq("purpose", purpose)
+        .eq("purpose", purpose as NonNullable<typeof purpose>)
         .maybeSingle();
     if (error) throw error;
     return (data as { action: ConsentAction } | null)?.action === "granted";
@@ -209,7 +209,7 @@ export async function hasGrantedConsent(
 export async function getConsentHistory(userId: string): Promise<ConsentHistoryItem[]> {
     const { data, error } = await supabaseAdmin
         .from("consent_records")
-        .select("id, purpose, action, notice_version, language, source, created_at, actor:actor_id(id, full_name)")
+        .select("id, purpose, action, notice_version_snapshot, language, source, created_at, actor:actor_user_id(id, full_name)")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
     if (error) throw error;
@@ -220,7 +220,7 @@ export async function getConsentHistory(userId: string): Promise<ConsentHistoryI
             id: row.id as string,
             purpose: row.purpose as ConsentPurpose,
             action: row.action as ConsentAction,
-            notice_version: row.notice_version as string,
+            notice_version: row.notice_version_snapshot as string,
             language: row.language as ConsentLanguage,
             source: row.source as ConsentSource,
             recorded_by: actor ?? null,
@@ -243,7 +243,7 @@ export async function getConsentHistory(userId: string): Promise<ConsentHistoryI
  *     screen visit would bury the real decisions and inflate a table that has
  *     an 8-year retention.
  *
- *  2. The submitted notice_version must be the live one. If a new notice was
+ *  2. The submitted notice_version_snapshot must be the live one. If a new notice was
  *     published while the screen was open, the whole submission is rejected
  *     with a 409 so the client re-fetches. Accepting it would record consent
  *     against words the rider never saw.
@@ -282,16 +282,16 @@ export async function recordConsents(
     const context = requestContext(opts.req);
     const rows = changed.map((g) => ({
         user_id: userId,
-        purpose: g.purpose,
-        action: (g.granted ? "granted" : "withdrawn") satisfies ConsentAction,
-        notice_id: notice.id,
-        notice_version: notice.version,
+        purpose: g.purpose as ConsentPurpose,
+        action: (g.granted ? "granted" : "withdrawn") as ConsentAction,
+        consent_notice_id: notice.id,
+        notice_version_snapshot: notice.version,
         language: input.language,
         source: opts.source,
-        ip: context.ip,
+        ip_address: context.ip,
         user_agent: context.userAgent,
         device_id: input.device_id ?? null,
-        actor_id: opts.actorId ?? null,
+        actor_user_id: opts.actorId ?? null,
     }));
 
     const { error } = await supabaseAdmin.from("consent_records").insert(rows);
@@ -309,7 +309,7 @@ export async function recordConsents(
             action: "consent.granted",
             entityType: "consent_record",
             entityId: userId,
-            after: { purposes: granted, notice_version: notice.version, source: opts.source },
+            after: { purposes: granted, notice_version_snapshot: notice.version, source: opts.source },
             req: opts.req,
         });
     }
@@ -320,7 +320,7 @@ export async function recordConsents(
             action: "consent.withdrawn",
             entityType: "consent_record",
             entityId: userId,
-            after: { purposes: withdrawn, notice_version: notice.version, source: opts.source },
+            after: { purposes: withdrawn, notice_version_snapshot: notice.version, source: opts.source },
             req: opts.req,
         });
     }

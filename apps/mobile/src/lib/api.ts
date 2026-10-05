@@ -9,11 +9,12 @@ export { ApiError };
 import type {
     ApiAvailability, ApiBooking, ApiBookingWithPlan, ApiConsentHistoryItem, ApiConsentNotice,
     ApiConsentState, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiErrorBody,
-    ApiInvoice, ApiKycSummary, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
-    ApiExportResult, ApiNominee, ApiPrivacyRequest, ConsentPurpose, CorrectableField,
+    ApiInvoice, ApiKycSummary, ApiLegalAcceptanceState, ApiLegalDocument, ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification,
+    ApiNominee, ApiPrivacyRequest, ApiPrivacySummary, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
-    ApiPaymentOrder, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
-    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingPayload, CreateSupportRequestPayload,
+    ApiOverdueLateFee, ApiOverdueLateFeeInvoice, ApiReturnStage, ApiVehicleDocument,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
+    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
     ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
 } from '../types/api';
@@ -114,8 +115,25 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         // /auth/logout's own 401 must not re-trigger onUnauthorized — that
         // path IS the sign-out flow, so re-firing it here is exactly what
         // turns a single bad token into an infinite sign-out loop.
-        if (path !== '/auth/logout') onUnauthorized();
-        throw new ApiError(401, 'UNAUTHENTICATED', 'Your session has expired. Please sign in again.');
+        //
+        // Neither must a 401 on a request we KNOWINGLY SENT NO TOKEN WITH.
+        // getAccessToken() returns null both when the rider is genuinely
+        // signed out AND when supabase-js cannot reach Supabase to read or
+        // refresh the session — and the second case is a network outage, not
+        // a rejected credential. Firing the global sign-out there tore down a
+        // perfectly good session because the phone briefly could not resolve
+        // supabase.co: the rider was bounced to the sign-in screen, and the
+        // stored session was wiped, so they could not get back in until the
+        // network recovered. A 401 only means "your session expired" if we
+        // actually presented one.
+        if (token && path !== '/auth/logout') onUnauthorized();
+        throw new ApiError(
+            401,
+            'UNAUTHENTICATED',
+            token
+                ? 'Your session has expired. Please sign in again.'
+                : "Couldn't verify your sign-in. Check your connection and try again.",
+        );
     }
 
     if (response.status === 204) return undefined as T;
@@ -215,7 +233,10 @@ export const api = {
     myPhotoUrl: () => request<ApiSignedUrl>('/users/me/photo/url'),
 
     registerPushToken: (token: string) =>
-        request<void>('/users/me/push-token', { method: 'POST', body: { token } }),
+        request<void>('/users/me/push-token', {
+            method: 'POST',
+            body: { token, platform: Platform.OS === 'ios' ? 'ios' : 'android' },
+        }),
 
     // --- notifications -----------------------------------------------------
     myNotifications: (params: { page?: number; pageSize?: number } = {}) =>
@@ -237,6 +258,28 @@ export const api = {
         params: { q: string; lat?: number; lng?: number },
         signal?: AbortSignal,
     ) => request<{ data: GeocodeArea[] }>('/geocode/search', { query: params, signal }),
+
+    // --- Terms & Conditions -----------------------------------------------
+    // Separate from the consent calls below on purpose: those establish a
+    // lawful basis for processing data, these record acceptance of the
+    // rental contract — the evidence behind a late fee or damage charge.
+    termsDocument: (lang: 'en' | 'ta') =>
+        request<ApiLegalDocument>('/legal/documents/terms', { query: { lang } }),
+
+    myTermsState: () => request<ApiLegalAcceptanceState>('/users/me/legal/terms'),
+
+    /**
+     * The version being displayed is sent back so the server can refuse an
+     * acceptance made against terms that were retired while the screen was
+     * open — the rider must never be recorded as agreeing to words they did
+     * not see. `language` is what they actually read, not their app-wide
+     * preference, since the Tamil body may not exist.
+     */
+    acceptTerms: (input: { version: string; language: 'en' | 'ta' }) =>
+        request<ApiLegalAcceptanceState>('/users/me/legal/acceptances', {
+            method: 'POST',
+            body: { doc_type: 'terms', ...input },
+        }),
 
     // --- DPDPA consent ----------------------------------------------------
     consentNotice: (lang: 'en' | 'ta') =>
@@ -280,12 +323,8 @@ export const api = {
     cancelPrivacyRequest: (id: string) =>
         request<ApiPrivacyRequest>(`/users/me/privacy/requests/${id}/cancel`, { method: 'POST' }),
 
-    /** Generates the bundle and returns a short-lived download link. */
-    requestDataExport: () =>
-        request<ApiExportResult>('/users/me/privacy/export', { method: 'POST' }),
-
-    exportUrl: (requestId: string) =>
-        request<ApiSignedUrl>(`/users/me/privacy/export/${requestId}/url`),
+    /** The rider's s.11 summary: what we hold, why, and who else receives it. */
+    privacySummary: () => request<ApiPrivacySummary>('/users/me/privacy/summary'),
 
     myNominee: () => request<ApiNominee>('/users/me/privacy/nominee'),
 
@@ -304,14 +343,14 @@ export const api = {
     uploadMyDocument: async (input: {
         doc_type: KycDocType;
         doc_number: string;
-        expiry_date?: string;
+        expires_on?: string;
         front: LocalFile;
         back?: LocalFile;
     }) => {
         const form = new FormData();
         form.append('doc_type', input.doc_type);
         form.append('doc_number', input.doc_number);
-        if (input.expiry_date) form.append('expiry_date', input.expiry_date);
+        if (input.expires_on) form.append('expires_on', input.expires_on);
         await appendFile(form, 'front', input.front);
         if (input.back) await appendFile(form, 'back', input.back);
         return request<ApiDocument>('/users/me/kyc/documents', { method: 'POST', form });
@@ -319,11 +358,11 @@ export const api = {
 
     updateMyDocument: async (
         documentId: string,
-        input: { doc_number?: string; expiry_date?: string; front?: LocalFile; back?: LocalFile },
+        input: { doc_number?: string; expires_on?: string; front?: LocalFile; back?: LocalFile },
     ) => {
         const form = new FormData();
         if (input.doc_number) form.append('doc_number', input.doc_number);
-        if (input.expiry_date) form.append('expiry_date', input.expiry_date);
+        if (input.expires_on) form.append('expires_on', input.expires_on);
         if (input.front) await appendFile(form, 'front', input.front);
         if (input.back) await appendFile(form, 'back', input.back);
         return request<ApiDocument>(`/users/me/kyc/documents/${documentId}`, { method: 'PATCH', form });
@@ -355,8 +394,14 @@ export const api = {
         request<ApiAvailability>(`/vehicle-models/${id}/availability`, { query: { stationId } }),
 
     // --- bookings -----------------------------------------------------
-    createBooking: (payload: CreateBookingPayload) =>
-        request<ApiBooking>('/bookings', { method: 'POST', body: payload }),
+    /**
+     * Pay-first checkout: creates a payment_orders "booking intent" only. No
+     * booking exists until this order's payment captures and the backend
+     * materialises it. Retrying with the same plan/date reuses the one open
+     * intent, so a cancelled payment does not block re-booking.
+     */
+    createBookingOrder: (payload: CreateBookingOrderPayload) =>
+        request<ApiPaymentOrder>('/payments/bookings/order', { method: 'POST', body: payload }),
 
     myCurrentBooking: () => request<ApiBookingWithPlan>('/bookings/me/current'),
 
@@ -385,6 +430,15 @@ export const api = {
     // the app only ever sends an id, never an amount.
     createPaymentOrderForBooking: (bookingId: string) =>
         request<ApiPaymentOrder>(`/payments/bookings/${bookingId}/order`, { method: 'POST' }),
+
+    /**
+     * Itemised price for a plan, before any booking exists. Read-only, so
+     * it is safe to call from a screen the rider may back out of.
+     */
+    quotePlan: (planId: string, startDay?: string) =>
+        request<ApiPlanQuote>(
+            `/payments/plans/${planId}/quote${startDay ? `?start_day=${startDay}` : ''}`,
+        ),
 
     createPaymentOrderForInvoice: (invoiceId: string) =>
         request<ApiPaymentOrder>(`/payments/invoices/${invoiceId}/order`, { method: 'POST' }),
@@ -424,6 +478,24 @@ export const api = {
         }),
 
     myRentalSettlement: () => request<ApiReturnSettlement | null>('/rentals/me/settlement'),
+
+    // Overdue Rider → Late Fee Payment → Scooter Return gate. GET is a pure
+    // preview; POST creates/reuses the payable invoice, then the normal
+    // createPaymentOrderForInvoice / verifyPayment pair pays it.
+    myOverdueLateFee: () => request<ApiOverdueLateFee>('/rentals/me/overdue-late-fee'),
+    payMyOverdueLateFee: () =>
+        request<ApiOverdueLateFeeInvoice>('/rentals/me/overdue-late-fee', { method: 'POST' }),
+
+    // Vehicle Return → Inspection → Payment Gate → Approve Return, from the
+    // rider's own side. Null once there's no return to report on.
+    myReturnStage: () => request<ApiReturnStage | null>('/rentals/me/return-stage'),
+
+    // The paperwork (RC/insurance/PUC/...) for whichever scooter the rider
+    // currently holds. Empty array (not an error) if nothing's assigned or
+    // nothing's been uploaded yet — see rentals.service.ts's currentVehicleIdForRider.
+    myVehicleDocuments: () => request<ApiVehicleDocument[]>('/rentals/me/vehicle-documents'),
+    myVehicleDocumentUrl: (documentId: string) =>
+        request<{ url: string }>(`/rentals/me/vehicle-documents/${documentId}/url`).then((r) => r.url),
 
     // --- maintenance ---------------------------------------------------
     maintenanceHistory: (params: MaintenanceHistoryParams = {}) =>

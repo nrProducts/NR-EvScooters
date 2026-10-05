@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity } from 'react-native';
+import { Spinner } from '../components/Spinner';
 import { useRouter } from 'expo-router';
 import { Bell, ChevronRight, Check } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
@@ -9,28 +10,60 @@ import { pullToRefresh } from '../components/ui/PullToRefresh';
 import { useMyNotifications } from '../hooks/useNotifications';
 import { COLORS } from '../constants/theme';
 import { formatDate } from '../constants/status';
+import { resolveNotificationRoute } from '../lib/notificationRoute';
+import { notify } from '../lib/confirm';
 import type { ApiNotification } from '../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useT } from '../i18n';
 
+/**
+ * The chrome on this screen is translated; the NOTIFICATIONS THEMSELVES are
+ * not, and that is a decision rather than an omission.
+ *
+ * `payload.title` / `payload.body` are composed by the backend
+ * (notification_types + the templating in apps/backend) and delivered as
+ * push, so the same text is already sitting in the device's notification
+ * shade in whatever language it was sent in. Translating it here would make
+ * the in-app list disagree with the banner the rider just tapped.
+ *
+ * Doing this properly means the backend rendering each notification in the
+ * recipient's `preferred_language` at send time — which is now possible,
+ * since that column exists — and is a backend change, not a mobile one. It
+ * emphatically does NOT mean a translations table: see the rationale in
+ * supabase/v2/migrations/20260905100000_user_preferred_language.sql.
+ */
 export default function NotificationsScreen() {
   // AppShell insets its drawer sheet but not screen content, so each screen
   // pads its own scroll tail — otherwise the Android nav/gesture bar covers
   // the last rows.
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useT();
   const { notifications, unreadCount, loading, refreshing, error, refresh, retry, markRead, markAllRead } =
     useMyNotifications();
 
   const openNotification = async (n: ApiNotification) => {
     if (!n.read_at) await markRead(n.id);
-    if (n.payload?.screen) router.push(`/${n.payload.screen}` as never);
+    if (!n.payload?.screen) return;
+    // Resolved rather than pushed as-is — see lib/notificationRoute.ts for
+    // how stored screens drifted out of step with this app's routes.
+    const href = resolveNotificationRoute(n.payload.screen);
+    if (!href) {
+      notify(t('notifications.unavailable.title'), t('notifications.unavailable.message'));
+      return;
+    }
+    try {
+      router.push(href as never);
+    } catch {
+      notify(t('notifications.unavailable.title'), t('notifications.unavailable.message'));
+    }
   };
 
   return (
-    <AppShell title="Notifications">
+    <AppShell title={t('notifications.title')}>
       {loading ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Spinner size={32} color={COLORS.primary} />
         </View>
       ) : error ? (
         <ErrorState message={error.message} onRetry={retry} />
@@ -44,16 +77,16 @@ export default function NotificationsScreen() {
             unreadCount > 0 ? (
               <View className="flex-row items-center justify-between px-5 pt-4 pb-2">
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-bold uppercase tracking-wider">
-                  {unreadCount} unread
+                  {t('notifications.unreadCount', { count: unreadCount })}
                 </Text>
                 <TouchableOpacity onPress={() => void markAllRead()} accessibilityRole="button">
-                  <Text style={{ color: COLORS.primary }} className="text-xs font-bold">Mark all read</Text>
+                  <Text style={{ color: COLORS.primary }} className="text-xs font-bold">{t('notifications.markAllRead')}</Text>
                 </TouchableOpacity>
               </View>
             ) : null
           }
           ListEmptyComponent={
-            <EmptyState icon={Bell} title="No notifications yet" subtitle="We'll let you know when something needs your attention." />
+            <EmptyState icon={Bell} title={t('notifications.empty.title')} subtitle={t('notifications.empty.subtitle')} />
           }
           renderItem={({ item }) => {
             const unread = !item.read_at;
@@ -75,7 +108,7 @@ export default function NotificationsScreen() {
                     style={{ color: COLORS.textPrimary }}
                     className={`text-sm ${unread ? 'font-extrabold' : 'font-semibold'}`}
                   >
-                    {item.payload?.title ?? 'Notification'}
+                    {item.payload?.title ?? t('notifications.fallbackTitle')}
                   </Text>
                   <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-1 leading-relaxed">
                     {item.payload?.body ?? ''}
@@ -84,7 +117,7 @@ export default function NotificationsScreen() {
                     {formatDate(item.created_at)}
                   </Text>
                 </View>
-                {item.payload?.screen ? <ChevronRight size={16} color={COLORS.textSecondary} /> : null}
+                {resolveNotificationRoute(item.payload?.screen) ? <ChevronRight size={16} color={COLORS.textSecondary} /> : null}
               </TouchableOpacity>
             );
           }}

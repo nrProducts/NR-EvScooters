@@ -21,6 +21,14 @@ export function useUpdateChargeRule() {
   });
 }
 
+export function useDeleteChargeRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteChargeRule(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["charge-rules"] }),
+  });
+}
+
 export function useRiderCharges(filters: api.RiderChargeFilters) {
   return useQuery({ queryKey: ["rider-charges", filters], queryFn: () => api.fetchRiderCharges(filters) });
 }
@@ -53,6 +61,14 @@ export function useUpdateDiscountRule() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: api.UpdateDiscountRuleInput }) => api.updateDiscountRule(id, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["discount-rules"] }),
+  });
+}
+
+export function useDeleteDiscountRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteDiscountRule(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["discount-rules"] }),
   });
 }

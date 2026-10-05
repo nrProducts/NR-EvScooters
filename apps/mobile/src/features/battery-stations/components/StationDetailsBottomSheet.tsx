@@ -6,6 +6,7 @@ import { COLORS } from '../../../constants/theme';
 import { StationStatusBadge } from './StationStatusBadge';
 import { formatDistance } from '../utils/distance';
 import { formatStationName, type BatteryStation } from '../types/batteryStation.types';
+import { useT } from '../../../i18n';
 
 /**
  * The station card. Not the shared ui/Sheet: that one is a Modal, which would
@@ -22,6 +23,7 @@ export const StationDetailsBottomSheet: React.FC<{
     onViewDetails: (station: BatteryStation) => void;
 }> = ({ station, distanceKm, onClose, onNavigate, onCopyCoordinates, onViewDetails }) => {
     const insets = useSafeAreaInsets();
+    const { t } = useT();
     if (!station) return null;
 
     return (
@@ -52,14 +54,14 @@ export const StationDetailsBottomSheet: React.FC<{
                             {formatStationName(station.name)}
                         </Text>
                         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold mt-0.5">
-                            Station #{station.serialNumber}
-                            {distanceKm !== null ? ` · ${formatDistance(distanceKm)} away` : ''}
+                            {t('stationSheet.stationNumber', { number: station.serialNumber })}
+                            {distanceKm !== null ? t('stationSheet.awayFrom', { distance: formatDistance(distanceKm) }) : ''}
                         </Text>
                     </View>
                     <TouchableOpacity
                         onPress={onClose}
                         accessibilityRole="button"
-                        accessibilityLabel="Close station details"
+                        accessibilityLabel={t('stationSheet.close')}
                         className="w-9 h-9 rounded-full items-center justify-center"
                         style={{ backgroundColor: COLORS.background }}
                     >
@@ -75,33 +77,33 @@ export const StationDetailsBottomSheet: React.FC<{
                     >
                         <BatteryCharging size={12} color={COLORS.primary} />
                         <Text style={{ color: COLORS.primaryPressed }} className="text-[10px] font-black ml-1.5">
-                            {station.batteryCount} BATTERIES
+                            {t('stationSheet.batteries', { count: station.batteryCount })}
                         </Text>
                     </View>
                 </View>
 
                 <View className="rounded-2xl p-4 mb-4" style={{ backgroundColor: COLORS.background }}>
-                    <DetailRow label="QIS ID(s)" value={station.qisIds.join('\n')} mono />
-                    <DetailRow label="Latitude" value={station.latitude.toFixed(6)} mono />
-                    <DetailRow label="Longitude" value={station.longitude.toFixed(6)} mono last />
+                    <DetailRow label={t('stationSheet.qisIds')} value={station.qisIds.join('\n')} mono />
+                    <DetailRow label={t('stationSheet.latitude')} value={station.latitude.toFixed(6)} mono />
+                    <DetailRow label={t('stationSheet.longitude')} value={station.longitude.toFixed(6)} mono last />
                 </View>
 
                 <View className="flex-row" style={{ gap: 10 }}>
                     <TouchableOpacity
                         onPress={() => onNavigate(station)}
                         accessibilityRole="button"
-                        accessibilityLabel={`Navigate to ${formatStationName(station.name)}`}
+                        accessibilityLabel={t('stationSheet.navigateTo', { station: formatStationName(station.name) })}
                         className="flex-1 flex-row items-center justify-center rounded-2xl"
                         style={{ backgroundColor: COLORS.primary, minHeight: 48 }}
                     >
                         <Navigation size={16} color={COLORS.white} />
-                        <Text className="text-white font-bold text-sm ml-2">Navigate</Text>
+                        <Text className="text-white font-bold text-sm ml-2">{t('stationSheet.navigate')}</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                         onPress={() => onCopyCoordinates(station)}
                         accessibilityRole="button"
-                        accessibilityLabel="Copy coordinates"
+                        accessibilityLabel={t('stationSheet.copyCoordinates')}
                         className="items-center justify-center rounded-2xl px-4"
                         style={{ backgroundColor: COLORS.background, minHeight: 48, minWidth: 48 }}
                     >
@@ -111,7 +113,7 @@ export const StationDetailsBottomSheet: React.FC<{
                     <TouchableOpacity
                         onPress={() => onViewDetails(station)}
                         accessibilityRole="button"
-                        accessibilityLabel="Open full station details"
+                        accessibilityLabel={t('stationSheet.openFullDetails')}
                         className="items-center justify-center rounded-2xl px-4"
                         style={{ backgroundColor: COLORS.background, minHeight: 48, minWidth: 48 }}
                     >

@@ -1,6 +1,8 @@
-export type MaintenanceStatus = "reported" | "in_progress" | "resolved" | "cancelled";
+/** `triaged` is new: the gap between reporting and starting work is real. */
+export type MaintenanceStatus =
+    "reported" | "triaged" | "in_progress" | "resolved" | "cancelled";
 export const MAINTENANCE_STATUSES: readonly MaintenanceStatus[] = [
-    "reported", "in_progress", "resolved", "cancelled",
+    "reported", "triaged", "in_progress", "resolved", "cancelled",
 ] as const;
 
 /**
@@ -9,9 +11,10 @@ export const MAINTENANCE_STATUSES: readonly MaintenanceStatus[] = [
  * repaired) / not_repairable (scrapped, rider permanently reassigned). Null
  * until triaged — a plain "Report issue" ticket never gets one.
  */
-export type MaintenanceOutcome = "quick_fix" | "standard_temp" | "not_repairable";
+export type MaintenanceOutcome =
+    "quick_fix" | "temp_vehicle" | "replacement" | "not_repairable";
 export const MAINTENANCE_OUTCOMES: readonly MaintenanceOutcome[] = [
-    "quick_fix", "standard_temp", "not_repairable",
+    "quick_fix", "temp_vehicle", "replacement", "not_repairable",
 ] as const;
 
 interface MaintenanceVehicleRef {
@@ -20,9 +23,12 @@ interface MaintenanceVehicleRef {
     registration_number: string;
 }
 
-interface MaintenanceTempVehicleRef extends MaintenanceVehicleRef {
-    battery_percentage: number;
-}
+/**
+ * Was `MaintenanceVehicleRef` plus `battery_percentage`. Charge level is not a
+ * vehicle column any more — nothing measured it, and it was a static 100 on
+ * every row — so a temp vehicle reference is now just a vehicle reference.
+ */
+type MaintenanceTempVehicleRef = MaintenanceVehicleRef;
 
 interface MaintenanceUserRef {
     id: string;
@@ -93,6 +99,49 @@ export interface NotRepairableInput {
 
 export interface ReassignAfterScrapInput {
     replacement_vehicle_id: string;
+}
+
+/**
+ * The decision staff make when a support ticket would flag a vehicle that's
+ * currently assigned to an active rider — see resolveSupportTicketRiderImpact
+ * in support.service.ts. "replace" reuses the same temp-swap machinery as
+ * assignTempVehicle (outcome becomes 'temp_vehicle'); "pause" freezes the
+ * rider's billing in place via pauseSubscription without touching the vehicle
+ * assignment — the vehicle itself is still triaged later like any ticket.
+ */
+export type RiderImpactDecision =
+    | { action: "replace"; replacement_vehicle_id: string }
+    | { action: "pause" };
+
+export interface RiderImpactVehicle {
+    id: string; name: string; registration_number: string; status: string;
+}
+
+export interface RiderImpactRider {
+    id: string; full_name: string; phone: string | null;
+}
+
+export interface RiderImpactPlan {
+    subscription_id: string;
+    plan_name: string | null;
+    plan_status: string | null;
+    current_period_start: string | null;
+    next_due_at: string | null;
+    /** Sum of unpaid invoice balances on this subscription. */
+    outstanding_amount: number;
+}
+
+/**
+ * What the Support Ticket page needs before it dare move a ride-linked
+ * ticket to 'in_progress' — see getRiderImpactPreview. `required: false`
+ * means the transition is safe to fire immediately (no active rider on the
+ * vehicle, or the ticket isn't ride-linked at all).
+ */
+export interface RiderImpactPreview {
+    required: boolean;
+    vehicle?: RiderImpactVehicle;
+    rider?: RiderImpactRider;
+    plan?: RiderImpactPlan;
 }
 
 /** What the rider's home screen renders — derived from their own open, displaced-by ticket, if any. */

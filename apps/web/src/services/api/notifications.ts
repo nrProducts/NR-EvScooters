@@ -3,6 +3,8 @@ import type { BroadcastResult, MyNotification, NotificationDeliveryStatus, Notif
 
 export interface NotificationFilters {
   status?: NotificationDeliveryStatus | "all";
+  /** `notification_type_code` — e.g. "admin_broadcast" to scope the fleet log to broadcasts only. */
+  notificationType?: string;
   page?: number;
   pageSize?: number;
   sortBy?: "created_at";
@@ -11,11 +13,12 @@ export interface NotificationFilters {
 
 /** GET /notifications — requireStaff. Fleet-wide log. See apps/backend/src/modules/notifications/notifications.routes.ts */
 export async function fetchNotifications(filters: NotificationFilters = {}): Promise<PaginatedResult<NotificationLogEntry>> {
-  const { status, page = 1, pageSize = 8, sortBy, sortDir } = filters;
+  const { status, notificationType, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<NotificationLogEntry>>("/notifications", {
     page,
     pageSize,
     status: status && status !== "all" ? status : undefined,
+    notificationType,
     sortBy,
     sortDir,
   });

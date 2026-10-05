@@ -1,0 +1,5 @@
+{
+    "extends": "./_shared.json",
+    "comment": "app.ts and server.ts mount every router, so this slice pulls in the entire import graph and cannot be split any further. It needs more heap than a 6 GB machine has and is therefore CI-only: run.mjs skips *.ci.json unless you name it explicitly. Everything it would check is already covered by the other slices except the router wiring itself.",
+    "include": ["../src/app.ts", "../src/server.ts", "../src/common", "../src/config", "../src/middleware", "../src/types"]
+}

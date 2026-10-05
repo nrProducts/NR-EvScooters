@@ -1,18 +1,26 @@
-/**
- * TODO: replace with SwapNgo's real support channel. The codebase has no
- * verified contact info to source this from —
- * apps/mobile/src/constants/support.ts marks its own SUPPORT_EMAIL
- * "placeholder — not real yet", and the only phone number in the database
- * (public.vendors) belongs to the fleet vendor Motovolt, not SwapNgo itself.
- * These are placeholders so the site ships complete; swap the values below
- * for the real ones when they exist.
- */
-export const CONTACT_EMAIL = "hello@swapngo.in";
-export const CONTACT_PHONE_DISPLAY = "+91 00000 00000";
-export const CONTACT_PHONE_HREF = "tel:+9100000000000";
-export const CONTACT_IS_PLACEHOLDER = true;
+/** Swapngo's real support / office details. */
+export const CONTACT_EMAIL = "contact@swapngo.in";
+export const CONTACT_IS_PLACEHOLDER = false;
+
+export const CONTACT_ADDRESS = "No. 5/61, Pillaiyar Kovil Street, Medavakkam, Chennai - 600100";
+export const MAPS_URL = "https://maps.app.goo.gl/y8Z32prKGeUHQrSBA";
 
 /** Real and DB-backed: the initial battery-swap network is Chennai-only. */
 export const SERVICE_CITY = "Chennai";
 
-export const SOCIAL_LINKS: { label: string; url: string }[] = [];
+/**
+ * The support numbers — shown in the header's top bar, the Contact section,
+ * and the footer. Same numbers as the rider apps (apps/mobile/src/constants/support.ts).
+ */
+export const CONTACT_PHONES: { display: string; href: string }[] = [
+  { display: "+91 96009 99046", href: "tel:+919600999046" },
+  { display: "+91 96009 99047", href: "tel:+919600999047" },
+];
+
+/** WhatsApp is still a placeholder — "#" so it's obviously a stand-in rather than a link that looks real but goes nowhere useful. */
+export const WHATSAPP_URL = "#";
+export const INSTAGRAM_URL = "https://www.instagram.com/swapngo.in/";
+
+export const SOCIAL_LINKS: { label: string; url: string }[] = [
+  { label: "Instagram", url: INSTAGRAM_URL },
+];

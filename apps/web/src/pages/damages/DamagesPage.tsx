@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Eye, MoreHorizontal } from "lucide-react";
+import { Eye } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,15 +12,18 @@ import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { useDamages, useDamage, useResolveDamageDispute } from "@/hooks/useDamages";
 import { useTableSort } from "@/hooks/useTableSort";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Damage, DamageStatus } from "@/types";
 
-const STATUS_OPTIONS: (DamageStatus | "all")[] = ["all", "recorded", "disputed", "resolved"];
+const STATUS_OPTIONS: (DamageStatus | "all")[] = ["all", "assessed", "disputed", "settled", "waived"];
 
 export default function DamagesPage() {
   const [searchParams] = useSearchParams();
@@ -46,11 +49,7 @@ export default function DamagesPage() {
       key: "actions",
       render: (d) => (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
+          <RowActionsButton label="Damage record actions" onClick={(e) => e.stopPropagation()} />
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => setDetailId(d.id)}>
               <Eye className="mr-2 h-4 w-4" /> View details
@@ -66,21 +65,20 @@ export default function DamagesPage() {
     },
   ];
 
+  usePageSubtitle(
+    <>
+      {data?.total ?? 0} damage records
+      {bookingId && (
+        <>
+          {" · filtered to one booking — "}
+          <Link to="/damages" className="underline">clear</Link>
+        </>
+      )}
+    </>,
+  );
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Damage Review</h1>
-        <p className="text-sm text-muted-foreground">
-          {data?.total ?? 0} damage records
-          {bookingId && (
-            <>
-              {" · filtered to one booking — "}
-              <Link to="/damages" className="underline">clear</Link>
-            </>
-          )}
-        </p>
-      </div>
-
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
           <Select
@@ -203,7 +201,13 @@ function DamageDetailDialog({ id, onOpenChange }: { id: string | null; onOpenCha
                         notes: notes.trim(),
                         resolvedAmount: resolvedAmount ? Number(resolvedAmount) : undefined,
                       },
-                      { onSuccess: () => onOpenChange(false) },
+                      {
+                        onSuccess: () => {
+                          toastSuccess("Dispute resolved");
+                          onOpenChange(false);
+                        },
+                        onError: (err) => toastError(err, "Could not resolve dispute"),
+                      },
                     );
                   }}
                 >

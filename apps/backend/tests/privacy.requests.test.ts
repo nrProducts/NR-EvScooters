@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-    ERASURE_GRACE_DAYS, EXPORT_RATE_LIMIT_HOURS, SLA_DAYS,
+    ERASURE_GRACE_DAYS, SLA_DAYS,
     graceEndsAt, slaDueAt,
 } from "../src/modules/privacy/retention.constants";
 import {
@@ -179,8 +179,11 @@ describe("updateNomineeBody", () => {
     });
 });
 
-describe("export rate limit", () => {
-    it("is at least a day, because each bundle is a full copy of the record", () => {
-        expect(EXPORT_RATE_LIMIT_HOURS).toBeGreaterThanOrEqual(24);
+describe("the access_export request type outlives the export", () => {
+    // The enum value and the SLA entry stay. Riders have historical rows
+    // quoting reference numbers, and an off-app access request is still
+    // logged as one — it is answered from the summary now instead of a file.
+    it("still carries an SLA, for requests that arrive off-app", () => {
+        expect(SLA_DAYS.access_export).toBeGreaterThan(0);
     });
 });

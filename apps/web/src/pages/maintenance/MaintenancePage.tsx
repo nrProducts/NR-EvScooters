@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, CheckCircle2, PlayCircle, XCircle, MoreHorizontal, Loader2, ClipboardCheck } from "lucide-react";
+import { Plus, CheckCircle2, PlayCircle, XCircle, ClipboardCheck } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,14 +13,17 @@ import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import {
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { TriageDialog } from "@/components/maintenance/TriageDialog";
 import { useMaintenanceTickets, useCreateMaintenanceTicket, useUpdateMaintenanceTicket } from "@/hooks/useMaintenance";
 import { useTableSort } from "@/hooks/useTableSort";
 import { useVehicles } from "@/hooks/useVehicles";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate, formatDateTime } from "@/lib/utils";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { MaintenanceStatus, MaintenanceTicket } from "@/types";
@@ -45,8 +49,11 @@ export default function MaintenancePage() {
     updateTicket.mutate(
       { id, status: ticketStatus },
       {
-        onError: (err) =>
-          setUpdateError(err instanceof ApiError ? err.message : "Could not update this ticket."),
+        onSuccess: () => toastSuccess("Ticket status updated"),
+        onError: (err) => {
+          setUpdateError(err instanceof ApiError ? err.message : "Could not update this ticket.");
+          toastError(err, "Could not update ticket status");
+        },
       },
     );
   };
@@ -80,8 +87,13 @@ export default function MaintenancePage() {
             </span>
           );
         }
-        if (t.outcome === "standard_temp") {
+        if (t.outcome === "temp_vehicle") {
           return <span className="text-xs">Temp vehicle: {t.temp_vehicle?.name ?? "—"}</span>;
+        }
+        // `replacement` is new: a permanent swap, where `temp_vehicle` is a
+        // loan the rider gives back. The old schema could not tell them apart.
+        if (t.outcome === "replacement") {
+          return <span className="text-xs">Replaced with: {t.temp_vehicle?.name ?? "—"}</span>;
         }
         return <span className="text-xs">Not repairable</span>;
       },
@@ -110,11 +122,7 @@ export default function MaintenancePage() {
         }
         return (
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
+            <RowActionsButton label="Maintenance ticket actions" />
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
               {showTriage && (
                 <DropdownMenuItem onClick={() => setTriageTarget(t)}>
@@ -146,19 +154,17 @@ export default function MaintenancePage() {
     },
   ];
 
+  usePageSubtitle(`${data?.total ?? 0} tickets · service requests, inspections and repairs`);
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Maintenance</h1>
-          <p className="text-sm text-muted-foreground">{data?.total ?? 0} tickets · service requests, inspections and repairs</p>
-        </div>
-        {hasAction(user, "maintenance", "create") && (
+      {hasAction(user, "maintenance", "create") && (
+        <div className="flex justify-end">
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" /> Report issue
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
@@ -264,11 +270,18 @@ function CreateTicketDialog({ open, onOpenChange }: { open: boolean; onOpenChang
             onClick={() =>
               createTicket.mutate(
                 { vehicle_id: vehicleId, description: description.trim() },
-                { onSuccess: () => { reset(); onOpenChange(false); } },
+                {
+                  onSuccess: () => {
+                    toastSuccess("Maintenance ticket created");
+                    reset();
+                    onOpenChange(false);
+                  },
+                  onError: (err) => toastError(err, "Could not create maintenance ticket"),
+                },
               )
             }
           >
-            {createTicket.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {createTicket.isPending && <Spinner className="h-4 w-4" />}
             Report issue
           </Button>
         </DialogFooter>

@@ -7,7 +7,7 @@ import {
 
 const AUDIT_COLUMNS = `
     id, action, entity_type, entity_id, before_data, after_data, created_at,
-    actor:users!audit_logs_actor_id_fkey(id, full_name),
+    actor:users!audit_logs_actor_user_id_fkey(id, full_name),
     target_user:users!audit_logs_target_user_id_fkey(id, full_name)
 `;
 
@@ -59,13 +59,39 @@ export async function listAuditLogs(filters: ListAuditLogsFilters): Promise<Pagi
     );
 }
 
+/**
+ * NOTE ON THE COLUMN NAMES.
+ *
+ * These were `actor_roles`, `ip` and `path` — the OLD schema's names. The
+ * writer (common/piiAccess.ts) was migrated and inserts
+ * `actor_role_snapshot` / `ip_address` / `request_path`; this reader was not,
+ * so every GET /pii-access returned a PostgREST 400 ("column
+ * pii_access_log.actor_roles does not exist") and the PII Access Log page was
+ * dead.
+ *
+ * It survived the migration because a select STRING is only type-checked when
+ * supabase-js can parse it, and it gives up on the `alias:table!fk_name(...)`
+ * embed hints used below — so the whole string degrades to an unchecked
+ * `string` and tsc has nothing to complain about. Two of these constants were
+ * wrong for that reason; see the sibling note in invoices.service.ts.
+ *
+ * `actor_role_snapshot` is also SINGULAR now: one role per user, captured at
+ * access time. It is aliased back to `actor_role` rather than `actor_roles`,
+ * because reporting one value through a plural array field was what let the
+ * console print "admin" as if it were a list.
+ */
 const PII_ACCESS_COLUMNS = `
-    id, resource, resource_id, fields, reason, context_ref, actor_roles, ip, path, created_at,
-    actor:users!pii_access_log_actor_id_fkey(id, full_name),
+    id, resource, resource_id, fields, reason, context_ref,
+    actor_role_snapshot, ip_address, request_path, created_at,
+    actor:users!pii_access_log_actor_user_id_fkey(id, full_name),
     target_user:users!pii_access_log_target_user_id_fkey(id, full_name)
 `;
 
-interface RawPiiAccessRow extends Omit<PiiAccessRow, "actor" | "target_user"> {
+interface RawPiiAccessRow
+    extends Omit<PiiAccessRow, "actor" | "target_user" | "actor_role" | "ip_address" | "request_path"> {
+    actor_role_snapshot: PiiAccessRow["actor_role"];
+    ip_address: string | null;
+    request_path: string | null;
     actor: unknown;
     target_user: unknown;
 }
@@ -83,10 +109,10 @@ export async function listPiiAccess(
 ): Promise<Paginated<PiiAccessRow>> {
     let query = supabaseAdmin.from("pii_access_log").select(PII_ACCESS_COLUMNS, { count: "exact" });
 
-    if (filters.actorId) query = query.eq("actor_id", filters.actorId);
+    if (filters.actorId) query = query.eq("actor_user_id", filters.actorId);
     if (filters.targetUserId) query = query.eq("target_user_id", filters.targetUserId);
     if (filters.resource) query = query.eq("resource", filters.resource);
-    if (filters.reason) query = query.eq("reason", filters.reason);
+    if (filters.reason) query = query.eq("reason", filters.reason as never);
     if (filters.since) query = query.gte("created_at", filters.since);
 
     const [from, to] = toRange(filters);
@@ -104,9 +130,9 @@ export async function listPiiAccess(
             fields: row.fields,
             reason: row.reason,
             context_ref: row.context_ref,
-            actor_roles: row.actor_roles,
-            ip: row.ip,
-            path: row.path,
+            actor_role: row.actor_role_snapshot,
+            ip_address: row.ip_address,
+            request_path: row.request_path,
             created_at: row.created_at,
             actor: unwrap(row.actor),
             target_user: unwrap(row.target_user),

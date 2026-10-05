@@ -2,8 +2,10 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
+import { FilterBar } from "@/components/common/FilterBar";
 import { Pagination } from "@/components/common/Pagination";
 import { usePiiAccess } from "@/hooks/usePiiAccess";
+import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { formatDateTime } from "@/lib/utils";
 import { PII_ACCESS_REASON_LABELS, type PiiAccessEntry, type PiiAccessReason } from "@/types";
 
@@ -58,7 +60,7 @@ export default function PiiAccessPage() {
       render: (row) => (
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{row.actor?.full_name ?? "Deleted account"}</p>
-          <p className="truncate text-xs text-muted-foreground">{row.actor_roles.join(", ") || "—"}</p>
+          <p className="truncate text-xs text-muted-foreground">{row.actor_role || "—"}</p>
         </div>
       ),
     },
@@ -95,39 +97,38 @@ export default function PiiAccessPage() {
     },
   ];
 
+  usePageSubtitle(
+    "Every time a member of staff opened a rider's personal data. Append-only — entries cannot be edited or deleted, including by us. Riders can see their own entries in the app.",
+  );
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">PII access log</h1>
-        <p className="text-sm text-muted-foreground">
-          Every time a member of staff opened a rider's personal data. Append-only — entries
-          cannot be edited or deleted, including by us. Riders can see their own entries in the app.
-        </p>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Select value={reason} onValueChange={(v) => { setReason(v as PiiAccessReason | "all"); setPage(1); }}>
-          <SelectTrigger className="w-56"><SelectValue placeholder="Any reason" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Any reason</SelectItem>
-            {Object.entries(REASON_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>{label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={resource} onValueChange={(v) => { setResource(v); setPage(1); }}>
-          <SelectTrigger className="w-56"><SelectValue placeholder="Any data" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Any data</SelectItem>
-            {Object.entries(RESOURCE_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>{label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       <Card>
+        <FilterBar
+          filters={
+            <>
+              <Select value={reason} onValueChange={(v) => { setReason(v as PiiAccessReason | "all"); setPage(1); }}>
+                <SelectTrigger className="w-full sm:w-56"><SelectValue placeholder="Any reason" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any reason</SelectItem>
+                  {Object.entries(REASON_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={resource} onValueChange={(v) => { setResource(v); setPage(1); }}>
+                <SelectTrigger className="w-full sm:w-56"><SelectValue placeholder="Any data" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any data</SelectItem>
+                  {Object.entries(RESOURCE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          }
+        />
         <CardContent className="p-0">
           <DataTable
             data={data?.data ?? []}

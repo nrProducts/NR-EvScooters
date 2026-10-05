@@ -2,16 +2,14 @@ import type { Request } from "express";
 import { supabaseAdmin } from "../../config/supabase";
 import { businessRule, conflict, forbidden, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
+import { businessToday } from "../../common/dates";
 import { writeAudit } from "../../common/audit";
 import { logPiiAccess } from "../../common/piiAccess";
 import type { AuthContext, Paginated } from "../../types";
-import {
-    buildExportBundle, createExportSignedUrl, storeExportBundle,
-} from "./privacy.export";
+import type { Database } from "../../types/database.types";
+import { buildPrivacySummary, type PrivacySummary } from "./privacy.summary";
 import { assertErasable, eraseUser } from "./privacy.erasure";
-import {
-    EXPORT_RATE_LIMIT_HOURS, EXPORT_URL_TTL_SECONDS, graceEndsAt, slaDueAt,
-} from "./retention.constants";
+import { graceEndsAt, slaDueAt } from "./retention.constants";
 import type {
     DpRequestStatus, DpRequestType, ListPrivacyRequestsFilters, NomineeView,
     PrivacyRequestAdminView, PrivacyRequestView,
@@ -20,22 +18,46 @@ import type {
     CreateRequestBody, ExecuteErasureBody, UpdateNomineeBody, UpdateRequestBody,
 } from "./privacy.validation";
 
+// `type:request_type` and `assignee:...assigned_to_user_id_fkey` are aliases,
+// not renames: the column and the foreign key are what the schema calls them,
+// while the wire shape both apps already read stays `type` and `assigned_to`.
 const RIDER_COLUMNS = `
-    id, reference, type, status, details, requested_changes, sla_due_at,
+    id, reference, type:request_type, status, details, requested_changes, sla_due_at,
     grace_ends_at, resolution_notes, rejection_reason, completed_at,
     created_at, updated_at
 `;
 
 const ADMIN_COLUMNS = `
-    ${RIDER_COLUMNS}, channel, ticket_ref, export_object_path,
+    ${RIDER_COLUMNS}, channel,
     rider:users!data_principal_requests_user_id_fkey(id, full_name, phone, email),
-    assignee:users!data_principal_requests_assigned_to_fkey(id, full_name)
+    assignee:users!data_principal_requests_assigned_to_user_id_fkey(id, full_name)
 `;
 
 /** Statuses from which a request can still change. */
 const OPEN_STATUSES: DpRequestStatus[] = ["open", "in_progress", "awaiting_principal"];
 
 const isClosed = (status: DpRequestStatus): boolean => !OPEN_STATUSES.includes(status);
+
+/**
+ * `data_principal_requests.reference` is `not null unique` with no default and
+ * no trigger behind it, so the backend has to mint it. Date plus eight random
+ * base32 characters: readable enough for a rider to quote over the phone, and
+ * wide enough (~10^12) that a collision is not a practical concern. The unique
+ * index is still the authority — a 23505 on insert is handled by the caller.
+ */
+const REF_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+function newReference(now: Date): string {
+    // The business day, not the UTC one: a rider who files a request at
+    // 01:00 IST quotes this reference back, and it must carry the date they
+    // and the console both think they filed it on.
+    const day = businessToday(now).replace(/-/g, "");
+    let suffix = "";
+    for (let i = 0; i < 8; i += 1) {
+        suffix += REF_ALPHABET[Math.floor(Math.random() * REF_ALPHABET.length)];
+    }
+    return `DPR-${day}-${suffix}`;
+}
 
 // ---------------------------------------------------------------------------
 // Rider: create and read
@@ -68,7 +90,8 @@ export async function createRequest(
         .from("data_principal_requests")
         .insert({
             user_id: userId,
-            type: input.type,
+            reference: newReference(now),
+            request_type: input.type,
             details: input.details ?? null,
             requested_changes: input.requested_changes
                 ? Object.fromEntries(input.requested_changes.map((c) => [c.field, c.value]))
@@ -113,7 +136,7 @@ export async function listMyRequests(
         .select(RIDER_COLUMNS, { count: "exact" })
         .eq("user_id", userId);
 
-    if (filters.type) query = query.eq("type", filters.type);
+    if (filters.type) query = query.eq("request_type", filters.type);
 
     const [from, to] = toRange(filters);
     const { data, error, count } = await query
@@ -178,131 +201,49 @@ export async function cancelMyRequest(
 }
 
 // ---------------------------------------------------------------------------
-// Rider: data export (DPDPA s.11)
+// Rider: access summary (DPDPA s.11)
 // ---------------------------------------------------------------------------
 
 /**
- * Generates the bundle synchronously.
+ * The rider reading their own s.11 summary.
  *
- * A rider's footprint is hundreds of rows; a queue would need a worker for
- * one use case, and "we'll email it to you" is a worse experience than a
- * two-second wait. If p95 ever goes bad, the request row already models the
- * asynchronous case.
+ * No request row, no rate limit and no audit entry: this is a person looking
+ * at their own record, which is the thing the right exists to permit. A
+ * queue entry per view would turn an instant answer into a 30-day SLA, and
+ * logging a rider's reads of themselves records nothing anyone can act on.
+ *
+ * A STAFF member reading it is a different act entirely — see
+ * summaryForUser(), which logs.
  */
-export async function generateExport(
+export async function getMySummary(userId: string): Promise<PrivacySummary> {
+    return buildPrivacySummary(userId);
+}
+
+/**
+ * Staff reading a rider's summary, for a request that arrived off-app.
+ *
+ * Logged to pii_access_log as a read of the rider's whole record, because
+ * that is what it is. The SOP requires the requester's identity to be
+ * verified before this is used — an access request is exactly how a
+ * social-engineering attempt on someone else's data begins.
+ */
+export async function summaryForUser(
     userId: string,
     actor: AuthContext,
     req?: Request,
-): Promise<{ request: PrivacyRequestView; url: string; expires_in: number }> {
-    await assertExportNotRateLimited(userId);
+): Promise<PrivacySummary> {
+    const summary = await buildPrivacySummary(userId);
 
-    const now = new Date();
-    const { data: created, error: createError } = await supabaseAdmin
-        .from("data_principal_requests")
-        .insert({
-            user_id: userId,
-            type: "access_export",
-            status: "in_progress",
-            sla_due_at: slaDueAt("access_export", now),
-            channel: "app",
-        })
-        .select(RIDER_COLUMNS)
-        .single();
-    if (createError) throw createError;
-
-    const request = created as unknown as PrivacyRequestView;
-
-    const bundle = await buildExportBundle(userId);
-    const stored = await storeExportBundle(userId, request.id, bundle);
-
-    const { data: completed, error: completeError } = await supabaseAdmin
-        .from("data_principal_requests")
-        .update({
-            status: "completed",
-            completed_at: new Date().toISOString(),
-            export_object_path: stored.path,
-            resolution_notes:
-                "A copy of your data was generated and made available for download. " +
-                "The file is deleted from our servers after 30 days.",
-        })
-        .eq("id", request.id)
-        .select(RIDER_COLUMNS)
-        .single();
-    if (completeError) throw completeError;
-
-    await writeAudit({
-        actorId: actor.id,
-        targetUserId: userId,
-        action: "privacy.export_generated",
-        entityType: "privacy_request",
-        entityId: request.id,
-        after: { reference: request.reference, by_staff: actor.id !== userId },
-        req,
-    });
-
-    // A staff-generated export is a read of the rider's entire record — the
-    // single largest one possible — so it is logged as such.
     await logPiiAccess({
         actor,
         targetUserId: userId,
         resource: "data_export",
-        resourceId: request.id,
         fields: ["complete_record"],
         reason: "rights_request",
-        contextRef: request.reference,
         req,
     });
 
-    return {
-        request: completed as unknown as PrivacyRequestView,
-        url: stored.url,
-        expires_in: stored.expires_in,
-    };
-}
-
-/** Re-mints the signed URL; the bundle itself is not regenerated. */
-export async function getExportUrl(
-    userId: string,
-    requestId: string,
-): Promise<{ url: string; expires_in: number }> {
-    const request = await getMyRequest(userId, requestId);
-    const { data, error } = await supabaseAdmin
-        .from("data_principal_requests")
-        .select("export_object_path")
-        .eq("id", request.id)
-        .single();
-    if (error) throw error;
-
-    const path = (data as { export_object_path: string | null }).export_object_path;
-    if (!path) {
-        throw notFound(
-            "This request has no download. It may have expired — exports are deleted " +
-            "after 30 days. Request a new copy.",
-        );
-    }
-
-    return { url: await createExportSignedUrl(path), expires_in: EXPORT_URL_TTL_SECONDS };
-}
-
-async function assertExportNotRateLimited(userId: string): Promise<void> {
-    const since = new Date(Date.now() - EXPORT_RATE_LIMIT_HOURS * 3600_000).toISOString();
-    const { data, error } = await supabaseAdmin
-        .from("data_principal_requests")
-        .select("id, created_at")
-        .eq("user_id", userId)
-        .eq("type", "access_export")
-        .gte("created_at", since)
-        .limit(1);
-    if (error) throw error;
-
-    if (data && data.length > 0) {
-        // Each bundle is the most concentrated PII artefact the system
-        // produces; generating them on a loop is both a cost and a risk.
-        throw conflict(
-            `You can download a copy of your data once every ${EXPORT_RATE_LIMIT_HOURS} hours. ` +
-            "Your most recent copy is still available from your requests list.",
-        );
-    }
+    return summary;
 }
 
 // ---------------------------------------------------------------------------
@@ -311,20 +252,25 @@ async function assertExportNotRateLimited(userId: string): Promise<void> {
 
 export async function getNominee(userId: string): Promise<NomineeView> {
     const { data, error } = await supabaseAdmin
-        .from("users")
-        .select("nominee_full_name, nominee_relationship, nominee_phone, nominee_email, nominee_updated_at")
-        .eq("id", userId)
+        .from("user_related_persons")
+        .select("full_name, relationship, phone, email, updated_at")
+        .eq("user_id", userId)
+        .eq("person_role", "nominee")
         .maybeSingle();
     if (error) throw error;
-    if (!data) throw notFound("User not found.");
 
-    const row = data as Record<string, string | null>;
+    // Absent is not an error: most riders have not named a nominee, and the
+    // five `users.nominee_*` columns this replaces were null on all of them.
+    if (!data) {
+        return { full_name: null, relationship: null, phone: null, email: null, updated_at: null };
+    }
+
     return {
-        full_name: row.nominee_full_name,
-        relationship: row.nominee_relationship,
-        phone: row.nominee_phone,
-        email: row.nominee_email,
-        updated_at: row.nominee_updated_at,
+        full_name: data.full_name,
+        relationship: data.relationship,
+        phone: data.phone,
+        email: data.email,
+        updated_at: data.updated_at,
     };
 }
 
@@ -333,16 +279,33 @@ export async function updateNominee(
     input: UpdateNomineeBody,
     req?: Request,
 ): Promise<NomineeView> {
-    const { error } = await supabaseAdmin
-        .from("users")
-        .update({
-            nominee_full_name: input.full_name,
-            nominee_relationship: input.relationship,
-            nominee_phone: input.phone ?? null,
-            nominee_email: input.email ?? null,
-            nominee_updated_at: new Date().toISOString(),
-        })
-        .eq("id", userId);
+    // A nominee is a PERSON, not five columns on the rider — which is also
+    // why an emergency contact and a nominee are now the same table with
+    // different `person_role`s, instead of one being columns and one a row.
+    //
+    // There is no unique index on (user_id, person_role), so this cannot be an
+    // upsert with an onConflict target — read first, then update or insert,
+    // the same shape `users.service.ts` uses for the emergency contact.
+    const { data: existing, error: readError } = await supabaseAdmin
+        .from("user_related_persons")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("person_role", "nominee")
+        .maybeSingle();
+    if (readError) throw readError;
+
+    const row = {
+        user_id: userId,
+        person_role: "nominee" as const,
+        full_name: input.full_name,
+        relationship: input.relationship,
+        phone: input.phone ?? null,
+        email: input.email ?? null,
+    };
+
+    const { error } = existing
+        ? await supabaseAdmin.from("user_related_persons").update(row).eq("id", existing.id)
+        : await supabaseAdmin.from("user_related_persons").insert(row);
     if (error) throw error;
 
     await writeAudit({
@@ -361,16 +324,13 @@ export async function updateNominee(
 }
 
 export async function clearNominee(userId: string, req?: Request): Promise<void> {
+    // Deleted, not blanked: the row IS the nominee, so removing them is a
+    // delete rather than five nulls.
     const { error } = await supabaseAdmin
-        .from("users")
-        .update({
-            nominee_full_name: null,
-            nominee_relationship: null,
-            nominee_phone: null,
-            nominee_email: null,
-            nominee_updated_at: null,
-        })
-        .eq("id", userId);
+        .from("user_related_persons")
+        .delete()
+        .eq("user_id", userId)
+        .eq("person_role", "nominee");
     if (error) throw error;
 
     await writeAudit({
@@ -395,9 +355,9 @@ export async function listRequests(
         .from("data_principal_requests")
         .select(ADMIN_COLUMNS, { count: "exact" });
 
-    if (filters.type) query = query.eq("type", filters.type);
+    if (filters.type) query = query.eq("request_type", filters.type);
     if (filters.status) query = query.eq("status", filters.status);
-    if (filters.assignedTo) query = query.eq("assigned_to", filters.assignedTo);
+    if (filters.assignedTo) query = query.eq("assigned_to_user_id", filters.assignedTo);
     if (filters.overdueOnly) {
         query = query.lt("sla_due_at", new Date().toISOString()).in("status", OPEN_STATUSES);
     }
@@ -428,6 +388,50 @@ export async function getRequest(id: string): Promise<PrivacyRequestAdminView> {
     return toAdminView(data as Record<string, unknown>);
 }
 
+/** Same shape as users.validation's personNameSchema — letters, spaces, apostrophes, hyphens. */
+const PERSON_NAME_RE = /^[A-Za-z\s'-]+$/;
+
+/**
+ * `full_name` is the one correctable field with no document to re-verify
+ * against, so it is the one auto-applied on completion — everything else
+ * (DOB, Aadhaar, DL details) still needs a human to check it against the
+ * document image first, per the SOP, and is applied by hand before Complete.
+ */
+async function applyRequestedNameChange(
+    before: PrivacyRequestAdminView,
+    actor: AuthContext,
+    req?: Request,
+): Promise<void> {
+    const requested = before.requested_changes?.full_name;
+    if (typeof requested !== "string") return;
+    if (!before.rider) throw businessRule("This request has no rider attached.");
+
+    const full_name = requested.trim();
+    if (full_name.length < 2 || full_name.length > 120 || !PERSON_NAME_RE.test(full_name)) {
+        throw businessRule(
+            "The requested name is not a valid full name, so it cannot be applied automatically. " +
+            "Correct it on the rider's profile first.",
+        );
+    }
+
+    const { error } = await supabaseAdmin
+        .from("users")
+        .update({ full_name })
+        .eq("id", before.rider.id);
+    if (error) throw error;
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: before.rider.id,
+        action: "privacy.correction_applied",
+        entityType: "user",
+        entityId: before.rider.id,
+        before: { full_name: before.rider.full_name },
+        after: { full_name, reference: before.reference },
+        req,
+    });
+}
+
 export async function updateRequest(
     id: string,
     input: UpdateRequestBody,
@@ -451,7 +455,17 @@ export async function updateRequest(
         );
     }
 
-    const patch: Record<string, unknown> = { ...input };
+    if (input.status === "completed" && before.type === "correction") {
+        await applyRequestedNameChange(before, actor, req);
+    }
+
+    // Built field by field rather than spread: the request body speaks the wire
+    // name `assigned_to`, the column is `assigned_to_user_id`, and a spread
+    // would send the wire name straight to PostgREST.
+    const patch: Database["public"]["Tables"]["data_principal_requests"]["Update"] = {};
+    if (input.status !== undefined) patch.status = input.status;
+    if (input.assigned_to !== undefined) patch.assigned_to_user_id = input.assigned_to;
+    if (input.resolution_notes !== undefined) patch.resolution_notes = input.resolution_notes;
     if (input.status === "completed") patch.completed_at = new Date().toISOString();
 
     const { error } = await supabaseAdmin
@@ -537,7 +551,7 @@ export async function approveErasure(
     const grace = graceEndsAt();
     const { error } = await supabaseAdmin
         .from("data_principal_requests")
-        .update({ status: "in_progress", grace_ends_at: grace, assigned_to: actor.id })
+        .update({ status: "in_progress", grace_ends_at: grace, assigned_to_user_id: actor.id })
         .eq("id", id);
     if (error) throw error;
 
@@ -641,7 +655,7 @@ async function findOpenErasure(userId: string): Promise<{ reference: string } | 
         .from("data_principal_requests")
         .select("reference")
         .eq("user_id", userId)
-        .eq("type", "erasure")
+        .eq("request_type", "erasure")
         .in("status", OPEN_STATUSES)
         .maybeSingle();
     if (error) throw error;
@@ -670,8 +684,6 @@ function toAdminView(row: Record<string, unknown>): PrivacyRequestAdminView {
         created_at: row.created_at as string,
         updated_at: (row.updated_at as string | null) ?? null,
         channel: row.channel as PrivacyRequestAdminView["channel"],
-        ticket_ref: (row.ticket_ref as string | null) ?? null,
-        export_object_path: (row.export_object_path as string | null) ?? null,
         rider: unwrap(row.rider),
         assigned_to: unwrap(row.assignee),
         is_overdue: !isClosed(status) && new Date(row.sla_due_at as string) < new Date(),

@@ -10,7 +10,8 @@ import * as damagesService from "../damages/damages.service";
 import { assertValidDamagePhoto, buildDamagePhotoPath, uploadDamagePhotoFile } from "../damages/damages.photo.storage";
 import { RecordDamageBody } from "../damages/damages.validation";
 import type { UploadedFile } from "../kyc/kyc.storage";
-import { getMySettlement } from "../returns/returns.service";
+import { getMyReturnStage, getMySettlement, getMySettlementHistory } from "../returns/returns.service";
+import * as vehiclesService from "../vehicles/vehicles.service";
 
 export async function myCurrentRentalHandler(req: AuthedRequest, res: Response) {
     res.json(await service.getMyCurrentRental(req.user!.id));
@@ -23,6 +24,32 @@ export async function myRentalHistoryHandler(req: AuthedRequest, res: Response) 
 
 export async function mySettlementHandler(req: AuthedRequest, res: Response) {
     res.json(await getMySettlement(req.user!.id));
+}
+
+export async function mySettlementHistoryHandler(req: AuthedRequest, res: Response) {
+    const page = validatedQuery<RentalHistoryQuery>(req);
+    res.json(await getMySettlementHistory(req.user!.id, page));
+}
+
+export async function myReturnStageHandler(req: AuthedRequest, res: Response) {
+    res.json(await getMyReturnStage(req.user!.id));
+}
+
+export async function myOverdueLateFeeHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.getMyOverdueLateFee(req.user!.id));
+}
+
+export async function payMyOverdueLateFeeHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.payMyOverdueLateFee(req.user!.id));
+}
+
+export async function myVehicleDocumentsHandler(req: AuthedRequest, res: Response) {
+    res.json(await vehiclesService.getVehicleDocumentsForRider(req.user!.id));
+}
+
+export async function myVehicleDocumentUrlHandler(req: AuthedRequest, res: Response) {
+    const url = await vehiclesService.getVehicleDocumentUrlForRider(req.user!.id, req.params.documentId as string);
+    res.json({ url });
 }
 
 export async function requestReturnHandler(req: AuthedRequest, res: Response) {

@@ -1,0 +1,428 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import {
+  CheckCircle2, Clock, AlertTriangle, CreditCard, RefreshCw, Undo2, X,
+} from 'lucide-react-native';
+import { Spinner } from './Spinner';
+import { InfoHint } from './ui/InfoHint';
+import { COLORS } from '../constants/theme';
+import {
+  LATE_FEE_POLICY_TITLE_KEY, lateFeePolicyExample, lateFeePolicySections,
+} from '../constants/lateFeePolicy';
+import { rentalRepository } from '../services';
+import { useDismissibleBanner } from '../lib/dismissedBanners';
+import { usePaySettlement } from './SettlementCard';
+import { computeLateReturnPenalty, effectiveDueAt, getRenewalEligibility } from '../lib/returnPolicy';
+import type { ApiOverdueLateFee, ApiRental, ApiReturnSettlement, ApiReturnStage } from '../types/api';
+import { useT, type TranslateFn } from '../i18n';
+
+function formatDay(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+interface ScooterStatusCardProps {
+  rental: ApiRental;
+  settlement: ApiReturnSettlement | null;
+  onSettlementPaid: () => void;
+}
+
+/**
+ * The ONE thing Home shows about the rider's current scooter's status and
+ * what to do about it — replaces what used to be up to three separate
+ * stacked boxes (SettlementCard's due state, ReturnStatusCard's return/
+ * payment-gate messaging, PlanStatusCard's renewal messaging). Same
+ * underlying data and actions as before, just one card, one message, one
+ * button, in priority order — a settlement actually due always outranks a
+ * renewal reminder, since an open return blocks getting a new plan anyway.
+ *
+ * Renders ABOVE ActiveRentalCard, not below it: this is the alert strip, and
+ * a warning a rider has to scroll past their own plan summary to reach is a
+ * warning that arrives too late.
+ *
+ * It carries no Renew button of its own. "Renew Plan" is the primary action
+ * on the My Plan card immediately below — one renew button on the screen,
+ * in the place the plan itself lives. The only action here is paying a
+ * return settlement, which nothing else on Home offers.
+ */
+export function ScooterStatusCard({
+  rental, settlement, onSettlementPaid,
+}: ScooterStatusCardProps) {
+  const { t } = useT();
+  const [stage, setStage] = useState<ApiReturnStage | null>(null);
+
+  const loadStage = useCallback(() => {
+    void rentalRepository.returnStage().then(setStage).catch(() => {
+      // Non-critical: the card still renders from rental/settlement alone.
+    });
+  }, []);
+  useEffect(loadStage, [loadStage]);
+  const loadStageRef = useRef(loadStage);
+  loadStageRef.current = loadStage;
+  useFocusEffect(useCallback(() => { loadStageRef.current(); }, []));
+
+  // The AUTHORITATIVE overdue figure — the same server preview the return
+  // gate and the payable invoice are built from (GET /rentals/me/overdue-
+  // late-fee -> previewOverdueLateFee). Home used to state the day count and
+  // rupee amount from a device-clock estimate of the RETURN-lateness fee,
+  // which is a different debt anchored to a different date; for a rider who
+  // has not requested a return, what they actually owe is the RENEWAL late
+  // fee, and that is what Billing bills them for. Two screens, two
+  // estimates, two numbers for one debt.
+  const [overdue, setOverdue] = useState<ApiOverdueLateFee | null>(null);
+  const loadOverdue = useCallback(() => {
+    void rentalRepository.overdueLateFee().then(setOverdue).catch(() => {
+      // Non-critical: the local estimate below stands in.
+    });
+  }, []);
+  useEffect(loadOverdue, [loadOverdue]);
+  const loadOverdueRef = useRef(loadOverdue);
+  loadOverdueRef.current = loadOverdue;
+  useFocusEffect(useCallback(() => { loadOverdueRef.current(); }, []));
+
+  const { pay, paying, payError } = usePaySettlement(
+    settlement ?? { due_invoice_id: null } as ApiReturnSettlement,
+    onSettlementPaid,
+  );
+
+  const isSettlementDue = !!settlement && settlement.due_amount > 0 && settlement.status === 'amount_due';
+  // effectiveDueAt, not return_due_at alone — the documented way to resolve
+  // the rider's real deadline (see lib/returnPolicy.ts), so a payload that
+  // ever stops coalescing server-side can't silently zero the estimate out.
+  const estimate = computeLateReturnPenalty({
+    returnDueAt: effectiveDueAt(rental),
+    maxDays: rental.max_late_fee_days,
+    feePerDay: rental.late_return_fee_per_day,
+  });
+  // Server first, estimate only until it lands (or if the call failed). These
+  // two are the RETURN-path pair — the handover day counted — which is what
+  // the recovery branch below wants, since recovery ends in the scooter coming
+  // back. The renew banner uses the other pair; see there.
+  const daysLate = overdue?.isLate ? overdue.daysLate : estimate.daysLate;
+  const lateAmount = overdue?.isLate ? overdue.lateFee : estimate.penaltyAmount;
+  const recoveryRequired = !!rental.recovery_flagged_at;
+  const overdueNow = overdue ? overdue.isLate : estimate.isLate;
+  const eligibility = getRenewalEligibility(rental.plan_status, rental.next_due_at, rental.renewal_status);
+
+  // --- Priority order: exactly one of these renders. -----------------------
+  //
+  // A branch passing `dismissKey` is INFORMATION — the rider can close it.
+  // One without is money owed or an action with a deadline (settlement due,
+  // recovery, overdue, the plan's last day), and stays until it is resolved —
+  // same rule as SettlementCard, whose amount-due variant has no close
+  // button either. Keys carry the rental and the state (plus the date that
+  // defines it), so closing "Return requested" never hides a later "Payment
+  // received", and a new rental starts with everything visible again.
+  const keyBase = `scooterStatus:${rental.id}`;
+
+  if (isSettlementDue) {
+    return (
+      <StatusShell tone="danger" icon={CreditCard} title={t('scooterStatus.paymentRequired')}>
+        <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black mt-1">
+          ₹{settlement!.due_amount.toFixed(0)}
+        </Text>
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5 mb-3">
+          {t('scooterStatus.paymentRequired.body')}
+        </Text>
+        <ActionButton
+          tone="danger"
+          onPress={() => void pay()}
+          busy={paying}
+          label={t('scooterStatus.pay', { amount: `₹${settlement!.due_amount.toFixed(0)}` })}
+        />
+        {payError ? (
+          <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mt-3">{payError}</Text>
+        ) : null}
+      </StatusShell>
+    );
+  }
+
+  if (stage?.status === 'payment_submitted') {
+    return (
+      <StatusShell tone="warning" icon={Clock} title={t('scooterStatus.paymentReceived')} dismissKey={`${keyBase}:payment_submitted`}>
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
+          {t('scooterStatus.paymentReceived.body')}
+        </Text>
+      </StatusShell>
+    );
+  }
+
+  if (stage?.status === 'ready_for_approval') {
+    return (
+      <StatusShell tone="warning" icon={Clock} title={t('scooterStatus.verificationPending')} dismissKey={`${keyBase}:ready_for_approval`}>
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
+          {t('scooterStatus.verificationPending.body')}
+        </Text>
+      </StatusShell>
+    );
+  }
+
+  // A return already requested supersedes lateness/renewal messaging — the
+  // rider has already acted, so warning them to "return your scooter" or
+  // "renew your plan" while their return is literally in flight is stale
+  // noise, not a call to action. This must outrank recoveryRequired/overdue/
+  // eligibility below, even though those are computed from the same
+  // return_due_at/expiry fields and would otherwise still read as true.
+  if (rental.return_requested_at) {
+    return (
+      <StatusShell
+        tone="warning"
+        icon={Undo2}
+        title={t('scooterStatus.returnRequested')}
+        dismissKey={`${keyBase}:return_requested:${rental.return_requested_at}`}
+      >
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
+          {t('scooterStatus.returnRequested.body')}
+        </Text>
+      </StatusShell>
+    );
+  }
+
+  if (recoveryRequired) {
+    return (
+      <StatusShell tone="danger" icon={AlertTriangle} title={t('scooterStatus.recoveryRequired')}>
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
+          {t('scooterStatus.recoveryRequired.body', { amount: `₹${lateAmount.toFixed(0)}` })}
+        </Text>
+      </StatusShell>
+    );
+  }
+
+  // ABOVE the overdue branch, not below it. A renewal that has been PAID and
+  // is waiting to activate leaves the outgoing period `current` and its
+  // due_on in the past, so the lateness maths still reads "overdue" — and a
+  // rider who has already paid was being told, in red, that a late fee was
+  // building up against them.
+  if (rental.renewal_status === 'scheduled') {
+    return (
+      <StatusShell
+        tone="success"
+        icon={RefreshCw}
+        title={t('scooterStatus.renewalScheduled')}
+        dismissKey={`${keyBase}:renewal_scheduled:${rental.scheduled_start_date ?? ''}`}
+      >
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
+          {[
+            rental.scheduled_start_date
+              ? t('scooterStatus.renewalScheduled.starts', {
+                  date: formatDay(rental.scheduled_start_date),
+                })
+              : null,
+            t('scooterStatus.renewalScheduled.body'),
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        </Text>
+      </StatusShell>
+    );
+  }
+
+  // One state, not two. "Plan expired" and "overdue by N days" were separate
+  // branches with overdue winning, so an expired rider got the lateness
+  // warning ("return your scooter as soon as possible") and never the thing
+  // they actually needed to do — renew. Renewing is what clears this fee.
+  if (overdueNow) {
+    // Priced as a RENEWAL whenever renewing is the action on offer, because
+    // the button this banner points at is "Renew Plan Now" on the card
+    // directly below. A renewal buys today as plan time, so today is not also
+    // charged as a penalty — one day fewer than the Return sheet quotes for
+    // the same date. Both figures come from the one server preview
+    // (previewOverdueLateFee), so the day count and the rupee amount on this
+    // banner always describe the same exit: 2 days at ₹334/day is ₹668, and a
+    // rider can check that. Showing the return day count beside the renewal
+    // amount is what made this read as broken.
+    const renewing = eligibility.canRenew;
+    const shownDays = renewing && overdue ? overdue.renewalDaysLate : daysLate;
+    const shownAmount = renewing && overdue ? overdue.renewalLateFee : lateAmount;
+    const feePerDay = overdue?.feePerDay ?? 0;
+
+    return (
+      <StatusShell
+        tone="danger"
+        icon={AlertTriangle}
+        // Zero days is a real state, not a bug: on the FIRST day after a plan
+        // ends, renewing costs no late fee at all (today is the day the new
+        // plan starts). "Overdue by 0 days" would be nonsense, so that day
+        // gets its own wording — and it is the one day where telling the rider
+        // to act now actually saves them money.
+        title={
+          shownDays > 1
+            ? t('scooterStatus.expired.overdueOther', { count: shownDays })
+            : shownDays === 1
+              ? t('scooterStatus.expired.overdueOne')
+              : t('scooterStatus.expired.renewToday')
+        }
+        titleAccessory={
+          <InfoHint
+            title={t(LATE_FEE_POLICY_TITLE_KEY)}
+            sections={lateFeePolicySections(t, feePerDay)}
+            example={lateFeePolicyExample(t, feePerDay)}
+            color={COLORS.danger}
+          />
+        }
+      >
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
+          {/*
+            Two sentences joined, not one interpolated string: the "what you
+            owe" half and the "what to do" half are independent, and a
+            language that orders them differently or joins them with a
+            connective can only do so if they arrive as separate keys.
+          */}
+          {shownAmount > 0
+            ? [
+                t('scooterStatus.lateFeeBuilt', { amount: `₹${shownAmount.toFixed(0)}` }),
+                renewing ? t('scooterStatus.renewToClear') : t('scooterStatus.returnAsap'),
+              ].join(' ')
+            : renewing
+              // Nothing owed YET. Saying "a late fee has built up" here would be
+              // false, and "renew to clear it" points at a debt that does not
+              // exist — the accurate and more useful message is the deadline.
+              ? feePerDay > 0
+                ? t('scooterStatus.renewFreeToday', { rate: `₹${feePerDay.toFixed(0)}` })
+                : t('scooterStatus.renewToKeepRiding')
+              : t('scooterStatus.returnAsap')}
+        </Text>
+      </StatusShell>
+    );
+  }
+
+  // Reached only when the SERVER says nothing is overdue yet. eligibility is
+  // computed off the device clock, so the two can briefly disagree for a
+  // handset set to another timezone — keep the late wording available here so
+  // that rider still gets an accurate card rather than a cheerful one.
+  if (eligibility.canRenew) {
+    const remaining = rental.next_due_at ? describeDaysLeft(rental.next_due_at, t) : null;
+    return (
+      <StatusShell
+        tone={eligibility.isLate ? 'danger' : 'primary'}
+        icon={RefreshCw}
+        title={
+          eligibility.isLate
+            ? t('scooterStatus.planExpired')
+            : rental.next_due_at
+              ? remaining
+                ? t('scooterStatus.planEndsOnWithLeft', {
+                    date: formatDay(rental.next_due_at),
+                    remaining,
+                  })
+                : t('scooterStatus.planEndsOn', { date: formatDay(rental.next_due_at) })
+              : t('scooterStatus.planStatus')
+        }
+      >
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
+          {eligibility.isLate
+            ? t('scooterStatus.renewLateFeeApplies')
+            : t('scooterStatus.renewAnyTime')}
+        </Text>
+      </StatusShell>
+    );
+  }
+
+  return (
+    <StatusShell tone="success" icon={CheckCircle2} title={t('scooterStatus.active')} dismissKey={`${keyBase}:active`}>
+      <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">{t('scooterStatus.allGood')}</Text>
+    </StatusShell>
+  );
+}
+
+/** `t` is passed in rather than hooked, since this runs outside the component. */
+function describeDaysLeft(nextDueAt: string, t: TranslateFn): string | null {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(`${nextDueAt}T00:00:00`);
+  const remaining = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  if (remaining <= 0) return null;
+  return remaining === 1
+    ? t('scooterStatus.daysLeftOne')
+    : t('scooterStatus.daysLeftOther', { count: remaining });
+}
+
+const TONE_COLOR: Record<'danger' | 'warning' | 'success' | 'primary', string> = {
+  danger: COLORS.danger, warning: COLORS.warning, success: COLORS.success, primary: COLORS.primary,
+};
+
+function StatusShell({
+  tone, icon: Icon, title, titleAccessory, dismissKey, children,
+}: {
+  tone: 'danger' | 'warning' | 'success' | 'primary';
+  icon: React.ComponentType<{ size?: number; color?: string }>;
+  title: string;
+  /** Trailing control on the title row — an InfoHint, in practice. */
+  titleAccessory?: React.ReactNode;
+  /**
+   * Makes the card closable, remembered under this key (lib/dismissedBanners).
+   * Omit for anything the rider must act on — see the priority-order note in
+   * ScooterStatusCard.
+   */
+  dismissKey?: string;
+  children: React.ReactNode;
+}) {
+  const { t } = useT();
+  // Called unconditionally; with no key the hook reports "dismissed", which
+  // is why the check below also requires a key.
+  const [dismissed, dismiss] = useDismissibleBanner(dismissKey ?? null);
+  if (dismissKey && dismissed) return null;
+
+  const tint = TONE_COLOR[tone];
+  return (
+    <View
+      className="rounded-2xl p-4 mb-5"
+      style={{
+        backgroundColor: tint + '0A', borderWidth: 1, borderColor: tint + '26',
+        shadowColor: COLORS.black, shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 1,
+      }}
+    >
+      <View className="flex-row items-center mb-1.5">
+        <Icon size={16} color={tint} />
+        {/* The title keeps flex-1 so a long one wraps rather than pushing the
+            accessory off the row. */}
+        <Text style={{ color: tint }} className="text-xs font-bold ml-2 flex-1">{title}</Text>
+        {titleAccessory}
+        {dismissKey ? (
+          <TouchableOpacity
+            onPress={dismiss}
+            accessibilityRole="button"
+            accessibilityLabel={t('ui.dismiss')}
+            // Same 14px glyph + padded hit area as SettlementCard's close.
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            className="-mr-1 -my-1 p-1 ml-2"
+          >
+            <X size={14} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function ActionButton({
+  tone, onPress, busy, label,
+}: {
+  tone: 'danger' | 'warning' | 'success' | 'primary' | 'outline';
+  onPress: () => void;
+  busy?: boolean;
+  label: string;
+}) {
+  const outline = tone === 'outline';
+  const tint = outline ? undefined : TONE_COLOR[tone];
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={busy}
+      accessibilityRole="button"
+      className="py-3 rounded-xl items-center flex-row justify-center"
+      style={outline
+        ? { borderWidth: 1, borderColor: COLORS.border, opacity: busy ? 0.6 : 1 }
+        : { backgroundColor: tint, opacity: busy ? 0.6 : 1 }}
+    >
+      {busy ? (
+        <Spinner size={14} color={outline ? COLORS.textPrimary : '#FFF'} />
+      ) : (
+        <CreditCard size={14} color={outline ? COLORS.textPrimary : '#FFF'} />
+      )}
+      <Text style={{ color: outline ? COLORS.textPrimary : '#FFF' }} className="text-xs font-bold ml-2">{label}</Text>
+    </TouchableOpacity>
+  );
+}

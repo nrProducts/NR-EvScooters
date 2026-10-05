@@ -1,55 +1,118 @@
-import { Smartphone } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { ArrowRight, Smartphone, Globe } from "lucide-react";
 import { Container } from "@/components/ui/Container";
-import { HAS_APP_LINKS, PLAY_STORE_URL, APP_STORE_URL } from "@/content/links";
+import { Blob } from "@/components/ui/Blob";
+import { Reveal } from "@/components/ui/Reveal";
+import { PLAY_STORE_URL, RIDER_WEB_URL } from "@/content/links";
+import { PRE_BOOKING_MODE } from "@/content/launchMode";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 
 /**
- * Booking, KYC, and payment all happen in the SwapNgo mobile app (Expo,
- * no live rider web flow) — so every "Book Now" CTA on this static site
- * lands here rather than a booking screen that doesn't exist yet.
+ * Booking, KYC, and payment all happen in the Swapngo mobile app (Expo,
+ * Android-only for now). There's no iOS app planned, so this offers the
+ * SAME Expo app exported to static web (swapngo-rider-web) as the second
+ * option — labeled "Web", not "iPhone": it works from any browser, Android
+ * included, not just iOS. Both platforms are shown as equal, parallel
+ * options here rather than one primary CTA plus a buried fallback, since
+ * neither path is more "correct" than the other for a given rider.
  */
 export function GetApp() {
   return (
-    <section id="get-app" className="py-20 sm:py-28">
-      <Container>
-        <div className="rounded-2xl bg-primary px-6 py-14 text-center sm:px-14">
-          <Smartphone className="mx-auto h-10 w-10 text-primary-foreground" aria-hidden />
-          <h2 className="mt-5 text-3xl font-bold tracking-tight text-primary-foreground sm:text-4xl">
-            Get the SwapNgo app
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-primary-foreground/90">
-            Booking, KYC, and payments all happen in the app. Download it to book your first ride.
-          </p>
+    <section id="get-app" className="relative overflow-hidden bg-dark py-12 sm:py-16">
+      <div aria-hidden className="pointer-events-none absolute inset-0 bg-grid-pattern opacity-[0.06]" />
+      <Blob tone="primary" className="left-1/2 top-0 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 opacity-40" />
 
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-            <StoreBadge label="Google Play" href={PLAY_STORE_URL} />
-            <StoreBadge label="App Store" href={APP_STORE_URL} />
+      <Container className="relative text-center">
+        <Reveal>
+          {/* The conversion mark: a dark tile with a single accent dot, per the spec's icon treatment. */}
+          <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-[1.25rem] border border-white/10 bg-near-black">
+            <Smartphone className="h-7 w-7 text-white" aria-hidden />
+            <span aria-hidden className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full bg-primary ring-4 ring-dark" />
           </div>
 
-          {!HAS_APP_LINKS && (
-            <p className="mt-5 text-xs font-medium uppercase tracking-wide text-primary-foreground/80">
-              Coming soon — links go live at launch
-            </p>
-          )}
-        </div>
+          <h2 className="mx-auto mt-7 max-w-xl text-balance text-section-mobile font-semibold text-white sm:text-section">
+            Ready to move?
+          </h2>
+          <p className="mx-auto mt-4 max-w-[500px] text-lg leading-relaxed text-white/70">
+            {PRE_BOOKING_MODE
+              ? "Pre-book your Swapngo ride and get the app ready — booking, KYC, and payments will all happen wherever you ride from, the moment we launch in your area."
+              : "Book your Swapngo EV and start riding — booking, KYC, and payments all happen wherever you ride from."}
+          </p>
+        </Reveal>
+
+        <Reveal className="mx-auto mt-9 grid max-w-xl gap-4 sm:grid-cols-2" delay={120}>
+          {/* While the fleet isn't ready, these stay "Coming Soon" even when
+              a real Play Store / rider-web URL IS configured — a working
+              download link would be a back door straight into the real
+              booking/payment flow every other CTA on the site now avoids. */}
+          <PlatformButton
+            icon={Smartphone}
+            eyebrow="Android App"
+            label={PRE_BOOKING_MODE ? "Coming Soon" : PLAY_STORE_URL ? "Get the app" : "Coming soon"}
+            href={PLAY_STORE_URL}
+            disabled={PRE_BOOKING_MODE || !PLAY_STORE_URL}
+            onClick={() => trackEvent("click_get_app", { platform: "android" })}
+          />
+          <PlatformButton
+            icon={Globe}
+            eyebrow="Web"
+            label={PRE_BOOKING_MODE ? "Coming Soon" : RIDER_WEB_URL ? "Ride from your browser" : "Coming soon"}
+            href={RIDER_WEB_URL}
+            disabled={PRE_BOOKING_MODE || !RIDER_WEB_URL}
+            external
+            onClick={() => trackEvent("click_get_app", { platform: "web" })}
+          />
+        </Reveal>
       </Container>
     </section>
   );
 }
 
-function StoreBadge({ label, href }: { label: string; href: string }) {
-  const disabled = !href;
+function PlatformButton({
+  icon: Icon,
+  eyebrow,
+  label,
+  href,
+  disabled,
+  external,
+  onClick,
+}: {
+  icon: LucideIcon;
+  eyebrow: string;
+  label: string;
+  href: string;
+  disabled?: boolean;
+  external?: boolean;
+  onClick?: () => void;
+}) {
   const Comp = disabled ? "span" : "a";
   return (
     <Comp
-      href={href || undefined}
-      className={cn(
-        "inline-flex h-12 items-center justify-center rounded-xl bg-white px-6 text-sm font-semibold text-foreground shadow-soft",
-        disabled ? "cursor-not-allowed opacity-60" : "transition-transform duration-200 hover:-translate-y-0.5",
-      )}
+      href={disabled ? undefined : href}
+      {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
+      {...(disabled ? {} : { onClick })}
       aria-disabled={disabled}
+      className={cn(
+        "group flex items-center gap-4 rounded-[1.75rem] border border-white/15 bg-white/5 px-6 py-5 text-left backdrop-blur",
+        disabled
+          ? "cursor-not-allowed opacity-50"
+          : "hover:border-primary/40 hover:bg-white/10",
+      )}
     >
-      {disabled ? `${label} — coming soon` : label}
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1rem] bg-primary/15">
+        <Icon className="h-5 w-5 text-primary" aria-hidden />
+      </span>
+      <span className="flex-1">
+        <span className="block text-xs font-semibold uppercase tracking-wide text-white/50">{eyebrow}</span>
+        <span className="block text-base font-semibold text-white">{label}</span>
+      </span>
+      {!disabled && (
+        <ArrowRight
+          className="h-4 w-4 shrink-0 text-white/40 group-hover:text-primary"
+          aria-hidden
+        />
+      )}
     </Comp>
   );
 }

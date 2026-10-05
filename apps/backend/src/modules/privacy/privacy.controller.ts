@@ -27,12 +27,8 @@ export async function cancelMyRequestHandler(req: AuthedRequest, res: Response) 
     res.json(await service.cancelMyRequest(req.user!.id, req.params.id as string, req));
 }
 
-export async function createMyExportHandler(req: AuthedRequest, res: Response) {
-    res.status(201).json(await service.generateExport(req.user!.id, req.user!, req));
-}
-
-export async function getMyExportUrlHandler(req: AuthedRequest, res: Response) {
-    res.json(await service.getExportUrl(req.user!.id, req.params.id as string));
+export async function getMySummaryHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.getMySummary(req.user!.id));
 }
 
 export async function getMyNomineeHandler(req: AuthedRequest, res: Response) {
@@ -78,9 +74,7 @@ export async function executeErasureHandler(req: AuthedRequest, res: Response) {
     res.json(await service.executeErasure(req.params.id as string, body, req.user!, req));
 }
 
-/** Generates an export on a rider's behalf, for a request that arrived off-app. */
-export async function exportForUserHandler(req: AuthedRequest, res: Response) {
-    res.status(201).json(
-        await service.generateExport(req.params.userId as string, req.user!, req),
-    );
+/** Reads a rider's s.11 summary on their behalf, for a request that arrived off-app. */
+export async function summaryForUserHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.summaryForUser(req.params.userId as string, req.user!, req));
 }

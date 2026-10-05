@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { Text, ScrollView } from 'react-native';
+import { Spinner } from '../../components/Spinner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppShell } from '../../components/AppShell';
+import { Markdown } from '../../components/Markdown';
 import { COLORS } from '../../constants/theme';
 import { LanguageToggle } from '../../i18n/LanguageToggle';
-import { useT, useLangStore } from '../../i18n';
+import { useT, useLangStore, documentLanguage } from '../../i18n';
 import { api } from '../../lib/api';
 import { ApiError } from '../../lib/ApiError';
 import type { ApiConsentNotice } from '../../types/api';
@@ -20,6 +22,10 @@ export default function PrivacyNoticeScreen() {
     const insets = useSafeAreaInsets();
     const { t } = useT();
     const lang = useLangStore((s) => s.lang);
+    // Legal text exists only in the languages it has actually been reviewed
+    // in — Hindi falls back to English rather than being machine-translated.
+    // See src/i18n/documentLanguage.ts.
+    const docLang = documentLanguage(lang);
     const [notice, setNotice] = useState<ApiConsentNotice | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -27,21 +33,25 @@ export default function PrivacyNoticeScreen() {
         let cancelled = false;
         setNotice(null);
         setError(null);
-        api.consentNotice(lang)
+        api.consentNotice(docLang)
             .then((data) => {
                 if (!cancelled) setNotice(data);
             })
             .catch((err) => {
                 if (!cancelled) {
                     setError(
-                        err instanceof ApiError ? err.message : 'Could not load the privacy notice.',
+                        err instanceof ApiError ? err.message : t('notice.loadFailed'),
                     );
                 }
             });
         return () => {
             cancelled = true;
         };
-    }, [lang]);
+    // `t` is a new closure every render; re-fetching on every language
+    // change would refetch the SAME English/Tamil document `docLang` already
+    // reacts to, so this only needs to depend on `docLang` itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [docLang]);
 
     return (
         <AppShell title={t('privacy.notice.link')}>
@@ -53,7 +63,7 @@ export default function PrivacyNoticeScreen() {
                         {error}
                     </Text>
                 ) : !notice ? (
-                    <ActivityIndicator color={COLORS.primary} />
+                    <Spinner size={18} color={COLORS.primary} />
                 ) : (
                     <>
                         <Text
@@ -72,78 +82,3 @@ export default function PrivacyNoticeScreen() {
         </AppShell>
     );
 }
-
-/**
- * Minimal Markdown renderer for the notice body.
- *
- * Deliberately not a dependency: the notice uses headings, paragraphs, bullets
- * and bold, and a full Markdown engine would be several hundred KB of bundle
- * for that. If the notice ever needs tables or links, revisit — do not quietly
- * extend this until it becomes one.
- */
-const Markdown: React.FC<{ body: string }> = ({ body }) => {
-    const blocks = body.trim().split(/\n{2,}/);
-
-    return (
-        <View>
-            {blocks.map((block, i) => {
-                const trimmed = block.trim();
-
-                if (trimmed.startsWith('## ')) {
-                    return (
-                        <Text
-                            key={i}
-                            style={{ color: COLORS.textPrimary }}
-                            className="text-base font-black mt-5 mb-2"
-                        >
-                            {trimmed.slice(3)}
-                        </Text>
-                    );
-                }
-                if (trimmed.startsWith('# ')) {
-                    return (
-                        <Text
-                            key={i}
-                            style={{ color: COLORS.textPrimary }}
-                            className="text-xl font-black mb-3"
-                        >
-                            {trimmed.slice(2)}
-                        </Text>
-                    );
-                }
-                if (trimmed.startsWith('- ')) {
-                    return (
-                        <View key={i} className="mb-2">
-                            {trimmed.split('\n').map((line, j) => (
-                                <View key={j} className="flex-row mb-1">
-                                    <Text style={{ color: COLORS.textSecondary }} className="text-sm mr-2">
-                                        •
-                                    </Text>
-                                    <Text
-                                        style={{ color: COLORS.textPrimary }}
-                                        className="text-[13px] font-medium leading-relaxed flex-1"
-                                    >
-                                        {stripBold(line.replace(/^[-*]\s+/, ''))}
-                                    </Text>
-                                </View>
-                            ))}
-                        </View>
-                    );
-                }
-                return (
-                    <Text
-                        key={i}
-                        style={{ color: COLORS.textPrimary }}
-                        className="text-[13px] font-medium leading-relaxed mb-3"
-                    >
-                        {stripBold(trimmed.replace(/\n/g, ' '))}
-                    </Text>
-                );
-            })}
-        </View>
-    );
-};
-
-/** Bold markers are removed rather than rendered — inline styling would need
- *  nested <Text> parsing that this renderer deliberately does not do. */
-const stripBold = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1');

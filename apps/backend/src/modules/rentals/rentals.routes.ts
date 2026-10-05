@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireModule } from "../../middleware/authorize.middleware";
+import { requireAction } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import { damagePhotoUpload } from "../damages/damages.photo.upload";
@@ -15,6 +15,13 @@ import * as v from "./rentals.validation";
  * admin route here is only ever exercised from the Vehicles page's
  * per-vehicle actions (complete ride, move to maintenance, return
  * inspection). Revisit if a dedicated Ride Management page ever ships.
+ *
+ * Those admin routes carry a specific `vehicles` ACTION rather than the
+ * coarse requireModule("vehicles"). Under the module gate, `vehicles.view`
+ * alone authorised closing a ride, moving a scooter to maintenance, rejecting
+ * a rider's return request and recording damage against them — a read-only
+ * fleet grant that could end rentals and raise charges. Same defect as the
+ * one fixed in refunds/returns/damages; found in the same sweep.
  */
 const router = Router();
 router.use(requireAuth);
@@ -29,6 +36,40 @@ router.get(
 // "Scooter Returned Successfully" / "Amount Due" card. See returns.service.ts.
 router.get("/me/settlement", asyncHandler(c.mySettlementHandler));
 
+// Every past settlement, paginated — the rider's own Billing "Past Rentals"
+// history, distinct from the singular /me/settlement above. See
+// getMySettlementHistory in returns.service.ts for why this exists.
+router.get(
+    "/me/settlements",
+    validate({ query: v.rentalHistoryQuery }),
+    asyncHandler(c.mySettlementHistoryHandler),
+);
+
+// Vehicle Return → Inspection → Payment Gate → Approve Return, from the
+// rider's own side — Payment Required/Submitted/Ready for Approval/
+// Completed. Same derivation the admin Return Detail page uses (returns
+// .service.ts's computeReturnStage), so the two can never disagree.
+router.get("/me/return-stage", asyncHandler(c.myReturnStageHandler));
+
+// Overdue Rider → Late Fee Payment → Scooter Return gate. GET is a pure
+// preview (safe on every screen load); POST creates/reuses the payable
+// invoice, which the rider then pays through the normal
+// POST /payments/invoices/:id/order + /payments/verify flow — see
+// overdueLateFee.ts for why this reuses the existing payment pipeline.
+router.get("/me/overdue-late-fee", asyncHandler(c.myOverdueLateFeeHandler));
+router.post("/me/overdue-late-fee", asyncHandler(c.payMyOverdueLateFeeHandler));
+
+// The paperwork (RC/insurance/PUC/...) for whichever scooter the rider
+// currently holds. Resolved server-side from their own active rental —
+// there's no vehicle id in this URL for a rider to substitute another
+// vehicle's. See vehicles.service.ts's currentVehicleIdForRider.
+router.get("/me/vehicle-documents", asyncHandler(c.myVehicleDocumentsHandler));
+router.get(
+    "/me/vehicle-documents/:documentId/url",
+    validate({ params: v.vehicleDocumentIdParam }),
+    asyncHandler(c.myVehicleDocumentUrlHandler),
+);
+
 // Rider-initiated post-pickup return REQUEST. Scoped to the caller's own
 // rental inside the service, so no requireStaff. Does not end the ride —
 // staff close it via POST /:id/complete below, which settles any late fee.
@@ -40,28 +81,28 @@ router.post(
 
 router.get(
     "/",
-    requireModule("vehicles"),
+    requireAction("vehicles", "view"),
     validate({ query: v.listRentalsQuery }),
     asyncHandler(c.listRentalsHandler),
 );
 
 router.get(
     "/:id",
-    requireModule("vehicles"),
+    requireAction("vehicles", "view"),
     validate({ params: v.rentalIdParam }),
     asyncHandler(c.getRentalHandler),
 );
 
 router.post(
     "/:id/complete",
-    requireModule("vehicles"),
+    requireAction("vehicles", "edit"),
     validate({ params: v.rentalIdParam, body: v.completeRideBody }),
     asyncHandler(c.completeRideHandler),
 );
 
 router.post(
     "/:id/maintenance",
-    requireModule("vehicles"),
+    requireAction("vehicles", "edit"),
     validate({ params: v.rentalIdParam, body: v.moveToMaintenanceBody }),
     asyncHandler(c.moveToMaintenanceHandler),
 );
@@ -73,7 +114,7 @@ router.post(
 // back to being a normal active ride with no return pending.
 router.post(
     "/:id/return-reject",
-    requireModule("vehicles"),
+    requireAction("vehicles", "edit"),
     validate({ params: v.rentalIdParam, body: v.rejectReturnBody }),
     asyncHandler(c.rejectReturnHandler),
 );
@@ -83,7 +124,7 @@ router.post(
 // late fee); a no-damage return never touches this endpoint at all.
 router.post(
     "/:id/return-inspection",
-    requireModule("vehicles"),
+    requireAction("vehicles", "edit"),
     validate({ params: damageRentalIdParam }),
     damagePhotoUpload,
     validate({ body: recordDamageBody }),

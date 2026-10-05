@@ -17,6 +17,34 @@ export const createBookingBody = z.object({
 
 export type CreateBookingBody = z.infer<typeof createBookingBody>;
 
+export const adminCreateBookingBody = z.object({
+    user_id: z.string().uuid("Select a rider."),
+    vehicle_model_id: z.string().uuid("A valid vehicle model id is required."),
+    station_id: z.string().uuid("A valid station id is required."),
+    plan_id: z.string().uuid("A valid plan id is required."),
+    start_day: startDaySchema,
+    /** Override the plan's duration for this booking (derived from the end date the admin picks). */
+    duration_days: z.number().int().min(1).max(366).optional(),
+    payment: z.object({
+        method: z.enum(["upi", "card", "netbanking", "wallet", "cash"]),
+        status: z.enum(["paid", "pending"]),
+        /** Default true. False removes the auto transaction-fee line from the bill. */
+        apply_transaction_fee: z.boolean().optional(),
+        /** Default true. False removes the auto welcome-discount line from the bill. */
+        apply_welcome_discount: z.boolean().optional(),
+        /**
+         * Pricing-rule codes the operator chose NOT to apply — each matching
+         * auto-generated adjustment line is voided off the invoice. Generalises
+         * the two booleans above to any active charge/discount rule.
+         */
+        exclude_pricing_codes: z.array(z.string().regex(/^[a-z][a-z0-9_]*$/).max(64)).max(50).optional(),
+        /** Exact amount collected — a manual adjustment line reconciles the invoice to it. */
+        amount: z.number().min(0).max(10_000_000).optional(),
+    }).optional(),
+});
+
+export type AdminCreateBookingBody = z.infer<typeof adminCreateBookingBody>;
+
 export const bookingIdParam = z.object({ id: z.string().uuid("A valid booking id is required.") });
 
 export const pickupQueueQuery = z.object({
@@ -28,7 +56,8 @@ export const pickupQueueQuery = z.object({
         .enum(["pending_payment", "confirmed", "cancelled", "expired", "fulfilled", "completed"])
         .optional(),
     /** Further narrows a 'fulfilled' view into Active/Due/Paused. Ignored for any other status. */
-    planStatus: z.enum(["active", "due", "paused"]).optional(),
+    // `due` is `past_due` on subscriptions.status.
+    planStatus: z.enum(["active", "past_due", "paused"]).optional(),
     /** Rental Operations' "Scheduled Renewals" tab — fulfilled bookings that have paid ahead. */
     renewalStatus: z.enum(["scheduled"]).optional(),
     /** Rental Operations' "Return Requests" tab — only bookings whose active rental has a pending return. */
@@ -37,7 +66,9 @@ export const pickupQueueQuery = z.object({
     unassigned: z.coerce.boolean().optional(),
     /** Matches rider name/phone, vehicle registration number, booking id, or rental id. */
     search: z.string().trim().max(200).optional(),
-    sortBy: z.enum(["created_at", "start_day", "next_due_at"]).default("created_at"),
+    // `next_due_at` is gone as a sort key: it lives on the subscription's
+    // current period now, and PostgREST cannot order a parent by a grandchild.
+    sortBy: z.enum(["created_at", "requested_start_on"]).default("created_at"),
     sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 

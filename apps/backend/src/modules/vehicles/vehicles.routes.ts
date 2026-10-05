@@ -3,7 +3,7 @@ import { requireAuth } from "../../middleware/auth.middleware";
 import { requireAction } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
-import { vehiclePhotoUpload } from "./vehicles.photo.upload";
+import { vehicleDocumentUpload } from "./vehicles.documents.upload";
 import * as c from "./vehicles.controller";
 import * as v from "./vehicles.validation";
 
@@ -41,6 +41,18 @@ router.patch(
 
 router.post("/:id/assign", requireAuth, requireAction("vehicles", "assign"), asyncHandler(c.assignVehicleHandler));
 
+// Reclaims the vehicle from its current rider — opens the same return-review
+// pipeline a rider's own "Request Return" does (Inspection → Payment Gate →
+// Approve Return, including the maintenance-or-available choice there).
+// Same permission as assigning: it governs the assignment relationship in
+// both directions.
+router.post(
+    "/:id/unassign",
+    requireAction("vehicles", "assign"),
+    validate({ params: v.uuidParam, body: v.unassignVehicleBody }),
+    asyncHandler(c.unassignVehicleHandler),
+);
+
 router.post(
     "/:id/assign-to-user",
     requireAction("vehicles", "assign"),
@@ -48,26 +60,48 @@ router.post(
     asyncHandler(c.assignVehicleToUserHandler),
 );
 
-router.post(
-    "/:id/photos",
-    requireAction("vehicles", "edit"),
-    validate({ params: v.uuidParam }),
-    vehiclePhotoUpload,
-    asyncHandler(c.uploadVehiclePhotoHandler),
-);
-
-router.delete(
-    "/:id/photos/:photoId",
-    requireAction("vehicles", "edit"),
-    validate({ params: v.photoIdParam }),
-    asyncHandler(c.deleteVehiclePhotoHandler),
-);
+// POST /:id/photos and DELETE /:id/photos/:photoId are gone with the
+// `vehicle_photos` table — see the note in vehicles.controller.ts.
 
 router.post(
     "/:id/scrap",
     requireAction("vehicles", "delete"),
     validate({ params: v.uuidParam, body: v.scrapVehicleBody }),
     asyncHandler(c.scrapVehicleHandler),
+);
+
+// --- vehicle documents (RC / insurance / PUC / fitness / permit) --------
+// Same "edit" grant as the vehicle record itself — a document IS part of the
+// vehicle's record, not a separate resource with its own permission surface.
+
+router.post(
+    "/:id/documents",
+    requireAction("vehicles", "edit"),
+    vehicleDocumentUpload,
+    validate({ params: v.uuidParam, body: v.createVehicleDocumentBody }),
+    asyncHandler(c.createVehicleDocumentHandler),
+);
+
+router.patch(
+    "/documents/:documentId",
+    requireAction("vehicles", "edit"),
+    vehicleDocumentUpload,
+    validate({ params: v.documentIdParam, body: v.updateVehicleDocumentBody }),
+    asyncHandler(c.updateVehicleDocumentHandler),
+);
+
+router.delete(
+    "/documents/:documentId",
+    requireAction("vehicles", "edit"),
+    validate({ params: v.documentIdParam }),
+    asyncHandler(c.deleteVehicleDocumentHandler),
+);
+
+router.get(
+    "/documents/:documentId/url",
+    requireAction("vehicles", "view"),
+    validate({ params: v.documentIdParam }),
+    asyncHandler(c.vehicleDocumentUrlHandler),
 );
 
 export default router;

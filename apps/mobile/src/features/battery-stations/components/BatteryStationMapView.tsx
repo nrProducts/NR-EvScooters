@@ -15,6 +15,7 @@ import {
     type BatteryStationMapHandle, type BatteryStationMapProps,
 } from './mapContract';
 import type { Coordinates } from '../utils/distance';
+import { useT } from '../../../i18n';
 
 /**
  * The real map. This module is the ONLY one that imports maplibre, and it is
@@ -30,6 +31,7 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
     { stations, selectedStationId, onSelectStation, onPressMap, userCoords },
     ref,
 ) {
+    const { t } = useT();
     const cameraRef = useRef<CameraRef>(null);
     const sourceRef = useRef<GeoJSONSourceRef>(null);
     // Mirrors the camera so zoomBy has something to increment; MapLibre's own
@@ -162,7 +164,7 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
                     lngLat={[userCoords.longitude, userCoords.latitude]}
                     anchor="center"
                 >
-                    <View className="items-center justify-center" accessibilityLabel="Your location">
+                    <View className="items-center justify-center" accessibilityLabel={t('mapControl.yourLocation')}>
                         <View
                             className="absolute w-10 h-10 rounded-full"
                             style={{ backgroundColor: COLORS.primary + '33' }}

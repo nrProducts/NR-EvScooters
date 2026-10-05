@@ -28,7 +28,7 @@ export function computeInitialKycStep(
 ): KycStep {
   if (!profile?.profile_photo_url) return 0;
   if (!profile.emergency_contact_name || !profile.emergency_contact_phone) return 1;
-  if (!isOnFile(kyc?.documents.find((d) => d.doc_type === 'aadhaar'))) return 2;
-  if (!isOnFile(kyc?.documents.find((d) => d.doc_type === 'driving_license'))) return 3;
+  if (!isOnFile(kyc?.documents.find((d) => d.document_type === 'aadhaar'))) return 2;
+  if (!isOnFile(kyc?.documents.find((d) => d.document_type === 'driving_licence'))) return 3;
   return 4;
 }

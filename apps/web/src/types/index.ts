@@ -2,230 +2,161 @@
 // Auth / roles
 // ---------------------------------------------------------------------------
 
-/** Full role vocabulary the backend's types.ts defines (apps/backend/src/types/index.ts).
- * All five now exist in the DB enum — staff / technician / station_manager were
- * added by supabase/migrations/20260814100000_dpdpa_enums.sql. */
-export type BackendRoleName = "rider" | "staff" | "technician" | "station_manager" | "admin";
+/**
+ * The role vocabulary, which is now three values on one column.
+ *
+ * `users.role` replaced the `roles`/`user_roles` join, and `technician` and
+ * `station_manager` did not survive the move — they were role names with no
+ * distinct grants behind them, and what they were reaching for is expressed
+ * by giving an account the operations permissions instead.
+ */
+export type BackendRoleName = "rider" | "staff" | "admin";
 
 /** What the web console's nav/route-guarding cares about. */
 export type Role = "admin" | "staff";
 
 /**
- * TWO LAYERS OF STAFF AUTHORISATION — see the same note in
- * apps/backend/src/types/index.ts. ModuleKey = which sections you may OPEN.
- * Capability = whether you may see RAW PERSONAL DATA inside them. They
- * compose; neither replaces the other.
+ * A module key, e.g. `"vehicles"`. Deliberately a bare string.
+ *
+ * There used to be a hand-written union here, with `MODULE_KEYS`,
+ * `MODULE_LABELS` and `MODULE_ACTIONS` beside it — three tables of data
+ * mirroring `public.modules` and `public.permissions`, maintained by hand in
+ * two repositories, and silently wrong the moment a migration added a
+ * permission. They are gone. The catalogue is fetched from
+ * `GET /permissions/catalog` (see services/api/permissions.ts) and rendered
+ * from whatever the server says exists.
+ *
+ * The compile-time safety that union provided is genuinely lost. It was
+ * buying very little: a typo in a module key produced a matrix checkbox that
+ * granted nothing, which the backend rejected anyway, and the union could not
+ * catch the far more common error of the two lists having drifted apart.
  */
+export type ModuleKey = string;
 
-/**
- * Modules a staff account can be individually granted access to. Mirrors
- * apps/backend/src/types/index.ts MODULE_KEYS — keep both lists in sync by
- * hand (no shared package exists in this monorepo).
- */
-export type ModuleKey =
-  | "vehicles" | "users" | "kyc" | "bookings" | "maintenance" | "support"
-  | "payments" | "notifications" | "damages" | "refunds" | "privacy"
-  | "plans" | "reconciliation" | "pii_access_log" | "audit" | "settings"
-  | "dashboard" | "battery_stations" | "billing" | "returns";
-export const MODULE_KEYS: readonly ModuleKey[] = [
-  "vehicles", "users", "kyc", "bookings", "maintenance", "support",
-  "payments", "notifications", "damages", "refunds", "privacy",
-  "plans", "reconciliation", "pii_access_log", "audit", "settings",
-  "dashboard", "battery_stations", "billing", "returns",
-];
+/** A `permissions.action` value, unique only within its module. */
+export type PermissionAction = string;
 
-/** Human-readable labels for the module-permission checkboxes in Settings. */
-export const MODULE_LABELS: Record<ModuleKey, string> = {
-  vehicles: "Vehicles",
-  users: "Users",
-  kyc: "KYC Queue",
-  bookings: "Bookings",
-  maintenance: "Maintenance",
-  support: "Support Tickets",
-  payments: "Payments",
-  notifications: "Notifications",
-  damages: "Damage Review",
-  refunds: "Refunds",
-  privacy: "Privacy Requests",
-  plans: "Plans",
-  reconciliation: "Reconciliation",
-  pii_access_log: "PII Access Log",
-  audit: "Audit Log",
-  settings: "Settings",
-  dashboard: "Dashboard",
-  battery_stations: "Battery Stations",
-  billing: "Billing & Charges",
-  returns: "Returns",
-};
+/** `"<module>.<action>"` — how a permission is written in grants and logs. */
+export type PermissionKey = string;
 
-/**
- * Every module's grantable verbs, in the shape the permission matrix UI
- * renders directly. Mirrors apps/backend/src/types/index.ts MODULE_ACTIONS —
- * keep both in sync by hand (no shared package in this monorepo). `available:
- * false` means no backend route enforces it yet (or, for the couple of
- * UI-only ones like "view_kyc", no route ever will) — the matrix renders
- * those as disabled rather than omitting them, so the screen matches the
- * full permission spec even where enforcement doesn't exist behind it yet.
- */
-export interface ModuleActionDef {
-  key: string;
+export const permissionKey = (moduleKey: ModuleKey, action: PermissionAction): PermissionKey =>
+  `${moduleKey}.${action}`;
+
+/** A row of `public.modules`, as `GET /permissions/catalog` returns it. */
+export interface ModuleDef {
+  key: ModuleKey;
   label: string;
-  available: boolean;
+  description: string | null;
+  sortOrder: number;
+  isActive: boolean;
 }
 
-export const MODULE_ACTIONS: Record<ModuleKey, readonly ModuleActionDef[]> = {
-  dashboard: [{ key: "view", label: "View", available: true }],
-  vehicles: [
-    { key: "view", label: "View", available: true },
-    { key: "create", label: "Create", available: true },
-    { key: "edit", label: "Edit", available: true },
-    { key: "assign", label: "Assign / Unassign", available: true },
-    { key: "maintenance", label: "Maintenance", available: false },
-    { key: "delete", label: "Delete", available: true },
-  ],
-  users: [
-    { key: "view", label: "View", available: true },
-    { key: "create", label: "Create", available: false },
-    { key: "edit", label: "Edit", available: true },
-    { key: "suspend", label: "Suspend / Activate", available: true },
-    { key: "delete", label: "Delete", available: false },
-    { key: "view_kyc", label: "View KYC", available: true },
-  ],
-  kyc: [
-    { key: "view", label: "View", available: true },
-    { key: "review", label: "Review / Approve / Reject", available: true },
-  ],
-  bookings: [
-    { key: "view", label: "View", available: true },
-    { key: "create", label: "Create", available: false },
-    { key: "edit", label: "Edit", available: true },
-    { key: "cancel", label: "Cancel", available: true },
-    { key: "assign_vehicle", label: "Assign Vehicle", available: false },
-  ],
-  maintenance: [
-    { key: "view", label: "View", available: true },
-    { key: "create", label: "Create", available: true },
-    { key: "edit", label: "Edit", available: true },
-    { key: "complete", label: "Complete", available: true },
-    { key: "delete", label: "Delete", available: false },
-  ],
-  support: [
-    { key: "view", label: "View", available: true },
-    { key: "create", label: "Create", available: false },
-    { key: "reply", label: "Reply / Resolve", available: true },
-    { key: "resolve", label: "Resolve (see Reply)", available: false },
-    { key: "delete", label: "Delete", available: false },
-  ],
-  payments: [
-    { key: "view", label: "View", available: true },
-    { key: "create", label: "Create", available: false },
-    { key: "refund", label: "Refund", available: true },
-    { key: "export", label: "Export", available: false },
-  ],
-  plans: [
-    { key: "view", label: "View", available: true },
-    { key: "create", label: "Create", available: true },
-    { key: "edit", label: "Edit / Activate / Deactivate", available: true },
-    { key: "delete", label: "Delete", available: false },
-  ],
-  reconciliation: [
-    { key: "view", label: "View", available: true },
-    { key: "create", label: "Create", available: false },
-    { key: "approve", label: "Approve", available: false },
-    { key: "export", label: "Export", available: false },
-  ],
-  notifications: [
-    { key: "view", label: "View", available: true },
-    { key: "create", label: "Create", available: false },
-    { key: "send", label: "Send", available: true },
-    { key: "delete", label: "Delete", available: false },
-  ],
-  privacy: [
-    { key: "view", label: "View", available: true },
-    { key: "process", label: "Approve / Reject / Process", available: true },
-  ],
-  pii_access_log: [
-    { key: "view", label: "View", available: true },
-    { key: "export", label: "Export", available: false },
-  ],
-  audit: [
-    { key: "view", label: "View", available: true },
-    { key: "export", label: "Export", available: false },
-  ],
-  settings: [
-    { key: "view", label: "View", available: true },
-    { key: "edit", label: "Edit", available: true },
-  ],
-  battery_stations: [
-    { key: "view", label: "View", available: true },
-    { key: "create", label: "Create", available: true },
-    { key: "edit", label: "Edit", available: true },
-    { key: "delete", label: "Delete", available: true },
-  ],
-  damages: [
-    { key: "view", label: "View", available: true },
-    { key: "resolve", label: "Resolve", available: true },
-  ],
-  refunds: [
-    { key: "view", label: "View", available: true },
-    { key: "create", label: "Process", available: true },
-  ],
-  billing: [
-    { key: "view", label: "View", available: true },
-    { key: "create", label: "Create Charge Rule", available: true },
-    { key: "edit", label: "Edit Charge Rule / Waive Charge", available: true },
-  ],
-  returns: [
-    { key: "view", label: "View", available: true },
-    { key: "approve", label: "Approve Return / Settlement", available: true },
-  ],
-};
+/** A row of `public.permissions`. */
+export interface PermissionDef {
+  id: string;
+  moduleKey: ModuleKey;
+  action: PermissionAction;
+  label: string;
+  description: string | null;
+  /**
+   * False when no route enforces this permission yet. The matrix renders it
+   * disabled — the successor to the old `available` flag, except a migration
+   * moves it now rather than a code edit in two repositories.
+   */
+  isEnforced: boolean;
+}
 
-/** A single module's granted verbs — what staff_permissions actually stores per row. */
+/**
+ * A row of `public.permission_profiles` — the replacement for the deleted
+ * `config/permissionProfiles.ts`.
+ */
+export interface PermissionProfileDef {
+  code: string;
+  label: string;
+  description: string;
+  sortOrder: number;
+  /** System profiles ship with the schema and cannot be deleted. */
+  isSystem: boolean;
+  permissions: PermissionKey[];
+}
+
+/** Everything the permission matrix needs, in one response. */
+export interface PermissionCatalog {
+  modules: ModuleDef[];
+  permissions: PermissionDef[];
+  profiles: PermissionProfileDef[];
+}
+
+/**
+ * A profile's `code`. Was a closed union of five literals; it is a database
+ * row now, so the console cannot know the set at compile time.
+ *
+ * `"custom"` is still not a profile. It is what the UI shows once an admin
+ * has diverged from a named one, and no row will ever carry that code.
+ */
+export type PermissionProfileName = string;
+export const CUSTOM_PROFILE = "custom";
+
+/** A single module's granted verbs, as the console reads and writes them. */
 export interface ModulePermission {
   module_key: ModuleKey;
   actions: string[];
 }
 
 /**
- * Orthogonal to both role and module: whether the holder may see raw rider
- * personal data. Never implied by a role or a module — an admin without
- * kyc_reviewer cannot open an Aadhaar scan. The console uses these to hide
- * controls; the backend enforces them regardless.
+ * Capabilities are gone.
+ *
+ * `kyc_reviewer`, `rights_officer` and `pii_exporter` were a second
+ * authorisation axis running alongside modules: which sections you may open,
+ * versus whether you may see raw personal data inside them. The new schema
+ * collapses them into ordinary permissions — `kyc.reveal_number`,
+ * `privacy.process`, `privacy.export` — so they sit in the same matrix as
+ * everything else and are granted the same way.
+ *
+ * `SessionUser.permissionKeys` is where they went. Anything that used to ask
+ * "does this user hold the kyc_reviewer capability?" now asks whether
+ * `permissionKeys` contains `"kyc.reveal_number"`.
  */
-export type Capability = "kyc_reviewer" | "rights_officer" | "pii_exporter";
-
-export const CAPABILITY_LABELS: Record<Capability, { label: string; description: string }> = {
-  kyc_reviewer: {
-    label: "KYC reviewer",
-    description: "Open identity-document images and the KYC detail view, and verify or reject documents.",
-  },
-  rights_officer: {
-    label: "Rights officer",
-    description: "Work the data-principal request queue (access, correction, erasure, grievance).",
-  },
-  pii_exporter: {
-    label: "PII exporter",
-    description: "Generate a personal-data export on a rider's behalf for an off-app request.",
-  },
-};
 
 export interface StaffUser {
   id: string;
   name: string;
   email: string;
   role: Role;
-  /** Every backend role the account actually holds (for future fine-grained UI). */
-  roles: BackendRoleName[];
+  /** `users.role`, unnarrowed. Was `roles: BackendRoleName[]`. */
+  backendRole: BackendRoleName;
   /** null = unrestricted (admin). Array = exact granted module+action pairs (staff). */
   permissions: ModulePermission[] | null;
-  /** Capabilities granting access to raw personal data. Empty for most staff. */
-  capabilities: Capability[];
+  /**
+   * The same grants flattened to `"<module>.<action>"`, which is what a
+   * "may they see this control?" check wants. Empty for admin, whose access
+   * is unconditional and therefore not enumerated.
+   */
+  permissionKeys: PermissionKey[];
   avatarUrl?: string;
   phone?: string;
   /** True for a staff account still on its admin-issued temporary password — ProtectedRoute locks every other page until they set their own. */
   mustChangePassword: boolean;
+  /** `staff_profiles.staff_code`. Undefined for riders (never authenticate on the web console anyway). */
+  staffCode?: string;
+  /** `staff_profiles.joined_on`. Null if unset — see MyProfilePage.tsx. */
+  joinedOn?: string | null;
 }
+
+/** Does this console user hold `<module>.<action>`? Admin always does. */
+export const hasPermission = (
+  user: Pick<StaffUser, "role" | "permissionKeys">,
+  moduleKey: ModuleKey,
+  action: PermissionAction,
+): boolean =>
+  user.role === "admin" || user.permissionKeys.includes(permissionKey(moduleKey, action));
+
+/** Any permission at all in the module — "may they open this section?". */
+export const hasModuleAccess = (
+  user: Pick<StaffUser, "role" | "permissionKeys">,
+  moduleKey: ModuleKey,
+): boolean =>
+  user.role === "admin" || user.permissionKeys.some((k) => k.startsWith(`${moduleKey}.`));
 
 // ---------------------------------------------------------------------------
 // Users — mirrors apps/backend/src/modules/users/users.types.ts
@@ -258,19 +189,42 @@ export interface AppUser {
   deleted_at: string | null;
   staff_code: string | null;
   last_login_at: string | null;
-  roles: BackendRoleName[];
+  /** One value now — `users.role`. Was an array off `user_roles`. */
+  role: BackendRoleName;
   assigned_vehicle: { id: string; vin: string; model: string; name: string; registration_number: string } | null;
   current_plan: { id: string; name: string; price: number; billing_cycle: string } | null;
   /**
-   * bookings.status before pickup (pending_payment/confirmed), or
-   * bookings.plan_status (active/due/paused) once fulfilled. Null when the
-   * rider has no live booking at all.
+   * The booking's own status before pickup (pending_payment/confirmed), or
+   * the SUBSCRIPTION's afterwards (active/past_due/paused). Null when the
+   * rider has no live booking or subscription.
+   *
+   * `due` is `past_due`: the same state, read off `subscriptions.status`
+   * rather than the departed `bookings.plan_status`.
    */
-  payment_status: "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
-  /** When the current plan/rental period began (bookings.plan_activated_at). Null before pickup or with no live booking. */
+  payment_status: "pending_payment" | "confirmed" | "active" | "past_due" | "paused" | null;
+  /** `subscriptions.started_on`. Null before pickup or with no subscription. */
   plan_started_at: string | null;
-  /** Last usable day of the current billing period / next renewal date (bookings.next_due_at). <= today means due today or overdue. */
+  /** The current period's `due_on`. <= today means due today or overdue. */
   next_due_at: string | null;
+  /**
+   * Real money owed right now — the sum of every unpaid, non-void invoice
+   * balance. 0 once every bill is paid, even while a completed rental's
+   * records still exist. This is the truth for "is this rider due?".
+   */
+  outstanding_amount: number;
+  /**
+   * The rider's OPEN return, if staff have not finished the handover.
+   *
+   * `payment_status` cannot answer this: requestReturn leaves the rental and
+   * the subscription ACTIVE until the handover is confirmed, so a rider
+   * mid-return reads as an ordinary paying customer. Render this INSTEAD of
+   * the plan status wherever it is set — same rule BookingListPage already
+   * follows in its merged status column.
+   */
+  open_return: {
+    status: "requested" | "inspected";
+    requested_at: string | null;
+  } | null;
 }
 
 export interface AppUserDocument {
@@ -280,7 +234,7 @@ export interface AppUserDocument {
   doc_number_masked: string | null;
   verification_status: string;
   rejection_reason: string | null;
-  expiry_date: string | null;
+  expires_on: string | null;
   submitted_at: string | null;
   verified_at: string | null;
 }
@@ -308,7 +262,19 @@ export interface KycQueueItem {
 
 export interface KycDocumentDetail {
   id: string;
-  doc_type: string;
+  /**
+   * `document_type`, NOT `doc_type` — this shape comes from DocumentView in
+   * kyc.service.ts, which renamed the field to match the column. Declaring it
+   * as doc_type here did not fail the build (the API is typed by hand, not
+   * generated), it just made every read `undefined`, so the review dialog
+   * crashed on `.replace` the moment the endpoint started returning data.
+   *
+   * The near-identical AppUserDocument above genuinely IS `doc_type`:
+   * /users/:id maps `doc_type: d.document_type` on the way out while
+   * /kyc/:userId passes the column name straight through. Two endpoints, two
+   * wire names, one column — check which one you are holding.
+   */
+  document_type: string;
   /**
    * Display-only tail, e.g. "•••• 0124". There is no unmasked counterpart:
    * the full Aadhaar/DL number is validated at upload and never stored.
@@ -316,7 +282,7 @@ export interface KycDocumentDetail {
   doc_number_masked: string | null;
   verification_status: string;
   rejection_reason: string | null;
-  expiry_date: string | null;
+  expires_on: string | null;
   submitted_at: string | null;
   verified_at: string | null;
   has_back_side: boolean;
@@ -364,6 +330,32 @@ export interface SupportTicket {
   vehicle_id: string | null;
 }
 
+/**
+ * The decision staff make when starting progress on a ticket would flag a
+ * vehicle that's currently assigned to an active rider — see
+ * RiderImpactPreview and GET /support/:id/rider-impact-preview.
+ */
+export type RiderImpactDecision =
+  | { action: "replace"; replacement_vehicle_id: string }
+  | { action: "pause" };
+
+export interface RiderImpactPlan {
+  subscription_id: string;
+  plan_name: string | null;
+  plan_status: string | null;
+  current_period_start: string | null;
+  next_due_at: string | null;
+  outstanding_amount: number;
+}
+
+/** GET /support/:id/rider-impact-preview — `required: false` means the transition is safe to fire directly. */
+export interface RiderImpactPreview {
+  required: boolean;
+  vehicle?: { id: string; name: string; registration_number: string; status: string };
+  rider?: { id: string; full_name: string; phone: string | null };
+  plan?: RiderImpactPlan;
+}
+
 // ---------------------------------------------------------------------------
 // Bookings (staff pickup queue) — mirrors
 // apps/backend/src/modules/bookings/bookings.types.ts
@@ -376,7 +368,8 @@ export interface SupportTicket {
  * had a terminal state at all.
  */
 export type BookingStatus = "pending_payment" | "confirmed" | "cancelled" | "expired" | "fulfilled" | "completed";
-export type BookingPlanStatus = "active" | "due" | "paused";
+/** `subscriptions.status`, narrowed — matches the backend's BookingView["plan_status"]. */
+export type BookingPlanStatus = "active" | "past_due" | "paused";
 
 /**
  * 'pending': legacy value, no longer written. 'processing': a real Razorpay
@@ -402,6 +395,10 @@ export interface PickupBookingActiveRental {
   return_feedback: string | null;
   return_due_at: string | null;
   return_approved_at: string | null;
+  /** Set only on the Returns list's Pending tab, once a return has been requested. */
+  charges?: number;
+  amount_due?: number;
+  payment_status?: "not_required" | "pending" | "paid";
 }
 
 export interface PickupBooking {
@@ -414,7 +411,7 @@ export interface PickupBooking {
   plan: { id: string; name: string; billing_cycle: string; price: number; duration_days: number } | null;
   rider: { id: string; full_name: string; phone: string | null };
   /** The physical unit already reserved by allocate_vehicle_for_booking(), if any. */
-  vehicle: { id: string; name: string; registration_number: string; battery_percentage: number; status: VehicleStatus } | null;
+  vehicle: { id: string; name: string; registration_number: string; status: VehicleStatus } | null;
   /** Recurring-billing state — set once the booking reaches 'fulfilled', null before and after (see BookingStatus). */
   plan_status: BookingPlanStatus | null;
   next_due_at: string | null;
@@ -446,68 +443,126 @@ export interface AvailableVehicle {
 }
 
 // ---------------------------------------------------------------------------
+// Pre-bookings — interest submissions from the public website's pre-booking
+// form (apps/website), collected while the fleet isn't ready for normal
+// bookings. Anonymous: no rider account behind these. Mirrors
+// apps/backend/src/modules/public/preBooking.service.ts's PreBookingRow.
+// ---------------------------------------------------------------------------
+
+export type PreBookingPlanPreference = "daily" | "weekly" | "not_sure";
+
+export interface PreBooking {
+  id: string;
+  full_name: string;
+  /** Bare 10 digits — no +91 prefix stored or shown. */
+  phone: string;
+  email: string | null;
+  location: string;
+  plan_preference: PreBookingPlanPreference;
+  message: string | null;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
 // Vehicles (fleet inventory) — mirrors apps/backend/src/modules/vehicles/vehicles.types.ts
 // ---------------------------------------------------------------------------
 
 /** Matches the live public.vehicle_status enum (available/booked/assigned/maintenance/scrap). */
-export type VehicleStatus = "available" | "booked" | "assigned" | "maintenance" | "scrap";
+/**
+ * `public.vehicle_status`. Two renames: `booked` is `reserved`, and `scrap` is
+ * `retired` — the name it had before the old project renamed it.
+ *
+ * Read-only. `recompute_vehicle_status()` derives it from the vehicle's open
+ * maintenance ticket, rental assignment and booking hold; nothing writes it.
+ */
+export type VehicleStatus =
+  "available" | "reserved" | "assigned" | "maintenance" | "retired";
 
+/**
+ * A vehicle, as GET /vehicles returns it.
+ *
+ * Eight fields left with the schema, and each for a reason worth knowing:
+ *
+ *   battery_number, battery_percentage  A battery was modelled as a permanent
+ *                                       property of a scooter, enforced by a
+ *                                       UNIQUE column. Batteries are swapped
+ *                                       at stations; that was never true.
+ *   manufacturer                        A property of the MODEL, duplicated
+ *                                       onto every unit of it.
+ *   insurance_number, insurance_expiry  Now `vehicle_documents` rows, where
+ *                                       registration and PUC already lived.
+ *   last_service_date,                  Derived from `maintenance_tickets`
+ *   next_service_due_date               rather than stored and re-stored.
+ *   active                              Redundant with `status = 'retired'`,
+ *                                       and able to disagree with it.
+ */
 export interface Vehicle {
   id: string;
+  /** `display_name`, falling back to the model name. */
   name: string;
   registration_number: string;
-  battery_number: string;
-  manufacturer: string;
+  /** `vehicle_models.name`, via the model FK. Was a text column on the vehicle. */
   model: string;
+  vehicle_model_id: string;
   vin: string;
-  /** Manually recorded today; will become live telemetry once a 3rd-party GPS/IoT integration ships. */
-  battery_percentage: number;
+  /** Read-only. `recompute_vehicle_status()` owns it; a write would be overwritten. */
   status: VehicleStatus;
-  last_service_date: string | null;
-  next_service_due_date: string | null;
-  active: boolean;
   color: string | null;
   qr_code: string | null;
   imei: string | null;
   purchase_date: string | null;
-  insurance_number: string | null;
-  insurance_expiry: string | null;
+  /** Which hub the vehicle belongs to. New; there was no such column. */
+  hub_id: string | null;
+  /** Manufacturing batch/lot number. Nullable; unique when present. */
+  batch_number: string | null;
   created_at: string;
   updated_at: string | null;
   /**
-   * Billing state of whichever booking currently holds this vehicle —
-   * 'pending_payment'/'confirmed' before pickup, 'active'/'due'/'paused'
-   * once the rental's underway. null when no live booking holds it.
+   * Billing state of whoever currently holds this vehicle —
+   * 'pending_payment'/'confirmed' before pickup, then the SUBSCRIPTION's
+   * 'active'/'past_due'/'paused'. null when nothing live holds it.
    */
-  payment_status: "pending_payment" | "confirmed" | "active" | "due" | "paused" | null;
+  payment_status: "pending_payment" | "confirmed" | "active" | "past_due" | "paused" | null;
+  /** The rider currently holding this vehicle, from the open rental assignment. Null when unassigned. */
+  current_rider: { id: string; full_name: string } | null;
+  /** The plan behind the current rider's subscription, if any. */
+  plan_name: string | null;
+  plan_status: string | null;
+  plan_start_date: string | null;
+  /** Scheduled end — derived, shifts on every pause. */
+  plan_end_date: string | null;
 }
+
+export type VehicleDocumentType = "registration" | "insurance" | "puc" | "fitness" | "permit";
 
 export interface VehicleDocument {
   id: string;
-  doc_type: "registration" | "insurance";
+  /** Five types now, not two — insurance joined the documents it belonged with. */
+  doc_type: VehicleDocumentType;
   doc_number: string;
-  issued_date: string;
-  expiry_date: string;
-}
-
-export interface VehiclePhoto {
-  id: string;
-  /** Signed URL, minted per request. */
-  url: string;
-  is_primary: boolean;
-  sort_order: number;
-  created_at: string;
+  issued_date: string | null;
+  expires_on: string;
+  /** Whether a file has actually been uploaded — a document can exist as metadata-only until one is. */
+  has_file: boolean;
 }
 
 export interface VehicleMaintenanceRecord {
   id: string;
-  status: "reported" | "in_progress" | "resolved" | "cancelled";
+  /** `maintenance_status` gained a `triaged` state. */
+  status: "reported" | "triaged" | "in_progress" | "resolved" | "cancelled";
   description: string;
   resolved_at: string | null;
   created_at: string;
-  outcome: "quick_fix" | "standard_temp" | "not_repairable" | null;
+  /** `standard_temp` is `temp_vehicle`, and `replacement` is new. */
+  outcome: "quick_fix" | "temp_vehicle" | "replacement" | "not_repairable" | null;
   expected_ready_at: string | null;
-  /** Set when outcome = standard_temp: the vehicle handed to the rider while this one was repaired. */
+  /**
+   * The vehicle handed to the rider while this one was repaired.
+   *
+   * From `rental_vehicle_assignments`, not a `temp_vehicle_id` column — a
+   * rental can pass through several scooters, so which one stood in is a row
+   * with dates rather than a pointer that the next swap overwrites.
+   */
   temp_vehicle: { id: string; name: string; registration_number: string } | null;
 }
 
@@ -527,14 +582,15 @@ export interface VehicleRentalRecord {
 export interface VehicleBookingRecord {
   id: string;
   status: string;
-  plan_status: "active" | "due" | "paused" | null;
+  /** `subscriptions.status` for the subscription this booking became, if any. */
+  plan_status: "active" | "past_due" | "paused" | null;
   start_day: string;
   created_at: string;
   rider: { id: string; full_name: string } | null;
 }
 
+/** A row of `vehicle_disposals`. Was `scrap_records`, and has no id of its own. */
 export interface ScrapRecord {
-  id: string;
   reason: string;
   scrapped_on: string;
   estimated_value: number | null;
@@ -544,11 +600,9 @@ export interface ScrapRecord {
 
 export interface VehicleDetail extends Vehicle {
   documents: VehicleDocument[];
-  photos: VehiclePhoto[];
   maintenance_history: VehicleMaintenanceRecord[];
   rental_history: VehicleRentalRecord[];
   booking_history: VehicleBookingRecord[];
-  current_rider: { id: string; full_name: string } | null;
   scrap_record: ScrapRecord | null;
 }
 
@@ -556,10 +610,17 @@ export interface VehicleDetail extends Vehicle {
 // Maintenance (admin) — mirrors apps/backend/src/modules/maintenance/maintenance.types.ts
 // ---------------------------------------------------------------------------
 
-export type MaintenanceStatus = "reported" | "in_progress" | "resolved" | "cancelled";
+export type MaintenanceStatus =
+  "reported" | "triaged" | "in_progress" | "resolved" | "cancelled";
 
-/** Set once staff verify a displaced vehicle. Null until triaged. */
-export type MaintenanceOutcome = "quick_fix" | "standard_temp" | "not_repairable";
+/**
+ * Set once staff verify a displaced vehicle. Null until triaged.
+ *
+ * `standard_temp` is `temp_vehicle`; `replacement` is new — a permanent swap
+ * used to be indistinguishable from a loan of a spare.
+ */
+export type MaintenanceOutcome =
+  "quick_fix" | "temp_vehicle" | "replacement" | "not_repairable";
 
 export interface MaintenanceTicket {
   id: string;
@@ -610,21 +671,18 @@ export interface BroadcastResult {
 // and notifications/notify.service.ts's NotifyContext.
 // ---------------------------------------------------------------------------
 
-export type NotificationType =
-  "booking" | "kyc" | "return" | "cancellation" | "refund" | "damage" | "maintenance";
-
-export const NOTIFICATION_TYPES: readonly NotificationType[] =
-  ["booking", "kyc", "return", "cancellation", "refund", "damage", "maintenance"] as const;
-
-export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
-  booking: "Vehicle Booking",
-  kyc: "KYC Verification",
-  return: "Vehicle Return",
-  cancellation: "Cancellation",
-  refund: "Refund",
-  damage: "Damage Report",
-  maintenance: "Maintenance",
-};
+/**
+ * A `notification_types.code`. A bare string, for the same reason `ModuleKey`
+ * is: the seven-value union here — plus its label map, plus the
+ * `NOTIFICATION_TYPES` array, plus `RealtimeProvider`'s `APPROVAL_TEMPLATES`
+ * — were four hand-written mirrors of table rows, and every notification the
+ * backend gained had to be added to all of them or it went missing from this
+ * screen with nothing failing.
+ *
+ * The label, whether it needs action, and where acting on it goes all arrive
+ * on the setting row itself now.
+ */
+export type NotificationType = string;
 
 export interface NotificationRecipient {
   user_id: string;
@@ -632,13 +690,58 @@ export interface NotificationRecipient {
 }
 
 export interface NotificationSetting {
+  /** The type's `code` — there is no surrogate key on `notification_types`. */
   id: string;
   notification_type: NotificationType;
+  /** Human-readable name, from the catalogue rather than the front end. */
+  label: string;
   enabled: boolean;
   send_email: boolean;
   send_in_app: boolean;
+  /**
+   * Whether this notification is a TASK rather than news.
+   *
+   * The console decided this with a hard-coded `APPROVAL_TEMPLATES` map,
+   * which meant an approval-shaped notification needed a front-end change to
+   * be treated as one. It is catalogue data now.
+   */
+  requires_action: boolean;
+  /** Where acting on it takes you, e.g. `/kyc`. Null when it is just news. */
+  action_path: string | null;
   recipients: NotificationRecipient[];
   updated_at: string | null;
+}
+
+/**
+ * The catalogue without subscriber lists — GET /notification-settings/types.
+ *
+ * What a staff session is allowed to know about the notification it just
+ * received: its name, whether it is a task, and where acting on it goes.
+ * Deliberately not `Pick<NotificationSetting, …>`: this is a separate wire
+ * contract from a separate endpoint, and collapsing the two would make it
+ * look like the admin payload with fields dropped.
+ */
+export interface NotificationTypeSummary {
+  notification_type: NotificationType;
+  label: string;
+  requires_action: boolean;
+  action_path: string | null;
+}
+
+/** One row of the "mail grid" — GET /notification-settings/email-log. Every email notify() has sent to an admin/staff account. */
+export interface EmailDeliveryLogEntry {
+  id: string;
+  notification_type: NotificationType;
+  label: string;
+  title: string;
+  body: string;
+  status: "pending" | "sent" | "failed";
+  provider: string | null;
+  provider_ref: string | null;
+  error: string | null;
+  sent_at: string | null;
+  created_at: string;
+  recipient: { id: string; full_name: string; email: string | null } | null;
 }
 
 /** A row in the personal (rider/staff/admin) notification inbox — GET /users/me/notifications. */
@@ -666,42 +769,82 @@ export interface MyNotification {
 
 export type InvoiceStatus = "draft" | "issued" | "paid" | "overdue" | "void";
 export type PaymentStatus = "pending" | "processing" | "succeeded" | "failed" | "refunded";
-export type PaymentMethod = "card" | "wallet" | "upi" | "cash";
+/** `payment_method` enum — matches apps/backend enums.sql. */
+export type PaymentMethod = "card" | "wallet" | "upi" | "netbanking" | "cash";
 export type PaymentType = "rental" | "deposit" | "damage" | "penalty" | "refund" | "other";
+
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  upi: "UPI",
+  card: "Card",
+  netbanking: "Net Banking",
+  wallet: "Wallet",
+  cash: "Cash",
+};
+
+/** Display label for a payment method, tolerant of null / unknown values. */
+export const paymentMethodLabel = (m: string | null | undefined): string =>
+  m ? PAYMENT_METHOD_LABEL[m as PaymentMethod] ?? m : "—";
 
 /** A single invoice line — see 20260817100000_billing_charge_engine.sql. Empty on every invoice minted before that migration. */
 export interface InvoiceItem {
   id: string;
-  item_type: "base_rental" | "charge" | "discount";
-  rider_charge_id: string | null;
-  label: string;
+  item_type: "plan_fee" | "adjustment" | "deposit";
+  /** The charge or discount this line materialises. Was `rider_charge_id`. */
+  subscription_adjustment_id: string | null;
+  /** Was `label`. */
+  description: string;
+  quantity: number;
+  unit_amount: number;
   amount: number;
   created_at: string;
 }
 
+/**
+ * Paid-ness, DERIVED by the backend from the money actually allocated. There
+ * is no `payment_status` column — that flag is gone precisely because it could
+ * disagree with the payments. See apps/backend/.../invoices.types.ts.
+ */
+export type InvoicePaymentState = "paid" | "partial" | "overdue" | "unpaid";
+
+/** Why the invoice exists. Was the free-er `payment_type`. */
+export type InvoicePurpose = "initial" | "subscription_period" | "settlement" | "adhoc";
+
 export interface Invoice {
   id: string;
   user_id: string;
-  subscription_id: string | null;
+  subscription_id: string;
+  subscription_period_id: string | null;
   rental_id: string | null;
-  booking_id: string | null;
-  payment_type: PaymentType | null;
+  /** Gap-free, allocated by the database. Not previously exposed. */
+  invoice_number: string;
+  purpose: InvoicePurpose;
   status: InvoiceStatus;
-  amount_due: number;
-  due_date: string;
-  payment_status: PaymentStatus;
-  payment_method: PaymentMethod | null;
-  gateway_ref: string | null;
-  paid_at: string | null;
+  issued_on: string | null;
+  /** Was `due_date`. A date — an IST calendar day. */
+  due_on: string | null;
+  subtotal_amount: number;
+  /** Was `amount_due`. */
+  total_amount: number;
+  currency: string;
   created_at: string;
   updated_at: string | null;
+
+  allocated_amount: number;
+  balance_amount: number;
+  /** Was `payment_status`. Derived, not stored. */
+  payment_state: InvoicePaymentState;
+  paid_at: string | null;
+  payment_method: PaymentMethod | null;
+  gateway_ref: string | null;
+
   rider: { id: string; full_name: string; email: string | null } | null;
   items: InvoiceItem[];
 }
 
 export interface InvoiceDetail extends Invoice {
   plan: { id: string; name: string } | null;
-  vehicle: { id: string; name: string; registration_number: string } | null;
+  /** `vehicles.name` was never a column — the new one is `display_name`. */
+  vehicle: { id: string; display_name: string | null; registration_number: string } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -717,7 +860,14 @@ export interface Plan {
   price: number;
   included_minutes: number | null;
   duration_days: number;
+  /** The REFUNDABLE half of what the rider pays up front. */
   deposit_amount: number;
+  /** One-time non-refundable charge taken with the first payment. 0 = none. */
+  onboarding_charge_amount: number;
+  /** Cumulative rental days before this plan's deposit is refundable. 0 = no threshold. Meaningless when deposit_refundable is false. */
+  min_rental_days_for_refund: number;
+  /** Whether the deposit is ever refundable at all. False = forfeited outright on return, like the onboarding charge. */
+  deposit_refundable: boolean;
   vehicle_model_id: string | null;
   active: boolean;
   created_at: string;
@@ -728,19 +878,65 @@ export interface Plan {
 // Deposits (admin) — mirrors apps/backend/src/modules/deposits/deposits.types.ts
 // ---------------------------------------------------------------------------
 
-export type DepositStatus = "pending" | "held" | "partially_refunded" | "refunded" | "forfeited";
+/**
+ * Four values, not five. `partially_refunded` and `refunded` collapsed into
+ * `released` — how much came back is the refund's business, and a deposit
+ * that was partly returned is still, from the deposit's point of view,
+ * released. The old pair made the deposit row duplicate an amount the refund
+ * already knew, and the two could disagree.
+ */
+export type DepositStatus = "pending" | "held" | "released" | "forfeited";
+
+/**
+ * Whether the deposit may be paid back yet — derived by the backend, never
+ * stored. `status` answers "is the money still with us"; this answers "may it
+ * go back", which additionally depends on the rider's completed rental days.
+ */
+export type DepositRefundEligibility = "not_eligible" | "eligible" | "refund_processed";
 
 export interface Deposit {
   id: string;
-  booking_id: string;
+  /**
+   * The agreement this deposit secures. Was `booking_id` — a deposit is taken
+   * when the subscription is created and survives every renewal, so pinning
+   * it to the reservation attached it to the wrong thing.
+   */
+  subscription_id: string;
   amount: number;
   status: DepositStatus;
   held_at: string | null;
+  /** `refund_eligible_on` — a DATE now, not a timestamp. */
   refund_eligible_at: string | null;
+  /** `released_at`. */
   refunded_at: string | null;
   forfeited_at: string | null;
-  refund_id: string | null;
+  forfeit_reason: string | null;
+  /**
+   * How much of `amount` is actually refundable, after undisputed damage.
+   * Computed, never stored.
+   */
   refundable_amount: number;
+  /**
+   * Cumulative rental days required before this deposit may be refunded,
+   * frozen from the plan when the rider paid. 0 = no threshold, which is
+   * every deposit taken before the onboarding-charge split — those riders
+   * keep the terms they originally agreed to.
+   */
+  min_rental_days_required: number;
+  /** Whether this deposit is ever refundable at all, frozen from the plan when the rider paid. False = forfeited outright on return. */
+  is_refundable: boolean;
+  /** The rider's completed rental days, across their whole history. */
+  rental_days_completed: number;
+  refund_eligibility: DepositRefundEligibility;
+  rider: { id: string; full_name: string; phone: string | null } | null;
+  booking_id: string | null;
+  vehicle_model_name: string | null;
+  /**
+   * The NON-REFUNDABLE onboarding charge paid alongside this deposit. Not part
+   * of `amount` — it was never the rider's money to get back — but shown
+   * beside it so staff see the whole of what was collected up front.
+   */
+  onboarding_charge_amount: number;
   created_at: string;
 }
 
@@ -748,15 +944,26 @@ export interface Deposit {
 // Damages (admin + rider) — mirrors apps/backend/src/modules/damages/damages.types.ts
 // ---------------------------------------------------------------------------
 
-export type DamageStatus = "recorded" | "disputed" | "resolved";
+/**
+ * One table became three: `incidents` (what happened, with the photos),
+ * `damages` (what it costs) and `damage_disputes` (the objection).
+ *
+ * `recorded` is `assessed`; `settled` and `waived` are new terminal states
+ * the old three could not express — a scratch written off had nowhere to go.
+ */
+export type DamageStatus = "assessed" | "disputed" | "settled" | "waived";
+
+export type DamageCategory = "body" | "panel" | "battery" | "tyre" | "brake" | "electrical" | "other";
 
 export interface Damage {
   id: string;
-  booking_id: string;
-  rental_id: string;
+  /** Resolved through the incident's rental → subscription → booking. */
+  booking_id: string | null;
+  rental_id: string | null;
   reported_by: { id: string; full_name: string } | null;
   amount: number;
   description: string;
+  damage_category: DamageCategory | null;
   photo_urls: string[];
   deposit_deduction: number;
   outstanding_amount: number;
@@ -774,8 +981,26 @@ export interface Damage {
 // Refunds (admin) — mirrors apps/backend/src/modules/refunds/refunds.types.ts
 // ---------------------------------------------------------------------------
 
-export type RefundStatus = "pending" | "processing" | "success" | "failed";
-export type RefundType = "deposit" | "booking_cancellation" | "return_settlement";
+/** `succeeded`, matching `payment_status` — `success` was the odd one out. */
+export type RefundStatus = "pending" | "processing" | "succeeded" | "failed" | "rejected";
+
+export interface RefundDeductions {
+  transaction_fee: number;
+  other_charges: number;
+  cancellation_charge: number;
+}
+
+/**
+ * `refund_reason`. Was `refund_type` with three values; there are four now,
+ * and they say WHY rather than what kind:
+ *
+ *   deposit_release      the post-return deposit release (was `deposit`)
+ *   booking_cancellation unchanged
+ *   settlement           a return settlement paying money back
+ *   goodwill             a discretionary refund, which had no expression at all
+ */
+export type RefundType =
+  "deposit_release" | "booking_cancellation" | "settlement" | "goodwill";
 
 /** Only populated for refund_type='booking_cancellation'. */
 export interface RefundBookingSummary {
@@ -792,10 +1017,22 @@ export interface RefundBookingSummary {
 
 export interface Refund {
   id: string;
-  deposit_id: string;
-  booking_id: string;
+  deposit_id: string | null;
+  booking_id: string | null;
+  /** Payable amount — always `gross_amount` minus the sum of `deductions`. */
   amount: number;
+  /** Pre-deduction amount, frozen at creation. */
+  gross_amount: number;
+  deductions: RefundDeductions;
+  deduction_total: number;
   status: RefundStatus;
+  /** Set once an admin has reviewed the refund. Approval is blocked until then. */
+  reviewed_at: string | null;
+  reviewed_by: { id: string; full_name: string } | null;
+  review_note: string | null;
+  rejected_at: string | null;
+  rejected_by: { id: string; full_name: string } | null;
+  rejection_reason: string | null;
   refund_type: RefundType;
   gateway_refund_id: string | null;
   source_gateway_payment_id: string | null;
@@ -826,7 +1063,9 @@ export interface ReturnSettlement {
   rental_id: string;
   booking_id: string;
   user_id: string;
-  vehicle_id: string;
+  rider_name: string | null;
+  vehicle_id: string | null;
+  vehicle: { id: string; name: string; registration_number: string } | null;
   deposit_amount: number;
   late_fee_amount: number;
   damage_fee_amount: number;
@@ -836,6 +1075,8 @@ export interface ReturnSettlement {
   net_settlement: number;
   refund_amount: number;
   due_amount: number;
+  /** What the rider paid directly (beyond the deposit) toward total_charges — survives due_amount reading 0 once that payment is confirmed. */
+  paid_by_rider_amount: number;
   status: ReturnSettlementStatus;
   refund_id: string | null;
   due_invoice_id: string | null;
@@ -844,35 +1085,82 @@ export interface ReturnSettlement {
   processed_at: string | null;
 }
 
+/**
+ * Vehicle Return → Inspection → Payment Gate → Approve Return. Computed
+ * server-side — see apps/backend/src/modules/returns/returns.types.ts's
+ * ReturnStage for the full derivation.
+ */
+export type ReturnStageStatus =
+  | "return_requested" | "payment_required" | "payment_submitted"
+  | "ready_for_approval" | "return_completed" | "rejected";
+
+export interface ReturnStage {
+  status: ReturnStageStatus;
+  depositAmount: number;
+  damageAmount: number;
+  otherChargesAmount: number;
+  totalCharges: number;
+  additionalDue: number;
+  /** 0 whenever `depositForfeited` is true, regardless of charges. */
+  refundDue: number;
+  additionalDueInvoiceId: string | null;
+  paymentVerifiedAt: string | null;
+  /** Rider is returning short of the plan's minimum rental days — the whole deposit is forfeited, not just reduced by charges. */
+  depositForfeited: boolean;
+  minRentalDaysRequired: number;
+  rentalDaysCompleted: number;
+}
+
+export interface PaymentReviewView {
+  invoiceId: string;
+  amount: number;
+  reference: string | null;
+  paidAt: string | null;
+  status: "unpaid" | "paid" | "verified";
+  /** How the rider paid — kept separate from `status` so the Rental Operation screen shows Payment Type distinctly. */
+  method: "upi" | "card" | "netbanking" | "wallet" | "cash" | null;
+}
+
 export interface ReturnDetail {
   rental: AdminRental;
   deposit: Deposit | null;
   damages: Damage[];
-  latePreview: { daysLate: number; penaltyAmount: number; feePerDay: number };
   settlement: ReturnSettlement | null;
+  stage: ReturnStage | null;
 }
 
 // ---------------------------------------------------------------------------
 // Billing & Charges (admin) — mirrors apps/backend/src/modules/billing/billing.types.ts
 // ---------------------------------------------------------------------------
 
-export type ChargeCode =
-  | "transaction_fee" | "late_payment_fee" | "late_return_fee" | "damage"
-  | "cleaning" | "cancellation" | "extension" | "other";
-export const CHARGE_CODES: readonly ChargeCode[] = [
-  "transaction_fee", "late_payment_fee", "late_return_fee", "damage",
-  "cleaning", "cancellation", "extension", "other",
+/** `pricing_rules.code` is free text; this is only the set the console offers. */
+export type ChargeCode = string;
+
+/**
+ * The charge types the "New charge rule" dropdown offers. There is ONE "late
+ * fee" — the same rate covers a plan renewal paid late and a scooter returned
+ * late (see the Late Fee & Recovery note). Cancellation charges are not here:
+ * they're configured as tiers on the Cancellation Policy tab.
+ */
+export const CHARGE_CODES: readonly string[] = [
+  "transaction_fee", "late_fee", "damage", "cleaning", "extension", "other",
 ];
-export const CHARGE_CODE_LABELS: Record<ChargeCode, string> = {
+
+export const CHARGE_CODE_LABELS: Record<string, string> = {
   transaction_fee: "Transaction Fee",
-  late_payment_fee: "Late Payment Fee",
-  late_return_fee: "Late Return Fee",
+  late_fee: "Late Fee",
   damage: "Damage Charge",
   cleaning: "Cleaning Charge",
-  cancellation: "Cancellation Charge",
   extension: "Extension Charge",
   other: "Other Charge",
+  // Legacy codes still on old rules — kept so their rows render a label.
+  late_payment_fee: "Late Fee",
+  late_return_fee: "Late Fee",
+  cancellation: "Cancellation Charge",
 };
+
+/** Label for any code, falling back to the raw code for anything unlisted. */
+export const chargeCodeLabel = (code: string): string => CHARGE_CODE_LABELS[code] ?? code;
 
 export type ChargeAmountType = "fixed" | "percentage";
 export type ChargeFrequencyType = "one_time" | "every_cycle" | "every_n_cycles" | "per_booking" | "per_day";
@@ -936,17 +1224,20 @@ export interface RiderCharge {
 // apps/backend/src/modules/billing/billing.types.ts.
 // ---------------------------------------------------------------------------
 
-export type DiscountCode = "loyalty" | "promotional" | "seasonal" | "referral" | "other";
-export const DISCOUNT_CODES: readonly DiscountCode[] = [
-  "loyalty", "promotional", "seasonal", "referral", "other",
+/** `pricing_rules.code` for discounts — free text; this is only the shipped set. */
+export type DiscountCode = string;
+export const DISCOUNT_CODES: readonly string[] = [
+  "welcome_discount", "referral", "loyalty", "promotional", "other",
 ];
-export const DISCOUNT_CODE_LABELS: Record<DiscountCode, string> = {
+export const DISCOUNT_CODE_LABELS: Record<string, string> = {
+  welcome_discount: "Welcome Discount",
   loyalty: "Loyalty Discount",
   promotional: "Promotional Discount",
   seasonal: "Seasonal Discount",
   referral: "Referral Discount",
   other: "Other Discount",
 };
+export const discountCodeLabel = (code: string): string => DISCOUNT_CODE_LABELS[code] ?? code;
 
 /** "Duration: N Billing Cycles" (spec) applies to cycles 1..N — distinct from a charge's every_n_cycles (multiples of N). */
 export type DiscountFrequencyType = "one_time" | "every_cycle" | "first_n_cycles";
@@ -1007,11 +1298,31 @@ export interface ReportsSummary {
   plans: { active_subscriptions: number };
   bookings: { pending_count: number };
   rides: { active_count: number };
+  /** Mini HRMS — active staff roster (admin excluded), today's derived status counts. */
+  attendance: {
+    total_staff: number; present_today: number; absent_today: number;
+    on_leave_today: number; on_week_off_today: number;
+  };
+  leave: { pending_count: number; approved_count: number; rejected_count: number };
   trends: {
     revenue: { month: string; amount: number }[];
     bookings: { month: string; count: number }[];
     maintenance: { month: string; count: number }[];
   };
+}
+
+/** GET /reports/pending-approvals — the header's "Pending Approvals" bell. */
+export interface PendingApprovalsSummary {
+  kyc_pending: number;
+  returns_pending: number;
+  support_open: number;
+  maintenance_pending: number;
+  refunds_pending: number;
+  leave_pending: number;
+  /** Paid, confirmed bookings still waiting on staff to confirm the physical pickup. */
+  bookings_awaiting_pickup: number;
+  /** Self-registered accounts awaiting an admin's approve/reject (Users → Awaiting approval). */
+  signups_pending: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1056,9 +1367,18 @@ export interface AdminRental {
   /** Stamped the moment staff settle a rental that had a pending return request — i.e. approve it. */
   return_approved_at: string | null;
   return_approved_by: { id: string; full_name: string } | null;
+  /** `rental_returns.inspected_at` — gates deposit-refund eligibility. */
+  inspected_at: string | null;
+  inspected_by: { id: string; full_name: string } | null;
   days_late: number | null;
   late_penalty_amount: number | null;
   late_fee_per_day: number | null;
+  /**
+   * RENEWAL late fee for a lapsed, unpaid plan — the "pay before returning"
+   * gate, collected in the rider app separately from the deposit settlement.
+   * Null when there's no subscription to be overdue against.
+   */
+  overdue_late_fee: { isLate: boolean; daysLate: number; lateFee: number; isSettled: boolean } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1164,9 +1484,16 @@ export interface PiiAccessEntry {
   fields: string[] | null;
   reason: PiiAccessReason;
   context_ref: string | null;
-  actor_roles: string[];
-  ip: string | null;
-  path: string | null;
+  /**
+   * The actor's role at the time of access — ONE value now
+   * (`actor_role_snapshot`). Was `actor_roles: string[]`, off the deleted
+   * `user_roles` table.
+   */
+  actor_role: Role;
+  /** Was `ip`. */
+  ip_address: string | null;
+  /** Was `path`. */
+  request_path: string | null;
   created_at: string;
   actor: { id: string; full_name: string } | null;
   target_user: { id: string; full_name: string } | null;
@@ -1223,8 +1550,11 @@ export interface PrivacyRequest {
   grace_ends_at: string | null;
   resolution_notes: string | null;
   rejection_reason: string | null;
-  ticket_ref: string | null;
-  export_object_path: string | null;
+  /**
+   * `ticket_ref` is gone — the new `data_principal_requests` has no such
+   * column. A privacy request IS the ticket; the field was a pointer to a
+   * support ticket that duplicated it.
+   */
   completed_at: string | null;
   created_at: string;
   updated_at: string | null;

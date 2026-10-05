@@ -2,12 +2,14 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AuthBrand } from "@/components/auth/AuthBrand";
 import * as authApi from "@/services/api/staff";
+import { toastSuccess, toastError } from "@/lib/toastHelpers";
 
 interface ForgotPasswordForm {
   email: string;
@@ -23,7 +25,8 @@ export default function ForgotPasswordPage() {
 
   const requestReset = useMutation({
     mutationFn: (email: string) => authApi.requestPasswordReset(email),
-    onSuccess: (_data, email) => setSentTo(email),
+    onSuccess: (_data, email) => { toastSuccess("Reset link sent"); setSentTo(email); },
+    onError: (err) => toastError(err, "Could not send reset link"),
   });
 
   const onSubmit = (values: ForgotPasswordForm) => {
@@ -32,7 +35,8 @@ export default function ForgotPasswordPage() {
 
   if (sentTo) {
     return (
-      <Card className="animate-fade-in">
+      <Card className="animate-fade-in overflow-hidden">
+        <AuthBrand />
         <CardContent className="p-6 sm:p-8">
           <h1 className="mb-1 text-xl font-semibold">Check your email</h1>
           <p className="mb-6 text-sm text-muted-foreground">
@@ -47,7 +51,8 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <Card className="animate-fade-in">
+    <Card className="animate-fade-in overflow-hidden">
+      <AuthBrand />
       <CardContent className="p-6 sm:p-8">
         <h1 className="mb-1 text-xl font-semibold">Forgot password</h1>
         <p className="mb-6 text-sm text-muted-foreground">
@@ -60,7 +65,7 @@ export default function ForgotPasswordPage() {
             <Input
               id="email"
               type="email"
-              placeholder="you@swapngo.in"
+              placeholder="Email"
               {...register("email", { required: "Email is required" })}
             />
             {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
@@ -73,7 +78,7 @@ export default function ForgotPasswordPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={requestReset.isPending}>
-            {requestReset.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {requestReset.isPending && <Spinner className="h-4 w-4" />}
             Send reset link
           </Button>
 

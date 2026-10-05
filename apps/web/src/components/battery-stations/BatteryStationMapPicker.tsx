@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapLibreMap, Marker as MapLibreMarker } from "maplibre-gl";
-import { Loader2, MapPinOff } from "lucide-react";
-import { CHENNAI_CENTER, DEFAULT_MAP_ZOOM, MAP_STYLE_URL, isMapConfigured } from "@/lib/mapConfig";
+import { MapPinOff } from "lucide-react";
+import { Spinner } from "@/components/common/Spinner";
+import { CHENNAI_CENTER, DEFAULT_MAP_ZOOM, isMapConfigured, mapStyleForTheme, tuneDarkMapLabels } from "@/lib/mapConfig";
+import { useUiStore } from "@/store/uiStore";
 
 export interface PickedLocation {
   latitude: number;
@@ -45,6 +47,9 @@ export function BatteryStationMapPicker({
   valueRef.current = value;
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;
+  const theme = useUiStore((s) => s.theme);
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
 
   useEffect(() => {
     if (!isMapConfigured()) return;
@@ -66,7 +71,7 @@ export function BatteryStationMapPicker({
         // in the Promise.all above widens the inferred module type otherwise.
         const map = new lib.Map({
           container: containerRef.current,
-          style: MAP_STYLE_URL,
+          style: mapStyleForTheme(themeRef.current),
           center: initial
             ? [initial.longitude, initial.latitude]
             : [CHENNAI_CENTER.longitude, CHENNAI_CENTER.latitude],
@@ -75,6 +80,10 @@ export function BatteryStationMapPicker({
         });
 
         map.addControl(new lib.NavigationControl({ showCompass: false }), "top-right");
+
+        map.on("style.load", () => {
+          if (themeRef.current === "dark") tuneDarkMapLabels(map);
+        });
 
         if (!readOnlyRef.current) {
           map.on("click", (event) => {
@@ -105,6 +114,13 @@ export function BatteryStationMapPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Follow the console theme. The marker is a DOM overlay and survives setStyle.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (status !== "ready" || !map) return;
+    map.setStyle(mapStyleForTheme(theme));
+  }, [theme, status]);
+
   // Marker preview follows the form, whether the change came from a map click
   // or from typing into the latitude/longitude inputs.
   useEffect(() => {
@@ -122,7 +138,7 @@ export function BatteryStationMapPicker({
     if (markerRef.current) {
       markerRef.current.setLngLat(lngLat);
     } else {
-      markerRef.current = new lib.Marker({ color: "#22C55E" }).setLngLat(lngLat).addTo(map);
+      markerRef.current = new lib.Marker({ color: "#21C45D" }).setLngLat(lngLat).addTo(map);
     }
   }, [value, status]);
 
@@ -153,7 +169,7 @@ export function BatteryStationMapPicker({
         <div ref={containerRef} className="h-full w-full" />
         {status === "loading" && (
           <div className="absolute inset-0 flex items-center justify-center bg-secondary/40">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <Spinner className="h-5 w-5 text-muted-foreground" />
           </div>
         )}
       </div>

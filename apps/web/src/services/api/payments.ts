@@ -1,29 +1,35 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
 import type {
-  Invoice, InvoiceDetail, InvoiceStatus, PaginatedResult, PaymentStatus, PaymentType,
+  Invoice, InvoiceDetail, InvoicePaymentState, InvoicePurpose, InvoiceStatus, PaginatedResult,
 } from "@/types";
 
 export interface InvoiceFilters {
   status?: InvoiceStatus | "all";
-  paymentStatus?: PaymentStatus | "all";
-  paymentType?: PaymentType | "all";
+  /** Derived server-side from the allocations. Was `paymentStatus`. */
+  paymentState?: InvoicePaymentState | "all";
+  /** Was `paymentType`. */
+  purpose?: InvoicePurpose | "all";
   bookingId?: string;
+  userId?: string;
   page?: number;
   pageSize?: number;
-  sortBy?: "created_at" | "amount_due" | "due_date";
+  sortBy?: "created_at" | "total_amount" | "due_on";
   sortDir?: "asc" | "desc";
 }
 
 /** GET /invoices — requireStaff. See apps/backend/src/modules/invoices/invoices.routes.ts */
 export async function fetchInvoices(filters: InvoiceFilters = {}): Promise<PaginatedResult<Invoice>> {
-  const { status, paymentStatus, paymentType, bookingId, page = 1, pageSize = 8, sortBy, sortDir } = filters;
+  const {
+    status, paymentState, purpose, bookingId, userId, page = 1, pageSize = 8, sortBy, sortDir,
+  } = filters;
   const res = await apiClient.get<BackendPaginated<Invoice>>("/invoices", {
     page,
     pageSize,
     status: status && status !== "all" ? status : undefined,
-    paymentStatus: paymentStatus && paymentStatus !== "all" ? paymentStatus : undefined,
-    paymentType: paymentType && paymentType !== "all" ? paymentType : undefined,
+    paymentState: paymentState && paymentState !== "all" ? paymentState : undefined,
+    purpose: purpose && purpose !== "all" ? purpose : undefined,
     bookingId,
+    userId,
     sortBy,
     sortDir,
   });
@@ -36,11 +42,38 @@ export async function fetchInvoiceById(id: string): Promise<InvoiceDetail> {
 }
 
 /**
- * POST /invoices/:id/refund — requireStaff. Bookkeeping only: flips the
- * invoice's payment_status to "refunded". There's no payment gateway wired
- * into this codebase, so no money actually moves — see the backend service
- * for the full caveat.
+ * POST /invoices/:id/refund — gated on `payments.refund`, NOT `payments.view`.
+ *
+ * **This moves real money.** The comment here used to say the opposite —
+ * "bookkeeping only… no payment gateway wired into this codebase" — which
+ * stopped being true when the Razorpay integration landed and was still on
+ * screen for anyone reading the client. It creates a `refunds` row against
+ * the payment that settled this invoice; a subsequent `POST /refunds/:id/retry`
+ * submits it to Razorpay as an actual payout.
+ *
+ * There is also no `payment_status` to flip any more: paid-ness is derived
+ * from `payment_allocations` by `v_invoice_balances`.
  */
 export async function refundInvoice(id: string, reason?: string): Promise<Invoice> {
   return apiClient.post<Invoice>(`/invoices/${id}/refund`, { reason });
+}
+
+/** POST /invoices/:id/record-payment — records an offline payment (cash/UPI/…) against an unpaid invoice. */
+export async function recordInvoicePayment(
+  id: string,
+  method: "upi" | "card" | "netbanking" | "wallet" | "cash",
+): Promise<Invoice> {
+  return apiClient.post<Invoice>(`/invoices/${id}/record-payment`, { method });
+}
+
+export interface AdhocChargeInput {
+  user_id: string;
+  description: string;
+  amount: number;
+  payment?: { method: "upi" | "card" | "netbanking" | "wallet" | "cash"; status: "paid" | "pending" };
+}
+
+/** POST /invoices/adhoc — raises a one-off charge against a rider (lost key, cleaning fee, fine, …). */
+export async function addAdhocCharge(input: AdhocChargeInput): Promise<Invoice> {
+  return apiClient.post<Invoice>("/invoices/adhoc", input);
 }
