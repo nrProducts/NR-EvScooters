@@ -1,10 +1,10 @@
 -- =========================================================================
 -- 01 — Extensions
 --
--- Target: Swapngo (cndqvdskrcmivqflbttl). This directory is deliberately
--- SEPARATE from supabase/migrations, which belongs to the old project
--- (rent-ev-scooters / jeerugpvchfjlgssfoeb). The two histories must never
--- be applied to the same database.
+-- First migration of the Swapngo schema (UAT cndqvdskrcmivqflbttl and
+-- production). Written as supabase/v2/migrations; became supabase/migrations
+-- on 2026-10-05 when the old project's (jeerugpvchfjlgssfoeb) migrations
+-- were removed.
 -- =========================================================================
 
 create extension if not exists pgcrypto  with schema extensions;  -- gen_random_uuid, hmac

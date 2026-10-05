@@ -5,7 +5,7 @@ import {
     ERASED_CHILD_TABLES, ERASED_USER_COLUMNS, RETAINED_TABLES,
 } from "../src/modules/privacy/privacy.erasure";
 
-const MIGRATIONS = join(__dirname, "../../../supabase/v2/migrations");
+const MIGRATIONS = join(__dirname, "../../../supabase/migrations");
 const RETENTION_SQL = readFileSync(
     join(MIGRATIONS, "20260819102600_operational_functions.sql"), "utf8",
 );
@@ -78,7 +78,7 @@ const NOT_PERSONAL_DATA = new Set([
     // rider would expect erased along with their name and documents. Erasing
     // it would also silently drop a still-usable (now-anonymous) account back
     // into English mid-session for no compliance reason. See the rationale in
-    // supabase/v2/migrations/20260905100000_user_preferred_language.sql.
+    // supabase/migrations/20260905100000_user_preferred_language.sql.
     "preferred_language",
 ]);
 

@@ -1,162 +1,147 @@
-# Rent EV Scooters — Database Setup & Migration Workflow
+# Swapngo — Database Setup & Migration Workflow
 
-This repo owns the schema for the `Rent EV Scooters` Supabase project
-(`ap-southeast-2`, ref `jeerugpvchfjlgssfoeb`) as version-controlled SQL
-migrations under `supabase/migrations/`. Nothing should ever be hand-typed
-into the Supabase Dashboard SQL editor for schema changes again — every
+The schema lives in `supabase/migrations/` as version-controlled SQL. Nothing
+is ever hand-typed into a dashboard SQL editor for a schema change — every
 change is a new migration file, committed and pushed like any other code.
+What the schema is and why it is shaped this way: [SCHEMA.md](SCHEMA.md).
 
-## 1. One-time setup (per developer machine)
+## Environments
+
+| Environment | Supabase project | Purpose |
+|---|---|---|
+| UAT / QA | `cndqvdskrcmivqflbttl` (Swapngo, ap-south-1) | Testing. Test data and the scripts in `scripts/` are allowed here. |
+| Production | separate Supabase **account** | Real riders. Migrations only — never `seed.sql`, never `scripts/`. |
+
+The old `Rent EV Scooters` project (`jeerugpvchfjlgssfoeb`) and its migrations
+are retired; nothing in this folder targets it.
+
+`config.toml` configures the **local** stack only. Hosted projects are chosen
+with `supabase link --project-ref <ref>`; their auth, hooks, SMTP and secrets
+are set in each project's dashboard / `supabase secrets set`.
+
+## 1. One-time setup (per machine)
 
 ```bash
-# Install the CLI (macOS/Linux via Homebrew; see docs for other OSes)
-brew install supabase/tap/supabase
-
-# Docker Desktop must be running — the CLI spins up a local Postgres +
-# Studio + Auth stack in containers for local dev
+# Windows: scoop install supabase   (or run every command via `npx supabase`)
+# macOS:   brew install supabase/tap/supabase
 supabase --version
-
-# From the repo root, log in (opens a browser)
-supabase login
-
-# Link this repo to the actual hosted project (one-time)
-supabase link --project-ref jeerugpvchfjlgssfoeb
+supabase login          # opens a browser
 ```
 
-`supabase link` stores the project ref in `supabase/.temp/` (gitignored) —
-it does not store any secret, so this is safe to run per-developer.
+Docker Desktop is needed only for the local stack (`supabase start`,
+`db reset`). Linking and pushing to a hosted project do not need it.
 
-## 2. Everyday local dev loop
+## 2. Local loop
 
 ```bash
-# Start the local stack (Postgres, Studio at http://localhost:54323, Auth, etc.)
-supabase start
-
-# Apply every migration in supabase/migrations/ to your LOCAL db, then
-# run seed.sql — this is your "does it apply cleanly from zero" test
-supabase db reset
-
-# Work against the local Studio / local connection string exactly like
-# you would against production, without touching real data
+supabase start          # local Postgres, Studio at http://localhost:54323, Auth
+supabase db reset       # applies every migration from zero, then seed.sql
 ```
 
-Run `supabase db reset` after pulling any new migration from a teammate,
-and before opening a PR that adds one — it's the fastest way to catch a
-broken migration before it ever reaches staging.
+`db reset` is the "does the folder build a database from nothing" test. Run it
+after pulling a new migration and before opening a PR that adds one.
 
-## 3. Making a schema change (this is "how I change the DB" going forward)
+## 3. Making a schema change
 
 ```bash
-# Creates an empty, correctly-timestamped file in supabase/migrations/
 supabase migration new add_vehicle_insurance_reminder_flag
-
-# Edit the generated file, write plain SQL (create/alter/etc.)
-
-# Test it locally
-supabase db reset
-
-# Commit it like any other code change
-git add supabase/migrations/*.sql
-git commit -m "Add insurance reminder flag to vehicles"
-git push
+# edit the generated file — plain SQL
+supabase db reset       # test locally
+git add supabase/migrations/*.sql && git commit
 ```
 
-Rules that keep this system safe:
-- **Never edit a migration file that has already been applied anywhere**
-  (local is fine to reset, but once a file has been pushed to staging or
-  prod, treat it as immutable). If you got something wrong, write a new
-  migration that corrects it — exactly like you would with any other
-  production database change.
-- **Migrations run in filename order.** The timestamp prefix is what
-  guarantees this — always use `supabase migration new`, never hand-name
-  a file.
-- **One logical change per migration** where practical (easier to review,
-  easier to bisect if something breaks).
+Rules:
+- **Never edit a migration that has been applied anywhere.** Write a new one
+  that corrects it. (Exception made once, 2026-10-05, during the UAT/prod
+  split — see "History" below.)
+- **Filename order is apply order**, and every version prefix must be unique.
+  Always use `supabase migration new`; never hand-name a file.
+- **Reference data every environment needs goes in a migration** (permissions,
+  notification types, …). Test data goes in `seed.sql` (local only).
+- **Data fixes for specific UAT rows do not go in this folder.** A migration
+  naming a row id will fail or misbehave on production. Run those in the UAT
+  SQL editor instead.
 
-## 4. Pushing to the real (hosted) database
+## 4. Applying to a hosted project
 
-There are two ways, pick based on how much process you want:
-
-### A. Direct push (fine for a solo/small-team pre-launch project)
 ```bash
+supabase link --project-ref <ref>
+supabase db push --dry-run   # shows exactly what would run
 supabase db push
 ```
-This diffs your local `supabase/migrations/` against the hosted project's
-migration history table and applies whatever's missing, in order.
 
-### B. CI/CD (recommended once you have real riders/data)
-Add `.github/workflows/deploy-migrations.yml` (included in this repo) so
-merges to `main` push automatically, and PRs get a dry-run diff for
-review. You'll need two GitHub Actions secrets:
-- `SUPABASE_ACCESS_TOKEN` — generate at https://supabase.com/dashboard/account/tokens
-- `SUPABASE_PROJECT_ID` — `jeerugpvchfjlgssfoeb`
+Always UAT first, then production. `db push` compares this folder with the
+project's `supabase_migrations.schema_migrations` table and applies what is
+missing, in order.
 
-This means: **no one pushes schema changes by hand, ever** — the only
-path to production schema change is a merged PR.
+**CI** (`.github/workflows/deploy-migrations.yml`) is paused — manual trigger
+only — until UAT's history is repaired and production exists. The target
+setup: PRs dry-run against UAT, merges to `main` push to UAT, production
+deploys only through a manually-approved run.
 
-## 5. Environments
+## 5. History — why UAT needs a one-off repair
 
-Right now you have one Supabase project. Before real users:
-- Create a **second Supabase project** for staging (`supabase projects create`),
-  and point CI at it for every PR/branch; only `main` pushes to prod.
-- Alternatively use **Supabase branching** (`supabase branches create`) if
-  you want an ephemeral per-PR database instead of one long-lived staging
-  project — costs a little more but gives true isolation per PR.
+Until 2026-10-05 migrations were applied to UAT through the MCP/SQL editor,
+which recorded them under different version numbers than the files
+(e.g. UAT has `20260818231236_helpers`, the file is
+`20260819100200_helpers.sql`), and some files were applied without being
+recorded at all. On 2026-10-05:
 
-Never point `supabase db reset` or a dev branch's seed data at the
-production project — `seed.sql` is destructive-by-design for local dev.
+- `supabase/v2/migrations` became this folder; the old project's folder was
+  deleted.
+- Two files dated before `extensions` and four duplicate version prefixes
+  were renamed (`…102610`, `…102620`, `…100001`, `…100101`, `…100201`,
+  `…100001`) so the folder applies cleanly from zero.
+- `20260904155921_legal_documents.sql` was restored (it had been committed to
+  the old folder) and `20261005100000_reconcile_uat_drift.sql` restates the
+  function definitions that had drifted on UAT.
+- `20260915110000_render_keepalive_temporary.sql` was made opt-in (it had the
+  UAT backend URL hardcoded).
 
-## 6. Migration order in this repo
+Before the first `db push` to UAT, its history table must be rewritten to
+match this folder (`supabase migration repair`). Until then, `db push` against
+UAT will refuse to run.
 
-| File | Contents |
-|---|---|
-| `20260720100000_extensions_and_enums.sql` | Extensions, enums, shared `updated_at` trigger fn |
-| `20260720100100_identity.sql` | `users`, `roles`, `user_roles`, `user_documents` + auth signup trigger |
-| `20260720100200_fleet.sql` | `stations`, `vehicles`, `vehicle_maintenance`, `vehicle_documents` |
-| `20260720100300_commercial.sql` | `plans`, `subscriptions`, `rentals`, `invoices` (payments merged in) |
-| `20260720100400_support_ops.sql` | `support_requests`, `rental_feedback`, `incident_reports`, `notifications_log` |
-| `20260720100500_rls.sql` | `is_admin()` helper + RLS policies on all 16 tables |
+## 6. Operational notes
 
-## 7. Known operational behaviors (not bugs — read before you're surprised by them)
-
-- **Deleting a rider from Supabase Auth will fail (by design) once they
-  have any rental or invoice.** `rentals.user_id` and `invoices.user_id`
-  are `ON DELETE RESTRICT` to protect financial/trip history, while
-  `public.users` cascades from `auth.users`. Practical effect: never call
-  `supabase.auth.admin.deleteUser()` on a rider with ride history. For
-  "right to erasure" requests, anonymize the row rather than hard-deleting.
-  **This is now implemented** as `public.anonymise_user(uuid, uuid)` — do not
-  hand-roll it. Callers must gather storage paths BEFORE invoking it, because
-  the rows naming those objects are destroyed by it. See
+- **Riders with financial history cannot be hard-deleted from Auth.**
+  `bookings`, `subscriptions`, `rentals`, `invoices`, `payment_orders` and
+  `refunds` reference `users` with `ON DELETE RESTRICT`. Erasure requests use
+  `public.anonymise_user(uuid, uuid)` — see
   `apps/backend/src/modules/privacy/privacy.erasure.ts` and
   [docs/dpdpa/README.md](../docs/dpdpa/README.md).
-- **`vehicle_telemetry` partitions only exist through Aug 2026.** Before
-  September, either enable `pg_partman` or add a `pg_cron` job that
-  creates next month's partition ahead of time. An insert into an
-  unpartitioned date range fails loudly — that's the intended safe
-  failure mode, but don't let it lapse silently.
-- **Zone/geofence enforcement is not a DB trigger.** `zones` stores
-  polygons; nothing currently blocks a rental from ending outside an
-  active zone. Enforce this in your "end rental" application/edge
-  function logic using `ST_Contains`, once you've confirmed which zones
-  are live.
-- **`audit_logs`, `pii_access_log` and `consent_records` are append-only by
-  TRIGGER, not merely by policy** — the trigger raises for the service role
-  too. The only sanctioned exceptions are the retention functions
-  (`purge_audit_logs`, `purge_pii_access_log`, `purge_consent_records`), which
-  suspend the trigger for exactly one statement and re-enable it in an
-  exception handler. Do not add another. Write to these tables only from a
-  trusted server-side path, never from a rider-facing client.
-
-- **Migration `20260814100700` prepared the Aadhaar/DL minimisation but the
-  DROP is deliberately not applied.**
-  `20260814999999_kyc_doc_number_drop.sql.PENDING` is not a live migration and
-  will not run. It is gated on legal sign-off, and running it needs a
-  `VACUUM FULL` in a maintenance window afterwards (the bytes survive a
-  `DROP COLUMN` until the table is rewritten) plus the backup-retention window
-  to roll over. All three steps are tracked in
-  [docs/dpdpa/README.md](../docs/dpdpa/README.md).
-- **First admin user has no self-serve path**, by design. After your own
-  account signs up (the new-user trigger creates your `public.users` row
-  automatically), insert your first `user_roles` row with `role_id`
-  matching `admin` using the SQL editor + service role, once, manually.
+- **Append-only tables** — `audit_logs`, `pii_access_log`, `consent_records`,
+  `payment_transactions`, `payment_allocations` — reject UPDATE and DELETE by
+  trigger, for the service role too. DELETE is allowed only inside a
+  transaction that sets `app.purge_mode = 'on'` (the retention functions and
+  the test scripts do this).
+- **Invoice series must be rolled over every financial year.** Invoice
+  numbers come from the single active `invoice_series` row
+  (`SNG-FY2627` → `SNG/2627/000001`…). Nothing creates next year's row; before
+  1 April add it and deactivate the old one in the same transaction:
+  ```sql
+  begin;
+  update public.invoice_series set is_active = false where code = 'SNG-FY2627';
+  insert into public.invoice_series (code, financial_year, prefix)
+  values ('SNG-FY2728', '2027-28', 'SNG/2728/');
+  commit;
+  ```
+- **The first admin has no self-serve path.** After the person signs in once
+  (the auth trigger creates their `public.users` row as a rider), run in the
+  SQL editor — both statements in one transaction, because the role/profile
+  check is deferred to commit:
+  ```sql
+  begin;
+  insert into public.staff_profiles (user_id, staff_code)
+  select id, 'STF-ADMIN-01' from public.users where email = 'admin@example.com';
+  update public.users set role = 'admin' where email = 'admin@example.com';
+  commit;
+  ```
+  Then register the Custom Access Token hook (Dashboard → Authentication →
+  Hooks → `public.custom_access_token_hook`) if not already done, or the role
+  never reaches the JWT.
+- **Scheduled jobs need two Vault secrets** — `functions_base_url` and
+  `service_role_key`. Without them every cron job logs a warning and does
+  nothing.
+- **Test scripts** in `scripts/` (`reset-rider-journey.sql`,
+  `shift-plan-cycle.sql`, `delete-user-data.sql`) are for UAT only.

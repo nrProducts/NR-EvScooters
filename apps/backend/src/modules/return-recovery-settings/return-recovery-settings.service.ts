@@ -9,11 +9,11 @@ import { ReturnRecoverySettingsRow, UpdateReturnRecoverySettingsInput } from "./
 /**
  * The day cap before a rental instead gets flagged for physical recovery —
  * `return_recovery_settings.max_late_fee_days`
- * (supabase/v2/migrations/20260824100000_return_recovery_policy.sql).
+ * (supabase/migrations/20260824100001_return_recovery_policy.sql).
  *
  * The RATE itself is deliberately not a second column here any more.
  * `return_recovery_settings.late_fee_per_day` was added in
- * 20260825100000_return_recovery_late_fee_per_day.sql as its own
+ * 20260825100001_return_recovery_late_fee_per_day.sql as its own
  * admin-settable number, which re-created exactly the split
  * `lateFeeRateFor`'s own doc comment (payments/renewalFee.ts) warns
  * against: "a rider whose plan has expired is simultaneously late renewing

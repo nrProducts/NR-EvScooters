@@ -10,7 +10,7 @@ import {
 
 /*
  * ─────────────────────────────────────────────────────────────────────────
- * The money model (verified against supabase/v2/migrations/):
+ * The money model (verified against supabase/migrations/):
  *
  *  Cash in       payment_allocations → payment_transactions(status='succeeded')
  *                → invoices(status != 'void') → invoice_items(item_type,amount signed)

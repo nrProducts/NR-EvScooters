@@ -1,13 +1,10 @@
 name: Supabase Migrations
 
+# PAUSED (2026-10-05): manual-only while UAT history is repaired and the
+# production project is created. The secrets still point at the old project.
+# Restore the pull_request/push triggers once UAT + prod secrets are set.
 on:
-  pull_request:
-    paths:
-      - "supabase/migrations/**"
-  push:
-    branches: [main]
-    paths:
-      - "supabase/migrations/**"
+  workflow_dispatch:
 
 jobs:
   # Runs on every PR that touches migrations — shows a dry-run diff in the

@@ -27,7 +27,7 @@ import type { AuthContext, PermissionKey } from "../src/types";
  * and the checks below short-circuit before consulting it.
  */
 
-const MIGRATIONS = join(__dirname, "../../../supabase/v2/migrations");
+const MIGRATIONS = join(__dirname, "../../../supabase/migrations");
 
 function actor(role: AuthContext["role"], keys: PermissionKey[] = []): AuthContext {
     return {

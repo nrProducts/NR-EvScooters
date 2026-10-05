@@ -1,5 +1,5 @@
 -- =========================================================================
--- 20260904100000_legal_documents.sql
+-- 20260904155921_legal_documents.sql (version matches UAT history; committed earlier in the old folder as 20260904100000)
 --
 -- Terms & Conditions: the document, and proof that a rider accepted it.
 --

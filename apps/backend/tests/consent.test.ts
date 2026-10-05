@@ -7,7 +7,7 @@ import {
 import { publishNoticeBody, recordConsentBody } from "../src/modules/consent/consent.validation";
 
 const MIGRATION = join(
-    __dirname, "../../../supabase/v2/migrations/20260819100100_enums.sql",
+    __dirname, "../../../supabase/migrations/20260819100100_enums.sql",
 );
 
 describe("consent purpose registry", () => {

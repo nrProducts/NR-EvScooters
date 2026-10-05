@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { NEVER_PURGED, RETENTION_POLICIES } from "../src/modules/privacy/retention.constants";
 
 const ROOT = join(__dirname, "../../..");
-const V2 = join(ROOT, "supabase/v2/migrations");
+const V2 = join(ROOT, "supabase/migrations");
 
 const SEED_SQL = readFileSync(join(V2, "20260819102400_realtime_and_seed.sql"), "utf8");
 const DROP_EXPORTS_SQL = readFileSync(

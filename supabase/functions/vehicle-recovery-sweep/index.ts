@@ -7,7 +7,7 @@
 // on demand, at settlement. This sweep is the first thing that walks active
 // rentals on a schedule: once a rental is more than
 // return_recovery_settings.max_late_fee_days past its effective due date,
-// it flags recovery_flagged_at (see 20260824100000_return_recovery_policy.sql
+// it flags recovery_flagged_at (see 20260824100001_return_recovery_policy.sql
 // for why that's an additive column, not a new rental_status value) and
 // notifies staff.
 //

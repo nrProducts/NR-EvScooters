@@ -30,7 +30,7 @@ import { useT } from '../i18n';
  * recipient's `preferred_language` at send time — which is now possible,
  * since that column exists — and is a backend change, not a mobile one. It
  * emphatically does NOT mean a translations table: see the rationale in
- * supabase/v2/migrations/20260905100000_user_preferred_language.sql.
+ * supabase/migrations/20260905100000_user_preferred_language.sql.
  */
 export default function NotificationsScreen() {
   // AppShell insets its drawer sheet but not screen content, so each screen

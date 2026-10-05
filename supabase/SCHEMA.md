@@ -1,21 +1,20 @@
-# Swapngo v2 — new database
+# Swapngo — database schema
 
-**Target project:** `Swapngo` — `cndqvdskrcmivqflbttl` (ap-south-1)
-
-> ## Do not run these against the old project
->
-> `supabase/migrations/` (71 files) belongs to **`Rent EV Scooters` — `jeerugpvchfjlgssfoeb`**, which `supabase/config.toml` is linked to. This directory is deliberately separate so the two histories can never be applied to the same database. The old project is reference material and is not modified by anything here.
+**Migrations:** [`migrations/`](migrations/) — the single source of truth for
+UAT (`cndqvdskrcmivqflbttl`) and production. Workflow and environments:
+[SETUP.md](SETUP.md).
 
 ## Status
 
-Applied and validated on 2026-08-19. **Updated 2026-08-20:** the application
-code has since been refactored onto this schema and all three apps now point
-here — see [docs/final-system-audit/FIXES-APPLIED.md](../../docs/final-system-audit/FIXES-APPLIED.md)
-for what changed and what is still outstanding.
+Applied and validated on UAT 2026-08-19. **2026-08-20:** the application
+code was refactored onto this schema and all apps point here — see
+[docs/final-system-audit/FIXES-APPLIED.md](../docs/final-system-audit/FIXES-APPLIED.md).
+**2026-10-05:** this became the only migration folder (formerly
+`supabase/v2/migrations`); the old project's migrations were removed.
 
 ## What this is
 
-A clean rebuild from first principles, not a migration of the old schema. Nothing was carried forward because it existed. The design lives in [`docs/database-audit/11`–`19`](../../docs/database-audit/); the reasoning behind each decision is in the migration comments.
+A clean rebuild from first principles, not a migration of the old schema. Nothing was carried forward because it existed. The design lives in [`docs/database-audit/11`–`19`](../docs/database-audit/); the reasoning behind each decision is in the migration comments.
 
 The three concepts the old schema conflated are separated here:
 

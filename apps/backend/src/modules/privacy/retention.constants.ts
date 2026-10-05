@@ -33,7 +33,7 @@ export const ERASURE_GRACE_DAYS = 7;
 
 /**
  * Mirrors the seeded rows in
- * supabase/v2/migrations/20260819102400_realtime_and_seed.sql.
+ * supabase/migrations/20260819102400_realtime_and_seed.sql.
  *
  * `data_exports` was here until access requests stopped producing a file.
  * Its migration is reverted by ...101000_drop_data_exports.sql; a policy row

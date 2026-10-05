@@ -12,6 +12,7 @@ import { AuthContext, Paginated } from "../../types";
 import { createSignedDamagePhotoUrl } from "./damages.photo.storage";
 import { DamageRow, DisputeDamageInput, ListDamagesFilters, RecordDamageInput, ResolveDisputeInput } from "./damages.types";
 import { businessToday } from "../../common/dates";
+import { activeInvoiceSeriesCode } from "../rentals/overdueLateFee";
 
 /**
  * Damage.
@@ -301,6 +302,9 @@ async function raiseDamageInvoice(
     damageId: string,
 ): Promise<void> {
     const today = businessToday();
+    // The series code is fiscal-year-suffixed ("SNG-FY2627"); a literal "SNG"
+    // matches no series and trg_allocate_invoice_number rejects the insert.
+    const seriesCode = await activeInvoiceSeriesCode();
 
     const { data: invoice, error } = await supabaseAdmin
         .from("invoices")
@@ -313,7 +317,7 @@ async function raiseDamageInvoice(
             total_amount: amount,
             issued_on: today,
             due_on: today,
-            invoice_series_code: "SNG",
+            invoice_series_code: seriesCode,
             // Allocated by trg_allocate_invoice_number BEFORE INSERT.
             invoice_number: "",
         })

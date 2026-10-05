@@ -2,7 +2,14 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
-project_id = "rent-ev-scooters"
+#
+# This file configures the LOCAL stack (`supabase start` / `db reset`) only.
+# Hosted projects are targeted with `supabase link --project-ref <ref>`:
+#   UAT/QA      cndqvdskrcmivqflbttl  (Swapngo)
+#   Production  separate Supabase account — see supabase/SETUP.md
+# Auth, hooks, SMTP and secrets on hosted projects are set in their own
+# dashboards / `supabase secrets set`, not from this file.
+project_id = "swapngo"
 
 [api]
 enabled = true
@@ -288,12 +295,10 @@ max_frequency = "30s"
 # enabled = true
 # uri = "pg-functions://postgres/auth/before-user-created-hook"
 
-# Adds role/account_status claims to every JWT (see 20260720100600_auth.sql).
-# NOTE: this config.toml is linked to the OLD project (jeerugpvchfjlgssfoeb).
-# The live project (cndqvdskrcmivqflbttl, "Swapngo") all apps point to has its
-# own Auth Hooks configured directly in its Supabase Dashboard — this toggle
-# only affects `supabase start` local dev, not production. See
-# docs/final-system-audit/FIXES-APPLIED.md for the outstanding dashboard step.
+# Adds the role claim to every JWT (public.custom_access_token_hook, defined in
+# migrations/20260819100200_helpers.sql). This toggle only affects the local
+# stack — on UAT and production the hook must be registered by hand in
+# Dashboard → Authentication → Hooks, or is_staff()/is_admin() are always false.
 [auth.hook.custom_access_token]
 enabled = true
 uri = "pg-functions://postgres/public/custom_access_token_hook"

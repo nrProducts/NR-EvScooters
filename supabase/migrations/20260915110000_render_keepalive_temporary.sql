@@ -20,17 +20,36 @@
 -- deploy, and if the ping ever stops the bug returns silently.
 --
 -- To remove: select cron.unschedule('render-backend-keepalive');
+--
+-- OPT-IN PER ENVIRONMENT (edited 2026-10-05). The URL used to be hardcoded
+-- to the UAT backend, so building production from this folder would have
+-- pinged UAT. It now schedules ONLY when the Vault secret
+-- `keepalive_health_url` exists, and pings that URL. Production on a paid
+-- Render plan leaves the secret unset and gets no job. UAT already has the
+-- job from the original apply; this file does not run there again.
+-- To enable on an environment:
+--   select vault.create_secret('https://<backend>/api/v1/health', 'keepalive_health_url');
+--   then re-run this file.
 -- =========================================================================
 
-select cron.unschedule('render-backend-keepalive')
-where exists (select 1 from cron.job where jobname = 'render-backend-keepalive');
+do $$
+declare
+    v_url text;
+begin
+    perform cron.unschedule('render-backend-keepalive')
+       from cron.job where jobname = 'render-backend-keepalive';
 
--- UTC 00:00-19:59 and 23:00-23:59 == IST 05:30-01:29 (next day).
-select cron.schedule(
-    'render-backend-keepalive',
-    '*/10 0-19,23 * * *',
-    $$select net.http_get(
-        url := 'https://swapngo-api-ydd8.onrender.com/api/v1/health',
-        timeout_milliseconds := 60000
-    )$$
-);
+    select decrypted_secret into v_url
+      from vault.decrypted_secrets where name = 'keepalive_health_url';
+    if v_url is null then
+        raise notice 'keepalive_health_url not in Vault; render-backend-keepalive not scheduled.';
+        return;
+    end if;
+
+    -- UTC 00:00-19:59 and 23:00-23:59 == IST 05:30-01:29 (next day).
+    perform cron.schedule(
+        'render-backend-keepalive',
+        '*/10 0-19,23 * * *',
+        format('select net.http_get(url := %L, timeout_milliseconds := 60000)', v_url)
+    );
+end $$;
