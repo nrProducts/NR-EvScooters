@@ -165,15 +165,23 @@ describe("createRateLimiter", () => {
 });
 
 describe("clientIp", () => {
-    it("prefers the first hop of x-forwarded-for", () => {
+    it("without trust proxy configured, keeps the legacy first-hop behaviour", () => {
         expect(
-            clientIp({ headers: { "x-forwarded-for": "203.0.113.5, 70.41.3.18" }, ip: "10.0.0.1" }),
+            clientIp({ headers: { "x-forwarded-for": "203.0.113.5, 70.41.3.18" }, ip: "10.0.0.1" }, 0),
         ).toBe("203.0.113.5");
     });
 
     it("falls back to req.ip then the socket", () => {
-        expect(clientIp({ headers: {}, ip: "10.0.0.1" })).toBe("10.0.0.1");
-        expect(clientIp({ headers: {}, socket: { remoteAddress: "10.0.0.2" } })).toBe("10.0.0.2");
-        expect(clientIp({ headers: {} })).toBe("unknown");
+        expect(clientIp({ headers: {}, ip: "10.0.0.1" }, 0)).toBe("10.0.0.1");
+        expect(clientIp({ headers: {}, socket: { remoteAddress: "10.0.0.2" } }, 0)).toBe("10.0.0.2");
+        expect(clientIp({ headers: {} }, 0)).toBe("unknown");
+    });
+
+    it("with trust proxy configured, ignores a client-forged x-forwarded-for and uses req.ip", () => {
+        // req.ip is what Express resolved by counting trusted hops from the
+        // right; the leftmost entry is whatever the caller chose to send.
+        expect(
+            clientIp({ headers: { "x-forwarded-for": "1.2.3.4, 203.0.113.5" }, ip: "203.0.113.5" }, 1),
+        ).toBe("203.0.113.5");
     });
 });

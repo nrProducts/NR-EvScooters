@@ -38,10 +38,36 @@ import leaveRoutes from "../modules/leave/leave.routes";
 import holidaysRoutes from "../modules/holidays/holidays.routes";
 import publicRoutes from "../modules/public/public.routes";
 import preBookingsAdminRoutes from "../modules/public/preBookings.admin.routes";
+import { env } from "../config/env";
 
 const router = Router();
 
 router.get("/health", (_req, res) => res.json({ status: "ok" }));
+
+// TEMPORARY measurement aid for env.trustProxyHops. Echoes only the CALLER'S
+// own request path — the forwarded chain its proxies built — so each
+// environment's hop count is measured rather than guessed. 404 unless
+// IP_DIAGNOSTIC=on. Remove once every environment's TRUST_PROXY_HOPS is set.
+router.get("/health/client-ip", (req, res) => {
+    if (!env.ipDiagnostic) {
+        res.status(404).json({ message: "Not found" });
+        return;
+    }
+    const header = (name: string) => {
+        const value = req.headers[name];
+        return Array.isArray(value) ? value.join(", ") : value ?? null;
+    };
+    const forwarded = header("x-forwarded-for");
+    res.set("Cache-Control", "no-store").json({
+        x_forwarded_for: forwarded ? forwarded.split(",").map((s) => s.trim()) : [],
+        socket_remote_address: req.socket.remoteAddress ?? null,
+        cf_connecting_ip: header("cf-connecting-ip"),
+        true_client_ip: header("true-client-ip"),
+        x_real_ip: header("x-real-ip"),
+        trust_proxy_hops: env.trustProxyHops,
+        resolved_req_ip: req.ip ?? null,
+    });
+});
 
 router.use("/auth", authRoutes);
 

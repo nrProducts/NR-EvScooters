@@ -26,7 +26,7 @@ import { EMITTED_NOTIFICATION_CODES } from "../src/types";
  * guarantee; `EmittedNotificationCode` is the spelling half.
  */
 
-const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "supabase", "v2", "migrations");
+const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "supabase", "migrations");
 
 /**
  * Pulls the first column out of every `('code', …)` tuple in an

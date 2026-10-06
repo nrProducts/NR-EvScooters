@@ -61,7 +61,7 @@ scratch, so each build deletes `node_modules` first.
 URLs are assigned at create time, and each app points at the previous one, so
 deploy in this order and paste the URL forward:
 
-1. **backend** → note its URL, e.g. `https://nr-evscooters-backend.onrender.com`
+1. **backend** → note its URL, e.g. `https://swapngo-backend.onrender.com`
 2. **web** → set `VITE_API_BASE_URL` to `<backend-url>/api/v1`; note the web URL
 3. **website** → set `VITE_RIDER_WEB_URL` to the rider-web URL (e.g. `https://swapngo-rider-web.onrender.com`) — this is what the "iPhone" button on the Get the App section links to
 4. Back on **backend**, set `INVITE_REDIRECT_URL` / `ADMIN_APP_URL` to the web URL
