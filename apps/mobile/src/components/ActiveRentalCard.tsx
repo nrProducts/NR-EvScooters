@@ -60,6 +60,14 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
   const dayNumber = totalDays != null ? Math.max(1, Math.min(totalDays, rentalDayNumber(periodStart))) : null;
   const progress =
     totalDays && dayNumber != null ? Math.max(0.04, Math.min(1, dayNumber / totalDays)) : null;
+  // Deliberately NOT expiry.daysLeft for this label: that counts calendar
+  // days to the renewal INSTANT (Oct 5 noon), which is one day past this
+  // plan's actual last usage day (Day 7 = Oct 4) — shown next to "Day 3 of
+  // 7" that read as "3 elapsed + 5 left = 8", a day more than the plan has.
+  // Counting from dayNumber instead keeps the two figures on this card
+  // adding up to totalDays, and puts "last day" on the actual last day
+  // rather than one day after it.
+  const daysRemainingInPlan = totalDays != null && dayNumber != null ? totalDays - dayNumber : null;
 
   const returnRequested = isReturnLocked(rental);
   const lock = useReturnLock(returnRequested);
@@ -104,15 +112,15 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
           </Text>
         ) : null}
 
-        {progress != null && daysLeft != null ? (
+        {progress != null && daysRemainingInPlan != null ? (
           <View className="mt-3">
             <View className="flex-row items-center justify-between mb-1.5">
               <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
-                {daysLeft === 0
+                {daysRemainingInPlan === 0
                   ? t('rental.lastDay')
-                  : daysLeft === 1
+                  : daysRemainingInPlan === 1
                     ? t('rental.daysRemaining.one')
-                    : t('rental.daysRemaining.other', { count: daysLeft })}
+                    : t('rental.daysRemaining.other', { count: daysRemainingInPlan })}
               </Text>
               {totalDays && dayNumber != null ? (
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
