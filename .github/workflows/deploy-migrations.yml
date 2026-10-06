@@ -1,49 +1,107 @@
-name: Supabase Migrations
+name: Supabase Deploy
 
-# PAUSED (2026-10-05): manual-only while UAT history is repaired and the
-# production project is created. The secrets still point at the old project.
-# Restore the pull_request/push triggers once UAT + prod secrets are set.
+# develop -> UAT (cndqvdskrcmivqflbttl)      automatic
+# main    -> production (separate account)    plan, then manual approval
+#
+# What it deploys: supabase/migrations (db push) and every function in
+# supabase/functions. It does NOT touch Auth settings, Vault secrets, function
+# secrets or app data — those are one-time setup per environment
+# (supabase/SETUP.md).
+#
+# GitHub setup (Settings -> Environments), each with the same three secrets:
+#   uat              SUPABASE_ACCESS_TOKEN  token from the UAT Supabase account
+#                    SUPABASE_DB_PASSWORD   UAT database password
+#                    SUPABASE_PROJECT_ID    cndqvdskrcmivqflbttl
+#   production-plan  prod token / password / ref; deployment branch: main
+#   production       same values as production-plan; deployment branch: main;
+#                    required reviewer = the person who approves prod deploys
+# production-plan has no reviewer so the dry-run is visible BEFORE approval.
+
 on:
+  pull_request:
+    branches: [develop]
+    paths: ["supabase/**"]
+  push:
+    branches: [develop, main]
+    paths: ["supabase/**"]
   workflow_dispatch:
 
+# One deploy per environment at a time; never cancel one mid-push.
+concurrency:
+  group: supabase-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Pinned so a CLI release cannot change deploy behaviour unannounced.
+  # Bump deliberately.
+  SUPABASE_CLI_VERSION: 2.119.0
+
 jobs:
-  # Runs on every PR that touches migrations — shows a dry-run diff in the
-  # job log so reviewers can see exactly what SQL will run, without
-  # actually applying anything.
-  dry-run-diff:
+  # PR into develop: show the SQL that would run on UAT. Applies nothing.
+  uat-plan:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    environment: uat
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
-      - name: Link project
-        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-      - name: Show pending migration diff (no changes applied)
-        run: supabase db push --dry-run
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+      - run: supabase db push --dry-run
 
-  # Runs only on merge to main — actually pushes new migrations to the
-  # hosted project.
-  deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  uat-deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
+    environment: uat
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
-      - name: Link project
-        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-      - name: Push migrations
-        run: supabase db push
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+      - run: supabase db push
+      - run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID"
+
+  # Push to main: dry-run against production first. Read this job's log
+  # before approving prod-deploy.
+  prod-plan:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production-plan
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+      - run: supabase db push --dry-run
+
+  prod-deploy:
+    needs: prod-plan
+    runs-on: ubuntu-latest
+    environment: production   # waits here for the required reviewer
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+      - run: supabase db push
+      - run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID"

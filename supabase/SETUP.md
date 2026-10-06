@@ -72,12 +72,26 @@ supabase db push
 
 Always UAT first, then production. `db push` compares this folder with the
 project's `supabase_migrations.schema_migrations` table and applies what is
-missing, in order.
+missing, in order. Manual pushes are for emergencies; the normal path is CI.
 
-**CI** (`.github/workflows/deploy-migrations.yml`) is paused — manual trigger
-only — until UAT's history is repaired and production exists. The target
-setup: PRs dry-run against UAT, merges to `main` push to UAT, production
-deploys only through a manually-approved run.
+**CI** — `.github/workflows/deploy-migrations.yml`:
+
+| Event | Job | Target |
+|---|---|---|
+| PR into `develop` touching `supabase/**` | `uat-plan` — `db push --dry-run` | UAT, nothing applied |
+| Push to `develop` | `uat-deploy` — `db push` + `functions deploy` | UAT |
+| Push to `main` | `prod-plan` — `db push --dry-run` | production, nothing applied |
+| …then | `prod-deploy` — waits for approval, then `db push` + `functions deploy` | production |
+
+Flow: feature branch → PR → `develop` (UAT) → test → PR `develop` → `main`
+→ read `prod-plan`'s log → approve `prod-deploy`.
+
+GitHub → Settings → Environments, each holding `SUPABASE_ACCESS_TOKEN`,
+`SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_ID`:
+`uat` (UAT account), `production-plan` and `production` (prod account; both
+restricted to branch `main`; `production` has the required reviewer).
+CI does not set Auth settings, Vault secrets or function secrets — those are
+one-time per environment.
 
 ## 5. History — why UAT needs a one-off repair
 
@@ -99,8 +113,9 @@ recorded at all. On 2026-10-05:
   UAT backend URL hardcoded).
 
 Before the first `db push` to UAT, its history table must be rewritten to
-match this folder (`supabase migration repair`). Until then, `db push` against
-UAT will refuse to run.
+match this folder (95 versions marked applied; `20261005100000` left for the
+first deploy to apply). Until then, `db push` against UAT will refuse to run.
+The old rows are kept in `supabase_migrations.schema_migrations_backup_20261006`.
 
 ## 6. Operational notes
 
