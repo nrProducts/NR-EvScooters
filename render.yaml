@@ -90,6 +90,9 @@ services:
       # Hop count for Express "trust proxy". Measure it, don't guess: set
       # IP_DIAGNOSTIC=on, call GET /api/v1/health/client-ip, set this, then
       # remove IP_DIAGNOSTIC. Unset = old behaviour (req.ip is the proxy).
+      # Measured 3 on UAT (2026-10-07): client → Cloudflare → Render LB →
+      # local proxy. Re-measure on prod, and again after adding a custom
+      # domain — a domain proxied through your own Cloudflare adds a hop.
       - key: TRUST_PROXY_HOPS
         sync: false
 
