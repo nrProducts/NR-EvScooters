@@ -1,43 +1,64 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, Linking, Platform } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { View, Text, TouchableOpacity, Linking, Platform } from "react-native";
+import { useRouter, useFocusEffect } from "expo-router";
 import {
-  ChevronRight, MapPin, Calendar, Navigation, XCircle, CreditCard,
-} from 'lucide-react-native';
-import { AppShell } from '../../components/AppShell';
-import { KycBanner } from '../../components/KycBanner';
-import { MaintenanceNoticeBanner } from '../../components/MaintenanceNoticeBanner';
-import { ActiveRentalCard } from '../../components/ActiveRentalCard';
-import { FeaturedScooterCard } from '../../components/FeaturedScooterCard';
-import { SettlementCard } from '../../components/SettlementCard';
-import { HomeHeroCard } from '../../components/home/HomeHeroCard';
-import { HomeQuickLinks } from '../../components/home/HomeQuickLinks';
-import { isReturnLocked } from '../../lib/returnLock';
-import { useDismissibleBanner } from '../../lib/dismissedBanners';
-import { NeedHelpCard } from '../../components/home/NeedHelpCard';
-import { Badge } from '../../components/ui/Badge';
-import { SkeletonList } from '../../components/ui/Skeleton';
-import { pullToRefresh } from '../../components/ui/PullToRefresh';
-import { PageScroll } from '../../components/ui/PageScroll';
-import { ErrorState } from '../../components/ui/ErrorState';
-import { useAuthStore } from '../../store/useAuthStore';
-import { useVehicleCatalogStore } from '../../store/useVehicleCatalogStore';
-import { bookingRepository, maintenanceRepository, rentalRepository } from '../../services';
-import { useCancelBooking } from '../../hooks/useCancelBooking';
-import { useRiderJourney } from '../../hooks/useRiderJourney';
-import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
-import { notifyError } from '../../lib/confirm';
-import { COLORS } from '../../constants/theme';
-import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
-import { VEHICLE_STATUS_LABEL_KEY, VEHICLE_STATUS_TONE } from '../../constants/status';
-import type { ApiBooking, ApiMaintenanceNotice, ApiRental, ApiReturnSettlement } from '../../types/api';
-import { ScooterStatusCard } from '../../components/ScooterStatusCard';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useT } from '../../i18n';
+  ChevronRight,
+  MapPin,
+  Calendar,
+  Navigation,
+  XCircle,
+  CreditCard,
+} from "lucide-react-native";
+import { AppShell } from "../../components/AppShell";
+import { KycBanner } from "../../components/KycBanner";
+import { MaintenanceNoticeBanner } from "../../components/MaintenanceNoticeBanner";
+import { ActiveRentalCard } from "../../components/ActiveRentalCard";
+import { FeaturedScooterCard } from "../../components/FeaturedScooterCard";
+import { SettlementCard } from "../../components/SettlementCard";
+import { HomeHeroCard } from "../../components/home/HomeHeroCard";
+import { HomeQuickLinks } from "../../components/home/HomeQuickLinks";
+import { isReturnLocked } from "../../lib/returnLock";
+import { useDismissibleBanner } from "../../lib/dismissedBanners";
+import { NeedHelpCard } from "../../components/home/NeedHelpCard";
+import { Badge } from "../../components/ui/Badge";
+import { SkeletonList } from "../../components/ui/Skeleton";
+import { pullToRefresh } from "../../components/ui/PullToRefresh";
+import { PageScroll } from "../../components/ui/PageScroll";
+import { ErrorState } from "../../components/ui/ErrorState";
+import { useAuthStore } from "../../store/useAuthStore";
+import { useVehicleCatalogStore } from "../../store/useVehicleCatalogStore";
+import {
+  bookingRepository,
+  maintenanceRepository,
+  rentalRepository,
+} from "../../services";
+import { useCancelBooking } from "../../hooks/useCancelBooking";
+import { useRiderJourney } from "../../hooks/useRiderJourney";
+import { buildMapsUrl, buildWebMapsUrl } from "../../lib/maps";
+import { notifyError } from "../../lib/confirm";
+import { COLORS } from "../../constants/theme";
+import { TAB_BAR_FOOTPRINT } from "../../lib/tabBar";
+import {
+  VEHICLE_STATUS_LABEL_KEY,
+  VEHICLE_STATUS_TONE,
+} from "../../constants/status";
+import type {
+  ApiBooking,
+  ApiMaintenanceNotice,
+  ApiRental,
+  ApiReturnSettlement,
+} from "../../types/api";
+import { ScooterStatusCard } from "../../components/ScooterStatusCard";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useT } from "../../i18n";
 
 function formatDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
-  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 /**
@@ -50,8 +71,14 @@ export default function HomeScreen() {
   const profile = useAuthStore((s) => s.profile);
   const { t } = useT();
   const {
-    featured, loadingFeatured, featuredError, loadFeatured,
-    list, loadingList, listError, loadList,
+    featured,
+    loadingFeatured,
+    featuredError,
+    loadFeatured,
+    list,
+    loadingList,
+    listError,
+    loadList,
   } = useVehicleCatalogStore();
   const [pendingBooking, setPendingBooking] = useState<ApiBooking | null>(null);
 
@@ -59,7 +86,7 @@ export default function HomeScreen() {
   // pickup. Rendering the two identically told riders their scooter was
   // reserved and staff would hand it over, when nothing had been paid and the
   // hold was about to lapse.
-  const awaitingPayment = pendingBooking?.status === 'pending_payment';
+  const awaitingPayment = pendingBooking?.status === "pending_payment";
 
   /**
    * e.g. "24 min" — how long the unpaid hold has left, or null once lapsed.
@@ -71,16 +98,23 @@ export default function HomeScreen() {
    */
   const holdCountdown = (() => {
     if (!awaitingPayment || !pendingBooking?.hold_expires_at) return null;
-    const msLeft = new Date(pendingBooking.hold_expires_at).getTime() - Date.now();
+    const msLeft =
+      new Date(pendingBooking.hold_expires_at).getTime() - Date.now();
     if (msLeft <= 0) return null;
     const mins = Math.ceil(msLeft / 60_000);
     return mins >= 60
-      ? t('home.duration.hoursMinutes', { hours: Math.floor(mins / 60), minutes: mins % 60 })
-      : t('home.duration.minutes', { minutes: mins });
+      ? t("home.duration.hoursMinutes", {
+          hours: Math.floor(mins / 60),
+          minutes: mins % 60,
+        })
+      : t("home.duration.minutes", { minutes: mins });
   })();
   const [activeRental, setActiveRental] = useState<ApiRental | null>(null);
-  const [settlement, setSettlement] = useState<ApiReturnSettlement | null>(null);
-  const [maintenanceNotice, setMaintenanceNotice] = useState<ApiMaintenanceNotice | null>(null);
+  const [settlement, setSettlement] = useState<ApiReturnSettlement | null>(
+    null,
+  );
+  const [maintenanceNotice, setMaintenanceNotice] =
+    useState<ApiMaintenanceNotice | null>(null);
   const { cancelling, cancelBooking } = useCancelBooking();
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,9 +157,12 @@ export default function HomeScreen() {
   // Independent of has_active_rental/has_active_booking — a rider can be
   // mid-displacement (no temp vehicle yet) with neither flag set.
   useEffect(() => {
-    void maintenanceRepository.notice().then(setMaintenanceNotice).catch(() => {
-      // Non-critical: the rest of Home renders fine without the notice.
-    });
+    void maintenanceRepository
+      .notice()
+      .then(setMaintenanceNotice)
+      .catch(() => {
+        // Non-critical: the rest of Home renders fine without the notice.
+      });
   }, []);
 
   // has_active_rental takes priority once pickup happens — this card is
@@ -152,7 +189,8 @@ export default function HomeScreen() {
       setActiveRental(null);
       return;
     }
-    void rentalRepository.mine()
+    void rentalRepository
+      .mine()
       .then(setActiveRental)
       .catch(() => {
         // Non-critical: the rest of Home renders fine without the rental.
@@ -168,9 +206,12 @@ export default function HomeScreen() {
   // has_active_rental is true. Only a completed-settlement refund summary
   // was ever exclusive with an active rental; an outstanding amount is not.
   const loadSettlement = () => {
-    void rentalRepository.settlement().then(setSettlement).catch(() => {
-      // Non-critical: the rest of Home renders fine without the settlement.
-    });
+    void rentalRepository
+      .settlement()
+      .then(setSettlement)
+      .catch(() => {
+        // Non-critical: the rest of Home renders fine without the settlement.
+      });
   };
 
   useEffect(loadSettlement, [profile?.has_active_rental]);
@@ -210,9 +251,12 @@ export default function HomeScreen() {
         refreshProfile(),
         loadFeatured(),
         loadList(),
-        maintenanceRepository.notice().then(setMaintenanceNotice).catch(() => {
-          // Non-critical: the rest of Home renders fine without the notice.
-        }),
+        maintenanceRepository
+          .notice()
+          .then(setMaintenanceNotice)
+          .catch(() => {
+            // Non-critical: the rest of Home renders fine without the notice.
+          }),
       ]);
       loadRental();
       loadSettlement();
@@ -221,25 +265,33 @@ export default function HomeScreen() {
     }
   };
 
-  const handleGetDirections = async (station: NonNullable<ApiBooking['station']>) => {
-    const platform = Platform.OS === 'android' ? 'android' : 'ios';
+  const handleGetDirections = async (
+    station: NonNullable<ApiBooking["station"]>,
+  ) => {
+    const platform = Platform.OS === "android" ? "android" : "ios";
     const url = buildMapsUrl(station.lat, station.lng, platform);
     try {
       const canOpen = await Linking.canOpenURL(url);
-      await Linking.openURL(canOpen ? url : buildWebMapsUrl(station.lat, station.lng));
+      await Linking.openURL(
+        canOpen ? url : buildWebMapsUrl(station.lat, station.lng),
+      );
     } catch {
-      notifyError(t('home.error.maps.title'), t('home.error.maps.message'));
+      notifyError(t("home.error.maps.title"), t("home.error.maps.message"));
     }
   };
 
   if (!profile) return null;
 
-  const featuredRef = featured ? { id: featured.id, name: featured.name } : null;
+  const featuredRef = featured
+    ? { id: featured.id, name: featured.name }
+    : null;
 
   return (
-    <AppShell title={t('home.title')}>
+    <AppShell title={t("home.title")}>
       <PageScroll
-        contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28,
+        }}
         refreshControl={pullToRefresh(refreshing, () => void handleRefresh())}
       >
         {/*
@@ -255,7 +307,7 @@ export default function HomeScreen() {
         <MaintenanceNoticeBanner notice={maintenanceNotice} />
 
         {/* ---- Primary slot: exactly one card, chosen by the journey phase ---- */}
-        {journey.phase === 'active_rental' ? (
+        {journey.phase === "active_rental" ? (
           activeRental ? (
             <>
               {/* The one "what's happening / what do I do" box — settlement due,
@@ -270,112 +322,166 @@ export default function HomeScreen() {
                 settlement={settlement}
                 onSettlementPaid={loadSettlement}
               />
-              <ActiveRentalCard rental={activeRental} onRenew={() => router.push('/billing')} />
+              <ActiveRentalCard
+                rental={activeRental}
+                onRenew={() => router.push("/billing")}
+              />
             </>
           ) : (
-            <View className="mb-5"><SkeletonList count={1} /></View>
+            <View className="mb-5">
+              <SkeletonList count={1} />
+            </View>
           )
-        ) : journey.phase === 'payment_pending' || journey.phase === 'pickup_scheduled' ? (
+        ) : journey.phase === "payment_pending" ||
+          journey.phase === "pickup_scheduled" ? (
           !pendingBooking ? (
-            <View className="mb-5"><SkeletonList count={1} /></View>
+            <View className="mb-5">
+              <SkeletonList count={1} />
+            </View>
           ) : (
-          <View
-            className="rounded-2xl p-5 mb-5 border"
-            style={{
-              backgroundColor: COLORS.card, borderColor: COLORS.border,
-              shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1,
-            }}
-          >
-            <View className="flex-row items-center justify-between mb-3">
-              {awaitingPayment ? (
-                <View className="flex-row items-center">
-                  <View className="w-1.5 h-1.5 rounded-full mr-2" style={{ backgroundColor: COLORS.warning }} />
-                  <Text style={{ color: COLORS.warning }} className="text-[11px] font-bold uppercase tracking-wide">{t('home.paymentPending')}</Text>
-                </View>
-              ) : (
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">{t('home.pickupScheduled')}</Text>
-              )}
-              {pendingBooking.vehicle ? (
-                <Badge
-                  label={t(VEHICLE_STATUS_LABEL_KEY[pendingBooking.vehicle.status])}
-                  tone={VEHICLE_STATUS_TONE[pendingBooking.vehicle.status]}
-                />
-              ) : null}
-            </View>
-            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold mb-2">
-              {pendingBooking.vehicle?.registration_number ?? pendingBooking.vehicle_model?.name ?? t('home.yourScooter')}
-            </Text>
-            <View className="flex-row items-center mb-1">
-              <Calendar size={13} color={COLORS.textSecondary} />
-              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium ml-2">
-                {formatDay(pendingBooking.start_day)}
+            <View
+              className="rounded-2xl p-5 mb-5 border"
+              style={{
+                backgroundColor: COLORS.card,
+                borderColor: COLORS.border,
+                shadowColor: COLORS.black,
+                shadowOpacity: 0.04,
+                shadowRadius: 16,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 1,
+              }}
+            >
+              <View className="flex-row items-center justify-between mb-3">
+                {awaitingPayment ? (
+                  <View className="flex-row items-center">
+                    <View
+                      className="w-1.5 h-1.5 rounded-full mr-2"
+                      style={{ backgroundColor: COLORS.warning }}
+                    />
+                    <Text
+                      style={{ color: COLORS.warning }}
+                      className="text-[11px] font-bold uppercase tracking-wide"
+                    >
+                      {t("home.paymentPending")}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text
+                    style={{ color: COLORS.textPrimary }}
+                    className="text-sm font-semibold"
+                  >
+                    {t("home.pickupScheduled")}
+                  </Text>
+                )}
+                {pendingBooking.vehicle ? (
+                  <Badge
+                    label={t(
+                      VEHICLE_STATUS_LABEL_KEY[pendingBooking.vehicle.status],
+                    )}
+                    tone={VEHICLE_STATUS_TONE[pendingBooking.vehicle.status]}
+                  />
+                ) : null}
+              </View>
+              <Text
+                style={{ color: COLORS.textPrimary }}
+                className="text-sm font-bold mb-2"
+              >
+                {pendingBooking.vehicle?.registration_number ??
+                  pendingBooking.vehicle_model?.name ??
+                  t("home.yourScooter")}
               </Text>
-            </View>
-            {pendingBooking.station ? (
-              <View className="flex-row items-center">
-                <MapPin size={13} color={COLORS.textSecondary} />
-                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium ml-2">
-                  {pendingBooking.station.name}
+              <View className="flex-row items-center mb-1">
+                <Calendar size={13} color={COLORS.textSecondary} />
+                <Text
+                  style={{ color: COLORS.textSecondary }}
+                  className="text-xs font-medium ml-2"
+                >
+                  {formatDay(pendingBooking.start_day)}
                 </Text>
               </View>
-            ) : null}
-            <Text
-              style={{ color: COLORS.textSecondary }}
-              className="text-[11px] font-medium mt-3 leading-relaxed"
-            >
-              {awaitingPayment
-                ? [
-                    t('home.notConfirmed'),
-                    holdCountdown ? t('home.heldFor', { duration: holdCountdown }) : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' ')
-                : pendingBooking.vehicle
-                  ? t('home.reserved')
-                  : t('home.willNotify')}
-            </Text>
-            {awaitingPayment ? (
-              <TouchableOpacity
-                onPress={() => router.push('/billing' as any)}
-                accessibilityRole="button"
-                className="flex-row items-center justify-center rounded-2xl py-3 mt-3"
-                style={{ backgroundColor: COLORS.primary }}
+              {pendingBooking.station ? (
+                <View className="flex-row items-center">
+                  <MapPin size={13} color={COLORS.textSecondary} />
+                  <Text
+                    style={{ color: COLORS.textSecondary }}
+                    className="text-xs font-medium ml-2"
+                  >
+                    {pendingBooking.station.name}
+                  </Text>
+                </View>
+              ) : null}
+              <Text
+                style={{ color: COLORS.textSecondary }}
+                className="text-[11px] font-medium mt-3 leading-relaxed"
               >
-                <CreditCard size={14} color="#FFF" />
-                <Text className="text-white text-xs font-bold ml-2">{t('home.completePayment')}</Text>
-              </TouchableOpacity>
-            ) : null}
-            {!awaitingPayment && pendingBooking.station ? (
-              <TouchableOpacity
-                onPress={() => handleGetDirections(pendingBooking.station!)}
-                className="flex-row items-center justify-center rounded-2xl py-3 mt-3"
-                style={{ backgroundColor: COLORS.primary + '0F' }}
-              >
-                <Navigation size={14} color={COLORS.primaryPressed} />
-                <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-bold ml-2">
-                  {t('home.getDirections')}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-            {/* Outside the station conditional above — a booking with no
+                {awaitingPayment
+                  ? [
+                      t("home.notConfirmed"),
+                      holdCountdown
+                        ? t("home.heldFor", { duration: holdCountdown })
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")
+                  : pendingBooking.vehicle
+                    ? t("home.reserved")
+                    : t("home.willNotify")}
+              </Text>
+              {awaitingPayment ? (
+                <TouchableOpacity
+                  onPress={() => router.push("/billing" as any)}
+                  accessibilityRole="button"
+                  className="flex-row items-center justify-center rounded-2xl py-3 mt-3"
+                  style={{ backgroundColor: COLORS.primary }}
+                >
+                  <CreditCard size={14} color="#FFF" />
+                  <Text className="text-white text-xs font-bold ml-2">
+                    {t("home.completePayment")}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              {!awaitingPayment && pendingBooking.station ? (
+                <TouchableOpacity
+                  onPress={() => handleGetDirections(pendingBooking.station!)}
+                  className="flex-row items-center justify-center rounded-2xl py-3 mt-3"
+                  style={{ backgroundColor: COLORS.primary + "0F" }}
+                >
+                  <Navigation size={14} color={COLORS.primaryPressed} />
+                  <Text
+                    style={{ color: COLORS.primaryPressed }}
+                    className="text-xs font-bold ml-2"
+                  >
+                    {t("home.getDirections")}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              {/* Outside the station conditional above — a booking with no
                 station must still be cancellable. A genuinely destructive
                 action, so the light red tint stays — unlike a merely
                 "attention" state, this really does end the booking. */}
-            <TouchableOpacity
-              onPress={() => void handleCancelBooking()}
-              disabled={cancelling}
-              accessibilityRole="button"
-              className="flex-row items-center justify-center rounded-2xl py-3 mt-2"
-              style={{ backgroundColor: COLORS.danger + '0F', opacity: cancelling ? 0.6 : 1 }}
-            >
-              <XCircle size={14} color={COLORS.danger} />
-              <Text style={{ color: COLORS.danger }} className="text-xs font-bold ml-2">
-                {cancelling ? t('bookingHistory.cancelling') : t('bookingHistory.cancelBooking')}
-              </Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                onPress={() => void handleCancelBooking()}
+                disabled={cancelling}
+                accessibilityRole="button"
+                className="flex-row items-center justify-center rounded-2xl py-3 mt-2"
+                style={{
+                  backgroundColor: COLORS.danger + "0F",
+                  opacity: cancelling ? 0.6 : 1,
+                }}
+              >
+                <XCircle size={14} color={COLORS.danger} />
+                <Text
+                  style={{ color: COLORS.danger }}
+                  className="text-xs font-bold ml-2"
+                >
+                  {cancelling
+                    ? t("bookingHistory.cancelling")
+                    : t("bookingHistory.cancelBooking")}
+                </Text>
+              </TouchableOpacity>
+            </View>
           )
-        ) : journey.phase === 'rental_completed' ? (
+        ) : journey.phase === "rental_completed" ? (
           <>
             {settlement && !settlementDismissed ? (
               <SettlementCard
@@ -386,8 +492,10 @@ export default function HomeScreen() {
             ) : null}
             <HomeHeroCard phase="rental_completed" featured={featuredRef} />
           </>
-        ) : journey.phase === 'loading' ? (
-          <View className="mb-5"><SkeletonList count={1} /></View>
+        ) : journey.phase === "loading" ? (
+          <View className="mb-5">
+            <SkeletonList count={1} />
+          </View>
         ) : (
           <HomeHeroCard phase={journey.phase} featured={featuredRef} />
         )}
@@ -406,23 +514,45 @@ export default function HomeScreen() {
             to terminal states), so a refund stuck at pending — a failed
             gateway payout reads as `pending_refund` — kept discovery hidden
             for good. */}
-        {journey.phase === 'ready_to_book' || journey.phase === 'rental_completed' ? (
+        {journey.phase === "ready_to_book" ||
+        journey.phase === "rental_completed" ? (
           <>
-            <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold uppercase tracking-wide mb-2">
-              {t('home.readyToRide')}
+            <Text
+              style={{ color: COLORS.textSecondary }}
+              className="text-xs font-bold uppercase tracking-wide mb-2"
+            >
+              {t("home.readyToRide")}
             </Text>
             {loadingFeatured ? (
-              <View className="mb-5"><SkeletonList count={1} /></View>
+              <View className="mb-5">
+                <SkeletonList count={1} />
+              </View>
             ) : featuredError ? (
-              <ErrorState message={featuredError} onRetry={() => void loadFeatured()} />
+              <ErrorState
+                message={featuredError}
+                onRetry={() => void loadFeatured()}
+              />
             ) : featured ? (
               <FeaturedScooterCard model={featured} />
             ) : null}
 
             <View className="flex-row items-center justify-between mb-3">
-              <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">{t('vehicles.availableScooters')}</Text>
-              <TouchableOpacity onPress={() => router.push('/browse-vehicles')} className="flex-row items-center">
-                <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">{t('common.seeAll')}</Text>
+              <Text
+                style={{ color: COLORS.textPrimary }}
+                className="text-sm font-semibold"
+              >
+                {t("vehicles.availableScooters")}
+              </Text>
+              <TouchableOpacity
+                onPress={() => router.push("/browse-vehicles")}
+                className="flex-row items-center"
+              >
+                <Text
+                  style={{ color: COLORS.primary }}
+                  className="text-xs font-bold mr-1"
+                >
+                  {t("common.seeAll")}
+                </Text>
                 <ChevronRight size={14} color={COLORS.primary} />
               </TouchableOpacity>
             </View>
@@ -435,22 +565,44 @@ export default function HomeScreen() {
               <View
                 className="rounded-2xl border overflow-hidden mb-5"
                 style={{
-                  backgroundColor: COLORS.card, borderColor: COLORS.border,
-                  shadowColor: COLORS.black, shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 1,
+                  backgroundColor: COLORS.card,
+                  borderColor: COLORS.border,
+                  shadowColor: COLORS.black,
+                  shadowOpacity: 0.03,
+                  shadowRadius: 12,
+                  shadowOffset: { width: 0, height: 3 },
+                  elevation: 1,
                 }}
               >
                 {list.slice(0, 5).map((model, i) => (
                   <View
                     key={model.id}
                     className="flex-row items-center justify-between px-4 py-3"
-                    style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
+                    style={
+                      i > 0
+                        ? { borderTopWidth: 1, borderColor: COLORS.border }
+                        : undefined
+                    }
                   >
-                    <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold flex-1 mr-2" numberOfLines={1}>
-                      {[model.vendor?.name, model.name].filter(Boolean).join(' - ')}
-                      {model.battery_range_km != null ? ` / ${model.battery_range_km} km` : ''}
-                      {model.top_speed_kmph != null ? ` / ${model.top_speed_kmph} km/h` : ''}
+                    <Text
+                      style={{ color: COLORS.textPrimary }}
+                      className="text-xs font-bold flex-1 mr-2"
+                      numberOfLines={1}
+                    >
+                      {[model.vendor?.name, model.name]
+                        .filter(Boolean)
+                        .join(" - ")}
+                      {model.battery_range_km != null
+                        ? ` / ${model.battery_range_km} km`
+                        : ""}
+                      {model.top_speed_kmph != null
+                        ? ` / ${model.top_speed_kmph} km/h`
+                        : ""}
                     </Text>
-                    <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold">
+                    <Text
+                      style={{ color: COLORS.textSecondary }}
+                      className="text-xs font-semibold"
+                    >
                       {model.availability.available_count}
                     </Text>
                   </View>
