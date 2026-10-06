@@ -56,13 +56,18 @@ services:
   # 1. Backend API
   # ---------------------------------------------------------------------------
   - type: web
-    name: nr-evscooters-backend
+    name: swapngo-backend
     runtime: node
     plan: starter
-    region: singapore # change to your closest region
+    region: singapore # closest Render region to Supabase ap-south-1 (Mumbai)
     branch: main
     rootDir: .
-    autoDeploy: true
+    # Deploy only after the GitHub "Release" workflow is green for the commit:
+    # backend build + tests, the database migration, and — on main — the
+    # manually approved prod-deploy. New code therefore never starts before
+    # the schema it expects. (UAT, a dashboard-managed service, uses the same
+    # setting with branch develop.)
+    autoDeployTrigger: checksPass
     buildFilter:
       paths:
         - apps/backend/**
@@ -70,6 +75,7 @@ services:
         - pnpm-lock.yaml
         - pnpm-workspace.yaml
         - .node-version
+        - .npmrc
         - render.yaml
     buildCommand: rm -rf node_modules apps/*/node_modules && corepack enable && pnpm install --frozen-lockfile --prod=false --filter backend... && pnpm --filter backend build
     startCommand: pnpm --filter backend start
@@ -79,6 +85,16 @@ services:
         value: production
       - key: NODE_VERSION
         value: "22.16.0"
+
+      # --- Client IP behind Render's proxies --------------------------------
+      # Hop count for Express "trust proxy". Measure it, don't guess: set
+      # IP_DIAGNOSTIC=on, call GET /api/v1/health/client-ip, set this, then
+      # remove IP_DIAGNOSTIC. Unset = old behaviour (req.ip is the proxy).
+      # Measured 3 on UAT (2026-10-07): client → Cloudflare → Render LB →
+      # local proxy. Re-measure on prod, and again after adding a custom
+      # domain — a domain proxied through your own Cloudflare adds a hop.
+      - key: TRUST_PROXY_HOPS
+        sync: false
 
       # --- Supabase (all three required; service-role key is backend-only) ---
       - key: SUPABASE_URL
@@ -115,6 +131,10 @@ services:
       # REQUIRED for the public website's contact form (POST /public/contact);
       # without them that endpoint returns 503 and enquiries are lost.
       - key: RESEND_API_KEY
+        sync: false
+      # Rider-facing / website mail (contact form, pre-booking). Falls back to
+      # ADMIN_NOTIFICATION_EMAIL_FROM when unset.
+      - key: EMAIL_FROM
         sync: false
       - key: ADMIN_NOTIFICATION_EMAIL_FROM
         sync: false
@@ -163,7 +183,7 @@ services:
       - key: SKIP_INSTALL_DEPS
         value: "true"
       # Full backend base URL INCLUDING /api/v1, e.g.
-      #   https://nr-evscooters-backend.onrender.com/api/v1
+      #   https://swapngo-backend.onrender.com/api/v1
       - key: VITE_API_BASE_URL
         sync: false
       - key: VITE_SUPABASE_URL

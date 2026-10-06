@@ -32,6 +32,23 @@ export const env = {
     nodeEnv: process.env.NODE_ENV ?? "development",
     port: intFromEnv("PORT", 4000),
 
+    /**
+     * How many reverse proxies sit between the client and this process —
+     * Express's `trust proxy` hop count. With it set, `req.ip` is the real
+     * client IP, which is what consent / legal-acceptance evidence, the audit
+     * and PII-access logs and the public-form rate limiter record.
+     *
+     * 0 (the default) keeps the old behaviour: `req.ip` is the nearest proxy.
+     * The count is a property of the hosting platform, not of this code, and
+     * Render does not document it — measure it per environment with
+     * GET /api/v1/health/client-ip (IP_DIAGNOSTIC=on) before setting it. A
+     * value too high lets a client choose its own IP by sending a forged
+     * X-Forwarded-For.
+     */
+    trustProxyHops: intFromEnv("TRUST_PROXY_HOPS", 0),
+    /** Exposes GET /api/v1/health/client-ip. Off unless exactly "on". */
+    ipDiagnostic: process.env.IP_DIAGNOSTIC === "on",
+
     supabaseUrl: required("SUPABASE_URL"),
     supabaseServiceKey: required("SUPABASE_SERVICE_ROLE_KEY"),
     supabaseAnonKey: required("SUPABASE_ANON_KEY"),
@@ -164,7 +181,14 @@ export const env = {
     // needs it throws a clear error at call time — see config/resend.ts.
     emailProvider: process.env.EMAIL_PROVIDER ?? "resend",
     resendApiKey: process.env.RESEND_API_KEY ?? "",
-    emailFrom: process.env.ADMIN_NOTIFICATION_EMAIL_FROM ?? "",
+    /**
+     * From-address for rider-facing and public-site mail (contact form,
+     * pre-booking). Reads EMAIL_FROM as documented in .env.example; it used
+     * to read ADMIN_NOTIFICATION_EMAIL_FROM only, so EMAIL_FROM had no effect.
+     * Falls back to that variable so a deployment that sets only it keeps
+     * sending from the same address.
+     */
+    emailFrom: process.env.EMAIL_FROM || process.env.ADMIN_NOTIFICATION_EMAIL_FROM || "",
     /**
      * From-address for the staff/admin "needs your action" emails
      * (notify.service.ts's sendEmail — KYC review, refund approval, booking

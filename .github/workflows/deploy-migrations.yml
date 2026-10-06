@@ -1,4 +1,4 @@
-name: Supabase Deploy
+name: Release
 
 # develop -> UAT (cndqvdskrcmivqflbttl)      automatic
 # main    -> production (separate account)    plan, then manual approval
@@ -7,6 +7,13 @@ name: Supabase Deploy
 # supabase/functions. It does NOT touch Auth settings, Vault secrets, function
 # secrets or app data — those are one-time setup per environment
 # (supabase/SETUP.md).
+#
+# It is also the release gate for the backend. The Render services use
+# "auto-deploy: after CI checks pass", so Render deploys a commit only once
+# every job here has finished green: backend-check (build + tests), the
+# database deploy, and — on main — the approved prod-deploy. That is why this
+# runs on EVERY push to develop/main, not only supabase/** changes: Render
+# deploys nothing for a commit with zero checks.
 #
 # GitHub setup (Settings -> Environments), each with the same four secrets:
 #   uat              SUPABASE_ACCESS_TOKEN  token from the UAT Supabase account
@@ -22,11 +29,9 @@ name: Supabase Deploy
 
 on:
   pull_request:
-    branches: [develop]
-    paths: ["supabase/**"]
+    branches: [develop, main]
   push:
     branches: [develop, main]
-    paths: ["supabase/**"]
   workflow_dispatch:
 
 # One deploy per environment at a time; never cancel one mid-push.
@@ -40,9 +45,24 @@ env:
   SUPABASE_CLI_VERSION: 2.119.0
 
 jobs:
+  # Every PR and push: the backend must build and its tests must pass before
+  # anything deploys. No secrets — tests run against a fake Supabase.
+  backend-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4          # version from package.json "packageManager"
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter backend...
+      - run: pnpm --filter backend build
+      - run: pnpm --filter backend test
+
   # PR into develop: show the SQL that would run on UAT. Applies nothing.
   uat-plan:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
     runs-on: ubuntu-latest
     environment: uat
     env:
@@ -59,6 +79,7 @@ jobs:
       - run: supabase db push --dry-run
 
   uat-deploy:
+    needs: backend-check
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     environment: uat
@@ -79,6 +100,7 @@ jobs:
   # Push to main: dry-run against production first. Read this job's log
   # before approving prod-deploy.
   prod-plan:
+    needs: backend-check
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production-plan

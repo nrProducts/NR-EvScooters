@@ -4,8 +4,13 @@ import helmet from "helmet";
 import morgan from "morgan";
 import routes from "./routes";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
+import { env } from "./config/env";
 
 export const app = express();
+
+// Behind Render's proxies req.ip is otherwise the proxy, not the client.
+// The hop count is measured per environment — see env.trustProxyHops.
+app.set("trust proxy", env.trustProxyHops > 0 ? env.trustProxyHops : false);
 
 app.use(helmet({
     // This is a pure JSON API consumed cross-origin by separate web (Vite,

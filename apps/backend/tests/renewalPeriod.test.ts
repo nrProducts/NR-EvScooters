@@ -94,9 +94,17 @@ function build(world: World): { inserts: QueryRecord[]; invoicedPeriods: unknown
             return {
                 data: {
                     duration_days_snapshot: world.durationDays ?? 7,
+                    plan_id: "plan-1",
                     plan_price_snapshot: 1800,
                 },
             };
+        }
+
+        // advanceToNextPeriod prices a new period off the LIVE plan, not the
+        // booking-time snapshot (1800) — deliberately different values so a
+        // regression to the snapshot shows up as a wrong amount.
+        if (q.table === "plans") {
+            return { data: { price_amount: 1899 } };
         }
 
         return { data: null };
@@ -140,6 +148,17 @@ describe("generatePeriodInvoice", () => {
         // away must not have their plan advanced with nothing paid; only a
         // captured payment promotes it.
         expect(inserts[0]!.payload).toMatchObject({ status: "scheduled" });
+    });
+
+    it("prices the new period at the LIVE plan price, not the booking-time snapshot", async () => {
+        vi.useFakeTimers().setSystemTime(atNoonIst(TODAY));
+        const { inserts } = build({ current: PERIOD_1, currentPaid: true });
+
+        await generatePeriodInvoice(SUB);
+
+        // A plan price published after the rider booked must reach every
+        // period minted afterwards (the ₹1800 → ₹1899 incident).
+        expect(inserts[0]!.payload).toMatchObject({ base_amount_snapshot: 1899 });
     });
 
     it("dates a LATE renewal from the lapsed period's own due date, never from today", async () => {

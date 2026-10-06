@@ -15,3 +15,9 @@ process.env.KYC_MAX_FILE_BYTES ??= "1048576";
 // present, so assigning here wins.
 process.env.RESEND_API_KEY = "";
 process.env.ADMIN_NOTIFICATION_EMAIL_FROM = "";
+process.env.EMAIL_FROM = "";
+
+// Proxy/IP behaviour pinned to the unconfigured default for the same reason:
+// a developer's .env must not change what the IP tests observe.
+process.env.TRUST_PROXY_HOPS = "";
+process.env.IP_DIAGNOSTIC = "";

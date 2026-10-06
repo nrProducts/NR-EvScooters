@@ -206,7 +206,10 @@ describe("export renderers", () => {
         // zip magic — a real .xlsx is a zip
         expect(buf[0]).toBe(0x50);
         expect(buf[1]).toBe(0x4b);
-    });
+    // exceljs is a large module; its first (cold) load inside a full parallel
+    // run has exceeded vitest's 5s default. The assertion is about output, not
+    // speed, so a timeout here would be a false failure blocking deploys.
+    }, 30_000);
 });
 
 describe("classifyItem", () => {
