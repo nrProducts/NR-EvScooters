@@ -19,6 +19,34 @@ export class PaymentUnavailableError extends Error {
 }
 
 /**
+ * The rider left for their UPI app and never came back with a result.
+ *
+ * UPI intent fires an app switch and then has nothing to report until the app
+ * returns — no event arrives if the rider abandons it or kills the app. The
+ * spinner must not sit there forever (it did, and that is what this flow was
+ * rewritten to fix), so the wait is capped and ends here.
+ */
+export class PaymentTimedOutError extends Error {
+    constructor() {
+        super('Payment timed out.');
+        this.name = 'PaymentTimedOutError';
+    }
+}
+
+/**
+ * The one-tap UPI intent path could not be STARTED — Custom Checkout is not
+ * enabled on the account, its script was blocked, or it rejected the payload
+ * before any payment existed. Internal: it means "fall back to the hosted
+ * sheet", never "the payment failed", so it is not exported.
+ */
+class UpiIntentUnavailableError extends Error {
+    constructor() {
+        super('UPI intent checkout unavailable.');
+        this.name = 'UpiIntentUnavailableError';
+    }
+}
+
+/**
  * There is deliberately NO `config.display` block here.
  *
  * An earlier version promoted a "Pay by UPI or Card" block above the default
@@ -108,42 +136,55 @@ interface RazorpayWebInstance {
     on(event: 'payment.failed', handler: (response: RazorpayWebFailurePayload) => void): void;
 }
 
+/**
+ * Custom Checkout (razorpay.js). It renders nothing — the app owns the UI and
+ * this only moves the money, which is the whole reason it can fire a UPI
+ * intent straight from the slide gesture with no sheet of its own in between.
+ */
+interface RazorpayCustomInstance {
+    createPayment(data: Record<string, unknown>, options?: { app?: string }): void;
+    on(event: 'payment.success', handler: (response: RazorpayWebSuccessPayload) => void): void;
+    on(event: 'payment.error', handler: (response: RazorpayWebFailurePayload) => void): void;
+    emit(event: 'payment.cancel'): void;
+}
+
+type StandardCheckoutCtor = new (options: RazorpayWebOptions) => RazorpayWebInstance;
+type CustomCheckoutCtor = new (options: { key: string }) => RazorpayCustomInstance;
+
 declare global {
     interface Window {
-        Razorpay?: new (options: RazorpayWebOptions) => RazorpayWebInstance;
+        Razorpay?: StandardCheckoutCtor | CustomCheckoutCtor;
     }
 }
 
 const CHECKOUT_JS_SRC = 'https://checkout.razorpay.com/v1/checkout.js';
+const RAZORPAY_JS_SRC = 'https://checkout.razorpay.com/v1/razorpay.js';
 
 /**
- * Injects Razorpay's Checkout.js once and memoizes the load — every payment
- * flow calls openRazorpayCheckout independently, and re-fetching/re-running
- * the script on a second payment attempt in the same session would be pure
- * waste (and Razorpay does not document it as safe to run twice).
+ * BOTH scripts define `window.Razorpay`, and they are different constructors —
+ * the hosted sheet's (`.open()`) and Custom Checkout's (`.createPayment()`).
+ * A session that loads one and then falls back to the other would otherwise
+ * find the wrong one under that global, so each constructor is captured the
+ * instant ITS script loads and nothing afterwards ever reads the global.
  */
-let checkoutScriptPromise: Promise<void> | null = null;
-function loadCheckoutScript(): Promise<void> {
-    if (window.Razorpay) return Promise.resolve();
-    if (checkoutScriptPromise) return checkoutScriptPromise;
+let standardCtor: StandardCheckoutCtor | null = null;
+let customCtor: CustomCheckoutCtor | null = null;
+const scriptLoads = new Map<string, Promise<void>>();
 
-    checkoutScriptPromise = new Promise<void>((resolve, reject) => {
-        const existing = document.querySelector<HTMLScriptElement>(`script[src="${CHECKOUT_JS_SRC}"]`);
-        if (existing) {
-            existing.addEventListener('load', () => resolve());
-            existing.addEventListener('error', () => reject(new PaymentUnavailableError()));
-            return;
-        }
+function loadRazorpayScript(src: string, capture: () => void): Promise<void> {
+    const pending = scriptLoads.get(src);
+    if (pending) return pending;
+
+    const load = new Promise<void>((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = CHECKOUT_JS_SRC;
+        script.src = src;
         script.async = true;
-        script.onload = () => resolve();
-        // A blocked/failed script load (offline, an ad-blocker) must read as
-        // "payment unavailable," not hang the Pay button's spinner forever.
-        // The tag is removed too: `load`/`error` each fire at most once per
-        // element, so a retry that found this dead tag via the `existing`
-        // branch above would attach listeners that can now never fire —
-        // removing it means the retry creates a fresh element instead.
+        script.onload = () => {
+            capture();
+            resolve();
+        };
+        // A blocked/failed load (offline, an ad-blocker) must read as
+        // "unavailable", not hang the slider's spinner forever.
         script.onerror = () => {
             script.remove();
             reject(new PaymentUnavailableError());
@@ -152,16 +193,36 @@ function loadCheckoutScript(): Promise<void> {
     }).catch((err) => {
         // A failed load must not be cached — the next attempt (network back,
         // blocker disabled) should try again, not replay the same rejection.
-        checkoutScriptPromise = null;
+        scriptLoads.delete(src);
         throw err;
     });
-    return checkoutScriptPromise;
+
+    scriptLoads.set(src, load);
+    return load;
+}
+
+async function loadStandardCheckout(): Promise<StandardCheckoutCtor> {
+    if (!standardCtor) {
+        await loadRazorpayScript(CHECKOUT_JS_SRC, () => {
+            standardCtor = window.Razorpay as StandardCheckoutCtor | undefined ?? null;
+        });
+    }
+    if (!standardCtor) throw new PaymentUnavailableError();
+    return standardCtor;
+}
+
+async function loadCustomCheckout(): Promise<CustomCheckoutCtor> {
+    if (!customCtor) {
+        await loadRazorpayScript(RAZORPAY_JS_SRC, () => {
+            customCtor = window.Razorpay as CustomCheckoutCtor | undefined ?? null;
+        });
+    }
+    if (!customCtor) throw new UpiIntentUnavailableError();
+    return customCtor;
 }
 
 async function openRazorpayCheckoutWeb(merged: RazorpayCheckoutOptions): Promise<VerifyPaymentPayload> {
-    await loadCheckoutScript();
-    if (!window.Razorpay) throw new PaymentUnavailableError();
-    const Razorpay = window.Razorpay;
+    const Razorpay = await loadStandardCheckout();
 
     return new Promise<VerifyPaymentPayload>((resolve, reject) => {
         // Checkout.js fires `payment.failed` but leaves its own sheet open so
@@ -279,4 +340,122 @@ export async function openRazorpayCheckout(options: RazorpayCheckoutOptions): Pr
         razorpay_payment_id: result.razorpay_payment_id,
         razorpay_signature: result.razorpay_signature,
     };
+}
+
+// ---------------------------------------------------------------------------
+// One-tap UPI intent (Custom Checkout, Android mobile web only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Capped wait for the UPI app to come back. Nothing is charged by giving up —
+ * this only stops waiting; if the rider does pay after this, the backend's
+ * own webhook still settles the order.
+ */
+const UPI_INTENT_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * UPI intent needs a real UPI app to hand off to, which rules out desktop
+ * (Razorpay falls back to a QR there, a surface this app does not render) and
+ * iOS, where the `any`-app chooser is not supported.
+ */
+function canUseUpiIntent(): boolean {
+    return (
+        Platform.OS === 'web'
+        && typeof navigator !== 'undefined'
+        && /android/i.test(navigator.userAgent ?? '')
+    );
+}
+
+/**
+ * Fires a UPI intent directly, with no Razorpay sheet in between: the slide
+ * gesture IS the confirmation, and the next thing the rider sees is Android's
+ * own UPI app chooser (GPay/PhonePe/Paytm).
+ *
+ * `app: 'any'` is deliberate — letting Android present the chooser keeps the
+ * payment-app choice out of this app entirely, the same division of labour
+ * the hosted sheet had.
+ */
+async function openUpiIntentCheckout(merged: RazorpayCheckoutOptions): Promise<VerifyPaymentPayload> {
+    const contact = merged.prefill?.contact;
+    const email = merged.prefill?.email;
+    // Custom Checkout validates these itself and rejects the payload rather
+    // than prompting for them the way the hosted sheet would, so a rider
+    // missing either (Google sign-ups carry no phone) takes the sheet instead.
+    if (!contact || !email) throw new UpiIntentUnavailableError();
+
+    const Razorpay = await loadCustomCheckout();
+
+    return new Promise<VerifyPaymentPayload>((resolve, reject) => {
+        let settled = false;
+        const razorpay = new Razorpay({ key: merged.key });
+
+        const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            razorpay.emit('payment.cancel');
+            reject(new PaymentTimedOutError());
+        }, UPI_INTENT_TIMEOUT_MS);
+
+        const finish = (fn: () => void) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            fn();
+        };
+
+        razorpay.on('payment.success', (response) => {
+            finish(() =>
+                resolve({
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                }),
+            );
+        });
+
+        razorpay.on('payment.error', (response) => {
+            // A payment was attempted and failed — a real outcome the rider
+            // must see, never a reason to reopen a second sheet behind it.
+            finish(() => reject(new Error(response.error?.description ?? 'Payment failed. Please try again.')));
+        });
+
+        try {
+            razorpay.createPayment(
+                {
+                    amount: merged.amount,
+                    currency: merged.currency,
+                    order_id: merged.order_id,
+                    method: 'upi',
+                    contact,
+                    email,
+                    ...(merged.notes ? { notes: merged.notes } : {}),
+                },
+                { app: 'any' },
+            );
+        } catch {
+            finish(() => reject(new UpiIntentUnavailableError()));
+        }
+    });
+}
+
+/**
+ * The booking flow's entry point: one slide, one payment.
+ *
+ * Tries the no-sheet UPI intent first and falls back to the hosted sheet when
+ * that path cannot START — Custom Checkout not enabled on the account, script
+ * blocked, payload refused, or simply not Android web. A cancel, a timeout or
+ * a failed payment are the rider's own outcomes and propagate as-is: opening
+ * a second sheet on top of those is exactly the extra tap this replaces.
+ */
+export async function openCheckoutPreferUpiIntent(
+    options: RazorpayCheckoutOptions,
+): Promise<VerifyPaymentPayload> {
+    if (canUseUpiIntent()) {
+        try {
+            return await openUpiIntentCheckout({ ...options, prefill: cleanPrefill(options.prefill) });
+        } catch (err) {
+            if (!(err instanceof UpiIntentUnavailableError)) throw err;
+        }
+    }
+    return openRazorpayCheckout(options);
 }

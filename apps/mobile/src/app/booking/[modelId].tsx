@@ -15,7 +15,12 @@ import { vehicleCatalogRepository, billingRepository } from '../../services';
 import { notify, notifyError } from '../../lib/confirm';
 import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
 import { getNextBookableDay, rentalPeriodEndDay } from '../../lib/bookingDays';
-import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
+import {
+  openCheckoutPreferUpiIntent,
+  PaymentCancelledError,
+  PaymentTimedOutError,
+  PaymentUnavailableError,
+} from '../../lib/razorpayCheckout';
 import { DEFAULT_CANCELLATION_TIERS } from '../../lib/cancellationPolicy';
 import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
@@ -181,7 +186,7 @@ export default function BookingScreen() {
         start_day: draft.startDay,
       });
       setQuote(order);
-      const verifyPayload = await openRazorpayCheckout({
+      const verifyPayload = await openCheckoutPreferUpiIntent({
         key: order.keyId,
         amount: Math.round(order.amount * 100),
         currency: order.currency,
@@ -202,6 +207,8 @@ export default function BookingScreen() {
       if (err instanceof PaymentCancelledError) {
         // Nothing was created — a retry just makes a fresh (or reused) intent.
         setPayError(t('booking.error.paymentCancelled'));
+      } else if (err instanceof PaymentTimedOutError) {
+        setPayError(t('booking.error.paymentTimedOut'));
       } else if (err instanceof PaymentUnavailableError || err instanceof ApiError) {
         setPayError(err.message);
       } else {
@@ -332,10 +339,12 @@ export default function BookingScreen() {
             </View>
 
             {/* Plan picker */}
-            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-1">{t('booking.choosePlan')}</Text>
-            <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3">
-              {plans.length > 0 ? t('booking.choosePlanHint') : t('booking.noPlansHint')}
-            </Text>
+            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">{t('booking.choosePlan')}</Text>
+            {plans.length === 0 ? (
+              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3">
+                {t('booking.noPlansHint')}
+              </Text>
+            ) : null}
             <View style={{ gap: 10 }}>
               {plans.map((plan: ApiPlan) => {
                 const selected = draft.plan?.id === plan.id;
@@ -491,9 +500,6 @@ export default function BookingScreen() {
                         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">12:00 PM</Text>
                       </View>
                     </View>
-                    <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-medium mt-2 text-center">
-                      {t('booking.fixedNoonCycleNote')}
-                    </Text>
                   </View>
                 ) : null}
 
@@ -535,20 +541,13 @@ export default function BookingScreen() {
                       className="px-4 py-2.5 text-[11px] font-medium leading-4"
                     >
                       {!draft.plan.deposit_refundable
-                        ? t('booking.depositTermsNonRefundable', {
-                            onboarding: money(draft.plan.onboarding_charge_amount),
-                            deposit: money(draft.plan.deposit_amount),
-                          })
+                        ? t('booking.depositTermsNonRefundable')
                         : draft.plan.min_rental_days_for_refund > 0
-                          ? t('booking.depositTermsWithDays', {
-                              onboarding: money(draft.plan.onboarding_charge_amount),
-                              deposit: money(draft.plan.deposit_amount),
-                              days: draft.plan.min_rental_days_for_refund,
-                            })
-                          : t('booking.depositTerms', {
-                              onboarding: money(draft.plan.onboarding_charge_amount),
-                              deposit: money(draft.plan.deposit_amount),
-                            })}
+                          ? t('booking.depositTermsWithDays', { days: draft.plan.min_rental_days_for_refund })
+                          : t('booking.depositTerms')}
+                      {draft.plan.onboarding_charge_amount > 0
+                        ? ` ${t('booking.onboardingNonRefundable', { onboarding: money(draft.plan.onboarding_charge_amount) })}`
+                        : ''}
                     </Text>
                   </View>
                 ) : null}

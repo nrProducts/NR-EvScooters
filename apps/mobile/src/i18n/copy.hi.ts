@@ -650,7 +650,8 @@ export const hi: Copy = {
     'booking.error.maps.title': 'मैप्स नहीं खुल सका',
     'booking.error.maps.message': 'इस डिवाइस पर कोई मैप्स ऐप नहीं मिला।',
     'booking.almostThere': 'बस थोड़ा और',
-    'booking.error.paymentCancelled': 'भुगतान रद्द कर दिया गया। फिर से कोशिश करने के लिए Pay दबाएं।',
+    'booking.error.paymentCancelled': 'भुगतान रद्द कर दिया गया। फिर से कोशिश करने के लिए स्लाइड करें।',
+    'booking.error.paymentTimedOut': 'आपके UPI ऐप से कोई नतीजा नहीं मिला। फिर से कोशिश करने के लिए स्लाइड करें।',
     'booking.error.generic': 'कुछ गड़बड़ हो गई। कृपया फिर से कोशिश करें।',
     'booking.checkoutDescription': '{plan} — किराया + जमा राशि',
     'booking.checkoutDescriptionFallback': 'स्कूटर किराया',
@@ -669,10 +670,8 @@ export const hi: Copy = {
     'booking.unavailable': 'उपलब्ध नहीं',
     'booking.available': 'उपलब्ध',
     'booking.startsNow.title': 'आपका प्लान आज दोपहर 12:00 बजे शुरू होता है',
-    'booking.startsNow.body':
-        'भुगतान करने के बाद, पिकअप स्टेशन जाएं और सुबह 8 बजे से रात 8 बजे के बीच अपना स्कूटर ले लें। आप कभी भी लें, हर किराया दोपहर 12:00 से दोपहर 12:00 बजे तक के तय चक्र में चलता है।',
+    'booking.startsNow.body': 'आज सुबह 8 बजे से रात 8 बजे के बीच अपना स्कूटर ले लें।',
     'booking.choosePlan': 'एक प्लान चुनें',
-    'booking.choosePlanHint': 'चुनें कि आपको स्कूटर कितने समय के लिए चाहिए।',
     'booking.noPlansHint': 'इस स्कूटर के लिए अभी कोई प्लान उपलब्ध नहीं है।',
     'booking.minutesIncluded': '{minutes} मिनट शामिल हैं',
     'booking.offers.title': 'ऑफ़र और लाभ',
@@ -697,7 +696,6 @@ export const hi: Copy = {
     'deposit.onboardingNote':
         'बुकिंग के समय दिया गया {amount} का ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा और यह इस जमा राशि का हिस्सा नहीं है।',
     'booking.rentalPeriod': 'किराया अवधि',
-    'booking.fixedNoonCycleNote': 'सभी किराए दोपहर 12:00 बजे शुरू और समाप्त होते हैं।',
     'booking.onboardingCharge': 'ऑनबोर्डिंग शुल्क',
     'booking.onboardingFee': 'ऑनबोर्डिंग शुल्क',
     'booking.securityDeposit': 'सुरक्षा जमा राशि',
@@ -705,19 +703,18 @@ export const hi: Copy = {
     'booking.refundable': 'वापस मिलने वाली',
     'booking.refundableAfterDays': '{days} किराया दिनों के बाद वापस मिलने वाली',
     'booking.upfrontBreakdown': '{amount} अग्रिम राशि का विवरण',
-    'booking.depositTerms':
-        '{onboarding} का ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा। {deposit} की सुरक्षा जमा राशि वापस मिलेगी, जिसमें नुकसान, बकाया, जुर्माना या अन्य लागू शुल्क की कटौती की जा सकती है।',
+    'booking.depositTerms': 'स्कूटर लौटाने पर जमा राशि वापस, बकाया या नुकसान की कटौती के बाद।',
     'booking.depositTermsWithDays':
-        '{onboarding} का ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा। {deposit} की सुरक्षा जमा राशि कम से कम {days} किराया दिन पूरे करने के बाद वापस मिलेगी, जिसमें नुकसान, बकाया, जुर्माना या अन्य लागू शुल्क की कटौती की जा सकती है।',
-    'booking.depositTermsNonRefundable':
-        'इस प्लान के तहत {onboarding} का ऑनबोर्डिंग शुल्क और {deposit} की सुरक्षा जमा राशि, दोनों वापस नहीं मिलेंगे।',
+        '{days} किराया दिनों के बाद जमा राशि वापस, बकाया या नुकसान की कटौती के बाद।',
+    'booking.depositTermsNonRefundable': 'यह जमा राशि वापस नहीं मिलेगी।',
+    'booking.onboardingNonRefundable': '{onboarding} का ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा।',
     'booking.totalPayable': 'कुल देय राशि',
     'booking.estimatedTotal': 'अनुमानित कुल राशि',
     'booking.confirmedOnPaymentScreen': 'भुगतान स्क्रीन पर पक्का किया जाएगा',
     'booking.cancellationNote':
-        'बुकिंग के {minutes} मिनट के अंदर रद्द करने पर प्लान राशि का {percent}% काट लिया जाता है; जितनी देर करेंगे, शुल्क उतना बढ़ेगा। आपकी सुरक्षा जमा राशि हमेशा पूरी वापस की जाती है।',
+        '{minutes} मिनट के अंदर रद्द करने पर प्लान का {percent}% कटता है, बाद में और ज़्यादा। जमा राशि पूरी वापस।',
     'booking.cancellationNoteWithOnboarding':
-        'बुकिंग के {minutes} मिनट के अंदर रद्द करने पर प्लान राशि का {percent}% काट लिया जाता है; जितनी देर करेंगे, शुल्क उतना बढ़ेगा। पिकअप से पहले रद्द करने पर आपकी सुरक्षा जमा राशि पूरी वापस मिलेगी, लेकिन ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा।',
+        '{minutes} मिनट के अंदर रद्द करने पर प्लान का {percent}% कटता है, बाद में और ज़्यादा। जमा राशि पूरी वापस, ऑनबोर्डिंग शुल्क नहीं।',
     'booking.amount': 'राशि',
     'booking.processing': 'प्रक्रिया जारी है…',
     'booking.continue': 'जारी रखें',
