@@ -17,6 +17,11 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+# Local EAS build credentials (eas.json android.credentialsSource: "local") —
+# contains the keystore password in plaintext. The keystore file itself is
+# already covered by *.p12/*.jks/*.key above; this is the one other file
+# that must never be committed.
+credentials.json
 
 # Metro
 .metro-health-check*

@@ -3,13 +3,13 @@ import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'rea
 import { Spinner } from '../../components/Spinner';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  ChevronLeft, ChevronRight, ChevronsRight, MapPin, Bike, Navigation, Check, AlertTriangle, CheckCircle2,
+  ChevronLeft, MapPin, Bike, Navigation, Check, AlertTriangle, CheckCircle2,
   ShieldCheck, Zap, Lock, BadgePercent, Calendar, ArrowRight,
   CreditCard, Landmark, Wallet, Smartphone,
 } from 'lucide-react-native';
 import { Badge } from '../../components/ui/Badge';
-import { Sheet } from '../../components/ui/Sheet';
 import { ErrorState } from '../../components/ui/ErrorState';
+import { SwipeToPay } from '../../components/SwipeToPay';
 import { useBookingStore } from '../../store/useBookingStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { vehicleCatalogRepository, billingRepository } from '../../services';
@@ -55,85 +55,76 @@ const TrustRow: React.FC = () => {
   );
 };
 
+export type PaymentMethod = 'upi' | 'card' | 'netbanking' | 'wallet';
+
 /**
- * Informational — the actual selection happens on Razorpay's secure screen.
+ * Real, tappable selection — picking a tile here is passed straight through
+ * to Razorpay as `prefill.method`, so Checkout opens directly on that
+ * method's screen (e.g. UPI jumps straight to the GPay/PhonePe/Paytm app
+ * picker) instead of showing its own method list first.
  * Keys, not labels: module scope does not re-run on a language change.
  */
 const PAYMENT_METHOD_KEYS = [
-  { Icon: Smartphone, titleKey: 'booking.paymentMethods.upi', subtitleKey: 'booking.paymentMethods.upiSubtitle' },
-  { Icon: CreditCard, titleKey: 'booking.paymentMethods.cards', subtitleKey: 'booking.paymentMethods.cardsSubtitle' },
-  { Icon: Landmark, titleKey: 'booking.paymentMethods.netBanking', subtitleKey: 'booking.paymentMethods.netBankingSubtitle' },
-  { Icon: Wallet, titleKey: 'booking.paymentMethods.wallets', subtitleKey: 'booking.paymentMethods.walletsSubtitle' },
-] as const satisfies readonly { Icon: typeof Smartphone; titleKey: CopyKey; subtitleKey: CopyKey }[];
+  { method: 'upi', Icon: Smartphone, titleKey: 'booking.paymentMethods.upi', subtitleKey: 'booking.paymentMethods.upiSubtitle' },
+  { method: 'card', Icon: CreditCard, titleKey: 'booking.paymentMethods.cards', subtitleKey: 'booking.paymentMethods.cardsSubtitle' },
+  { method: 'netbanking', Icon: Landmark, titleKey: 'booking.paymentMethods.netBanking', subtitleKey: 'booking.paymentMethods.netBankingSubtitle' },
+  { method: 'wallet', Icon: Wallet, titleKey: 'booking.paymentMethods.wallets', subtitleKey: 'booking.paymentMethods.walletsSubtitle' },
+] as const satisfies readonly { method: PaymentMethod; Icon: typeof Smartphone; titleKey: CopyKey; subtitleKey: CopyKey }[];
 
-/**
- * A single collapsed row ("Pay using · UPI, Cards & more · Change") that
- * opens a sheet with the real detail — the four-method list moved off the
- * main scroll and behind a tap. "Change" is honest, not decorative: it
- * opens something, it just isn't an in-app method picker (Razorpay owns
- * that, same as PaymentMethodsCard's old footnote said).
- */
-const PaymentMethodRow: React.FC = () => {
+/** A 2x2 grid of selectable payment-method tiles — pick one, then swipe to pay. */
+const PaymentMethodPicker: React.FC<{ selected: PaymentMethod; onSelect: (m: PaymentMethod) => void }> = ({
+  selected,
+  onSelect,
+}) => {
   const { t } = useT();
-  const [open, setOpen] = useState(false);
   return (
-    <>
-      <TouchableOpacity
-        onPress={() => setOpen(true)}
-        accessibilityRole="button"
-        className="rounded-2xl border flex-row items-center px-4 py-3.5"
-        style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, gap: 12 }}
-      >
-        <View className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.primary + '14' }}>
-          <Wallet size={18} color={COLORS.primary} />
-        </View>
-        <View className="flex-1">
-          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
-            {t('booking.paymentMethods.payUsing')}
-          </Text>
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mt-0.5">
-            {t('booking.paymentMethods.anyMethod')}
-          </Text>
-        </View>
-        <Text style={{ color: COLORS.primary }} className="text-xs font-extrabold mr-0.5">
-          {t('booking.paymentMethods.change')}
-        </Text>
-        <ChevronRight size={16} color={COLORS.primary} />
-      </TouchableOpacity>
-
-      <Sheet visible={open} onClose={() => setOpen(false)} title={t('booking.paymentMethods.title')}>
-        <View className="px-6 pb-2">
-          {PAYMENT_METHOD_KEYS.map(({ Icon, titleKey, subtitleKey }, i) => (
-            <View
-              key={titleKey}
-              className="flex-row items-center py-3"
-              style={i < PAYMENT_METHOD_KEYS.length - 1 ? { borderBottomWidth: 1, borderColor: COLORS.border } : undefined}
+    <View>
+      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold mb-2">
+        {t('booking.paymentMethods.payUsing')}
+      </Text>
+      <View className="flex-row flex-wrap" style={{ gap: 10 }}>
+        {PAYMENT_METHOD_KEYS.map(({ method, Icon, titleKey, subtitleKey }) => {
+          const active = selected === method;
+          return (
+            <TouchableOpacity
+              key={method}
+              onPress={() => onSelect(method)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              className="rounded-2xl border flex-row items-center px-3 py-3"
+              style={{
+                width: '47%',
+                gap: 10,
+                backgroundColor: active ? COLORS.primary + '14' : COLORS.card,
+                borderColor: active ? COLORS.primary : COLORS.border,
+                borderWidth: active ? 1.5 : 1,
+              }}
             >
-              <View className="w-9 h-9 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: COLORS.primary + '14' }}>
-                <Icon size={17} color={COLORS.primary} />
+              <View
+                className="w-9 h-9 rounded-xl items-center justify-center"
+                style={{ backgroundColor: active ? COLORS.primary : COLORS.primary + '14' }}
+              >
+                <Icon size={17} color={active ? '#FFF' : COLORS.primary} />
               </View>
               <View className="flex-1">
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{t(titleKey)}</Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">{t(subtitleKey)}</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-bold">{t(titleKey)}</Text>
+                <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-medium mt-0.5" numberOfLines={1}>
+                  {t(subtitleKey)}
+                </Text>
               </View>
-            </View>
-          ))}
-          <View className="flex-row items-center mt-3" style={{ gap: 6 }}>
-            <Lock size={12} color={COLORS.textSecondary} />
-            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium flex-1">
-              {t('booking.paymentMethods.chooseOnRazorpay')}
-            </Text>
-          </View>
-        </View>
-      </Sheet>
-    </>
+              {active ? <Check size={16} color={COLORS.primary} /> : null}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
   );
 };
 
 /**
- * The whole booking flow on ONE screen: pickup station, plan, price, and a
- * single "Pay ₹X" button that opens Razorpay Checkout directly (card / UPI /
- * wallet selection happens in that sheet). No separate review screen.
+ * The whole booking flow on ONE screen: pickup station, plan, price, a
+ * payment-method pick, and a drag-to-confirm bar that opens Razorpay
+ * Checkout directly on the chosen method. No separate review screen.
  */
 export default function BookingScreen() {
   const insets = useSafeAreaInsets();
@@ -158,6 +149,8 @@ export default function BookingScreen() {
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('upi');
+  const [swipeResetSignal, setSwipeResetSignal] = useState(0);
 
   const load = () => {
     setLoadingModel(true);
@@ -267,6 +260,7 @@ export default function BookingScreen() {
           email: profile?.email ?? undefined,
           contact: profile?.phone ?? undefined,
           name: profile?.full_name,
+          method: selectedMethod,
         },
       });
       await billingRepository.verifyPayment(verifyPayload);
@@ -281,6 +275,8 @@ export default function BookingScreen() {
       } else {
         setPayError(t('booking.error.generic'));
       }
+      // Snaps the swipe bar back to the start so the rider can drag again.
+      setSwipeResetSignal((n) => n + 1);
     } finally {
       setPaying(false);
     }
@@ -625,7 +621,7 @@ export default function BookingScreen() {
                   </View>
                 ) : null}
 
-                <PaymentMethodRow />
+                <PaymentMethodPicker selected={selectedMethod} onSelect={setSelectedMethod} />
 
                 <TrustRow />
 
@@ -651,9 +647,8 @@ export default function BookingScreen() {
             ) : null}
           </ScrollView>
 
-          {/* Sticky checkout bar — one full-width pill carries the amount in
-              its own label rather than sitting beside a separate total, with
-              a circular leading badge standing in for a slide gesture. */}
+          {/* Sticky checkout bar — a real drag-to-confirm control, not a tap
+              button styled to look like one. */}
           <View
             className="px-4 pt-3"
             style={{
@@ -668,33 +663,20 @@ export default function BookingScreen() {
               elevation: 12,
             }}
           >
-            <TouchableOpacity
-              onPress={handlePay}
-              disabled={busy || blockedReason() !== null}
-              accessibilityRole="button"
-              className="rounded-full flex-row items-center overflow-hidden"
-              style={{
-                backgroundColor: COLORS.primary,
-                opacity: busy || blockedReason() !== null ? 0.5 : 1,
-                minHeight: 56,
-              }}
-            >
-              <View
-                className="items-center justify-center"
-                style={{ width: 56, height: 56, backgroundColor: 'rgba(255,255,255,0.18)' }}
-              >
-                {busy ? <Spinner size={18} color="#FFF" /> : <ChevronsRight size={22} color="#FFF" />}
-              </View>
-              <Text className="flex-1 text-white text-base font-black text-center pr-14" numberOfLines={1}>
-                {busy
-                  ? t('booking.processing')
-                  : blockedReason()
-                    ? (blockedReason() as string)
-                    : draft.plan
-                      ? t('booking.payCta', { amount: money(total) })
-                      : t('booking.continue')}
-              </Text>
-            </TouchableOpacity>
+            <SwipeToPay
+              busy={busy}
+              disabled={blockedReason() !== null}
+              onConfirm={handlePay}
+              resetSignal={swipeResetSignal}
+              processingLabel={t('booking.processing')}
+              label={
+                blockedReason()
+                  ? (blockedReason() as string)
+                  : draft.plan
+                    ? t('booking.swipeToPay', { amount: money(total) })
+                    : t('booking.continue')
+              }
+            />
           </View>
         </>
       )}

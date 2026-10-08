@@ -646,7 +646,6 @@ export const ta: Copy = {
     'booking.trust.securePayment': 'பாதுகாப்பான கட்டணம்',
     'booking.trust.instantRefunds': 'உடனடி திரும்பப் பணம்',
     'booking.trust.razorpay': 'Razorpay',
-    'booking.paymentMethods.title': 'கட்டண முறை',
     'booking.paymentMethods.upi': 'UPI',
     'booking.paymentMethods.upiSubtitle': 'GPay · PhonePe · Paytm',
     'booking.paymentMethods.cards': 'அட்டைகள்',
@@ -655,10 +654,7 @@ export const ta: Copy = {
     'booking.paymentMethods.netBankingSubtitle': 'அனைத்து முக்கிய வங்கிகளும்',
     'booking.paymentMethods.wallets': 'வாலட்கள்',
     'booking.paymentMethods.walletsSubtitle': 'Paytm · PhonePe · Mobikwik',
-    'booking.paymentMethods.chooseOnRazorpay': 'பாதுகாப்பான Razorpay திரையில் தேர்ந்தெடுக்கவும்',
     'booking.paymentMethods.payUsing': 'இதன் மூலம் செலுத்துங்கள்',
-    'booking.paymentMethods.anyMethod': 'UPI, கார்டுகள், நெட்பேங்கிங் மற்றும் பல',
-    'booking.paymentMethods.change': 'மாற்று',
     'booking.error.loadModel': 'இந்த ஸ்கூட்டரை ஏற்ற முடியவில்லை.',
     'booking.error.modelNotFound': 'இந்த ஸ்கூட்டரைக் கண்டுபிடிக்க முடியவில்லை.',
     'booking.blocked.findingStation': 'உங்களுக்கு அருகில் ஒரு பிக்கப் நிலையத்தைக் கண்டறிகிறது…',
@@ -739,7 +735,7 @@ export const ta: Copy = {
     'booking.amount': 'தொகை',
     'booking.processing': 'செயலாக்கத்தில்…',
     'booking.continue': 'தொடரவும்',
-    'booking.payCta': '{amount} செலுத்துங்கள்',
+    'booking.swipeToPay': '{amount} செலுத்த இழுக்கவும்',
 
     // --- battery stations map --------------------------------------------
     'stations.goBack': 'திரும்பிச் செல்',

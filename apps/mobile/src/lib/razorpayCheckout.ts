@@ -78,6 +78,7 @@ function cleanPrefill(prefill: RazorpayCheckoutOptions['prefill']): RazorpayChec
         ...(email ? { email } : {}),
         ...(name ? { name } : {}),
         ...(normalizeCheckoutContact(prefill.contact) ? { contact: normalizeCheckoutContact(prefill.contact) } : {}),
+        ...(prefill.method ? { method: prefill.method } : {}),
     };
 }
 

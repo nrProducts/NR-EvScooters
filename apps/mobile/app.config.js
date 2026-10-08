@@ -19,7 +19,13 @@ module.exports = {
       icon: './assets/images/icon.png',
     },
     android: {
-      package: 'in.swapngo.evscooters',
+      // MUST match the Play Console app listing exactly — that package name
+      // is permanent once a release has been created there, and this one
+      // already has an "Internal testing" release in progress under
+      // in.swapngo.rider. Changing this requires a matching
+      // google-services.json for the SAME package (see the comment on
+      // googleServicesFile below) or push notifications silently break.
+      package: 'in.swapngo.rider',
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
       /**
        * Permissions pulled in by dependencies that this app does not use.

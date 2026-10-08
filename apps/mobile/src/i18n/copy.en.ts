@@ -1133,7 +1133,6 @@ export const en = {
     'booking.trust.securePayment': 'Secure payment',
     'booking.trust.instantRefunds': 'Instant refunds',
     'booking.trust.razorpay': 'Razorpay',
-    'booking.paymentMethods.title': 'Payment method',
     'booking.paymentMethods.upi': 'UPI',
     'booking.paymentMethods.upiSubtitle': 'GPay · PhonePe · Paytm',
     'booking.paymentMethods.cards': 'Cards',
@@ -1142,10 +1141,7 @@ export const en = {
     'booking.paymentMethods.netBankingSubtitle': 'All major banks',
     'booking.paymentMethods.wallets': 'Wallets',
     'booking.paymentMethods.walletsSubtitle': 'Paytm · PhonePe · Mobikwik',
-    'booking.paymentMethods.chooseOnRazorpay': 'Choose on the secure Razorpay screen',
     'booking.paymentMethods.payUsing': 'Pay using',
-    'booking.paymentMethods.anyMethod': 'UPI, cards, netbanking & more',
-    'booking.paymentMethods.change': 'Change',
     'booking.error.loadModel': 'Could not load this scooter.',
     'booking.error.modelNotFound': 'This scooter could not be found.',
     'booking.blocked.findingStation': 'Finding a pickup station near you…',
@@ -1226,7 +1222,7 @@ export const en = {
     'booking.amount': 'Amount',
     'booking.processing': 'Processing…',
     'booking.continue': 'Continue',
-    'booking.payCta': 'Pay {amount}',
+    'booking.swipeToPay': 'Slide to pay {amount}',
 
     // --- battery stations map --------------------------------------------
     'stations.goBack': 'Go back',

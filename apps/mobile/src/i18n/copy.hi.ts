@@ -641,7 +641,6 @@ export const hi: Copy = {
     'booking.trust.securePayment': 'सुरक्षित भुगतान',
     'booking.trust.instantRefunds': 'तुरंत रिफ़ंड',
     'booking.trust.razorpay': 'Razorpay',
-    'booking.paymentMethods.title': 'भुगतान का तरीका',
     'booking.paymentMethods.upi': 'UPI',
     'booking.paymentMethods.upiSubtitle': 'GPay · PhonePe · Paytm',
     'booking.paymentMethods.cards': 'कार्ड',
@@ -650,10 +649,7 @@ export const hi: Copy = {
     'booking.paymentMethods.netBankingSubtitle': 'सभी प्रमुख बैंक',
     'booking.paymentMethods.wallets': 'वॉलेट',
     'booking.paymentMethods.walletsSubtitle': 'Paytm · PhonePe · Mobikwik',
-    'booking.paymentMethods.chooseOnRazorpay': 'सुरक्षित Razorpay स्क्रीन पर चुनें',
     'booking.paymentMethods.payUsing': 'इससे भुगतान करें',
-    'booking.paymentMethods.anyMethod': 'UPI, कार्ड, नेटबैंकिंग और अधिक',
-    'booking.paymentMethods.change': 'बदलें',
     'booking.error.loadModel': 'यह स्कूटर लोड नहीं हो सका।',
     'booking.error.modelNotFound': 'यह स्कूटर नहीं मिला।',
     'booking.blocked.findingStation': 'आपके पास एक पिकअप स्टेशन खोजा जा रहा है…',
@@ -734,7 +730,7 @@ export const hi: Copy = {
     'booking.amount': 'राशि',
     'booking.processing': 'प्रक्रिया जारी है…',
     'booking.continue': 'जारी रखें',
-    'booking.payCta': '{amount} भुगतान करें',
+    'booking.swipeToPay': '{amount} भुगतान करने के लिए स्लाइड करें',
 
     // --- battery stations map --------------------------------------------
     'stations.goBack': 'वापस जाएं',
