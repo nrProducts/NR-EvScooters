@@ -5,7 +5,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ChevronLeft, MapPin, Bike, Navigation, Check, AlertTriangle, CheckCircle2,
   ShieldCheck, Zap, Lock, BadgePercent, Calendar, ArrowRight,
-  CreditCard, Landmark, Wallet, Smartphone,
 } from 'lucide-react-native';
 import { Badge } from '../../components/ui/Badge';
 import { ErrorState } from '../../components/ui/ErrorState';
@@ -55,76 +54,11 @@ const TrustRow: React.FC = () => {
   );
 };
 
-export type PaymentMethod = 'upi' | 'card' | 'netbanking' | 'wallet';
-
 /**
- * Real, tappable selection — picking a tile here is passed straight through
- * to Razorpay as `prefill.method`, so Checkout opens directly on that
- * method's screen (e.g. UPI jumps straight to the GPay/PhonePe/Paytm app
- * picker) instead of showing its own method list first.
- * Keys, not labels: module scope does not re-run on a language change.
- */
-const PAYMENT_METHOD_KEYS = [
-  { method: 'upi', Icon: Smartphone, titleKey: 'booking.paymentMethods.upi', subtitleKey: 'booking.paymentMethods.upiSubtitle' },
-  { method: 'card', Icon: CreditCard, titleKey: 'booking.paymentMethods.cards', subtitleKey: 'booking.paymentMethods.cardsSubtitle' },
-  { method: 'netbanking', Icon: Landmark, titleKey: 'booking.paymentMethods.netBanking', subtitleKey: 'booking.paymentMethods.netBankingSubtitle' },
-  { method: 'wallet', Icon: Wallet, titleKey: 'booking.paymentMethods.wallets', subtitleKey: 'booking.paymentMethods.walletsSubtitle' },
-] as const satisfies readonly { method: PaymentMethod; Icon: typeof Smartphone; titleKey: CopyKey; subtitleKey: CopyKey }[];
-
-/** A 2x2 grid of selectable payment-method tiles — pick one, then swipe to pay. */
-const PaymentMethodPicker: React.FC<{ selected: PaymentMethod; onSelect: (m: PaymentMethod) => void }> = ({
-  selected,
-  onSelect,
-}) => {
-  const { t } = useT();
-  return (
-    <View>
-      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold mb-2">
-        {t('booking.paymentMethods.payUsing')}
-      </Text>
-      <View className="flex-row flex-wrap" style={{ gap: 10 }}>
-        {PAYMENT_METHOD_KEYS.map(({ method, Icon, titleKey, subtitleKey }) => {
-          const active = selected === method;
-          return (
-            <TouchableOpacity
-              key={method}
-              onPress={() => onSelect(method)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              className="rounded-2xl border flex-row items-center px-3 py-3"
-              style={{
-                width: '47%',
-                gap: 10,
-                backgroundColor: active ? COLORS.primary + '14' : COLORS.card,
-                borderColor: active ? COLORS.primary : COLORS.border,
-                borderWidth: active ? 1.5 : 1,
-              }}
-            >
-              <View
-                className="w-9 h-9 rounded-xl items-center justify-center"
-                style={{ backgroundColor: active ? COLORS.primary : COLORS.primary + '14' }}
-              >
-                <Icon size={17} color={active ? '#FFF' : COLORS.primary} />
-              </View>
-              <View className="flex-1">
-                <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-bold">{t(titleKey)}</Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-medium mt-0.5" numberOfLines={1}>
-                  {t(subtitleKey)}
-                </Text>
-              </View>
-              {active ? <Check size={16} color={COLORS.primary} /> : null}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
-};
-
-/**
- * The whole booking flow on ONE screen: pickup station, plan, price, a
- * payment-method pick, and a drag-to-confirm bar that opens Razorpay
- * Checkout directly on the chosen method. No separate review screen.
+ * The whole booking flow on ONE screen: pickup station, plan, price, and a
+ * drag-to-confirm bar that opens Razorpay Checkout. Method selection is
+ * Razorpay's job alone — it already shows UPI/Cards/Net Banking/Wallets on
+ * its own screen, so there is no in-app picker duplicating that choice.
  */
 export default function BookingScreen() {
   const insets = useSafeAreaInsets();
@@ -149,7 +83,6 @@ export default function BookingScreen() {
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('upi');
   const [swipeResetSignal, setSwipeResetSignal] = useState(0);
 
   const load = () => {
@@ -260,7 +193,6 @@ export default function BookingScreen() {
           email: profile?.email ?? undefined,
           contact: profile?.phone ?? undefined,
           name: profile?.full_name,
-          method: selectedMethod,
         },
       });
       await billingRepository.verifyPayment(verifyPayload);
@@ -620,8 +552,6 @@ export default function BookingScreen() {
                     </Text>
                   </View>
                 ) : null}
-
-                <PaymentMethodPicker selected={selectedMethod} onSelect={setSelectedMethod} />
 
                 <TrustRow />
 

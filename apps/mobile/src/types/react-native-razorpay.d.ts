@@ -13,13 +13,7 @@ declare module 'react-native-razorpay' {
         name?: string;
         description?: string;
         image?: string;
-        prefill?: {
-            email?: string;
-            contact?: string;
-            name?: string;
-            /** Jumps Checkout straight to this method's screen, skipping its own method list. */
-            method?: 'upi' | 'card' | 'netbanking' | 'wallet' | 'emi' | 'paylater';
-        };
+        prefill?: { email?: string; contact?: string; name?: string };
         theme?: { color?: string; backdrop_color?: string };
         modal?: {
             /** Ask the rider before the sheet is closed. */
