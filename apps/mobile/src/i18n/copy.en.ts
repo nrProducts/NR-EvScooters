@@ -1150,6 +1150,9 @@ export const en = {
     'booking.confirmed.title': 'Booking Confirmed',
     'booking.confirmed.body':
         'Payment successful. Your plan starts now — head to {station} right away to collect your {scooter}.',
+    'booking.confirming.title': 'Payment received',
+    'booking.confirming.body':
+        "Your booking is being confirmed — don't pay again. Tap Done and it'll show on Home.",
     'booking.confirmed.yourPickupStation': 'your pickup station',
     'booking.confirmed.yourScooter': 'scooter',
     'booking.confirmed.done': 'Done',

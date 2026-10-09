@@ -47,6 +47,13 @@ interface RequestOptions {
      * rather than racing it.
      */
     signal?: AbortSignal;
+    /**
+     * Overrides TIMEOUT_MS for one request. Only for calls where giving up
+     * early is worse than waiting — settling a captured payment, above all:
+     * the money is already gone, so a premature abort buys nothing and costs
+     * the rider their confirmation.
+     */
+    timeoutMs?: number;
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -67,7 +74,7 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
  * that belongs to the app's core surface.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const { method = 'GET', body, query, form, signal } = options;
+    const { method = 'GET', body, query, form, signal, timeoutMs = TIMEOUT_MS } = options;
 
     const token = await getAccessToken();
     const headers: Record<string, string> = {};
@@ -77,7 +84,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     if (!form && body !== undefined) headers['Content-Type'] = 'application/json';
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     // Chain rather than replace: whichever fires first wins, and the timeout
     // still applies to a caller who passes a signal they never abort.
     const onExternalAbort = () => controller.abort();
@@ -443,8 +450,16 @@ export const api = {
     createPaymentOrderForInvoice: (invoiceId: string) =>
         request<ApiPaymentOrder>(`/payments/invoices/${invoiceId}/order`, { method: 'POST' }),
 
+    // Settles money that has ALREADY left the rider's account, and on a
+    // booking order it also materialises the booking, invoice and allocation —
+    // more work than the default timeout allows for on a cold backend, and
+    // the one call where timing out early is strictly worse than waiting.
     verifyPayment: (payload: VerifyPaymentPayload) =>
-        request<{ status: string }>('/payments/verify', { method: 'POST', body: payload }),
+        request<{ status: string }>('/payments/verify', {
+            method: 'POST',
+            body: payload,
+            timeoutMs: 45000,
+        }),
 
     // --- rider billing (payment history, deposit, damage) ------------------
     myInvoices: (params: { page?: number; pageSize?: number; bookingId?: string } = {}) =>

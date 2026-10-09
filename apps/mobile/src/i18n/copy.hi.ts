@@ -658,6 +658,9 @@ export const hi: Copy = {
     'booking.confirmed.title': 'बुकिंग पक्की हो गई',
     'booking.confirmed.body':
         'भुगतान सफल रहा। आपका प्लान अभी शुरू हो गया है — अपना {scooter} लेने के लिए तुरंत {station} जाएं।',
+    'booking.confirming.title': 'भुगतान मिल गया',
+    'booking.confirming.body':
+        'आपकी बुकिंग की पुष्टि हो रही है — दोबारा भुगतान न करें। "हो गया" दबाएं, यह होम पर दिखेगी।',
     'booking.confirmed.yourPickupStation': 'अपने पिकअप स्टेशन',
     'booking.confirmed.yourScooter': 'स्कूटर',
     'booking.confirmed.done': 'हो गया',

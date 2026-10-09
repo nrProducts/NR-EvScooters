@@ -663,6 +663,9 @@ export const ta: Copy = {
     'booking.confirmed.title': 'முன்பதிவு உறுதிசெய்யப்பட்டது',
     'booking.confirmed.body':
         'கட்டணம் வெற்றி. உங்கள் திட்டம் இப்போதே தொடங்குகிறது — உங்கள் {scooter}ஐ பெற உடனடியாக {station}க்குச் செல்லுங்கள்.',
+    'booking.confirming.title': 'கட்டணம் பெறப்பட்டது',
+    'booking.confirming.body':
+        'உங்கள் முன்பதிவு உறுதி செய்யப்பட்டு வருகிறது — மீண்டும் பணம் செலுத்த வேண்டாம். "முடிந்தது" என்பதைத் தட்டினால் அது முகப்பில் தெரியும்.',
     'booking.confirmed.yourPickupStation': 'உங்கள் பிக்கப் நிலையம்',
     'booking.confirmed.yourScooter': 'ஸ்கூட்டர்',
     'booking.confirmed.done': 'முடிந்தது',

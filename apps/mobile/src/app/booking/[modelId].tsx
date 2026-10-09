@@ -24,7 +24,10 @@ import {
 import { DEFAULT_CANCELLATION_TIERS } from '../../lib/cancellationPolicy';
 import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
-import type { ApiAvailability, ApiOrderLine, ApiPaymentOrder, ApiPlan, ApiPlanQuote, ApiVehicleModelDetail } from '../../types/api';
+import type {
+  ApiAvailability, ApiOrderLine, ApiPaymentOrder, ApiPlan, ApiPlanQuote, ApiVehicleModelDetail,
+  VerifyPaymentPayload,
+} from '../../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT, type CopyKey } from '../../i18n';
 import { BILLING_CYCLE_LABEL_KEY } from '../../constants/status';
@@ -38,6 +41,26 @@ const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 function formatDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+/**
+ * Settles a capture, retrying a transient failure.
+ *
+ * Safe to repeat: the backend applies a capture once and returns early on a
+ * replay, so the only thing a second attempt can add is the confirmation the
+ * first one failed to bring back. Worth spending a few seconds on — the
+ * alternative is a rider who paid being told nothing is confirmed.
+ */
+async function verifyWithRetry(payload: VerifyPaymentPayload): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await billingRepository.verifyPayment(payload);
+      return;
+    } catch (err) {
+      if (attempt >= 2) throw err;
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+    }
+  }
 }
 
 const TrustRow: React.FC = () => {
@@ -87,6 +110,8 @@ export default function BookingScreen() {
   const [quote, setQuote] = useState<ApiPaymentOrder | ApiPlanQuote | null>(null);
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState(false);
+  /** Paid, but the confirmation never reached us — see the note in handlePay. */
+  const [confirming, setConfirming] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const [swipeResetSignal, setSwipeResetSignal] = useState(0);
 
@@ -200,8 +225,20 @@ export default function BookingScreen() {
           name: profile?.full_name,
         },
       });
-      await billingRepository.verifyPayment(verifyPayload);
-      await refreshProfile();
+      // PAST THIS LINE THE MONEY HAS LEFT THE RIDER'S ACCOUNT.
+      //
+      // Nothing below may surface as "payment failed, try again" — that is an
+      // instruction to pay twice for one booking. Verify is idempotent (the
+      // backend returns early on a replayed capture) so it is safe to retry,
+      // and the capture webhook materialises the booking independently of
+      // this call ever reaching us. So a failure here means only that WE did
+      // not get to see the confirmation, which is what `confirming` says.
+      try {
+        await verifyWithRetry(verifyPayload);
+      } catch {
+        setConfirming(true);
+      }
+      await refreshProfile().catch(() => undefined);
       setPaid(true);
     } catch (err) {
       if (err instanceof PaymentCancelledError) {
@@ -231,15 +268,22 @@ export default function BookingScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: COLORS.background }}>
         <View className="flex-1 items-center justify-center px-8">
-          <View className="w-16 h-16 rounded-full items-center justify-center mb-5" style={{ backgroundColor: COLORS.success + '1A' }}>
-            <CheckCircle2 size={32} color={COLORS.success} />
+          <View
+            className="w-16 h-16 rounded-full items-center justify-center mb-5"
+            style={{ backgroundColor: (confirming ? COLORS.warning : COLORS.success) + '1A' }}
+          >
+            {confirming ? <Spinner size={32} color={COLORS.warning} /> : <CheckCircle2 size={32} color={COLORS.success} />}
           </View>
-          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">{t('booking.confirmed.title')}</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
+            {t(confirming ? 'booking.confirming.title' : 'booking.confirmed.title')}
+          </Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium text-center mt-2 leading-relaxed">
-            {t('booking.confirmed.body', {
-              station: draft.station?.name ?? t('booking.confirmed.yourPickupStation'),
-              scooter: model?.name ?? t('booking.confirmed.yourScooter'),
-            })}
+            {confirming
+              ? t('booking.confirming.body')
+              : t('booking.confirmed.body', {
+                  station: draft.station?.name ?? t('booking.confirmed.yourPickupStation'),
+                  scooter: model?.name ?? t('booking.confirmed.yourScooter'),
+                })}
           </Text>
           <TouchableOpacity onPress={handleDone} className="mt-8 py-4 px-8 rounded-2xl items-center" style={{ backgroundColor: COLORS.primary }}>
             <Text className="text-white text-sm font-bold">{t('booking.confirmed.done')}</Text>
