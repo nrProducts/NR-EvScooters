@@ -1033,10 +1033,29 @@ async function recordCancellation(input: {
                 input.actor,
             );
         } catch (err) {
+            // The cancellation itself must still go through — the rider asked
+            // for it and the plan is already ended. But money owed and not
+            // queued is the worst thing this function can do quietly, and a
+            // console line is invisible in practice: that is how every
+            // pay-first cancellation lost its refund unnoticed. The audit row
+            // is the durable record staff can find and act on.
+            const message = err instanceof Error ? err.message : String(err);
             console.error("[bookings] opening cancellation refund failed", {
                 bookingId: input.bookingId,
-                error: err instanceof Error ? err.message : String(err),
+                amount: input.refundAmount,
+                error: message,
             });
+            await writeAudit({
+                actorId: input.actor.id,
+                action: "refund.initiation_failed",
+                entityType: "booking",
+                entityId: input.bookingId,
+                after: {
+                    subscription_id: input.subscriptionId,
+                    owed_amount: input.refundAmount,
+                    error: message,
+                },
+            }).catch(() => undefined);
         }
     }
 

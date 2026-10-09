@@ -216,14 +216,50 @@ export async function paymentForRefund(
     subscriptionId: string,
     minHeadroom = 0,
 ): Promise<{ id: string; userId: string } | null> {
-    const { data, error } = await supabaseAdmin
+    // A payment reaches its subscription by TWO different routes and both have
+    // to be searched:
+    //
+    //   • an INVOICE-purpose order carries `payment_orders.invoice_id`, so the
+    //     order itself names the invoice;
+    //   • a pay-first BOOKING order does not. That column stays null — there is
+    //     no invoice when the order is created, only once the capture runs
+    //     materializeBookingFromOrder — and the link that does exist is the
+    //     `payment_allocations` row written at that point.
+    //
+    // Searching only the first route meant every pay-first booking
+    // cancellation failed to find the payment the rider had just made, threw
+    // "No captured payment found to refund against", and had that throw
+    // swallowed by recordCancellation — a refund silently never created.
+    const { data: viaOrder, error } = await supabaseAdmin
         .from("payment_transactions")
         .select("id, amount, payment_orders!inner(user_id, invoices!inner(subscription_id))")
         .eq("payment_orders.invoices.subscription_id", subscriptionId)
-        .eq("status", "succeeded")
-        .order("amount", { ascending: false });
+        .eq("status", "succeeded");
     if (error) throw error;
-    if (!data || data.length === 0) return null;
+
+    const { data: allocations, error: allocError } = await supabaseAdmin
+        .from("payment_allocations")
+        .select("payment_transaction_id, invoices!inner(subscription_id)")
+        .eq("invoices.subscription_id", subscriptionId);
+    if (allocError) throw allocError;
+
+    const allocatedIds = (allocations ?? []).map((a) => a.payment_transaction_id);
+    let viaAllocation: typeof viaOrder = [];
+    if (allocatedIds.length > 0) {
+        const { data: allocPayments, error: allocPayError } = await supabaseAdmin
+            .from("payment_transactions")
+            .select("id, amount, payment_orders!inner(user_id)")
+            .in("id", allocatedIds)
+            .eq("status", "succeeded");
+        if (allocPayError) throw allocPayError;
+        viaAllocation = (allocPayments ?? []) as unknown as typeof viaOrder;
+    }
+
+    // Same payment can arrive by both routes; the id keys it either way.
+    const byId = new Map<string, (typeof viaOrder)[number]>();
+    for (const row of [...(viaOrder ?? []), ...viaAllocation]) byId.set(row.id, row);
+    const data = [...byId.values()];
+    if (data.length === 0) return null;
 
     const ids = data.map((d) => d.id);
     const { data: refs, error: refError } = await supabaseAdmin

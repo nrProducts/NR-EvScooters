@@ -123,7 +123,30 @@ interface RazorpayWebSuccessPayload {
 }
 
 interface RazorpayWebFailurePayload {
-    error?: { code?: string; description?: string; reason?: string };
+    error?: {
+        code?: string;
+        description?: string;
+        reason?: string;
+        /** Present once a payment record exists — see payloadPredatesPayment. */
+        metadata?: { payment_id?: string; order_id?: string };
+    };
+}
+
+/**
+ * True when Razorpay refused the REQUEST rather than failing a payment.
+ *
+ * Custom Checkout reports a rejected payload through the same
+ * `payment.error` channel as a genuine decline, and the two must not be
+ * treated alike: a rejected payload means nothing was ever charged, so
+ * falling back to the hosted sheet is safe and is the whole point. A decline
+ * means money was attempted and the rider has to see that.
+ *
+ * A payment that exists always carries its id here, so its ABSENCE on a
+ * client-side (4xx) error is what identifies the request never having become
+ * a payment at all.
+ */
+function payloadPredatesPayment(response: RazorpayWebFailurePayload): boolean {
+    return response.error?.code === 'BAD_REQUEST_ERROR' && !response.error.metadata?.payment_id;
 }
 
 interface RazorpayWebOptions extends Omit<RazorpayCheckoutOptions, 'send_sms_hash'> {
@@ -378,10 +401,13 @@ function canUseUpiIntent(): boolean {
 async function openUpiIntentCheckout(merged: RazorpayCheckoutOptions): Promise<VerifyPaymentPayload> {
     const contact = merged.prefill?.contact;
     const email = merged.prefill?.email;
-    // Custom Checkout validates these itself and rejects the payload rather
-    // than prompting for them the way the hosted sheet would, so a rider
-    // missing either (Google sign-ups carry no phone) takes the sheet instead.
-    if (!contact || !email) throw new UpiIntentUnavailableError();
+    // A UPI payment is addressed to a phone, so without one there is nothing
+    // to attempt and the hosted sheet (which can ask for it) takes over.
+    // Email is NOT required here: most riders sign up by OTP and have none,
+    // and gating on it would send the common case to the sheet every time.
+    // If Razorpay does insist on one it rejects the payload, which
+    // payloadPredatesPayment turns back into that same fallback.
+    if (!contact) throw new UpiIntentUnavailableError();
 
     const Razorpay = await loadCustomCheckout();
 
@@ -414,9 +440,19 @@ async function openUpiIntentCheckout(merged: RazorpayCheckoutOptions): Promise<V
         });
 
         razorpay.on('payment.error', (response) => {
-            // A payment was attempted and failed — a real outcome the rider
-            // must see, never a reason to reopen a second sheet behind it.
-            finish(() => reject(new Error(response.error?.description ?? 'Payment failed. Please try again.')));
+            finish(() =>
+                reject(
+                    payloadPredatesPayment(response)
+                        // Nothing was charged, so the hosted sheet can still
+                        // take this payment — a dead end here would strand a
+                        // rider who has paid nothing and can see no way on.
+                        ? new UpiIntentUnavailableError()
+                        // A payment was attempted and failed — a real outcome
+                        // the rider must see, never a reason to reopen a
+                        // second sheet behind it.
+                        : new Error(response.error?.description ?? 'Payment failed. Please try again.'),
+                ),
+            );
         });
 
         try {
@@ -427,7 +463,7 @@ async function openUpiIntentCheckout(merged: RazorpayCheckoutOptions): Promise<V
                     order_id: merged.order_id,
                     method: 'upi',
                     contact,
-                    email,
+                    ...(email ? { email } : {}),
                     ...(merged.notes ? { notes: merged.notes } : {}),
                 },
                 { app: 'any' },
