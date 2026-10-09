@@ -1047,6 +1047,11 @@ async function recordCancellation(input: {
             });
             await writeAudit({
                 actorId: input.actor.id,
+                // The actor may be staff cancelling on someone's behalf, so
+                // naming them here would misattribute who is owed the money.
+                // entityType/entityId identify the booking, and the rider
+                // follows from it.
+                targetUserId: null,
                 action: "refund.initiation_failed",
                 entityType: "booking",
                 entityId: input.bookingId,

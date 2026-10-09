@@ -53,6 +53,10 @@ export type AuditAction =
     | "damage.created" | "damage.disputed" | "damage.resolved" | "damage.waived"
     | "refund.initiated" | "refund.submitted" | "refund.processed" | "refund.failed"
     | "refund.reviewed" | "refund.rejected"
+    // A cancellation owed money but the refund could not be opened. The
+    // cancellation still stands, so this row is the only trace staff have
+    // that someone is owed a payout nothing is currently tracking.
+    | "refund.initiation_failed"
     // The `plan.*` names are kept even though the state they describe moved
     // from bookings to `subscriptions`: the events are the same events, and
     // renaming them would split the history in two.
