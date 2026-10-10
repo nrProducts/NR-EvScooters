@@ -127,9 +127,21 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
             style={{ height: 16, width: 76 }}
             resizeMode="contain"
           />
+          {/* Live-rental indicator. Deliberately NOT brand-tinted and set off
+              from the wordmark: at ml-2 in pale green it read as part of the
+              logo lockup ("swapngo Day 1") rather than as status. A neutral
+              pill with a green dot says "something is running" at a glance,
+              and 11px on grey clears the contrast the 10px tint did not. */}
           {rentalDay != null ? (
-            <View className="ml-2 rounded-full px-2 py-0.5" style={{ backgroundColor: COLORS.primary + '14' }}>
-              <Text style={{ color: COLORS.primaryPressed }} className="text-[10px] font-bold">
+            <View
+              className="ml-3 flex-row items-center rounded-full pl-1.5 pr-2.5 py-1"
+              style={{ backgroundColor: COLORS.gray[100], borderWidth: 1, borderColor: COLORS.border }}
+            >
+              <View
+                className="w-1.5 h-1.5 rounded-full mr-1.5"
+                style={{ backgroundColor: COLORS.primary }}
+              />
+              <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-bold">
                 {t('appShell.dayN', { day: rentalDay })}
               </Text>
             </View>
