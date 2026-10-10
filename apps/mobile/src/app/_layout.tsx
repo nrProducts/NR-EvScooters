@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Spinner } from "../components/Spinner";
-import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
+import { Stack, useNavigationContainerRef, useRootNavigationState, useRouter, useSegments } from "expo-router";
+import * as Sentry from "@sentry/react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -15,49 +16,19 @@ import { useNotificationToastStore } from "../store/useNotificationToastStore";
 import { userRepository } from "../services";
 import { DialogHost } from "../components/ui/DialogHost";
 import { NotificationToastHost } from "../components/NotificationToastHost";
+import { PaymentProgressOverlay } from "../components/PaymentProgressOverlay";
 import { registerForPushNotificationsAsync } from "../lib/pushNotifications";
 import { resolveNotificationRoute } from "../lib/notificationRoute";
+import { resolveRootRedirect } from "../lib/rootRedirect";
 import { missingEnvVars } from "../constants/env";
 import { COLORS } from "../constants/theme";
 import { SplashAnimation } from "../components/SplashAnimation";
+import { initSentry, navigationIntegration, setSentryUser } from "../lib/sentry";
 import "../../global.css";
 
-/**
- * This app is rider-only — the admin/staff console is apps/web. Every account
- * that signs in here follows the rider flow, including staff ones; there is no
- * privileged surface left to gate.
- *
- * "booking" covers booking/[modelId] (the whole book+pay flow is one screen),
- * and "battery-stations" covers both its index and [id] — Expo Router reports
- * a route's top-level segment name, not the file's bracketed param.
- *
- * Any segment missing here is silently replace()d to /home by the guard below,
- * with no error — which is exactly how /billing stayed unreachable from the
- * drawer. Add the segment whenever a screen is added under src/app.
- */
-const RIDER_ROUTES = [
-  "home", "my-scooter", "my-plan", "billing", "support", "kyc", "kyc-intro",
-  "browse-vehicles", "booking", "notifications", "booking-history",
-  "battery-stations", "profile",
-  // DPDPA. "privacy" covers privacy/index, notice, requests, [id] and nominee.
-  "consent", "privacy",
-  // The rental agreement, readable any time from Profile. Acceptance itself
-  // happens on the consent screen, not here.
-  "terms",
-  // Replayed from Profile ("How Swapngo Works") while signed in — see the
-  // !hasSeenOnboarding gate below for the signed-out first-run case, which
-  // doesn't rely on this list at all.
-  "onboarding",
-  // Re-opened from Profile → Language at any time. The first-launch pass is
-  // handled by its own gate below, ahead of onboarding, and does not rely on
-  // this list.
-  "language",
-  // +not-found.tsx — any URL that matches no route. Allowed so the rider sees
-  // its "page not found" message and a way home, rather than a silent jump.
-  "+not-found",
-];
-// Screens reachable while signed OUT (the login surface).
-const AUTH_ROUTES = ["index", "otp-verify", "auth-callback"];
+// Module scope, so errors thrown while the first render is still being set up
+// are reported too.
+initSentry();
 
 /**
  * Query cache for the feature modules that use React Query (currently
@@ -108,7 +79,7 @@ function MisconfiguredScreen({ missing }: { missing: string[] }) {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const { t } = useT();
   const missing = missingEnvVars();
   const bootstrap = useAuthStore((s) => s.bootstrap);
@@ -130,6 +101,7 @@ export default function RootLayout() {
   const loadingProfile = useAuthStore((s) => s.loadingProfile);
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const signOut = useAuthStore((s) => s.signOut);
+  const signingOut = useAuthStore((s) => s.signingOut);
 
   const router = useRouter();
   const segments = useSegments();
@@ -141,6 +113,12 @@ export default function RootLayout() {
   // "Attempted to navigate before mounting the Root Layout" — `key` is only
   // set once the container has actually mounted.
   const navigationState = useRootNavigationState();
+
+  // Gives each crash report the trail of screens that led to it.
+  const navigationRef = useNavigationContainerRef();
+  useEffect(() => {
+    if (navigationRef) navigationIntegration.registerNavigationContainer(navigationRef);
+  }, [navigationRef]);
 
   // Fast Refresh can re-run the routing effect below while
   // useRootNavigationState() still reports the *previous* mount's key — the
@@ -193,6 +171,12 @@ export default function RootLayout() {
     if (!profile) return;
     syncLangWithProfile(profile.id, profile.preferred_language);
   }, [profile, syncLangWithProfile]);
+
+  // Crash reports carry the account id (only the id — see lib/sentry.ts), so
+  // a crash can be matched to the tester who reported it.
+  useEffect(() => {
+    setSentryUser(profile?.id ?? null);
+  }, [profile?.id]);
 
   // Registers a push token once per signed-in account, not on every profile
   // refetch — keyed on the id (not a plain boolean) so switching accounts
@@ -271,201 +255,111 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
+  const booting = initialising || !onboardingHydrated || !langReady;
+  const navReady = !!navigationState?.key;
+  // Where the rider must be sent from the current screen — see
+  // lib/rootRedirect.ts for every gate. Computed during render, not inside
+  // the effect, because the cover below needs the same answer: a screen that
+  // is about to be replaced must not be shown on its way out.
+  const redirect = navReady && !booting
+    ? resolveRootRedirect({
+        segments: segments as unknown as string[],
+        langChosen,
+        hasSeenOnboarding,
+        signedIn: !!session,
+        profile,
+        hasSeenKycIntro,
+      })
+    : null;
+
   useEffect(() => {
-    if (!navigationState?.key) return;
-    if (initialising || !onboardingHydrated || !langReady) return;
+    if (redirect) safeReplace(redirect);
+  }, [redirect, safeReplace, navigationState?.key]);
 
-    // The (tabs) group wraps Home/My Scooter/Billing/Stations/Profile
-    // for the bottom tab bar, and doesn't affect any route's URL — but
-    // useSegments() DOES include the group name literally (["(tabs)","home"],
-    // not ["home"]), so this unwraps it before comparing against
-    // RIDER_ROUTES/AUTH_ROUTES, exactly as if the group didn't exist.
-    const rawSegs = segments as unknown as string[];
-    const current = rawSegs[0] === "(tabs)" ? (rawSegs[1] ?? "home") : (rawSegs[0] ?? "index");
-    const atAuthScreen = rawSegs.length === 0 || AUTH_ROUTES.includes(current);
-
-    // Language comes before EVERYTHING, onboarding included: onboarding is
-    // three screens of prose, and showing it in a language the rider cannot
-    // read is the one failure this whole feature exists to prevent. The gate
-    // is on `chosen`, not on the language being set — the app always has a
-    // language (guessed from the device locale, else English), so anything
-    // weaker than "the rider actually picked" would skip the picker on a
-    // Tamil phone and silently decide for them.
-    if (!langChosen) {
-      if (current !== "language") safeReplace("/language");
-      return;
-    }
-
-    // Device has never completed onboarding — takes priority over everything
-    // else, signed in or not, so a brand-new install always sees it first.
-    // Deliberately not folded into AUTH_ROUTES: see the comment on
-    // RIDER_ROUTES's "onboarding" entry for the signed-in replay case.
-    if (!hasSeenOnboarding) {
-      if (current !== "onboarding") safeReplace("/onboarding");
-      return;
-    }
-
-    if (!session) {
-      // Signed out: allow the login surface (phone, OTP), bounce anything else.
-      if (!atAuthScreen) safeReplace("/");
-      return;
-    }
-
-    // Signed in, but GET /users/me hasn't answered yet — hold position rather
-    // than bouncing the user to the wrong home screen and back.
-    if (!profile) return;
-
-    // A staff/admin account has no `rider_profiles` row by design (see
-    // handle_new_auth_user) — `profile_completed` can NEVER become true for
-    // one, since markOnboardingComplete() is a plain UPDATE that matches zero
-    // rows when there is nothing to flip. Without this check, a staff member
-    // who opens this rider-only app with their staff Google account would
-    // save profile-setup successfully (200) and land right back on
-    // profile-setup every time, looking exactly like a broken Continue
-    // button. The blocking screen below (not a redirect) is what actually
-    // stops that loop.
-    if (profile.role !== 'rider') return;
-
-    // First-ever sign-in → finish the profile first. Not just "no name yet":
-    // Google sign-in auto-fills full_name from the provider profile, so
-    // full_name alone can't tell "brand new" from "done onboarding".
-    const needsProfile = !profile.profile_completed;
-    if (needsProfile) {
-      if (current !== "profile-setup") safeReplace("/profile-setup");
-      return;
-    }
-
-    // Notice and consent (DPDPA ss.5-6) come after the profile and before any
-    // identity document is asked for. `consent_up_to_date` is false both when
-    // consent was never given AND when it was given against an older notice
-    // version, so publishing a revised notice re-prompts every rider here with
-    // no extra code. /privacy is exempt so a rider can always re-read the
-    // notice, and mid-flow screens are left alone.
-    //
-    // Terms acceptance rides the SAME gate rather than getting one of its own.
-    // Both are captured on the consent screen in one pass, so a rider who owes
-    // either is sent to the same place — and a rider who owes only the terms
-    // (because a new version was published) re-confirms consent harmlessly,
-    // since recordConsents is idempotent for unchanged choices.
-    //
-    // Two separate gates would mean two sequential full-screen interruptions
-    // for what is, to the rider, one "please agree to this" moment.
-    //
-    // /privacy and /terms are exempt so a rider can always re-read either
-    // document — including from the consent screen's own links, which would
-    // otherwise bounce straight back here.
-    if (!profile.consent_up_to_date || !profile.terms_up_to_date) {
-      if (current !== "consent" && current !== "privacy" && current !== "terms") {
-        safeReplace("/consent?next=/kyc-intro");
-      }
-      return;
-    }
-
-    // Riders with a profile but no KYC activity yet see the intro once per
-    // session before Home. "Skip for Now" marks hasSeenKycIntro immediately
-    // (kyc-intro.tsx, on mount) so this never loops — see that file's
-    // comment. Riders already partway through/submitted/verified/rejected
-    // are never sent back here; only the untouched not_submitted state is.
-    const kycIntroPending = profile.kyc_status === "not_submitted" && !hasSeenKycIntro;
-    if (kycIntroPending) {
-      if (current !== "kyc-intro" && current !== "kyc") safeReplace("/kyc-intro");
-      return;
-    }
-
-    if (atAuthScreen || current === "profile-setup" || !RIDER_ROUTES.includes(current)) {
-      safeReplace("/home");
-    }
-  }, [
-    navigationState?.key, initialising, onboardingHydrated, hasSeenOnboarding, session, profile,
-    hasSeenKycIntro, segments, router, safeReplace, langReady, langChosen,
-  ]);
+  // The splash outlives boot until the FIRST route has settled. The navigator
+  // always mounts on its initial route — the login screen — so dropping the
+  // splash any earlier flashed that screen at a signed-in rider on the way to
+  // Home.
+  const [firstRouteSettled, setFirstRouteSettled] = useState(false);
+  useEffect(() => {
+    if (!firstRouteSettled && navReady && !booting && !redirect) setFirstRouteSettled(true);
+  }, [firstRouteSettled, navReady, booting, redirect]);
 
   if (missing.length > 0) return <MisconfiguredScreen missing={missing} />;
 
-  // First thing a rider sees while the keychain session is read back. The
-  // native splash before this shows the SNG mark alone — Android 12+ clips
-  // windowSplashScreenAnimatedIcon to a circle, so the wordmark can only be
-  // shown here, once JS owns the screen.
-  if (initialising || !onboardingHydrated || !langReady) {
-    return (
-      <SafeAreaProvider>
-        <StatusBar style="dark" backgroundColor={COLORS.background} />
-        <SplashAnimation />
-      </SafeAreaProvider>
+  // Covers the app (never replaces it) whenever what is underneath is not
+  // what the rider should see yet. This used to be a set of early returns in
+  // place of the <Stack>, which UNMOUNTED the navigator: once the profile
+  // arrived after an OTP sign-in it remounted on its initial route, and the
+  // login screen flashed before the redirect to Home landed.
+  let cover: ReactNode = null;
+  if (booting || !firstRouteSettled) {
+    // First thing a rider sees while the keychain session is read back. The
+    // native splash before this shows the SNG mark alone — Android 12+ clips
+    // windowSplashScreenAnimatedIcon to a circle, so the wordmark can only be
+    // shown here, once JS owns the screen.
+    cover = <SplashAnimation />;
+  } else if (signingOut) {
+    cover = <RouteLoading message={t('rootLayout.signingOut')} />;
+  } else if (session && !profile) {
+    // Signed in, but GET /users/me never came back with a profile — e.g. the
+    // API is unreachable. Without this, the routing gate just holds position
+    // forever with zero feedback, which looks exactly like an infinite
+    // "loading" hang. Show the failure and let the rider retry or back out,
+    // instead of leaving them stuck on whatever screen they were on.
+    //
+    // While it is still loading, a bare spinner on an otherwise blank screen
+    // reads as "frozen" rather than "loading" once the button-level spinner
+    // on the screen before has already disappeared — the message is the ONLY
+    // thing telling the rider anything is happening.
+    cover = loadingProfile ? (
+      <RouteLoading message={t('rootLayout.settingUpAccount')} />
+    ) : (
+      <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
+        <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
+          {t('rootLayout.couldNotLoadProfile')}
+        </Text>
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-3 leading-relaxed">
+          {profileError ?? t('common.genericError')}
+        </Text>
+        <TouchableOpacity
+          onPress={() => void refreshProfile()}
+          className="mt-6 px-6 py-3 rounded-2xl"
+          style={{ backgroundColor: COLORS.primary }}
+        >
+          <Text style={{ color: '#FFF' }} className="font-bold text-sm">{t('common.tryAgain')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => void signOut()} className="mt-4 px-4 py-2">
+          <Text style={{ color: COLORS.textSecondary }} className="font-medium text-xs">{t('auth.signOut')}</Text>
+        </TouchableOpacity>
+      </View>
     );
-  }
-
-  // Signed in, but GET /users/me never came back with a profile — e.g. the
-  // API is unreachable. Without this, the routing effect above just holds
-  // position forever with zero feedback, which looks exactly like an
-  // infinite "loading" hang. Show the failure and let the rider retry or
-  // back out, instead of leaving them stuck on whatever screen they were on.
-  if (session && !profile) {
-    return (
-      <SafeAreaProvider>
-        <StatusBar style="dark" backgroundColor={COLORS.background} />
-        <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
-          {loadingProfile ? (
-            <>
-              <Spinner size={32} color={COLORS.primary} />
-              {/* A bare spinner on an otherwise blank screen reads as "frozen"
-                  rather than "loading" once the button-level spinner on the
-                  screen before this one has already disappeared — this is the
-                  ONLY thing telling the rider anything is happening while
-                  GET /users/me is in flight. */}
-              <Text style={{ color: COLORS.textSecondary }} className="text-sm font-semibold mt-4">
-                {t('rootLayout.settingUpAccount')}
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
-                {t('rootLayout.couldNotLoadProfile')}
-              </Text>
-              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-3 leading-relaxed">
-                {profileError ?? t('common.genericError')}
-              </Text>
-              <TouchableOpacity
-                onPress={() => void refreshProfile()}
-                className="mt-6 px-6 py-3 rounded-2xl"
-                style={{ backgroundColor: COLORS.primary }}
-              >
-                <Text style={{ color: '#FFF' }} className="font-bold text-sm">{t('common.tryAgain')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => void signOut()} className="mt-4 px-4 py-2">
-                <Text style={{ color: COLORS.textSecondary }} className="font-medium text-xs">{t('auth.signOut')}</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </SafeAreaProvider>
+  } else if (session && profile && profile.role !== 'rider') {
+    // Same shape as the "couldn't load profile" screen above, for the other
+    // reason a signed-in account can never proceed: it's staff/admin, not a
+    // rider. See the `profile.role !== 'rider'` gate in lib/rootRedirect.ts.
+    cover = (
+      <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
+        <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
+          {t('rootLayout.staffAccountTitle')}
+        </Text>
+        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-3 leading-relaxed">
+          {t('rootLayout.staffAccountBody')}
+        </Text>
+        <TouchableOpacity
+          onPress={() => void signOut()}
+          className="mt-6 px-6 py-3 rounded-2xl"
+          style={{ backgroundColor: COLORS.primary }}
+        >
+          <Text style={{ color: '#FFF' }} className="font-bold text-sm">{t('auth.signOut')}</Text>
+        </TouchableOpacity>
+      </View>
     );
-  }
-
-  // Same shape as the "couldn't load profile" screen above, for the other
-  // reason a signed-in account can never proceed: it's staff/admin, not a
-  // rider. See the routing effect's `profile.role !== 'rider'` guard.
-  if (session && profile && profile.role !== 'rider') {
-    return (
-      <SafeAreaProvider>
-        <StatusBar style="dark" backgroundColor={COLORS.background} />
-        <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
-          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
-            {t('rootLayout.staffAccountTitle')}
-          </Text>
-          <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium text-center mt-3 leading-relaxed">
-            {t('rootLayout.staffAccountBody')}
-          </Text>
-          <TouchableOpacity
-            onPress={() => void signOut()}
-            className="mt-6 px-6 py-3 rounded-2xl"
-            style={{ backgroundColor: COLORS.primary }}
-          >
-            <Text style={{ color: '#FFF' }} className="font-bold text-sm">{t('auth.signOut')}</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaProvider>
-    );
+  } else if (redirect) {
+    // A redirect is on its way (the profile just loaded after OTP, or the
+    // profile/consent step was just completed): hold a loader rather than
+    // show the screen being left.
+    cover = <RouteLoading message={session ? t('rootLayout.settingUpAccount') : undefined} />;
   }
 
   return (
@@ -476,7 +370,12 @@ export default function RootLayout() {
             keyboard and plain KeyboardAvoidingView can't see it. */}
         <KeyboardProvider>
           <StatusBar style="dark" backgroundColor="#F8FAFC" />
-          <Stack screenOptions={{ headerShown: false }} />
+          {/* Not mounted until the stored session has been read, so no screen
+              starts fetching before the app knows who is signed in. */}
+          {booting ? null : <Stack screenOptions={{ headerShown: false }} />}
+          {cover ? <View style={StyleSheet.absoluteFill}>{cover}</View> : null}
+          {/* Payment in progress, for every payment flow — see PaymentProgressOverlay.tsx. */}
+          <PaymentProgressOverlay />
           {/* Every confirmAction/notify call in the app surfaces here. */}
           <DialogHost />
           {/* Foreground push popup — see NotificationToastHost.tsx. */}
@@ -486,3 +385,21 @@ export default function RootLayout() {
     </QueryClientProvider>
   );
 }
+
+/** Full-screen spinner, with an optional line saying what is happening. */
+function RouteLoading({ message }: { message?: string }) {
+  return (
+    <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
+      <Spinner size={32} color={COLORS.primary} />
+      {message ? (
+        <Text style={{ color: COLORS.textSecondary }} className="text-sm font-semibold mt-4 text-center">
+          {message}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+// Sentry.wrap catches errors thrown during render and touch handling; it is
+// inert when initSentry() left Sentry off.
+export default Sentry.wrap(RootLayout);

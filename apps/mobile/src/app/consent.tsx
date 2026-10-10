@@ -37,7 +37,9 @@ export default function ConsentScreen() {
     // See src/i18n/documentLanguage.ts.
     const docLang = documentLanguage(lang);
 
-    const { state, notice, loading, saving, error, save } = useConsent();
+    const { state, notice, loading, saving: savingConsent, error, save } = useConsent();
+    const [accepting, setAccepting] = useState(false);
+    const saving = savingConsent || accepting;
     const refreshProfile = useAuthStore((s) => s.refreshProfile);
     const [optional, setOptional] = useState<Record<string, boolean>>({});
     const [expanded, setExpanded] = useState<string | null>(null);
@@ -103,7 +105,7 @@ export default function ConsentScreen() {
         [state],
     );
 
-    const accept = async () => {
+    const recordAcceptance = async () => {
         const grants = [
             ...required.map((i) => ({ purpose: i.purpose, granted: true })),
             ...optionalItems.map((i) => ({
@@ -155,6 +157,18 @@ export default function ConsentScreen() {
         await refreshProfile();
 
         router.replace((next as never) ?? ('/kyc-intro' as never));
+    };
+
+    // `savingConsent` covers only the first of the three calls above; the
+    // terms acceptance and profile refresh after it used to run with the
+    // button live again and no spinner — a dead pause, and a double-submit.
+    const accept = async () => {
+        setAccepting(true);
+        try {
+            await recordAcceptance();
+        } finally {
+            setAccepting(false);
+        }
     };
 
     if (loading || !state || !notice) {

@@ -1,8 +1,10 @@
 const os = require("os");
-const { getDefaultConfig } = require("expo/metro-config");
+const { getSentryExpoConfig } = require("@sentry/react-native/metro");
 const { withNativewind } = require("nativewind/metro");
 
-const config = getDefaultConfig(__dirname);
+// Expo's default config plus debug IDs in the bundle, which is what lets
+// Sentry match a release crash to the uploaded source maps.
+const config = getSentryExpoConfig(__dirname);
 
 // Metro defaults to one transform worker per CPU core. Each worker is a full
 // Node process, and with the React Compiler + nativewind babel passes each one

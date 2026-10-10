@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, useKeyboardState } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import { COLORS } from '../../constants/theme';
@@ -10,6 +11,12 @@ import { useT } from '../../i18n';
  * bottom, optional title row with a close button. Extracted because
  * ReturnScooterModal, the KYC prompt and the profile menu each re-declared the
  * same scrim colour, corner radius and safe-area padding.
+ *
+ * The card rides up above the soft keyboard, so a search box or prompt inside
+ * it (SearchableSelectField, DialogSheet's prompt) never has what it shows
+ * hidden underneath. keyboard-controller's KeyboardAvoidingView, not React
+ * Native's: Android is edge-to-edge, so the window no longer resizes for the
+ * keyboard — see the KeyboardProvider note in _layout.tsx.
  */
 interface SheetProps {
   visible: boolean;
@@ -29,10 +36,16 @@ export const Sheet: React.FC<SheetProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const { t } = useT();
+  // The open keyboard already covers the navigation-bar inset; padding for
+  // it as well would leave a dead strip between the card and the keyboard.
+  const keyboardVisible = useKeyboardState((s) => s.isVisible);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' }}>
+      <KeyboardAvoidingView
+        behavior="padding"
+        style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' }}
+      >
         {dismissible ? (
           <TouchableOpacity
             style={{ flex: 1 }}
@@ -50,7 +63,7 @@ export const Sheet: React.FC<SheetProps> = ({
             backgroundColor: COLORS.card,
             borderTopLeftRadius: 28,
             borderTopRightRadius: 28,
-            paddingBottom: 16 + insets.bottom,
+            paddingBottom: 16 + (keyboardVisible ? 0 : insets.bottom),
             maxHeight: '90%',
           }}
         >
@@ -75,7 +88,7 @@ export const Sheet: React.FC<SheetProps> = ({
 
           {children}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

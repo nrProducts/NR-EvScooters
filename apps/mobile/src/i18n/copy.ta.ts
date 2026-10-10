@@ -225,6 +225,11 @@ export const ta: Copy = {
     'settlement.refundAmount': 'திரும்பப் பணத் தொகை',
     'settlement.checkoutDescription': 'திருப்பு தீர்வு',
     'payment.failed': 'கட்டணம் தோல்வியடைந்தது. மீண்டும் முயற்சிக்கவும்.',
+    'payment.progress.processing.title': 'உங்கள் கட்டணம் செயலாக்கப்படுகிறது',
+    'payment.progress.processing.body': 'பாதுகாப்பான செக்அவுட்டில் கட்டணத்தை முடிக்கவும். அதன் பிறகு தானாகவே இங்கே திரும்புவீர்கள்.',
+    'payment.progress.confirming.title': 'உங்கள் கட்டணத்தை உறுதிசெய்கிறோம்',
+    'payment.progress.confirming.body': 'கட்டணம் பெறப்பட்டது. வங்கியுடன் உறுதிசெய்கிறோம், இதற்கு சில வினாடிகள் ஆகலாம்.',
+    'payment.progress.warning': 'தயவுசெய்து ஆப்பை மூடவோ பின்செல்லவோ வேண்டாம்.',
 
     // --- late fee payment gate --------------------------------------------
     'lateFeeGate.title': 'தாமத கட்டணம் செலுத்த வேண்டும்',
@@ -538,6 +543,7 @@ export const ta: Copy = {
     'profile.menu.privacy': 'தனியுரிமை & தரவு',
     'profile.menu.terms': 'விதிமுறைகள் & நிபந்தனைகள்',
     'profile.menu.howItWorks': 'ஸ்வாப்ங்கோ எப்படி இயங்குகிறது',
+    'profile.appVersion': 'ஆப் பதிப்பு {version} (பில்ட் {build})',
 
     // --- profile setup (first-run) -----------------------------------------
     'profileSetup.title': 'உங்கள் சுயவிவரத்தை முடித்து சவாரிக்குத் தயாராகுங்கள்.',
@@ -1002,6 +1008,7 @@ export const ta: Copy = {
 
     // --- root layout: profile load failure ----------------------------------
     'rootLayout.settingUpAccount': 'உங்கள் கணக்கை அமைக்கிறோம்…',
+    'rootLayout.signingOut': 'உங்களை வெளியேற்றுகிறோம்…',
     'rootLayout.couldNotLoadProfile': 'உங்கள் சுயவிவரத்தை ஏற்ற முடியவில்லை',
     'rootLayout.staffAccountTitle': 'இது ஒரு பணியாளர் கணக்கு',
     'rootLayout.staffAccountBody': 'இந்த ஆப் சவாரி செய்பவர்களுக்கு மட்டுமே. வெளியேறிவிட்டு, ஒரு சவாரி செய்பவரின் மொபைல் எண் அல்லது தனிப்பட்ட Google கணக்கில் உள்நுழையவும்.',

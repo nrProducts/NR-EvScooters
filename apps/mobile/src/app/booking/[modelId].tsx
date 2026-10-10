@@ -11,6 +11,7 @@ import { ErrorState } from '../../components/ui/ErrorState';
 import { SwipeToPay } from '../../components/SwipeToPay';
 import { useBookingStore } from '../../store/useBookingStore';
 import { useAuthStore } from '../../store/useAuthStore';
+import { setPaymentPhase } from '../../store/usePaymentProgressStore';
 import { vehicleCatalogRepository, billingRepository } from '../../services';
 import { notify, notifyError } from '../../lib/confirm';
 import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
@@ -201,6 +202,7 @@ export default function BookingScreen() {
     if (!draft.plan || !draft.station || !draft.startDay || !model) return;
     setPayError(null);
     setPaying(true);
+    setPaymentPhase('processing');
     try {
       // Pay-first: this creates ONLY a payment intent — no booking exists until
       // the payment captures and the backend materialises it.
@@ -233,6 +235,7 @@ export default function BookingScreen() {
       // and the capture webhook materialises the booking independently of
       // this call ever reaching us. So a failure here means only that WE did
       // not get to see the confirmation, which is what `confirming` says.
+      setPaymentPhase('confirming');
       try {
         await verifyWithRetry(verifyPayload);
       } catch {
@@ -255,6 +258,7 @@ export default function BookingScreen() {
       setSwipeResetSignal((n) => n + 1);
     } finally {
       setPaying(false);
+      setPaymentPhase(null);
     }
   };
 

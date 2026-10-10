@@ -75,7 +75,11 @@ export default function KycScreen() {
     );
 
   // The hook owns loading, refreshing, upload and submit state.
-  const { kyc, loading, refreshing, error, uploading, submitting, refresh, retry, actions } = useMyKyc();
+  const { kyc, loading, refreshing, error, uploading, submitting: submittingKyc, refresh, retry, actions } = useMyKyc();
+  // The hook's flag clears when the submit call returns, before the profile
+  // refresh in submit() below — this keeps the button busy through that too.
+  const [finishingSubmit, setFinishingSubmit] = useState(false);
+  const submitting = submittingKyc || finishingSubmit;
 
   const [step, setStep] = useState<Step>(0);
   const [maxStepReached, setMaxStepReached] = useState<Step>(0);
@@ -214,7 +218,12 @@ export default function KycScreen() {
       return;
     }
     // KYC status gates scooter unlock, so the cached profile must catch up.
-    await refreshProfile();
+    setFinishingSubmit(true);
+    try {
+      await refreshProfile();
+    } finally {
+      setFinishingSubmit(false);
+    }
     notify(t('kyc.submitted.title'), t('kyc.submitted.message'));
     router.replace('/home');
   };

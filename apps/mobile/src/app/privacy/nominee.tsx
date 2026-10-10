@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Spinner } from '../../components/Spinner';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -114,7 +115,11 @@ export default function NomineeScreen() {
 
     return (
         <AppShell title={t('privacy.nominee.heading')}>
-            <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 32 }}>
+            <KeyboardAwareScrollView
+                bottomOffset={24}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 32 }}
+            >
                 {loadError ? (
                     <ErrorState message={loadError} onRetry={load} />
                 ) : (
@@ -212,7 +217,7 @@ export default function NomineeScreen() {
                         ) : null}
                     </>
                 )}
-            </ScrollView>
+            </KeyboardAwareScrollView>
         </AppShell>
     );
 }

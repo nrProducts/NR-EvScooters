@@ -13,6 +13,8 @@ import { billingRepository, rentalRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
 import { ApiError } from '../lib/ApiError';
 import { useAuthStore } from '../store/useAuthStore';
+import { setPaymentPhase } from '../store/usePaymentProgressStore';
+import { PaymentProgressOverlay } from './PaymentProgressOverlay';
 import { formatDate } from '../constants/status';
 import type { ApiOverdueLateFee, ApiRental } from '../types/api';
 import { useT } from '../i18n';
@@ -53,6 +55,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
   const handlePay = async () => {
     setPayError(null);
     setPaying(true);
+    setPaymentPhase('processing');
     try {
       const invoice = await rentalRepository.payOverdueLateFee();
       if (!invoice.isPaid) {
@@ -69,6 +72,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
             name: profile?.full_name,
           },
         });
+        setPaymentPhase('confirming');
         await billingRepository.verifyPayment(verifyPayload);
       }
       onPaid();
@@ -82,11 +86,12 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
       }
     } finally {
       setPaying(false);
+      setPaymentPhase(null);
     }
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { if (!paying) onClose(); }}>
       <KeyboardAvoidingView
         behavior="padding"
         style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' }}
@@ -191,6 +196,8 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
             ) : null}
           </View>
         </View>
+        {/* This Modal draws above the root's overlay, so it carries its own. */}
+        <PaymentProgressOverlay />
       </KeyboardAvoidingView>
     </Modal>
   );

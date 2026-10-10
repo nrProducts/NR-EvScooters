@@ -7,6 +7,7 @@ import { billingRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
 import { ApiError } from '../lib/ApiError';
 import { useAuthStore } from '../store/useAuthStore';
+import { setPaymentPhase } from '../store/usePaymentProgressStore';
 import type { ApiReturnSettlement } from '../types/api';
 import { useT, type CopyKey } from '../i18n';
 
@@ -102,6 +103,7 @@ export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => 
     if (!settlement.due_invoice_id) return;
     setPayError(null);
     setPaying(true);
+    setPaymentPhase('processing');
     try {
       const order = await billingRepository.createOrderForInvoice(settlement.due_invoice_id);
       const verifyPayload = await openRazorpayCheckout({
@@ -116,6 +118,7 @@ export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => 
           name: profile?.full_name,
         },
       });
+      setPaymentPhase('confirming');
       await billingRepository.verifyPayment(verifyPayload);
       // onPaid() (loadSettlement) alone only refreshes this card's own data.
       // The return status card sitting right next to it, and any
@@ -133,6 +136,7 @@ export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => 
       }
     } finally {
       setPaying(false);
+      setPaymentPhase(null);
     }
   };
 

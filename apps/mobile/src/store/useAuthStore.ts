@@ -26,6 +26,8 @@ interface AuthState {
      * See the comment on _layout.tsx's routing effect.
      */
     hasSeenKycIntro: boolean;
+    /** True while a sign-out is reaching the server — the root layout covers the app meanwhile. */
+    signingOut: boolean;
 
     bootstrap: () => () => void;
     refreshProfile: () => Promise<void>;
@@ -43,6 +45,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     loadingProfile: false,
     error: null,
     hasSeenKycIntro: false,
+    signingOut: false,
 
     /**
      * Called once from the root layout; returns an unsubscribe.
@@ -111,6 +114,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     signOut: async () => {
         if (signOutInFlight) return signOutInFlight;
+        set({ signingOut: true });
         signOutInFlight = (async () => {
             await authRepository.signOut();
             set({ session: null, profile: null, error: null, hasSeenKycIntro: false });
@@ -126,6 +130,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             await signOutInFlight;
         } finally {
             signOutInFlight = null;
+            set({ signingOut: false });
         }
     },
 

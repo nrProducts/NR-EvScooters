@@ -224,6 +224,11 @@ export const hi: Copy = {
     'settlement.refundAmount': 'रिफ़ंड की राशि',
     'settlement.checkoutDescription': 'रिटर्न निपटान',
     'payment.failed': 'भुगतान असफल रहा। कृपया फिर से कोशिश करें।',
+    'payment.progress.processing.title': 'आपका भुगतान प्रोसेस हो रहा है',
+    'payment.progress.processing.body': 'सुरक्षित चेकआउट में भुगतान पूरा करें। इसके बाद आप अपने आप यहाँ वापस आ जाएँगे।',
+    'payment.progress.confirming.title': 'आपके भुगतान की पुष्टि हो रही है',
+    'payment.progress.confirming.body': 'भुगतान मिल गया है। हम बैंक से इसकी पुष्टि कर रहे हैं, इसमें कुछ सेकंड लग सकते हैं।',
+    'payment.progress.warning': 'कृपया ऐप बंद न करें और बैक न दबाएँ।',
 
     // --- late fee payment gate --------------------------------------------
     'lateFeeGate.title': 'लेट फ़ीस का भुगतान ज़रूरी है',
@@ -534,6 +539,7 @@ export const hi: Copy = {
     'profile.menu.privacy': 'गोपनीयता और डेटा',
     'profile.menu.terms': 'नियम और शर्तें',
     'profile.menu.howItWorks': 'स्वैपएनगो कैसे काम करता है',
+    'profile.appVersion': 'ऐप संस्करण {version} (बिल्ड {build})',
 
     // --- profile setup (first-run) -----------------------------------------
     'profileSetup.title': 'अपनी प्रोफ़ाइल पूरी करें और सवारी के लिए तैयार हो जाएं।',
@@ -997,6 +1003,7 @@ export const hi: Copy = {
 
     // --- root layout: profile load failure ----------------------------------
     'rootLayout.settingUpAccount': 'आपका खाता सेट किया जा रहा है…',
+    'rootLayout.signingOut': 'आपको साइन आउट किया जा रहा है…',
     'rootLayout.couldNotLoadProfile': 'आपकी प्रोफ़ाइल लोड नहीं हो सकी',
     'rootLayout.staffAccountTitle': 'यह एक स्टाफ खाता है',
     'rootLayout.staffAccountBody': 'यह ऐप केवल राइडर्स के लिए है। साइन आउट करें और किसी राइडर के मोबाइल नंबर या व्यक्तिगत Google खाते से साइन इन करें।',

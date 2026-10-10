@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image, Keyboard } from 'react-native';
 import { Spinner } from '../components/Spinner';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useRouter } from 'expo-router';
@@ -34,6 +34,8 @@ export default function LoginScreen() {
     const e164 = toE164(phone);
     setError('');
     setBusy('otp');
+    // Same reason as otp-verify.tsx: the phone pad hides the button's spinner.
+    Keyboard.dismiss();
     try {
       await requestOtp(e164);
       router.push({ pathname: '/otp-verify', params: { phone: e164 } });

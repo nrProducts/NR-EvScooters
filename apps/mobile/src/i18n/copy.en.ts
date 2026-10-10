@@ -236,6 +236,11 @@ export const en = {
     // than rendered by us, but it IS rider-facing, so it is translated.
     'settlement.checkoutDescription': 'Return Settlement',
     'payment.failed': 'Payment failed. Please try again.',
+    'payment.progress.processing.title': 'Processing your payment',
+    'payment.progress.processing.body': 'Complete the payment in the secure checkout. You will be brought back here automatically.',
+    'payment.progress.confirming.title': 'Confirming your payment',
+    'payment.progress.confirming.body': 'Payment received. We are confirming it with the bank, which can take a few seconds.',
+    'payment.progress.warning': "Please don't close the app or press back.",
 
     // --- late fee payment gate --------------------------------------------
     'lateFeeGate.title': 'Late Fee Payment Required',
@@ -778,6 +783,7 @@ export const en = {
 
     // --- root layout: profile load failure ----------------------------------
     'rootLayout.settingUpAccount': 'Setting up your account…',
+    'rootLayout.signingOut': 'Signing you out…',
     'rootLayout.couldNotLoadProfile': "Couldn't load your profile",
     'rootLayout.staffAccountTitle': 'This is a staff account',
     'rootLayout.staffAccountBody': "This app is for riders only. Sign out and sign in with a rider's mobile number or personal Google account instead.",
@@ -845,6 +851,7 @@ export const en = {
     'profile.menu.privacy': 'Privacy & Data',
     'profile.menu.terms': 'Terms & Conditions',
     'profile.menu.howItWorks': 'How Swapngo Works',
+    'profile.appVersion': 'App version {version} (build {build})',
 
     // --- profile setup (first-run) -----------------------------------------
     'profileSetup.title': 'Complete your profile and get ready to ride.',

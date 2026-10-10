@@ -15,6 +15,7 @@ import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { notify } from '../lib/confirm';
 import { formatPhoneLocal } from '../lib/authValidation';
+import { appVersion } from '../lib/appVersion';
 import { useT, LANG_LABELS } from '../i18n';
 
 /**
@@ -294,6 +295,15 @@ export function ProfileContent(
         <LogOut size={16} color={COLORS.danger} />
         <Text style={{ color: COLORS.danger }} className="font-bold text-sm ml-2">{t('auth.logout')}</Text>
       </TouchableOpacity>
+
+      {/* Testers quote this in bug reports — see lib/appVersion.ts. */}
+      <Text
+        selectable
+        style={{ color: COLORS.textSecondary }}
+        className="text-[11px] font-medium text-center mt-4"
+      >
+        {t('profile.appVersion', appVersion())}
+      </Text>
         </>
       )}
     </View>

@@ -13,6 +13,7 @@ import { PageScroll } from '../../components/ui/PageScroll';
 import { COLORS } from '../../constants/theme';
 import { useMyBilling } from '../../hooks/useMyBilling';
 import { useAuthStore } from '../../store/useAuthStore';
+import { setPaymentPhase } from '../../store/usePaymentProgressStore';
 import { billingRepository, rentalRepository } from '../../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
 import { getRenewalEligibility } from '../../lib/returnPolicy';
@@ -589,6 +590,7 @@ export default function BillingScreen() {
   const payInvoice = async (invoice: ApiInvoice) => {
     setPayError(null);
     setPayingInvoiceId(invoice.id);
+    setPaymentPhase('processing');
     try {
       const order = await billingRepository.createOrderForInvoice(invoice.id);
       // Checkout is the only way a payment happens. The backend can no
@@ -605,6 +607,7 @@ export default function BillingScreen() {
           name: profile?.full_name,
         },
       });
+      setPaymentPhase('confirming');
       await billingRepository.verifyPayment(verifyPayload);
       reload();
     } catch (err) {
@@ -617,6 +620,7 @@ export default function BillingScreen() {
       }
     } finally {
       setPayingInvoiceId(null);
+      setPaymentPhase(null);
     }
   };
 
@@ -631,6 +635,7 @@ export default function BillingScreen() {
     if (!bookingId) return;
     setBookingPaymentError(null);
     setCompletingBookingPayment(true);
+    setPaymentPhase('processing');
     try {
       const order = await billingRepository.createOrderForBooking(bookingId);
       // The real, authoritative lines — same reasoning as booking/billing.tsx:
@@ -649,6 +654,7 @@ export default function BillingScreen() {
           name: profile?.full_name,
         },
       });
+      setPaymentPhase('confirming');
       await billingRepository.verifyPayment(verifyPayload);
       reload();
     } catch (err) {
@@ -661,6 +667,7 @@ export default function BillingScreen() {
       }
     } finally {
       setCompletingBookingPayment(false);
+      setPaymentPhase(null);
     }
   };
 
@@ -694,6 +701,7 @@ export default function BillingScreen() {
     if (!rechargePreview) return;
     setRechargeError(null);
     setRecharging(true);
+    setPaymentPhase('processing');
     try {
       const order = await billingRepository.createOrderForInvoice(rechargePreview.invoiceId);
       const verifyPayload = await openRazorpayCheckout({
@@ -708,6 +716,7 @@ export default function BillingScreen() {
           name: profile?.full_name,
         },
       });
+      setPaymentPhase('confirming');
       await billingRepository.verifyPayment(verifyPayload);
       setRechargePreview(null);
       reload();
@@ -721,6 +730,7 @@ export default function BillingScreen() {
       }
     } finally {
       setRecharging(false);
+      setPaymentPhase(null);
     }
   };
 
