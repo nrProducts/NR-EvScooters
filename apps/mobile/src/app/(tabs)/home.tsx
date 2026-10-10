@@ -295,11 +295,10 @@ export default function HomeScreen() {
         refreshControl={pullToRefresh(refreshing, () => void handleRefresh())}
       >
         {/*
-          <ReferAndEarnBanner /> was here. It already rendered nothing —
-          referralRepository.mine() now always rejects and the banner treats
-          that as "no promo" — but it still fired a doomed request on every
-          Home mount. Removed with the referral field on profile-setup; see
-          docs/final-system-audit (finding M5).
+          No referral promo card here by design — referrals now work (see
+          /referrals and Profile > "Refer & Earn"), but a rider does not need
+          reminding about them on every Home visit. Keep detailed referral
+          content behind its own screen rather than adding a card here.
         */}
 
         <KycBanner />

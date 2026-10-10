@@ -13,7 +13,7 @@ import type {
     ApiNominee, ApiPrivacyRequest, ApiPrivacySummary, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
     ApiOverdueLateFee, ApiOverdueLateFeeInvoice, ApiReturnStage, ApiVehicleDocument,
-    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
     ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
     ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
@@ -479,7 +479,7 @@ export const api = {
     myReferralSummary: () => request<ApiReferralSummary>('/referrals/me'),
 
     redeemReferralCode: (code: string) =>
-        request<void>('/referrals/redeem', { method: 'POST', body: { code } }),
+        request<ApiRedeemReferralResult>('/referrals/redeem', { method: 'POST', body: { code } }),
 
     // --- rentals -------------------------------------------------------
     myCurrentRental: () => request<ApiRental>('/rentals/me/current'),

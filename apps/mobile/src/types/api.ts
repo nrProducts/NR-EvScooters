@@ -421,20 +421,54 @@ export interface ApiBooking {
     refund_transaction_id: string | null;
 }
 
-export interface ApiReferralReward {
+export type ApiReferralStatus = 'pending' | 'qualified' | 'rejected' | 'revoked';
+export type ApiRewardCardStatus = 'available' | 'reserved' | 'redeemed' | 'expired' | 'revoked';
+
+export interface ApiReferralView {
     id: string;
-    amount: number;
-    reason: string;
+    status: ApiReferralStatus;
+    code_used: string;
+    /** First name only — never the referee's phone or full legal name. */
+    referee_display_name: string;
+    qualified_at: string | null;
     created_at: string;
 }
 
-export interface ApiReferralSummary {
-    referral_code: string | null;
-    referred_count: number;
-    qualified_count: number;
-    offer_amount: number;
-    rewards: ApiReferralReward[];
+/** What THIS account sees after applying someone else's code — who referred them, and the attribution's own status. */
+export interface ApiMyAttribution {
+    status: ApiReferralStatus;
+    code_used: string;
+    referrer_display_name: string;
+    created_at: string;
 }
+
+export interface ApiRewardCard {
+    id: string;
+    amount: number;
+    status: ApiRewardCardStatus;
+    issued_at: string;
+    expires_at: string | null;
+}
+
+export interface ApiReferralSummary {
+    /** Null only for a non-rider account. */
+    referral_code: string | null;
+    program_enabled: boolean;
+    /** Rupees — what a successful referral is currently worth, from the live programme config. */
+    reward_amount: number;
+    referred_count: number;
+    pending_count: number;
+    qualified_count: number;
+    cards: ApiRewardCard[];
+    available_card_count: number;
+    total_earned: number;
+    history: ApiReferralView[];
+    my_attribution: ApiMyAttribution | null;
+}
+
+export type ApiRedeemReferralResult =
+    | { outcome: 'applied'; attribution: ApiMyAttribution }
+    | { outcome: 'already_applied'; attribution: ApiMyAttribution };
 
 export interface ApiPickupBooking extends ApiBooking {
     rider: { id: string; full_name: string; phone: string | null };

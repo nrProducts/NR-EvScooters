@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   User, Camera, Mail, Phone, ShieldCheck, ChevronRight, LogOut, LifeBuoy, Lock, HelpCircle,
-  FileText, Languages,
+  FileText, Languages, Gift,
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
@@ -237,6 +237,7 @@ export function ProfileContent(
             route: '/language?settings=1',
           },
           { icon: LifeBuoy, label: t('profile.menu.support'), route: '/support' },
+          { icon: Gift, label: t('profile.menu.referrals'), route: '/referrals' },
           // DPDPA: consent toggles, data export, correction, erasure, nominee,
           // the full privacy notice and the grievance channel all live behind
           // this one entry. It is deliberately NOT split into a separate

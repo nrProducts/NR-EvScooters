@@ -8,7 +8,7 @@ import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
     ApiAvailability, ApiBooking, ApiDocument, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
-    ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiVehicleDocument,
+    ApiReferralSummary, ApiRedeemReferralResult, ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiVehicleDocument,
     ApiStation, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, BookingRefundStatus, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
     KycStatus, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
@@ -133,10 +133,11 @@ const db = {
     rentalFeedback: [] as MockRentalFeedbackRow[],
     supportRequests: [] as MockSupportRow[],
     currentUserId: null as string | null,
-    referrals: [] as { referee_id: string; referrer_id: string; code_used: string }[],
+    referrals: [] as { referee_id: string; referrer_id: string; code_used: string; created_at: string }[],
 };
 
-const REFERRAL_OFFER_AMOUNT = 100;
+/** Mirrors the backend's seeded-but-disabled default programme's shape once an admin enables it with a real amount. */
+const REFERRAL_REWARD_AMOUNT = 100;
 
 function mockReferralCodeFor(userId: string): string {
     // slice(-8), not slice(0, 8): the seed ids share a prefix, so taking the
@@ -1216,33 +1217,91 @@ export class MockSupportRepository implements SupportRepository {
 
 }
 
+function mockDisplayName(userId: string): string {
+    const name = db.users.find((u) => u.id === userId)?.full_name?.trim();
+    return name?.split(/\s+/)[0] || 'a Swapngo rider';
+}
+
 export class MockReferralRepository implements ReferralRepository {
     async mine(): Promise<ApiReferralSummary> {
         await delay(150);
         const user = requireSession();
         const referred = db.referrals.filter((r) => r.referrer_id === user.id);
+        const myAttributionRow = db.referrals.find((r) => r.referee_id === user.id);
+
         return {
             referral_code: mockReferralCodeFor(user.id),
+            program_enabled: true,
+            reward_amount: REFERRAL_REWARD_AMOUNT,
             referred_count: referred.length,
-            qualified_count: referred.length,
-            offer_amount: REFERRAL_OFFER_AMOUNT,
-            rewards: [],
+            // Mock mode has no payment-capture or KYC-approval pipeline to
+            // drive real qualification, so every referral it creates stays
+            // 'pending' forever — accurate to what this layer can actually
+            // simulate, rather than faking a qualified/credited state.
+            pending_count: referred.length,
+            qualified_count: 0,
+            cards: [],
+            available_card_count: 0,
+            total_earned: 0,
+            history: referred.map((r) => ({
+                id: `${r.referrer_id}-${r.referee_id}`,
+                status: 'pending' as const,
+                code_used: r.code_used,
+                referee_display_name: mockDisplayName(r.referee_id),
+                qualified_at: null,
+                created_at: r.created_at,
+            })),
+            my_attribution: myAttributionRow
+                ? {
+                    status: 'pending' as const,
+                    code_used: myAttributionRow.code_used,
+                    referrer_display_name: mockDisplayName(myAttributionRow.referrer_id),
+                    created_at: myAttributionRow.created_at,
+                }
+                : null,
         };
     }
 
-    async redeem(code: string): Promise<void> {
+    async redeem(code: string): Promise<ApiRedeemReferralResult> {
         await delay(150);
         const user = requireSession();
 
-        if (db.referrals.some((r) => r.referee_id === user.id)) {
-            throw new ApiError(409, 'CONFLICT', "You've already used a referral code.");
+        // Idempotent, matching the real backend: a second call for an
+        // already-attributed account returns what is already there rather
+        // than erroring — the attribution is locked, not rejected.
+        const existing = db.referrals.find((r) => r.referee_id === user.id);
+        if (existing) {
+            return {
+                outcome: 'already_applied',
+                attribution: {
+                    status: 'pending',
+                    code_used: existing.code_used,
+                    referrer_display_name: mockDisplayName(existing.referrer_id),
+                    created_at: existing.created_at,
+                },
+            };
         }
 
-        const referrer = db.users.find((u) => mockReferralCodeFor(u.id) === code.toUpperCase());
-        if (!referrer) throw new ApiError(404, 'NOT_FOUND', 'Invalid referral code.');
-        if (referrer.id === user.id) throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', "You can't refer yourself.");
+        const normalized = code.toUpperCase();
+        const referrer = db.users.find((u) => mockReferralCodeFor(u.id) === normalized);
+        // Same message either way — an unknown code and a self-referral are
+        // indistinguishable to the caller, matching the real backend.
+        if (!referrer || referrer.id === user.id) {
+            throw new ApiError(422, 'BUSINESS_RULE_VIOLATION', "This referral code is invalid or unavailable.");
+        }
 
-        db.referrals.push({ referee_id: user.id, referrer_id: referrer.id, code_used: code.toUpperCase() });
+        const createdAt = new Date().toISOString();
+        db.referrals.push({ referee_id: user.id, referrer_id: referrer.id, code_used: normalized, created_at: createdAt });
+
+        return {
+            outcome: 'applied',
+            attribution: {
+                status: 'pending',
+                code_used: normalized,
+                referrer_display_name: mockDisplayName(referrer.id),
+                created_at: createdAt,
+            },
+        };
     }
 }
 

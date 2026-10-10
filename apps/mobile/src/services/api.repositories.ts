@@ -4,7 +4,7 @@ import { getSupabase } from '../lib/supabase';
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
-    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult,
     ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload, ListVehicleModelsParams,
     MaintenanceHistoryParams, Paginated, ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
@@ -255,7 +255,7 @@ export class ApiReferralRepository implements ReferralRepository {
     mine(): Promise<ApiReferralSummary> {
         return api.myReferralSummary();
     }
-    async redeem(code: string): Promise<void> {
-        await api.redeemReferralCode(code);
+    redeem(code: string): Promise<ApiRedeemReferralResult> {
+        return api.redeemReferralCode(code);
     }
 }

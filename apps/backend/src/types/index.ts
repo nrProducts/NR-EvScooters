@@ -236,6 +236,8 @@ export type EmittedNotificationCode =
     | "adhoc_charge_added"
     // Deposits.
     | "deposit_forfeited"
+    // Referrals.
+    | "referral_reward_issued"
     // Support and broadcasts.
     | "support_ticket_created"
     | "support_status_updated"
@@ -257,6 +259,7 @@ export const EMITTED_NOTIFICATION_CODES: readonly EmittedNotificationCode[] = [
     "refund_needs_approval", "refund_initiated", "refund_completed", "refund_rejected",
     "adhoc_charge_added",
     "deposit_forfeited",
+    "referral_reward_issued",
     "support_ticket_created", "support_status_updated", "admin_broadcast",
 ] as const;
 

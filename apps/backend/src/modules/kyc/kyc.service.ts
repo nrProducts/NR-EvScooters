@@ -13,6 +13,7 @@ import { hasGrantedConsent } from "../consent/consent.service";
 import { assertValidDocNumber, last4 } from "./kyc.docnumber";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
+import { qualifyKycReferralIfApplicable } from "../referrals/referrals.service";
 import { businessToday } from "../../common/dates";
 import {
     assertValidFile, buildStoragePath, createSignedUrl, pathBelongsToUser,
@@ -760,6 +761,15 @@ export async function approveKyc(userId: string, actor: AuthContext, req?: Reque
         screen: "/kyc",
         riderId: userId,
         excludeUserId: actor.id,
+    });
+
+    // A referral configured to qualify on KYC rather than a first payment
+    // resolves here. Never allowed to block the approval itself — the
+    // approval is real and complete whether or not a referral is attached.
+    await qualifyKycReferralIfApplicable(userId).catch((err) => {
+        console.error("[kyc] referral qualification failed", {
+            userId, error: err instanceof Error ? err.message : String(err),
+        });
     });
 
     // No direct write to users.kyc_status: the trigger derives it. This

@@ -71,7 +71,7 @@ export interface NotificationRow {
  */
 export type RiderAppScreen =
     | "home" | "my-scooter" | "billing" | "support" | "kyc" | "notifications"
-    | "booking-history" | "battery-stations" | "profile" | "privacy";
+    | "booking-history" | "battery-stations" | "profile" | "privacy" | "referrals";
 
 export interface NotifyInput {
     /**

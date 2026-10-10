@@ -3198,6 +3198,228 @@ export type Database = {
           },
         ]
       }
+      referral_programs: {
+        Row: {
+          allow_stacking: boolean
+          created_at: string
+          created_by_user_id: string | null
+          eligible_plan_ids: string[] | null
+          enabled: boolean
+          ends_at: string | null
+          id: string
+          max_rewards_per_referrer: number | null
+          min_renewal_amount: number
+          name: string
+          qualifying_event: Database["public"]["Enums"]["referral_qualifying_event"]
+          revoke_on_reversal: boolean
+          reward_amount: number
+          reward_expiry_days: number | null
+          starts_at: string | null
+          updated_at: string | null
+          updated_by_user_id: string | null
+        }
+        Insert: {
+          allow_stacking?: boolean
+          created_at?: string
+          created_by_user_id?: string | null
+          eligible_plan_ids?: string[] | null
+          enabled?: boolean
+          ends_at?: string | null
+          id?: string
+          max_rewards_per_referrer?: number | null
+          min_renewal_amount?: number
+          name: string
+          qualifying_event?: Database["public"]["Enums"]["referral_qualifying_event"]
+          revoke_on_reversal?: boolean
+          reward_amount?: number
+          reward_expiry_days?: number | null
+          starts_at?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+        }
+        Update: {
+          allow_stacking?: boolean
+          created_at?: string
+          created_by_user_id?: string | null
+          eligible_plan_ids?: string[] | null
+          enabled?: boolean
+          ends_at?: string | null
+          id?: string
+          max_rewards_per_referrer?: number | null
+          min_renewal_amount?: number
+          name?: string
+          qualifying_event?: Database["public"]["Enums"]["referral_qualifying_event"]
+          revoke_on_reversal?: boolean
+          reward_amount?: number
+          reward_expiry_days?: number | null
+          starts_at?: string | null
+          updated_at?: string | null
+          updated_by_user_id?: string | null
+        }
+        Relationships: []
+      }
+      referrals: {
+        Row: {
+          code_used: string
+          created_at: string
+          id: string
+          program_id: string
+          qualified_at: string | null
+          qualifying_booking_id: string | null
+          qualifying_event: Database["public"]["Enums"]["referral_qualifying_event"]
+          referee_user_id: string
+          referrer_user_id: string
+          rejected_at: string | null
+          rejection_reason: string | null
+          revocation_reason: string | null
+          revoked_at: string | null
+          revoked_by_user_id: string | null
+          status: Database["public"]["Enums"]["referral_status"]
+          updated_at: string | null
+        }
+        Insert: {
+          code_used: string
+          created_at?: string
+          id?: string
+          program_id: string
+          qualified_at?: string | null
+          qualifying_booking_id?: string | null
+          qualifying_event: Database["public"]["Enums"]["referral_qualifying_event"]
+          referee_user_id: string
+          referrer_user_id: string
+          rejected_at?: string | null
+          rejection_reason?: string | null
+          revocation_reason?: string | null
+          revoked_at?: string | null
+          revoked_by_user_id?: string | null
+          status?: Database["public"]["Enums"]["referral_status"]
+          updated_at?: string | null
+        }
+        Update: {
+          code_used?: string
+          created_at?: string
+          id?: string
+          program_id?: string
+          qualified_at?: string | null
+          qualifying_booking_id?: string | null
+          qualifying_event?: Database["public"]["Enums"]["referral_qualifying_event"]
+          referee_user_id?: string
+          referrer_user_id?: string
+          rejected_at?: string | null
+          rejection_reason?: string | null
+          revocation_reason?: string | null
+          revoked_at?: string | null
+          revoked_by_user_id?: string | null
+          status?: Database["public"]["Enums"]["referral_status"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      referral_reward_cards: {
+        Row: {
+          amount: number
+          created_at: string
+          expires_at: string | null
+          id: string
+          issued_at: string
+          program_id: string
+          referral_id: string
+          revocation_reason: string | null
+          revoked_at: string | null
+          revoked_by_user_id: string | null
+          status: Database["public"]["Enums"]["reward_card_status"]
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          issued_at?: string
+          program_id: string
+          referral_id: string
+          revocation_reason?: string | null
+          revoked_at?: string | null
+          revoked_by_user_id?: string | null
+          status?: Database["public"]["Enums"]["reward_card_status"]
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          issued_at?: string
+          program_id?: string
+          referral_id?: string
+          revocation_reason?: string | null
+          revoked_at?: string | null
+          revoked_by_user_id?: string | null
+          status?: Database["public"]["Enums"]["reward_card_status"]
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      referral_card_redemptions: {
+        Row: {
+          created_at: string
+          discount_amount: number
+          final_amount: number
+          id: string
+          invoice_id: string
+          original_amount: number
+          redeemed_at: string | null
+          release_reason: string | null
+          released_at: string | null
+          reserved_at: string
+          reward_card_id: string
+          status: Database["public"]["Enums"]["reward_redemption_status"]
+          subscription_adjustment_id: string | null
+          subscription_id: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          discount_amount: number
+          final_amount: number
+          id?: string
+          invoice_id: string
+          original_amount: number
+          redeemed_at?: string | null
+          release_reason?: string | null
+          released_at?: string | null
+          reserved_at?: string
+          reward_card_id: string
+          status?: Database["public"]["Enums"]["reward_redemption_status"]
+          subscription_adjustment_id?: string | null
+          subscription_id?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          discount_amount?: number
+          final_amount?: number
+          id?: string
+          invoice_id?: string
+          original_amount?: number
+          redeemed_at?: string | null
+          release_reason?: string | null
+          released_at?: string | null
+          reserved_at?: string
+          reward_card_id?: string
+          status?: Database["public"]["Enums"]["reward_redemption_status"]
+          subscription_adjustment_id?: string | null
+          subscription_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       swap_station_qis_ids: {
         Row: {
           created_at: string
@@ -3487,6 +3709,7 @@ export type Database = {
           phone: string | null
           photo_storage_path: string | null
           preferred_language: string
+          referral_code: string | null
           role: Database["public"]["Enums"]["user_role"]
           status: Database["public"]["Enums"]["user_status"]
           status_changed_at: string | null
@@ -3505,6 +3728,7 @@ export type Database = {
           phone?: string | null
           photo_storage_path?: string | null
           preferred_language?: string
+          referral_code?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           status?: Database["public"]["Enums"]["user_status"]
           status_changed_at?: string | null
@@ -3523,6 +3747,7 @@ export type Database = {
           phone?: string | null
           photo_storage_path?: string | null
           preferred_language?: string
+          referral_code?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           status?: Database["public"]["Enums"]["user_status"]
           status_changed_at?: string | null
@@ -4223,10 +4448,19 @@ export type Database = {
         | "booking_cancellation"
         | "settlement"
         | "goodwill"
+      referral_qualifying_event: "signup" | "kyc_verified" | "first_paid_booking"
+      referral_status: "pending" | "qualified" | "rejected" | "revoked"
       refund_status: "pending" | "processing" | "succeeded" | "failed" | "rejected"
       related_person_role: "nominee" | "emergency_contact"
       rental_status: "active" | "completed" | "force_ended"
       return_status: "requested" | "inspected" | "approved" | "rejected"
+      reward_card_status:
+        | "available"
+        | "reserved"
+        | "redeemed"
+        | "expired"
+        | "revoked"
+      reward_redemption_status: "reserved" | "redeemed" | "released"
       rule_frequency:
         | "one_time"
         | "every_period"
@@ -4511,10 +4745,20 @@ export const Constants = {
         "settlement",
         "goodwill",
       ],
+      referral_qualifying_event: ["signup", "kyc_verified", "first_paid_booking"],
+      referral_status: ["pending", "qualified", "rejected", "revoked"],
       refund_status: ["pending", "processing", "succeeded", "failed", "rejected"],
       related_person_role: ["nominee", "emergency_contact"],
       rental_status: ["active", "completed", "force_ended"],
       return_status: ["requested", "inspected", "approved", "rejected"],
+      reward_card_status: [
+        "available",
+        "reserved",
+        "redeemed",
+        "expired",
+        "revoked",
+      ],
+      reward_redemption_status: ["reserved", "redeemed", "released"],
       rule_frequency: [
         "one_time",
         "every_period",
