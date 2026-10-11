@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { PackageCheck } from "lucide-react";
+import { PackageCheck, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,10 @@ import {
 } from "@/components/ui/dialog";
 import { RentalOperationsSummaryCards } from "@/components/bookings/RentalOperationsSummaryCards";
 import { AdminCreateBookingDialog } from "@/components/bookings/AdminCreateBookingDialog";
-import { usePickupQueue, useAvailableVehicles, useConfirmPickup } from "@/hooks/useBookings";
+import { usePickupQueue, useAvailableVehicles, useConfirmPickup, useAdminCancelBooking } from "@/hooks/useBookings";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { usePreBookings } from "@/hooks/usePreBookings";
 import { useReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { useTableSort } from "@/hooks/useTableSort";
@@ -208,6 +211,8 @@ export default function BookingListPage() {
   const [page, setPage] = useState(1);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<PickupBooking | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
   const [vehicleSearch, setVehicleSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -234,6 +239,7 @@ export default function BookingListPage() {
       v.registration_number.toLowerCase().replace(/\s+/g, "").includes(normalizedVehicleSearch),
   );
   const confirmPickup = useConfirmPickup();
+  const adminCancelBooking = useAdminCancelBooking();
 
   const baseColumns: DataTableColumn<PickupBooking>[] = [
     { header: "Rider", key: "rider", render: (b) => b.rider.full_name },
@@ -363,17 +369,43 @@ export default function BookingListPage() {
             </Button>
           );
         }
+        const canCancel = (b.status === "confirmed" || b.status === "pending_payment")
+          && hasAction(user, "bookings", "cancel");
         if (b.status === "confirmed" && hasAction(user, "bookings", "edit")) {
+          return (
+            <div className="flex justify-end gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  setPickupTarget(b);
+                  setSelectedVehicleId(null);
+                  setVehicleSearch("");
+                }}
+              >
+                <PackageCheck className="h-3.5 w-3.5" /> Confirm pickup
+              </Button>
+              {canCancel && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => { setCancelTarget(b); setCancelReason(""); }}
+                >
+                  <XCircle className="h-3.5 w-3.5" /> Cancel
+                </Button>
+              )}
+            </div>
+          );
+        }
+        if (canCancel) {
           return (
             <Button
               size="sm"
-              onClick={() => {
-                setPickupTarget(b);
-                setSelectedVehicleId(null);
-                setVehicleSearch("");
-              }}
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={() => { setCancelTarget(b); setCancelReason(""); }}
             >
-              <PackageCheck className="h-3.5 w-3.5" /> Confirm pickup
+              <XCircle className="h-3.5 w-3.5" /> Cancel
             </Button>
           );
         }
@@ -718,6 +750,43 @@ export default function BookingListPage() {
       </Dialog>
 
       <AdminCreateBookingDialog open={createOpen} onOpenChange={setCreateOpen} />
+
+      <ConfirmDialog
+        open={!!cancelTarget}
+        onOpenChange={(o) => !o && setCancelTarget(null)}
+        title={`Cancel ${cancelTarget?.rider.full_name}'s booking?`}
+        description="No cancellation fee applies — this is a staff cancellation, not the rider's. The full amount captured will be queued as a refund."
+        confirmLabel="Cancel booking"
+        destructive
+        loading={adminCancelBooking.isPending}
+        disabled={cancelReason.trim().length < 3}
+        onConfirm={() => {
+          if (!cancelTarget) return;
+          adminCancelBooking.mutate(
+            { bookingId: cancelTarget.id, reason: cancelReason.trim() },
+            {
+              onSuccess: () => {
+                toastSuccess("Booking cancelled", "The full amount has been queued for refund.");
+                setCancelTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not cancel this booking"),
+            },
+          );
+        }}
+      >
+        <Label>Reason (at least 3 characters)</Label>
+        <Textarea
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+          placeholder="e.g. Vehicle double-booked — no scooter available for this rider"
+          rows={3}
+        />
+        {adminCancelBooking.isError && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {adminCancelBooking.error instanceof ApiError ? adminCancelBooking.error.message : "Something went wrong."}
+          </p>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }

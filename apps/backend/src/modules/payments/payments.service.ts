@@ -1785,7 +1785,22 @@ async function materializeBookingFromOrder(
         if (error) {
             const message = (error as { message?: string }).message ?? "";
             if ((error as { code?: string }).code === "P0001" && /active_booking_exists/.test(message)) {
-                await handleUnfulfillableBooking(order, transactionId, capturedAmount);
+                await handleUnfulfillableBooking(
+                    order, transactionId, capturedAmount,
+                    "rider already had an active booking/rental at capture",
+                );
+                return;
+            }
+            if ((error as { code?: string }).code === "P0001" && /vehicle_not_available/.test(message)) {
+                // The last available unit at this model+hub was claimed by a
+                // concurrent capture (or went into maintenance) between this
+                // rider's checkout starting and their payment actually
+                // landing. Same resolution as the other unfulfillable case:
+                // the money is real, there is nothing to hand over for it.
+                await handleUnfulfillableBooking(
+                    order, transactionId, capturedAmount,
+                    "no vehicle was available for this model/hub at capture",
+                );
                 return;
             }
             throw error;
@@ -1886,19 +1901,17 @@ async function handleUnfulfillableBooking(
     order: { id: string; user_id: string },
     transactionId: string,
     capturedAmount: number,
+    reason: string,
 ): Promise<void> {
     await writeAudit({
         actorId: null, targetUserId: order.user_id, action: "payment.booking_unfulfillable",
         entityType: "payment_transaction", entityId: transactionId,
-        after: {
-            order_id: order.id, captured: round2(capturedAmount),
-            reason: "rider already had an active booking/rental at capture",
-        },
+        after: { order_id: order.id, captured: round2(capturedAmount), reason },
     });
     await notifyUser(order.user_id, {
         template: "payment_failed",
         title: "Booking Could Not Be Completed",
-        body: "Your payment went through, but you already have an active booking or rental. Our team will refund this payment shortly.",
+        body: "Your payment went through, but we're unable to fulfil this booking. Our team will refund this payment shortly.",
         screen: "billing",
     });
     await notify({
@@ -1906,7 +1919,7 @@ async function handleUnfulfillableBooking(
         referenceType: "payment_order",
         referenceId: order.id,
         title: "Booking payment needs a manual refund",
-        bodyFallback: "{rider} paid for a booking they can't have (already active). Refund manually.",
+        bodyFallback: `{rider} paid for a booking that can't be fulfilled (${reason}). Refund manually.`,
         screen: "/payments",
         riderId: order.user_id,
     });

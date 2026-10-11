@@ -58,6 +58,16 @@ export async function confirmPickup(bookingId: string, vehicleId?: string) {
   return apiClient.post(`/bookings/${bookingId}/pickup`, { vehicle_id: vehicleId });
 }
 
+/**
+ * POST /bookings/:id/admin-cancel — requireStaff (cancel action). Staff-initiated
+ * cancellation of a pending_payment/confirmed booking that hasn't been picked up
+ * yet. No late-cancellation penalty — the rider isn't the one backing out — the
+ * full captured amount is queued as a refund request.
+ */
+export async function adminCancelBooking(bookingId: string, reason: string) {
+  return apiClient.post(`/bookings/${bookingId}/admin-cancel`, { reason });
+}
+
 export interface AdminCreateBookingInput {
   user_id: string;
   vehicle_model_id: string;

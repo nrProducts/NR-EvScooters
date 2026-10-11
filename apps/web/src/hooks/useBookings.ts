@@ -38,6 +38,18 @@ export function useConfirmPickup() {
   });
 }
 
+export function useAdminCancelBooking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bookingId, reason }: { bookingId: string; reason: string }) =>
+      api.adminCancelBooking(bookingId, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pickup-queue"] });
+      qc.invalidateQueries({ queryKey: ["vehicles"] });
+    },
+  });
+}
+
 export function useSetLateFeeOverride() {
   const qc = useQueryClient();
   return useMutation({
