@@ -16,7 +16,7 @@ import { ApiError } from '../lib/ApiError';
 import { notify } from '../lib/confirm';
 import { formatPhoneLocal } from '../lib/authValidation';
 import { appVersion } from '../lib/appVersion';
-import { useT, LANG_LABELS } from '../i18n';
+import { useT, LANG_LABELS, LANGUAGE_SELECTION_ENABLED } from '../i18n';
 
 /**
  * The rider's own profile — avatar/photo upload, contact details,
@@ -231,12 +231,16 @@ export function ProfileContent(
           // has landed in a language they cannot read needs to recognise this
           // row without reading it — the endonym on the right is the cue, and
           // it is the same string they will tap on the next screen.
-          {
-            icon: Languages,
-            label: t('settings.language'),
-            value: LANG_LABELS[language],
-            route: '/language?settings=1',
-          },
+          //
+          // Temporarily hidden — see LANGUAGE_SELECTION_ENABLED.
+          ...(LANGUAGE_SELECTION_ENABLED
+            ? [{
+                icon: Languages,
+                label: t('settings.language'),
+                value: LANG_LABELS[language],
+                route: '/language?settings=1',
+              }]
+            : []),
           { icon: LifeBuoy, label: t('profile.menu.support'), route: '/support' },
           { icon: Gift, label: t('profile.menu.referrals'), route: '/referrals' },
           // DPDPA: consent toggles, data export, correction, erasure, nominee,

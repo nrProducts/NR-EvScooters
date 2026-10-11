@@ -8,7 +8,7 @@ import { MANDATORY_KYC_DOC_TYPES } from '../../../src/types/api';
 import type {
     ApiAvailability, ApiBooking, ApiDocument, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
-    ApiReferralSummary, ApiRedeemReferralResult, ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiVehicleDocument,
+    ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiVehicleDocument,
     ApiStation, ApiSupportRequest, ApiUser, ApiUserDetail, ApiVehicleModel,
     ApiVehicleModelDetail, BookingRefundStatus, BookingStatus, CreateBookingPayload, CreateSupportRequestPayload,
     KycStatus, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
@@ -1259,6 +1259,10 @@ export class MockReferralRepository implements ReferralRepository {
                     created_at: myAttributionRow.created_at,
                 }
                 : null,
+            // Spending a card has no mock-db simulation (no mock invoice/
+            // billing integration backs it) — always empty here, same
+            // honesty as pending_count/qualified_count above.
+            reserved_redemptions: [],
         };
     }
 
@@ -1302,6 +1306,22 @@ export class MockReferralRepository implements ReferralRepository {
                 created_at: createdAt,
             },
         };
+    }
+
+    // No mock invoice/billing data this layer can discount against — same
+    // boundary as reserved_redemptions above. Mock mode exercises the
+    // earn side of referrals (code, attribution, history); the spend side
+    // is covered by the backend's own RPC-level tests instead.
+    async applyCard(): Promise<ApiRedemption> {
+        await delay(150);
+        requireSession();
+        throw new ApiError(501, 'NOT_IMPLEMENTED', 'Applying a reward card is not simulated in mock mode.');
+    }
+
+    async releaseCard(): Promise<void> {
+        await delay(150);
+        requireSession();
+        throw new ApiError(501, 'NOT_IMPLEMENTED', 'Releasing a reward card is not simulated in mock mode.');
     }
 }
 

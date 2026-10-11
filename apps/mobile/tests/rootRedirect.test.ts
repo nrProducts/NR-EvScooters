@@ -39,9 +39,14 @@ describe('resolveRootRedirect', () => {
     expect(resolveRootRedirect(state({ segments: ['nope'] }))).toBe('/home');
   });
 
-  it('asks for the language, then onboarding, before anything else', () => {
-    expect(resolveRootRedirect(state({ langChosen: false, hasSeenOnboarding: false }))).toBe('/language');
-    expect(resolveRootRedirect(state({ langChosen: false, segments: ['language'] }))).toBeNull();
+  // Language selection is temporarily disabled (LANGUAGE_SELECTION_ENABLED in
+  // src/i18n/types.ts) — the picker gate no longer fires even when
+  // `langChosen` is false, so an unchosen language falls straight through to
+  // onboarding. Flip the flag back on and this test's first two assertions
+  // revert to expecting '/language'.
+  it('skips the language picker while selection is disabled, then asks for onboarding', () => {
+    expect(resolveRootRedirect(state({ langChosen: false, hasSeenOnboarding: false }))).toBe('/onboarding');
+    expect(resolveRootRedirect(state({ langChosen: false, segments: ['onboarding'] }))).toBeNull();
     expect(resolveRootRedirect(state({ hasSeenOnboarding: false, signedIn: false }))).toBe('/onboarding');
   });
 

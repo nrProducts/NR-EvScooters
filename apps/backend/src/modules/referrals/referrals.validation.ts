@@ -18,3 +18,10 @@ export const updateReferralProgramBody = z.object({
 });
 
 export type UpdateReferralProgramBody = z.infer<typeof updateReferralProgramBody>;
+
+export const applyCardBody = z.object({
+    card_id: z.string().uuid(),
+    invoice_id: z.string().uuid(),
+});
+
+export type ApplyCardBody = z.infer<typeof applyCardBody>;

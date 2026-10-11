@@ -58,6 +58,7 @@ export type AuditAction =
     // that someone is owed a payout nothing is currently tracking.
     | "refund.initiation_failed"
     | "referral.applied" | "referral.reward_issued" | "referral_program.updated"
+    | "referral.card_applied" | "referral.card_redeemed" | "referral.card_released"
     // The `plan.*` names are kept even though the state they describe moved
     // from bookings to `subscriptions`: the events are the same events, and
     // renaming them would split the history in two.

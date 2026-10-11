@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity } from 'react-native';
 import { Spinner } from '../components/Spinner';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useAuthStore } from '../store/useAuthStore';
-import { userRepository, referralRepository } from '../services';
+import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { isValidPhone, toE164 } from '../lib/authValidation';
 import { COLORS } from '../constants/theme';
@@ -11,11 +11,11 @@ import { FormField } from '../components/ui/FormField';
 import { ChipSelect } from '../components/ui/ChipSelect';
 import { DatePickerField } from '../components/ui/DatePickerField';
 import { SearchableSelectField } from '../components/ui/SearchableSelectField';
+import { ReferralCodeEntry } from '../components/ReferralCodeEntry';
 import { INDIAN_STATES } from '../constants/indianStates';
-import { User, Mail, Phone, ArrowRight, Gift, Check } from 'lucide-react-native';
+import { User, Mail, Phone, ArrowRight } from 'lucide-react-native';
 import type { Gender } from '../types/api';
 import { useT, type CopyKey } from '../i18n';
-import { useReferralSummary } from '../hooks/useReferralSummary';
 
 /** Keys, not labels — resolved with t() inside the component below. */
 const GENDER_OPTION_KEYS: { key: Gender; labelKey: CopyKey }[] = [
@@ -63,35 +63,6 @@ export default function ProfileSetupScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [dobError, setDobError] = useState('');
-
-  // Optional, and deliberately independent of the main Continue flow: a
-  // rider must be able to finish profile setup with no code at all, and
-  // applying one is its own backend call (referralRepository.redeem), not a
-  // field saved alongside the profile.
-  const { summary: referralSummary, reload: reloadReferral } = useReferralSummary();
-  const [referralCode, setReferralCode] = useState('');
-  const [referralApplying, setReferralApplying] = useState(false);
-  const [referralError, setReferralError] = useState('');
-  const myAttribution = referralSummary?.my_attribution ?? null;
-
-  const applyReferralCode = async () => {
-    const code = referralCode.trim().toUpperCase();
-    if (code.length !== 6) {
-      setReferralError(t('referrals.applyInvalidLength'));
-      return;
-    }
-    setReferralError('');
-    setReferralApplying(true);
-    try {
-      await referralRepository.redeem(code);
-      setReferralCode('');
-      await reloadReferral();
-    } catch (err) {
-      setReferralError(err instanceof ApiError ? err.message : t('referrals.applyFailed'));
-    } finally {
-      setReferralApplying(false);
-    }
-  };
 
   // Two independent "Next"-key chains, split around the DOB/Gender pickers
   // (which aren't text fields and can't be focused via the keyboard).
@@ -336,64 +307,9 @@ export default function ProfileSetupScreen() {
         <Text style={{ color: COLORS.textSecondary }} className="text-sm font-bold mb-2">
           {t('profileSetup.referralCode')}
         </Text>
-        {myAttribution ? (
-          <View
-            className="flex-row items-center rounded-2xl px-4 py-3.5 mb-4 border"
-            style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, gap: 10 }}
-          >
-            <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: COLORS.primary + '14' }}>
-              <Check size={16} color={COLORS.primary} />
-            </View>
-            <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-semibold flex-1">
-              {t('referrals.referredBy', { name: myAttribution.referrer_display_name })}
-            </Text>
-          </View>
-        ) : (
-          <>
-            <View className="flex-row items-center mb-4" style={{ gap: 8 }}>
-              <View
-                className="flex-1 flex-row items-center rounded-2xl px-4 py-3.5 border"
-                style={{ backgroundColor: COLORS.card, borderColor: referralError ? COLORS.danger : COLORS.border }}
-              >
-                <Gift size={18} color={COLORS.textSecondary} />
-                <TextInput
-                  value={referralCode}
-                  onChangeText={(v) => {
-                    setReferralCode(v.toUpperCase().slice(0, 6));
-                    if (referralError) setReferralError('');
-                  }}
-                  placeholder={t('profileSetup.referralCodePlaceholder')}
-                  placeholderTextColor={COLORS.textSecondary}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={6}
-                  accessibilityLabel={t('profileSetup.referralCode')}
-                  className="flex-1 text-base font-semibold ml-3"
-                  style={{ color: COLORS.textPrimary, letterSpacing: 2 }}
-                />
-              </View>
-              <TouchableOpacity
-                onPress={() => void applyReferralCode()}
-                disabled={referralApplying || referralCode.trim().length !== 6}
-                accessibilityRole="button"
-                className="rounded-2xl px-4 items-center justify-center"
-                style={{
-                  backgroundColor: COLORS.primary, height: 52,
-                  opacity: referralApplying || referralCode.trim().length !== 6 ? 0.5 : 1,
-                }}
-              >
-                {referralApplying
-                  ? <Spinner size={16} color="#FFF" />
-                  : <Text className="text-white text-xs font-extrabold">{t('referrals.apply')}</Text>}
-              </TouchableOpacity>
-            </View>
-            {referralError ? (
-              <Text style={{ color: COLORS.danger }} className="text-xs font-semibold mb-4 px-1 -mt-3">
-                {referralError}
-              </Text>
-            ) : null}
-          </>
-        )}
+        <View className="mb-4">
+          <ReferralCodeEntry />
+        </View>
 
         {error ? (
           <Text style={{ color: COLORS.danger }} className="text-xs font-semibold mb-4 px-1">

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../../config/supabase";
+import { releaseCardIfReservedForInvoice } from "../referrals/referrals.service";
 
 /**
  * Clears the renewal bill a rider was left holding for a period they are
@@ -126,6 +127,20 @@ export async function voidAbandonedRenewalInvoice(
         .eq("id", invoice.id)
         .neq("status", "void");
     if (voidError) throw voidError;
+
+    // Before the 'invoiced' -> 'pending' reset below: a referral card
+    // reserved against THIS invoice writes its own 'invoiced' adjustment on
+    // the same period (reserve_referral_card_redemption). That reset query
+    // has no way to tell "a normal charge, back on the table for next time"
+    // apart from "a referral discount with no reservation behind it any
+    // more" — both are just rows on this period with status='invoiced'. Left
+    // alone, the reset would flip the referral adjustment to 'pending' too,
+    // and a LATER re-invoice of this period would silently re-apply a
+    // discount for a card reservation that no longer exists (by then
+    // released back to 'available', possibly already spent elsewhere).
+    // Releasing first DELETES that adjustment outright, so the reset below
+    // never finds it.
+    await releaseCardIfReservedForInvoice(invoice.id);
 
     // Back to 'pending', not 'voided'.
     //

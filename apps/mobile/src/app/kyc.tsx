@@ -18,6 +18,7 @@ import { Spinner } from '../components/Spinner';
 import { FormField } from '../components/ui/FormField';
 import { DatePickerField } from '../components/ui/DatePickerField';
 import { CheckRow } from '../components/ui/CheckRow';
+import { ReferralCodeEntry } from '../components/ReferralCodeEntry';
 import { useAuthStore } from '../store/useAuthStore';
 import { useMyKyc } from '../hooks/useKyc';
 import { useConsent } from '../hooks/useConsent';
@@ -1045,6 +1046,10 @@ const ReviewStep: React.FC<{
         </Text>
       </View>
     ) : null}
+
+    <View className="mt-4">
+      <ReferralCodeEntry />
+    </View>
 
     <View className="mt-4" style={{ gap: 10 }}>
       {/* A declaration of accuracy, not consent — it belongs on the submit

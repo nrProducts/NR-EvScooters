@@ -3363,6 +3363,27 @@ export type Database = {
         }
         Relationships: []
       }
+      referral_identity_marks: {
+        Row: {
+          created_at: string
+          first_referee_user_id: string | null
+          id: string
+          phone_hash: string
+        }
+        Insert: {
+          created_at?: string
+          first_referee_user_id?: string | null
+          id?: string
+          phone_hash: string
+        }
+        Update: {
+          created_at?: string
+          first_referee_user_id?: string | null
+          id?: string
+          phone_hash?: string
+        }
+        Relationships: []
+      }
       referral_card_redemptions: {
         Row: {
           created_at: string
@@ -4292,6 +4313,32 @@ export type Database = {
       generate_period_invoice: {
         Args: { p_subscription_period_id: string }
         Returns: string
+      }
+      reserve_referral_card_redemption: {
+        Args: { p_card_id: string; p_invoice_id: string; p_user_id: string }
+        Returns: {
+          created_at: string
+          discount_amount: number
+          final_amount: number
+          id: string
+          invoice_id: string
+          original_amount: number
+          redeemed_at: string | null
+          release_reason: string | null
+          released_at: string | null
+          reserved_at: string
+          reward_card_id: string
+          status: Database["public"]["Enums"]["reward_redemption_status"]
+          subscription_adjustment_id: string | null
+          subscription_id: string | null
+          updated_at: string | null
+          user_id: string
+        }
+      }
+      confirm_referral_card_redemption: { Args: { p_invoice_id: string }; Returns: undefined }
+      release_referral_card_redemption: {
+        Args: { p_redemption_id: string; p_reason: string }
+        Returns: undefined
       }
       inactive_user_ids: {
         Args: { p_cutoff: string }

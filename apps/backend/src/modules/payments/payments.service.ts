@@ -14,7 +14,7 @@ import {
     assertVehicleAvailable, hasActiveBookingForUser, requireBookablePlan,
 } from "../bookings/bookings.service";
 import { hasActiveRentalForUser } from "../users/users.service";
-import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
+import { confirmCardRedemptionForInvoice, qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { AuthContext } from "../../types";
 import { Json } from "../../types/database.types";
 import { CreateOrderResult, OrderLine, VerifyPaymentInput } from "./payments.types";
@@ -1626,6 +1626,11 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     // wrong dependency: the state machine must not be correct only because
     // of a gateway setting made in a dashboard we do not control.
     const settled = await isInvoiceSettled(invoiceId);
+    // A reserved referral card redeems the moment its invoice is genuinely
+    // paid, not before — same "settlement, not arrival of money" rule the
+    // comment above this applies to the booking/rental state machine.
+    // Never-throws: see the function's own doc comment.
+    if (settled) await confirmCardRedemptionForInvoice(invoiceId);
 
     // WHICH PERIOD is being paid, not what the invoice is labelled.
     //

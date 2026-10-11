@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChipSelect } from '../components/ui/ChipSelect';
 import { useLangStore } from './index';
-import { LANGS, LANG_LABELS, type Lang } from './types';
+import { LANGS, LANG_LABELS, LANGUAGE_SELECTION_ENABLED, type Lang } from './types';
 
 const OPTIONS = LANGS.map((key) => ({ key, label: LANG_LABELS[key] }));
 
@@ -19,6 +19,11 @@ const OPTIONS = LANGS.map((key) => ({ key, label: LANG_LABELS[key] }));
 export function LanguageToggle({ label }: { label?: string }) {
     const lang = useLangStore((s) => s.lang);
     const setLang = useLangStore((s) => s.setLang);
+
+    // Temporarily disabled app-wide — see LANGUAGE_SELECTION_ENABLED. Every
+    // call site keeps rendering <LanguageToggle/> unconditionally, so this is
+    // the one place a future re-enable needs to touch.
+    if (!LANGUAGE_SELECTION_ENABLED) return null;
 
     return (
         <ChipSelect<Lang>

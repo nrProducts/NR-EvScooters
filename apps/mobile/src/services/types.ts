@@ -1,7 +1,7 @@
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
-    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption,
     ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload, KycDocType,
     ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
@@ -71,6 +71,10 @@ export interface ReferralRepository {
     mine(): Promise<ApiReferralSummary>;
     /** Applies a code to the caller's own account — idempotent, see ApiRedeemReferralResult. */
     redeem(code: string): Promise<ApiRedeemReferralResult>;
+    /** Spends an available card on one of the caller's own unpaid invoices. */
+    applyCard(cardId: string, invoiceId: string): Promise<ApiRedemption>;
+    /** Undoes an unpaid reservation — the rider changed their mind or wants a different card. */
+    releaseCard(redemptionId: string): Promise<void>;
 }
 
 export interface HistoryParams {

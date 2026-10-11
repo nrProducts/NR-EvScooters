@@ -7,8 +7,9 @@ import { notifyUser } from "../notifications/notifications.service";
 import {
     REFERRAL_CODE_ALPHABET, REFERRAL_CODE_EXPIRY_DAYS, REFERRAL_CODE_LENGTH,
 } from "./referrals.constants";
+import { phoneIdentityHash } from "./referralIdentity";
 import {
-    MyAttributionView, QualifyReferralResult, ReferralProgramAdminView, RedeemReferralResult,
+    MyAttributionView, QualifyReferralResult, RedemptionView, ReferralProgramAdminView, RedeemReferralResult,
     ReferralSummary, ReferralView, RewardCardView, UpdateReferralProgramInput,
 } from "./referrals.types";
 
@@ -178,11 +179,28 @@ export async function redeemReferralCode(
 
     const { data: referee, error: refereeError } = await supabaseAdmin
         .from("users")
-        .select("created_at, referral_code, deleted_at")
+        .select("created_at, referral_code, deleted_at, phone")
         .eq("id", refereeUserId)
         .single();
     if (refereeError) throw refereeError;
     if (referee.deleted_at) throw forbidden("This account cannot apply a referral code.");
+
+    // Survives this exact account being deleted and recreated — see
+    // referral_identity_marks. Skipped (not refused) when there is no phone
+    // on file yet: nothing to dedupe against, and this redemption still
+    // writes a mark below once the referee does have one on this row.
+    const identityHash = referee.phone ? phoneIdentityHash(referee.phone) : null;
+    if (identityHash) {
+        const { data: priorMark, error: markLookupError } = await supabaseAdmin
+            .from("referral_identity_marks")
+            .select("id")
+            .eq("phone_hash", identityHash)
+            .maybeSingle();
+        if (markLookupError) throw markLookupError;
+        if (priorMark) {
+            throw businessRule("A referral code has already been redeemed with this phone number.");
+        }
+    }
 
     if (isReferralExpired(referee.created_at)) {
         throw businessRule(
@@ -232,6 +250,26 @@ export async function redeemReferralCode(
             throw businessRule("You can't use your own referral code.");
         }
         throw insertError;
+    }
+
+    if (identityHash) {
+        // Best-effort, after the referral itself is safely recorded: a
+        // failure here must not undo a redemption that already succeeded.
+        // ON CONFLICT DO NOTHING is defensive rather than load-bearing — the
+        // pre-check above already ruled out a prior mark for this phone; this
+        // only guards a genuine race between two concurrent first-time
+        // redemptions sharing a (recycled) number.
+        const { error: markError } = await supabaseAdmin
+            .from("referral_identity_marks")
+            .upsert(
+                { phone_hash: identityHash, first_referee_user_id: refereeUserId },
+                { onConflict: "phone_hash", ignoreDuplicates: true },
+            );
+        if (markError) {
+            console.error("[referrals] failed to record identity mark", {
+                refereeUserId, error: markError.message,
+            });
+        }
     }
 
     await writeAudit({
@@ -458,7 +496,7 @@ export async function getMyReferralSummary(userId: string): Promise<ReferralSumm
     const code = await getOrCreateReferralCode(userId);
     const program = await getActiveProgram();
 
-    const [{ data: referrals, error: refErr }, { data: cards, error: cardErr }] = await Promise.all([
+    const [{ data: referrals, error: refErr }, { data: cards, error: cardErr }, { data: reserved, error: reservedErr }] = await Promise.all([
         supabaseAdmin
             .from("referrals")
             .select("id, status, code_used, qualified_at, created_at, referee_user_id")
@@ -469,9 +507,15 @@ export async function getMyReferralSummary(userId: string): Promise<ReferralSumm
             .select("id, amount, status, issued_at, expires_at")
             .eq("user_id", userId)
             .order("issued_at", { ascending: false }),
+        supabaseAdmin
+            .from("referral_card_redemptions")
+            .select("id, invoice_id, discount_amount")
+            .eq("user_id", userId)
+            .eq("status", "reserved"),
     ]);
     if (refErr) throw refErr;
     if (cardErr) throw cardErr;
+    if (reservedErr) throw reservedErr;
 
     const refereeIds = [...new Set((referrals ?? []).map((r) => r.referee_user_id))];
     const names = new Map<string, string>();
@@ -515,6 +559,9 @@ export async function getMyReferralSummary(userId: string): Promise<ReferralSumm
             .reduce((sum, c) => sum + c.amount, 0),
         history,
         my_attribution: myAttribution,
+        reserved_redemptions: (reserved ?? []).map((r) => ({
+            id: r.id, invoice_id: r.invoice_id, discount_amount: Number(r.discount_amount),
+        })),
     };
 }
 
@@ -628,15 +675,195 @@ export async function updateReferralProgram(
 }
 
 /* ---------------------------------------------------------------------- */
-/* NOT YET IMPLEMENTED                                                     */
+/* Spending a card — reserve / confirm / release                           */
 /*                                                                          */
-/* Spending a card at renewal (reserve -> write a subscription_adjustments */
-/* discount line -> confirm on payment capture / release on failure) has a */
-/* schema (referral_card_redemptions) but no service code yet. The one     */
-/* real blocker found while designing it: generate_period_invoice() resets */
-/* invoice_items.line_number to 1 every call, and invoice_items has a      */
-/* UNIQUE (invoice_id, line_number) constraint — so injecting a discount   */
-/* into an ALREADY-issued renewal invoice cannot reuse that RPC and needs  */
-/* its own locked read-modify-write. Flagged here rather than built        */
-/* partially under time pressure.                                          */
+/* The atomic part (discount an invoice, hold a card, record the           */
+/* redemption) lives in three Postgres functions — see supabase/migrations/*/
+/* 20261011110000_referral_card_redemption.sql for why this could not be  */
+/* a sequence of ordinary REST calls: five tables have to agree in one     */
+/* transaction, and generate_period_invoice() cannot be replayed against   */
+/* an invoice that already has line items (it resets line_number to 1,    */
+/* colliding with the UNIQUE (invoice_id, line_number) constraint).        */
+/* This layer is just translation: friendly errors in, a typed view out.   */
 /* ---------------------------------------------------------------------- */
+
+function toRedemptionView(row: {
+    id: string;
+    status: RedemptionView["status"];
+    invoice_id: string;
+    original_amount: number | string;
+    discount_amount: number | string;
+    final_amount: number | string;
+    reserved_at: string;
+}): RedemptionView {
+    return {
+        id: row.id,
+        status: row.status,
+        invoice_id: row.invoice_id,
+        original_amount: Number(row.original_amount),
+        discount_amount: Number(row.discount_amount),
+        final_amount: Number(row.final_amount),
+        reserved_at: row.reserved_at,
+    };
+}
+
+/** PostgreSQL error message for `raise exception '<code>' using errcode = 'P0001'` is just `<code>`. */
+function pgRaiseCode(error: unknown): string | null {
+    const e = error as { code?: string; message?: string } | undefined;
+    if (e?.code !== "P0001") return null;
+    return e.message ?? null;
+}
+
+const APPLY_CARD_ERROR_MESSAGES: Record<string, string> = {
+    card_not_found: "That reward card could not be found.",
+    card_not_available: "This card is not available to use right now.",
+    card_expired: "This reward card has expired.",
+    invoice_not_found: "That invoice could not be found.",
+    invoice_not_payable: "This invoice can't be paid right now.",
+    invoice_already_settled: "This invoice is already fully paid — there's nothing left to discount.",
+};
+
+/**
+ * Applies one of the rider's available cards to one of their own unpaid
+ * invoices. `min_renewal_amount` is read from the programme LIVE, regardless
+ * of whether referrals are currently enabled — disabling the programme
+ * stops new cards being ISSUED, it does not retroactively make an
+ * already-earned card worthless to spend.
+ */
+export async function applyCardToInvoice(
+    userId: string,
+    cardId: string,
+    invoiceId: string,
+    actor: AuthContext,
+    req?: Request,
+): Promise<RedemptionView> {
+    const { data: invoice, error: invoiceError } = await supabaseAdmin
+        .from("invoices")
+        .select("total_amount, user_id")
+        .eq("id", invoiceId)
+        .maybeSingle();
+    if (invoiceError) throw invoiceError;
+    if (!invoice || invoice.user_id !== userId) throw notFound("That invoice could not be found.");
+
+    const { data: program, error: programError } = await supabaseAdmin
+        .from("referral_programs")
+        .select("min_renewal_amount")
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (programError) throw programError;
+    const minRenewalAmount = Number(program?.min_renewal_amount ?? 0);
+    if (Number(invoice.total_amount) < minRenewalAmount) {
+        throw businessRule(
+            `A referral card can only be used on a renewal of at least ₹${minRenewalAmount} or more.`,
+        );
+    }
+
+    const { data, error } = await supabaseAdmin.rpc("reserve_referral_card_redemption", {
+        p_card_id: cardId,
+        p_invoice_id: invoiceId,
+        p_user_id: userId,
+    });
+    if (error) {
+        const code = pgRaiseCode(error);
+        if (code && APPLY_CARD_ERROR_MESSAGES[code]) throw businessRule(APPLY_CARD_ERROR_MESSAGES[code]);
+        throw error;
+    }
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: userId, action: "referral.card_applied",
+        entityType: "referral", entityId: data.id,
+        after: { card_id: cardId, invoice_id: invoiceId, discount_amount: data.discount_amount },
+        req,
+    });
+
+    return toRedemptionView(data);
+}
+
+/**
+ * Undoes an unpaid reservation — the rider changed their mind, or wants to
+ * apply a different card instead. Ownership is checked here, BEFORE the RPC
+ * runs: release_referral_card_redemption trusts whatever redemption id it is
+ * given, same division of labour as every other RPC in this module (the SQL
+ * function is the atomic mutation; the service function is the authorization
+ * boundary).
+ */
+export async function releaseCardFromInvoice(
+    userId: string,
+    redemptionId: string,
+    actor: AuthContext,
+    req?: Request,
+): Promise<void> {
+    const { data: redemption, error: fetchError } = await supabaseAdmin
+        .from("referral_card_redemptions")
+        .select("id, user_id, status")
+        .eq("id", redemptionId)
+        .maybeSingle();
+    if (fetchError) throw fetchError;
+    if (!redemption || redemption.user_id !== userId) throw notFound("That reservation could not be found.");
+    if (redemption.status !== "reserved") return; // already settled or already released — nothing to do
+
+    const { error } = await supabaseAdmin.rpc("release_referral_card_redemption", {
+        p_redemption_id: redemptionId,
+        p_reason: "Rider removed the card before paying.",
+    });
+    if (error) throw error;
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: userId, action: "referral.card_released",
+        entityType: "referral", entityId: redemptionId,
+        after: { reason: "rider_removed" },
+        req,
+    });
+}
+
+/**
+ * Called once an invoice is fully SETTLED — payments.service.ts, right
+ * where applyRenewalSuccess already fires for the same reason. Never allowed
+ * to throw into that flow: a referral-card hiccup must not be able to break
+ * a payment that has already, genuinely, succeeded. No-op (silently) when no
+ * card was ever reserved against this invoice, which is the ordinary case.
+ */
+export async function confirmCardRedemptionForInvoice(invoiceId: string): Promise<void> {
+    try {
+        const { error } = await supabaseAdmin.rpc("confirm_referral_card_redemption", {
+            p_invoice_id: invoiceId,
+        });
+        if (error) throw error;
+    } catch (err) {
+        console.error("[referrals] failed to confirm card redemption on settlement", {
+            invoiceId, error: err instanceof Error ? err.message : String(err),
+        });
+    }
+}
+
+/**
+ * Called from abandonedRenewal.ts right before it voids an invoice that was
+ * never paid — the one path this session identified that could otherwise
+ * strand a card at 'reserved' forever with no invoice left to pay it
+ * against. Same no-throw discipline as confirmCardRedemptionForInvoice: an
+ * abandoned invoice must still get voided even if this fails.
+ */
+export async function releaseCardIfReservedForInvoice(invoiceId: string): Promise<void> {
+    try {
+        const { data: redemption, error: fetchError } = await supabaseAdmin
+            .from("referral_card_redemptions")
+            .select("id")
+            .eq("invoice_id", invoiceId)
+            .eq("status", "reserved")
+            .maybeSingle();
+        if (fetchError) throw fetchError;
+        if (!redemption) return;
+
+        const { error } = await supabaseAdmin.rpc("release_referral_card_redemption", {
+            p_redemption_id: redemption.id,
+            p_reason: "The invoice itself was voided — the period it billed for was never bought.",
+        });
+        if (error) throw error;
+    } catch (err) {
+        console.error("[referrals] failed to release card for voided invoice", {
+            invoiceId, error: err instanceof Error ? err.message : String(err),
+        });
+    }
+}

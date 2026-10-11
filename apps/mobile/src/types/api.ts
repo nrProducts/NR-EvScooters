@@ -464,11 +464,32 @@ export interface ApiReferralSummary {
     total_earned: number;
     history: ApiReferralView[];
     my_attribution: ApiMyAttribution | null;
+    /** Cards currently held against an unpaid invoice — at most one per invoice. */
+    reserved_redemptions: ApiReservedRedemption[];
+}
+
+export interface ApiReservedRedemption {
+    id: string;
+    invoice_id: string;
+    discount_amount: number;
 }
 
 export type ApiRedeemReferralResult =
     | { outcome: 'applied'; attribution: ApiMyAttribution }
     | { outcome: 'already_applied'; attribution: ApiMyAttribution };
+
+export type ApiRedemptionStatus = 'reserved' | 'redeemed' | 'released';
+
+/** What applying a card to an invoice hands back — the breakdown, shown immediately. */
+export interface ApiRedemption {
+    id: string;
+    status: ApiRedemptionStatus;
+    invoice_id: string;
+    original_amount: number;
+    discount_amount: number;
+    final_amount: number;
+    reserved_at: string;
+}
 
 export interface ApiPickupBooking extends ApiBooking {
     rider: { id: string; full_name: string; phone: string | null };

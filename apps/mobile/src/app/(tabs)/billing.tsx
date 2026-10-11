@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Spinner } from '../../components/Spinner';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CreditCard, ShieldCheck, Receipt } from 'lucide-react-native';
+import { CreditCard, ShieldCheck, Receipt, Gift, X } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorState } from '../../components/ui/ErrorState';
@@ -14,7 +14,8 @@ import { COLORS } from '../../constants/theme';
 import { useMyBilling } from '../../hooks/useMyBilling';
 import { useAuthStore } from '../../store/useAuthStore';
 import { setPaymentPhase } from '../../store/usePaymentProgressStore';
-import { billingRepository, rentalRepository } from '../../services';
+import { billingRepository, rentalRepository, referralRepository } from '../../services';
+import { useReferralSummary } from '../../hooks/useReferralSummary';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
 import { getRenewalEligibility } from '../../lib/returnPolicy';
 import { SettlementCard } from '../../components/SettlementCard';
@@ -370,6 +371,43 @@ export default function BillingScreen() {
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
+
+  // Spending a referral card on a renewal invoice. Deliberately NOT
+  // recomputed locally after apply/release — the backend already wrote the
+  // real discounted total onto the invoice row, so a plain reload() (the
+  // same one pull-to-refresh already uses) picks it up with no client-side
+  // math to keep in sync with the server's.
+  const { summary: referralSummary, reload: reloadReferralSummary } = useReferralSummary();
+  const [cardPickerInvoiceId, setCardPickerInvoiceId] = useState<string | null>(null);
+  const [cardActionInvoiceId, setCardActionInvoiceId] = useState<string | null>(null);
+  const [cardActionError, setCardActionError] = useState<string | null>(null);
+
+  const applyReferralCard = async (invoiceId: string, cardId: string) => {
+    setCardActionError(null);
+    setCardActionInvoiceId(invoiceId);
+    try {
+      await referralRepository.applyCard(cardId, invoiceId);
+      setCardPickerInvoiceId(null);
+      await Promise.all([reload(), reloadReferralSummary()]);
+    } catch (err) {
+      setCardActionError(err instanceof ApiError ? err.message : t('billing.referralCard.applyFailed'));
+    } finally {
+      setCardActionInvoiceId(null);
+    }
+  };
+
+  const removeReferralCard = async (redemptionId: string, invoiceId: string) => {
+    setCardActionError(null);
+    setCardActionInvoiceId(invoiceId);
+    try {
+      await referralRepository.releaseCard(redemptionId);
+      await Promise.all([reload(), reloadReferralSummary()]);
+    } catch (err) {
+      setCardActionError(err instanceof ApiError ? err.message : t('billing.referralCard.removeFailed'));
+    } finally {
+      setCardActionInvoiceId(null);
+    }
+  };
   const [completingBookingPayment, setCompletingBookingPayment] = useState(false);
   const [bookingPaymentError, setBookingPaymentError] = useState<string | null>(null);
   // The real bill (deposit + transaction fee + any welcome discount) —
@@ -755,6 +793,91 @@ export default function BillingScreen() {
     .filter((inv) => inv.payment_state === 'paid' || inv.payment_state === 'partial')
     .sort((a, b) => (historyDate(a) < historyDate(b) ? 1 : -1));
 
+  const availableReferralCards = referralSummary?.cards.filter((c) => c.status === 'available') ?? [];
+
+  /**
+   * One invoice's "apply a reward card" row — three states: a card already
+   * applied (show it + Remove), an open picker (one row per available
+   * card), or the closed teaser that opens the picker. Nothing renders at
+   * all for a rider with no available cards and nothing applied, so this
+   * never clutters an invoice for a rider who has never referred anyone.
+   */
+  const renderReferralCardSection = (inv: ApiInvoice) => {
+    const reservation = referralSummary?.reserved_redemptions.find((r) => r.invoice_id === inv.id);
+    const busy = cardActionInvoiceId === inv.id;
+
+    if (reservation) {
+      return (
+        <View className="mx-5 mb-4 rounded-xl border px-3.5 py-3 flex-row items-center justify-between" style={{ borderColor: COLORS.primary, backgroundColor: COLORS.primary + '0D' }}>
+          <View className="flex-row items-center flex-1" style={{ gap: 8 }}>
+            <Gift size={15} color={COLORS.primary} />
+            <Text style={{ color: COLORS.textPrimary }} className="text-[12px] font-bold flex-1">
+              {t('billing.referralCard.applied', { amount: reservation.discount_amount.toFixed(0) })}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => void removeReferralCard(reservation.id, inv.id)}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel={t('billing.referralCard.remove')}
+            className="w-6 h-6 rounded-full items-center justify-center"
+            style={{ opacity: busy ? 0.5 : 1 }}
+          >
+            {busy ? <Spinner size={12} color={COLORS.primary} /> : <X size={14} color={COLORS.primary} />}
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (availableReferralCards.length === 0) return null;
+
+    if (cardPickerInvoiceId !== inv.id) {
+      return (
+        <TouchableOpacity
+          onPress={() => setCardPickerInvoiceId(inv.id)}
+          accessibilityRole="button"
+          className="mx-5 mb-4 rounded-xl border px-3.5 py-3 flex-row items-center"
+          style={{ borderColor: COLORS.border, backgroundColor: COLORS.background, gap: 8 }}
+        >
+          <Gift size={15} color={COLORS.primary} />
+          <Text style={{ color: COLORS.primary }} className="text-[12px] font-bold flex-1">
+            {t('billing.referralCard.offer', { count: availableReferralCards.length })}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+
+    return (
+      <View className="mx-5 mb-4 rounded-xl border overflow-hidden" style={{ borderColor: COLORS.border }}>
+        {availableReferralCards.map((card, i) => (
+          <TouchableOpacity
+            key={card.id}
+            onPress={() => void applyReferralCard(inv.id, card.id)}
+            disabled={busy}
+            accessibilityRole="button"
+            className="flex-row items-center justify-between px-3.5 py-3"
+            style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
+          >
+            <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-bold">
+              {t('billing.referralCard.off', { amount: card.amount.toFixed(0) })}
+            </Text>
+            {busy ? <Spinner size={14} color={COLORS.primary} /> : null}
+          </TouchableOpacity>
+        ))}
+        <TouchableOpacity
+          onPress={() => setCardPickerInvoiceId(null)}
+          accessibilityRole="button"
+          className="px-3.5 py-2.5"
+          style={{ borderTopWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background }}
+        >
+          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold text-center">
+            {t('common.cancel')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   // Outstanding invoices with a Pay button. Rendered inside the "Amount Due"
   // section when there's an active plan, and also standalone when there
   // isn't one (e.g. an ad-hoc charge raised by an admin against a rider
@@ -838,6 +961,8 @@ export default function BillingScreen() {
                 <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">₹{total.toFixed(0)}</Text>
               </View>
             </View>
+
+            {renderReferralCardSection(inv)}
 
             <TouchableOpacity
               onPress={() => payInvoice(inv)}

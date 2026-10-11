@@ -37,6 +37,13 @@ export interface RewardCardView {
     // referrals.service.ts).
 }
 
+/** Enough for the billing screen to say "you already applied a card here" and offer to remove it. */
+export interface ReservedRedemptionView {
+    id: string;
+    invoice_id: string;
+    discount_amount: number;
+}
+
 export interface ReferralSummary {
     /** Null only for a non-rider account — riders always have one by the time this resolves. */
     referral_code: string | null;
@@ -52,6 +59,8 @@ export interface ReferralSummary {
     history: ReferralView[];
     /** Set once this account has applied someone else's code — null if not. */
     my_attribution: MyAttributionView | null;
+    /** Cards currently held against an unpaid invoice — at most one per invoice, by design. */
+    reserved_redemptions: ReservedRedemptionView[];
 }
 
 /** Discriminated result so the controller can map each case to its own message. */
@@ -87,6 +96,19 @@ export interface ReferralProgramAdminView {
     max_rewards_per_referrer: number | null;
     min_renewal_amount: number;
     updated_at: string | null;
+}
+
+export type RewardRedemptionStatus = "reserved" | "redeemed" | "released";
+
+/** What applying a card to an invoice hands back — the breakdown, so the rider sees it immediately. */
+export interface RedemptionView {
+    id: string;
+    status: RewardRedemptionStatus;
+    invoice_id: string;
+    original_amount: number;
+    discount_amount: number;
+    final_amount: number;
+    reserved_at: string;
 }
 
 export interface UpdateReferralProgramInput {

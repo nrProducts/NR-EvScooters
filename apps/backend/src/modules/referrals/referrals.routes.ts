@@ -17,6 +17,13 @@ router.post(
     asyncHandler(c.redeemReferralHandler),
 );
 
+router.post(
+    "/apply-card",
+    validate({ body: v.applyCardBody }),
+    asyncHandler(c.applyCardHandler),
+);
+router.post("/redemptions/:redemptionId/release", asyncHandler(c.releaseCardHandler));
+
 // Admin-only: the live programme terms (reward amount, qualifying event,
 // expiry, caps). Not reachable by a rider even read-only — the row carries
 // operational detail (e.g. min_renewal_amount tuning) a rider has no need to

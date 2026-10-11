@@ -14,6 +14,7 @@ class TableStub {
     select = () => this;
     insert = () => this;
     update = () => this;
+    upsert = () => this;
     eq = () => this;
     neq = () => this;
     in = () => this;
@@ -33,6 +34,13 @@ function queue(table: string, result: Result) {
 }
 const calls: string[] = [];
 
+/** Same idea as the table queue, keyed on RPC name instead. */
+let rpcQueues: Record<string, Result[]>;
+function queueRpc(fn: string, result: Result) {
+    (rpcQueues[fn] ??= []).push(result);
+}
+const rpcCalls: { fn: string; args: unknown }[] = [];
+
 vi.mock("../src/config/supabase", () => ({
     supabaseAdmin: {
         from: (table: string) => {
@@ -40,6 +48,12 @@ vi.mock("../src/config/supabase", () => ({
             const next = queues[table]?.shift();
             if (!next) throw new Error(`No queued result for table "${table}" (call #${calls.length})`);
             return new TableStub(next);
+        },
+        rpc: (fn: string, args: unknown) => {
+            rpcCalls.push({ fn, args });
+            const next = rpcQueues[fn]?.shift();
+            if (!next) throw new Error(`No queued RPC result for "${fn}" (call #${rpcCalls.length})`);
+            return Promise.resolve(next);
         },
     },
 }));
@@ -49,7 +63,8 @@ vi.mock("../src/modules/notifications/notifications.service", () => ({
 }));
 
 import {
-    getOrCreateReferralCode, isReferralExpired, qualifyReferralIfApplicable, redeemReferralCode,
+    applyCardToInvoice, confirmCardRedemptionForInvoice, getOrCreateReferralCode, isReferralExpired,
+    qualifyReferralIfApplicable, redeemReferralCode, releaseCardFromInvoice, releaseCardIfReservedForInvoice,
 } from "../src/modules/referrals/referrals.service";
 import { redeemReferralBody } from "../src/modules/referrals/referrals.validation";
 import { REFERRAL_CODE_EXPIRY_DAYS } from "../src/modules/referrals/referrals.constants";
@@ -57,6 +72,8 @@ import { AuthContext } from "../src/types";
 
 beforeEach(() => {
     queues = {};
+    rpcQueues = {};
+    rpcCalls.length = 0;
     calls.length = 0;
 });
 
@@ -172,6 +189,35 @@ describe("redeemReferralCode", () => {
         expect(calls).toEqual(["referrals", "users", "users", "referral_programs", "referrals"]);
     });
 
+    it("records an identity mark on success when the referee has a phone on file", async () => {
+        queue("referrals", { data: null, error: null });
+        queue("users", { data: { created_at: new Date().toISOString(), referral_code: "SELFCD", deleted_at: null, phone: "+919600999046" }, error: null });
+        queue("referral_identity_marks", { data: null, error: null }); // no prior mark for this phone
+        queue("users", { data: { id: "referrer-1", full_name: "Referrer One", role: "rider", deleted_at: null }, error: null });
+        queue("referral_programs", {
+            data: { id: "prog-1", reward_amount: 200, reward_expiry_days: 90, qualifying_event: "first_paid_booking" },
+            error: null,
+        });
+        queue("referrals", { data: { status: "pending", code_used: "GOODCD", created_at: "2026-10-10T00:00:00Z" }, error: null });
+        queue("referral_identity_marks", { data: null, error: null }); // the upsert
+
+        const result = await redeemReferralCode("referee-phone", "GOODCD", actor);
+        expect(result.outcome).toBe("applied");
+        expect(calls).toEqual([
+            "referrals", "users", "referral_identity_marks", "users", "referral_programs", "referrals", "referral_identity_marks",
+        ]);
+    });
+
+    it("refuses redemption when this phone identity has already redeemed a code under a DIFFERENT (e.g. deleted-and-recreated) account", async () => {
+        queue("referrals", { data: null, error: null }); // no attribution on THIS account
+        queue("users", { data: { created_at: new Date().toISOString(), referral_code: "SELFCD", deleted_at: null, phone: "9600999046" }, error: null });
+        queue("referral_identity_marks", { data: { id: "mark-1" }, error: null }); // this phone already has a mark
+
+        await expect(redeemReferralCode("referee-recreated", "GOODCD", actor)).rejects.toThrow(/already been redeemed with this phone/i);
+        // Refused before ever looking up the referrer or touching the programme.
+        expect(calls).toEqual(["referrals", "users", "referral_identity_marks"]);
+    });
+
     it("is idempotent — a second redeem for an already-attributed rider returns the SAME attribution, no new row", async () => {
         queue("referrals", {
             data: { status: "qualified", code_used: "GOODCD", created_at: "2026-10-10T00:00:00Z", referrer_user_id: "referrer-1" },
@@ -184,6 +230,108 @@ describe("redeemReferralCode", () => {
         expect(result.attribution.code_used).toBe("GOODCD"); // the ORIGINAL code, not "ANYCOD"
         expect(result.attribution.status).toBe("qualified");
         expect(calls).toEqual(["referrals", "users"]); // never reached the self/cutoff/referrer/program checks
+    });
+});
+
+describe("applyCardToInvoice", () => {
+    it("reserves the discount and returns the breakdown on success", async () => {
+        queue("invoices", { data: { total_amount: 1500, user_id: "rider-1" }, error: null });
+        queue("referral_programs", { data: { min_renewal_amount: 100 }, error: null });
+        queueRpc("reserve_referral_card_redemption", {
+            data: {
+                id: "redemption-1", status: "reserved", invoice_id: "invoice-1",
+                original_amount: 1500, discount_amount: 200, final_amount: 1300, reserved_at: "2026-10-11T00:00:00Z",
+            },
+            error: null,
+        });
+
+        const result = await applyCardToInvoice("rider-1", "card-1", "invoice-1", actor);
+        expect(result).toEqual({
+            id: "redemption-1", status: "reserved", invoice_id: "invoice-1",
+            original_amount: 1500, discount_amount: 200, final_amount: 1300, reserved_at: "2026-10-11T00:00:00Z",
+        });
+        expect(rpcCalls).toEqual([
+            { fn: "reserve_referral_card_redemption", args: { p_card_id: "card-1", p_invoice_id: "invoice-1", p_user_id: "rider-1" } },
+        ]);
+    });
+
+    it("refuses an invoice belonging to someone else, before ever calling the RPC", async () => {
+        queue("invoices", { data: { total_amount: 1500, user_id: "someone-else" }, error: null });
+        await expect(applyCardToInvoice("rider-1", "card-1", "invoice-1", actor)).rejects.toThrow(/could not be found/i);
+        expect(rpcCalls).toEqual([]);
+    });
+
+    it("refuses when the invoice is below the live minimum renewal amount", async () => {
+        queue("invoices", { data: { total_amount: 50, user_id: "rider-1" }, error: null });
+        queue("referral_programs", { data: { min_renewal_amount: 100 }, error: null });
+        await expect(applyCardToInvoice("rider-1", "card-1", "invoice-1", actor)).rejects.toThrow(/at least.*100/i);
+        expect(rpcCalls).toEqual([]);
+    });
+
+    it("maps a card_not_available RPC refusal to a friendly message", async () => {
+        queue("invoices", { data: { total_amount: 1500, user_id: "rider-1" }, error: null });
+        queue("referral_programs", { data: { min_renewal_amount: 100 }, error: null });
+        queueRpc("reserve_referral_card_redemption", { data: null, error: { code: "P0001", message: "card_not_available" } });
+        await expect(applyCardToInvoice("rider-1", "card-1", "invoice-1", actor)).rejects.toThrow(/not available to use/i);
+    });
+});
+
+describe("releaseCardFromInvoice", () => {
+    it("releases a reserved redemption the caller owns", async () => {
+        queue("referral_card_redemptions", { data: { id: "redemption-1", user_id: "rider-1", status: "reserved" }, error: null });
+        queueRpc("release_referral_card_redemption", { data: null, error: null });
+
+        await releaseCardFromInvoice("rider-1", "redemption-1", actor);
+        expect(rpcCalls).toEqual([
+            { fn: "release_referral_card_redemption", args: { p_redemption_id: "redemption-1", p_reason: "Rider removed the card before paying." } },
+        ]);
+    });
+
+    it("refuses a redemption belonging to someone else", async () => {
+        queue("referral_card_redemptions", { data: { id: "redemption-1", user_id: "someone-else", status: "reserved" }, error: null });
+        await expect(releaseCardFromInvoice("rider-1", "redemption-1", actor)).rejects.toThrow(/could not be found/i);
+        expect(rpcCalls).toEqual([]);
+    });
+
+    it("is a silent no-op for an already-settled or already-released redemption — never calls the RPC", async () => {
+        queue("referral_card_redemptions", { data: { id: "redemption-1", user_id: "rider-1", status: "redeemed" }, error: null });
+        await releaseCardFromInvoice("rider-1", "redemption-1", actor);
+        expect(rpcCalls).toEqual([]);
+    });
+});
+
+describe("confirmCardRedemptionForInvoice — called from payment settlement, must never throw", () => {
+    it("confirms via RPC on the ordinary path", async () => {
+        queueRpc("confirm_referral_card_redemption", { data: null, error: null });
+        await confirmCardRedemptionForInvoice("invoice-1");
+        expect(rpcCalls).toEqual([{ fn: "confirm_referral_card_redemption", args: { p_invoice_id: "invoice-1" } }]);
+    });
+
+    it("swallows an RPC failure rather than throwing into the payment-capture flow", async () => {
+        queueRpc("confirm_referral_card_redemption", { data: null, error: new Error("boom") });
+        await expect(confirmCardRedemptionForInvoice("invoice-1")).resolves.toBeUndefined();
+    });
+});
+
+describe("releaseCardIfReservedForInvoice — called before voiding an abandoned renewal, must never throw", () => {
+    it("does nothing, and never calls the RPC, when no card was reserved", async () => {
+        queue("referral_card_redemptions", { data: null, error: null });
+        await releaseCardIfReservedForInvoice("invoice-1");
+        expect(rpcCalls).toEqual([]);
+    });
+
+    it("releases the reservation when one exists", async () => {
+        queue("referral_card_redemptions", { data: { id: "redemption-1" }, error: null });
+        queueRpc("release_referral_card_redemption", { data: null, error: null });
+        await releaseCardIfReservedForInvoice("invoice-1");
+        expect(rpcCalls).toEqual([
+            { fn: "release_referral_card_redemption", args: { p_redemption_id: "redemption-1", p_reason: "The invoice itself was voided — the period it billed for was never bought." } },
+        ]);
+    });
+
+    it("swallows a failure rather than throwing — the invoice must still get voided", async () => {
+        queue("referral_card_redemptions", { data: null, error: new Error("boom") });
+        await expect(releaseCardIfReservedForInvoice("invoice-1")).resolves.toBeUndefined();
     });
 });
 

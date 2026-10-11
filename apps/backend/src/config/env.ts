@@ -71,6 +71,12 @@ export const env = {
     /** HMAC-SHA256 pepper for the `document_number_hmac` blind index. */
     kycHmacPepper: process.env.KYC_HMAC_PEPPER ?? "",
 
+    // Unset is tolerated here, unlike the two above: referral redemption
+    // degrades to a weaker built-in pepper rather than failing outright — see
+    // referralIdentity.ts. Set a real one with: openssl rand -base64 32
+    /** HMAC-SHA256 pepper for the phone-identity mark referrals dedupe against. */
+    referralIdentityPepper: process.env.REFERRAL_IDENTITY_PEPPER ?? "",
+
     /** Private bucket holding rider profile photos. Must not be public. */
     profilePhotoBucket: process.env.PROFILE_PHOTO_BUCKET ?? "profile-photos",
     /** Keep in sync with storage.buckets.file_size_limit in the migration. */

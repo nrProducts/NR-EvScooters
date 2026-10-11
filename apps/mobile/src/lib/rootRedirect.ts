@@ -1,3 +1,4 @@
+import { LANGUAGE_SELECTION_ENABLED } from '../i18n/types';
 import type { ApiMe } from '../types/api';
 
 /**
@@ -77,7 +78,11 @@ export function resolveRootRedirect(state: RootRouteState): string | null {
   // language (guessed from the device locale, else English), so anything
   // weaker than "the rider actually picked" would skip the picker on a
   // Tamil phone and silently decide for them.
-  if (!langChosen) {
+  // Language selection is temporarily disabled app-wide (LANGUAGE_SELECTION_
+  // ENABLED) — skip the forced first-launch picker and fall through to
+  // onboarding. The rider still gets whatever useLangStore guessed from the
+  // device locale; they just can't be asked to confirm it right now.
+  if (LANGUAGE_SELECTION_ENABLED && !langChosen) {
     return current !== "language" ? "/language" : null;
   }
 

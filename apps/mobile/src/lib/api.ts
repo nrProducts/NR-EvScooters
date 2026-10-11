@@ -13,7 +13,7 @@ import type {
     ApiNominee, ApiPrivacyRequest, ApiPrivacySummary, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
     ApiOverdueLateFee, ApiOverdueLateFeeInvoice, ApiReturnStage, ApiVehicleDocument,
-    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
     ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
     ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
@@ -480,6 +480,12 @@ export const api = {
 
     redeemReferralCode: (code: string) =>
         request<ApiRedeemReferralResult>('/referrals/redeem', { method: 'POST', body: { code } }),
+
+    applyReferralCard: (cardId: string, invoiceId: string) =>
+        request<ApiRedemption>('/referrals/apply-card', { method: 'POST', body: { card_id: cardId, invoice_id: invoiceId } }),
+
+    releaseReferralCard: (redemptionId: string) =>
+        request<void>(`/referrals/redemptions/${redemptionId}/release`, { method: 'POST' }),
 
     // --- rentals -------------------------------------------------------
     myCurrentRental: () => request<ApiRental>('/rentals/me/current'),
