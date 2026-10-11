@@ -99,7 +99,10 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
         </Text>
 
         {dueDate ? (
-          <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-2">
+          <Text
+            style={{ color: renewal.isLate ? COLORS.danger : COLORS.textSecondary }}
+            className="text-xs font-bold mt-2"
+          >
             {t('rental.periodRange', { start: formatDate(periodStart), end: formatDate(dueDate) })}
           </Text>
         ) : null}

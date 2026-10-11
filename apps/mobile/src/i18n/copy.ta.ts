@@ -116,7 +116,7 @@ export const ta: Copy = {
     'rental.daysRemaining.one': '1 நாள் மீதம்',
     'rental.daysRemaining.other': '{count} நாட்கள் மீதம்',
     'rental.dayOf': 'நாள் {day} / {total}',
-    'rental.periodRange': '{start}  —  {end}',
+    'rental.periodRange': '{start}, மதியம் 12:00  —  {end}, மதியம் 12:00',
 
     // --- scooter status card (Home alert strip) ---------------------------
     'scooterStatus.paymentRequired': 'கட்டணம் தேவை',

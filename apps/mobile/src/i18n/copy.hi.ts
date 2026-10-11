@@ -119,7 +119,7 @@ export const hi: Copy = {
     'rental.daysRemaining.one': '1 दिन बाकी',
     'rental.daysRemaining.other': '{count} दिन बाकी',
     'rental.dayOf': 'दिन {day} / {total}',
-    'rental.periodRange': '{start}  —  {end}',
+    'rental.periodRange': '{start}, दोपहर 12:00  —  {end}, दोपहर 12:00',
 
     // --- scooter status card (Home alert strip) ---------------------------
     'scooterStatus.paymentRequired': 'भुगतान करना ज़रूरी है',

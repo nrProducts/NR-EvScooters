@@ -120,8 +120,11 @@ export const en = {
     'rental.daysRemaining.one': '1 day remaining',
     'rental.daysRemaining.other': '{count} days remaining',
     'rental.dayOf': 'Day {day} of {total}',
-    // "05 Sep 2026  —  12 Sep 2026". The dash spacing is part of the layout.
-    'rental.periodRange': '{start}  —  {end}',
+    // "05 Sep 2026, 12:00 PM  —  12 Sep 2026, 12:00 PM". The dash spacing is
+    // part of the layout. Every rental period runs noon to noon — see
+    // apps/backend/src/common/dates.ts's calculateRentalPeriod — so the time
+    // is always literally "12:00 PM" on both ends, never computed.
+    'rental.periodRange': '{start}, 12:00 PM  —  {end}, 12:00 PM',
 
     // --- scooter status card (Home alert strip) ---------------------------
     'scooterStatus.paymentRequired': 'Payment Required',
