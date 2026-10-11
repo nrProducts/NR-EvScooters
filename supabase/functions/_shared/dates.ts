@@ -33,6 +33,33 @@ export function daysBetween(a: string, b: string): number {
 }
 
 /**
+ * The rental-cycle cutover instant: noon (12:00:00) IST on a calendar day.
+ * Mirrors `noonOfBusinessDay` in apps/backend/src/common/dates.ts — the two
+ * must agree, since both decide the same thing: the exact moment a period
+ * with this `due_on` actually ends.
+ */
+export function noonInstant(dateStr: string): Date {
+    return new Date(`${dateStr}T12:00:00+05:30`);
+}
+
+/**
+ * Has the noon cutover for this `due_on` already happened?
+ *
+ * Deliberately NOT `due_on < business_today()` — that is a calendar-day
+ * comparison, and under the noon-to-noon cycle a period due "today" has
+ * already ended as of noon, hours before the calendar day itself rolls
+ * over. Callers that only compared dates (this sweep, before this fix)
+ * left every lapsed period sitting un-promoted and every late fee
+ * un-charged from noon until the next day's run.
+ */
+export function hasPassedCutover(dueOn: string, now: Date = new Date()): boolean {
+    // Strictly after, not >=: AT the cutover instant is still on time, same
+    // rule as lateDaysSince (apps/backend/src/modules/payments/renewalFee.ts)
+    // — "elapsedMs <= 0 is not late."
+    return now.getTime() > noonInstant(dueOn).getTime();
+}
+
+/**
  * "20 Sep" — for rider-facing push copy that names a rental-cycle boundary.
  * Every rental starts and ends at noon IST (see apps/backend/src/common/dates.ts
  * calculateRentalPeriod, the single JS authority this mirrors), so copy that

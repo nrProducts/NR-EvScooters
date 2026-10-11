@@ -5,7 +5,7 @@ import { createGatewayOrder, fetchGatewayPayment } from "../../config/razorpay";
 import { env } from "../../config/env";
 import { badRequest, businessRule, conflict, notFound } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
-import { addDays, businessToday, calculateRentalPeriod } from "../../common/dates";
+import { addDays, businessToday, calculateRentalPeriod, hasPassedCutover } from "../../common/dates";
 import { computeInvoiceLateFee, lateFeeRuleFor } from "./renewalFee";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
@@ -2170,7 +2170,7 @@ async function applyRenewalSuccess(
         .maybeSingle();
     if (currentError) throw currentError;
 
-    const activateNow = !current || businessToday() > current.due_on;
+    const activateNow = !current || hasPassedCutover(current.due_on);
 
     if (!activateNow) {
         await writeAudit({

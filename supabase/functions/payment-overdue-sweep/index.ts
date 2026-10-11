@@ -33,6 +33,17 @@
 // read the Deno clock, which is UTC: between 18:30 and midnight IST it
 // believed it was already tomorrow and marked riders overdue a day early.
 //
+// A period's due_on is a CALENDAR DAY, but the cycle it belongs to is
+// noon-to-noon — it actually lapses at 12:00 PM IST on that date, not at
+// the end of it. `due_on < today` (calendar-day only) stayed true from
+// midnight to midnight on due_on, which meant a period due "today" was
+// never picked up until TOMORROW's run — up to ~24h, and in practice ~20h
+// given the cron's old once-daily 03:10 UTC (08:40 IST, before noon)
+// schedule, during which a paid-ahead renewal sat un-promoted and a late
+// rider was charged no late fee at all. Candidates are now fetched by date
+// (`due_on <= today`, a safe superset) and then filtered by the actual
+// cutover INSTANT via hasPassedCutover — see _shared/dates.ts.
+//
 // A 'scheduled' next period is no longer proof of payment on its own.
 // apps/backend/src/modules/billing/billing.service.ts's advanceToNextPeriod
 // now creates that row eagerly, the moment a rider previews a renewal
@@ -45,7 +56,7 @@
 // =========================================================================
 
 import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
-import { businessToday } from "../_shared/dates.ts";
+import { businessToday, hasPassedCutover } from "../_shared/dates.ts";
 import { notifyUser } from "../_shared/notify.ts";
 import { notifyStaff } from "../_shared/notifyStaff.ts";
 import { writeAudit } from "../_shared/audit.ts";
@@ -78,23 +89,31 @@ Deno.serve(async (_req) => {
         return json({ error: "Could not resolve the business date." }, 500);
     }
 
-    const { data: lapsed, error } = await admin
+    // `due_on <= today`, not `< today`: a superset by date, since the real
+    // cutover is an instant (noon on due_on), not a date boundary. Narrowed
+    // to actually-lapsed rows below via hasPassedCutover.
+    const { data: candidates, error } = await admin
         .from("subscription_periods")
         .select(
             "id, subscription_id, sequence_number, due_on, ends_on, subscriptions(id, user_id, status)",
         )
         .eq("status", "current")
-        .lt("due_on", today);
+        .lte("due_on", today);
 
     if (error) {
         console.error(`[${SOURCE}] query failed`, error);
         return json({ error: "Query failed." }, 500);
     }
 
+    const now = new Date();
+    const lapsed = ((candidates ?? []) as unknown as PeriodRow[]).filter((p) =>
+        hasPassedCutover(p.due_on, now),
+    );
+
     let promoted = 0;
     let markedPastDue = 0;
 
-    for (const period of (lapsed ?? []) as unknown as PeriodRow[]) {
+    for (const period of lapsed) {
         const subscription = unwrap<{ id: string; user_id: string; status: string }>(
             period.subscriptions,
         );
@@ -115,7 +134,7 @@ Deno.serve(async (_req) => {
         if (await markPastDue(admin, period, subscription, today)) markedPastDue++;
     }
 
-    return json({ candidates: lapsed?.length ?? 0, promoted, markedPastDue }, 200);
+    return json({ candidates: lapsed.length, promoted, markedPastDue }, 200);
 });
 
 async function closePeriod(admin: Admin, periodId: string): Promise<void> {

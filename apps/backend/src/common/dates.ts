@@ -78,6 +78,26 @@ export function noonOfBusinessDay(dateStr: string): string {
     return `${dateStr}T12:00:00+05:30`;
 }
 
+/**
+ * Has the noon cutover for this date already happened?
+ *
+ * Deliberately NOT `businessToday() > dateStr` — that is a calendar-day
+ * comparison, and under the noon-to-noon cycle a period due "today" has
+ * already ended as of noon, hours before the calendar day itself rolls
+ * over. A date-only check here left `applyRenewalSuccess` unable to tell
+ * "paid after this period's own cutover, so activate immediately" from
+ * "paid earlier the same day, before the cutover" — both read as
+ * `businessToday() === due_on`, so a rider who paid a LATE renewal at,
+ * say, 2 PM on the due date itself was left waiting on the next scheduled
+ * sweep instead of activating on the spot. Mirrors `hasPassedCutover` in
+ * supabase/functions/_shared/dates.ts — the two must agree.
+ */
+export function hasPassedCutover(dateStr: string, now: Date = new Date()): boolean {
+    // Strictly after, not >=: AT the cutover instant is still on time, same
+    // rule as lateDaysSince (renewalFee.ts) — "elapsedMs <= 0 is not late."
+    return now.getTime() > new Date(noonOfBusinessDay(dateStr)).getTime();
+}
+
 export interface RentalPeriod {
     /** The instant the rental period begins — noon IST on `startDate`. */
     startAt: string;

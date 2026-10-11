@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { addDays, calculateRentalPeriod, describeHoursLate, noonOfBusinessDay } from "../src/common/dates";
+import {
+    addDays, calculateRentalPeriod, describeHoursLate, hasPassedCutover, noonOfBusinessDay,
+} from "../src/common/dates";
 
 describe("addDays", () => {
     it("adds whole days within a month", () => {
@@ -69,6 +71,29 @@ describe("calculateRentalPeriod — the single rental-cycle calculation", () => 
         const week3 = calculateRentalPeriod(week2.endDate, 7);
         expect(week3.startDate).toBe("2026-10-04");
         expect(week3.endDate).toBe("2026-10-11");
+    });
+});
+
+describe("hasPassedCutover — the noon-instant check, not a calendar-day one", () => {
+    it("is false right up to the cutover instant itself (AT noon is still on time)", () => {
+        expect(hasPassedCutover("2026-10-11", new Date("2026-10-11T06:30:00.000Z"))).toBe(false);
+    });
+
+    it("is true the instant after noon on the due date — the exact bug this fixes", () => {
+        // This is the case a calendar-day comparison (businessToday() >
+        // due_on) always got wrong: "today" still equals "due_on" all the
+        // way until midnight, so the old check stayed false for ~12 hours
+        // after the plan had actually lapsed.
+        expect(hasPassedCutover("2026-10-11", new Date("2026-10-11T06:30:00.001Z"))).toBe(true);
+        expect(hasPassedCutover("2026-10-11", new Date("2026-10-11T08:02:05.000Z"))).toBe(true); // 1:32 PM IST
+    });
+
+    it("is false any time before noon on the due date", () => {
+        expect(hasPassedCutover("2026-10-11", new Date("2026-10-11T00:00:00.000Z"))).toBe(false); // 5:30 AM IST
+    });
+
+    it("is true for any date strictly in the past, regardless of time of day", () => {
+        expect(hasPassedCutover("2026-10-10", new Date("2026-10-11T00:00:00.000Z"))).toBe(true);
     });
 });
 
