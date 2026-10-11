@@ -91,8 +91,10 @@ export function Footer() {
       </Container>
 
       <div className="border-t border-white/10">
-        <Container className="flex items-center justify-center py-6 text-sm text-white/40">
+        <Container className="flex flex-col items-center justify-center gap-2 py-6 text-sm text-white/40 sm:flex-row sm:gap-6">
           <p>© {year} Swapngo. All rights reserved.</p>
+          <a href="/terms.html" className="hover:text-primary">Terms &amp; Conditions</a>
+          <a href="/privacy.html" className="hover:text-primary">Privacy Policy</a>
         </Container>
       </div>
     </footer>

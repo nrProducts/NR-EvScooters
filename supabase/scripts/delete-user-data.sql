@@ -21,7 +21,9 @@
 -- clears only the booking cycle, this also removes: the auth user and its
 -- identities (Google/phone), public.users, profiles, KYC, consent and legal
 -- acceptances, addresses, devices, permission overrides, notification
--- subscriptions, privacy requests, HRMS rows, PII-access and audit rows.
+-- subscriptions, privacy requests, HRMS rows, PII-access and audit rows,
+-- referrals and reward cards (when those tables exist — UAT only), and the
+-- alerts staff received about this account's payments, renewals and tickets.
 --
 -- REFUSES (and deletes nothing) when the account has acted on OTHER people's
 -- records in a way that cannot be cleared — e.g. a staff member who reviewed
@@ -30,8 +32,9 @@
 -- is for disposable test accounts, not for removing staff.
 --
 -- NOT DONE: Storage files. Supabase blocks deleting storage objects from
--- SQL, so the script PRINTS the profile-photo, KYC and damage-photo paths;
--- remove them in Dashboard → Storage if you need to.
+-- SQL, so the script PRINTS the profile-photo, KYC and damage-photo paths.
+-- After a real run, `node apps/backend/scripts/beta-clean-storage.mjs`
+-- (then `--apply`) removes exactly those files: any whose owner is now gone.
 --
 -- One transaction. Any failure rolls the whole thing back.
 -- =========================================================================
@@ -57,8 +60,13 @@ declare
     v_incidents uuid[];
     v_gateway_orders text[];
     v_vehicles  uuid[];
+    v_periods   uuid[];
+    v_tickets   uuid[];
+    v_damages   uuid[];
     v_files     text[];
     v_blockers  text;
+    v_referrals int := 0;
+    v_has_referrals boolean := to_regclass('public.referrals') is not null;
     v_audit     int;
     v_pii       int;
     v_consent   int;
@@ -108,6 +116,21 @@ begin
         having count(*) > 0
     ) b;
 
+    -- A reward card earned through a referral this account took part in, and
+    -- already redeemed by the OTHER person against their own invoice: that
+    -- discount is part of someone else's billing history.
+    if v_blockers is null and v_has_referrals then
+        execute $q$
+            select 'referral reward redeemed by another user (' || count(*) || ')'
+              from public.referral_card_redemptions d
+              join public.referral_reward_cards c on c.id = d.reward_card_id
+              join public.referrals r on r.id = c.referral_id
+             where (r.referrer_user_id = $1 or r.referee_user_id = $1)
+               and d.user_id <> $1
+            having count(*) > 0 $q$
+          into v_blockers using v_user;
+    end if;
+
     if v_blockers is not null then
         raise exception 'User % (%) has acted on other people''s records: %. Nothing deleted.',
             v_user, v_role, v_blockers;
@@ -137,6 +160,12 @@ begin
       from public.incidents where rental_id = any (v_rentals);
     select coalesce(array_agg(gateway_order_id), '{}') into v_gateway_orders
       from public.payment_orders where id = any (v_orders) and gateway_order_id is not null;
+    select coalesce(array_agg(id), '{}') into v_periods
+      from public.subscription_periods where subscription_id = any (v_subs);
+    select coalesce(array_agg(id), '{}') into v_tickets
+      from public.support_tickets where user_id = v_user;
+    select coalesce(array_agg(id), '{}') into v_damages
+      from public.damages where incident_id = any (v_incidents);
 
     select coalesce(array_agg(distinct vid), '{}') into v_vehicles from (
         select held_vehicle_id as vid from public.bookings
@@ -171,6 +200,29 @@ begin
     delete from public.rental_returns             where rental_id = any (v_rentals);
     delete from public.rental_vehicle_assignments where rental_id = any (v_rentals);
 
+    -- ── referrals (UAT only — not in the migration folder) ───────────────
+    -- Before invoices: a redemption pins its invoice (ON DELETE RESTRICT).
+    -- Innermost first: redemptions → reward cards → referrals. Cards earned
+    -- through a referral this account was part of go with it; the guard
+    -- above already refused if the other person had redeemed one.
+    if v_has_referrals then
+        execute $q$
+            delete from public.referral_card_redemptions
+             where user_id = $1 or invoice_id = any ($2) $q$
+          using v_user, v_invoices;
+        execute $q$
+            delete from public.referral_reward_cards
+             where user_id = $1
+                or referral_id in (select id from public.referrals
+                                    where referrer_user_id = $1 or referee_user_id = $1) $q$
+          using v_user;
+        execute $q$
+            delete from public.referrals
+             where referrer_user_id = $1 or referee_user_id = $1 $q$
+          using v_user;
+        get diagnostics v_referrals = row_count;
+    end if;
+
     -- ── money, innermost first (ON DELETE RESTRICT chain) ────────────────
     delete from public.payment_allocations
      where payment_transaction_id = any (v_txns) or invoice_id = any (v_invoices);
@@ -198,17 +250,24 @@ begin
     -- ── privacy requests (ON DELETE RESTRICT against users) ──────────────
     delete from public.data_principal_requests where user_id = v_user;
 
-    -- ── notifications about this account's bookings/rentals ──────────────
-    -- Messages go with the user (CASCADE). Events are keyed by subject; only
-    -- those about this account that no other user's message still uses.
+    -- ── notifications about this account ─────────────────────────────────
+    -- Messages to the user go with the user (CASCADE). Events are keyed by
+    -- subject: every event ABOUT this account or one of its records goes too,
+    -- CASCADEing to the alerts staff received about it ("payment received",
+    -- "KYC review needed", …) — those would otherwise open a deleted record.
     delete from public.notification_deliveries
      where notification_message_id in (
          select id from public.notification_messages where user_id = v_user);
     delete from public.notification_messages where user_id = v_user;
     delete from public.notification_events e
-     where (e.subject_id = v_user or e.subject_id = any (v_bookings) or e.subject_id = any (v_rentals))
-       and not exists (select 1 from public.notification_messages m
-                        where m.notification_event_id = e.id);
+     where e.subject_id = v_user
+        or e.subject_id = any (v_bookings)
+        or e.subject_id = any (v_rentals)
+        or e.subject_id = any (v_subs)
+        or e.subject_id = any (v_periods)
+        or e.subject_id = any (v_orders)
+        or e.subject_id = any (v_tickets)
+        or e.subject_id = any (v_damages);
 
     -- ── gateway webhook log for this account's orders ────────────────────
     delete from public.payment_webhook_events
@@ -247,7 +306,7 @@ begin
     perform public.recompute_vehicle_status(vid) from unnest(v_vehicles) as vid;
 
     v_summary := format(
-        'User %s (%s): %s bookings, %s subscriptions, %s rentals, %s invoices, %s payments, %s refunds, %s KYC docs, %s consent rows, %s audit rows, %s PII-log rows; %s vehicles recomputed.',
+        'User %s (%s): %s bookings, %s subscriptions, %s rentals, %s invoices, %s payments, %s refunds, %s KYC docs, %s consent rows, %s audit rows, %s PII-log rows, %s referrals; %s vehicles recomputed.',
         v_user, v_role,
         coalesce(array_length(v_bookings, 1), 0),
         coalesce(array_length(v_subs,     1), 0),
@@ -255,10 +314,10 @@ begin
         coalesce(array_length(v_invoices, 1), 0),
         coalesce(array_length(v_txns,     1), 0),
         coalesce(array_length(v_refunds,  1), 0),
-        v_kyc, v_consent, v_audit, v_pii,
+        v_kyc, v_consent, v_audit, v_pii, v_referrals,
         coalesce(array_length(v_vehicles, 1), 0));
     if coalesce(array_length(v_files, 1), 0) > 0 then
-        v_summary := v_summary || ' Storage files to remove by hand (bucket/path): '
+        v_summary := v_summary || ' Storage files to remove with apps/backend/scripts/beta-clean-storage.mjs (bucket/path): '
                   || array_to_string(v_files, ' | ');
     end if;
 
