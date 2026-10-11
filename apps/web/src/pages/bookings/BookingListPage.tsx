@@ -211,6 +211,12 @@ export default function BookingListPage() {
   const [page, setPage] = useState(1);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  // True once staff choose to swap the already-reserved scooter for a
+  // different one. Picker is hidden by default when a vehicle is already
+  // held — most pickups just hand over what's reserved — this is the
+  // explicit opt-in for the exceptional case (reserved unit turns out
+  // damaged, rider wants a different colour, etc).
+  const [overrideVehicle, setOverrideVehicle] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<PickupBooking | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [vehicleSearch, setVehicleSearch] = useState("");
@@ -226,7 +232,7 @@ export default function BookingListPage() {
     sortDir: sort.dir,
   });
   const { data: availableVehicles, isLoading: vehiclesLoading } = useAvailableVehicles(
-    pickupTarget && !pickupTarget.vehicle ? pickupTarget.id : undefined,
+    pickupTarget && (!pickupTarget.vehicle || overrideVehicle) ? pickupTarget.id : undefined,
   );
   const preBookings = usePreBookings({ page, pageSize: 8 });
   // Case/space-insensitive so "22ab0005" or "TN 22 AB 0005" still matches
@@ -380,6 +386,7 @@ export default function BookingListPage() {
                   setPickupTarget(b);
                   setSelectedVehicleId(null);
                   setVehicleSearch("");
+                  setOverrideVehicle(false);
                 }}
               >
                 <PackageCheck className="h-3.5 w-3.5" /> Confirm pickup
@@ -664,54 +671,76 @@ export default function BookingListPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {pickupTarget?.vehicle ? (
-            <div className="rounded-lg border border-border p-3 text-sm">
-              <p className="font-medium">{pickupTarget.vehicle.registration_number}</p>
-              <p className="text-xs text-muted-foreground">
-                {pickupTarget.vehicle.name} · already reserved
-              </p>
+          {pickupTarget?.vehicle && !overrideVehicle ? (
+            <div className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
+              <div>
+                <p className="font-medium">{pickupTarget.vehicle.registration_number}</p>
+                <p className="text-xs text-muted-foreground">
+                  {pickupTarget.vehicle.name} · already reserved
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { setOverrideVehicle(true); setSelectedVehicleId(null); setVehicleSearch(""); }}
+              >
+                Change scooter
+              </Button>
             </div>
-          ) : vehiclesLoading ? (
-            <Skeleton className="h-32 w-full" />
-          ) : !availableVehicles || availableVehicles.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              No scooters are available at this station right now.
-            </p>
           ) : (
             <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Select a scooter to hand over:</p>
-              <SearchBar
-                value={vehicleSearch}
-                onChange={setVehicleSearch}
-                placeholder="Search by registration number…"
-              />
-              {filteredAvailableVehicles.length === 0 ? (
+              {overrideVehicle && pickupTarget?.vehicle && (
+                <button
+                  type="button"
+                  className="text-xs text-primary underline underline-offset-2"
+                  onClick={() => { setOverrideVehicle(false); setSelectedVehicleId(null); }}
+                >
+                  Keep the reserved scooter ({pickupTarget.vehicle.registration_number}) instead
+                </button>
+              )}
+              {vehiclesLoading ? (
+                <Skeleton className="h-32 w-full" />
+              ) : !availableVehicles || availableVehicles.length === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">
-                  No scooter matches "{vehicleSearch}".
+                  No other scooters are available at this station right now.
                 </p>
               ) : (
-                <div className="max-h-64 space-y-2 overflow-y-auto">
-                  {filteredAvailableVehicles.map((v) => (
-                    <label
-                      key={v.id}
-                      className="flex cursor-pointer items-center justify-between rounded-lg border border-border p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-accent"
-                    >
-                      <div>
-                        <p className="font-medium">{v.registration_number}</p>
-                        <p className="text-xs text-muted-foreground">{v.name}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">{v.battery_percentage}%</span>
-                        <input
-                          type="radio"
-                          name="vehicle"
-                          checked={selectedVehicleId === v.id}
-                          onChange={() => setSelectedVehicleId(v.id)}
-                        />
-                      </div>
-                    </label>
-                  ))}
-                </div>
+                <>
+                  <p className="text-xs text-muted-foreground">Select a scooter to hand over:</p>
+                  <SearchBar
+                    value={vehicleSearch}
+                    onChange={setVehicleSearch}
+                    placeholder="Search by registration number…"
+                  />
+                  {filteredAvailableVehicles.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      No scooter matches "{vehicleSearch}".
+                    </p>
+                  ) : (
+                    <div className="max-h-64 space-y-2 overflow-y-auto">
+                      {filteredAvailableVehicles.map((v) => (
+                        <label
+                          key={v.id}
+                          className="flex cursor-pointer items-center justify-between rounded-lg border border-border p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-accent"
+                        >
+                          <div>
+                            <p className="font-medium">{v.registration_number}</p>
+                            <p className="text-xs text-muted-foreground">{v.name}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">{v.battery_percentage}%</span>
+                            <input
+                              type="radio"
+                              name="vehicle"
+                              checked={selectedVehicleId === v.id}
+                              onChange={() => setSelectedVehicleId(v.id)}
+                            />
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -727,11 +756,19 @@ export default function BookingListPage() {
               Cancel
             </Button>
             <Button
-              disabled={(!pickupTarget?.vehicle && !selectedVehicleId) || confirmPickup.isPending}
+              disabled={
+                ((!pickupTarget?.vehicle || overrideVehicle) && !selectedVehicleId) || confirmPickup.isPending
+              }
               onClick={() => {
                 if (pickupTarget) {
+                  // Reserved + not overriding -> omit vehicleId, backend uses
+                  // held_vehicle_id. Either overriding, or nothing was ever
+                  // reserved -> the explicit pick the admin just made.
+                  const vehicleId = pickupTarget.vehicle && !overrideVehicle
+                    ? undefined
+                    : selectedVehicleId!;
                   confirmPickup.mutate(
-                    { bookingId: pickupTarget.id, vehicleId: pickupTarget.vehicle ? undefined : selectedVehicleId! },
+                    { bookingId: pickupTarget.id, vehicleId },
                     {
                       onSuccess: () => {
                         toastSuccess("Handover confirmed");
