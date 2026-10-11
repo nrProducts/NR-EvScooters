@@ -5,7 +5,7 @@ import { env } from "../../config/env";
  * A durable, one-way fingerprint of a real person — not an account row — so
  * "one redemption per person, ever" survives deleting and recreating the
  * account. `referral_identity_marks` (see supabase/migrations/
- * 20261011100000_referral_identity_marks.sql) is deliberately NOT touched by
+ * 20261011053133_referral_identity_marks.sql) is deliberately NOT touched by
  * anonymise_user(): the whole point is that it outlives the erasure that
  * scrubs everything else, the same way financial records already do for a
  * documented legal-obligation reason.
