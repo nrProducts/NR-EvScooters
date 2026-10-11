@@ -110,7 +110,13 @@ export function deriveKycStatus(docs: Array<Pick<DocumentRow, "document_type" | 
 
     if (verified === MANDATORY_KYC_DOC_TYPES.length) return "verified";
     if (verified > 0) return "partially_verified";
-    return "pending";
+    // All mandatory types present but none verified yet — this is what
+    // submitKyc() actually requires before it will submit, so it's the only
+    // case that belongs in the admin's actionable queue. Fewer than that is
+    // a rider still mid-upload (e.g. Aadhaar in, driving licence not yet) —
+    // 'incomplete', not 'pending': nothing for an admin to review yet.
+    if (mandatory.length >= MANDATORY_KYC_DOC_TYPES.length) return "pending";
+    return "incomplete";
 }
 
 // ---------------------------------------------------------------------------

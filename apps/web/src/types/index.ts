@@ -163,7 +163,7 @@ export const hasModuleAccess = (
 // ---------------------------------------------------------------------------
 
 export type AccountStatus = "active" | "inactive" | "suspended";
-export type KycStatus = "not_submitted" | "pending" | "partially_verified" | "verified" | "rejected";
+export type KycStatus = "not_submitted" | "incomplete" | "pending" | "partially_verified" | "verified" | "rejected";
 
 export interface AppUser {
   id: string;

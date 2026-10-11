@@ -504,6 +504,7 @@ export const en = {
     'status.billingCycle.yearly': 'Year',
 
     'status.kyc.not_submitted': 'Not Submitted',
+    'status.kyc.incomplete': 'Incomplete',
     'status.kyc.pending': 'Pending',
     'status.kyc.partially_verified': 'Partly Verified',
     'status.kyc.verified': 'Verified',

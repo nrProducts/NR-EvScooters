@@ -30,6 +30,7 @@ type StaffAccessReason = Exclude<PiiAccessReason, "rider_self">;
 import { useAuthStore } from "@/store/authStore";
 
 const TABS: { value: KycStatus | "all"; label: string }[] = [
+  { value: "incomplete", label: "Incomplete" },
   { value: "pending", label: "Pending" },
   { value: "partially_verified", label: "Partial" },
   { value: "verified", label: "Verified" },

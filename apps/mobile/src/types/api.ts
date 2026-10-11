@@ -18,9 +18,9 @@ export const ROLE_NAMES: RoleName[] = ['rider', 'staff', 'admin'];
 export type AccountStatus = 'active' | 'inactive' | 'suspended';
 export const ACCOUNT_STATUSES: AccountStatus[] = ['active', 'inactive', 'suspended'];
 
-export type KycStatus = 'not_submitted' | 'pending' | 'partially_verified' | 'verified' | 'rejected';
+export type KycStatus = 'not_submitted' | 'incomplete' | 'pending' | 'partially_verified' | 'verified' | 'rejected';
 export const KYC_STATUSES: KycStatus[] = [
-    'not_submitted', 'pending', 'partially_verified', 'verified', 'rejected',
+    'not_submitted', 'incomplete', 'pending', 'partially_verified', 'verified', 'rejected',
 ];
 
 /**

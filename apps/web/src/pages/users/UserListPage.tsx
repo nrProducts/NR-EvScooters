@@ -35,7 +35,7 @@ import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { initials, formatDate, formatPhoneLocal } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
-const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "pending", "partially_verified", "verified", "rejected"];
+const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "incomplete", "pending", "partially_verified", "verified", "rejected"];
 
 /** The role tabs plus a cross-role queue of self-registered accounts awaiting approval. */
 type UserTab = BackendRoleName | "pending";

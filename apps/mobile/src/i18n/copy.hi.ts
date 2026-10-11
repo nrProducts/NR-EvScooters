@@ -471,6 +471,7 @@ export const hi: Copy = {
     'status.billingCycle.yearly': 'साल',
 
     'status.kyc.not_submitted': 'जमा नहीं किया गया',
+    'status.kyc.incomplete': 'अधूरा',
     'status.kyc.pending': 'बाकी है',
     'status.kyc.partially_verified': 'आंशिक रूप से सत्यापित',
     'status.kyc.verified': 'सत्यापित',

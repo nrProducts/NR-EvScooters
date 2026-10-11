@@ -37,6 +37,7 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   resolved: "success",
   fulfilled: "success",
   not_submitted: "muted",
+  incomplete: "muted",
   partially_verified: "warning",
   confirmed: "info",
   pending_payment: "warning",

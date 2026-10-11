@@ -33,6 +33,7 @@ export const BILLING_CYCLE_LABEL_KEY: Record<BillingCycle, CopyKey> = {
 
 export const KYC_STATUS_TONE: Record<KycStatus, Tone> = {
   not_submitted: 'neutral',
+  incomplete: 'neutral',
   pending: 'warning',
   partially_verified: 'primary',
   verified: 'success',
@@ -42,6 +43,7 @@ export const KYC_STATUS_TONE: Record<KycStatus, Tone> = {
 /** Enum values are snake_case; these resolve to what a human should read. */
 export const KYC_STATUS_LABEL_KEY: Record<KycStatus, CopyKey> = {
   not_submitted: 'status.kyc.not_submitted',
+  incomplete: 'status.kyc.incomplete',
   pending: 'status.kyc.pending',
   partially_verified: 'status.kyc.partially_verified',
   verified: 'status.kyc.verified',

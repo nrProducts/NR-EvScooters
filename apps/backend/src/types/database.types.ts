@@ -4451,6 +4451,7 @@ export type Database = {
         | "address_proof"
       kyc_status:
         | "not_submitted"
+        | "incomplete"
         | "pending"
         | "partially_verified"
         | "verified"
@@ -4743,6 +4744,7 @@ export const Constants = {
       ],
       kyc_status: [
         "not_submitted",
+        "incomplete",
         "pending",
         "partially_verified",
         "verified",

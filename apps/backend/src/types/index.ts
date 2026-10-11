@@ -127,7 +127,7 @@ export const USER_STATUSES: readonly UserStatus[] = [
 
 export type KycStatus = Enums["kyc_status"];
 export const KYC_STATUSES: readonly KycStatus[] = [
-    "not_submitted", "pending", "partially_verified", "verified", "rejected",
+    "not_submitted", "incomplete", "pending", "partially_verified", "verified", "rejected",
 ] as const;
 
 /** Note the spelling: the new enum is `driving_licence`, not `driving_license`. */

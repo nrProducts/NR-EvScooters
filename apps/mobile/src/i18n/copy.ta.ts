@@ -475,6 +475,7 @@ export const ta: Copy = {
     'status.billingCycle.yearly': 'ஆண்டு',
 
     'status.kyc.not_submitted': 'சமர்ப்பிக்கப்படவில்லை',
+    'status.kyc.incomplete': 'முழுமையடையவில்லை',
     'status.kyc.pending': 'நிலுவையில்',
     'status.kyc.partially_verified': 'பகுதி சரிபார்க்கப்பட்டது',
     'status.kyc.verified': 'சரிபார்க்கப்பட்டது',
