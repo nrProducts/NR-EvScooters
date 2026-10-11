@@ -42,7 +42,11 @@ const DOCS = [
         description: "Swapngo's privacy policy: how we collect, use, and protect rider data for our EV scooter rental service in Chennai.",
     },
     {
-        src: "docs/legal/terms-and-conditions.md",
+        // The OPERATIVE text — byte-identical to what the rider app renders
+        // (public.legal_documents). The long-form lawyer draft stays in
+        // docs/legal/terms-and-conditions.md and is NOT published.
+        src: "docs/legal/terms-operative.md",
+        mustMatchMigration: "supabase/migrations/20260904155921_legal_documents.sql",
         out: "terms.html",
         title: "Terms & Conditions — Swapngo",
         description: "The terms and conditions governing EV scooter rental bookings, payments, and returns with Swapngo in Chennai.",
@@ -209,6 +213,21 @@ for (const doc of DOCS) {
     }
 
     const md = readFileSync(srcPath, "utf8");
+
+    // Website and app must show the same Terms. The app serves the row seeded
+    // by this migration until a newer version is published through the API;
+    // when that happens, update terms-operative.md AND this check together.
+    if (doc.mustMatchMigration) {
+        const sql = readFileSync(resolve(repoRoot, doc.mustMatchMigration), "utf8");
+        const seeded = sql.match(/\$terms\$([\s\S]*?)\$terms\$/)?.[1];
+        if (seeded !== md) {
+            console.error(
+                `\n[legal] ${doc.src} differs from the Terms the app serves (${doc.mustMatchMigration}). Website and app must match.\n`,
+            );
+            failed = true;
+            continue;
+        }
+    }
     const withoutComments = md.replace(/<!--[\s\S]*?-->/g, "");
     const placeholders = [...new Set(withoutComments.match(/\[[A-Z][A-Z0-9 ,.\/&—-]{2,}\]/g) ?? [])];
 
