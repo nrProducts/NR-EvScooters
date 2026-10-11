@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { ArrowRight, Hash, LifeBuoy, RefreshCw } from 'lucide-react-native';
 import { Badge } from './ui/Badge';
 import { SCOOTER_HERO } from '../lib/scooterImage';
+import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
 import { COLORS } from '../constants/theme';
 import { RENTAL_STATUS_LABEL_KEY, RENTAL_STATUS_TONE, formatDate } from '../constants/status';
 import { getRenewalEligibility } from '../lib/returnPolicy';
@@ -42,6 +43,17 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
   const router = useRouter();
   const { t } = useT();
   const { vehicle, plan } = rental;
+
+  // The rental payload carries no photo of its own (ApiRental.vehicle has no
+  // image_url) — same workaround my-scooter.tsx already uses: the catalog's
+  // featured-model artwork, which is the rider's actual assigned model as
+  // long as the fleet has one model, same as the real fleet does today.
+  // SCOOTER_HERO stays the fallback for when the catalog has no photo yet.
+  const { featured, loadFeatured } = useVehicleCatalogStore();
+  useEffect(() => {
+    void loadFeatured();
+  }, [loadFeatured]);
+  const heroImage = featured?.image_url ?? SCOOTER_HERO;
 
   const periodStart = rental.current_period_start ?? rental.started_at;
   const dueDate = rental.next_due_at ?? rental.expires_at;
@@ -145,7 +157,7 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
           style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
         >
           <Image
-            source={SCOOTER_HERO}
+            source={heroImage}
             accessibilityLabel={vehicle?.name ?? t('home.yourScooter')}
             contentFit="contain"
             style={{ width: 64, height: 52, marginRight: 12, flexShrink: 0 }}

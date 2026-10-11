@@ -81,7 +81,10 @@ export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model 
         style={{ backgroundColor: COLORS.card }}
       >
         <Image
-          source={SCOOTER_HERO}
+          // The real fleet photo for this model, same source as the Browse
+          // Vehicles list and My Scooter tab — SCOOTER_HERO is only the
+          // fallback for a model with no catalog photo uploaded yet.
+          source={model.image_url ?? SCOOTER_HERO}
           style={{ width: '100%', height: 150 }}
           contentFit="contain"
           cachePolicy="memory-disk"

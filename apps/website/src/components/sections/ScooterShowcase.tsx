@@ -59,14 +59,6 @@ export function ScooterShowcase() {
             </div>
 
             <div className="relative">
-              <span
-                aria-hidden
-                className="absolute -top-2 right-2 hidden -rotate-3 font-script text-3xl leading-[0.85] text-primary sm:block"
-              >
-                Ride
-                <br />
-                Green
-              </span>
               <ScooterIllustration className="mx-auto aspect-square w-full max-w-md" />
             </div>
           </div>
