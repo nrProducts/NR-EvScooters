@@ -1,56 +1,13 @@
 -- =========================================================================
--- KYC: distinguish "uploaded one of several required documents" from
--- "uploaded everything, awaiting review"
+-- KYC: add the 'incomplete' enum value.
 --
--- compute_kyc_status() returned 'pending' the moment a rider uploaded ANY
--- mandatory document — not once they'd uploaded ALL of them. A rider who
--- uploaded only Aadhaar (driving_licence still missing) showed up in the
--- admin's "Pending" queue indistinguishable from one who'd genuinely
--- finished and tapped Submit, Approve/Reject offered right there — even
--- though submitKyc() itself already correctly refuses to submit (and never
--- sends the kyc_review_needed notification) until every mandatory document
--- type is present. The notification side was always right; the STATUS/QUEUE
--- side was not, and let an admin act on a submission that was never
--- actually complete.
---
--- New 'incomplete' status: some, but not all, mandatory document types
--- uploaded, nothing verified yet. 'pending' now means what submitKyc()
--- already requires of it — every mandatory type present.
+-- Split from the function/backfill that actually uses it (see
+-- 20261011150100_kyc_incomplete_status_function.sql) because Postgres
+-- refuses to use a value in the same transaction that adds it to an enum
+-- (SQLSTATE 55P04, "unsafe use of new value") — even on modern Postgres,
+-- even across two separate statements, as long as they're both inside the
+-- one transaction a migration file runs as. The ADD VALUE has to commit on
+-- its own first.
 -- =========================================================================
 
 alter type public.kyc_status add value if not exists 'incomplete' after 'not_submitted';
-
-create or replace function public.compute_kyc_status(p_user_id uuid)
-returns public.kyc_status
-language plpgsql stable set search_path = ''
-as $$
-declare
-    v_required int := array_length(public.mandatory_kyc_doc_types(), 1);
-    v_total    int;
-    v_verified int;
-    v_rejected int;
-begin
-    select count(*) filter (where d.document_type = any (public.mandatory_kyc_doc_types())),
-           count(*) filter (where d.document_type = any (public.mandatory_kyc_doc_types())
-                              and d.verification_status = 'verified'),
-           count(*) filter (where d.document_type = any (public.mandatory_kyc_doc_types())
-                              and d.verification_status = 'rejected')
-      into v_total, v_verified, v_rejected
-      from public.kyc_documents d
-     where d.user_id = p_user_id;
-
-    if v_total = 0                 then return 'not_submitted';
-    elsif v_rejected > 0           then return 'rejected';
-    elsif v_verified >= v_required then return 'verified';
-    elsif v_verified > 0           then return 'partially_verified';
-    elsif v_total >= v_required    then return 'pending';
-    else                                 return 'incomplete';
-    end if;
-end $$;
-
--- Recompute every rider's stored kyc_status with the corrected function —
--- same pattern as 20260908120000_fix_kyc_rejected_filter.sql.
-update public.rider_profiles
-   set kyc_status = public.compute_kyc_status(user_id),
-       updated_at = now()
- where kyc_status is distinct from public.compute_kyc_status(user_id);
