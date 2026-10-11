@@ -76,7 +76,7 @@ jobs:
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
       - run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
-      - run: supabase db push --dry-run
+      - run: supabase db push --dry-run --include-all
 
   uat-deploy:
     needs: backend-check
@@ -94,7 +94,7 @@ jobs:
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
       - run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
-      - run: supabase db push
+      - run: supabase db push --include-all
       - run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID"
 
   # Push to main: dry-run against production first. Read this job's log
@@ -115,7 +115,7 @@ jobs:
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
       - run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
-      - run: supabase db push --dry-run
+      - run: supabase db push --dry-run --include-all
 
   prod-deploy:
     needs: prod-plan
@@ -132,5 +132,5 @@ jobs:
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
       - run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
-      - run: supabase db push
+      - run: supabase db push --include-all
       - run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID"
