@@ -162,7 +162,7 @@ export async function createBookingOrder(
     if (quote.amount <= 0) throw businessRule("This plan has no payable amount.");
     const amount = quote.amount;
 
-    const idempotencyKey = `booking:${actor.id}:${input.plan_id}:${input.start_day}:${amount}`;
+    const idempotencyKey = await buildBookingIdempotencyKey(actor.id, input.plan_id, input.start_day, amount);
 
     const reusable = await findReusableBookingOrder(actor.id, idempotencyKey, quote.lines);
     if (reusable) return reusable;
@@ -231,6 +231,46 @@ export async function createBookingOrder(
     });
 
     return toOrderResult(order, quote.lines);
+}
+
+/**
+ * The deterministic key (user+plan+day+amount) exists to coalesce a rider
+ * double-tapping "Pay" into ONE order, not two. That's correct right up
+ * until the booking it eventually produces gets CANCELLED — a rider told
+ * "book again" after a staff cancellation is making a genuinely new
+ * attempt, but a plain deterministic key would collide with their own
+ * already-`paid` order from the first attempt: reopenDeadBookingOrder
+ * explicitly won't touch a `paid` row (see its own comment), so the retry
+ * fell through to inserting a duplicate idempotency_key, hit the unique
+ * constraint, and surfaced as a bare Postgres error with no ApiError
+ * wrapping — "Something went wrong" on the rider's screen, no record of
+ * why anywhere.
+ *
+ * Fix: count how many of this rider's bookings for this exact plan+day have
+ * already been cancelled, and fold that count into the key. First attempt
+ * gets the plain key as always (same-tap double-submits still coalesce).
+ * Each cancel-and-retry afterwards gets its own distinct, stable key — still
+ * one order per actual attempt, never colliding with an attempt that's
+ * already been spent and cancelled.
+ */
+async function buildBookingIdempotencyKey(
+    userId: string,
+    planId: string,
+    startDay: string,
+    amount: number,
+): Promise<string> {
+    const base = `booking:${userId}:${planId}:${startDay}:${amount}`;
+
+    const { count, error } = await supabaseAdmin
+        .from("bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("plan_id", planId)
+        .eq("requested_start_on", startDay)
+        .eq("status", "cancelled");
+    if (error) throw error;
+
+    return count && count > 0 ? `${base}:retry-${count}` : base;
 }
 
 async function findReusableBookingOrder(
