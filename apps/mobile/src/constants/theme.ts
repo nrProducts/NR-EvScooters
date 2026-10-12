@@ -12,11 +12,8 @@ export const COLORS = {
   textPrimary: '#1F2937',
   textSecondary: '#6B7280',
   success: '#21C45D',
-  // Recommended Swapngo palette: amber for past-due/overdue/late-fee
-  // warnings, muted coral reserved for payment failures and genuine errors
-  // — not the louder, more saturated amber/red this replaced.
-  warning: '#A96512',
-  danger: '#C65D52',
+  warning: '#F59E0B',
+  danger: '#EF4444',
   border: '#E5E7EB',
 
   white: '#FFFFFF',
@@ -35,8 +32,8 @@ export const COLORS = {
   },
   status: {
     green: '#21C45D',
-    amber: '#A96512',
-    red: '#C65D52',
+    amber: '#F59E0B',
+    red: '#EF4444',
   },
 
   // --- Legacy dark-forest theme keys ---

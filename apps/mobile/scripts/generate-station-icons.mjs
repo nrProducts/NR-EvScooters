@@ -43,8 +43,8 @@ const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'm
 // same as every other duplicated brand-colour constant in this repo.
 const STATUS_COLORS = {
     working: '#21C45D',
-    maintenance: '#A96512',
-    'not-working': '#C65D52',
+    maintenance: '#F59E0B',
+    'not-working': '#EF4444',
     offline: '#6B7280',
 };
 
