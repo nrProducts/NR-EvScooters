@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Spinner } from '../../components/Spinner';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CreditCard, ShieldCheck, Receipt, Gift, X } from 'lucide-react-native';
+import { ChevronDown, CreditCard, ShieldCheck, Receipt, Gift, X } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorState } from '../../components/ui/ErrorState';
@@ -395,7 +395,12 @@ export default function BillingScreen() {
     try {
       await referralRepository.applyCard(cardId, invoiceId);
       setCardPickerInvoiceId(null);
-      await Promise.all([reload(), reloadReferralSummary()]);
+      // background: true — this card row already shows its own inline
+      // Spinner (`busy`). A foreground reload() drops the WHOLE screen to
+      // the top-level loading spinner (blank but for that one glyph) while
+      // this tiny ₹1 discount applies, same bug as the full-screen flash a
+      // pull-to-refresh deliberately avoids with the same flag.
+      await Promise.all([reload(true), reloadReferralSummary()]);
     } catch (err) {
       setCardActionError(err instanceof ApiError ? err.message : t('billing.referralCard.applyFailed'));
     } finally {
@@ -408,7 +413,8 @@ export default function BillingScreen() {
     setCardActionInvoiceId(invoiceId);
     try {
       await referralRepository.releaseCard(redemptionId);
-      await Promise.all([reload(), reloadReferralSummary()]);
+      // background: true — same reasoning as applyReferralCard above.
+      await Promise.all([reload(true), reloadReferralSummary()]);
     } catch (err) {
       setCardActionError(err instanceof ApiError ? err.message : t('billing.referralCard.removeFailed'));
     } finally {
@@ -852,8 +858,8 @@ export default function BillingScreen() {
             disabled={busy}
             accessibilityRole="button"
             accessibilityLabel={t('billing.referralCard.remove')}
-            className="w-6 h-6 rounded-full items-center justify-center"
-            style={{ opacity: busy ? 0.5 : 1 }}
+            className="w-7 h-7 rounded-full items-center justify-center"
+            style={{ backgroundColor: COLORS.primary + '1A', opacity: busy ? 0.6 : 1 }}
           >
             {busy ? <Spinner size={12} color={COLORS.primary} /> : <X size={14} color={COLORS.primary} />}
           </TouchableOpacity>
@@ -875,22 +881,28 @@ export default function BillingScreen() {
           <Text style={{ color: COLORS.primary }} className="text-[12px] font-bold flex-1">
             {t('billing.referralCard.offer', { count: availableReferralCards.length })}
           </Text>
+          <ChevronDown size={15} color={COLORS.primary} />
         </TouchableOpacity>
       );
     }
 
+    // Each option is its own gap-separated rounded button (not a flat list
+    // row) — a bare line of text with a top-border divider read as a label,
+    // not something to tap. Cancel is a real secondary button for the same
+    // reason, not a link glued to the bottom of the list.
     return (
-      <View className="mx-5 mb-4 rounded-xl border overflow-hidden" style={{ borderColor: COLORS.border }}>
-        {availableReferralCards.map((card, i) => (
+      <View className="mx-5 mb-4" style={{ gap: 8 }}>
+        {availableReferralCards.map((card) => (
           <TouchableOpacity
             key={card.id}
             onPress={() => void applyReferralCard(inv.id, card.id)}
             disabled={busy}
             accessibilityRole="button"
-            className="flex-row items-center justify-between px-3.5 py-3"
-            style={i > 0 ? { borderTopWidth: 1, borderColor: COLORS.border } : undefined}
+            className="flex-row items-center rounded-xl px-3.5 py-3"
+            style={{ backgroundColor: COLORS.primary + '14', opacity: busy ? 0.6 : 1, gap: 8 }}
           >
-            <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-bold">
+            <Gift size={15} color={COLORS.primary} />
+            <Text style={{ color: COLORS.primary }} className="text-[13px] font-bold flex-1">
               {t('billing.referralCard.off', { amount: card.amount.toFixed(0) })}
             </Text>
             {busy ? <Spinner size={14} color={COLORS.primary} /> : null}
@@ -898,11 +910,12 @@ export default function BillingScreen() {
         ))}
         <TouchableOpacity
           onPress={() => setCardPickerInvoiceId(null)}
+          disabled={busy}
           accessibilityRole="button"
-          className="px-3.5 py-2.5"
-          style={{ borderTopWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.background }}
+          className="rounded-xl border px-3.5 py-2.5 items-center"
+          style={{ borderColor: COLORS.border, backgroundColor: COLORS.background, opacity: busy ? 0.6 : 1 }}
         >
-          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold text-center">
+          <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold">
             {t('common.cancel')}
           </Text>
         </TouchableOpacity>

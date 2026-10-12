@@ -77,6 +77,20 @@ export function describeExpiry(expiresAt: string | null, now: Date = new Date())
   const daysLeft = calendarDaysBetween(now, expires);
   const on = expires.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
+  // Rental cycles run exact instant-to-instant (e.g. 12 PM to 12 PM), not
+  // midnight to midnight — rentals.expires_at carries whatever time the
+  // backend's planExpiryFor wrote, which is noon on the expiry day, not
+  // 23:59:59. calendarDaysBetween alone can't see that: "now" at 4:30 PM and
+  // an expiry of noon both bucket to the SAME IST day, so daysLeft reads 0
+  // on both sides of the actual deadline. Comparing the real instants here is
+  // what tells "still today, not due yet" (09:00, before a noon expiry) apart
+  // from "today, but already past" (16:30, after it) — both land on
+  // daysLeft === 0 and would otherwise show the same "last day" text long
+  // after the plan had actually expired.
+  if (daysLeft === 0 && now.getTime() >= expires.getTime()) {
+    return { text: 'Expired today', headline: 'Your plan expired today.', tone: 'danger', daysLeft: 0 };
+  }
+
   if (daysLeft < 0) {
     const over = Math.abs(daysLeft);
     return {

@@ -3,11 +3,12 @@ import { Layer } from '@maplibre/maplibre-react-native';
 import { COLORS } from '../../../constants/theme';
 
 /**
- * Station markers — every station, unclustered, rendered as a small flat
- * "dot" pin rather than a numbered bubble: a soft shadow, a white disc, and
- * a status-coloured core. Minimal on purpose — the map's job is "where are
- * they", not showing the battery count or status at a glance from the pin;
- * that detail is one tap away in the bottom sheet.
+ * Station markers — every station, unclustered, as a small flat status-
+ * coloured disc with a white bolt on top (registered by BatteryStationMapView
+ * via <Images>, see scripts/generate-station-icons.mjs). Status reads from
+ * the disc's own colour, the same way a traffic light does — WORKING is the
+ * app's own primary green (COLORS.success === COLORS.primary), MAINTENANCE
+ * amber, NOT_WORKING red.
  *
  * These are MapLibre *style layers*, not React views: 37 stations today and an
  * open-ended number later, all re-rendered on every camera frame, is exactly
@@ -18,7 +19,7 @@ import { COLORS } from '../../../constants/theme';
 
 export const STATION_LAYER_ID = 'battery-station-points';
 const STATION_SHADOW_LAYER_ID = 'battery-station-shadow';
-const STATION_CORE_LAYER_ID = 'battery-station-core';
+const STATION_ICON_LAYER_ID = 'battery-station-icon';
 const STATION_SELECTED_LAYER_ID = 'battery-station-selected';
 
 /** Matched to StationStatusBadge so the map and the sheet agree. */
@@ -55,7 +56,7 @@ export const BatteryStationMarker: React.FC<{ selectedStationId: string | null }
             type="circle"
             filter={['!', ['has', 'point_count']]}
             paint={{
-                'circle-radius': 11,
+                'circle-radius': 12,
                 'circle-color': COLORS.black,
                 'circle-opacity': 0.18,
                 'circle-blur': 0.9,
@@ -68,18 +69,23 @@ export const BatteryStationMarker: React.FC<{ selectedStationId: string | null }
             type="circle"
             filter={['!', ['has', 'point_count']]}
             paint={{
-                'circle-radius': 9,
-                'circle-color': COLORS.white,
+                'circle-radius': 11,
+                'circle-color': STATUS_COLOR_EXPRESSION as unknown as string,
+                'circle-stroke-width': 1.5,
+                'circle-stroke-color': COLORS.white,
             }}
         />
 
         <Layer
-            id={STATION_CORE_LAYER_ID}
-            type="circle"
+            id={STATION_ICON_LAYER_ID}
+            type="symbol"
             filter={['!', ['has', 'point_count']]}
-            paint={{
-                'circle-radius': 5,
-                'circle-color': STATUS_COLOR_EXPRESSION as unknown as string,
+            layout={{
+                'icon-image': 'station-bolt',
+                // Source is 96px; 0.14 renders it ~13px inside the 22px disc.
+                'icon-size': 0.14,
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
             }}
         />
     </>

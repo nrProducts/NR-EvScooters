@@ -1,5 +1,5 @@
 import React, { forwardRef, useCallback, useImperativeHandle, useMemo, useRef } from 'react';
-import { View } from 'react-native';
+import { Image, View } from 'react-native';
 import MapGL, {
     Source, Layer, Marker, type MapRef, type MapLayerMouseEvent,
 } from 'react-map-gl/maplibre';
@@ -30,16 +30,17 @@ import { useT } from '../../../i18n';
  *
  * The underlying GL style spec (paint/layout/filter expressions) is the same
  * language on native and web MapLibre, which is why these layers are a
- * faithful port rather than a different visual design — same minimal dot
- * markers, same status colours, just declared against react-map-gl's
+ * faithful port rather than a different visual design — same status-coloured
+ * disc with a white bolt on top, just declared against react-map-gl's
  * <Source>/<Layer> instead of the native one's.
  */
 
 const SOURCE_ID = 'battery-stations';
 const STATION_LAYER_ID = 'battery-station-points';
 const STATION_SHADOW_LAYER_ID = 'battery-station-shadow';
-const STATION_CORE_LAYER_ID = 'battery-station-core';
+const STATION_ICON_LAYER_ID = 'battery-station-icon';
 const STATION_SELECTED_LAYER_ID = 'battery-station-selected';
+const BOLT_ICON_NAME = 'station-bolt';
 
 const STATUS_COLOR_EXPRESSION = [
     'match',
@@ -91,6 +92,21 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
         },
     }), [focusCoordinates, fitAll]);
 
+    /** Registers the bolt sprite once the style has finished loading — maplibre-gl's addImage needs a loaded style to attach to. */
+    const handleLoad = useCallback(() => {
+        const map = mapRef.current?.getMap();
+        if (!map || map.hasImage(BOLT_ICON_NAME)) return;
+        const uri = Image.resolveAssetSource(require('../../../../assets/map/station-bolt.png'))?.uri;
+        if (!uri) return;
+        map.loadImage(uri).then(({ data }) => {
+            if (!map.hasImage(BOLT_ICON_NAME)) map.addImage(BOLT_ICON_NAME, data);
+        }).catch(() => {
+            // A missing sprite leaves the plain status-coloured circle
+            // underneath it — still legible, not worth surfacing as an error
+            // for what is purely a decorative glyph.
+        });
+    }, []);
+
     /**
      * A click on the station layer hands back the feature under the pointer
      * — same shape resolvePressedFeature already expects from the native
@@ -120,6 +136,7 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
             style={{ width: '100%', height: '100%' }}
             interactiveLayerIds={[STATION_LAYER_ID]}
             onClick={handleClick}
+            onLoad={handleLoad}
             onZoom={(e) => { zoomRef.current = e.viewState.zoom; }}
         >
             <Source id={SOURCE_ID} type="geojson" data={featureCollection}>
@@ -136,7 +153,7 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
                     id={STATION_SHADOW_LAYER_ID}
                     type="circle"
                     paint={{
-                        'circle-radius': 11,
+                        'circle-radius': 12,
                         'circle-color': COLORS.black,
                         'circle-opacity': 0.18,
                         'circle-blur': 0.9,
@@ -147,13 +164,24 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
                 <Layer
                     id={STATION_LAYER_ID}
                     type="circle"
-                    paint={{ 'circle-radius': 9, 'circle-color': COLORS.white }}
+                    paint={{
+                        'circle-radius': 11,
+                        'circle-color': STATUS_COLOR_EXPRESSION as unknown as string,
+                        'circle-stroke-width': 1.5,
+                        'circle-stroke-color': COLORS.white,
+                    }}
                 />
 
                 <Layer
-                    id={STATION_CORE_LAYER_ID}
-                    type="circle"
-                    paint={{ 'circle-radius': 5, 'circle-color': STATUS_COLOR_EXPRESSION as unknown as string }}
+                    id={STATION_ICON_LAYER_ID}
+                    type="symbol"
+                    layout={{
+                        'icon-image': BOLT_ICON_NAME,
+                        // Source is 96px; 0.14 renders it ~13px inside the 22px disc.
+                        'icon-size': 0.14,
+                        'icon-allow-overlap': true,
+                        'icon-ignore-placement': true,
+                    }}
                 />
             </Source>
 

@@ -1,29 +1,26 @@
 /**
- * Generates the battery marker icons used by the Battery Stations map.
+ * Generates the battery-station marker icon used by the Battery Stations map.
  *
  *   node scripts/generate-station-icons.mjs
  *
- * Why a generator rather than committed art: these are three tiny
- * white-on-transparent glyphs that must stay visually consistent with each
- * other, and a script makes "nudge the stroke weight" a one-line change
- * instead of a round trip through a design tool. The PNGs it writes ARE
- * committed — this is here so they can be regenerated, not run at build time.
+ * Why a generator rather than committed art: this is a tiny white-on-
+ * transparent glyph, and a script makes "nudge the stroke weight" a one-line
+ * change instead of a round trip through a design tool. The PNG it writes IS
+ * committed — this is here so it can be regenerated, not run at build time.
  *
- * Each icon is a battery outline plus a distinguishing inner glyph:
+ * One icon now, not three: status used to be a different glyph shape per
+ * status (battery + check/!/cross) so it survived colour blindness and
+ * greyscale screenshots without relying on the circle's fill colour alone.
+ * The marker redesign dropped that in favour of a single bolt on a
+ * status-coloured circle — simpler, matches the app's own charging-bolt
+ * motif (BatteryCharging iconography used elsewhere), status now read
+ * from the circle colour the same way a traffic light is.
  *
- *   working      battery + check     the network is swappable here
- *   maintenance  battery + "!"       staff are working on it
- *   not-working  battery + cross     do not ride here expecting a swap
- *
- * The glyphs differ in SHAPE, not just the circle colour behind them. That is
- * the whole point: colour alone fails for red-green colour blindness, direct
- * sunlight, and greyscale screenshots.
- *
- * Rendered white so the marker layer can sit them on the status-coloured
+ * Rendered white so the marker layer can sit it on the status-coloured
  * circle without needing SDF tinting.
  */
 import { deflateSync } from 'node:zlib';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,39 +43,49 @@ function plot(canvas, x, y, alpha = 255) {
     canvas[i + 3] = Math.max(canvas[i + 3], alpha);
 }
 
-function fillRect(canvas, x0, y0, x1, y1) {
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) plot(canvas, x, y);
-}
+/**
+ * Fills a closed polygon (list of [x, y] vertices, in order) with a classic
+ * scanline algorithm: for each row, find where the polygon's edges cross it,
+ * sort those x's, and fill the spans between each pair.
+ */
+function fillPolygon(canvas, points) {
+    const ys = points.map((p) => p[1]);
+    const yMin = Math.max(0, Math.floor(Math.min(...ys)));
+    const yMax = Math.min(SIZE - 1, Math.ceil(Math.max(...ys)));
 
-function clearRect(canvas, x0, y0, x1, y1) {
-    for (let y = y0; y <= y1; y++) {
-        for (let x = x0; x <= x1; x++) {
-            const i = (y * SIZE + x) * 4;
-            canvas[i + 3] = 0;
-        }
-    }
-}
-
-/** Round-capped line, drawn by stamping a disc along the segment. */
-function drawLine(canvas, x0, y0, x1, y1, radius) {
-    const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2);
-    for (let s = 0; s <= steps; s++) {
-        const t = steps === 0 ? 0 : s / steps;
-        const cx = x0 + (x1 - x0) * t;
-        const cy = y0 + (y1 - y0) * t;
-        for (let dy = -radius; dy <= radius; dy++) {
-            for (let dx = -radius; dx <= radius; dx++) {
-                if (dx * dx + dy * dy <= radius * radius) plot(canvas, cx + dx, cy + dy);
+    for (let y = yMin; y <= yMax; y++) {
+        const scanY = y + 0.5;
+        const xs = [];
+        for (let i = 0; i < points.length; i++) {
+            const [x0, y0] = points[i];
+            const [x1, y1] = points[(i + 1) % points.length];
+            if ((y0 <= scanY && y1 > scanY) || (y1 <= scanY && y0 > scanY)) {
+                xs.push(x0 + ((scanY - y0) / (y1 - y0)) * (x1 - x0));
             }
         }
+        xs.sort((a, b) => a - b);
+        for (let i = 0; i + 1 < xs.length; i += 2) {
+            const xStart = Math.max(0, Math.round(xs[i]));
+            const xEnd = Math.min(SIZE - 1, Math.round(xs[i + 1]));
+            for (let x = xStart; x <= xEnd; x++) plot(canvas, x, y);
+        }
     }
 }
 
-/** The shared battery body: outline + terminal nub, hollow inside. */
-function drawBattery(canvas) {
-    fillRect(canvas, 8, 26, 74, 70);   // body
-    clearRect(canvas, 15, 33, 67, 63); // hollow it out, leaving a 7px wall
-    fillRect(canvas, 75, 40, 86, 56);  // terminal
+/**
+ * A bold lightning bolt — the classic "Z with a flipped triangle on each
+ * end" silhouette, drawn fat rather than thin since this renders at ~14px
+ * on the map and a thin bolt disappears at that size.
+ */
+function drawBolt(canvas) {
+    fillPolygon(canvas, [
+        [54, 6],
+        [24, 50],
+        [42, 50],
+        [30, 90],
+        [72, 40],
+        [52, 40],
+    ]);
 }
 
 // --- PNG encoding -------------------------------------------------------
@@ -128,31 +135,16 @@ function encodePng(canvas) {
     ]);
 }
 
-// --- the three icons ----------------------------------------------------
-
-const icons = {
-    'station-working': (c) => {
-        drawBattery(c);
-        drawLine(c, 26, 48, 36, 57, 4);  // check: short down-stroke
-        drawLine(c, 36, 57, 56, 39, 4);  // check: long up-stroke
-    },
-    'station-maintenance': (c) => {
-        drawBattery(c);
-        drawLine(c, 41, 37, 41, 51, 4);  // "!" stem
-        drawLine(c, 41, 59, 41, 59, 4);  // "!" dot
-    },
-    'station-not-working': (c) => {
-        drawBattery(c);
-        drawLine(c, 30, 38, 52, 58, 4);  // cross
-        drawLine(c, 52, 38, 30, 58, 4);
-    },
-};
-
 mkdirSync(OUT_DIR, { recursive: true });
-for (const [name, draw] of Object.entries(icons)) {
-    const canvas = createCanvas();
-    draw(canvas);
-    const file = join(OUT_DIR, `${name}.png`);
-    writeFileSync(file, encodePng(canvas));
-    console.log(`wrote ${file}`);
+
+// Retired per-status icons — one bolt now covers every status.
+for (const stale of ['station-working.png', 'station-maintenance.png', 'station-not-working.png']) {
+    const path = join(OUT_DIR, stale);
+    if (existsSync(path)) rmSync(path);
 }
+
+const canvas = createCanvas();
+drawBolt(canvas);
+const file = join(OUT_DIR, 'station-bolt.png');
+writeFileSync(file, encodePng(canvas));
+console.log(`wrote ${file}`);
