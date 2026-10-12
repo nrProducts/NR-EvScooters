@@ -867,7 +867,7 @@ export const hi: Copy = {
     'billing.lateFeeParenOne': 'लेट फ़ीस (1 दिन × ₹{rate}/दिन)',
     'billing.lateFeeParenOther': 'लेट फ़ीस ({days} दिन × ₹{rate}/दिन)',
     'billing.noPayments': 'अभी तक कोई भुगतान नहीं',
-    'billing.paymentHistory': 'भुगतान इतिहास',
+    'billing.paymentHistory': 'बुकिंग इतिहास',
     'billing.paymentRequired': 'भुगतान ज़रूरी है',
     'billing.scooterWontStart': 'जब तक यह भुगतान नहीं होता, आपका स्कूटर शुरू नहीं होगा।',
     'billing.totalAcross': '{count} इनवॉइस में कुल ₹{total}',

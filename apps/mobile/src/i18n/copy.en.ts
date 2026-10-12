@@ -651,7 +651,7 @@ export const en = {
     'billing.lateFeeParenOne': 'Late fee (1 day × ₹{rate}/day)',
     'billing.lateFeeParenOther': 'Late fee ({days} days × ₹{rate}/day)',
     'billing.noPayments': 'No payments yet',
-    'billing.paymentHistory': 'Payment History',
+    'billing.paymentHistory': 'Booking History',
     'billing.paymentRequired': 'Payment required',
     'billing.scooterWontStart': "Your scooter won't start until this is paid.",
     'billing.totalAcross': '₹{total} total across {count} invoices',

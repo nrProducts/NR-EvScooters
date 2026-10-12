@@ -872,7 +872,7 @@ export const ta: Copy = {
     'billing.lateFeeParenOne': 'தாமத கட்டணம் (1 நாள் × ₹{rate}/நாள்)',
     'billing.lateFeeParenOther': 'தாமத கட்டணம் ({days} நாட்கள் × ₹{rate}/நாள்)',
     'billing.noPayments': 'இதுவரை கட்டணங்கள் இல்லை',
-    'billing.paymentHistory': 'கட்டண வரலாறு',
+    'billing.paymentHistory': 'முன்பதிவு வரலாறு',
     'billing.paymentRequired': 'கட்டணம் தேவை',
     'billing.scooterWontStart': 'இது செலுத்தப்படும் வரை உங்கள் ஸ்கூட்டர் இயங்காது.',
     'billing.totalAcross': '{count} விலைப்பட்டியல்களில் மொத்தம் ₹{total}',

@@ -231,6 +231,12 @@ function formatDate(dateStr: string | null): string {
   return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** Clock time alongside formatDate, e.g. "3:19 PM" — device-locale, same reasoning as formatDate above. */
+function formatTime(dateStr: string | null): string {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
 /** YYYY-MM-DD in local time, to compare against next_due_at (a date-only column) the same way the rider reads it on screen. */
 function dateStr(d: Date): string {
   const y = d.getFullYear();
@@ -313,7 +319,7 @@ function PaymentHistoryCard({
             {invoiceLabel(invoice, t)}
           </Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-            {formatDate(historyDate(invoice))}
+            {formatDate(historyDate(invoice))}, {formatTime(historyDate(invoice))}
             {invoice.payment_method ? `  ·  ${t(PAYMENT_METHOD_LABEL_KEY[invoice.payment_method])}` : ''}
             {hasItems ? (expanded ? '  ▲' : '  ▼') : ''}
           </Text>
