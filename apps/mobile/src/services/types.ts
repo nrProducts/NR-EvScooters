@@ -1,7 +1,7 @@
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
-    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRefund,
     ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload, KycDocType,
     ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
@@ -136,6 +136,8 @@ export interface BillingRepository {
     myDeposit(bookingId: string): Promise<ApiDeposit | null>;
     myDamages(bookingId: string): Promise<ApiDamage[]>;
     disputeDamage(damageId: string, reason: string): Promise<ApiDamage>;
+    /** The rider's own refunds — booking cancellations, deposit releases, goodwill. Powers the Billing refund-status card. */
+    myRefunds(params: HistoryParams & { bookingId?: string }): Promise<Paginated<ApiRefund>>;
 }
 
 export interface RentalRepository {

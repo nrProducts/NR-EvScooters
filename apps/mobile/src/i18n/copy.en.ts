@@ -238,6 +238,23 @@ export const en = {
     // Razorpay's own checkout sheet shows this. Sent to the gateway rather
     // than rendered by us, but it IS rider-facing, so it is translated.
     'settlement.checkoutDescription': 'Return Settlement',
+
+    // --- refund status card (Billing) — refunds outside a return settlement ---
+    'refundCard.status.pending': 'Refund Pending',
+    'refundCard.status.processing': 'Refund Processing',
+    'refundCard.status.succeeded': 'Refund Completed',
+    'refundCard.status.failed': 'Refund Failed',
+    'refundCard.status.rejected': 'Refund Rejected',
+    'refundCard.reason.booking_cancellation': 'Booking Cancelled',
+    'refundCard.reason.deposit_release': 'Deposit Release',
+    'refundCard.reason.settlement': 'Return Settlement',
+    'refundCard.reason.goodwill': 'Goodwill Refund',
+    'refundCard.cancellationCharge': 'Cancellation fee',
+    'refundCard.transactionFee': 'Transaction fee',
+    'refundCard.otherCharges': 'Other charges',
+    'refundCard.refundAmount': 'Refund Amount',
+    'refundCard.willRetry': "We'll retry this automatically — no action needed from you.",
+
     'payment.failed': 'Payment failed. Please try again.',
     'payment.progress.processing.title': 'Processing your payment',
     'payment.progress.processing.body': 'Complete the payment in the secure checkout. You will be brought back here automatically.',
@@ -304,6 +321,7 @@ export const en = {
     'kyc.emergency.phone': 'Alternate Phone Number',
     'kyc.emergency.phonePlaceholder': 'Alternate phone number',
     'kyc.emergency.saveContinue': 'Save & Continue',
+    'kyc.emergency.error.nameRequired': 'Enter the contact\'s name.',
     'kyc.emergency.error.name':
         'Contact name can only contain letters, spaces, apostrophes and hyphens.',
     'kyc.emergency.error.phone': 'Enter a valid phone number, e.g. +919876543210.',
@@ -477,6 +495,7 @@ export const en = {
     'bookingHistory.scooterFallback': 'Scooter',
     'bookingHistory.cancelledOn': 'Cancelled {date}',
     'bookingHistory.refundLine': 'Cancellation fee {fee} · Refund {refund}',
+    'bookingHistory.refundRejectedLine': 'Refund rejected: {reason}',
     'bookingHistory.cancelBooking': 'Cancel Booking',
     'bookingHistory.cancelling': 'Cancelling…',
 
@@ -543,6 +562,7 @@ export const en = {
     'status.refund.processed': 'Refunded',
     'status.refund.not_required': 'No Refund Due',
     'status.refund.failed': 'Refund Failed',
+    'status.refund.rejected': 'Refund Rejected',
 
     'status.deposit.pending': 'Pending',
     'status.deposit.held': 'Held',
@@ -606,10 +626,11 @@ export const en = {
     'stationSheet.awayFrom': ' · {distance} away',
     'stationSheet.close': 'Close station details',
     'stationSheet.qisIds': 'QIS ID(s)',
-    'stationSheet.latitude': 'Latitude',
-    'stationSheet.longitude': 'Longitude',
     'stationSheet.navigate': 'Navigate',
     'stationSheet.navigateTo': 'Navigate to {station}',
+    'stationSheet.chooseNavApp.title': 'Open in',
+    'stationSheet.chooseNavApp.google': 'Google Maps',
+    'stationSheet.chooseNavApp.apple': 'Apple Maps',
     'stationSheet.copyCoordinates': 'Copy coordinates',
     'stationSheet.openFullDetails': 'Open full station details',
     'stationSheet.batteries': '{count} BATTERIES',
@@ -922,7 +943,7 @@ export const en = {
 
     // --- nominee screen ------------------------------------------------------
     'nominee.saved.title': 'Nominee saved',
-    'nominee.form.name': 'Their name',
+    'nominee.form.name': 'Nominee name',
     'nominee.form.namePlaceholder': 'Full name',
     'nominee.form.relationship': 'Their relationship to you',
     'nominee.form.relationshipPlaceholder': 'Relationship',
@@ -1282,6 +1303,8 @@ export const en = {
         "Location is off — stations still show, but distances don't. Tap the location button to allow it.",
     'stations.nearest': 'Nearest station {name} — {distance} away',
     'stations.nearestLine': 'Nearest station: {name} — {distance}',
+    'stations.nearbyToggle.expand': 'Show more nearby stations',
+    'stations.nearbyToggle.collapse': 'Hide nearby stations',
     'stations.refresh': 'Refresh stations',
     'stations.zoomIn': 'Zoom in',
     'stations.zoomOut': 'Zoom out',

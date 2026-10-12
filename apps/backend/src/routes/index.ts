@@ -20,7 +20,7 @@ import paymentsRoutes from "../modules/payments/payments.routes";
 import plansRoutes from "../modules/plans/plans.routes";
 import damagesRoutes from "../modules/damages/damages.routes";
 import { adminRouter as adminDepositsRouter, riderRouter as riderDepositsRouter } from "../modules/deposits/deposits.routes";
-import refundsRoutes from "../modules/refunds/refunds.routes";
+import refundsRoutes, { riderRouter as riderRefundsRouter } from "../modules/refunds/refunds.routes";
 import billingRoutes from "../modules/billing/billing.routes";
 import reconciliationRoutes from "../modules/reconciliation/reconciliation.routes";
 import revenueRoutes from "../modules/revenue/revenue.routes";
@@ -121,6 +121,7 @@ router.use("/damages", damagesRoutes);
 // the admin router's requireStaff would otherwise swallow every rider request.
 router.use("/deposits/me", riderDepositsRouter);
 router.use("/deposits", adminDepositsRouter);
+router.use("/refunds/me", riderRefundsRouter);
 router.use("/refunds", refundsRoutes);
 router.use("/notification-settings", notificationSettingsRoutes);
 router.use("/plan-renewal-settings", planRenewalSettingsRoutes);

@@ -55,6 +55,7 @@ interface MockBookingRow {
     refund_initiated_at?: string | null;
     refund_completed_at?: string | null;
     refund_transaction_id?: string | null;
+    refund_rejection_reason?: string | null;
 }
 
 interface MockRentalRow {
@@ -822,6 +823,7 @@ function toApiBooking(row: MockBookingRow): ApiBooking {
         refund_initiated_at: row.refund_initiated_at ?? null,
         refund_completed_at: row.refund_completed_at ?? null,
         refund_transaction_id: row.refund_transaction_id ?? null,
+        refund_rejection_reason: row.refund_rejection_reason ?? null,
     };
 }
 

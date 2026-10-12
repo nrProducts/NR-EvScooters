@@ -90,9 +90,7 @@ export const StationDetailsBottomSheet: React.FC<{
                 </View>
 
                 <View className="rounded-2xl p-4 mb-4" style={{ backgroundColor: COLORS.background }}>
-                    <DetailRow label={t('stationSheet.qisIds')} value={station.qisIds.join('\n')} mono />
-                    <DetailRow label={t('stationSheet.latitude')} value={station.latitude.toFixed(6)} mono />
-                    <DetailRow label={t('stationSheet.longitude')} value={station.longitude.toFixed(6)} mono last />
+                    <DetailRow label={t('stationSheet.qisIds')} value={station.qisIds.join('\n')} mono last />
                 </View>
 
                 <View className="flex-row" style={{ gap: 10 }}>

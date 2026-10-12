@@ -4,7 +4,7 @@ import { getSupabase } from '../lib/supabase';
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
-    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRefund,
     ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload, ListVehicleModelsParams,
     MaintenanceHistoryParams, Paginated, ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
@@ -195,6 +195,9 @@ export class ApiBillingRepository implements BillingRepository {
     }
     disputeDamage(damageId: string, reason: string): Promise<ApiDamage> {
         return api.disputeDamage(damageId, reason);
+    }
+    myRefunds(params: HistoryParams & { bookingId?: string }): Promise<Paginated<ApiRefund>> {
+        return api.myRefunds(params);
     }
 }
 

@@ -121,6 +121,7 @@ interface BookingContext {
     refundInitiatedAt: string | null;
     refundCompletedAt: string | null;
     refundTransactionId: string | null;
+    refundRejectionReason: string | null;
     activeRental: BookingActiveRental | null;
     /**
      * The vehicle the rental currently holds, once riding — from the open
@@ -144,7 +145,7 @@ const EMPTY_CONTEXT: BookingContext = {
     referralDiscountAmount: null,
     cancelledAt: null, cancellationReason: null, cancellationPenaltyAmount: null,
     refundAmount: null, refundStatus: null, refundInitiatedAt: null, refundCompletedAt: null,
-    refundTransactionId: null, activeRental: null, currentVehicle: null,
+    refundTransactionId: null, refundRejectionReason: null, activeRental: null, currentVehicle: null,
 };
 
 /** `refunds.status` → the vocabulary the clients already speak. */
@@ -154,6 +155,13 @@ function toRefundStatus(status: string | null | undefined): BookingRefundStatus 
     if (status === "pending") return "pending";
     if (status === "processing") return "processing";
     if (status === "failed") return "failed";
+    // Was falling through to null, same as an unrecognised value — which
+    // made a REJECTED refund (an admin decided nothing is owed) render
+    // identically to no refund ever having existed: the conditional refund
+    // block in Booking History is keyed on refund_status being truthy, so
+    // a rejection just made the whole section vanish instead of explaining
+    // itself.
+    if (status === "rejected") return "rejected";
     return null;
 }
 
@@ -253,7 +261,7 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
             refundIds.length
                 ? supabaseAdmin
                     .from("refunds")
-                    .select("id, amount, status, initiated_at, completed_at, gateway_refund_id")
+                    .select("id, amount, status, initiated_at, completed_at, gateway_refund_id, rejection_reason")
                     .in("id", refundIds)
                 : Promise.resolve({ data: [], error: null } as const),
             subscriptionIds.length
@@ -380,6 +388,7 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
             ctx.refundInitiatedAt = refund.initiated_at;
             ctx.refundCompletedAt = refund.completed_at;
             ctx.refundTransactionId = refund.gateway_refund_id;
+            ctx.refundRejectionReason = refund.rejection_reason;
         } else {
             // A cancellation with no refund row owed nothing.
             ctx.refundAmount = 0;
@@ -481,6 +490,7 @@ export function toBookingView(row: RawBookingRow, ctx: BookingContext = EMPTY_CO
         refund_initiated_at: ctx.refundInitiatedAt,
         refund_completed_at: ctx.refundCompletedAt,
         refund_transaction_id: ctx.refundTransactionId,
+        refund_rejection_reason: ctx.refundRejectionReason,
         plan_status: ctx.planStatus,
         plan_activated_at: ctx.planActivatedAt,
         plan_duration_days: ctx.planDurationDays,

@@ -17,7 +17,7 @@ import type { ApiMe } from '../types/api';
 const RIDER_ROUTES = [
   "home", "my-scooter", "my-plan", "billing", "support", "kyc", "kyc-intro",
   "browse-vehicles", "booking", "notifications", "booking-history",
-  "battery-stations", "profile",
+  "battery-stations", "profile", "referrals",
   // DPDPA. "privacy" covers privacy/index, notice, requests, [id] and nominee.
   "consent", "privacy",
   // The rental agreement, readable any time from Profile. Acceptance itself

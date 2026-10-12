@@ -14,6 +14,13 @@ export const listRefundsQuery = z.object({
     sortDir: z.enum(["asc", "desc"]).default("desc"),
 });
 
+/** GET /refunds/me — no status/refundType filter; a rider's own list is short enough to just show all of it. */
+export const myRefundsQuery = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
+    bookingId: z.string().uuid().optional(),
+});
+
 export const initiateRefundBody = z.object({
     deposit_id: z.string().uuid("A valid deposit id is required."),
 });
@@ -32,6 +39,7 @@ export const rejectRefundBody = z.object({
 });
 
 export type ListRefundsQuery = z.infer<typeof listRefundsQuery>;
+export type MyRefundsQuery = z.infer<typeof myRefundsQuery>;
 export type InitiateRefundBody = z.infer<typeof initiateRefundBody>;
 export type ReviewRefundBody = z.infer<typeof reviewRefundBody>;
 export type RejectRefundBody = z.infer<typeof rejectRefundBody>;

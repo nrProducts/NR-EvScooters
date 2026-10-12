@@ -33,6 +33,9 @@ describe('resolveRootRedirect', () => {
     expect(resolveRootRedirect(state({ segments: ['(tabs)', 'billing'] }))).toBeNull();
     expect(resolveRootRedirect(state({ segments: ['(tabs)'] }))).toBeNull();
     expect(resolveRootRedirect(state({ segments: ['booking', '[modelId]'] }))).toBeNull();
+    // Was missing from RIDER_ROUTES, which silently bounced "Refer & Earn"
+    // (Profile menu -> /referrals) straight back to /home on every tap.
+    expect(resolveRootRedirect(state({ segments: ['referrals'] }))).toBeNull();
   });
 
   it('bounces an unknown segment to home', () => {

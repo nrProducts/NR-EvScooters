@@ -2,11 +2,27 @@ import { Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import * as service from "./refunds.service";
-import { InitiateRefundBody, ListRefundsQuery, RejectRefundBody, ReviewRefundBody } from "./refunds.validation";
+import {
+    InitiateRefundBody, ListRefundsQuery, MyRefundsQuery, RejectRefundBody, ReviewRefundBody,
+} from "./refunds.validation";
 
 export async function listRefundsHandler(req: AuthedRequest, res: Response) {
     const { status, refundType, bookingId, ...page } = validatedQuery<ListRefundsQuery>(req);
     res.json(await service.listRefunds({ ...page, status, refundType, bookingId }));
+}
+
+/**
+ * Rider's own refunds — booking cancellations, deposit releases, goodwill —
+ * so "refund requested" doesn't go dark after the initial push notification.
+ * userId is always the caller's, never client-supplied, same as
+ * myInvoicesHandler. Trimmed to rider-safe fields via toMyRefundRow.
+ */
+export async function myRefundsHandler(req: AuthedRequest, res: Response) {
+    const { bookingId, ...page } = validatedQuery<MyRefundsQuery>(req);
+    const result = await service.listRefunds({
+        ...page, userId: req.user!.id, bookingId, sortBy: "created_at", sortDir: "desc",
+    });
+    res.json({ ...result, data: result.data.map(service.toMyRefundRow) });
 }
 
 export async function getRefundHandler(req: AuthedRequest, res: Response) {

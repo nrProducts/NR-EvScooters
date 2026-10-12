@@ -633,28 +633,40 @@ const EmergencyContactStep: React.FC<{
   const { t } = useT();
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
-  const [error, setError] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
-    if (name.trim() && !/^[A-Za-z\s'-]+$/.test(name.trim())) {
-      setError(t('kyc.emergency.error.name'));
-      return;
+    let hasError = false;
+    if (!name.trim()) {
+      setNameError(t('kyc.emergency.error.nameRequired'));
+      hasError = true;
+    } else if (!/^[A-Za-z\s'-]+$/.test(name.trim())) {
+      setNameError(t('kyc.emergency.error.name'));
+      hasError = true;
+    } else {
+      setNameError('');
     }
     if (!/^\+?[1-9]\d{7,14}$/.test(phone.trim())) {
-      setError(t('kyc.emergency.error.phone'));
-      return;
+      setPhoneError(t('kyc.emergency.error.phone'));
+      hasError = true;
+    } else {
+      setPhoneError('');
     }
-    setError('');
+    if (hasError) return;
+
+    setSaveError('');
     setSaving(true);
     try {
       await userRepository.updateMe({
-        emergency_contact_name: name.trim() || undefined,
+        emergency_contact_name: name.trim(),
         emergency_contact_phone: phone.trim(),
       });
       await onNext();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('kyc.emergency.error.save'));
+      setSaveError(err instanceof ApiError ? err.message : t('kyc.emergency.error.save'));
     } finally {
       setSaving(false);
     }
@@ -671,22 +683,28 @@ const EmergencyContactStep: React.FC<{
 
       <FormField
         label={t('kyc.emergency.name')}
+        required
         value={name}
-        onChangeText={setName}
+        onChangeText={(next) => {
+          setName(next);
+          if (nameError) setNameError('');
+        }}
         placeholder={t('kyc.emergency.namePlaceholder')}
         autoCapitalize="words"
+        error={nameError}
       />
       <FormField
         label={t('kyc.emergency.phone')}
         required
         value={phone}
-        onChangeText={(t) => {
-          setPhone(t);
-          if (error) setError('');
+        onChangeText={(next) => {
+          setPhone(next);
+          if (phoneError) setPhoneError('');
+          if (saveError) setSaveError('');
         }}
         placeholder={t('kyc.emergency.phonePlaceholder')}
         keyboardType="phone-pad"
-        error={error}
+        error={phoneError || saveError}
       />
 
       <View className="flex-row mt-2" style={{ gap: 10 }}>

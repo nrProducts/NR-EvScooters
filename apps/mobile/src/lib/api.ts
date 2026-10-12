@@ -13,7 +13,7 @@ import type {
     ApiNominee, ApiPrivacyRequest, ApiPrivacySummary, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
     ApiOverdueLateFee, ApiOverdueLateFeeInvoice, ApiReturnStage, ApiVehicleDocument,
-    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRefund, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
     ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
     ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
@@ -471,6 +471,11 @@ export const api = {
 
     myDamagesForBooking: (bookingId: string) =>
         request<ApiDamage[]>('/damages/me', { query: { bookingId } }),
+
+    myRefunds: (params: { page?: number; pageSize?: number; bookingId?: string } = {}) =>
+        request<Paginated<ApiRefund>>('/refunds/me', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
 
     disputeDamage: (damageId: string, reason: string) =>
         request<ApiDamage>(`/damages/${damageId}/dispute`, { method: 'POST', body: { reason } }),

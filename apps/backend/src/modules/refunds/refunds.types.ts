@@ -93,8 +93,33 @@ export interface ListRefundsFilters {
     status?: RefundStatus;
     refundType?: RefundType;
     bookingId?: string;
+    /** Set by GET /refunds/me so a rider's own list can reuse this same query. */
+    userId?: string;
     sortBy: "created_at" | "amount";
     sortDir: "asc" | "desc";
+}
+
+/**
+ * Rider-safe projection of RefundRow for GET /refunds/me — strips who
+ * reviewed/rejected it, the review note, gateway/payment identifiers and
+ * retry bookkeeping. A rider needs to know what's happening to their money,
+ * not which admin touched it or how many times the gateway was retried.
+ */
+export interface MyRefundRow {
+    id: string;
+    booking_id: string | null;
+    amount: number;
+    gross_amount: number;
+    deductions: RefundDeductions;
+    deduction_total: number;
+    status: RefundStatus;
+    refund_type: RefundType;
+    rejection_reason: string | null;
+    failure_reason: string | null;
+    initiated_at: string;
+    processed_at: string | null;
+    created_at: string;
+    booking: RefundBookingSummary | null;
 }
 
 export interface ReviewRefundInput {

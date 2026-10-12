@@ -1,18 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    View, Text, BackHandler, Linking, Platform, TouchableOpacity,
+    View, Text, BackHandler, Linking, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-    ArrowLeft, MapPin, Minus, Plus, RefreshCw, TriangleAlert,
+    ChevronDown, ChevronUp, MapPin, Minus, Plus, RefreshCw, TriangleAlert,
 } from 'lucide-react-native';
 import { COLORS } from '../../../constants/theme';
 import { TAB_BAR_FOOTPRINT } from '../../../lib/tabBar';
-import { buildMapsUrl, buildWebMapsUrl } from '../../../lib/maps';
+import { buildNavigationUrl, type NavApp } from '../../../lib/maps';
 import { copyToClipboard } from '../../../lib/clipboard';
 import { notifyError, notifySuccess } from '../../../lib/confirm';
 import { ErrorState } from '../../../components/ui/ErrorState';
+import { Sheet } from '../../../components/ui/Sheet';
 import { Spinner } from '../../../components/Spinner';
 import { BatteryStationMap, type BatteryStationMapHandle } from '../components/BatteryStationMap';
 import { StationDetailsBottomSheet } from '../components/StationDetailsBottomSheet';
@@ -22,7 +23,6 @@ import { FitStationsButton } from '../components/FitStationsButton';
 import { MapControlButton } from '../components/MapControlButton';
 import { useBatteryStations } from '../hooks/useBatteryStations';
 import { useCurrentLocation } from '../hooks/useCurrentLocation';
-import { useNearestStation } from '../hooks/useNearestStation';
 import { useAreaSearch } from '../hooks/useAreaSearch';
 import { CHENNAI } from '../components/mapContract';
 import { filterStations } from '../utils/geojson';
@@ -55,10 +55,26 @@ export default function BatteryStationsScreen() {
     const [search, setSearch] = useState('');
     const [selectedArea, setSelectedArea] = useState<AreaResult | null>(null);
     const [permissionNoticeDismissed, setPermissionNoticeDismissed] = useState(false);
+    // The station awaiting a "which maps app" choice — set by Navigate, read
+    // by the picker sheet, cleared once a choice (or the sheet's own close) fires.
+    const [navTargetStation, setNavTargetStation] = useState<BatteryStation | null>(null);
+    // Ranks 2-5 of nearbyStations below start collapsed — only the closest
+    // station shows until the rider taps the chevron to see the rest.
+    const [nearbyExpanded, setNearbyExpanded] = useState(false);
 
     const { stations, isInitialLoading, isRefreshing, isError, error, refetch } = useBatteryStations();
     const { coords, permission, isLocating, requestLocation } = useCurrentLocation();
-    const nearest = useNearestStation(stations, coords);
+
+    /**
+     * Top 5 stations by distance from the rider (WORKING ranked ahead of
+     * MAINTENANCE/NOT_WORKING, same tie-break as the area-search
+     * recommendations below) — replaces the old single "nearest station"
+     * banner with an expandable list.
+     */
+    const nearbyStations = useMemo(
+        () => (coords ? recommendStationsNear(stations, coords, 5) : []),
+        [stations, coords],
+    );
 
     const selectedStation = useMemo(
         () => stations.find((station) => station.id === selectedStationId) ?? null,
@@ -199,19 +215,23 @@ export default function BatteryStationsScreen() {
         setPermissionNoticeDismissed(false);
     }, [requestLocation]);
 
+    /** Opens the "which maps app" picker rather than guessing one. */
+    const handleNavigate = useCallback((station: BatteryStation) => {
+        setNavTargetStation(station);
+    }, []);
+
     /**
-     * Hands the coordinates to whatever navigation app the device has. No
-     * Google Maps API key involved — a geo:/maps: deep link is resolved by the
-     * OS, and the https fallback opens in a browser when nothing handles it.
+     * No Google Maps API key involved — google.com/maps and maps.apple.com
+     * are both universal links, so the OS hands them to the matching app when
+     * it's installed and otherwise opens the (fully functional) website, on
+     * every platform including a plain browser tab.
      */
-    const handleNavigate = useCallback(async (station: BatteryStation) => {
-        const deepLink = buildMapsUrl(station.latitude, station.longitude, Platform.OS === 'ios' ? 'ios' : 'android');
+    const handlePickNavApp = useCallback(async (app: NavApp) => {
+        const station = navTargetStation;
+        setNavTargetStation(null);
+        if (!station) return;
         try {
-            if (await Linking.canOpenURL(deepLink)) {
-                await Linking.openURL(deepLink);
-                return;
-            }
-            await Linking.openURL(buildWebMapsUrl(station.latitude, station.longitude));
+            await Linking.openURL(buildNavigationUrl(station.latitude, station.longitude, app));
         } catch {
             notifyError(
                 t('stations.error.noNavApp.title'),
@@ -220,7 +240,7 @@ export default function BatteryStationsScreen() {
                 }),
             );
         }
-    }, [t]);
+    }, [navTargetStation, t]);
 
     const handleCopyCoordinates = useCallback(async (station: BatteryStation) => {
         const coordinates = `${station.latitude.toFixed(6)}, ${station.longitude.toFixed(6)}`;
@@ -234,6 +254,11 @@ export default function BatteryStationsScreen() {
     }, [t]);
 
     const showPermissionNotice = permission === 'denied' && !permissionNoticeDismissed;
+    // The search panel (results/areas list, up to 300px tall) grows downward
+    // from the top overlay and can reach as far as the right-hand control
+    // stack and the nearest-station pill on short screens — hide those while
+    // it's open instead of letting them collide.
+    const isSearchPanelOpen = search.trim().length > 0 || !!selectedArea;
 
     // A failed first load leaves nothing to show on a map, so the whole screen
     // becomes the error state. A failed refetch keeps the stale markers.
@@ -267,32 +292,27 @@ export default function BatteryStationsScreen() {
                 userCoords={coords}
             />
 
-            {/* --- top overlay: back, search, notices --- */}
+            {/* --- top overlay: search, notices --- */}
             <View
                 className="absolute left-0 right-0 px-4"
                 style={{ top: insets.top + 8 }}
                 pointerEvents="box-none"
             >
-                <View className="flex-row items-start" style={{ gap: 10 }}>
-                    <MapControlButton icon={ArrowLeft} label={t('stations.goBack')} onPress={goBack} />
-                    <View className="flex-1">
-                        <StationSearch
-                            value={search}
-                            onChangeText={handleSearchChange}
-                            results={searchResults}
-                            onSelect={handleSearchSelect}
-                            distanceFor={distanceTo}
-                            areas={areas}
-                            isSearchingAreas={isSearchingAreas}
-                            onSelectArea={handleAreaSelect}
-                            selectedArea={selectedArea}
-                            onClearArea={clearAreaSelection}
-                            recommendations={recommendations}
-                        />
-                    </View>
-                </View>
+                <StationSearch
+                    value={search}
+                    onChangeText={handleSearchChange}
+                    results={searchResults}
+                    onSelect={handleSearchSelect}
+                    distanceFor={distanceTo}
+                    areas={areas}
+                    isSearchingAreas={isSearchingAreas}
+                    onSelectArea={handleAreaSelect}
+                    selectedArea={selectedArea}
+                    onClearArea={clearAreaSelection}
+                    recommendations={recommendations}
+                />
 
-                {showPermissionNotice ? (
+                {showPermissionNotice && !isSearchPanelOpen ? (
                     <TouchableOpacity
                         onPress={() => setPermissionNoticeDismissed(true)}
                         accessibilityRole="button"
@@ -307,25 +327,86 @@ export default function BatteryStationsScreen() {
                     </TouchableOpacity>
                 ) : null}
 
-                {nearest && !selectedStation ? (
-                    <TouchableOpacity
-                        onPress={() => handleSearchSelect(nearest)}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('stations.nearest', {
-                            name: formatStationName(nearest.name),
-                            distance: formatDistance(nearest.distanceKm),
-                        })}
-                        className="flex-row items-center mt-2 px-3.5 py-2.5 rounded-2xl"
-                        style={{ backgroundColor: COLORS.card }}
+                {nearbyStations.length > 0 && !selectedStation && !isSearchPanelOpen ? (
+                    <View
+                        className="mt-2 rounded-2xl overflow-hidden"
+                        style={{
+                            backgroundColor: COLORS.card,
+                            shadowColor: '#0F172A',
+                            shadowOpacity: 0.12,
+                            shadowRadius: 12,
+                            shadowOffset: { width: 0, height: 4 },
+                            elevation: 6,
+                        }}
                     >
-                        <MapPin size={14} color={COLORS.primary} />
-                        <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-bold ml-2 flex-1" numberOfLines={1}>
-                            {t('stations.nearestLine', {
-                                name: formatStationName(nearest.name),
-                                distance: formatDistance(nearest.distanceKm),
-                            })}
-                        </Text>
-                    </TouchableOpacity>
+                        <View className="flex-row items-center">
+                            <TouchableOpacity
+                                onPress={() => handleSearchSelect(nearbyStations[0])}
+                                accessibilityRole="button"
+                                accessibilityLabel={t('stations.nearest', {
+                                    name: formatStationName(nearbyStations[0].name),
+                                    distance: formatDistance(nearbyStations[0].distanceKm),
+                                })}
+                                className="flex-1 flex-row items-center px-3.5 py-2.5"
+                            >
+                                <MapPin size={14} color={COLORS.primary} />
+                                <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-bold ml-2 flex-1" numberOfLines={1}>
+                                    {t('stations.nearestLine', {
+                                        name: formatStationName(nearbyStations[0].name),
+                                        distance: formatDistance(nearbyStations[0].distanceKm),
+                                    })}
+                                </Text>
+                            </TouchableOpacity>
+
+                            {nearbyStations.length > 1 ? (
+                                <TouchableOpacity
+                                    onPress={() => setNearbyExpanded((expanded) => !expanded)}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={t(
+                                        nearbyExpanded ? 'stations.nearbyToggle.collapse' : 'stations.nearbyToggle.expand',
+                                    )}
+                                    className="items-center justify-center pl-1 pr-3.5"
+                                    style={{ minHeight: 44, minWidth: 36 }}
+                                >
+                                    {nearbyExpanded ? (
+                                        <ChevronUp size={16} color={COLORS.textSecondary} />
+                                    ) : (
+                                        <ChevronDown size={16} color={COLORS.textSecondary} />
+                                    )}
+                                </TouchableOpacity>
+                            ) : null}
+                        </View>
+
+                        {/* Ranks 2-5 — collapsed by default so the overlay stays a
+                            single-line pill until the rider actually wants the list. */}
+                        {nearbyExpanded
+                            ? nearbyStations.slice(1).map((station) => (
+                                  <TouchableOpacity
+                                      key={station.id}
+                                      onPress={() => handleSearchSelect(station)}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={t('stations.nearest', {
+                                          name: formatStationName(station.name),
+                                          distance: formatDistance(station.distanceKm),
+                                      })}
+                                      className="flex-row items-center px-3.5 py-2.5"
+                                      style={{ borderTopWidth: 1, borderTopColor: COLORS.border }}
+                                  >
+                                      <MapPin size={12} color={COLORS.textSecondary} />
+                                      <Text
+                                          style={{ color: COLORS.textPrimary }}
+                                          className="text-[11px] font-semibold ml-2 flex-1"
+                                          numberOfLines={1}
+                                      >
+                                          {formatStationName(station.name)}
+                                      </Text>
+                                      <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold ml-2">
+                                          {formatDistance(station.distanceKm)}
+                                      </Text>
+                                  </TouchableOpacity>
+                              ))
+                            : null}
+                    </View>
                 ) : null}
             </View>
 
@@ -334,13 +415,15 @@ export default function BatteryStationsScreen() {
                 exactly when the floating pill tab bar is the thing sitting
                 behind it — insets.bottom alone cleared the OS safe area but
                 not the bar itself, so the lowest button (Fit Stations) sat
-                half under it. Same fix as StationDetailsBottomSheet's. */}
+                half under it. Same fix as StationDetailsBottomSheet's.
+                Also hidden while the search panel is open: its results list
+                can grow tall enough to reach down into this stack. */}
             <View
                 className="absolute right-4"
                 style={{ bottom: (selectedStation ? 0 : insets.bottom + TAB_BAR_FOOTPRINT) + 24, gap: 10 }}
                 pointerEvents="box-none"
             >
-                {!selectedStation && (
+                {!selectedStation && !isSearchPanelOpen && (
                     <>
                         <MapControlButton
                             icon={RefreshCw}
@@ -396,10 +479,37 @@ export default function BatteryStationsScreen() {
                 station={selectedStation}
                 distanceKm={selectedStation ? distanceTo(selectedStation) : null}
                 onClose={() => setSelectedStationId(null)}
-                onNavigate={(station) => void handleNavigate(station)}
+                onNavigate={handleNavigate}
                 onCopyCoordinates={(station) => void handleCopyCoordinates(station)}
                 onViewDetails={(station) => router.push(`/battery-stations/${station.id}` as never)}
             />
+
+            <Sheet
+                visible={!!navTargetStation}
+                onClose={() => setNavTargetStation(null)}
+                title={t('stationSheet.chooseNavApp.title')}
+            >
+                <View className="px-6 pb-6" style={{ gap: 10 }}>
+                    <TouchableOpacity
+                        onPress={() => void handlePickNavApp('google')}
+                        accessibilityRole="button"
+                        className="flex-row items-center justify-center rounded-2xl"
+                        style={{ backgroundColor: COLORS.primary, minHeight: 52 }}
+                    >
+                        <Text className="text-white font-bold text-sm">{t('stationSheet.chooseNavApp.google')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={() => void handlePickNavApp('apple')}
+                        accessibilityRole="button"
+                        className="flex-row items-center justify-center rounded-2xl"
+                        style={{ backgroundColor: COLORS.background, minHeight: 52 }}
+                    >
+                        <Text style={{ color: COLORS.textPrimary }} className="font-bold text-sm">
+                            {t('stationSheet.chooseNavApp.apple')}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            </Sheet>
         </View>
     );
 }

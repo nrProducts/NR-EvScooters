@@ -27,6 +27,11 @@ import * as v from "./refunds.validation";
  * told they were giving read access and was in fact giving the ability to
  * move money out of the business.
  */
+/** Rider's own refunds — mounted at /refunds/me, before the admin router below. */
+export const riderRouter = Router();
+riderRouter.use(requireAuth);
+riderRouter.get("/", validate({ query: v.myRefundsQuery }), asyncHandler(c.myRefundsHandler));
+
 const router = Router();
 router.use(requireAuth);
 

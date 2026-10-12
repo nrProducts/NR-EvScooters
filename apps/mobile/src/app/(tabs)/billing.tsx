@@ -20,11 +20,12 @@ import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } 
 import { getRenewalEligibility } from '../../lib/returnPolicy';
 import { SettlementCard } from '../../components/SettlementCard';
 import { DepositStatusCard } from '../../components/DepositStatusCard';
+import { RefundStatusCard } from '../../components/RefundStatusCard';
 import { shouldShowRefundInBilling } from '../../lib/settlementDisplay';
 import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
 import { ApiError } from '../../lib/ApiError';
 import type {
-  ApiEarlyRecharge, ApiInvoice, ApiPaymentOrder, ApiPlanQuote, ApiReturnSettlement,
+  ApiEarlyRecharge, ApiInvoice, ApiPaymentOrder, ApiPlanQuote, ApiRefund, ApiReturnSettlement,
   ApiReturnStage,
 } from '../../types/api';
 import {
@@ -456,6 +457,31 @@ export default function BillingScreen() {
   const renderRefundCard = () => (
     shouldShowRefundInBilling(settlement)
       ? <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
+      : null
+  );
+
+  // Refunds OUTSIDE a return settlement — a cancelled booking, an off-cycle
+  // deposit release, a goodwill credit. 'settlement' refunds are excluded:
+  // that money is already the card above (SettlementCard reads the same
+  // underlying refund through rentalRepository.settlement()), so showing it
+  // again here would double the one payout. 'succeeded' is excluded too —
+  // once the money has actually arrived, the original push notification and
+  // Booking History's status badge already say so; this list is for refunds
+  // still open or that need the rider's attention (rejected/failed).
+  const [myRefunds, setMyRefunds] = useState<ApiRefund[]>([]);
+  const loadMyRefunds = useCallback(() => {
+    void billingRepository.myRefunds({ pageSize: 10 }).then((res) => setMyRefunds(res.data)).catch(() => {
+      // Non-critical, same reasoning as loadSettlement: the rest of Billing
+      // renders fine without it.
+    });
+  }, []);
+  useEffect(loadMyRefunds, [loadMyRefunds]);
+  useFocusEffect(useCallback(() => { loadMyRefunds(); }, [loadMyRefunds]));
+
+  const openRefunds = myRefunds.filter((r) => r.refund_type !== 'settlement' && r.status !== 'succeeded');
+  const renderOpenRefundCards = () => (
+    openRefunds.length > 0
+      ? openRefunds.map((r) => <RefundStatusCard key={r.id} refund={r} />)
       : null
   );
 
@@ -1192,6 +1218,10 @@ export default function BillingScreen() {
         // "No active plan" would be the one screen in the app not telling
         // them where their deposit is.
         || shouldShowRefundInBilling(settlement)
+        // Same reasoning for a cancelled booking's refund: cancelling a
+        // booking leaves no active plan at all, which is exactly when this
+        // screen most needs to say where that money is.
+        || openRefunds.length > 0
       ) ? (
         // No active booking/rental right now — but Billing stays a live
         // record of everything that ever happened on this account, not a
@@ -1208,6 +1238,7 @@ export default function BillingScreen() {
               to this rider's money, and it is the reason they opened this
               screen. */}
           {renderRefundCard()}
+          {renderOpenRefundCards()}
           {outstandingInvoices.length > 0 ? (
             <>
               <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">{t('billing.amountDue')}</Text>
@@ -1233,6 +1264,7 @@ export default function BillingScreen() {
               rental that produced it, so it is not the else-branch of
               anything below. */}
           {renderRefundCard()}
+          {renderOpenRefundCards()}
           {renderDepositCard()}
 
           {/* Current plan — a quiet, sophisticated surface rather than a

@@ -158,6 +158,7 @@ export const REFUND_STATUS_TONE: Record<BookingRefundStatus, Tone> = {
   processed: 'success',
   not_required: 'neutral',
   failed: 'danger',
+  rejected: 'danger',
 };
 
 export const REFUND_STATUS_LABEL_KEY: Record<BookingRefundStatus, CopyKey> = {
@@ -166,6 +167,7 @@ export const REFUND_STATUS_LABEL_KEY: Record<BookingRefundStatus, CopyKey> = {
   processed: 'status.refund.processed',
   not_required: 'status.refund.not_required',
   failed: 'status.refund.failed',
+  rejected: 'status.refund.rejected',
 };
 
 export const DEPOSIT_STATUS_TONE: Record<DepositStatus, Tone> = {

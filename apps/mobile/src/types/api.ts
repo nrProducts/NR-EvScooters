@@ -374,7 +374,7 @@ export type VehicleStatus = 'available' | 'reserved' | 'assigned' | 'maintenance
  * the future checkout phase rather than a reversal. 'not_required' covers a
  * cancellation whose refund works out to zero.
  */
-export type BookingRefundStatus = 'pending' | 'processing' | 'processed' | 'not_required' | 'failed';
+export type BookingRefundStatus = 'pending' | 'processing' | 'processed' | 'not_required' | 'failed' | 'rejected';
 
 export interface ApiBooking {
     id: string;
@@ -419,6 +419,8 @@ export interface ApiBooking {
     refund_initiated_at: string | null;
     refund_completed_at: string | null;
     refund_transaction_id: string | null;
+    /** Set only when refund_status is 'rejected' — why nothing is owed. */
+    refund_rejection_reason: string | null;
 }
 
 export type ApiReferralStatus = 'pending' | 'qualified' | 'rejected' | 'revoked';
@@ -695,6 +697,51 @@ export interface ApiDeposit {
     /** The rider's completed rental days, across their whole history. */
     rental_days_completed: number;
     refund_eligibility: 'not_eligible' | 'eligible' | 'refund_processed';
+}
+
+/** `refund_status` uses `succeeded`, matching `payment_status` on invoices. */
+export type RefundStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'rejected';
+
+export type RefundType = 'deposit_release' | 'booking_cancellation' | 'settlement' | 'goodwill';
+
+export interface ApiRefundDeductions {
+    transaction_fee: number;
+    other_charges: number;
+    cancellation_charge: number;
+}
+
+export interface ApiRefundBookingSummary {
+    id: string;
+    cancelled_at: string | null;
+    cancellation_reason: string | null;
+    cancellation_penalty_amount: number | null;
+    plan_price_at_cancellation: number | null;
+    vehicle_model_name: string | null;
+    station_name: string | null;
+    rider_name: string | null;
+    rider_phone: string | null;
+}
+
+/**
+ * The rider's own view of a refund — trimmed server-side (GET /refunds/me)
+ * to drop staff-internal fields (who reviewed/rejected it, gateway ids,
+ * retry counts). Powers the Billing refund-status card.
+ */
+export interface ApiRefund {
+    id: string;
+    booking_id: string | null;
+    amount: number;
+    gross_amount: number;
+    deductions: ApiRefundDeductions;
+    deduction_total: number;
+    status: RefundStatus;
+    refund_type: RefundType;
+    rejection_reason: string | null;
+    failure_reason: string | null;
+    initiated_at: string;
+    processed_at: string | null;
+    created_at: string;
+    booking: ApiRefundBookingSummary | null;
 }
 
 /**
