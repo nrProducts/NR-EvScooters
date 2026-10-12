@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    View, Text, BackHandler, Linking, TouchableOpacity,
+    View, Text, BackHandler, Linking, Platform, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -9,11 +9,10 @@ import {
 } from 'lucide-react-native';
 import { COLORS } from '../../../constants/theme';
 import { TAB_BAR_FOOTPRINT } from '../../../lib/tabBar';
-import { buildNavigationUrl, type NavApp } from '../../../lib/maps';
+import { buildMapsUrl, buildWebMapsUrl } from '../../../lib/maps';
 import { copyToClipboard } from '../../../lib/clipboard';
 import { notifyError, notifySuccess } from '../../../lib/confirm';
 import { ErrorState } from '../../../components/ui/ErrorState';
-import { Sheet } from '../../../components/ui/Sheet';
 import { Spinner } from '../../../components/Spinner';
 import { BatteryStationMap, type BatteryStationMapHandle } from '../components/BatteryStationMap';
 import { StationDetailsBottomSheet } from '../components/StationDetailsBottomSheet';
@@ -55,9 +54,6 @@ export default function BatteryStationsScreen() {
     const [search, setSearch] = useState('');
     const [selectedArea, setSelectedArea] = useState<AreaResult | null>(null);
     const [permissionNoticeDismissed, setPermissionNoticeDismissed] = useState(false);
-    // The station awaiting a "which maps app" choice — set by Navigate, read
-    // by the picker sheet, cleared once a choice (or the sheet's own close) fires.
-    const [navTargetStation, setNavTargetStation] = useState<BatteryStation | null>(null);
     // Ranks 2-5 of nearbyStations below start collapsed — only the closest
     // station shows until the rider taps the chevron to see the rest.
     const [nearbyExpanded, setNearbyExpanded] = useState(false);
@@ -215,23 +211,28 @@ export default function BatteryStationsScreen() {
         setPermissionNoticeDismissed(false);
     }, [requestLocation]);
 
-    /** Opens the "which maps app" picker rather than guessing one. */
-    const handleNavigate = useCallback((station: BatteryStation) => {
-        setNavTargetStation(station);
-    }, []);
-
     /**
-     * No Google Maps API key involved — google.com/maps and maps.apple.com
-     * are both universal links, so the OS hands them to the matching app when
-     * it's installed and otherwise opens the (fully functional) website, on
-     * every platform including a plain browser tab.
+     * Hands the coordinates to whatever the device itself decides — no in-app
+     * "Google Maps or Apple Maps?" picker. On web (no geo:/maps: scheme to
+     * resolve) this goes straight to the universal Google Maps link, which a
+     * mobile browser already offers to open in an installed maps app on its
+     * own; everywhere else it's the native deep link (geo: on Android, which
+     * is exactly what produces the OS's own disambiguation dialog when more
+     * than one maps app is installed; maps.apple.com on iOS), falling back to
+     * the web link when nothing can open it.
      */
-    const handlePickNavApp = useCallback(async (app: NavApp) => {
-        const station = navTargetStation;
-        setNavTargetStation(null);
-        if (!station) return;
+    const handleNavigate = useCallback(async (station: BatteryStation) => {
         try {
-            await Linking.openURL(buildNavigationUrl(station.latitude, station.longitude, app));
+            if (Platform.OS === 'web') {
+                await Linking.openURL(buildWebMapsUrl(station.latitude, station.longitude));
+                return;
+            }
+            const deepLink = buildMapsUrl(station.latitude, station.longitude, Platform.OS === 'ios' ? 'ios' : 'android');
+            if (await Linking.canOpenURL(deepLink)) {
+                await Linking.openURL(deepLink);
+                return;
+            }
+            await Linking.openURL(buildWebMapsUrl(station.latitude, station.longitude));
         } catch {
             notifyError(
                 t('stations.error.noNavApp.title'),
@@ -240,7 +241,7 @@ export default function BatteryStationsScreen() {
                 }),
             );
         }
-    }, [navTargetStation, t]);
+    }, [t]);
 
     const handleCopyCoordinates = useCallback(async (station: BatteryStation) => {
         const coordinates = `${station.latitude.toFixed(6)}, ${station.longitude.toFixed(6)}`;
@@ -350,12 +351,17 @@ export default function BatteryStationsScreen() {
                                 className="flex-1 flex-row items-center px-3.5 py-2.5"
                             >
                                 <MapPin size={14} color={COLORS.primary} />
-                                <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-bold ml-2 flex-1" numberOfLines={1}>
-                                    {t('stations.nearestLine', {
-                                        name: formatStationName(nearbyStations[0].name),
-                                        distance: formatDistance(nearbyStations[0].distanceKm),
-                                    })}
-                                </Text>
+                                <View className="ml-2 flex-1">
+                                    <Text style={{ color: COLORS.textSecondary }} className="text-[9px] font-bold uppercase tracking-wider">
+                                        {t('stations.nearestHeader')}
+                                    </Text>
+                                    <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold mt-0.5" numberOfLines={1}>
+                                        {t('stations.nearestNameLine', {
+                                            name: formatStationName(nearbyStations[0].name),
+                                            distance: formatDistance(nearbyStations[0].distanceKm),
+                                        })}
+                                    </Text>
+                                </View>
                             </TouchableOpacity>
 
                             {nearbyStations.length > 1 ? (
@@ -479,37 +485,10 @@ export default function BatteryStationsScreen() {
                 station={selectedStation}
                 distanceKm={selectedStation ? distanceTo(selectedStation) : null}
                 onClose={() => setSelectedStationId(null)}
-                onNavigate={handleNavigate}
+                onNavigate={(station) => void handleNavigate(station)}
                 onCopyCoordinates={(station) => void handleCopyCoordinates(station)}
                 onViewDetails={(station) => router.push(`/battery-stations/${station.id}` as never)}
             />
-
-            <Sheet
-                visible={!!navTargetStation}
-                onClose={() => setNavTargetStation(null)}
-                title={t('stationSheet.chooseNavApp.title')}
-            >
-                <View className="px-6 pb-6" style={{ gap: 10 }}>
-                    <TouchableOpacity
-                        onPress={() => void handlePickNavApp('google')}
-                        accessibilityRole="button"
-                        className="flex-row items-center justify-center rounded-2xl"
-                        style={{ backgroundColor: COLORS.primary, minHeight: 52 }}
-                    >
-                        <Text className="text-white font-bold text-sm">{t('stationSheet.chooseNavApp.google')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        onPress={() => void handlePickNavApp('apple')}
-                        accessibilityRole="button"
-                        className="flex-row items-center justify-center rounded-2xl"
-                        style={{ backgroundColor: COLORS.background, minHeight: 52 }}
-                    >
-                        <Text style={{ color: COLORS.textPrimary }} className="font-bold text-sm">
-                            {t('stationSheet.chooseNavApp.apple')}
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-            </Sheet>
         </View>
     );
 }

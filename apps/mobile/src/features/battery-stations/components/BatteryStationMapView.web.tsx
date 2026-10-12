@@ -1,5 +1,5 @@
 import React, { forwardRef, useCallback, useImperativeHandle, useMemo, useRef } from 'react';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
 import MapGL, {
     Source, Layer, Marker, type MapRef, type MapLayerMouseEvent,
 } from 'react-map-gl/maplibre';
@@ -10,7 +10,7 @@ import { ENV } from '../../../constants/env';
 import { boundsOf, toFeatureCollection } from '../utils/geojson';
 import { resolvePressedFeature } from '../utils/mapInteraction';
 import {
-    CHENNAI, DEFAULT_ZOOM, FOCUS_ZOOM, MARKER_TEXT_FONT,
+    CHENNAI, DEFAULT_ZOOM, FOCUS_ZOOM,
     type BatteryStationMapHandle, type BatteryStationMapProps,
 } from './mapContract';
 import type { Coordinates } from '../utils/distance';
@@ -21,35 +21,25 @@ import { useT } from '../../../i18n';
  * @maplibre/maplibre-react-native — that package is native-only (it resolves
  * a TurboModule at import time) and simply cannot run in a browser. This is
  * NOT a straight re-export of the native view: every style-layer definition
- * below is hand-ported from BatteryStationMarker.tsx / StationClusterMarker
- * .tsx, because those files import the native Layer component and would
- * throw the moment this module touched them, same as the one it replaces.
- * Metro picks THIS file automatically on web builds (the `.web.tsx`
- * extension), same mechanism as every other platform-split file in Expo —
- * BatteryStationMap.tsx's lazy import needed no change.
+ * below is hand-ported from BatteryStationMarker.tsx, because that file
+ * imports the native Layer component and would throw the moment this module
+ * touched it, same as the one it replaces. Metro picks THIS file
+ * automatically on web builds (the `.web.tsx` extension), same mechanism as
+ * every other platform-split file in Expo — BatteryStationMap.tsx's lazy
+ * import needed no change.
  *
  * The underlying GL style spec (paint/layout/filter expressions) is the same
  * language on native and web MapLibre, which is why these layers are a
- * faithful port rather than a different visual design — same circles, same
- * cluster step sizes, same status colours, just declared against
- * react-map-gl's <Source>/<Layer> instead of the native one's.
+ * faithful port rather than a different visual design — same minimal dot
+ * markers, same status colours, just declared against react-map-gl's
+ * <Source>/<Layer> instead of the native one's.
  */
 
 const SOURCE_ID = 'battery-stations';
 const STATION_LAYER_ID = 'battery-station-points';
-const STATION_LABEL_LAYER_ID = 'battery-station-labels';
+const STATION_SHADOW_LAYER_ID = 'battery-station-shadow';
+const STATION_CORE_LAYER_ID = 'battery-station-core';
 const STATION_SELECTED_LAYER_ID = 'battery-station-selected';
-const CLUSTER_LAYER_ID = 'battery-station-clusters';
-const CLUSTER_COUNT_LAYER_ID = 'battery-station-cluster-count';
-
-const STATUS_ICON_EXPRESSION = [
-    'match',
-    ['get', 'status'],
-    'WORKING', 'station-working',
-    'MAINTENANCE', 'station-maintenance',
-    'NOT_WORKING', 'station-not-working',
-    'station-working',
-] as const;
 
 const STATUS_COLOR_EXPRESSION = [
     'match',
@@ -59,13 +49,6 @@ const STATUS_COLOR_EXPRESSION = [
     'NOT_WORKING', COLORS.danger,
     COLORS.gray[500],
 ] as const;
-
-/** [name, require()'d asset] — loaded into the map's sprite via loadImage/addImage once the style is ready (see onLoad below). */
-const STATUS_ICONS: Array<[string, number]> = [
-    ['station-working', require('../../../../assets/map/station-working.png')],
-    ['station-maintenance', require('../../../../assets/map/station-maintenance.png')],
-    ['station-not-working', require('../../../../assets/map/station-not-working.png')],
-];
 
 const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStationMapProps>(function BatteryStationMapView(
     { stations, selectedStationId, onSelectStation, onPressMap, userCoords },
@@ -108,57 +91,23 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
         },
     }), [focusCoordinates, fitAll]);
 
-    /** Registers the three status sprites once the style has finished loading — maplibre-gl's addImage needs a loaded style to attach to. */
-    const handleLoad = useCallback(() => {
-        const map = mapRef.current?.getMap();
-        if (!map) return;
-        for (const [name, asset] of STATUS_ICONS) {
-            if (map.hasImage(name)) continue;
-            const uri = Image.resolveAssetSource(asset)?.uri;
-            if (!uri) continue;
-            map.loadImage(uri).then(({ data }) => {
-                if (!map.hasImage(name)) map.addImage(name, data);
-            }).catch(() => {
-                // A missing sprite degrades to the plain status-coloured
-                // circle underneath it (still legible) — not worth surfacing
-                // as an error for what is purely a decorative glyph.
-            });
-        }
-    }, []);
-
     /**
-     * A click on an interactive layer hands back the features under the
-     * pointer — same shape resolvePressedFeature already expects from the
-     * native side, so the decision logic (expand a cluster vs. select a
-     * station) isn't duplicated here.
+     * A click on the station layer hands back the feature under the pointer
+     * — same shape resolvePressedFeature already expects from the native
+     * side. The source is never clustered, so only its 'station' answer is
+     * reachable here, but the function stays generic since it's shared with
+     * the native view.
      */
     const handleClick = useCallback(
-        async (event: MapLayerMouseEvent) => {
+        (event: MapLayerMouseEvent) => {
             const pressed = resolvePressedFeature(event.features?.[0] as GeoJSON.Feature | undefined);
-
             if (pressed.kind === 'station') {
                 onSelectStation(pressed.stationId);
-                return;
-            }
-            if (pressed.kind !== 'cluster') {
+            } else {
                 onPressMap();
-                return;
             }
-
-            const fallbackZoom = zoomRef.current + 2;
-            const source = mapRef.current?.getSource(SOURCE_ID) as
-                | { getClusterExpansionZoom: (id: number, cb: (err: unknown, zoom: number) => void) => void }
-                | undefined;
-            const zoom = await new Promise<number>((resolve) => {
-                if (pressed.clusterId === undefined || !source) {
-                    resolve(fallbackZoom);
-                    return;
-                }
-                source.getClusterExpansionZoom(pressed.clusterId, (err, z) => resolve(err ? fallbackZoom : z));
-            });
-            focusCoordinates({ latitude: pressed.latitude, longitude: pressed.longitude }, zoom + 0.5);
         },
-        [focusCoordinates, onSelectStation, onPressMap],
+        [onSelectStation, onPressMap],
     );
 
     return (
@@ -169,81 +118,42 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
             maxZoom={18}
             mapStyle={ENV.mapStyleUrl}
             style={{ width: '100%', height: '100%' }}
-            interactiveLayerIds={[STATION_LAYER_ID, CLUSTER_LAYER_ID]}
-            onClick={(e) => void handleClick(e)}
-            onLoad={handleLoad}
+            interactiveLayerIds={[STATION_LAYER_ID]}
+            onClick={handleClick}
             onZoom={(e) => { zoomRef.current = e.viewState.zoom; }}
         >
-            <Source
-                id={SOURCE_ID}
-                type="geojson"
-                data={featureCollection}
-                cluster
-                clusterRadius={45}
-                clusterMaxZoom={13}
-            >
-                <Layer
-                    id={CLUSTER_LAYER_ID}
-                    type="circle"
-                    filter={['has', 'point_count']}
-                    paint={{
-                        'circle-radius': ['step', ['get', 'point_count'], 20, 5, 26, 15, 32],
-                        'circle-color': COLORS.primary,
-                        'circle-stroke-width': 3,
-                        'circle-stroke-color': COLORS.white,
-                    }}
-                />
-                <Layer
-                    id={CLUSTER_COUNT_LAYER_ID}
-                    type="symbol"
-                    filter={['has', 'point_count']}
-                    layout={{
-                        'text-field': ['to-string', ['get', 'point_count']],
-                        'text-font': MARKER_TEXT_FONT,
-                        'text-size': 13,
-                        'text-allow-overlap': true,
-                        'text-ignore-placement': true,
-                    }}
-                    paint={{ 'text-color': COLORS.white }}
-                />
-
+            <Source id={SOURCE_ID} type="geojson" data={featureCollection}>
                 <Layer
                     id={STATION_SELECTED_LAYER_ID}
                     type="circle"
-                    filter={['all', ['!', ['has', 'point_count']], ['==', ['get', 'id'], selectedStationId ?? '']]}
-                    paint={{ 'circle-radius': 26, 'circle-color': COLORS.primary, 'circle-opacity': 0.22 }}
+                    paint={{ 'circle-radius': 18, 'circle-color': COLORS.primary, 'circle-opacity': 0.2 }}
+                    filter={['==', ['get', 'id'], selectedStationId ?? '']}
                 />
+
+                {/* A soft drop shadow rather than a hard stroke — circle-blur
+                    fakes elevation the GL style spec has no real box-shadow for. */}
+                <Layer
+                    id={STATION_SHADOW_LAYER_ID}
+                    type="circle"
+                    paint={{
+                        'circle-radius': 11,
+                        'circle-color': COLORS.black,
+                        'circle-opacity': 0.18,
+                        'circle-blur': 0.9,
+                        'circle-translate': [0, 1.5],
+                    }}
+                />
+
                 <Layer
                     id={STATION_LAYER_ID}
                     type="circle"
-                    filter={['!', ['has', 'point_count']]}
-                    paint={{
-                        'circle-radius': 19,
-                        'circle-color': STATUS_COLOR_EXPRESSION as unknown as string,
-                        'circle-stroke-width': 2.5,
-                        'circle-stroke-color': COLORS.white,
-                    }}
+                    paint={{ 'circle-radius': 9, 'circle-color': COLORS.white }}
                 />
+
                 <Layer
-                    id={STATION_LABEL_LAYER_ID}
-                    type="symbol"
-                    filter={['!', ['has', 'point_count']]}
-                    layout={{
-                        'icon-image': STATUS_ICON_EXPRESSION as unknown as string,
-                        'icon-size': 0.2,
-                        'icon-allow-overlap': true,
-                        'icon-ignore-placement': true,
-                        'text-field': ['to-string', ['get', 'batteryCount']],
-                        'text-font': MARKER_TEXT_FONT,
-                        'text-size': 10,
-                        'text-allow-overlap': true,
-                        'text-ignore-placement': true,
-                    }}
-                    paint={{
-                        'text-color': COLORS.white,
-                        'icon-translate': [0, -5],
-                        'text-translate': [0, 10],
-                    }}
+                    id={STATION_CORE_LAYER_ID}
+                    type="circle"
+                    paint={{ 'circle-radius': 5, 'circle-color': STATUS_COLOR_EXPRESSION as unknown as string }}
                 />
             </Source>
 

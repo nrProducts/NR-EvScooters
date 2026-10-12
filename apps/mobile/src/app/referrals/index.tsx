@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Share, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gift, Copy, Share2, Check, Users, Clock, Ticket } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
@@ -11,9 +11,7 @@ import { useT } from '../../i18n';
 import type { CopyKey } from '../../i18n';
 import { COLORS } from '../../constants/theme';
 import { copyToClipboard } from '../../lib/clipboard';
-import { notify, notifyError, notifySuccess } from '../../lib/confirm';
-import { referralRepository } from '../../services';
-import { ApiError } from '../../lib/ApiError';
+import { notifyError } from '../../lib/confirm';
 import type { ApiReferralStatus, ApiRewardCardStatus } from '../../types/api';
 import { formatDate } from '../../constants/status';
 
@@ -47,8 +45,6 @@ export default function ReferralsScreen() {
   const { t } = useT();
   const { summary, loading, error, reload } = useReferralSummary();
   const [copied, setCopied] = useState(false);
-  const [codeInput, setCodeInput] = useState('');
-  const [applying, setApplying] = useState(false);
 
   const handleCopy = async () => {
     if (!summary?.referral_code) return;
@@ -65,29 +61,6 @@ export default function ReferralsScreen() {
     void Share.share({
       message: t('referrals.shareMessage', { code: summary.referral_code }),
     });
-  };
-
-  const handleApply = async () => {
-    const code = codeInput.trim().toUpperCase();
-    if (code.length !== 6) {
-      notifyError(t('referrals.applyInvalidLength'));
-      return;
-    }
-    setApplying(true);
-    try {
-      const result = await referralRepository.redeem(code);
-      setCodeInput('');
-      if (result.outcome === 'already_applied') {
-        notify(t('referrals.alreadyApplied.title'), t('referrals.alreadyApplied.body', { name: result.attribution.referrer_display_name }));
-      } else {
-        notifySuccess(t('referrals.applied.title'), t('referrals.applied.body', { name: result.attribution.referrer_display_name }));
-      }
-      void reload();
-    } catch (err) {
-      notifyError(t('referrals.applyFailed'), err instanceof ApiError ? err.message : undefined);
-    } finally {
-      setApplying(false);
-    }
   };
 
   return (
@@ -149,42 +122,13 @@ export default function ReferralsScreen() {
               <StatTile icon={Ticket} label={t('referrals.stat.cards')} value={summary.available_card_count} />
             </View>
 
-            {/* --- apply someone else's code --------------------------------- */}
-            {!summary.my_attribution ? (
-              <View
-                className="rounded-2xl border p-4 mb-4"
-                style={{ borderColor: COLORS.border, backgroundColor: COLORS.card }}
-              >
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold mb-1">
-                  {t('referrals.haveACode')}
-                </Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mb-3 leading-relaxed">
-                  {t('referrals.haveACodeHelp')}
-                </Text>
-                <View className="flex-row items-center" style={{ gap: 8 }}>
-                  <View
-                    className="flex-1 rounded-xl border px-3"
-                    style={{ borderColor: COLORS.border, backgroundColor: COLORS.background, height: 44, justifyContent: 'center' }}
-                  >
-                    <CodeInput value={codeInput} onChange={setCodeInput} />
-                  </View>
-                  <TouchableOpacity
-                    onPress={handleApply}
-                    disabled={applying || codeInput.trim().length !== 6}
-                    accessibilityRole="button"
-                    className="rounded-xl px-4 items-center justify-center"
-                    style={{
-                      backgroundColor: COLORS.primary, height: 44,
-                      opacity: applying || codeInput.trim().length !== 6 ? 0.5 : 1,
-                    }}
-                  >
-                    {applying
-                      ? <Spinner size={16} color="#FFF" />
-                      : <Text className="text-white text-xs font-extrabold">{t('referrals.apply')}</Text>}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
+            {/* --- referred-by status, if any ---------------------------------
+                Applying someone else's code happens once, during KYC
+                (ReferralCodeEntry on the review step) — not here. This is
+                informational only: whether that already happened, and the
+                outcome. Nothing renders for a rider who hasn't entered one,
+                rather than offering a second place to do it. */}
+            {summary.my_attribution ? (
               <View
                 className="rounded-2xl border p-4 mb-4 flex-row items-center"
                 style={{ borderColor: COLORS.border, backgroundColor: COLORS.card, gap: 12 }}
@@ -205,7 +149,7 @@ export default function ReferralsScreen() {
                   tone={REFERRAL_STATUS_TONE[summary.my_attribution.status]}
                 />
               </View>
-            )}
+            ) : null}
 
             {/* --- my reward cards -------------------------------------------- */}
             <Heading>{t('referrals.myCards')}</Heading>
@@ -289,19 +233,3 @@ const StatTile: React.FC<{ icon: typeof Users; label: string; value: number }> =
     <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-semibold text-center mt-0.5">{label}</Text>
   </View>
 );
-
-const CodeInput: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
-  const { t } = useT();
-  return (
-    <TextInput
-      value={value}
-      onChangeText={(v: string) => onChange(v.toUpperCase().slice(0, 6))}
-      placeholder={t('referrals.codePlaceholder')}
-      placeholderTextColor={COLORS.textSecondary}
-      autoCapitalize="characters"
-      autoCorrect={false}
-      maxLength={6}
-      style={{ color: COLORS.textPrimary, fontSize: 14, fontWeight: '800', letterSpacing: 2 }}
-    />
-  );
-};

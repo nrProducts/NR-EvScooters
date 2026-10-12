@@ -22,6 +22,7 @@ const PUNCTUATION_ONLY_KEYS: readonly CopyKey[] = [
     // Pure interpolation, no literal word of its own — "{a}, {b}, {c}" is the
     // same three commas in every language.
     'stationSearch.rowA11y',
+    'stations.nearestNameLine',
     // A machine format, not prose — the placeholder tells the rider the
     // FIELD ORDER (year, month, day), which does not change with language.
     'datePicker.placeholder',

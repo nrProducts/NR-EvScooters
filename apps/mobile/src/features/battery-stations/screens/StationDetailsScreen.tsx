@@ -36,8 +36,17 @@ export default function StationDetailsScreen() {
     }, [t]);
 
     const navigate = useCallback(async (target: BatteryStation) => {
-        const deepLink = buildMapsUrl(target.latitude, target.longitude, Platform.OS === 'ios' ? 'ios' : 'android');
         try {
+            // No in-app "which maps app?" picker — the device decides. Web has
+            // no geo:/maps: scheme to resolve, so it goes straight to the
+            // universal Google Maps link (which a mobile browser already
+            // offers to open in an installed maps app on its own); everywhere
+            // else it's the native deep link, same fallback as before.
+            if (Platform.OS === 'web') {
+                await Linking.openURL(buildWebMapsUrl(target.latitude, target.longitude));
+                return;
+            }
+            const deepLink = buildMapsUrl(target.latitude, target.longitude, Platform.OS === 'ios' ? 'ios' : 'android');
             if (await Linking.canOpenURL(deepLink)) {
                 await Linking.openURL(deepLink);
                 return;
