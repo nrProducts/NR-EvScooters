@@ -1,12 +1,14 @@
 import React, { forwardRef, useCallback, useImperativeHandle, useMemo, useRef } from 'react';
 import { Image, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapGL, {
-    Source, Layer, Marker, type MapRef, type MapLayerMouseEvent,
+    AttributionControl, Source, Layer, Marker, type MapRef, type MapLayerMouseEvent,
 } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Navigation } from 'lucide-react-native';
 import { COLORS } from '../../../constants/theme';
 import { ENV } from '../../../constants/env';
+import { TAB_BAR_FOOTPRINT } from '../../../lib/tabBar';
 import { boundsOf, toFeatureCollection } from '../utils/geojson';
 import { resolvePressedFeature } from '../utils/mapInteraction';
 import {
@@ -31,15 +33,15 @@ import { useT } from '../../../i18n';
  * The underlying GL style spec (paint/layout/filter expressions) is the same
  * language on native and web MapLibre, which is why these layers are a
  * faithful port rather than a different visual design — same status-coloured
- * disc with a white bolt on top, just declared against react-map-gl's
- * <Source>/<Layer> instead of the native one's.
+ * location pin with a white bolt in its head, just declared against
+ * react-map-gl's <Source>/<Layer> instead of the native one's.
  */
 
 const SOURCE_ID = 'battery-stations';
 const STATION_LAYER_ID = 'battery-station-points';
-const STATION_SHADOW_LAYER_ID = 'battery-station-shadow';
 const STATION_ICON_LAYER_ID = 'battery-station-icon';
 const STATION_SELECTED_LAYER_ID = 'battery-station-selected';
+const PIN_ICON_NAME = 'station-pin';
 const BOLT_ICON_NAME = 'station-bolt';
 
 const STATUS_COLOR_EXPRESSION = [
@@ -51,11 +53,28 @@ const STATUS_COLOR_EXPRESSION = [
     COLORS.gray[500],
 ] as const;
 
+/**
+ * The pin source is 96x128 (scripts/generate-station-icons.mjs); its head
+ * circle is centred at (48, 44), i.e. 20px above the image's true centre
+ * (64). At icon-size 0.28, a symbol layer's default 'center' anchor puts
+ * that true centre on the map coordinate, so the head sits 20 * 0.28 =
+ * 5.6px above it on screen.
+ *
+ * The bolt is centred in its own 96x96 image already. To land its centre on
+ * that same (0, -5.6px) screen offset, icon-offset is expressed in EMs of
+ * the BOLT's own icon-size (the style spec multiplies offset by icon-size
+ * to get the final shift) — so -5.6 / 0.14 = -40.
+ */
+const PIN_ICON_SIZE = 0.28;
+const BOLT_ICON_SIZE = 0.14;
+const BOLT_ICON_OFFSET: [number, number] = [0, -40];
+
 const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStationMapProps>(function BatteryStationMapView(
     { stations, selectedStationId, onSelectStation, onPressMap, userCoords },
     ref,
 ) {
     const { t } = useT();
+    const insets = useSafeAreaInsets();
     const mapRef = useRef<MapRef>(null);
     // Mirrors the camera so zoomBy has something to increment, same reason
     // the native view keeps its own ref rather than trusting an async getter.
@@ -92,19 +111,32 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
         },
     }), [focusCoordinates, fitAll]);
 
-    /** Registers the bolt sprite once the style has finished loading — maplibre-gl's addImage needs a loaded style to attach to. */
+    /**
+     * Registers both sprites once the style has finished loading —
+     * maplibre-gl's addImage needs a loaded style to attach to. The pin is
+     * flagged `sdf: true` so its paint `icon-color` can tint it per status;
+     * the bolt is a plain image and must stay white regardless.
+     */
     const handleLoad = useCallback(() => {
         const map = mapRef.current?.getMap();
-        if (!map || map.hasImage(BOLT_ICON_NAME)) return;
-        const uri = Image.resolveAssetSource(require('../../../../assets/map/station-bolt.png'))?.uri;
-        if (!uri) return;
-        map.loadImage(uri).then(({ data }) => {
-            if (!map.hasImage(BOLT_ICON_NAME)) map.addImage(BOLT_ICON_NAME, data);
-        }).catch(() => {
-            // A missing sprite leaves the plain status-coloured circle
-            // underneath it — still legible, not worth surfacing as an error
-            // for what is purely a decorative glyph.
-        });
+        if (!map) return;
+        const toRegister: Array<[string, number, boolean]> = [
+            [PIN_ICON_NAME, require('../../../../assets/map/station-pin.png'), true],
+            [BOLT_ICON_NAME, require('../../../../assets/map/station-bolt.png'), false],
+        ];
+        for (const [name, asset, sdf] of toRegister) {
+            if (map.hasImage(name)) continue;
+            const uri = Image.resolveAssetSource(asset)?.uri;
+            if (!uri) continue;
+            map.loadImage(uri).then(({ data }) => {
+                if (!map.hasImage(name)) map.addImage(name, data, { sdf });
+            }).catch(() => {
+                // A missing sprite leaves nothing drawn at that layer — the
+                // other layer (and the station's own colour/position data)
+                // still work, not worth surfacing as an error for what is
+                // purely a decorative glyph.
+            });
+        }
     }, []);
 
     /**
@@ -138,7 +170,19 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
             onClick={handleClick}
             onLoad={handleLoad}
             onZoom={(e) => { zoomRef.current = e.viewState.zoom; }}
+            // maplibre-gl auto-adds its own attribution ("i") control
+            // bottom-right at the true container edge — directly behind the
+            // floating pill tab bar, which sits ABOVE insets.bottom at its
+            // own elevation. Disabled here and re-added below with enough
+            // bottom margin to actually clear it.
+            attributionControl={false}
         >
+            <AttributionControl
+                compact
+                position="bottom-left"
+                style={{ marginBottom: insets.bottom + TAB_BAR_FOOTPRINT + 8 }}
+            />
+
             <Source id={SOURCE_ID} type="geojson" data={featureCollection}>
                 <Layer
                     id={STATION_SELECTED_LAYER_ID}
@@ -147,28 +191,19 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
                     filter={['==', ['get', 'id'], selectedStationId ?? '']}
                 />
 
-                {/* A soft drop shadow rather than a hard stroke — circle-blur
-                    fakes elevation the GL style spec has no real box-shadow for. */}
-                <Layer
-                    id={STATION_SHADOW_LAYER_ID}
-                    type="circle"
-                    paint={{
-                        'circle-radius': 12,
-                        'circle-color': COLORS.black,
-                        'circle-opacity': 0.18,
-                        'circle-blur': 0.9,
-                        'circle-translate': [0, 1.5],
-                    }}
-                />
-
                 <Layer
                     id={STATION_LAYER_ID}
-                    type="circle"
+                    type="symbol"
+                    layout={{
+                        'icon-image': PIN_ICON_NAME,
+                        'icon-size': PIN_ICON_SIZE,
+                        'icon-allow-overlap': true,
+                        'icon-ignore-placement': true,
+                    }}
                     paint={{
-                        'circle-radius': 11,
-                        'circle-color': STATUS_COLOR_EXPRESSION as unknown as string,
-                        'circle-stroke-width': 1.5,
-                        'circle-stroke-color': COLORS.white,
+                        'icon-color': STATUS_COLOR_EXPRESSION as unknown as string,
+                        'icon-halo-color': COLORS.white,
+                        'icon-halo-width': 1,
                     }}
                 />
 
@@ -177,8 +212,8 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
                     type="symbol"
                     layout={{
                         'icon-image': BOLT_ICON_NAME,
-                        // Source is 96px; 0.14 renders it ~13px inside the 22px disc.
-                        'icon-size': 0.14,
+                        'icon-size': BOLT_ICON_SIZE,
+                        'icon-offset': BOLT_ICON_OFFSET,
                         'icon-allow-overlap': true,
                         'icon-ignore-placement': true,
                     }}

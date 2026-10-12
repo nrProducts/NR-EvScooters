@@ -80,7 +80,7 @@ describe('describeExpiry', () => {
     const d = describeExpiry(endOfIstDay('2026-08-31'), ist('2026-08-31', '09:00'));
     expect(d?.tone).toBe('danger');
     expect(d?.daysLeft).toBe(0);
-    expect(d?.text).toContain('last day');
+    expect(d?.text).toContain('Plan End');
   });
 
   it('reports how far past expiry a rider is', () => {
@@ -108,10 +108,10 @@ describe('describeExpiry', () => {
     expect(d?.headline).toBe('Your plan expired today.');
   });
 
-  it('still shows "last day" before the exact deadline on the expiry day', () => {
+  it('still shows "Plan End" before the exact deadline on the expiry day', () => {
     const d = describeExpiry(ist('2026-08-31', '12:00').toISOString(), ist('2026-08-31', '09:00'));
     expect(d?.tone).toBe('danger');
-    expect(d?.text).toContain('last day');
+    expect(d?.text).toContain('Plan End');
   });
 
   it('exposes the warning threshold', () => {

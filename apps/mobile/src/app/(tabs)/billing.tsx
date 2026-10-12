@@ -949,8 +949,8 @@ export default function BillingScreen() {
         return (
           <View
             key={inv.id}
-            className="rounded-2xl border mb-4 overflow-hidden"
-            style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
+            className="border mb-4 overflow-hidden"
+            style={{ borderRadius: 22, backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
           >
             <View className="p-5">
               <View className="flex-row items-center justify-between mb-3">
@@ -988,17 +988,23 @@ export default function BillingScreen() {
                 <BillLine label={t('billing.rentalPlanAmount')} amount={inv.total_amount} />
               )}
               {inv.allocated_amount > 0 ? (
-                <BillLine label={t('billing.alreadyPaid')} amount={inv.allocated_amount} negative />
+                <>
+                  <View className="h-px" style={{ backgroundColor: COLORS.background }} />
+                  <BillLine label={t('billing.alreadyPaid')} amount={inv.allocated_amount} negative />
+                </>
               ) : null}
               {inv.late_fee ? (
-                <BillLine
-                  label={t(
-                    inv.days_late === 1 ? 'billing.lateFeeParenOne' : 'billing.lateFeeParenOther',
-                    { days: inv.days_late ?? 0, rate: perDay.toFixed(0) },
-                  )}
-                  amount={inv.late_fee}
-                  attention
-                />
+                <>
+                  <View className="h-px" style={{ backgroundColor: COLORS.background }} />
+                  <BillLine
+                    label={t(
+                      inv.days_late === 1 ? 'billing.lateFeeParenOne' : 'billing.lateFeeParenOther',
+                      { days: inv.days_late ?? 0, rate: perDay.toFixed(0) },
+                    )}
+                    amount={inv.late_fee}
+                    attention
+                  />
+                </>
               ) : null}
               <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
               <View className="flex-row items-center justify-between pb-1">
@@ -1063,8 +1069,8 @@ export default function BillingScreen() {
             // Expired never make sense here (see hasActiveReturn above), so
             // this replaces them rather than sitting alongside them.
             <View
-              className="rounded-2xl border p-4 mb-7 flex-row items-center"
-              style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
+              className="border p-4 mb-7 flex-row items-center"
+              style={{ borderRadius: 18, backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
             >
               <View className="w-9 h-9 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.warning + '1A' }}>
                 <ShieldCheck size={16} color={COLORS.warning} />
@@ -1087,8 +1093,8 @@ export default function BillingScreen() {
             // starts once this one actually ends. Paid late, a fee applies
             // and the new period starts right away.
             <View
-              className="rounded-2xl border p-5 mb-7"
-              style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
+              className="border p-5 mb-7"
+              style={{ borderRadius: 22, backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
             >
               {renewalIsLate ? <AttentionNote label={t('billing.paymentRequired')} tone="danger" /> : null}
               <Text style={{ color: renewalIsLate ? COLORS.danger : COLORS.textPrimary }} className="text-sm font-semibold mb-1">
@@ -1191,8 +1197,8 @@ export default function BillingScreen() {
             </View>
           ) : renewalStatus === 'scheduled' ? (
             <View
-              className="rounded-2xl border p-4 mb-7 flex-row items-center"
-              style={{ backgroundColor: COLORS.success + '0A', borderColor: COLORS.success + '26' }}
+              className="border p-4 mb-7 flex-row items-center"
+              style={{ borderRadius: 18, backgroundColor: COLORS.success + '0A', borderColor: COLORS.success + '26' }}
             >
               <View className="w-9 h-9 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.success + '1A' }}>
                 <ShieldCheck size={16} color={COLORS.success} />
@@ -1208,8 +1214,8 @@ export default function BillingScreen() {
             </View>
           ) : (
             <View
-              className="rounded-2xl border p-4 mb-7 flex-row items-center"
-              style={{ backgroundColor: COLORS.success + '0A', borderColor: COLORS.success + '26' }}
+              className="border p-4 mb-7 flex-row items-center"
+              style={{ borderRadius: 18, backgroundColor: COLORS.success + '0A', borderColor: COLORS.success + '26' }}
             >
               <View className="w-9 h-9 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.success + '1A' }}>
                 <ShieldCheck size={16} color={COLORS.success} />
@@ -1374,8 +1380,8 @@ export default function BillingScreen() {
             // the only way back into checkout after leaving the
             // booking-creation screen.
             <View
-              className="rounded-2xl border mb-7 overflow-hidden"
-              style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
+              className="border mb-7 overflow-hidden"
+              style={{ borderRadius: 22, backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
             >
               <View className="p-5">
                 <AttentionNote label={t('billing.paymentRequired')} />

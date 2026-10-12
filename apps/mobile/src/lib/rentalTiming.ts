@@ -102,7 +102,7 @@ export function describeExpiry(expiresAt: string | null, now: Date = new Date())
   }
 
   if (daysLeft === 0) {
-    return { text: `${on} · last day`, headline: 'Your plan ends today.', tone: 'danger', daysLeft };
+    return { text: `${on} · Plan End`, headline: 'Your plan ends today.', tone: 'danger', daysLeft };
   }
 
   return {
