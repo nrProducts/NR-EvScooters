@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { PackageCheck, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
@@ -379,7 +380,7 @@ export default function BookingListPage() {
           && hasAction(user, "bookings", "cancel");
         if (b.status === "confirmed" && hasAction(user, "bookings", "edit")) {
           return (
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end items-center gap-1.5">
               <Button
                 size="sm"
                 onClick={() => {
@@ -392,14 +393,15 @@ export default function BookingListPage() {
                 <PackageCheck className="h-3.5 w-3.5" /> Confirm pickup
               </Button>
               {canCancel && (
-                <Button
-                  size="sm"
+                <IconButton
+                  label="Cancel booking"
+                  size="icon"
                   variant="outline"
-                  className="text-destructive hover:text-destructive"
+                  className="text-destructive hover:text-destructive shrink-0"
                   onClick={() => { setCancelTarget(b); setCancelReason(""); }}
                 >
-                  <XCircle className="h-3.5 w-3.5" /> Cancel
-                </Button>
+                  <XCircle className="h-3.5 w-3.5" />
+                </IconButton>
               )}
             </div>
           );

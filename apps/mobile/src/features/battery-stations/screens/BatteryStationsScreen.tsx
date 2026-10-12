@@ -8,6 +8,7 @@ import {
     ArrowLeft, MapPin, Minus, Plus, RefreshCw, TriangleAlert,
 } from 'lucide-react-native';
 import { COLORS } from '../../../constants/theme';
+import { TAB_BAR_FOOTPRINT } from '../../../lib/tabBar';
 import { buildMapsUrl, buildWebMapsUrl } from '../../../lib/maps';
 import { copyToClipboard } from '../../../lib/clipboard';
 import { notifyError, notifySuccess } from '../../../lib/confirm';
@@ -329,9 +330,14 @@ export default function BatteryStationsScreen() {
             </View>
 
             {/* --- right-hand control stack --- */}
+            {/* This stack only renders with no station selected, which is
+                exactly when the floating pill tab bar is the thing sitting
+                behind it — insets.bottom alone cleared the OS safe area but
+                not the bar itself, so the lowest button (Fit Stations) sat
+                half under it. Same fix as StationDetailsBottomSheet's. */}
             <View
                 className="absolute right-4"
-                style={{ bottom: (selectedStation ? 0 : insets.bottom) + 24, gap: 10 }}
+                style={{ bottom: (selectedStation ? 0 : insets.bottom + TAB_BAR_FOOTPRINT) + 24, gap: 10 }}
                 pointerEvents="box-none"
             >
                 {!selectedStation && (

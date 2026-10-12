@@ -68,7 +68,16 @@ export default function KycScreen() {
   // skip-or-submit) is actually done.
   const { onboarding } = useLocalSearchParams<{ onboarding?: string }>();
   const hideChrome = onboarding === '1';
-  const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) =>
+  // A plain function, NOT a component defined inline — the latter (`const
+  // Shell: React.FC<...> = (...) => ...` inside this render body) is a new
+  // component TYPE on every render, and React remounts a subtree whenever
+  // its wrapping type changes identity, even though the JSX looks identical.
+  // That's exactly what closed the keyboard after every single character
+  // typed into the Aadhaar/licence number field: each keystroke's setState
+  // re-ran KycScreen, which redefined Shell, which tore down and rebuilt
+  // the whole tree below it — including the focused TextInput. A function
+  // that just returns JSX, called directly, has no such identity to change.
+  const shell = (children: React.ReactNode) =>
     hideChrome ? (
       <View style={{ flex: 1, backgroundColor: COLORS.background }}>{children}</View>
     ) : (
@@ -241,32 +250,28 @@ export default function KycScreen() {
   };
 
   if (loading) {
-    return (
-      <Shell>
-        <View className="flex-1 items-center justify-center">
-          <Spinner size={32} color={COLORS.primary} />
-          <Text style={{ color: COLORS.textSecondary }} className="font-medium mt-4 text-xs">
-            {t('kyc.loading')}
-          </Text>
-        </View>
-      </Shell>
+    return shell(
+      <View className="flex-1 items-center justify-center">
+        <Spinner size={32} color={COLORS.primary} />
+        <Text style={{ color: COLORS.textSecondary }} className="font-medium mt-4 text-xs">
+          {t('kyc.loading')}
+        </Text>
+      </View>,
     );
   }
 
   if (error || !kyc) {
-    return (
-      <Shell>
-        <ErrorState
-          message={error?.message ?? t('kyc.loadFailed')}
-          offline={error?.isOffline}
-          onRetry={() => void retry()}
-        />
-      </Shell>
+    return shell(
+      <ErrorState
+        message={error?.message ?? t('kyc.loadFailed')}
+        offline={error?.isOffline}
+        onRetry={() => void retry()}
+      />,
     );
   }
 
-  return (
-    <Shell>
+  return shell(
+    <>
       <PageScroll
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
@@ -385,7 +390,7 @@ export default function KycScreen() {
       ) : null}
 
       <PreviewModal preview={preview} onClose={() => setPreview(null)} />
-    </Shell>
+    </>,
   );
 }
 
