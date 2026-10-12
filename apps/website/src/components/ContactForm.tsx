@@ -137,7 +137,7 @@ export function ContactForm() {
 
       const res = await fetch(`${API_BASE}/public/contact`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Client-App": "website" },
         body: JSON.stringify({
           full_name: values.full_name,
           email: values.email,

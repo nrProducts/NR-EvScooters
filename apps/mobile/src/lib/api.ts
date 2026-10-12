@@ -77,7 +77,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     const { method = 'GET', body, query, form, signal, timeoutMs = TIMEOUT_MS } = options;
 
     const token = await getAccessToken();
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { 'X-Client-App': 'mobile' };
     if (token) headers.Authorization = `Bearer ${token}`;
     // Let fetch set the multipart boundary itself — setting Content-Type by
     // hand here is the classic way to break a React Native upload.

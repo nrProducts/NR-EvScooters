@@ -57,6 +57,7 @@ async function request<T>(
     method,
     headers: {
       "Content-Type": "application/json",
+      "X-Client-App": "web",
       ...headers,
     },
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
@@ -87,7 +88,11 @@ async function request<T>(
 /** Multipart upload — no Content-Type set manually so fetch adds the boundary itself. */
 async function postFormData<T>(path: string, formData: FormData): Promise<T> {
   const headers = await authHeader();
-  const res = await fetch(`${BASE_URL}${path}`, { method: "POST", headers, body: formData });
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers: { "X-Client-App": "web", ...headers },
+    body: formData,
+  });
 
   let payload: unknown = null;
   try {
@@ -115,7 +120,10 @@ async function getBlob(
   query?: Record<string, string | number | boolean | undefined>,
 ): Promise<{ blob: Blob; filename: string }> {
   const headers = await authHeader();
-  const res = await fetch(`${BASE_URL}${path}${buildQuery(query)}`, { method: "GET", headers });
+  const res = await fetch(`${BASE_URL}${path}${buildQuery(query)}`, {
+    method: "GET",
+    headers: { "X-Client-App": "web", ...headers },
+  });
   if (!res.ok) {
     let body: ApiErrorBody | null = null;
     try { body = (await res.json()) as ApiErrorBody; } catch { /* non-JSON */ }

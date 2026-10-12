@@ -1341,6 +1341,21 @@ export interface AuditLogEntry {
   target_user: { id: string; full_name: string } | null;
 }
 
+export type ErrorLogClient = "mobile" | "web" | "website" | "unknown";
+
+export interface ErrorLogEntry {
+  id: string;
+  occurred_at: string;
+  client: ErrorLogClient;
+  method: string;
+  path: string;
+  status_code: number;
+  error_code: string | null;
+  message: string | null;
+  stack: string | null;
+  user: { id: string; full_name: string } | null;
+}
+
 // ---------------------------------------------------------------------------
 // Ride management (admin) — mirrors apps/backend/src/modules/rentals/rentals.types.ts
 // ---------------------------------------------------------------------------

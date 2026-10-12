@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { AppError } from "../common/AppError";
 import { env } from "../config/env";
+import { logRequestError } from "../common/requestLog";
+import type { AuthedRequest } from "./auth.middleware";
 
 interface ApiErrorBody {
     error: {
@@ -17,13 +19,22 @@ interface ApiErrorBody {
  * traces never reach a mobile client (§16).
  */
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
+    const userId = (req as AuthedRequest).user?.id ?? null;
+
     if (err instanceof AppError) {
         const body: ApiErrorBody = { error: { code: err.code, message: err.message } };
         if (err.fields) body.error.fields = err.fields;
+        void logRequestError({
+            req, statusCode: err.status, errorCode: err.code, message: err.message, userId,
+        });
         return res.status(err.status).json(body);
     }
 
     if (isMulterLimitError(err)) {
+        void logRequestError({
+            req, statusCode: 413, errorCode: "PAYLOAD_TOO_LARGE",
+            message: "The uploaded file is too large.", userId,
+        });
         return res.status(413).json({
             error: { code: "PAYLOAD_TOO_LARGE", message: "The uploaded file is too large." },
         } satisfies ApiErrorBody);
@@ -33,6 +44,12 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
         method: req.method,
         path: req.originalUrl,
         error: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+    });
+    void logRequestError({
+        req, statusCode: 500, errorCode: "INTERNAL_ERROR",
+        message: err instanceof Error ? err.message : String(err),
+        userId,
+        stack: err instanceof Error ? (err.stack ?? null) : null,
     });
 
     const body: ApiErrorBody = {

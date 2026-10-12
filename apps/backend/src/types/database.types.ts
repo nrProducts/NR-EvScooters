@@ -1884,6 +1884,56 @@ export type Database = {
           },
         ]
       }
+      request_error_logs: {
+        Row: {
+          id: string
+          occurred_at: string
+          client: string
+          method: string
+          path: string
+          status_code: number
+          error_code: string | null
+          message: string | null
+          user_id: string | null
+          stack: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          occurred_at?: string
+          client?: string
+          method: string
+          path: string
+          status_code: number
+          error_code?: string | null
+          message?: string | null
+          user_id?: string | null
+          stack?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          occurred_at?: string
+          client?: string
+          method?: string
+          path?: string
+          status_code?: number
+          error_code?: string | null
+          message?: string | null
+          user_id?: string | null
+          stack?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_error_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pii_access_log: {
         Row: {
           actor_role_snapshot: Database["public"]["Enums"]["user_role"]

@@ -50,6 +50,10 @@ const STATUS_STYLES: Record<string, "success" | "warning" | "destructive" | "sec
   admin: "info",
   rider: "secondary",
   staff: "outline",
+  // request_error_logs.client (Error Logs screen)
+  mobile: "secondary",
+  web: "info",
+  website: "outline",
   // payments/plans/deposits/damages/refunds
   processing: "info",
   held: "info",
