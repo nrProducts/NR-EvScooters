@@ -1,22 +1,36 @@
 /**
  * Generates the battery-station marker icons used by the Battery Stations
- * map — a location-pin silhouette and a bolt glyph, composed together as two
- * symbol layers (see BatteryStationMarker.tsx / BatteryStationMapView.web.tsx):
+ * map — one location-pin per status colour, plus a bolt glyph layered on
+ * top of each (see BatteryStationMarker.tsx / BatteryStationMapView.web.tsx):
  *
  *   node scripts/generate-station-icons.mjs
  *
- * Why a generator rather than committed art: these are tiny monochrome
- * glyphs, and a script makes "nudge the stroke weight" a one-line change
- * instead of a round trip through a design tool. The PNGs it writes ARE
- * committed — this is here so they can be regenerated, not run at build time.
+ * Why a generator rather than committed art: these are tiny flat glyphs, and
+ * a script makes "nudge the stroke weight" a one-line change instead of a
+ * round trip through a design tool. The PNGs it writes ARE committed — this
+ * is here so they can be regenerated, not run at build time.
  *
- *   station-pin.png   a solid white teardrop, registered with `sdf: true` so
- *                      the map layer can tint it per-status (green/amber/red)
- *                      via icon-color at render time — one asset, any colour,
- *                      rather than baking a separate PNG per status.
- *   station-bolt.png   the lightning bolt, rendered plain white (NOT sdf —
- *                      it must stay white regardless of the pin's colour)
- *                      and layered on top of the pin's head.
+ * Four pre-coloured pins (one per status), not one white pin tinted at
+ * render time via an SDF `icon-color`: SDF tinting needs the browser/native
+ * GL layer to treat the image as a genuine signed-distance field, and a
+ * plain hard-edged alpha mask like these generator primitives draw is not
+ * one — it rendered unreliably (markers not appearing at all on some
+ * builds). Four flat RGBA images, exactly like the three status icons this
+ * replaced, is the same approach already proven to work earlier in this
+ * file's history — see git log for the pre-SDF version.
+ *
+ *   station-pin-working.png       green pin (COLORS.success)
+ *   station-pin-maintenance.png   amber pin (COLORS.warning)
+ *   station-pin-not-working.png   red pin   (COLORS.danger)
+ *   station-pin-offline.png       grey pin  (COLORS.gray[500]) — fallback
+ *                                  for a status this match expression
+ *                                  doesn't recognise.
+ *   station-bolt.png              white bolt, layered on top of every pin.
+ *
+ * Each pin is drawn as a white halo shape slightly larger than the coloured
+ * fill on top of it — baked-in contrast against the map tiles underneath,
+ * since a flat RGBA image has no paint-time icon-halo-color the way an SDF
+ * icon would.
  */
 import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -25,28 +39,42 @@ import { fileURLToPath } from 'node:url';
 
 const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'map');
 
+// Mirrors apps/mobile/src/constants/theme.ts COLORS — kept in sync by hand,
+// same as every other duplicated brand-colour constant in this repo.
+const STATUS_COLORS = {
+    working: '#21C45D',
+    maintenance: '#A96512',
+    'not-working': '#C65D52',
+    offline: '#6B7280',
+};
+
 // --- tiny raster canvas -------------------------------------------------
 
 function createCanvas(width, height) {
     return { width, height, data: new Uint8Array(width * height * 4) }; // RGBA, all transparent
 }
 
-function plot(canvas, x, y, alpha = 255) {
+function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function plot(canvas, x, y, [r, g, b], alpha = 255) {
     const px = Math.round(x);
     const py = Math.round(y);
     if (px < 0 || py < 0 || px >= canvas.width || py >= canvas.height) return;
     const i = (py * canvas.width + px) * 4;
-    // White, and keep the strongest alpha so overlapping strokes don't thin out.
-    canvas.data[i] = 255;
-    canvas.data[i + 1] = 255;
-    canvas.data[i + 2] = 255;
+    canvas.data[i] = r;
+    canvas.data[i + 1] = g;
+    canvas.data[i + 2] = b;
+    // Keep the strongest alpha so overlapping shapes don't thin out.
     canvas.data[i + 3] = Math.max(canvas.data[i + 3], alpha);
 }
 
-function fillCircle(canvas, cx, cy, r) {
+function fillCircle(canvas, cx, cy, r, rgb) {
     for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
         for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
-            if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) plot(canvas, x, y);
+            if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) plot(canvas, x, y, rgb);
         }
     }
 }
@@ -56,7 +84,7 @@ function fillCircle(canvas, cx, cy, r) {
  * scanline algorithm: for each row, find where the polygon's edges cross it,
  * sort those x's, and fill the spans between each pair.
  */
-function fillPolygon(canvas, points) {
+function fillPolygon(canvas, points, rgb) {
     const ys = points.map((p) => p[1]);
     const yMin = Math.max(0, Math.floor(Math.min(...ys)));
     const yMax = Math.min(canvas.height - 1, Math.ceil(Math.max(...ys)));
@@ -75,10 +103,12 @@ function fillPolygon(canvas, points) {
         for (let i = 0; i + 1 < xs.length; i += 2) {
             const xStart = Math.max(0, Math.round(xs[i]));
             const xEnd = Math.min(canvas.width - 1, Math.round(xs[i + 1]));
-            for (let x = xStart; x <= xEnd; x++) plot(canvas, x, y);
+            for (let x = xStart; x <= xEnd; x++) plot(canvas, x, y, rgb);
         }
     }
 }
+
+const WHITE = [255, 255, 255];
 
 /**
  * The classic map-pin silhouette: a round head (circle) with a triangular
@@ -86,17 +116,24 @@ function fillPolygon(canvas, points) {
  * and a triangle rather than one smooth bezier outline — this generator has
  * no curve-fill primitive, and at the ~20px the map actually renders this
  * icon, the straight tangent seam disappears into the downsample anyway.
+ *
+ * Drawn twice at two radii: a white halo (bigger) first, then the status
+ * colour (smaller) on top, baking in a crisp border against the map tiles.
  */
-function drawPin(canvas) {
+function drawPinShape(canvas, cx, cy, r, tailHalfWidth, tailTipY, rgb) {
+    fillCircle(canvas, cx, cy, r, rgb);
+    fillPolygon(canvas, [
+        [cx - tailHalfWidth, cy + r * 0.6],
+        [cx + tailHalfWidth, cy + r * 0.6],
+        [cx, tailTipY],
+    ], rgb);
+}
+
+function drawPin(canvas, colorHex) {
     const cx = 48;
     const cy = 44;
-    const r = 34;
-    fillCircle(canvas, cx, cy, r);
-    fillPolygon(canvas, [
-        [cx - 26, cy + 20],
-        [cx + 26, cy + 20],
-        [cx, 124],
-    ]);
+    drawPinShape(canvas, cx, cy, 36, 28, 126, WHITE);
+    drawPinShape(canvas, cx, cy, 30, 22, 120, hexToRgb(colorHex));
 }
 
 /**
@@ -112,7 +149,7 @@ function drawBolt(canvas) {
         [30, 90],
         [72, 40],
         [52, 40],
-    ]);
+    ], WHITE);
 }
 
 // --- PNG encoding -------------------------------------------------------
@@ -172,5 +209,7 @@ function writeIcon(name, width, height, draw) {
 }
 
 mkdirSync(OUT_DIR, { recursive: true });
-writeIcon('station-pin', 96, 128, drawPin);
+for (const [status, hex] of Object.entries(STATUS_COLORS)) {
+    writeIcon(`station-pin-${status}`, 96, 128, (canvas) => drawPin(canvas, hex));
+}
 writeIcon('station-bolt', 96, 96, drawBolt);

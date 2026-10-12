@@ -676,6 +676,7 @@ export const en = {
     'billing.cancel': 'Cancel',
     'billing.referralCard.offer': 'Apply a reward card ({count} available)',
     'billing.referralCard.off': '₹{amount} off this invoice',
+    'billing.referralCard.apply': 'Apply',
     'billing.referralCard.applied': 'Reward card applied — ₹{amount} off',
     'billing.referralCard.remove': 'Remove reward card',
     'billing.referralCard.applyFailed': 'Could not apply the reward card. Please try again.',

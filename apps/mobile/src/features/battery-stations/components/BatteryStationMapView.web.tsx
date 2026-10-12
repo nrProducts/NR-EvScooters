@@ -1,14 +1,12 @@
 import React, { forwardRef, useCallback, useImperativeHandle, useMemo, useRef } from 'react';
 import { Image, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapGL, {
-    AttributionControl, Source, Layer, Marker, type MapRef, type MapLayerMouseEvent,
+    Source, Layer, Marker, type MapRef, type MapLayerMouseEvent,
 } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Navigation } from 'lucide-react-native';
 import { COLORS } from '../../../constants/theme';
 import { ENV } from '../../../constants/env';
-import { TAB_BAR_FOOTPRINT } from '../../../lib/tabBar';
 import { boundsOf, toFeatureCollection } from '../utils/geojson';
 import { resolvePressedFeature } from '../utils/mapInteraction';
 import {
@@ -41,16 +39,23 @@ const SOURCE_ID = 'battery-stations';
 const STATION_LAYER_ID = 'battery-station-points';
 const STATION_ICON_LAYER_ID = 'battery-station-icon';
 const STATION_SELECTED_LAYER_ID = 'battery-station-selected';
-const PIN_ICON_NAME = 'station-pin';
 const BOLT_ICON_NAME = 'station-bolt';
 
-const STATUS_COLOR_EXPRESSION = [
+/**
+ * Four pre-coloured pin images (scripts/generate-station-icons.mjs), not one
+ * white pin tinted at render time via an SDF `icon-color` — SDF tinting
+ * needs the image to be a genuine signed-distance field, and a plain
+ * hard-edged alpha mask is not one; it rendered unreliably (markers not
+ * appearing at all). Matched to StationStatusBadge so the map and the sheet
+ * agree on status colour.
+ */
+const STATUS_PIN_EXPRESSION = [
     'match',
     ['get', 'status'],
-    'WORKING', COLORS.success,
-    'MAINTENANCE', COLORS.warning,
-    'NOT_WORKING', COLORS.danger,
-    COLORS.gray[500],
+    'WORKING', 'station-pin-working',
+    'MAINTENANCE', 'station-pin-maintenance',
+    'NOT_WORKING', 'station-pin-not-working',
+    'station-pin-offline',
 ] as const;
 
 /**
@@ -74,7 +79,6 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
     ref,
 ) {
     const { t } = useT();
-    const insets = useSafeAreaInsets();
     const mapRef = useRef<MapRef>(null);
     // Mirrors the camera so zoomBy has something to increment, same reason
     // the native view keeps its own ref rather than trusting an async getter.
@@ -112,29 +116,31 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
     }), [focusCoordinates, fitAll]);
 
     /**
-     * Registers both sprites once the style has finished loading —
-     * maplibre-gl's addImage needs a loaded style to attach to. The pin is
-     * flagged `sdf: true` so its paint `icon-color` can tint it per status;
-     * the bolt is a plain image and must stay white regardless.
+     * Registers every sprite once the style has finished loading —
+     * maplibre-gl's addImage needs a loaded style to attach to. All plain
+     * RGBA images — none of these are SDF.
      */
     const handleLoad = useCallback(() => {
         const map = mapRef.current?.getMap();
         if (!map) return;
-        const toRegister: Array<[string, number, boolean]> = [
-            [PIN_ICON_NAME, require('../../../../assets/map/station-pin.png'), true],
-            [BOLT_ICON_NAME, require('../../../../assets/map/station-bolt.png'), false],
-        ];
-        for (const [name, asset, sdf] of toRegister) {
+        const assets: Record<string, number> = {
+            'station-pin-working': require('../../../../assets/map/station-pin-working.png'),
+            'station-pin-maintenance': require('../../../../assets/map/station-pin-maintenance.png'),
+            'station-pin-not-working': require('../../../../assets/map/station-pin-not-working.png'),
+            'station-pin-offline': require('../../../../assets/map/station-pin-offline.png'),
+            [BOLT_ICON_NAME]: require('../../../../assets/map/station-bolt.png'),
+        };
+        for (const [name, asset] of Object.entries(assets)) {
             if (map.hasImage(name)) continue;
             const uri = Image.resolveAssetSource(asset)?.uri;
             if (!uri) continue;
             map.loadImage(uri).then(({ data }) => {
-                if (!map.hasImage(name)) map.addImage(name, data, { sdf });
+                if (!map.hasImage(name)) map.addImage(name, data);
             }).catch(() => {
                 // A missing sprite leaves nothing drawn at that layer — the
-                // other layer (and the station's own colour/position data)
-                // still work, not worth surfacing as an error for what is
-                // purely a decorative glyph.
+                // other layers (and the station's own position data) still
+                // work, not worth surfacing as an error for what is purely a
+                // decorative glyph.
             });
         }
     }, []);
@@ -171,18 +177,13 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
             onLoad={handleLoad}
             onZoom={(e) => { zoomRef.current = e.viewState.zoom; }}
             // maplibre-gl auto-adds its own attribution ("i") control
-            // bottom-right at the true container edge — directly behind the
-            // floating pill tab bar, which sits ABOVE insets.bottom at its
-            // own elevation. Disabled here and re-added below with enough
-            // bottom margin to actually clear it.
+            // bottom-right by default — removed outright rather than
+            // repositioned. The map style requires crediting its tile
+            // source somewhere in the app, not necessarily on this exact
+            // screen; see docs/battery-stations.md if that credit still
+            // needs to live somewhere.
             attributionControl={false}
         >
-            <AttributionControl
-                compact
-                position="bottom-left"
-                style={{ marginBottom: insets.bottom + TAB_BAR_FOOTPRINT + 8 }}
-            />
-
             <Source id={SOURCE_ID} type="geojson" data={featureCollection}>
                 <Layer
                     id={STATION_SELECTED_LAYER_ID}
@@ -195,15 +196,10 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
                     id={STATION_LAYER_ID}
                     type="symbol"
                     layout={{
-                        'icon-image': PIN_ICON_NAME,
+                        'icon-image': STATUS_PIN_EXPRESSION as unknown as string,
                         'icon-size': PIN_ICON_SIZE,
                         'icon-allow-overlap': true,
                         'icon-ignore-placement': true,
-                    }}
-                    paint={{
-                        'icon-color': STATUS_COLOR_EXPRESSION as unknown as string,
-                        'icon-halo-color': COLORS.white,
-                        'icon-halo-width': 1,
                     }}
                 />
 

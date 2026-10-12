@@ -894,6 +894,7 @@ export const hi: Copy = {
     'billing.cancel': 'रद्द करें',
     'billing.referralCard.offer': 'रिवॉर्ड कार्ड लागू करें ({count} उपलब्ध)',
     'billing.referralCard.off': 'इस बिल पर ₹{amount} की छूट',
+    'billing.referralCard.apply': 'लागू करें',
     'billing.referralCard.applied': 'रिवॉर्ड कार्ड लागू — ₹{amount} की छूट',
     'billing.referralCard.remove': 'रिवॉर्ड कार्ड हटाएं',
     'billing.referralCard.applyFailed': 'रिवॉर्ड कार्ड लागू नहीं हो सका। कृपया फिर से प्रयास करें।',

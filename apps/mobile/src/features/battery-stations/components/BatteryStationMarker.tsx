@@ -4,17 +4,14 @@ import { COLORS } from '../../../constants/theme';
 
 /**
  * Station markers — every station, unclustered, as a location-pin silhouette
- * (registered by BatteryStationMapView via <Images>, see
- * scripts/generate-station-icons.mjs) tinted per status, with a white bolt
- * sitting in the pin's head. Status reads from the pin's own colour, the
- * same way a traffic light does — WORKING is the app's own primary green
- * (COLORS.success === COLORS.primary), MAINTENANCE amber, NOT_WORKING red.
- *
- * The pin is an SDF (signed-distance-field) image: registered with `sdf:
- * true`, so `icon-color` tints its white silhouette at render time instead
- * of needing one baked PNG per status colour. The bolt is a REGULAR image —
- * it must stay white regardless of the pin's colour, so it is not sdf and
- * carries no icon-color.
+ * with a white bolt in its head (registered by BatteryStationMapView via
+ * <Images>, see scripts/generate-station-icons.mjs). Four pre-coloured pin
+ * images, selected per status by STATUS_ICON_EXPRESSION — not one white pin
+ * tinted at render time via an SDF `icon-color`. SDF tinting needs the image
+ * to be a genuine signed-distance field; a plain hard-edged alpha mask is
+ * not one, and it rendered unreliably (markers not appearing at all). Four
+ * flat RGBA images is the same approach the three status icons this
+ * replaced already used successfully.
  *
  * These are MapLibre *style layers*, not React views: 37 stations today and an
  * open-ended number later, all re-rendered on every camera frame, is exactly
@@ -28,24 +25,14 @@ const STATION_ICON_LAYER_ID = 'battery-station-icon';
 const STATION_SELECTED_LAYER_ID = 'battery-station-selected';
 
 /** Matched to StationStatusBadge so the map and the sheet agree. */
-const STATUS_COLOR_EXPRESSION = [
+export const STATUS_PIN_EXPRESSION = [
     'match',
     ['get', 'status'],
-    'WORKING', COLORS.success,
-    'MAINTENANCE', COLORS.warning,
-    'NOT_WORKING', COLORS.danger,
-    COLORS.gray[500],
+    'WORKING', 'station-pin-working',
+    'MAINTENANCE', 'station-pin-maintenance',
+    'NOT_WORKING', 'station-pin-not-working',
+    'station-pin-offline',
 ] as const;
-
-/**
- * The bolt's icon-offset is expressed in EMs of its OWN icon-size (the style
- * spec multiplies offset by icon-size to get the final pixel shift) — see
- * the sizing comment in BatteryStationMapView.web.tsx for how -40 was
- * derived from the two source images' geometry.
- */
-const BOLT_ICON_SIZE = 0.14;
-const BOLT_ICON_OFFSET: [number, number] = [0, -40];
-const PIN_ICON_SIZE = 0.28;
 
 export const BatteryStationMarker: React.FC<{ selectedStationId: string | null }> = ({
     selectedStationId,
@@ -69,15 +56,10 @@ export const BatteryStationMarker: React.FC<{ selectedStationId: string | null }
             type="symbol"
             filter={['!', ['has', 'point_count']]}
             layout={{
-                'icon-image': 'station-pin',
-                'icon-size': PIN_ICON_SIZE,
+                'icon-image': STATUS_PIN_EXPRESSION as unknown as string,
+                'icon-size': 0.28,
                 'icon-allow-overlap': true,
                 'icon-ignore-placement': true,
-            }}
-            paint={{
-                'icon-color': STATUS_COLOR_EXPRESSION as unknown as string,
-                'icon-halo-color': COLORS.white,
-                'icon-halo-width': 1,
             }}
         />
 
@@ -87,8 +69,12 @@ export const BatteryStationMarker: React.FC<{ selectedStationId: string | null }
             filter={['!', ['has', 'point_count']]}
             layout={{
                 'icon-image': 'station-bolt',
-                'icon-size': BOLT_ICON_SIZE,
-                'icon-offset': BOLT_ICON_OFFSET,
+                'icon-size': 0.14,
+                // In EMs of this layer's OWN icon-size (the style spec
+                // multiplies offset by icon-size) — see
+                // BatteryStationMapView.web.tsx for how -40 was derived from
+                // the pin and bolt images' geometry.
+                'icon-offset': [0, -40],
                 'icon-allow-overlap': true,
                 'icon-ignore-placement': true,
             }}

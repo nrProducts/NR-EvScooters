@@ -13,9 +13,9 @@ export const RadialProgress: React.FC<RadialProgressProps> = ({ percent, range, 
   // Determine color based on battery percentage
   let statusColor = COLORS.primaryDark;
   if (isImmobilized) {
-    statusColor = '#EF4444'; // Red for immobilized
+    statusColor = COLORS.danger;
   } else if (percent < 20) {
-    statusColor = '#EF4444'; // Red
+    statusColor = COLORS.danger;
   } else if (percent < 50) {
     statusColor = COLORS.primaryMedium; // Light Green / Orange
   }
@@ -33,7 +33,7 @@ export const RadialProgress: React.FC<RadialProgressProps> = ({ percent, range, 
         {/* Telemetry Info */}
         <View className="items-center">
           {isImmobilized ? (
-            <ShieldAlert size={28} color="#EF4444" className="mb-1" />
+            <ShieldAlert size={28} color={COLORS.danger} className="mb-1" />
           ) : (
             <Zap size={28} color={statusColor} fill={percent > 20 ? statusColor : 'transparent'} className="mb-1" />
           )}

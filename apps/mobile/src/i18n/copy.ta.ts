@@ -899,6 +899,7 @@ export const ta: Copy = {
     'billing.cancel': 'ரத்து',
     'billing.referralCard.offer': 'ரிவார்டு கார்டைப் பயன்படுத்தவும் ({count} கிடைக்கிறது)',
     'billing.referralCard.off': 'இந்த பில்லில் ₹{amount} தள்ளுபடி',
+    'billing.referralCard.apply': 'பயன்படுத்து',
     'billing.referralCard.applied': 'ரிவார்டு கார்டு பயன்படுத்தப்பட்டது — ₹{amount} தள்ளுபடி',
     'billing.referralCard.remove': 'ரிவார்டு கார்டை அகற்று',
     'billing.referralCard.applyFailed': 'ரிவார்டு கார்டைப் பயன்படுத்த முடியவில்லை. மீண்டும் முயற்சிக்கவும்.',
