@@ -13,7 +13,7 @@ import {
 } from "./rentals.types";
 import { LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS } from "./returnPolicy.constants";
 import { paidPeriodIds } from "../payments/renewalPeriod";
-import { businessToday, formatTimeOfDayForCopy } from "../../common/dates";
+import { businessToday, formatTimeOfDayForCopy, hasPassedCutover } from "../../common/dates";
 import { getSettings as getReturnRecoverySettings } from "../return-recovery-settings/return-recovery-settings.service";
 import {
     ensureOverdueLateFeeInvoice, isOverdueLateFeeSettled, OverdueLateFeeInvoiceResult, overdueLateFeeStatusFor,
@@ -307,16 +307,44 @@ async function periodsFor(subscriptionIds: string[]): Promise<Map<string, {
         (data ?? []).filter((row) => row.status === "scheduled").map((row) => row.id),
     );
 
+    const currentRows = new Map<string, { id: string; starts_on: string; due_on: string }>();
+    const scheduledRows = new Map<string, { id: string; starts_on: string; due_on: string }>();
+
     for (const row of data ?? []) {
-        const entry = map.get(row.subscription_id)
-            ?? { currentStart: null, nextDue: null, scheduledStart: null };
         if (row.status === "current") {
-            entry.currentStart = row.starts_on;
-            entry.nextDue = row.due_on;
+            currentRows.set(row.subscription_id, row);
         } else if (paid.has(row.id)) {
-            entry.scheduledStart = row.starts_on;
+            scheduledRows.set(row.subscription_id, row);
         }
-        map.set(row.subscription_id, entry);
+    }
+
+    // Same live-cutover read as bookings.service.ts's equivalent loop: once
+    // the `current` period's own due_on cutover has passed, a paid
+    // `scheduled` period is the ACTUAL active one from the rider's point of
+    // view, regardless of whether payment-overdue-sweep (hourly, :10 past)
+    // has promoted it in the DB yet. DB `status` columns are untouched —
+    // this only changes what this read reports.
+    for (const [subscriptionId, current] of currentRows) {
+        const entry = map.get(subscriptionId)
+            ?? { currentStart: null, nextDue: null, scheduledStart: null };
+        const scheduled = scheduledRows.get(subscriptionId);
+
+        if (scheduled && hasPassedCutover(current.due_on)) {
+            entry.currentStart = scheduled.starts_on;
+            entry.nextDue = scheduled.due_on;
+            scheduledRows.delete(subscriptionId);
+        } else {
+            entry.currentStart = current.starts_on;
+            entry.nextDue = current.due_on;
+        }
+        map.set(subscriptionId, entry);
+    }
+
+    for (const [subscriptionId, scheduled] of scheduledRows) {
+        const entry = map.get(subscriptionId)
+            ?? { currentStart: null, nextDue: null, scheduledStart: null };
+        entry.scheduledStart = scheduled.starts_on;
+        map.set(subscriptionId, entry);
     }
     return map;
 }

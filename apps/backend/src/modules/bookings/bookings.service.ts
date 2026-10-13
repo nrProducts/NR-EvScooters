@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../../config/supabase";
+import { hasPassedCutover } from "../../common/dates";
 import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
@@ -297,17 +298,51 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
             .map((period) => period.id),
     );
 
+    // Promoting a paid-ahead `scheduled` period to `current` is normally
+    // payment-overdue-sweep's job (hourly, :10 past — see that function), so
+    // between the noon cutover and the next sweep run a rider who paid early
+    // would otherwise see yesterday's period and "renewal scheduled" for up
+    // to an hour after their new plan has actually started. Rather than
+    // widen that window by tightening the cron, read it live here: if the
+    // `current` row's own cutover has already passed and a paid `scheduled`
+    // row exists, show the scheduled row as the active period regardless of
+    // whether the sweep has run yet. DB state (`status` columns) is left
+    // untouched — the sweep still does that, this only affects display.
+    const currentByBooking = new Map<string, { id: string; starts_on: string; due_on: string }>();
+    const scheduledByBooking = new Map<string, { id: string; starts_on: string; ends_on: string }>();
+
     for (const period of periodsRes.data ?? []) {
         const ctx = ctxFor(period.subscription_id);
         if (!ctx) continue;
         if (period.status === "current") {
-            ctx.currentPeriodStart = period.starts_on;
-            ctx.nextDueAt = period.due_on;
+            currentByBooking.set(period.subscription_id, period);
         } else if (paidPeriods.has(period.id)) {
-            ctx.renewalStatus = "scheduled";
-            ctx.scheduledStartDate = period.starts_on;
-            ctx.scheduledDurationDays = inclusiveDays(period.starts_on, period.ends_on);
+            scheduledByBooking.set(period.subscription_id, period);
         }
+    }
+
+    for (const [subscriptionId, current] of currentByBooking) {
+        const ctx = ctxFor(subscriptionId);
+        if (!ctx) continue;
+        const scheduled = scheduledByBooking.get(subscriptionId);
+
+        if (scheduled && hasPassedCutover(current.due_on)) {
+            ctx.currentPeriodStart = scheduled.starts_on;
+            ctx.nextDueAt = scheduled.ends_on;
+            // Already live — not "scheduled" from the rider's point of view.
+            scheduledByBooking.delete(subscriptionId);
+        } else {
+            ctx.currentPeriodStart = current.starts_on;
+            ctx.nextDueAt = current.due_on;
+        }
+    }
+
+    for (const [subscriptionId, scheduled] of scheduledByBooking) {
+        const ctx = ctxFor(subscriptionId);
+        if (!ctx) continue;
+        ctx.renewalStatus = "scheduled";
+        ctx.scheduledStartDate = scheduled.starts_on;
+        ctx.scheduledDurationDays = inclusiveDays(scheduled.starts_on, scheduled.ends_on);
     }
 
     for (const pause of pausesRes.data ?? []) {
