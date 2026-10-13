@@ -165,7 +165,7 @@ function ReturnStagePanel({ stage, compact }: { stage: ApiReturnStage; compact?:
       <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium leading-relaxed">
         {stage.status === 'payment_required'
           ? t('returnStatus.stageBody.paymentRequired', {
-              amount: `₹${stage.additionalDue.toFixed(0)}`,
+              amount: `₹${stage.additionalDue.toFixed(2)}`,
             })
           : stage.status === 'payment_submitted'
             ? t('returnStatus.stageBody.paymentSubmitted')

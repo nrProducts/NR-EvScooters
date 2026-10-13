@@ -159,7 +159,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
                 />
               }
             />
-            <DetailLine label={t('lateFeeGate.lateFee')} value={`₹${lateFee.lateFee.toFixed(0)}`} />
+            <DetailLine label={t('lateFeeGate.lateFee')} value={`₹${lateFee.lateFee.toFixed(2)}`} />
 
             <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
 
@@ -168,7 +168,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
                 {t('lateFeeGate.amountDue')}
               </Text>
               <Text style={{ color: COLORS.danger }} className="text-lg font-black">
-                ₹{lateFee.lateFee.toFixed(0)}
+                ₹{lateFee.lateFee.toFixed(2)}
               </Text>
             </View>
           </View>
@@ -185,7 +185,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
                 <Spinner size={18} color="#FFF" />
               ) : (
                 <Text className="text-white font-bold text-sm">
-                  {t('lateFeeGate.payButton', { amount: `₹${lateFee.lateFee.toFixed(0)}` })}
+                  {t('lateFeeGate.payButton', { amount: `₹${lateFee.lateFee.toFixed(2)}` })}
                 </Text>
               )}
             </TouchableOpacity>

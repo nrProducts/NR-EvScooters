@@ -59,7 +59,7 @@ function DeductionLine({ label, amount }: { label: string; amount: number }) {
     return (
         <View className="flex-row items-center justify-between py-0.5">
             <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">{label}</Text>
-            <Text style={{ color: COLORS.danger }} className="text-xs font-semibold">-₹{amount.toFixed(0)}</Text>
+            <Text style={{ color: COLORS.danger }} className="text-xs font-semibold">-₹{amount.toFixed(2)}</Text>
         </View>
     );
 }
@@ -102,7 +102,7 @@ export function RefundStatusCard({ refund }: { refund: ApiRefund }) {
                     {t('refundCard.refundAmount')}
                 </Text>
                 <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">
-                    ₹{refund.amount.toFixed(0)}
+                    ₹{refund.amount.toFixed(2)}
                 </Text>
             </View>
 

@@ -120,7 +120,7 @@ export function ScooterStatusCard({
     return (
       <StatusShell tone="danger" icon={CreditCard} title={t('scooterStatus.paymentRequired')}>
         <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black mt-1">
-          ₹{settlement!.due_amount.toFixed(0)}
+          ₹{settlement!.due_amount.toFixed(2)}
         </Text>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5 mb-3">
           {t('scooterStatus.paymentRequired.body')}
@@ -129,7 +129,7 @@ export function ScooterStatusCard({
           tone="danger"
           onPress={() => void pay()}
           busy={paying}
-          label={t('scooterStatus.pay', { amount: `₹${settlement!.due_amount.toFixed(0)}` })}
+          label={t('scooterStatus.pay', { amount: `₹${settlement!.due_amount.toFixed(2)}` })}
         />
         {payError ? (
           <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mt-3">{payError}</Text>
@@ -183,7 +183,7 @@ export function ScooterStatusCard({
     return (
       <StatusShell tone="danger" icon={AlertTriangle} title={t('scooterStatus.recoveryRequired')}>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
-          {t('scooterStatus.recoveryRequired.body', { amount: `₹${lateAmount.toFixed(0)}` })}
+          {t('scooterStatus.recoveryRequired.body', { amount: `₹${lateAmount.toFixed(2)}` })}
         </Text>
       </StatusShell>
     );
@@ -271,7 +271,7 @@ export function ScooterStatusCard({
           */}
           {shownAmount > 0
             ? [
-                t('scooterStatus.lateFeeBuilt', { amount: `₹${shownAmount.toFixed(0)}` }),
+                t('scooterStatus.lateFeeBuilt', { amount: `₹${shownAmount.toFixed(2)}` }),
                 renewing ? t('scooterStatus.renewToClear') : t('scooterStatus.returnAsap'),
               ].join(' ')
             : renewing
@@ -279,7 +279,7 @@ export function ScooterStatusCard({
               // false, and "renew to clear it" points at a debt that does not
               // exist — the accurate and more useful message is the deadline.
               ? feePerDay > 0
-                ? t('scooterStatus.renewFreeToday', { rate: `₹${feePerDay.toFixed(0)}` })
+                ? t('scooterStatus.renewFreeToday', { rate: `₹${feePerDay.toFixed(2)}` })
                 : t('scooterStatus.renewToKeepRiding')
               : t('scooterStatus.returnAsap')}
         </Text>

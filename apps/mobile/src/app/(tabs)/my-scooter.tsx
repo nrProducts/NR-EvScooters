@@ -217,7 +217,7 @@ export default function MyScooterScreen() {
                   <DetailRow
                     icon={CreditCard}
                     label={t('scooter.plan')}
-                    value={`${state.rental.plan.name} · ₹${state.rental.plan.price.toFixed(0)}/${t(BILLING_CYCLE_LABEL_KEY[state.rental.plan.billing_cycle])}`}
+                    value={`${state.rental.plan.name} · ₹${state.rental.plan.price.toFixed(2)}/${t(BILLING_CYCLE_LABEL_KEY[state.rental.plan.billing_cycle])}`}
                   />
                 ) : null}
                 <DetailRow
@@ -381,7 +381,7 @@ export default function MyScooterScreen() {
                     <DetailRow
                       icon={CreditCard}
                       label={t('scooter.plan')}
-                      value={`${state.booking.plan.name} · ₹${state.booking.plan.price.toFixed(0)}/${t(BILLING_CYCLE_LABEL_KEY[state.booking.plan.billing_cycle])}`}
+                      value={`${state.booking.plan.name} · ₹${state.booking.plan.price.toFixed(2)}/${t(BILLING_CYCLE_LABEL_KEY[state.booking.plan.billing_cycle])}`}
                       first={!state.booking.vehicle}
                     />
                   ) : null}

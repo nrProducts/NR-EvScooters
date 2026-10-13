@@ -181,7 +181,7 @@ export function SettlementCard({
           </Text>
         </View>
         <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black mt-2">
-          ₹{settlement.due_amount.toFixed(0)}
+          ₹{settlement.due_amount.toFixed(2)}
         </Text>
         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5 mb-3">
           {t('settlement.additionalDue')}
@@ -196,7 +196,7 @@ export function SettlementCard({
           <Text className="text-white text-xs font-bold ml-2">
             {paying
               ? t('settlement.processing')
-              : t('scooterStatus.pay', { amount: `₹${settlement.due_amount.toFixed(0)}` })}
+              : t('scooterStatus.pay', { amount: `₹${settlement.due_amount.toFixed(2)}` })}
           </Text>
         </TouchableOpacity>
         {payError ? (
@@ -248,7 +248,7 @@ export function SettlementCard({
           <View className="flex-row items-center justify-between">
             <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">{t('settlement.refundAmount')}</Text>
             <Text style={{ color: COLORS.success }} className="text-lg font-black">
-              ₹{settlement.refund_amount.toFixed(0)}
+              ₹{settlement.refund_amount.toFixed(2)}
             </Text>
           </View>
         </>
@@ -264,7 +264,7 @@ function SettlementLine({ label, amount }: { label: string; amount: number }) {
     <View className="flex-row items-center justify-between py-0.5">
       <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">{label}</Text>
       <Text style={{ color: amount < 0 ? COLORS.danger : COLORS.textPrimary }} className="text-xs font-semibold">
-        {amount < 0 ? '-' : ''}₹{Math.abs(amount).toFixed(0)}
+        {amount < 0 ? '-' : ''}₹{Math.abs(amount).toFixed(2)}
       </Text>
     </View>
   );

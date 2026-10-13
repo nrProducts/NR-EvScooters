@@ -59,7 +59,7 @@ export const VehicleListItem: React.FC<VehicleListItemProps> = ({ model }) => {
           </Text>
         ) : null}
         <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-extrabold">
-          {model.starting_price != null ? `From ₹${model.starting_price.toFixed(0)}` : 'Pricing coming soon'}
+          {model.starting_price != null ? `From ₹${model.starting_price.toFixed(2)}` : 'Pricing coming soon'}
         </Text>
       </View>
 

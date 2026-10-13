@@ -263,7 +263,7 @@ function periodProgress(startDate: string, endDate: string): number {
  * due, and Home states the same fee in red, so amber here made one debt look
  * like two severities. `negative` renders a deduction ("-₹X") in red — the
  * sign goes in front of the ₹, not before the digits, so it never renders as
- * the "₹-2000" a bare `amount.toFixed(0)` on a negative number would
+ * the "₹-2000" a bare `amount.toFixed(2)` on a negative number would
  * print. */
 function BillLine({
   label, amount, attention, negative, bold,
@@ -278,7 +278,7 @@ function BillLine({
         {label}
       </Text>
       <Text style={{ color }} className={`text-[13px] ${bold ? 'font-bold' : 'font-semibold'}`}>
-        {negative ? '-' : ''}₹{Math.abs(amount).toFixed(0)}
+        {negative ? '-' : ''}₹{Math.abs(amount).toFixed(2)}
       </Text>
     </View>
   );
@@ -325,7 +325,7 @@ function PaymentHistoryCard({
           </Text>
         </View>
         <View className="items-end">
-          <Text style={{ color: COLORS.textPrimary }} className="text-base font-bold mb-1">₹{shownTotal.toFixed(0)}</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-base font-bold mb-1">₹{shownTotal.toFixed(2)}</Text>
           <Badge label={t(PAYMENT_STATE_LABEL_KEY[invoice.payment_state])} tone={PAYMENT_STATE_TONE[invoice.payment_state]} />
         </View>
       </TouchableOpacity>
@@ -343,7 +343,7 @@ function PaymentHistoryCard({
                 {line.description}
               </Text>
               <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
-                {line.amount < 0 ? '-' : ''}₹{Math.abs(line.amount).toFixed(0)}
+                {line.amount < 0 ? '-' : ''}₹{Math.abs(line.amount).toFixed(2)}
               </Text>
             </View>
           ))}
@@ -854,7 +854,7 @@ export default function BillingScreen() {
             <View className="flex-row items-center flex-1 mr-3" style={{ gap: 8 }}>
               <Gift size={15} color={COLORS.primary} />
               <Text style={{ color: COLORS.textPrimary }} className="text-[12px] font-bold flex-1">
-                {t('billing.referralCard.applied', { amount: reservation.discount_amount.toFixed(0) })}
+                {t('billing.referralCard.applied', { amount: reservation.discount_amount.toFixed(2) })}
               </Text>
             </View>
             <TouchableOpacity
@@ -887,7 +887,7 @@ export default function BillingScreen() {
             <View className="flex-row items-center flex-1 mr-3" style={{ gap: 8 }}>
               <Gift size={15} color={COLORS.primary} />
               <Text style={{ color: COLORS.textPrimary }} className="text-[12px] font-bold flex-1">
-                {t('billing.referralCard.off', { amount: card.amount.toFixed(0) })}
+                {t('billing.referralCard.off', { amount: card.amount.toFixed(2) })}
               </Text>
             </View>
             <TouchableOpacity
@@ -940,7 +940,7 @@ export default function BillingScreen() {
           >
             <Gift size={15} color={COLORS.primary} />
             <Text style={{ color: COLORS.primary }} className="text-[13px] font-bold flex-1">
-              {t('billing.referralCard.off', { amount: card.amount.toFixed(0) })}
+              {t('billing.referralCard.off', { amount: card.amount.toFixed(2) })}
             </Text>
             {busy ? <Spinner size={14} color={COLORS.primary} /> : null}
           </TouchableOpacity>
@@ -976,7 +976,7 @@ export default function BillingScreen() {
       ) : null}
       {outstandingInvoices.length > 1 ? (
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold mb-2">
-          {t('billing.totalAcross', { total: outstandingTotal.toFixed(0), count: outstandingInvoices.length })}
+          {t('billing.totalAcross', { total: outstandingTotal.toFixed(2), count: outstandingInvoices.length })}
         </Text>
       ) : null}
 
@@ -1038,7 +1038,7 @@ export default function BillingScreen() {
                   <BillLine
                     label={t(
                       inv.days_late === 1 ? 'billing.lateFeeParenOne' : 'billing.lateFeeParenOther',
-                      { days: inv.days_late ?? 0, rate: perDay.toFixed(0) },
+                      { days: inv.days_late ?? 0, rate: perDay.toFixed(2) },
                     )}
                     amount={inv.late_fee}
                     attention
@@ -1048,7 +1048,7 @@ export default function BillingScreen() {
               <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
               <View className="flex-row items-center justify-between pb-1">
                 <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">{t('billing.total')}</Text>
-                <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">₹{total.toFixed(0)}</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">₹{total.toFixed(2)}</Text>
               </View>
             </View>
 
@@ -1064,7 +1064,7 @@ export default function BillingScreen() {
                 <CreditCard size={16} color="#FFF" />
               )}
               <Text className="text-white text-sm font-bold ml-2">
-                {payingInvoiceId === inv.id ? t('billing.processing') : t('billing.pay', { amount: total.toFixed(0) })}
+                {payingInvoiceId === inv.id ? t('billing.processing') : t('billing.pay', { amount: total.toFixed(2) })}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1161,7 +1161,7 @@ export default function BillingScreen() {
                           style={{ color: item.amount < 0 ? COLORS.success : COLORS.textPrimary }}
                           className="text-xs font-semibold"
                         >
-                          {item.amount < 0 ? '-' : ''}₹{Math.abs(item.amount).toFixed(0)}
+                          {item.amount < 0 ? '-' : ''}₹{Math.abs(item.amount).toFixed(2)}
                         </Text>
                       </View>
                     ))}
@@ -1169,7 +1169,7 @@ export default function BillingScreen() {
                     <View className="flex-row items-center justify-between">
                       <Text style={{ color: COLORS.textPrimary }} className="text-xs font-medium">{t('billing.renewalAmount')}</Text>
                       <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold">
-                        ₹{rechargePreview.amountDue.toFixed(0)}
+                        ₹{rechargePreview.amountDue.toFixed(2)}
                       </Text>
                     </View>
                     {rechargePreview.isLate ? (
@@ -1177,11 +1177,11 @@ export default function BillingScreen() {
                         <Text style={{ color: COLORS.danger }} className="text-xs font-medium">
                           {t(
                             rechargePreview.daysLate === 1 ? 'billing.lateFeeDaysOne' : 'billing.lateFeeDaysOther',
-                            { days: rechargePreview.daysLate, rate: rechargePreview.feePerDay.toFixed(0) },
+                            { days: rechargePreview.daysLate, rate: rechargePreview.feePerDay.toFixed(2) },
                           )}
                         </Text>
                         <Text style={{ color: COLORS.danger }} className="text-xs font-semibold">
-                          ₹{rechargePreview.lateFee.toFixed(0)}
+                          ₹{rechargePreview.lateFee.toFixed(2)}
                         </Text>
                       </View>
                     ) : null}
@@ -1189,7 +1189,7 @@ export default function BillingScreen() {
                     <View className="flex-row items-center justify-between">
                       <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">{t('billing.totalPayable')}</Text>
                       <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold">
-                        ₹{rechargePreview.total.toFixed(0)}
+                        ₹{rechargePreview.total.toFixed(2)}
                       </Text>
                     </View>
                   </View>
@@ -1210,7 +1210,7 @@ export default function BillingScreen() {
                     >
                       {recharging ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                       <Text className="text-white text-xs font-bold ml-2">
-                        {recharging ? t('billing.processing') : t('billing.confirmAndPay', { amount: rechargePreview.total.toFixed(0) })}
+                        {recharging ? t('billing.processing') : t('billing.confirmAndPay', { amount: rechargePreview.total.toFixed(2) })}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -1366,7 +1366,7 @@ export default function BillingScreen() {
               {plan ? t('billing.cycleRental', { cycle: t(BILLING_CYCLE_LABEL_KEY[plan.billing_cycle]) }) : ''}
             </Text>
             <Text style={{ color: COLORS.textPrimary }} className="text-4xl font-bold mb-4">
-              ₹{(plan?.price ?? 0).toFixed(0)}{' '}
+              ₹{(plan?.price ?? 0).toFixed(2)}{' '}
               {plan ? (
                 <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium">
                   / {t(BILLING_CYCLE_LABEL_KEY[plan.billing_cycle])}
@@ -1444,7 +1444,7 @@ export default function BillingScreen() {
                         style={{ color: line.amount < 0 ? COLORS.success : COLORS.textPrimary }}
                         className="text-xs font-semibold"
                       >
-                        {line.amount < 0 ? '-' : ''}₹{Math.abs(line.amount).toFixed(0)}
+                        {line.amount < 0 ? '-' : ''}₹{Math.abs(line.amount).toFixed(2)}
                       </Text>
                     </View>
                   ))
@@ -1463,7 +1463,7 @@ export default function BillingScreen() {
                   <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">
                     ₹{(bookingQuote?.amount
                       ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)
-                        + (plan?.onboarding_charge_amount ?? 0)).toFixed(0)}
+                        + (plan?.onboarding_charge_amount ?? 0)).toFixed(2)}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -1483,7 +1483,7 @@ export default function BillingScreen() {
                       : t('billing.pay', {
                           amount: (bookingQuote?.amount
                             ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)
-                              + (plan?.onboarding_charge_amount ?? 0)).toFixed(0),
+                              + (plan?.onboarding_charge_amount ?? 0)).toFixed(2),
                         })}
                   </Text>
                 </TouchableOpacity>

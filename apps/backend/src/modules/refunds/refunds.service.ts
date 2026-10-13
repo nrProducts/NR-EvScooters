@@ -62,6 +62,21 @@ const REFUND_COLUMNS = `
                     users(full_name, phone)
                 )
             )
+        ),
+        payment_allocations(
+            invoices(
+                subscription_id,
+                subscriptions(
+                    id,
+                    bookings(
+                        id, requested_start_on,
+                        booking_cancellations(cancelled_at, reason, penalty_amount),
+                        plans(vehicle_models(name)),
+                        hubs(name)
+                    ),
+                    users(full_name, phone)
+                )
+            )
         )
     )
 `;
@@ -120,11 +135,33 @@ interface RawRefundRow {
  * ONE invoice (`invoice_id` NOT NULL). That is a real tightening: the old
  * order carried a `booking_id` and a free-text `purpose`, and one order could
  * be claimed to have settled any number of invoices.
+ *
+ * `payment_orders.invoice_id` is only set for invoice-purpose orders, though
+ * — a pay-first BOOKING order (what a cancellation refund reverses) never
+ * gets one; its only link to an invoice is the `payment_allocations` row
+ * written once the booking materializes (see
+ * `succeededTransactionsForSubscription`'s doc comment, which the same split
+ * forced on payment lookup). Reading only the order route here left
+ * `booking_cancellation` refunds with no rider/booking/vehicle to show — the
+ * join dead-ended at `invoices` even though `payment_allocations` had it.
+ * Falls back to that route when the order one comes up empty.
  */
 function chainOf(row: RawRefundRow) {
-    const txn = unwrap<{ gateway_payment_id: string | null; payment_orders: unknown }>(row.payment_transactions);
+    const txn = unwrap<{
+        gateway_payment_id: string | null; payment_orders: unknown; payment_allocations: unknown;
+    }>(row.payment_transactions);
     const order = unwrap<{ invoice_id: string; invoices: unknown }>(txn?.payment_orders);
-    const invoice = unwrap<{ subscription_id: string; subscriptions: unknown }>(order?.invoices);
+    let invoice = unwrap<{ subscription_id: string; subscriptions: unknown }>(order?.invoices);
+    if (!invoice) {
+        const allocations = Array.isArray(txn?.payment_allocations)
+            ? txn?.payment_allocations : (txn?.payment_allocations ? [txn.payment_allocations] : []);
+        for (const allocation of allocations ?? []) {
+            invoice = unwrap<{ subscription_id: string; subscriptions: unknown }>(
+                (allocation as { invoices: unknown } | null)?.invoices,
+            );
+            if (invoice) break;
+        }
+    }
     const subscription = unwrap<{ id: string; bookings: unknown; users: unknown }>(invoice?.subscriptions);
     const booking = unwrap<{
         id: string; requested_start_on: string; booking_cancellations: unknown;
