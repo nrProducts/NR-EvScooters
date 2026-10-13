@@ -122,11 +122,15 @@ export interface ListAdminNotificationsFilters {
     sortDir: "asc" | "desc";
 }
 
+export type BroadcastAudience = "all" | "active_rental" | "individual";
+
 export interface BroadcastInput {
     title: string;
     body: string;
     screen?: string;
-    /** Omit to send to every active rider. */
+    /** "all" (default) and "active_rental" resolve their own recipients server-side. */
+    audience: BroadcastAudience;
+    /** Only read when audience is "individual". */
     user_ids?: string[];
 }
 

@@ -1,5 +1,5 @@
 import React, { forwardRef, useCallback, useImperativeHandle, useMemo, useRef } from 'react';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
 import MapGL, {
     Source, Layer, Marker, type MapRef, type MapLayerMouseEvent,
 } from 'react-map-gl/maplibre';
@@ -19,60 +19,37 @@ import { useT } from '../../../i18n';
 /**
  * The web map, built on react-map-gl + maplibre-gl rather than
  * @maplibre/maplibre-react-native — that package is native-only (it resolves
- * a TurboModule at import time) and simply cannot run in a browser. This is
- * NOT a straight re-export of the native view: every style-layer definition
- * below is hand-ported from BatteryStationMarker.tsx, because that file
- * imports the native Layer component and would throw the moment this module
- * touched it, same as the one it replaces. Metro picks THIS file
- * automatically on web builds (the `.web.tsx` extension), same mechanism as
- * every other platform-split file in Expo — BatteryStationMap.tsx's lazy
- * import needed no change.
+ * a TurboModule at import time) and simply cannot run in a browser. Metro
+ * picks THIS file automatically on web builds (the `.web.tsx` extension),
+ * same mechanism as every other platform-split file in Expo —
+ * BatteryStationMap.tsx's lazy import needed no change.
  *
- * The underlying GL style spec (paint/layout/filter expressions) is the same
- * language on native and web MapLibre, which is why these layers are a
- * faithful port rather than a different visual design — same status-coloured
- * location pin with a white bolt in its head, just declared against
- * react-map-gl's <Source>/<Layer> instead of the native one's.
+ * The marker here is INTENTIONALLY simpler than the native view's (one flat
+ * green pin, no per-status colour, no bolt glyph): two earlier attempts at
+ * matching the native pin+bolt design on web — first an SDF-tinted pin, then
+ * four pre-baked PNGs loaded via `require(...)` + Image.resolveAssetSource —
+ * both rendered nothing on the deployed static site, while working in local
+ * dev. The common suspect is `require()`-based asset resolution itself: the
+ * static web export (`web.output: 'static'` in app.config.js) serves assets
+ * from hashed paths that may not resolve the same way maplibre-gl's
+ * `loadImage()` expects in production as they do under the Metro dev
+ * server. This marker sidesteps that whole path entirely — the pin is an
+ * inline SVG data URI, a plain string baked into the JS bundle with no file
+ * path to resolve, loaded via a native browser `Image` rather than through
+ * Metro's asset pipeline at all.
  */
 
 const SOURCE_ID = 'battery-stations';
 const STATION_LAYER_ID = 'battery-station-points';
-const STATION_ICON_LAYER_ID = 'battery-station-icon';
 const STATION_SELECTED_LAYER_ID = 'battery-station-selected';
-const BOLT_ICON_NAME = 'station-bolt';
+const PIN_ICON_NAME = 'station-pin';
 
-/**
- * Four pre-coloured pin images (scripts/generate-station-icons.mjs), not one
- * white pin tinted at render time via an SDF `icon-color` — SDF tinting
- * needs the image to be a genuine signed-distance field, and a plain
- * hard-edged alpha mask is not one; it rendered unreliably (markers not
- * appearing at all). Matched to StationStatusBadge so the map and the sheet
- * agree on status colour.
- */
-const STATUS_PIN_EXPRESSION = [
-    'match',
-    ['get', 'status'],
-    'WORKING', 'station-pin-working',
-    'MAINTENANCE', 'station-pin-maintenance',
-    'NOT_WORKING', 'station-pin-not-working',
-    'station-pin-offline',
-] as const;
-
-/**
- * The pin source is 96x128 (scripts/generate-station-icons.mjs); its head
- * circle is centred at (48, 44), i.e. 20px above the image's true centre
- * (64). At icon-size 0.28, a symbol layer's default 'center' anchor puts
- * that true centre on the map coordinate, so the head sits 20 * 0.28 =
- * 5.6px above it on screen.
- *
- * The bolt is centred in its own 96x96 image already. To land its centre on
- * that same (0, -5.6px) screen offset, icon-offset is expressed in EMs of
- * the BOLT's own icon-size (the style spec multiplies offset by icon-size
- * to get the final shift) — so -5.6 / 0.14 = -40.
- */
-const PIN_ICON_SIZE = 0.28;
-const BOLT_ICON_SIZE = 0.14;
-const BOLT_ICON_OFFSET: [number, number] = [0, -40];
+const PIN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42">
+  <path d="M16 1C7.7 1 1 7.7 1 16c0 10.5 15 24.5 15 24.5S31 26.5 31 16C31 7.7 24.3 1 16 1Z" fill="${COLORS.primary}" stroke="#FFFFFF" stroke-width="2"/>
+  <circle cx="16" cy="16" r="6" fill="#FFFFFF"/>
+</svg>`;
+const PIN_DATA_URI = `data:image/svg+xml;base64,${btoa(PIN_SVG)}`;
+const PIN_ICON_SIZE = 1;
 
 const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStationMapProps>(function BatteryStationMapView(
     { stations, selectedStationId, onSelectStation, onPressMap, userCoords },
@@ -116,33 +93,20 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
     }), [focusCoordinates, fitAll]);
 
     /**
-     * Registers every sprite once the style has finished loading —
-     * maplibre-gl's addImage needs a loaded style to attach to. All plain
-     * RGBA images — none of these are SDF.
+     * Registers the pin sprite once the style has finished loading. A plain
+     * `window.Image` with the data URI as its `src` — no `loadImage()`
+     * network fetch, no Metro asset path, nothing that depends on how the
+     * static export serves files. `addImage` accepts an HTMLImageElement
+     * directly once it's decoded.
      */
     const handleLoad = useCallback(() => {
         const map = mapRef.current?.getMap();
-        if (!map) return;
-        const assets: Record<string, number> = {
-            'station-pin-working': require('../../../../assets/map/station-pin-working.png'),
-            'station-pin-maintenance': require('../../../../assets/map/station-pin-maintenance.png'),
-            'station-pin-not-working': require('../../../../assets/map/station-pin-not-working.png'),
-            'station-pin-offline': require('../../../../assets/map/station-pin-offline.png'),
-            [BOLT_ICON_NAME]: require('../../../../assets/map/station-bolt.png'),
+        if (!map || map.hasImage(PIN_ICON_NAME)) return;
+        const img = new window.Image();
+        img.onload = () => {
+            if (!map.hasImage(PIN_ICON_NAME)) map.addImage(PIN_ICON_NAME, img);
         };
-        for (const [name, asset] of Object.entries(assets)) {
-            if (map.hasImage(name)) continue;
-            const uri = Image.resolveAssetSource(asset)?.uri;
-            if (!uri) continue;
-            map.loadImage(uri).then(({ data }) => {
-                if (!map.hasImage(name)) map.addImage(name, data);
-            }).catch(() => {
-                // A missing sprite leaves nothing drawn at that layer — the
-                // other layers (and the station's own position data) still
-                // work, not worth surfacing as an error for what is purely a
-                // decorative glyph.
-            });
-        }
+        img.src = PIN_DATA_URI;
     }, []);
 
     /**
@@ -196,22 +160,11 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
                     id={STATION_LAYER_ID}
                     type="symbol"
                     layout={{
-                        'icon-image': STATUS_PIN_EXPRESSION as unknown as string,
+                        'icon-image': PIN_ICON_NAME,
                         'icon-size': PIN_ICON_SIZE,
                         'icon-allow-overlap': true,
                         'icon-ignore-placement': true,
-                    }}
-                />
-
-                <Layer
-                    id={STATION_ICON_LAYER_ID}
-                    type="symbol"
-                    layout={{
-                        'icon-image': BOLT_ICON_NAME,
-                        'icon-size': BOLT_ICON_SIZE,
-                        'icon-offset': BOLT_ICON_OFFSET,
-                        'icon-allow-overlap': true,
-                        'icon-ignore-placement': true,
+                        'icon-anchor': 'bottom',
                     }}
                 />
             </Source>

@@ -306,9 +306,11 @@ export async function broadcastNotification(
     input: BroadcastInput,
     actor: AuthContext,
 ): Promise<BroadcastResult> {
-    const targetIds = input.user_ids && input.user_ids.length > 0
-        ? input.user_ids
-        : await allActiveRiderIds();
+    const targetIds = input.audience === "individual"
+        ? (input.user_ids ?? [])
+        : input.audience === "active_rental"
+            ? await activeRentalRiderIds()
+            : await allActiveRiderIds();
     if (targetIds.length === 0) throw businessRule("No riders match the broadcast target.");
 
     const template = "admin_broadcast";
@@ -406,6 +408,25 @@ export async function broadcastNotification(
 /** Role is a column now — one query where there were three tables. */
 async function allActiveRiderIds(): Promise<string[]> {
     return activeIdsForRole("rider");
+}
+
+/**
+ * Riders who currently have a scooter on hand — an open `rentals` row,
+ * status 'active'. Narrower than "every active rider" (allActiveRiderIds):
+ * a rider between plans, or one who's never booked, has no row here at all.
+ * Same active/not-deleted account filter as every other broadcast audience,
+ * via the `users` join — a suspended or deleted account riding out an
+ * already-open rental still shouldn't get pushed to.
+ */
+async function activeRentalRiderIds(): Promise<string[]> {
+    const { data, error } = await supabaseAdmin
+        .from("rentals")
+        .select("user_id, users!inner(status, deleted_at)")
+        .eq("status", "active")
+        .eq("users.status", "active")
+        .is("users.deleted_at", null);
+    if (error) throw error;
+    return [...new Set((data ?? []).map((r) => r.user_id))];
 }
 
 async function allActiveAdminIds(): Promise<string[]> {

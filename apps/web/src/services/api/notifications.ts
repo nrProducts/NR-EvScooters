@@ -25,11 +25,14 @@ export async function fetchNotifications(filters: NotificationFilters = {}): Pro
   return toPaginatedResult(res);
 }
 
+export type BroadcastAudience = "all" | "active_rental" | "individual";
+
 export interface BroadcastInput {
   title: string;
   body: string;
   screen?: string;
-  /** Omit to send to every active rider. */
+  audience: BroadcastAudience;
+  /** Required (non-empty) only when audience is "individual". */
   user_ids?: string[];
 }
 
