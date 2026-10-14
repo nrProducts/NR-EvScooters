@@ -16,7 +16,7 @@ export const COLORS = {
   danger: '#EF4444',
   // Soft red reserved for lateness: overdue, late fee, expired plan, past due.
   // Deliberately NOT the general error/destructive red above.
-  overdue: '#F58A8A',
+  overdue: '#F47373',
   border: '#E5E7EB',
 
   white: '#FFFFFF',
