@@ -233,7 +233,16 @@ export const api = {
             phone,
             options: { shouldCreateUser: true },
         });
-        if (error) throw new ApiError(mapOtpStatus(error), 'OTP_REQUEST_FAILED', error.message);
+        if (error) {
+            // GoTrue wraps a rejected sign-up (the database refuses a phone that is
+            // not an Indian mobile) in this generic text, which tells a rider nothing.
+            const rejected = /database error saving new user/i.test(error.message);
+            throw new ApiError(
+                rejected ? 400 : mapOtpStatus(error),
+                'OTP_REQUEST_FAILED',
+                rejected ? 'Enter a valid 10-digit Indian mobile number.' : error.message,
+            );
+        }
     },
 
     async verifyPhoneOtp(phone: string, token: string): Promise<void> {
