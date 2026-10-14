@@ -167,6 +167,12 @@ export const ta: Copy = {
     'returnStatus.handInBy':
         '{deadline}க்குள் உங்கள் ஸ்கூட்டரைத் திருப்பவும். எங்கள் குழு ஒப்படைப்பை உறுதிப்படுத்தும் — அதுவரை ஸ்கூட்டர் உங்களுடையதே.',
     'returnStatus.stagePrefix': 'திருப்பு நிலை: {stage}',
+    'returnTracker.title': "திருப்பி அளிக்க சமர்ப்பிக்கப்பட்டது",
+    'returnTracker.subtitle': "உங்கள் கோரிக்கை பெறப்பட்டது. இங்கே கண்காணிக்கலாம்.",
+    'returnTracker.step.requested': "கோரப்பட்டது",
+    'returnTracker.step.inspection': "ஆய்வு",
+    'returnTracker.step.settlement': "தீர்வு",
+    'returnTracker.step.completed': "முடிந்தது",
     'returnStatus.stage.payment_required': 'கட்டணம் தேவை',
     'returnStatus.stage.payment_submitted': 'கட்டணம் சமர்ப்பிக்கப்பட்டது',
     'returnStatus.stage.ready_for_approval': 'கட்டணம் சரிபார்க்கப்பட்டது — ஒப்புதலுக்குத் தயார்',

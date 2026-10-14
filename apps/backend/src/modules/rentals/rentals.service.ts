@@ -13,7 +13,7 @@ import {
 } from "./rentals.types";
 import { LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS } from "./returnPolicy.constants";
 import { paidPeriodIds } from "../payments/renewalPeriod";
-import { businessToday, formatTimeOfDayForCopy, hasPassedCutover } from "../../common/dates";
+import { businessToday, hasPassedCutover } from "../../common/dates";
 import { getSettings as getReturnRecoverySettings } from "../return-recovery-settings/return-recovery-settings.service";
 import {
     ensureOverdueLateFeeInvoice, isOverdueLateFeeSettled, OverdueLateFeeInvoiceResult, overdueLateFeeStatusFor,
@@ -680,12 +680,39 @@ export async function requestReturn(
     // `late_fee_per_day` is read above, off return_recovery_settings — the
     // configured rate rather than the constant, so the rider is never quoted a
     // number the settlement will not charge.
-    await notifyUser(actor.id, {
+    // A rider returning before the plan's minimum rental days has forfeited
+    // the deposit. Said now, at the moment they commit to returning, rather
+    // than discovered on the settlement a week later.
+    let depositNote = "";
+    if (subscription) {
+        try {
+            const deposit = await getDepositForSubscriptionOrNull(subscription.id);
+            if (
+                deposit && deposit.status === "held"
+                && deposit.min_rental_days_required > 0
+                && deposit.rental_days_completed < deposit.min_rental_days_required
+            ) {
+                depositNote = ` As you have completed ${deposit.rental_days_completed} of the `
+                    + `${deposit.min_rental_days_required} rental days required, your security deposit `
+                    + "is not eligible for a refund.";
+            }
+        } catch {
+            // Best-effort wording; never blocks the notification.
+        }
+    }
+
+    // Date only: the handover time is the fixed cycle time, and quoting it
+    // here read as a deadline to the minute.
+    const handoverBy = dueAt.toLocaleDateString("en-IN", {
+        day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata",
+    });
+
+    void notifyUser(actor.id, {
         template: "rental_return_requested",
         title: "Return Requested",
-        body: `Hand your scooter in by ${dueAt.toLocaleDateString()} `
-            + `${formatTimeOfDayForCopy(dueAt)}. Our team will confirm the handover.`
-            + (late_fee_per_day > 0 ? ` A late fee of ₹${late_fee_per_day} per day applies after that.` : ""),
+        body: `Hand your scooter in by ${handoverBy}. Our team will confirm the handover.`
+            + (late_fee_per_day > 0 ? ` A late fee of ₹${late_fee_per_day} per day applies after that.` : "")
+            + depositNote,
         screen: "my-scooter",
     });
 

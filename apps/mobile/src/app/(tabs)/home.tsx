@@ -49,6 +49,7 @@ import type {
   ApiReturnSettlement,
 } from "../../types/api";
 import { ScooterStatusCard } from "../../components/ScooterStatusCard";
+import { ReturnTrackerCard } from "../../components/ReturnTrackerCard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useT } from "../../i18n";
 
@@ -316,6 +317,10 @@ export default function HomeScreen() {
                   everything on Home that needs the rider's attention sits at
                   the top of the screen, in one band, before the summary of
                   what is already fine. */}
+              {/* Return submitted: a small tracker above everything else, so a
+                  rider who has asked to hand the scooter back can see it was
+                  received and which step is next. */}
+              <ReturnTrackerCard rental={activeRental} />
               <ScooterStatusCard
                 rental={activeRental}
                 settlement={settlement}

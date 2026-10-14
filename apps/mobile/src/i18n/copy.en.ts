@@ -177,6 +177,12 @@ export const en = {
     'returnStatus.handInBy':
         'Hand your scooter in by {deadline}. Our team will confirm the handover — the scooter stays yours until then.',
     'returnStatus.stagePrefix': 'Return Status: {stage}',
+    'returnTracker.title': "Submitted for return",
+    'returnTracker.subtitle': "We've received your request. Track it here.",
+    'returnTracker.step.requested': "Requested",
+    'returnTracker.step.inspection': "Inspection",
+    'returnTracker.step.settlement': "Settlement",
+    'returnTracker.step.completed': "Completed",
     'returnStatus.stage.payment_required': 'Payment Required',
     'returnStatus.stage.payment_submitted': 'Payment Submitted',
     'returnStatus.stage.ready_for_approval': 'Payment Verified — Ready for Approval',

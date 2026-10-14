@@ -163,6 +163,15 @@ export default function ReturnDetailPage() {
   const canSaveInspection = hasDamage || confirmNoDamage;
 
   const depositAmount = deposit?.amount ?? 0;
+  // The settlement arithmetic zeroes a forfeited deposit so charges are not
+  // netted against money the rider no longer has. That made the breakdown read
+  // "Security Deposit ₹0.00" for a rider who paid it, so the held amount is
+  // carried separately purely for display.
+  const depositForfeitedAmount = deposit && (
+    deposit.status === "forfeited"
+    || !deposit.is_refundable
+    || (deposit.min_rental_days_required > 0 && deposit.rental_days_completed < deposit.min_rental_days_required)
+  ) ? deposit.amount : 0;
   const previewOtherCharges = otherCharges.filter(otherChargeValid).reduce((sum, c) => sum + Number(c.amount), 0);
   const stagedDamagesAmount = stagedDamages.reduce((sum, d) => sum + d.amount, 0);
   const previewDamageAmount = (stage?.damageAmount ?? 0) + stagedDamagesAmount;
@@ -491,6 +500,7 @@ export default function ReturnDetailPage() {
                   refund={settlement.refund_amount}
                   due={settlement.due_amount}
                   paidByRider={settlement.paid_by_rider_amount}
+                  forfeitedDeposit={depositForfeitedAmount}
                   renewalLateFee={rental.overdue_late_fee}
                 />
               ) : stageStatus === "return_requested" ? (
@@ -503,6 +513,7 @@ export default function ReturnDetailPage() {
                   refund={stage?.depositForfeited ? 0 : Math.max(0, depositAmount - previewTotalCharges)}
                   due={previewDue}
                   paidByRider={0}
+                  forfeitedDeposit={depositForfeitedAmount}
                   renewalLateFee={rental.overdue_late_fee}
                 />
               ) : (
@@ -792,7 +803,7 @@ function DepositTermsNotice({ deposit }: { deposit: Deposit | null }) {
 }
 
 function SettlementBreakdown({
-  depositAmount, lateFee, damageFee, otherCharges, totalCharges, refund, due, paidByRider, renewalLateFee,
+  depositAmount, lateFee, damageFee, otherCharges, totalCharges, refund, due, paidByRider, renewalLateFee, forfeitedDeposit = 0,
 }: {
   depositAmount: number;
   lateFee: number;
@@ -811,7 +822,10 @@ function SettlementBreakdown({
    * confused with the deposit maths.
    */
   renewalLateFee: { isLate: boolean; lateFee: number; isSettled: boolean } | null;
+  /** A deposit the rider paid but lost (short rental, non-refundable plan). Display only — never part of the maths. */
+  forfeitedDeposit?: number;
 }) {
+  const showForfeited = depositAmount === 0 && forfeitedDeposit > 0;
   return (
     <div className="space-y-2 text-sm">
       {renewalLateFee?.isLate && renewalLateFee.lateFee > 0 && (
@@ -836,7 +850,14 @@ function SettlementBreakdown({
           <div className="h-px bg-border" />
         </>
       )}
-      <Row icon={<ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />} label="Security Deposit" value={formatCurrency(depositAmount)} />
+      <Row
+        icon={<ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />}
+        label="Security Deposit (paid)"
+        value={formatCurrency(showForfeited ? forfeitedDeposit : depositAmount)}
+      />
+      {showForfeited && (
+        <Row label="Deposit forfeited" value={`-${formatCurrency(forfeitedDeposit)}`} negative />
+      )}
       <Row label="Late Fee (return)" value={formatCurrency(lateFee)} muted />
       <Row label="Damage Fee" value={damageFee > 0 ? `-${formatCurrency(damageFee)}` : formatCurrency(0)} negative={damageFee > 0} />
       <Row label="Other Charges" value={otherCharges > 0 ? `-${formatCurrency(otherCharges)}` : formatCurrency(0)} negative={otherCharges > 0} />

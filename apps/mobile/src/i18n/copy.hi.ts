@@ -167,6 +167,12 @@ export const hi: Copy = {
     'returnStatus.handInBy':
         '{deadline} तक अपना स्कूटर वापस कर दें। हमारी टीम हैंडओवर की पुष्टि करेगी — तब तक स्कूटर आपका ही रहेगा।',
     'returnStatus.stagePrefix': 'रिटर्न की स्थिति: {stage}',
+    'returnTracker.title': "वापसी के लिए जमा",
+    'returnTracker.subtitle': "आपका अनुरोध मिल गया है। यहां ट्रैक करें।",
+    'returnTracker.step.requested': "अनुरोध",
+    'returnTracker.step.inspection': "जांच",
+    'returnTracker.step.settlement': "निपटान",
+    'returnTracker.step.completed': "पूर्ण",
     'returnStatus.stage.payment_required': 'भुगतान ज़रूरी है',
     'returnStatus.stage.payment_submitted': 'भुगतान जमा किया गया',
     'returnStatus.stage.ready_for_approval': 'भुगतान सत्यापित — मंज़ूरी के लिए तैयार',
