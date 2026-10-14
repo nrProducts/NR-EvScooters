@@ -1157,16 +1157,22 @@ export async function cancelMyBooking(
     // Only a 'confirmed' booking was ever actually paid for.
     const wasPaid = existing.status === "confirmed";
     const context = (await loadBookingContext([bookingId])).get(bookingId) ?? EMPTY_CONTEXT;
-    const deposit = wasPaid && context.subscriptionId
-        ? await getDepositForSubscriptionOrNull(context.subscriptionId)
-        : null;
 
+    // Three independent reads — run together, not back to back. Each is a
+    // network round trip, and on a cancel they were the bulk of the wait.
+    //
     // Everything is computed from what was ACTUALLY captured, not the
     // plan-price snapshot — a discounted booking paid less than the snapshot,
     // and refunding the snapshot trips the DB's over-refund guard.
-    const capturedTotal = wasPaid && context.subscriptionId
-        ? await capturedAmountForSubscription(context.subscriptionId)
-        : 0;
+    const [deposit, capturedTotal, tiers] = await Promise.all([
+        wasPaid && context.subscriptionId
+            ? getDepositForSubscriptionOrNull(context.subscriptionId)
+            : Promise.resolve(null),
+        wasPaid && context.subscriptionId
+            ? capturedAmountForSubscription(context.subscriptionId)
+            : Promise.resolve(0),
+        getCancellationTiers(),
+    ]);
     const depositAmount = deposit?.amount ?? 0;
     // The onboarding charge comes out of planPaid, not out of the refund: it
     // is non-refundable, so it must be neither given back nor charged a
@@ -1174,7 +1180,6 @@ export async function cancelMyBooking(
     const onboardingCharge = wasPaid ? Number(existing.onboarding_charge_snapshot ?? 0) : 0;
     const planPaid = Math.max(0, capturedTotal - depositAmount - onboardingCharge);
 
-    const tiers = await getCancellationTiers();
     const charge = computeCancellationCharge({
         planPaid,
         depositAmount,
@@ -1240,7 +1245,11 @@ export async function cancelMyBooking(
         },
     });
 
-    await notifyUser(actor.id, {
+    // Fire-and-forget: both helpers swallow their own errors, and a push
+    // gateway or mail server round trip is not part of "your booking is
+    // cancelled". Awaiting them is what pushed the response past the app's
+    // timeout while the cancellation itself had already succeeded.
+    void notifyUser(actor.id, {
         template: "booking_cancelled",
         title: "Booking Cancelled",
         body: penaltyAmount > 0
@@ -1251,7 +1260,7 @@ export async function cancelMyBooking(
         screen: "booking-history",
     });
 
-    await notify({
+    void notify({
         notificationType: "booking_cancelled",
         referenceType: "booking",
         referenceId: bookingId,

@@ -451,6 +451,10 @@ export const api = {
         request<ApiBooking>(`/bookings/${bookingId}/cancel`, {
             method: 'POST',
             body: reason ? { reason } : {},
+            // A cancel writes the booking, ends the plan and queues the refund.
+            // Giving up at the default 20s reported "could not cancel" for a
+            // cancellation that then completed.
+            timeoutMs: 45000,
         }),
 
     bookingHistory: (params: { page?: number; pageSize?: number } = {}) =>
