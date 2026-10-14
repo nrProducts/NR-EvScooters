@@ -13,7 +13,10 @@ export const COLORS = {
   textSecondary: '#6B7280',
   success: '#21C45D',
   warning: '#F59E0B',
-  danger: '#0F7F80', // teal — replaces red app-wide (payment due, overdue, errors)
+  danger: '#EF4444',
+  // Soft red reserved for lateness: overdue, late fee, expired plan, past due.
+  // Deliberately NOT the general error/destructive red above.
+  overdue: '#F58A8A',
   border: '#E5E7EB',
 
   white: '#FFFFFF',
@@ -33,7 +36,7 @@ export const COLORS = {
   status: {
     green: '#21C45D',
     amber: '#F59E0B',
-    red: '#0F7F80', // kept for the key name; teal like danger
+    red: '#EF4444',
   },
 
   // --- Legacy dark-forest theme keys ---

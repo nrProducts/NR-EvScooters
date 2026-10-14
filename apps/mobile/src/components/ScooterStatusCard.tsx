@@ -239,7 +239,7 @@ export function ScooterStatusCard({
 
     return (
       <StatusShell
-        tone="danger"
+        tone="overdue"
         icon={AlertTriangle}
         // Zero days is a real state, not a bug: on the FIRST day after a plan
         // ends, renewing costs no late fee at all (today is the day the new
@@ -295,7 +295,7 @@ export function ScooterStatusCard({
     const remaining = rental.next_due_at ? describeDaysLeft(rental.next_due_at, t) : null;
     return (
       <StatusShell
-        tone={eligibility.isLate ? 'danger' : 'primary'}
+        tone={eligibility.isLate ? 'overdue' : 'primary'}
         icon={RefreshCw}
         title={
           eligibility.isLate
@@ -338,14 +338,14 @@ function describeDaysLeft(nextDueAt: string, t: TranslateFn): string | null {
     : t('scooterStatus.daysLeftOther', { count: remaining });
 }
 
-const TONE_COLOR: Record<'danger' | 'warning' | 'success' | 'primary', string> = {
-  danger: COLORS.danger, warning: COLORS.warning, success: COLORS.success, primary: COLORS.primary,
+const TONE_COLOR: Record<'danger' | 'overdue' | 'warning' | 'success' | 'primary', string> = {
+  danger: COLORS.danger, overdue: COLORS.overdue, warning: COLORS.warning, success: COLORS.success, primary: COLORS.primary,
 };
 
 function StatusShell({
   tone, icon: Icon, title, titleAccessory, dismissKey, children,
 }: {
-  tone: 'danger' | 'warning' | 'success' | 'primary';
+  tone: 'danger' | 'overdue' | 'warning' | 'success' | 'primary';
   icon: React.ComponentType<{ size?: number; color?: string }>;
   title: string;
   /** Trailing control on the title row — an InfoHint, in practice. */
@@ -400,7 +400,7 @@ function StatusShell({
 function ActionButton({
   tone, onPress, busy, label,
 }: {
-  tone: 'danger' | 'warning' | 'success' | 'primary' | 'outline';
+  tone: 'danger' | 'overdue' | 'warning' | 'success' | 'primary' | 'outline';
   onPress: () => void;
   busy?: boolean;
   label: string;

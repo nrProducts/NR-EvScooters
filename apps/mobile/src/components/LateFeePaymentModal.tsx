@@ -121,11 +121,11 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
           <View className="px-6 pb-2">
             <View
               className="rounded-2xl p-3.5 mb-4"
-              style={{ backgroundColor: COLORS.danger + '14', borderWidth: 1, borderColor: COLORS.danger + '33' }}
+              style={{ backgroundColor: COLORS.overdue + '14', borderWidth: 1, borderColor: COLORS.overdue + '33' }}
             >
               <View className="flex-row items-center mb-1">
-                <AlertTriangle size={14} color={COLORS.danger} />
-                <Text style={{ color: COLORS.danger }} className="text-xs font-extrabold ml-2">
+                <AlertTriangle size={14} color={COLORS.overdue} />
+                <Text style={{ color: COLORS.overdue }} className="text-xs font-extrabold ml-2">
                   {t('lateFeeGate.planExpired')}
                 </Text>
               </View>
@@ -176,7 +176,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
               <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
                 {t('lateFeeGate.amountDue')}
               </Text>
-              <Text style={{ color: COLORS.danger }} className="text-lg font-black">
+              <Text style={{ color: COLORS.overdue }} className="text-lg font-black">
                 ₹{lateFee.totalDue.toFixed(2)}
               </Text>
             </View>
@@ -188,7 +188,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
               disabled={paying}
               accessibilityRole="button"
               className="w-full py-4 rounded-2xl flex-row justify-center items-center"
-              style={{ backgroundColor: COLORS.danger, opacity: paying ? 0.6 : 1 }}
+              style={{ backgroundColor: COLORS.overdue, opacity: paying ? 0.6 : 1 }}
             >
               {paying ? (
                 <Spinner size={18} color="#FFF" />
@@ -199,7 +199,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
               )}
             </TouchableOpacity>
             {payError ? (
-              <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mt-3">
+              <Text style={{ color: COLORS.overdue }} className="text-xs font-semibold text-center mt-3">
                 {payError}
               </Text>
             ) : null}

@@ -269,11 +269,11 @@ function periodProgress(startDate: string, endDate: string): number {
 function BillLine({
   label, amount, attention, negative, bold,
 }: { label: string; amount: number; attention?: boolean; negative?: boolean; bold?: boolean }) {
-  const color = attention || negative ? COLORS.danger : COLORS.textPrimary;
+  const color = attention ? COLORS.overdue : negative ? COLORS.danger : COLORS.textPrimary;
   return (
     <View className="flex-row items-center justify-between py-1.5">
       <Text
-        style={{ color: attention ? COLORS.danger : COLORS.textSecondary }}
+        style={{ color: attention ? COLORS.overdue : COLORS.textSecondary }}
         className={`text-[13px] flex-1 pr-3 ${bold ? 'font-bold' : 'font-medium'}`}
       >
         {label}
@@ -361,7 +361,7 @@ function PaymentHistoryCard({
  * must not grade it differently.
  */
 function AttentionNote({ label, tone = 'warning' }: { label: string; tone?: 'warning' | 'danger' }) {
-  const color = tone === 'danger' ? COLORS.danger : COLORS.warning;
+  const color = tone === 'danger' ? COLORS.overdue : COLORS.warning;
   return (
     <View className="flex-row items-center mb-3">
       <View className="w-1.5 h-1.5 rounded-full mr-2" style={{ backgroundColor: color }} />
@@ -1023,7 +1023,7 @@ export default function BillingScreen() {
                   {invoiceLabel(inv, t)}
                 </Text>
                 <Text
-                  style={{ color: due.overdue ? COLORS.danger : COLORS.textSecondary }}
+                  style={{ color: due.overdue ? COLORS.overdue : COLORS.textSecondary }}
                   className={`text-[11px] ${due.overdue ? 'font-bold' : 'font-medium'}`}
                 >
                   {due.text}
@@ -1167,7 +1167,7 @@ export default function BillingScreen() {
               style={{ borderRadius: 22, backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
             >
               {renewalIsLate ? <AttentionNote label={t('billing.paymentRequired')} tone="danger" /> : null}
-              <Text style={{ color: renewalIsLate ? COLORS.danger : COLORS.textPrimary }} className="text-sm font-semibold mb-1">
+              <Text style={{ color: renewalIsLate ? COLORS.overdue : COLORS.textPrimary }} className="text-sm font-semibold mb-1">
                 {renewalIsLate
                   ? t('billing.planExpired')
                   : planEndsToday ? t('billing.planEndsToday') : t('billing.planEndsOn', { date: formatDate(booking?.next_due_at ?? null) })}
@@ -1382,7 +1382,7 @@ export default function BillingScreen() {
                 was — the one word on this card that means "something is
                 wrong" was painted the colour that means "fine". */}
             {booking?.plan_status ? (() => {
-              const tint = booking.plan_status === 'past_due' ? COLORS.danger
+              const tint = booking.plan_status === 'past_due' ? COLORS.overdue
                 : booking.plan_status === 'paused' ? COLORS.warning
                   : COLORS.primaryPressed;
               return (
@@ -1430,7 +1430,7 @@ export default function BillingScreen() {
                 <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mt-0.5">{t('billing.started')}</Text>
               </View>
               <View className="items-end">
-                <Text style={{ color: renewalIsLate ? COLORS.danger : COLORS.textPrimary }} className="text-xs font-bold">
+                <Text style={{ color: renewalIsLate ? COLORS.overdue : COLORS.textPrimary }} className="text-xs font-bold">
                   {formatDate(booking?.next_due_at ?? null)}{renewalIsLate ? t('billing.expired') : ''}
                 </Text>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mt-0.5">{t('billing.ends')}</Text>

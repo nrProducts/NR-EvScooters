@@ -112,7 +112,7 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
 
         {dueDate ? (
           <Text
-            style={{ color: renewal.isLate ? COLORS.danger : COLORS.textSecondary }}
+            style={{ color: renewal.isLate ? COLORS.overdue : COLORS.textSecondary }}
             className="text-xs font-bold mt-2"
           >
             {t('rental.periodRange', { start: formatDate(periodStart), end: formatDate(dueDate) })}
@@ -200,7 +200,7 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
             accessibilityRole="button"
             activeOpacity={0.85}
             className="flex-row items-center justify-center rounded-2xl py-3.5 mt-3"
-            style={{ backgroundColor: renewal.isLate ? COLORS.danger : COLORS.primary }}
+            style={{ backgroundColor: renewal.isLate ? COLORS.overdue : COLORS.primary }}
           >
             <RefreshCw size={16} color={COLORS.white} />
             <Text className="text-white text-sm font-bold ml-2">

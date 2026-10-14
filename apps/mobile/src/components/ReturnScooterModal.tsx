@@ -173,15 +173,15 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
             {/* <View
               className="rounded-2xl p-3.5 mb-3"
               style={{
-                backgroundColor: (deadline.alreadyOverdue ? COLORS.danger : COLORS.warning) + '14',
+                backgroundColor: (deadline.alreadyOverdue ? COLORS.overdue : COLORS.warning) + '14',
                 borderWidth: 1,
-                borderColor: (deadline.alreadyOverdue ? COLORS.danger : COLORS.warning) + '33',
+                borderColor: (deadline.alreadyOverdue ? COLORS.overdue : COLORS.warning) + '33',
               }}
             >
               <View className="flex-row items-center mb-1">
-                <AlertTriangle size={14} color={deadline.alreadyOverdue ? COLORS.danger : COLORS.warning} />
+                <AlertTriangle size={14} color={deadline.alreadyOverdue ? COLORS.overdue : COLORS.warning} />
                 <Text
-                  style={{ color: deadline.alreadyOverdue ? COLORS.danger : COLORS.warning }}
+                  style={{ color: deadline.alreadyOverdue ? COLORS.overdue : COLORS.warning }}
                   className="text-xs font-extrabold ml-2"
                 >
                   {deadline.alreadyOverdue

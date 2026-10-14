@@ -30,7 +30,7 @@ export const Keypad: React.FC<KeypadProps> = ({ onPress, onDelete, onClear }) =>
                   activeOpacity={0.6}
                   className="w-20 h-20 items-center justify-center rounded-full bg-slate-100 dark:bg-zinc-800"
                 >
-                  <Trash2 size={22} color="#0F7F80" />
+                  <Trash2 size={22} color="#EF4444" />
                 </TouchableOpacity>
               );
             }

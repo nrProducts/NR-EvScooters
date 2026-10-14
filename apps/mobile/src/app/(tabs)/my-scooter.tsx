@@ -252,7 +252,7 @@ export default function MyScooterScreen() {
                       value={expiry.text}
                       valueColor={
                         expiry.tone === 'neutral' ? undefined
-                          : expiry.tone === 'danger' ? COLORS.danger : COLORS.warning
+                          : expiry.tone === 'danger' ? COLORS.overdue : COLORS.warning
                       }
                     />
                   );
