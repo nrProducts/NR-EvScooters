@@ -3,6 +3,7 @@ import { ENV } from '../constants/env';
 import { getAccessToken, getSupabase } from './supabase';
 import { ApiError } from './ApiError';
 import { signInWithGoogleBrowser } from './googleAuth';
+import { cachedGet, clearApiCache } from './apiCache';
 
 // Re-exported so existing `import { ApiError } from '../lib/api'` keeps working.
 export { ApiError };
@@ -54,6 +55,11 @@ interface RequestOptions {
      * the rider their confirmation.
      */
     timeoutMs?: number;
+    /**
+     * Skip the read cache for this GET (an explicit pull-to-refresh). The fresh
+     * result still replaces the cached one.
+     */
+    fresh?: boolean;
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -74,6 +80,33 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
  * that belongs to the app's core surface.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    const method = options.method ?? 'GET';
+
+    // Writes are never cached, and ANY write drops the read cache — a payment,
+    // booking, profile edit or consent change is exactly when the next screen
+    // must see fresh data. Cleared in `finally` so a rejected write (it may
+    // have partly applied) is treated the same as a successful one.
+    if (method !== 'GET') {
+        try {
+            return await performRequest<T>(path, options);
+        } finally {
+            clearApiCache();
+        }
+    }
+
+    // A caller-supplied abort signal means type-ahead search: each keystroke is
+    // meant to cancel the last, so de-duplicating or caching it would defeat that.
+    if (options.signal) return performRequest<T>(path, options);
+
+    return cachedGet<T>(
+        buildUrl(path, options.query),
+        path,
+        () => performRequest<T>(path, options),
+        options.fresh === true,
+    );
+}
+
+async function performRequest<T>(path: string, options: RequestOptions): Promise<T> {
     const { method = 'GET', body, query, form, signal, timeoutMs = TIMEOUT_MS } = options;
 
     const token = await getAccessToken();

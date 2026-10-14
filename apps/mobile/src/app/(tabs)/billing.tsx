@@ -10,6 +10,7 @@ import { ErrorState } from '../../components/ui/ErrorState';
 import { Badge } from '../../components/ui/Badge';
 import { pullToRefresh, useRefresh } from '../../components/ui/PullToRefresh';
 import { PageScroll } from '../../components/ui/PageScroll';
+import { SkeletonLine } from '../../components/ui/Skeleton';
 import { COLORS } from '../../constants/theme';
 import { useMyBilling } from '../../hooks/useMyBilling';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -372,7 +373,7 @@ function AttentionNote({ label, tone = 'warning' }: { label: string; tone?: 'war
 export default function BillingScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useT();
-  const { bookingId, booking, invoices, deposit, loading, error, reload } = useMyBilling();
+  const { bookingId, booking, invoices, deposit, loading, error, reload, patchInvoices } = useMyBilling();
   const { refreshing, onRefresh } = useRefresh(() => reload(true));
   const profile = useAuthStore((s) => s.profile);
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
@@ -384,24 +385,59 @@ export default function BillingScreen() {
   // real discounted total onto the invoice row, so a plain reload() (the
   // same one pull-to-refresh already uses) picks it up with no client-side
   // math to keep in sync with the server's.
-  const { summary: referralSummary, reload: reloadReferralSummary } = useReferralSummary();
+  const {
+    summary: referralSummary, loading: referralLoading, reload: reloadReferralSummary, setSummary: setReferralSummary,
+  } = useReferralSummary();
   const [cardPickerInvoiceId, setCardPickerInvoiceId] = useState<string | null>(null);
   const [cardActionInvoiceId, setCardActionInvoiceId] = useState<string | null>(null);
   const [cardActionError, setCardActionError] = useState<string | null>(null);
 
+  // Applying / releasing a card is a certain, small arithmetic change, so the
+  // screen takes it immediately and the request settles in the background —
+  // the rider no longer waits on three round trips (apply, billing reload,
+  // referral reload) to watch a ₹1 discount land. If the server refuses, the
+  // snapshot is put back and the reason shown. A silent background reload
+  // afterwards replaces the optimistic figures with the server's own.
+  const shiftInvoiceTotal = (invoiceId: string, delta: number) =>
+    patchInvoices((list) => list.map((inv) => (inv.id !== invoiceId ? inv : {
+      ...inv,
+      total_amount: Math.max(0, inv.total_amount + delta),
+      balance_amount: Math.max(0, inv.balance_amount + delta),
+      ...(inv.total_due !== undefined ? { total_due: Math.max(0, inv.total_due + delta) } : {}),
+    })));
+
   const applyReferralCard = async (invoiceId: string, cardId: string) => {
+    const invoice = invoices.find((i) => i.id === invoiceId);
+    const card = referralSummary?.cards.find((c) => c.id === cardId);
+    const snapshot = referralSummary;
     setCardActionError(null);
+    setCardPickerInvoiceId(null);
+
+    // The discount can never exceed what is still owed on this invoice.
+    const owed = invoice ? (invoice.total_due ?? invoice.balance_amount) : 0;
+    const discount = card ? Math.min(card.amount, owed) : 0;
+    if (invoice && card && snapshot) {
+      shiftInvoiceTotal(invoiceId, -discount);
+      setReferralSummary({
+        ...snapshot,
+        cards: snapshot.cards.map((c) => (c.id === cardId ? { ...c, status: 'reserved' as const } : c)),
+        available_card_count: Math.max(0, snapshot.available_card_count - 1),
+        reserved_redemptions: [
+          ...snapshot.reserved_redemptions,
+          { id: `pending-${cardId}`, invoice_id: invoiceId, discount_amount: discount },
+        ],
+      });
+    }
+
     setCardActionInvoiceId(invoiceId);
     try {
       await referralRepository.applyCard(cardId, invoiceId);
-      setCardPickerInvoiceId(null);
-      // background: true — this card row already shows its own inline
-      // Spinner (`busy`). A foreground reload() drops the WHOLE screen to
-      // the top-level loading spinner (blank but for that one glyph) while
-      // this tiny ₹1 discount applies, same bug as the full-screen flash a
-      // pull-to-refresh deliberately avoids with the same flag.
-      await Promise.all([reload(true), reloadReferralSummary()]);
+      // Not awaited: the screen is already right; this only swaps in the
+      // server's own ids and figures.
+      void Promise.all([reload(true), reloadReferralSummary()]);
     } catch (err) {
+      if (invoice && card) shiftInvoiceTotal(invoiceId, discount);
+      if (snapshot) setReferralSummary(snapshot);
       setCardActionError(err instanceof ApiError ? err.message : t('billing.referralCard.applyFailed'));
     } finally {
       setCardActionInvoiceId(null);
@@ -409,13 +445,33 @@ export default function BillingScreen() {
   };
 
   const removeReferralCard = async (redemptionId: string, invoiceId: string) => {
+    const snapshot = referralSummary;
+    const reservation = snapshot?.reserved_redemptions.find((r) => r.id === redemptionId);
+    const restored = reservation?.discount_amount ?? 0;
     setCardActionError(null);
+
+    if (snapshot && reservation) {
+      shiftInvoiceTotal(invoiceId, restored);
+      setReferralSummary({
+        ...snapshot,
+        reserved_redemptions: snapshot.reserved_redemptions.filter((r) => r.id !== redemptionId),
+      });
+    }
+
     setCardActionInvoiceId(invoiceId);
     try {
-      await referralRepository.releaseCard(redemptionId);
-      // background: true — same reasoning as applyReferralCard above.
-      await Promise.all([reload(true), reloadReferralSummary()]);
+      // A card applied a moment ago still carries its placeholder id until the
+      // background reload lands; resolve to the real one first.
+      let realId = redemptionId;
+      if (redemptionId.startsWith('pending-')) {
+        const fresh = await referralRepository.mine();
+        realId = fresh.reserved_redemptions.find((r) => r.invoice_id === invoiceId)?.id ?? redemptionId;
+      }
+      await referralRepository.releaseCard(realId);
+      void Promise.all([reload(true), reloadReferralSummary()]);
     } catch (err) {
+      if (reservation) shiftInvoiceTotal(invoiceId, -restored);
+      if (snapshot) setReferralSummary(snapshot);
       setCardActionError(err instanceof ApiError ? err.message : t('billing.referralCard.removeFailed'));
     } finally {
       setCardActionInvoiceId(null);
@@ -429,6 +485,10 @@ export default function BillingScreen() {
   // created order carry the same { lines, amount } shape; the order (once
   // created) wins, since it's what Razorpay will actually charge.
   const [bookingQuote, setBookingQuote] = useState<ApiPaymentOrder | ApiPlanQuote | null>(null);
+  // The quote is the real bill (fees and discounts included). Until it lands
+  // the screen has only the plan's own price, which is NOT what gets charged,
+  // so it is shown as a placeholder rather than as a figure that then changes.
+  const [bookingQuoteFailed, setBookingQuoteFailed] = useState(false);
   // Two-step Recharge Now: tapping the teaser fetches the breakdown
   // (rechargePreview) without charging anything — only Confirm & Pay
   // actually opens the payment sheet. previewLoading covers step 1,
@@ -579,9 +639,10 @@ export default function BillingScreen() {
     billingRepository
       .quotePlan(plan.id, booking?.start_day ?? undefined)
       .then((q) => { if (!cancelled) setBookingQuote(q); })
-      .catch(() => undefined);
+      .catch(() => { if (!cancelled) setBookingQuoteFailed(true); });
     return () => { cancelled = true; };
   }, [isPendingBookingPayment, plan?.id, booking?.start_day, bookingQuote]);
+  const bookingQuoteLoading = isPendingBookingPayment && !bookingQuote && !bookingQuoteFailed;
 
   // Anything not fully covered by allocations, voided invoices excluded.
   // `partial` counts: half-paid is still owed.
@@ -844,6 +905,16 @@ export default function BillingScreen() {
    * never clutters an invoice for a rider who has never referred anyone.
    */
   const renderReferralCardSection = (inv: ApiInvoice) => {
+    // The offer (and any card already held against this bill) arrives with the
+    // referral summary, a beat after the invoice. Reserving its space avoids
+    // the card appearing late and pushing the amount down.
+    if (referralLoading && !referralSummary) {
+      return (
+        <View className="rounded-xl border px-3.5 py-3 mb-4" style={{ borderColor: COLORS.border }}>
+          <SkeletonLine width="60%" />
+        </View>
+      );
+    }
     const reservation = referralSummary?.reserved_redemptions.find((r) => r.invoice_id === inv.id);
     const busy = cardActionInvoiceId === inv.id;
 
@@ -1427,7 +1498,22 @@ export default function BillingScreen() {
                   {t('billing.bookingPaymentNotCompleted')}
                 </Text>
 
-                {bookingQuote ? (
+                {bookingQuoteLoading ? (
+                  <View style={{ gap: 10 }} className="mb-2">
+                    <View className="flex-row items-center justify-between">
+                      <SkeletonLine width="45%" />
+                      <SkeletonLine width={48} />
+                    </View>
+                    <View className="flex-row items-center justify-between">
+                      <SkeletonLine width="35%" />
+                      <SkeletonLine width={48} />
+                    </View>
+                    <View className="flex-row items-center justify-between">
+                      <SkeletonLine width="50%" />
+                      <SkeletonLine width={48} />
+                    </View>
+                  </View>
+                ) : bookingQuote ? (
                   // The real bill — deposit and transaction fee included,
                   // not just the rental line. Every row comes from
                   // invoice_items, so what's shown here is exactly what
@@ -1460,17 +1546,21 @@ export default function BillingScreen() {
                 <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
                 <View className="flex-row items-center justify-between mb-4">
                   <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">{t('billing.total')}</Text>
-                  <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">
-                    ₹{(bookingQuote?.amount
-                      ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)
-                        + (plan?.onboarding_charge_amount ?? 0)).toFixed(2)}
-                  </Text>
+                  {bookingQuoteLoading ? (
+                    <SkeletonLine width={90} height={24} />
+                  ) : (
+                    <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">
+                      ₹{(bookingQuote?.amount
+                        ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)
+                          + (plan?.onboarding_charge_amount ?? 0)).toFixed(2)}
+                    </Text>
+                  )}
                 </View>
                 <TouchableOpacity
                   onPress={() => void handleCompleteBookingPayment()}
-                  disabled={completingBookingPayment}
+                  disabled={completingBookingPayment || bookingQuoteLoading}
                   className="py-3.5 rounded-2xl items-center flex-row justify-center"
-                  style={{ backgroundColor: COLORS.primary, opacity: completingBookingPayment ? 0.6 : 1 }}
+                  style={{ backgroundColor: COLORS.primary, opacity: completingBookingPayment || bookingQuoteLoading ? 0.6 : 1 }}
                 >
                   {completingBookingPayment ? (
                     <Spinner size={16} color="#FFF" />
@@ -1478,8 +1568,8 @@ export default function BillingScreen() {
                     <CreditCard size={16} color="#FFF" />
                   )}
                   <Text className="text-white text-sm font-bold ml-2">
-                    {completingBookingPayment
-                      ? t('billing.processing')
+                    {completingBookingPayment || bookingQuoteLoading
+                      ? t(completingBookingPayment ? 'billing.processing' : 'billing.loading')
                       : t('billing.pay', {
                           amount: (bookingQuote?.amount
                             ?? (plan?.price ?? 0) + (plan?.deposit_amount ?? 0)

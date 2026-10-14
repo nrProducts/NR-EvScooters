@@ -33,5 +33,5 @@ export function useReferralSummary() {
         void load();
     }, [load]);
 
-    return { summary, loading, error, reload: load };
+    return { summary, loading, error, reload: load, setSummary };
 }

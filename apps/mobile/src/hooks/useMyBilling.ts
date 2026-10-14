@@ -88,6 +88,13 @@ export function useMyBilling() {
          * waiting buys nothing. If the ride reload does change the booking, the
          * effect above re-fires `load` against the new id.
          */
+        /**
+         * Edits the invoices already on screen without a round trip — for an
+         * action whose result the client already knows (a referral card applied).
+         * The caller still reconciles with a background reload.
+         */
+        patchInvoices: (fn: (invoices: ApiInvoice[]) => ApiInvoice[]) =>
+            setBilling((prev) => ({ ...prev, invoices: fn(prev.invoices) })),
         reload: (background = false): Promise<void> =>
             Promise.all([reloadRide(background), load(background)]).then(() => undefined),
     };

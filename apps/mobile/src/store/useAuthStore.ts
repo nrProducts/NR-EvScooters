@@ -5,6 +5,7 @@ import { setUnauthorizedHandler } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
 import type { ApiMe, RoleName } from '../types/api';
 import { useLangStore } from '../i18n';
+import { clearApiCache } from '../lib/apiCache';
 
 /**
  * Collapses overlapping sign-out triggers (e.g. two 401s arriving close
@@ -117,6 +118,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ signingOut: true });
         signOutInFlight = (async () => {
             await authRepository.signOut();
+            // One account's cached reads must never be served to the next.
+            clearApiCache();
             set({ session: null, profile: null, error: null, hasSeenKycIntro: false });
             // The LANGUAGE deliberately survives — it is a device preference,
             // and dropping a rider back into English at the login screen is
