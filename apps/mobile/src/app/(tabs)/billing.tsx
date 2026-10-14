@@ -996,13 +996,6 @@ export default function BillingScreen() {
   const renderOutstandingInvoices = () => (
     <>
       <AttentionNote label={t('billing.paymentRequired')} tone={isDue ? 'danger' : 'warning'} />
-      {/* Consequence of plan_status='past_due', stated plainly under the red
-          note above rather than as a banner of its own. */}
-      {isDue ? (
-        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3 -mt-2">
-          {t('billing.scooterWontStart')}
-        </Text>
-      ) : null}
       {outstandingInvoices.length > 1 ? (
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold mb-2">
           {t('billing.totalAcross', { total: outstandingTotal.toFixed(2), count: outstandingInvoices.length })}
@@ -1367,7 +1360,6 @@ export default function BillingScreen() {
               anything below. */}
           {renderRefundCard()}
           {renderOpenRefundCards()}
-          {renderDepositCard()}
 
           {/* Current plan — a quiet, sophisticated surface rather than a
               solid brand-color block: the price is the loud element, not
@@ -1571,6 +1563,10 @@ export default function BillingScreen() {
               earlier rental's whole settlement record used to disappear
               from the app entirely, since it was only ever shown when
               there was NO active plan. */}
+          {/* Deposit is a reference, not an action — below what is owed, above
+              the history, so the plan and the bill are the first thing seen. */}
+          {renderDepositCard()}
+
           {renderPaymentHistory()}
         </PageScroll>
       )}

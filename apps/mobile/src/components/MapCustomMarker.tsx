@@ -25,7 +25,7 @@ export const MapCustomMarker: React.FC<MapCustomMarkerProps> = ({ battery, statu
       markerBg = COLORS.primaryMedium;
       textBg = COLORS.forestDeep;
     } else {
-      markerBg = '#EF4444'; // red
+      markerBg = '#0F7F80'; // red
       textBg = '#FFF';
       isLow = true;
     }

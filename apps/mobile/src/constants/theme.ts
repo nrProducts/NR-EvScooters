@@ -13,7 +13,7 @@ export const COLORS = {
   textSecondary: '#6B7280',
   success: '#21C45D',
   warning: '#F59E0B',
-  danger: '#EF4444',
+  danger: '#0F7F80', // teal — replaces red app-wide (payment due, overdue, errors)
   border: '#E5E7EB',
 
   white: '#FFFFFF',
@@ -33,7 +33,7 @@ export const COLORS = {
   status: {
     green: '#21C45D',
     amber: '#F59E0B',
-    red: '#EF4444',
+    red: '#0F7F80', // kept for the key name; teal like danger
   },
 
   // --- Legacy dark-forest theme keys ---
