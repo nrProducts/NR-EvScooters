@@ -31,10 +31,12 @@ import type {
 } from '../../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT, type CopyKey } from '../../i18n';
+import { requestForegroundLocation } from '../../lib/location';
 import { BILLING_CYCLE_LABEL_KEY } from '../../constants/status';
 
-// Device geolocation isn't wired up yet — the backend's nearest_station RPC
-// still does the real PostGIS work against whatever coordinates are sent.
+// Used only to pick a station when the rider's real position is unavailable
+// (permission denied, services off). The distance badge is hidden in that
+// case — measuring from this point would show a nonsense figure.
 const PLACEHOLDER_LOCATION = { lat: 9.9312, lng: 76.2673 };
 
 const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
@@ -104,11 +106,16 @@ export default function BookingScreen() {
 
   const [model, setModel] = useState<ApiVehicleModelDetail | null>(null);
   const [loadingModel, setLoadingModel] = useState(true);
+  const [hasRiderLocation, setHasRiderLocation] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
   const [availability, setAvailability] = useState<ApiAvailability | null>(null);
   const [loadingAvailability, setLoadingAvailability] = useState(false);
 
   const [quote, setQuote] = useState<ApiPaymentOrder | ApiPlanQuote | null>(null);
+  // True from the moment a plan/start day changes until its price arrives, so
+  // the summary never shows the previous plan's figures or the unadjusted
+  // estimate as if they were the answer.
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState(false);
   /** Paid, but the confirmation never reached us — see the note in handlePay. */
@@ -131,7 +138,15 @@ export default function BookingScreen() {
 
   useEffect(() => {
     load();
-    void loadNearestStation(PLACEHOLDER_LOCATION.lat, PLACEHOLDER_LOCATION.lng);
+    void (async () => {
+      const outcome = await requestForegroundLocation();
+      if (outcome.status === 'granted') {
+        setHasRiderLocation(true);
+        await loadNearestStation(outcome.coords.latitude, outcome.coords.longitude);
+      } else {
+        await loadNearestStation(PLACEHOLDER_LOCATION.lat, PLACEHOLDER_LOCATION.lng);
+      }
+    })();
     setStartDay(getNextBookableDay());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId]);
@@ -150,12 +165,15 @@ export default function BookingScreen() {
   // Authoritative price for the chosen plan, before any booking exists.
   useEffect(() => {
     const planId = draft.plan?.id;
-    if (!planId) { setQuote(null); return; }
+    setQuote(null);
+    if (!planId) { setQuoteLoading(false); return; }
     let cancelled = false;
+    setQuoteLoading(true);
     billingRepository
       .quotePlan(planId, draft.startDay ?? undefined)
       .then((q) => { if (!cancelled) setQuote(q); })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setQuoteLoading(false); });
     return () => { cancelled = true; };
   }, [draft.plan?.id, draft.startDay]);
 
@@ -178,6 +196,7 @@ export default function BookingScreen() {
     if (noneAvailable) return t('booking.blocked.noneAvailable');
     if (plans.length === 0) return t('booking.blocked.noPlans');
     if (!draft.plan) return t('booking.blocked.choosePlan');
+    if (quoteLoading) return t('booking.blocked.updatingPrice');
     return null;
   };
 
@@ -341,7 +360,7 @@ export default function BookingScreen() {
                     <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold mt-0.5">{draft.station.name}</Text>
                   ) : null}
                 </View>
-                {draft.station?.distance_km != null ? (
+                {hasRiderLocation && draft.station?.distance_km != null ? (
                   <Badge label={`${draft.station.distance_km.toFixed(1)} km`} tone="neutral" />
                 ) : null}
               </View>
@@ -478,7 +497,14 @@ export default function BookingScreen() {
                     </View>
                   </View>
 
-                  {lines.length > 0 ? (
+                  {quoteLoading ? (
+                    <View className="py-3 items-center" style={{ gap: 8 }}>
+                      <Spinner size={18} color={COLORS.primary} />
+                      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
+                        {t('booking.updatingPrice')}
+                      </Text>
+                    </View>
+                  ) : lines.length > 0 ? (
                     lines.map((line, i) => (
                       <View key={i} className="flex-row items-center justify-between py-1.5">
                         <Text style={{ color: line.amount < 0 ? COLORS.success : COLORS.textSecondary }} className="text-[13px] font-medium flex-1 pr-3">
@@ -520,7 +546,11 @@ export default function BookingScreen() {
                         </Text>
                       ) : null}
                     </View>
-                    <Text style={{ color: COLORS.primary }} className="text-2xl font-black">{money(total)}</Text>
+                    {quoteLoading ? (
+                      <Spinner size={20} color={COLORS.primary} />
+                    ) : (
+                      <Text style={{ color: COLORS.primary }} className="text-2xl font-black">{money(total)}</Text>
+                    )}
                   </View>
                 </View>
 

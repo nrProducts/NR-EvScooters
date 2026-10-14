@@ -15,6 +15,8 @@ import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { notify } from '../lib/confirm';
 import { formatPhoneLocal } from '../lib/authValidation';
+import { Image as ExpoImage } from 'expo-image';
+import { useProfilePhoto } from '../hooks/useProfilePhoto';
 import { appVersion } from '../lib/appVersion';
 import { useT, LANG_LABELS, LANGUAGE_SELECTION_ENABLED } from '../i18n';
 
@@ -42,28 +44,8 @@ export function ProfileContent(
   const signOut = useAuthStore((s) => s.signOut);
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const photo = useProfilePhoto();
   const { t, lang: language } = useT();
-
-  // profile.profile_photo_url is a private-bucket storage path, not a
-  // fetchable URL (see users.types.ts) — it only tells us a photo exists.
-  // Actually rendering it means minting a signed URL via GET /me/photo/url,
-  // same as the KYC document previews do.
-  const hasPhoto = !!profile?.profile_photo_url;
-  useEffect(() => {
-    if (!hasPhoto) {
-      setPhotoUrl(null);
-      return;
-    }
-    let cancelled = false;
-    userRepository.myPhotoUrl()
-      .then((result) => { if (!cancelled) setPhotoUrl(result.url); })
-      .catch(() => { if (!cancelled) setPhotoUrl(null); });
-    return () => { cancelled = true; };
-    // profile_photo_url changes on every re-upload (new storage path), which is
-    // exactly when the signed URL needs to be re-minted.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.profile_photo_url]);
 
   const changePhoto = async () => {
     const file = await pickPhoto();
@@ -105,8 +87,8 @@ export function ProfileContent(
             className="w-16 h-16 rounded-full items-center justify-center overflow-hidden"
             style={{ backgroundColor: COLORS.primary + '1A' }}
           >
-            {photoUrl ? (
-              <Image source={{ uri: photoUrl }} className="w-16 h-16" resizeMode="cover" />
+            {photo ? (
+              <ExpoImage source={{ uri: photo.uri, cacheKey: photo.cacheKey }} cachePolicy="disk" style={{ width: 64, height: 64 }} contentFit="cover" transition={0} />
             ) : (
               <User size={28} color={COLORS.primary} />
             )}

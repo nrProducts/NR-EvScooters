@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { requestForegroundLocation } from '../../../lib/location';
 import type { Coordinates } from '../utils/distance';
 
-export type LocationPermissionState = 'undetermined' | 'granted' | 'denied';
+export type LocationPermissionState = 'undetermined' | 'granted' | 'denied' | 'consent_off';
 
 export interface CurrentLocationState {
     coords: Coordinates | null;
@@ -51,6 +51,11 @@ export function useCurrentLocation(): CurrentLocationState {
                 setPermission('granted');
                 setCoords(outcome.coords);
                 return outcome.coords;
+
+            case 'consent_off':
+                setPermission('consent_off');
+                setCoords(null);
+                return null;
 
             case 'denied':
                 setPermission('denied');

@@ -563,6 +563,12 @@ export interface VerifyPaymentPayload {
     razorpay_order_id: string;
     razorpay_payment_id: string;
     razorpay_signature: string;
+    /**
+     * Set when checkout errored but the gateway had already captured the
+     * payment. There is no signature to send, so the backend settles the
+     * order by asking the gateway instead (POST /payments/orders/:id/sync).
+     */
+    recovered?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -857,8 +863,14 @@ export interface ApiRental {
 export interface ApiOverdueLateFee {
     /** RETURN-path day count: the handover day counts, because the rider rode the scooter through it. */
     daysLate: number;
-    /** RETURN-path money — what the Return sheet collects and the adhoc invoice is raised for. */
+    /** RETURN-path money — the late-fee line alone. The Return sheet collects `totalDue`. */
     lateFee: number;
+    /** Plan days kept past the due time, priced at the plan's per-day rate (return path only). */
+    rentalCharge: number;
+    /** The plan's price for one day (price / plan days). */
+    rentalDailyRate: number;
+    /** `rentalCharge + lateFee` — what the rider pays before returning. */
+    totalDue: number;
     isLate: boolean;
     feePerDay: number;
     dueOn: string | null;

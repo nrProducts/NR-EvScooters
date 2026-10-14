@@ -103,7 +103,9 @@ const indianPhone = z
     .pipe(
         z.string().regex(/^(?:91|0)?[6-9]\d{9}$/, "Enter a valid 10-digit Indian mobile number."),
     )
-    .transform((digits) => digits.replace(/^(?:91|0)/, ""));
+    // Only a prefix when there are MORE than 10 digits — a bare 10-digit number
+    // can itself start with 91 (9100236548) and must be kept whole.
+    .transform((digits) => (digits.length > 10 ? digits.replace(/^(?:91|0)/, "") : digits));
 
 export const contactQueryBody = z.object({
     full_name: singleLine(100).pipe(z.string().min(2, "Enter your full name.")),

@@ -5,7 +5,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useAuthStore } from '../store/useAuthStore';
 import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
-import { isValidPhone, toE164 } from '../lib/authValidation';
+import { isValidPhone, sanitizePhoneInput, toE164 } from '../lib/authValidation';
 import { COLORS } from '../constants/theme';
 import { FormField } from '../components/ui/FormField';
 import { ChipSelect } from '../components/ui/ChipSelect';
@@ -212,7 +212,7 @@ export default function ProfileSetupScreen() {
                 ref={emailOrPhoneRef}
                 value={phone}
                 onChangeText={(v) => {
-                  setPhone(v);
+                  setPhone(sanitizePhoneInput(v));
                   if (error) setError('');
                 }}
                 placeholder={t('profileSetup.phonePlaceholder')}

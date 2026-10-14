@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  formatPhoneLocal, isValidOtp, isValidPhone, normalizePhone, sanitizeOtpInput, toE164,
+  formatPhoneLocal, isValidOtp, isValidPhone, normalizePhone, sanitizeOtpInput, sanitizePhoneInput, toE164,
 } from '../src/lib/authValidation';
 
 describe('normalizePhone', () => {
@@ -11,27 +11,37 @@ describe('normalizePhone', () => {
 });
 
 describe('isValidPhone', () => {
-  it('accepts international numbers with or without +', () => {
+  it('accepts a 10-digit Indian mobile, with or without a +91 / 91 / 0 prefix', () => {
+    expect(isValidPhone('9876543210')).toBe(true);
     expect(isValidPhone('+919876543210')).toBe(true);
     expect(isValidPhone('919876543210')).toBe(true);
+    expect(isValidPhone('9100236548')).toBe(true);
   });
-  it('rejects too short, leading zero, and letters', () => {
+  it('rejects wrong length, bad first digit, foreign numbers and letters', () => {
     expect(isValidPhone('98765')).toBe(false);
-    expect(isValidPhone('0919876543210')).toBe(false);
+    expect(isValidPhone('987654321012')).toBe(false);
+    expect(isValidPhone('1234567890')).toBe(false);
+    expect(isValidPhone('+14155551234')).toBe(false);
     expect(isValidPhone('+91abc4567890')).toBe(false);
   });
 });
 
+describe('sanitizePhoneInput', () => {
+  it('keeps only digits and caps at 10', () => {
+    expect(sanitizePhoneInput('98765 43210')).toBe('9876543210');
+    expect(sanitizePhoneInput('9876543210123')).toBe('9876543210');
+  });
+  it('drops +91 only from a longer paste, not a 10-digit number starting 91', () => {
+    expect(sanitizePhoneInput('+91 98765 43210')).toBe('9876543210');
+    expect(sanitizePhoneInput('9100236548')).toBe('9100236548');
+  });
+});
+
 describe('toE164', () => {
-  it('adds +91 for a bare 10-digit Indian mobile', () => {
+  it('always yields +91 and the bare 10 digits', () => {
     expect(toE164('9876543210')).toBe('+919876543210');
-    expect(toE164('98765 43210')).toBe('+919876543210');
-  });
-  it('keeps an existing + prefix', () => {
-    expect(toE164('+14155551234')).toBe('+14155551234');
-  });
-  it('prefixes + for other bare international numbers', () => {
-    expect(toE164('14155551234')).toBe('+14155551234');
+    expect(toE164('+91 98765 43210')).toBe('+919876543210');
+    expect(toE164('9100236548')).toBe('+919100236548');
   });
 });
 

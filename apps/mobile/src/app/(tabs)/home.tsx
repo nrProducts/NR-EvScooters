@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, TouchableOpacity, Linking, Platform } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import {
-  ChevronRight,
   MapPin,
   Calendar,
   Navigation,
@@ -534,82 +533,91 @@ export default function HomeScreen() {
             ) : featured ? (
               <FeaturedScooterCard model={featured} />
             ) : null}
-
-            <View className="flex-row items-center justify-between mb-3">
-              <Text
-                style={{ color: COLORS.textPrimary }}
-                className="text-sm font-semibold"
-              >
-                {t("vehicles.availableScooters")}
-              </Text>
-              <TouchableOpacity
-                onPress={() => router.push("/browse-vehicles")}
-                className="flex-row items-center"
-              >
-                <Text
-                  style={{ color: COLORS.primary }}
-                  className="text-xs font-bold mr-1"
-                >
-                  {t("common.seeAll")}
-                </Text>
-                <ChevronRight size={14} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-
-            {loadingList && list.length === 0 ? (
-              <SkeletonList count={2} />
-            ) : listError && list.length === 0 ? (
-              <ErrorState message={listError} onRetry={() => void loadList()} />
-            ) : (
-              <View
-                className="rounded-2xl border overflow-hidden mb-5"
-                style={{
-                  backgroundColor: COLORS.card,
-                  borderColor: COLORS.border,
-                  shadowColor: COLORS.black,
-                  shadowOpacity: 0.03,
-                  shadowRadius: 12,
-                  shadowOffset: { width: 0, height: 3 },
-                  elevation: 1,
-                }}
-              >
-                {list.slice(0, 5).map((model, i) => (
-                  <View
-                    key={model.id}
-                    className="flex-row items-center justify-between px-4 py-3"
-                    style={
-                      i > 0
-                        ? { borderTopWidth: 1, borderColor: COLORS.border }
-                        : undefined
-                    }
-                  >
-                    <Text
-                      style={{ color: COLORS.textPrimary }}
-                      className="text-xs font-bold flex-1 mr-2"
-                      numberOfLines={1}
-                    >
-                      {[model.vendor?.name, model.name]
-                        .filter(Boolean)
-                        .join(" - ")}
-                      {model.battery_range_km != null
-                        ? ` / ${model.battery_range_km} km`
-                        : ""}
-                      {model.top_speed_kmph != null
-                        ? ` / ${model.top_speed_kmph} km/h`
-                        : ""}
-                    </Text>
-                    <Text
-                      style={{ color: COLORS.textSecondary }}
-                      className="text-xs font-semibold"
-                    >
-                      {model.availability.available_count}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
           </>
         ) : null}
+
+        {/* Fleet availability — shown in every phase, not just while the rider
+            can book: riders point friends here to see what's on offer. The
+            old separate browse screen is gone; this is the only list. */}
+        <View className="mb-3">
+          <Text
+            style={{ color: COLORS.textPrimary }}
+            className="text-sm font-semibold"
+          >
+            {t("vehicles.availableScooters")}
+          </Text>
+          <Text
+            style={{ color: COLORS.textSecondary }}
+            className="text-xs mt-0.5"
+          >
+            {t("vehicles.availableScootersHint")}
+          </Text>
+        </View>
+
+        {loadingList && list.length === 0 ? (
+          <SkeletonList count={2} />
+        ) : listError && list.length === 0 ? (
+          <ErrorState message={listError} onRetry={() => void loadList()} />
+        ) : (
+          <View
+            className="rounded-2xl border overflow-hidden mb-5"
+            style={{
+              backgroundColor: COLORS.card,
+              borderColor: COLORS.border,
+              shadowColor: COLORS.black,
+              shadowOpacity: 0.03,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 3 },
+              elevation: 1,
+            }}
+          >
+            {list.slice(0, 5).map((model, i) => {
+              const count = model.availability.available_count;
+              const hasStock = count > 0;
+              const tone = hasStock ? COLORS.primary : COLORS.textSecondary;
+              return (
+                <View
+                  key={model.id}
+                  className="flex-row items-center justify-between px-4 py-3"
+                  style={
+                    i > 0
+                      ? { borderTopWidth: 1, borderColor: COLORS.border }
+                      : undefined
+                  }
+                >
+                  <Text
+                    style={{ color: COLORS.textPrimary }}
+                    className="text-xs font-bold flex-1 mr-2"
+                    numberOfLines={2}
+                  >
+                    {[model.vendor?.name, model.name]
+                      .filter(Boolean)
+                      .join(" - ")}
+                    {model.battery_range_km != null
+                      ? ` / ${model.battery_range_km} km`
+                      : ""}
+                    {model.top_speed_kmph != null
+                      ? ` / ${model.top_speed_kmph} km/h`
+                      : ""}
+                  </Text>
+                  <View
+                    className="rounded-full px-2.5 py-1"
+                    style={{ backgroundColor: tone + "1A" }}
+                  >
+                    <Text
+                      style={{ color: tone }}
+                      className="text-xs font-bold"
+                    >
+                      {hasStock
+                        ? t("vehicles.availableCount", { count })
+                        : t("vehicles.soldOut")}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
 
         {/* My plan goes dead while a return is in flight — it leads somewhere
             the backend will refuse. See lib/returnLock.ts. */}

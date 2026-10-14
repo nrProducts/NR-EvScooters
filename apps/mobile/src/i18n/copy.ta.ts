@@ -259,6 +259,7 @@ export const ta: Copy = {
     'lateFeeGate.overdueDays.one': '1 நாள்',
     'lateFeeGate.overdueDays.other': '{count} நாட்கள்',
     'lateFeeGate.lateFee': 'தாமத கட்டணம்',
+    'lateFeeGate.rentalCharge': 'வைத்திருந்த திட்ட நாட்கள் ({days} × ₹{rate})',
     'lateFeeGate.amountDue': 'நிலுவைத் தொகை',
     'lateFeeGate.payButton': 'தாமத கட்டணம் செலுத்து — {amount}',
     'lateFeeGate.checkoutDescription': 'திட்டம் முடிந்தது — தாமத கட்டணம்',
@@ -485,6 +486,9 @@ export const ta: Copy = {
     'vehicles.empty.title': 'ஸ்கூட்டர்கள் எதுவும் கிடைக்கவில்லை',
     'vehicles.empty.subtitle': 'வேறு தேடல் அல்லது வகையை முயற்சிக்கவும்.',
     'vehicles.availableScooters': 'கிடைக்கும் ஸ்கூட்டர்கள்',
+    'vehicles.availableScootersHint': 'இப்போது முன்பதிவு செய்யக்கூடிய ஸ்கூட்டர்கள். நண்பர்களுடன் பகிருங்கள்!',
+    'vehicles.availableCount': '{count} கிடைக்கும்',
+    'vehicles.soldOut': 'இருப்பு இல்லை',
 
     // --- status display labels --------------------------------------------
     'status.billingCycle.daily': 'நாள்',
@@ -681,6 +685,8 @@ export const ta: Copy = {
     'booking.blocked.noneAvailable': 'இப்போது இந்த நிலையத்தில் ஸ்கூட்டர்கள் எதுவும் இல்லை',
     'booking.blocked.noPlans': 'இந்த ஸ்கூட்டருக்கு விற்பனையில் திட்டங்கள் இல்லை',
     'booking.blocked.choosePlan': 'ஒரு வாடகைத் திட்டத்தைத் தேர்ந்தெடுக்கவும்',
+    'booking.blocked.updatingPrice': 'விலை புதுப்பிக்கப்படுகிறது…',
+    'booking.updatingPrice': 'விலை புதுப்பிக்கப்படுகிறது…',
     'booking.error.maps.title': 'வரைபடத்தைத் திறக்க முடியவில்லை',
     'booking.error.maps.message': 'இந்தச் சாதனத்தில் வரைபட செயலி எதுவும் கிடைக்கவில்லை.',
     'booking.almostThere': 'கிட்டத்தட்ட முடிந்தது',
@@ -762,7 +768,11 @@ export const ta: Copy = {
     'stations.error.load': 'பேட்டரி நிலையங்களை ஏற்ற முடியவில்லை.',
     'stations.dismissLocationNotice': 'இருப்பிட அனுமதி அறிவிப்பை மூடு',
     'stations.locationOff':
-        'இருப்பிடம் அணைந்துள்ளது — நிலையங்கள் தோன்றும், ஆனால் தூரங்கள் தோன்றாது. அனுமதிக்க இருப்பிடப் பொத்தானைத் தட்டவும்.',
+        "உங்கள் தொலைபேசியில் இருப்பிடம் அணைந்துள்ளது. தூரங்களைக் காண அமைப்புகளில் இயக்கவும்.",
+    'stations.locationConsentOff':
+        "தனியுரிமை & தரவில் அருகிலுள்ள நிலையங்கள் அணைக்கப்பட்டுள்ளது. தூரங்களைக் காண இயக்கவும்.",
+    'stations.locationConsentSwitch': "அருகிலுள்ள பேட்டரி நிலையங்களை இயக்கு",
+    'stations.openSettings': "அமைப்புகளைத் திற",
     'stations.nearest': 'அருகிலுள்ள நிலையம் {name}, {distance} தொலைவில்',
     'stations.nearestHeader': 'அருகிலுள்ள நிலையம்',
     'stations.nearestNameLine': '{name} — {distance}',

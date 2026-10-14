@@ -68,6 +68,17 @@ export interface OverdueLateFeePreview {
     dueOn: string | null;
     /** Precise hours elapsed since the due instant — for display ("30 minutes late"), never for billing. */
     hoursLate: number;
+    /**
+     * What the rider owes for the plan days they kept the scooter past the due
+     * instant: `daysLate` x (plan price / plan days). A RETURN-path charge only —
+     * a renewal buys those days as part of the new period, so the renew banner
+     * keeps quoting `lateFee` alone.
+     */
+    rentalCharge: number;
+    /** The plan's per-day price the rental charge is built from. */
+    rentalDailyRate: number;
+    /** `rentalCharge + lateFee` — the whole of what the Return gate collects. */
+    totalDue: number;
     /** @deprecated Equal to `daysLate` — the renew/return distinction this once carried no longer exists. */
     renewalDaysLate: number;
     /** @deprecated Equal to `lateFee` — the renew/return distinction this once carried no longer exists. */
@@ -76,8 +87,25 @@ export interface OverdueLateFeePreview {
 
 const NOTHING_OWED = {
     isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, hoursLate: 0,
+    rentalCharge: 0, rentalDailyRate: 0, totalDue: 0,
     renewalDaysLate: 0, renewalLateFee: 0,
 } as const;
+
+/**
+ * The plan's price for ONE day: the subscription's own price snapshot over its
+ * own duration snapshot, so a repriced plan never changes what an existing
+ * rider is billed for the days they overstayed.
+ */
+async function planDailyRate(subscriptionId: string): Promise<number> {
+    const { data, error } = await supabaseAdmin
+        .from("subscriptions")
+        .select("plan_price_snapshot, duration_days_snapshot")
+        .eq("id", subscriptionId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data || !data.duration_days_snapshot || data.duration_days_snapshot <= 0) return 0;
+    return Math.round((Number(data.plan_price_snapshot) / data.duration_days_snapshot) * 100) / 100;
+}
 
 /** Pure read — computes nothing into existence. Safe to call on every screen load. */
 export async function previewOverdueLateFee(subscriptionId: string): Promise<OverdueLateFeePreview> {
@@ -96,8 +124,12 @@ export async function previewOverdueLateFee(subscriptionId: string): Promise<Ove
     const { isLate, daysLate, feePerDay, lateFee, hoursLate } =
         await computeLateRenewalFee(subscriptionId, referenceDate);
 
+    const rentalDailyRate = isLate ? await planDailyRate(subscriptionId) : 0;
+    const rentalCharge = isLate ? Math.round(rentalDailyRate * daysLate * 100) / 100 : 0;
+
     return {
         isLate, daysLate, feePerDay, lateFee, hoursLate, dueOn: period.due_on,
+        rentalCharge, rentalDailyRate, totalDue: Math.round((lateFee + rentalCharge) * 100) / 100,
         renewalDaysLate: daysLate, renewalLateFee: lateFee,
     };
 }
@@ -177,7 +209,7 @@ async function isInvoicePaid(invoiceId: string): Promise<boolean> {
  */
 export async function isOverdueLateFeeSettled(subscriptionId: string): Promise<boolean> {
     const preview = await previewOverdueLateFee(subscriptionId);
-    if (!preview.isLate || preview.lateFee <= 0) return true;
+    if (!preview.isLate || preview.totalDue <= 0) return true;
 
     const window = await currentPeriodWindow(subscriptionId);
     if (!window) return true; // No current period at all — nothing to be overdue against.
@@ -224,6 +256,11 @@ export function overdueLateFeeDescription(daysLate: number, feePerDay: number): 
     return `Overdue plan renewal — late fee (${daysLate} day${daysLate > 1 ? "s" : ""} @ ₹${feePerDay}/day)`;
 }
 
+/** The rental-days line that sits beside the late fee on the same invoice. */
+export function overdueRentalDescription(daysLate: number, dailyRate: number): string {
+    return `Overdue rental — ${daysLate} day${daysLate > 1 ? "s" : ""} @ ₹${dailyRate}/day`;
+}
+
 /**
  * Brings an already-open adhoc invoice up to TODAY's fee.
  *
@@ -256,7 +293,7 @@ async function repriceOverdueLateFeeInvoice(
     if (balance?.is_paid) return Number(invoice.total_amount);
 
     const allocated = Number(balance?.allocated_amount ?? 0);
-    const amount = Math.max(preview.lateFee, allocated);
+    const amount = Math.max(preview.totalDue, allocated);
     if (amount === Number(invoice.total_amount)) return amount;
 
     // chk_invoices_total forces total_amount = subtotal_amount, so both move
@@ -267,20 +304,43 @@ async function repriceOverdueLateFeeInvoice(
         .eq("id", invoice.id);
     if (invoiceError) throw invoiceError;
 
-    // The invoice carries exactly one line (ensureOverdueLateFeeInvoice writes
-    // it), so this rewrites the charge rather than appending a second one —
-    // chk_invoice_items_amount needs unit_amount and amount to agree at
-    // quantity 1.
+    // Line 1 is the late fee (the only line older invoices have), line 2 the
+    // overdue rental days. Any part-paid excess is folded into the late-fee
+    // line so the lines always sum to the invoice total. chk_invoice_items_amount
+    // needs unit_amount and amount to agree at quantity 1.
+    const lateLine = Math.round((amount - preview.rentalCharge) * 100) / 100;
     const { error: itemError } = await supabaseAdmin
         .from("invoice_items")
         .update({
             description: overdueLateFeeDescription(preview.daysLate, preview.feePerDay),
-            unit_amount: amount,
-            amount,
+            unit_amount: lateLine,
+            amount: lateLine,
         })
         .eq("invoice_id", invoice.id)
-        .eq("item_type", "adjustment");
+        .eq("item_type", "adjustment")
+        .eq("line_number", 1);
     if (itemError) throw itemError;
+
+    if (preview.rentalCharge > 0) {
+        const rentalLine = {
+            description: overdueRentalDescription(preview.daysLate, preview.rentalDailyRate),
+            unit_amount: preview.rentalCharge,
+            amount: preview.rentalCharge,
+        };
+        const { data: updated, error: rentalError } = await supabaseAdmin
+            .from("invoice_items")
+            .update(rentalLine)
+            .eq("invoice_id", invoice.id)
+            .eq("line_number", 2)
+            .select("id");
+        if (rentalError) throw rentalError;
+        if (!updated || updated.length === 0) {
+            const { error: insertError } = await supabaseAdmin.from("invoice_items").insert({
+                invoice_id: invoice.id, item_type: "adjustment", line_number: 2, quantity: 1, ...rentalLine,
+            });
+            if (insertError) throw insertError;
+        }
+    }
 
     return amount;
 }
@@ -356,7 +416,7 @@ export async function syncOverdueLateFeeInvoiceForUser(userId: string): Promise<
     // Nothing owed any more — the rider renewed, or the fee was switched off.
     // An invoice still sitting there is a bill for a debt that no longer
     // exists, so it is cancelled rather than left to be paid.
-    if (!preview.isLate || preview.lateFee <= 0) {
+    if (!preview.isLate || preview.totalDue <= 0) {
         await voidOpenOverdueLateFeeInvoice(rental.subscription_id);
         return;
     }
@@ -386,7 +446,7 @@ export async function ensureOverdueLateFeeInvoice(
     userId: string,
 ): Promise<OverdueLateFeeInvoiceResult> {
     const preview = await previewOverdueLateFee(subscriptionId);
-    if (!preview.isLate || preview.lateFee <= 0) {
+    if (!preview.isLate || preview.totalDue <= 0) {
         throw new Error(`ensureOverdueLateFeeInvoice: subscription ${subscriptionId} has no late fee due.`);
     }
 
@@ -413,8 +473,8 @@ export async function ensureOverdueLateFeeInvoice(
             subscription_id: subscriptionId,
             purpose: "adhoc",
             status: "issued",
-            subtotal_amount: preview.lateFee,
-            total_amount: preview.lateFee,
+            subtotal_amount: preview.totalDue,
+            total_amount: preview.totalDue,
             issued_on: today,
             due_on: today,
             invoice_series_code: seriesCode,
@@ -424,16 +484,45 @@ export async function ensureOverdueLateFeeInvoice(
         .single();
     if (invoiceError) throw invoiceError;
 
-    const { error: itemError } = await supabaseAdmin.from("invoice_items").insert({
-        invoice_id: invoice.id,
-        item_type: "adjustment",
-        description: overdueLateFeeDescription(preview.daysLate, preview.feePerDay),
-        line_number: 1,
-        quantity: 1,
-        unit_amount: preview.lateFee,
-        amount: preview.lateFee,
-    });
+    const items = [
+        {
+            invoice_id: invoice.id,
+            item_type: "adjustment" as const,
+            description: overdueLateFeeDescription(preview.daysLate, preview.feePerDay),
+            line_number: 1,
+            quantity: 1,
+            unit_amount: preview.lateFee,
+            amount: preview.lateFee,
+        },
+        ...(preview.rentalCharge > 0
+            ? [{
+                invoice_id: invoice.id,
+                item_type: "adjustment" as const,
+                description: overdueRentalDescription(preview.daysLate, preview.rentalDailyRate),
+                line_number: 2,
+                quantity: 1,
+                unit_amount: preview.rentalCharge,
+                amount: preview.rentalCharge,
+            }]
+            : []),
+    ];
+    const { error: itemError } = await supabaseAdmin.from("invoice_items").insert(items);
     if (itemError) throw itemError;
 
-    return { invoiceId: invoice.id, amount: preview.lateFee, isPaid: false };
+    return { invoiceId: invoice.id, amount: preview.totalDue, isPaid: false };
+}
+
+/**
+ * True once this cycle's return-gate invoice has been PAID.
+ *
+ * Paying it is the rider committing to hand the scooter back: it bought the
+ * overdue days, not a new period, so the plan can no longer be renewed. A
+ * rider who changes their mind afterwards starts a new booking (with a fresh
+ * deposit) rather than reviving this one.
+ */
+export async function hasPaidReturnGateInvoice(subscriptionId: string): Promise<boolean> {
+    const window = await currentPeriodWindow(subscriptionId);
+    if (!window) return false;
+    const invoice = await findAdhocInvoice(subscriptionId, window.createdAt);
+    return invoice ? isInvoicePaid(invoice.id) : false;
 }

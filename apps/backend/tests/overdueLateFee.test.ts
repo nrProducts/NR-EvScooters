@@ -88,7 +88,7 @@ describe("previewOverdueLateFee", () => {
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
         expect(preview).toEqual({
             isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, hoursLate: 0, dueOn: "2026-08-26",
-            renewalDaysLate: 0, renewalLateFee: 0,
+            renewalDaysLate: 0, renewalLateFee: 0, rentalCharge: 0, rentalDailyRate: 0, totalDue: 0,
         });
     });
 
@@ -106,8 +106,23 @@ describe("previewOverdueLateFee", () => {
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
         expect(preview).toEqual({
             isLate: true, daysLate: 2, feePerDay: 450, lateFee: 900, hoursLate: 46, dueOn: "2026-08-23",
-            renewalDaysLate: 2, renewalLateFee: 900,
+            renewalDaysLate: 2, renewalLateFee: 900, rentalCharge: 0, rentalDailyRate: 0, totalDue: 900,
         });
+    });
+
+    it("adds the plan days kept (price / plan days x days late) on top of the late fee", async () => {
+        queue("subscription_periods", { data: { id: PERIOD_ID, due_on: "2026-08-23" }, error: null });
+        queue("pricing_rules", { data: null, error: null });
+        queue("pricing_rules", { data: { amount: 50, is_active: true }, error: null });
+        // A Rs 1999 weekly plan: 1999 / 7 = 285.57 per day, 2 days late.
+        queue("subscriptions", { data: { plan_price_snapshot: 1999, duration_days_snapshot: 7 }, error: null });
+
+        const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
+        expect(preview.daysLate).toBe(2);
+        expect(preview.lateFee).toBe(100);
+        expect(preview.rentalDailyRate).toBe(285.57);
+        expect(preview.rentalCharge).toBe(571.14);
+        expect(preview.totalDue).toBe(671.14);
     });
 });
 
@@ -138,7 +153,7 @@ describe("previewOverdueLateFee — noon-anchored, immediate lateness, no grace 
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
         expect(preview).toEqual({
             isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, hoursLate: 0, dueOn: "2026-08-26",
-            renewalDaysLate: 0, renewalLateFee: 0,
+            renewalDaysLate: 0, renewalLateFee: 0, rentalCharge: 0, rentalDailyRate: 0, totalDue: 0,
         });
     });
 

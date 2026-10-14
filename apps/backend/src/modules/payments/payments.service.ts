@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import Razorpay from "razorpay";
 import { supabaseAdmin } from "../../config/supabase";
-import { createGatewayOrder, fetchGatewayPayment } from "../../config/razorpay";
+import { createGatewayOrder, fetchGatewayOrderPayments, fetchGatewayPayment } from "../../config/razorpay";
 import { env } from "../../config/env";
 import { badRequest, businessRule, conflict, notFound } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
@@ -1140,6 +1140,61 @@ export async function verifyPayment(input: VerifyPaymentInput, actor: AuthContex
         entityType: "payment_order", entityId: order.id,
         after: { gateway_payment_id: payment.id, method: payment.method, amount: payment.amount / 100 },
     });
+}
+
+/**
+ * Recovers a payment the app never got to verify.
+ *
+ * The rider can pay successfully and still never hit `verifyPayment` — the
+ * checkout sheet errors after the UPI app returns ("Something went wrong"),
+ * the app is killed, or the connection drops — and the webhook is the only
+ * other path. This asks the gateway what actually happened to the order and
+ * applies a captured payment through the same idempotent core, so calling it
+ * repeatedly (or alongside verify / the webhook) is safe.
+ *
+ * Authenticity comes from fetching the payment from the gateway with our own
+ * credentials, scoped to an order the caller owns; no client-supplied
+ * signature is involved.
+ */
+export async function syncOrderPayment(
+    gatewayOrderId: string,
+    actor: AuthContext,
+): Promise<{ status: "paid" | "pending" | "none" }> {
+    const order = await findOrderByGatewayOrderId(gatewayOrderId);
+    if (!order || order.user_id !== actor.id) throw notFound("Payment order not found.");
+
+    const payments = await fetchGatewayOrderPayments(gatewayOrderId);
+    const captured = payments.find(
+        (p) => p.status === "captured" && p.captured && p.order_id === gatewayOrderId,
+    );
+
+    if (!captured) {
+        return { status: payments.some((p) => p.status === "authorized") ? "pending" : "none" };
+    }
+
+    if (captured.currency !== order.currency) {
+        throw badRequest("Payment currency does not match the order.");
+    }
+    if (captured.amount !== rupeesToPaise(Number(order.amount))) {
+        throw badRequest("Payment amount does not match the order.");
+    }
+
+    await applyPaymentSuccess({
+        paymentOrderId: order.id,
+        gatewayPaymentId: captured.id,
+        gatewaySignature: null,
+        amount: captured.amount / 100,
+        method: captured.method,
+        rawPayload: { source: "order_sync", payment: captured },
+    });
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: actor.id, action: "payment.verified",
+        entityType: "payment_order", entityId: order.id,
+        after: { gateway_payment_id: captured.id, method: captured.method, amount: captured.amount / 100, via: "order_sync" },
+    });
+
+    return { status: "paid" };
 }
 
 /** Moves a still-open order to `attempted` — the rider reached the gateway. */

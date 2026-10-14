@@ -1136,6 +1136,7 @@ export class MockRentalRepository implements RentalRepository {
         await delay(100);
         return {
             isLate: false, daysLate: 0, feePerDay: 0, lateFee: 0, dueOn: null,
+            rentalCharge: 0, rentalDailyRate: 0, totalDue: 0,
             renewalDaysLate: 0, renewalLateFee: 0, isSettled: true,
         };
     }

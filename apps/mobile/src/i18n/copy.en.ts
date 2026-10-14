@@ -274,6 +274,7 @@ export const en = {
     'lateFeeGate.overdueDays.one': '1 day',
     'lateFeeGate.overdueDays.other': '{count} days',
     'lateFeeGate.lateFee': 'Late Fee',
+    'lateFeeGate.rentalCharge': 'Plan days kept ({days} × ₹{rate})',
     'lateFeeGate.amountDue': 'Amount Due',
     'lateFeeGate.payButton': 'Pay Late Fee — {amount}',
     'lateFeeGate.checkoutDescription': 'Overdue Plan — Late Fee',
@@ -509,6 +510,9 @@ export const en = {
     'vehicles.empty.title': 'No scooters found',
     'vehicles.empty.subtitle': 'Try a different search or category.',
     'vehicles.availableScooters': 'Available Scooters',
+    'vehicles.availableScootersHint': 'Scooters you can book right now. Share with friends!',
+    'vehicles.availableCount': '{count} available',
+    'vehicles.soldOut': 'Sold out',
 
     // --- status display labels --------------------------------------------
     //
@@ -1209,6 +1213,8 @@ export const en = {
     'booking.blocked.noneAvailable': 'No scooters free at this station right now',
     'booking.blocked.noPlans': 'No plans on sale for this scooter',
     'booking.blocked.choosePlan': 'Choose a rental plan',
+    'booking.blocked.updatingPrice': 'Updating price…',
+    'booking.updatingPrice': 'Updating price…',
     'booking.error.maps.title': "Can't open maps",
     'booking.error.maps.message': 'No maps app could be found on this device.',
     'booking.almostThere': 'Almost there',
@@ -1293,7 +1299,11 @@ export const en = {
     'stations.error.load': 'Could not load battery stations.',
     'stations.dismissLocationNotice': 'Dismiss location permission notice',
     'stations.locationOff':
-        "Location is off — stations still show, but distances don't. Tap the location button to allow it.",
+        "Location is off on your phone. Turn it on in settings to see distances.",
+    'stations.locationConsentOff':
+        "Nearby stations is turned off in Privacy & data. Turn it on to see distances.",
+    'stations.locationConsentSwitch': "Turn on nearby battery stations",
+    'stations.openSettings': "Open settings",
     'stations.nearest': 'Nearest station {name} — {distance} away',
     'stations.nearestHeader': 'Nearest Station',
     'stations.nearestNameLine': '{name} — {distance}',

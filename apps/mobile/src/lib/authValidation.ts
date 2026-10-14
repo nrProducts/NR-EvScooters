@@ -8,9 +8,23 @@ export function normalizePhone(input: string): string {
     return input.trim().replace(/[\s()-]/g, '');
 }
 
-/** E.164-ish: optional "+", leading non-zero digit, 8–15 digits total. */
+/**
+ * The bare 10 digits of an Indian mobile: digits only, a leading 91 or 0
+ * dropped only when there are MORE than 10 digits (a 10-digit number may
+ * itself start 91 or 0), capped at 10. Safe on every keystroke and on a
+ * pasted "+91 98765 43210".
+ */
+export function sanitizePhoneInput(raw: string): string {
+    let digits = raw.replace(/\D/g, '');
+    if (digits.length > 10) digits = digits.replace(/^(?:91|0)/, '');
+    return digits.slice(0, 10);
+}
+
+/** Indian mobile: exactly 10 digits starting 6-9 (a +91 / 91 / 0 prefix is tolerated). */
 export function isValidPhone(input: string): boolean {
-    return /^\+?[1-9]\d{7,14}$/.test(normalizePhone(input));
+    const digits = input.replace(/\D/g, '');
+    const bare = digits.length > 10 ? digits.replace(/^(?:91|0)/, '') : digits;
+    return /^[6-9]\d{9}$/.test(bare);
 }
 
 /**
@@ -19,10 +33,7 @@ export function isValidPhone(input: string): boolean {
  * market — so a rider can type just their 10-digit number.
  */
 export function toE164(input: string, defaultCountryCode = '91'): string {
-    const cleaned = normalizePhone(input);
-    if (cleaned.startsWith('+')) return cleaned;
-    if (/^[6-9]\d{9}$/.test(cleaned)) return `+${defaultCountryCode}${cleaned}`;
-    return `+${cleaned}`;
+    return `+${defaultCountryCode}${sanitizePhoneInput(input)}`;
 }
 
 /** OTP codes are exactly 6 digits. */

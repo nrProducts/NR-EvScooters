@@ -50,6 +50,9 @@ router.post(
     asyncHandler(c.createOrderForInvoiceHandler),
 );
 
+// Recovery for a payment whose verify callback never arrived.
+router.post("/orders/:gatewayOrderId/sync", asyncHandler(c.syncOrderHandler));
+
 router.post(
     "/verify",
     validate({ body: v.verifyPaymentBody }),

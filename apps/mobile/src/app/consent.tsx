@@ -86,12 +86,13 @@ export default function ConsentScreen() {
 
     // Seed the optional toggles from the server, so a rider who returns to
     // this screen sees what they actually chose last time. Anything the rider
-    // has never decided stays OFF — never pre-ticked.
+    // has never decided starts ON (the product default); an explicit earlier
+    // switch-off is respected.
     useEffect(() => {
         if (!state) return;
         const seed: Record<string, boolean> = {};
         for (const item of state.items) {
-            if (!item.required) seed[item.purpose] = item.granted;
+            if (!item.required) seed[item.purpose] = item.decided_at ? item.granted : true;
         }
         setOptional(seed);
     }, [state]);
@@ -110,7 +111,7 @@ export default function ConsentScreen() {
             ...required.map((i) => ({ purpose: i.purpose, granted: true })),
             ...optionalItems.map((i) => ({
                 purpose: i.purpose,
-                granted: optional[i.purpose] ?? false,
+                granted: optional[i.purpose] ?? true,
             })),
         ];
         const result = await save(grants);
@@ -247,7 +248,7 @@ export default function ConsentScreen() {
                     key={item.purpose}
                     title={t(`purpose.${item.purpose}.title` as CopyKey)}
                     summary={t(`purpose.${item.purpose}.summary` as CopyKey)}
-                    value={optional[item.purpose] ?? false}
+                    value={optional[item.purpose] ?? true}
                     onChange={(v) => setOptional((prev) => ({ ...prev, [item.purpose]: v }))}
                     disabled={saving}
                 />

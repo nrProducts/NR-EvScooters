@@ -455,11 +455,22 @@ export const api = {
     // more work than the default timeout allows for on a cold backend, and
     // the one call where timing out early is strictly worse than waiting.
     verifyPayment: (payload: VerifyPaymentPayload) =>
-        request<{ status: string }>('/payments/verify', {
-            method: 'POST',
-            body: payload,
-            timeoutMs: 45000,
-        }),
+        payload.recovered
+            ? request<{ status: string }>(
+                  `/payments/orders/${encodeURIComponent(payload.razorpay_order_id)}/sync`,
+                  { method: 'POST', timeoutMs: 45000 },
+              )
+            : request<{ status: string }>('/payments/verify', {
+                  method: 'POST',
+                  body: payload,
+                  timeoutMs: 45000,
+              }),
+    /** Asks the backend whether the gateway captured a payment for this order. */
+    syncPaymentOrder: (gatewayOrderId: string) =>
+        request<{ status: 'paid' | 'pending' | 'none' }>(
+            `/payments/orders/${encodeURIComponent(gatewayOrderId)}/sync`,
+            { method: 'POST', timeoutMs: 45000 },
+        ),
 
     // --- rider billing (payment history, deposit, damage) ------------------
     myInvoices: (params: { page?: number; pageSize?: number; bookingId?: string } = {}) =>

@@ -25,8 +25,8 @@ import { useConsent } from '../hooks/useConsent';
 import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { pickDocument, pickPhoto } from '../lib/filePicker';
-import { computeInitialKycStep } from '../lib/kycProgress';
-import { formatPhoneLocal } from '../lib/authValidation';
+import { computeInitialKycStep, computeKycProgressPercent } from '../lib/kycProgress';
+import { formatPhoneLocal, isValidPhone, sanitizePhoneInput } from '../lib/authValidation';
 import { COLORS } from '../constants/theme';
 import {
   DOC_TYPE_LABEL_KEY, KYC_STATUS_LABEL_KEY, KYC_STATUS_TONE, VERIFICATION_LABEL_KEY,
@@ -277,7 +277,7 @@ export default function KycScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={pullToRefresh(refreshing, () => void refresh())}
       >
-        <StatusHeader kyc={kyc} />
+        <StatusHeader kyc={kyc} percent={computeKycProgressPercent(profile, kyc)} />
 
         {locked ? (
           <View
@@ -396,7 +396,7 @@ export default function KycScreen() {
 
 // ---------------------------------------------------------------------------
 
-const StatusHeader: React.FC<{ kyc: ApiKycSummary }> = ({ kyc }) => {
+const StatusHeader: React.FC<{ kyc: ApiKycSummary; percent: number }> = ({ kyc, percent }) => {
   const { t } = useT();
 
   return (
@@ -417,7 +417,7 @@ const StatusHeader: React.FC<{ kyc: ApiKycSummary }> = ({ kyc }) => {
             {t('kyc.header.title')}
           </Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-            {t('kyc.header.percent', { percent: kyc.completion_percent })}
+            {t('kyc.header.percent', { percent })}
           </Text>
         </View>
       </View>
@@ -428,7 +428,7 @@ const StatusHeader: React.FC<{ kyc: ApiKycSummary }> = ({ kyc }) => {
       <View
         className="h-full rounded-full"
         style={{
-          width: `${kyc.completion_percent}%`,
+          width: `${percent}%`,
           backgroundColor: kyc.kyc_status === 'rejected' ? COLORS.danger : COLORS.primary,
         }}
       />
@@ -632,7 +632,7 @@ const EmergencyContactStep: React.FC<{
 }> = ({ initialName, initialPhone, onBack, onNext }) => {
   const { t } = useT();
   const [name, setName] = useState(initialName);
-  const [phone, setPhone] = useState(initialPhone);
+  const [phone, setPhone] = useState(formatPhoneLocal(initialPhone));
   const [nameError, setNameError] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -649,7 +649,7 @@ const EmergencyContactStep: React.FC<{
     } else {
       setNameError('');
     }
-    if (!/^\+?[1-9]\d{7,14}$/.test(phone.trim())) {
+    if (!isValidPhone(phone)) {
       setPhoneError(t('kyc.emergency.error.phone'));
       hasError = true;
     } else {
@@ -662,7 +662,7 @@ const EmergencyContactStep: React.FC<{
     try {
       await userRepository.updateMe({
         emergency_contact_name: name.trim(),
-        emergency_contact_phone: phone.trim(),
+        emergency_contact_phone: sanitizePhoneInput(phone),
       });
       await onNext();
     } catch (err) {
@@ -698,7 +698,7 @@ const EmergencyContactStep: React.FC<{
         required
         value={phone}
         onChangeText={(next) => {
-          setPhone(next);
+          setPhone(sanitizePhoneInput(next));
           if (phoneError) setPhoneError('');
           if (saveError) setSaveError('');
         }}

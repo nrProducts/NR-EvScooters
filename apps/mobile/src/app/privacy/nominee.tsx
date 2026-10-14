@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Spinner } from '../../components/Spinner';
 import { useRouter } from 'expo-router';
+import { formatPhoneLocal, sanitizePhoneInput } from '../../lib/authValidation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { UserPlus, Info } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
@@ -46,7 +47,7 @@ export default function NomineeScreen() {
             setNominee(current);
             setFullName(current.full_name ?? '');
             setRelationship(current.relationship ?? '');
-            setPhone(current.phone ?? '');
+            setPhone(formatPhoneLocal(current.phone ?? ''));
             setEmail(current.email ?? '');
         } catch (err) {
             setLoadError(err instanceof ApiError ? err.message : t('nominee.error.load'));
@@ -157,7 +158,7 @@ export default function NomineeScreen() {
                         <FormField
                             label={t('nominee.form.phone')}
                             value={phone}
-                            onChangeText={setPhone}
+                            onChangeText={(v) => setPhone(sanitizePhoneInput(v))}
                             keyboardType="phone-pad"
                             error={fieldErrors.phone}
                             placeholder={t('nominee.form.phonePlaceholder')}

@@ -18,6 +18,7 @@ import { BatteryStationMap, type BatteryStationMapHandle } from '../components/B
 import { StationDetailsBottomSheet } from '../components/StationDetailsBottomSheet';
 import { StationSearch } from '../components/StationSearch';
 import { LocationButton } from '../components/LocationButton';
+import { LocationConsentNotice } from '../components/LocationConsentNotice';
 import { FitStationsButton } from '../components/FitStationsButton';
 import { MapControlButton } from '../components/MapControlButton';
 import { useBatteryStations } from '../hooks/useBatteryStations';
@@ -255,6 +256,9 @@ export default function BatteryStationsScreen() {
     }, [t]);
 
     const showPermissionNotice = permission === 'denied' && !permissionNoticeDismissed;
+    // Different cause, different fix: the rider's own Privacy & data choice
+    // (switchable right here) versus the phone's location permission.
+    const showConsentNotice = permission === 'consent_off';
     // The search panel (results/areas list, up to 300px tall) grows downward
     // from the top overlay and can reach as far as the right-hand control
     // stack and the nearest-station pill on short screens — hide those while
@@ -313,6 +317,10 @@ export default function BatteryStationsScreen() {
                     recommendations={recommendations}
                 />
 
+                {showConsentNotice && !isSearchPanelOpen ? (
+                    <LocationConsentNotice onEnabled={() => void handleMyLocation()} />
+                ) : null}
+
                 {showPermissionNotice && !isSearchPanelOpen ? (
                     <TouchableOpacity
                         onPress={() => setPermissionNoticeDismissed(true)}
@@ -325,6 +333,16 @@ export default function BatteryStationsScreen() {
                         <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-bold ml-2 flex-1">
                             {t('stations.locationOff')}
                         </Text>
+                        <TouchableOpacity
+                            onPress={() => void Linking.openSettings()}
+                            accessibilityRole="button"
+                            className="ml-2 px-2.5 py-1 rounded-full"
+                            style={{ backgroundColor: COLORS.primary }}
+                        >
+                            <Text style={{ color: '#FFFFFF' }} className="text-[11px] font-bold">
+                                {t('stations.openSettings')}
+                            </Text>
+                        </TouchableOpacity>
                     </TouchableOpacity>
                 ) : null}
 

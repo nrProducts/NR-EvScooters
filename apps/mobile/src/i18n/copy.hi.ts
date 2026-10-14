@@ -258,6 +258,7 @@ export const hi: Copy = {
     'lateFeeGate.overdueDays.one': '1 दिन',
     'lateFeeGate.overdueDays.other': '{count} दिन',
     'lateFeeGate.lateFee': 'लेट फ़ीस',
+    'lateFeeGate.rentalCharge': 'रखे गए प्लान दिन ({days} × ₹{rate})',
     'lateFeeGate.amountDue': 'बकाया राशि',
     'lateFeeGate.payButton': 'लेट फ़ीस भरें — {amount}',
     'lateFeeGate.checkoutDescription': 'प्लान खत्म — लेट फ़ीस',
@@ -481,6 +482,9 @@ export const hi: Copy = {
     'vehicles.empty.title': 'कोई स्कूटर नहीं मिला',
     'vehicles.empty.subtitle': 'अलग खोज या श्रेणी आज़माएं।',
     'vehicles.availableScooters': 'उपलब्ध स्कूटर',
+    'vehicles.availableScootersHint': 'अभी बुक करने योग्य स्कूटर। दोस्तों को बताएं!',
+    'vehicles.availableCount': '{count} उपलब्ध',
+    'vehicles.soldOut': 'स्टॉक खत्म',
 
     // --- status display labels --------------------------------------------
     'status.billingCycle.daily': 'दिन',
@@ -676,6 +680,8 @@ export const hi: Copy = {
     'booking.blocked.noneAvailable': 'अभी इस स्टेशन पर कोई स्कूटर खाली नहीं है',
     'booking.blocked.noPlans': 'इस स्कूटर के लिए कोई प्लान उपलब्ध नहीं है',
     'booking.blocked.choosePlan': 'एक किराया प्लान चुनें',
+    'booking.blocked.updatingPrice': 'कीमत अपडेट हो रही है…',
+    'booking.updatingPrice': 'कीमत अपडेट हो रही है…',
     'booking.error.maps.title': 'मैप्स नहीं खुल सका',
     'booking.error.maps.message': 'इस डिवाइस पर कोई मैप्स ऐप नहीं मिला।',
     'booking.almostThere': 'बस थोड़ा और',
@@ -757,7 +763,11 @@ export const hi: Copy = {
     'stations.error.load': 'बैटरी स्टेशन लोड नहीं हो सके।',
     'stations.dismissLocationNotice': 'लोकेशन अनुमति सूचना बंद करें',
     'stations.locationOff':
-        'लोकेशन बंद है — स्टेशन अभी भी दिखेंगे, लेकिन दूरी नहीं दिखेगी। इसे चालू करने के लिए लोकेशन बटन दबाएं।',
+        "आपके फ़ोन में लोकेशन बंद है। दूरी देखने के लिए सेटिंग्स में इसे चालू करें।",
+    'stations.locationConsentOff':
+        "गोपनीयता और डेटा में नज़दीकी स्टेशन बंद है। दूरी देखने के लिए इसे चालू करें।",
+    'stations.locationConsentSwitch': "नज़दीकी बैटरी स्टेशन चालू करें",
+    'stations.openSettings': "सेटिंग्स खोलें",
     'stations.nearest': 'सबसे पास का स्टेशन {name}, {distance} दूर',
     'stations.nearestHeader': 'सबसे पास का स्टेशन',
     'stations.nearestNameLine': '{name} — {distance}',

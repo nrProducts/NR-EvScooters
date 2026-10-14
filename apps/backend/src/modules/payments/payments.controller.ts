@@ -29,6 +29,11 @@ export async function verifyPaymentHandler(req: AuthedRequest, res: Response) {
     res.json({ status: "verified" });
 }
 
+export async function syncOrderHandler(req: AuthedRequest, res: Response) {
+    const result = await service.syncOrderPayment(req.params.gatewayOrderId as string, req.user!);
+    res.json(result);
+}
+
 /**
  * No requireAuth — Razorpay calls this directly with no bearer token.
  * Protected by signature verification inside handleWebhook instead. Needs

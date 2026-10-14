@@ -3,6 +3,7 @@ import RazorpayCheckout, { RazorpayCheckoutOptions, RazorpaySuccessResponse } fr
 import type { VerifyPaymentPayload } from '../types/api';
 import { BRAND_LOGO_DATA_URI } from './brandLogo';
 import { COLORS } from '../constants/theme';
+import { api } from './api';
 
 export class PaymentCancelledError extends Error {
     constructor() {
@@ -298,6 +299,21 @@ async function openRazorpayCheckoutWeb(merged: RazorpayCheckoutOptions): Promise
 }
 
 /**
+ * True when the gateway already holds a captured payment for this order.
+ * Best-effort: a network failure here reads as "not captured", which leaves
+ * the caller's normal error path (and the webhook) to handle it.
+ */
+async function paymentWasCaptured(orderId: string | undefined): Promise<boolean> {
+    if (!orderId) return false;
+    try {
+        const res = await api.syncPaymentOrder(orderId);
+        return res.status === 'paid';
+    } catch {
+        return false;
+    }
+}
+
+/**
  * Opens Razorpay Checkout — the native sheet on iOS/Android, Checkout.js's
  * widget on web — and returns the verify-callback payload on success. Never
  * resolves with a "failed" state — a decline, cancel, or the checkout
@@ -346,14 +362,26 @@ export async function openRazorpayCheckout(options: RazorpayCheckoutOptions): Pr
     try {
         result = await RazorpayCheckout.open(merged);
     } catch (err) {
+        if (err instanceof TypeError) {
+            // NativeModules.RNRazorpayCheckout is undefined — the module isn't linked.
+            throw new PaymentUnavailableError();
+        }
+        // The sheet can error (or be closed) AFTER the rider's UPI app already
+        // took the money — the sheet then reads "Something went wrong" and no
+        // success callback ever fires. Ask the backend what really happened
+        // before telling the rider anything failed.
+        if (await paymentWasCaptured(merged.order_id)) {
+            return {
+                razorpay_order_id: merged.order_id as string,
+                razorpay_payment_id: '',
+                razorpay_signature: '',
+                recovered: true,
+            };
+        }
         const e = err as { code?: number; description?: string } | undefined;
         // Razorpay's own "user closed the sheet" code.
         if (e?.code === 2 || /cancel/i.test(e?.description ?? '')) {
             throw new PaymentCancelledError();
-        }
-        if (err instanceof TypeError) {
-            // NativeModules.RNRazorpayCheckout is undefined — the module isn't linked.
-            throw new PaymentUnavailableError();
         }
         throw new Error(e?.description ?? 'Payment failed. Please try again.');
     }

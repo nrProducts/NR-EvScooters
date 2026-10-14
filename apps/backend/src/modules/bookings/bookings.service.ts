@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../../config/supabase";
+import { hasPaidReturnGateInvoice } from "../rentals/overdueLateFee";
 import { hasPassedCutover } from "../../common/dates";
 import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
@@ -1408,6 +1409,15 @@ export async function requestEarlyRecharge(bookingId: string, actor: AuthContext
         throw businessRule(
             "You've requested a return for this scooter, so your plan can't be renewed. "
             + "Cancel the return with our team first if you'd like to keep riding.",
+        );
+    }
+
+    // Paying the overdue-days invoice is committing to the return — see
+    // hasPaidReturnGateInvoice. Renewing now would sell the same days twice.
+    if (await hasPaidReturnGateInvoice(context.subscriptionId)) {
+        throw businessRule(
+            "You've already settled this plan to return the scooter, so it can't be renewed. "
+            + "Return the scooter, then book a new plan if you'd like to keep riding.",
         );
     }
 
