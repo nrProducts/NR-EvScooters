@@ -326,11 +326,19 @@ export default function BatteryStationsScreen() {
                         onPress={() => setPermissionNoticeDismissed(true)}
                         accessibilityRole="button"
                         accessibilityLabel={t('stations.dismissLocationNotice')}
-                        className="flex-row items-center mt-2 px-3.5 py-2.5 rounded-2xl"
-                        style={{ backgroundColor: COLORS.warning + '1F' }}
+                        className="flex-row items-center mt-2 px-3.5 py-3 rounded-2xl border"
+                        style={{
+                            backgroundColor: COLORS.card,
+                            borderColor: COLORS.warning,
+                            shadowColor: COLORS.black,
+                            shadowOpacity: 0.12,
+                            shadowRadius: 10,
+                            shadowOffset: { width: 0, height: 3 },
+                            elevation: 5,
+                        }}
                     >
                         <TriangleAlert size={14} color={COLORS.warning} />
-                        <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-bold ml-2 flex-1">
+                        <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold ml-2 flex-1 leading-snug">
                             {t('stations.locationOff')}
                         </Text>
                         <TouchableOpacity

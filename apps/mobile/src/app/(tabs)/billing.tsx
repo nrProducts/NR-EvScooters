@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Spinner } from '../../components/Spinner';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronDown, CreditCard, ShieldCheck, Receipt, Gift, X } from 'lucide-react-native';
+import { ChevronRight, CreditCard, ShieldCheck, Receipt, Gift, X } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorState } from '../../components/ui/ErrorState';
@@ -388,7 +388,6 @@ export default function BillingScreen() {
   const {
     summary: referralSummary, loading: referralLoading, reload: reloadReferralSummary, setSummary: setReferralSummary,
   } = useReferralSummary();
-  const [cardPickerInvoiceId, setCardPickerInvoiceId] = useState<string | null>(null);
   const [cardActionInvoiceId, setCardActionInvoiceId] = useState<string | null>(null);
   const [cardActionError, setCardActionError] = useState<string | null>(null);
 
@@ -411,7 +410,6 @@ export default function BillingScreen() {
     const card = referralSummary?.cards.find((c) => c.id === cardId);
     const snapshot = referralSummary;
     setCardActionError(null);
-    setCardPickerInvoiceId(null);
 
     // The discount can never exceed what is still owed on this invoice.
     const owed = invoice ? (invoice.total_due ?? invoice.balance_amount) : 0;
@@ -895,137 +893,97 @@ export default function BillingScreen() {
   const availableReferralCards = referralSummary?.cards.filter((c) => c.status === 'available') ?? [];
 
   /**
-   * One invoice's "apply a reward card" row, shown at the TOP of its card —
-   * the first thing on the plan renewal, not a detail buried below the
-   * total. Three states: a card already applied (note + a real Cancel
-   * button), a single available card (note + a real Apply button, applied
-   * directly — no intermediate picker for the common one-card case), or more
-   * than one available card (note + one button per card). Nothing renders at
-   * all for a rider with no available cards and nothing applied, so this
-   * never clutters an invoice for a rider who has never referred anyone.
+   * One invoice's reward-card row — a single quiet line, not a panel.
+   *
+   *   not applied:  [gift]  2 reward cards available   [Add]
+   *                         ₹1.00 off
+   *   applied:      [gift]  Reward card applied        [x]
+   *                         ₹1.00 off
+   *
+   * "Add" takes the most valuable available card, so there is no picker to
+   * open and nothing to choose between. Renders nothing for a rider with no
+   * card to offer and none applied.
    */
   const renderReferralCardSection = (inv: ApiInvoice) => {
-    // The offer (and any card already held against this bill) arrives with the
-    // referral summary, a beat after the invoice. Reserving its space avoids
-    // the card appearing late and pushing the amount down.
+    // The offer arrives with the referral summary, a beat after the invoice;
+    // reserving its row keeps the bill from being pushed down when it lands.
     if (referralLoading && !referralSummary) {
       return (
-        <View className="rounded-xl border px-3.5 py-3 mb-4" style={{ borderColor: COLORS.border }}>
-          <SkeletonLine width="60%" />
+        <View className="rounded-2xl px-4 py-3.5" style={{ backgroundColor: COLORS.card }}>
+          <SkeletonLine width="55%" />
         </View>
       );
     }
+
     const reservation = referralSummary?.reserved_redemptions.find((r) => r.invoice_id === inv.id);
     const busy = cardActionInvoiceId === inv.id;
 
     if (reservation) {
       return (
-        <View className="rounded-xl border px-3.5 py-3 mb-4" style={{ borderColor: COLORS.primary, backgroundColor: COLORS.primary + '0D' }}>
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center flex-1 mr-3" style={{ gap: 8 }}>
-              <Gift size={15} color={COLORS.primary} />
-              <Text style={{ color: COLORS.textPrimary }} className="text-[12px] font-bold flex-1">
-                {t('billing.referralCard.applied', { amount: reservation.discount_amount.toFixed(2) })}
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => void removeReferralCard(reservation.id, inv.id)}
-              disabled={busy}
-              accessibilityRole="button"
-              className="rounded-lg px-3 py-2"
-              style={{ backgroundColor: COLORS.primary + '1A', opacity: busy ? 0.6 : 1 }}
-            >
-              {busy ? (
-                <Spinner size={12} color={COLORS.primary} />
-              ) : (
-                <Text style={{ color: COLORS.primary }} className="text-[11px] font-bold">
-                  {t('billing.referralCard.remove')}
-                </Text>
-              )}
-            </TouchableOpacity>
+        <View
+          className="flex-row items-center rounded-2xl px-4 py-3"
+          style={{ backgroundColor: COLORS.card, gap: 12 }}
+        >
+          <View className="w-9 h-9 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.success + '1A' }}>
+            <Gift size={16} color={COLORS.success} />
           </View>
+          <View className="flex-1">
+            <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-bold">
+              {t('billing.referralCard.appliedShort')}
+            </Text>
+            <Text style={{ color: COLORS.success }} className="text-[11px] font-semibold mt-0.5">
+              {t('billing.referralCard.offSmall', { amount: reservation.discount_amount.toFixed(2) })}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => void removeReferralCard(reservation.id, inv.id)}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel={t('billing.referralCard.remove')}
+            hitSlop={8}
+            className="w-8 h-8 rounded-full items-center justify-center"
+            style={{ backgroundColor: COLORS.danger + '14', opacity: busy ? 0.6 : 1 }}
+          >
+            {busy ? <Spinner size={12} color={COLORS.danger} /> : <X size={15} color={COLORS.danger} />}
+          </TouchableOpacity>
         </View>
       );
     }
 
     if (availableReferralCards.length === 0) return null;
 
-    if (availableReferralCards.length === 1) {
-      const card = availableReferralCards[0];
-      return (
-        <View className="rounded-xl border px-3.5 py-3 mb-4" style={{ borderColor: COLORS.primary + '55', backgroundColor: COLORS.primary + '0D' }}>
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center flex-1 mr-3" style={{ gap: 8 }}>
-              <Gift size={15} color={COLORS.primary} />
-              <Text style={{ color: COLORS.textPrimary }} className="text-[12px] font-bold flex-1">
-                {t('billing.referralCard.off', { amount: card.amount.toFixed(2) })}
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => void applyReferralCard(inv.id, card.id)}
-              disabled={busy}
-              accessibilityRole="button"
-              className="rounded-lg px-4 py-2"
-              style={{ backgroundColor: COLORS.primary, opacity: busy ? 0.6 : 1 }}
-            >
-              {busy ? (
-                <Spinner size={12} color="#FFF" />
-              ) : (
-                <Text className="text-white text-[11px] font-bold">{t('billing.referralCard.apply')}</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      );
-    }
-
-    // More than one card to choose from — each option is its own
-    // gap-separated rounded button, not a flat list row.
-    if (cardPickerInvoiceId !== inv.id) {
-      return (
-        <TouchableOpacity
-          onPress={() => setCardPickerInvoiceId(inv.id)}
-          accessibilityRole="button"
-          className="rounded-xl border px-3.5 py-3 mb-4 flex-row items-center"
-          style={{ borderColor: COLORS.border, backgroundColor: COLORS.background, gap: 8 }}
-        >
-          <Gift size={15} color={COLORS.primary} />
-          <Text style={{ color: COLORS.primary }} className="text-[12px] font-bold flex-1">
-            {t('billing.referralCard.offer', { count: availableReferralCards.length })}
-          </Text>
-          <ChevronDown size={15} color={COLORS.primary} />
-        </TouchableOpacity>
-      );
-    }
-
+    const best = availableReferralCards.reduce((top, c) => (c.amount > top.amount ? c : top));
+    const count = availableReferralCards.length;
     return (
-      <View className="mb-4" style={{ gap: 8 }}>
-        {availableReferralCards.map((card) => (
-          <TouchableOpacity
-            key={card.id}
-            onPress={() => void applyReferralCard(inv.id, card.id)}
-            disabled={busy}
-            accessibilityRole="button"
-            className="flex-row items-center rounded-xl px-3.5 py-3"
-            style={{ backgroundColor: COLORS.primary + '14', opacity: busy ? 0.6 : 1, gap: 8 }}
-          >
-            <Gift size={15} color={COLORS.primary} />
-            <Text style={{ color: COLORS.primary }} className="text-[13px] font-bold flex-1">
-              {t('billing.referralCard.off', { amount: card.amount.toFixed(2) })}
-            </Text>
-            {busy ? <Spinner size={14} color={COLORS.primary} /> : null}
-          </TouchableOpacity>
-        ))}
+      <View
+        className="flex-row items-center rounded-2xl px-4 py-3"
+        style={{ backgroundColor: COLORS.card, gap: 12 }}
+      >
+        <View className="w-9 h-9 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.primary + '1A' }}>
+          <Gift size={16} color={COLORS.primary} />
+        </View>
+        <View className="flex-1">
+          <Text style={{ color: COLORS.textPrimary }} className="text-[13px] font-bold">
+            {count === 1
+              ? t('billing.referralCard.availableOne')
+              : t('billing.referralCard.availableOther', { count })}
+          </Text>
+          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold mt-0.5">
+            {t('billing.referralCard.offSmall', { amount: best.amount.toFixed(2) })}
+          </Text>
+        </View>
         <TouchableOpacity
-          onPress={() => setCardPickerInvoiceId(null)}
+          onPress={() => void applyReferralCard(inv.id, best.id)}
           disabled={busy}
           accessibilityRole="button"
-          className="rounded-xl border px-3.5 py-2.5 items-center"
-          style={{ borderColor: COLORS.border, backgroundColor: COLORS.background, opacity: busy ? 0.6 : 1 }}
+          className="rounded-full px-4 py-1.5"
+          style={{ backgroundColor: COLORS.primary, opacity: busy ? 0.6 : 1 }}
         >
-          <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold">
-            {t('common.cancel')}
-          </Text>
+          {busy ? (
+            <Spinner size={12} color="#FFF" />
+          ) : (
+            <Text className="text-white text-[12px] font-bold">{t('billing.referralCard.addBtn')}</Text>
+          )}
         </TouchableOpacity>
       </View>
     );
@@ -1054,31 +1012,32 @@ export default function BillingScreen() {
       {outstandingInvoices.map((inv) => {
         const perDay = inv.late_fee && inv.days_late ? inv.late_fee / inv.days_late : 0;
         const total = inv.total_due ?? inv.balance_amount;
+        const paying = payingInvoiceId === inv.id;
+        const due = dueLabel(inv, t);
         return (
-          <View
-            key={inv.id}
-            className="border mb-4 overflow-hidden"
-            style={{ borderRadius: 22, backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}
-          >
-            <View className="p-5">
-              {renderReferralCardSection(inv)}
+          <View key={inv.id} className="mb-5" style={{ gap: 10 }}>
+            {/* Reward card — its own strip above the bill, the way a coupon
+                line sits above the totals in a checkout. */}
+            {renderReferralCardSection(inv)}
 
+            {/* Bill details */}
+            <View
+              className="p-5"
+              style={{ borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }}
+            >
               <View className="flex-row items-center justify-between mb-3">
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">
                   {invoiceLabel(inv, t)}
                 </Text>
-                {(() => {
-                  const due = dueLabel(inv, t);
-                  return (
-                    <Text
-                      style={{ color: due.overdue ? COLORS.danger : COLORS.textSecondary }}
-                      className={`text-[11px] ${due.overdue ? 'font-bold' : 'font-medium'}`}
-                    >
-                      {due.text}
-                    </Text>
-                  );
-                })()}
+                <Text
+                  style={{ color: due.overdue ? COLORS.danger : COLORS.textSecondary }}
+                  className={`text-[11px] ${due.overdue ? 'font-bold' : 'font-medium'}`}
+                >
+                  {due.text}
+                </Text>
               </View>
+
+              <View className="h-px mb-2" style={{ backgroundColor: COLORS.border }} />
 
               {/* Skipped entirely for a single-line ad-hoc charge: the
                   heading above IS that line's description, and Total below IS
@@ -1098,45 +1057,55 @@ export default function BillingScreen() {
                 <BillLine label={t('billing.rentalPlanAmount')} amount={inv.total_amount} />
               )}
               {inv.allocated_amount > 0 ? (
-                <>
-                  <View className="h-px" style={{ backgroundColor: COLORS.background }} />
-                  <BillLine label={t('billing.alreadyPaid')} amount={inv.allocated_amount} negative />
-                </>
+                <BillLine label={t('billing.alreadyPaid')} amount={inv.allocated_amount} negative />
               ) : null}
               {inv.late_fee ? (
-                <>
-                  <View className="h-px" style={{ backgroundColor: COLORS.background }} />
-                  <BillLine
-                    label={t(
-                      inv.days_late === 1 ? 'billing.lateFeeParenOne' : 'billing.lateFeeParenOther',
-                      { days: inv.days_late ?? 0, rate: perDay.toFixed(2) },
-                    )}
-                    amount={inv.late_fee}
-                    attention
-                  />
-                </>
+                <BillLine
+                  label={t(
+                    inv.days_late === 1 ? 'billing.lateFeeParenOne' : 'billing.lateFeeParenOther',
+                    { days: inv.days_late ?? 0, rate: perDay.toFixed(2) },
+                  )}
+                  amount={inv.late_fee}
+                  attention
+                />
               ) : null}
+
               <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
-              <View className="flex-row items-center justify-between pb-1">
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">{t('billing.total')}</Text>
-                <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-bold">₹{total.toFixed(2)}</Text>
+              <View className="flex-row items-center justify-between pt-1">
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{t('billing.total')}</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-xl font-bold">₹{total.toFixed(2)}</Text>
               </View>
             </View>
 
+            {/* Pay bar — total on the left, the action on the right, as one
+                full-width button: the amount being committed to is the
+                thing sitting under the thumb. */}
             <TouchableOpacity
               onPress={() => payInvoice(inv)}
-              disabled={payingInvoiceId === inv.id}
-              className="mx-5 mb-5 py-3.5 rounded-2xl items-center flex-row justify-center"
-              style={{ backgroundColor: COLORS.primary, opacity: payingInvoiceId === inv.id ? 0.6 : 1 }}
+              disabled={paying}
+              accessibilityRole="button"
+              accessibilityLabel={t('billing.pay', { amount: total.toFixed(2) })}
+              className="flex-row items-center justify-between px-5 py-3.5"
+              style={{ borderRadius: 20, backgroundColor: COLORS.primary, opacity: paying ? 0.7 : 1 }}
             >
-              {payingInvoiceId === inv.id ? (
-                <Spinner size={16} color="#FFF" />
-              ) : (
-                <CreditCard size={16} color="#FFF" />
-              )}
-              <Text className="text-white text-sm font-bold ml-2">
-                {payingInvoiceId === inv.id ? t('billing.processing') : t('billing.pay', { amount: total.toFixed(2) })}
-              </Text>
+              <View>
+                <Text className="text-white text-lg font-extrabold">₹{total.toFixed(2)}</Text>
+                <Text className="text-white text-[10px] font-bold uppercase tracking-wider" style={{ opacity: 0.85 }}>
+                  {t('billing.total')}
+                </Text>
+              </View>
+              <View className="flex-row items-center">
+                {paying ? (
+                  <Spinner size={16} color="#FFF" />
+                ) : (
+                  <>
+                    <Text className="text-white text-base font-extrabold mr-1">
+                      {t('billing.payShort')}
+                    </Text>
+                    <ChevronRight size={18} color="#FFF" />
+                  </>
+                )}
+              </View>
             </TouchableOpacity>
           </View>
         );

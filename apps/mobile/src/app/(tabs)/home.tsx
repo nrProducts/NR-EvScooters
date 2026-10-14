@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, TouchableOpacity, Linking, Platform } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
+import { Image as ExpoImage } from "expo-image";
 import {
   MapPin,
   Calendar,
@@ -539,20 +540,12 @@ export default function HomeScreen() {
         {/* Fleet availability — shown in every phase, not just while the rider
             can book: riders point friends here to see what's on offer. The
             old separate browse screen is gone; this is the only list. */}
-        <View className="mb-3">
-          <Text
-            style={{ color: COLORS.textPrimary }}
-            className="text-sm font-semibold"
-          >
-            {t("vehicles.availableScooters")}
-          </Text>
-          <Text
-            style={{ color: COLORS.textSecondary }}
-            className="text-xs mt-0.5"
-          >
-            {t("vehicles.availableScootersHint")}
-          </Text>
-        </View>
+        <Text
+          style={{ color: COLORS.textPrimary }}
+          className="text-sm font-semibold mb-3"
+        >
+          {t("vehicles.availableScooters")}
+        </Text>
 
         {loadingList && list.length === 0 ? (
           <SkeletonList count={2} />
@@ -575,39 +568,62 @@ export default function HomeScreen() {
               const count = model.availability.available_count;
               const hasStock = count > 0;
               const tone = hasStock ? COLORS.primary : COLORS.textSecondary;
+              // "Motovolt Mobility Pvt. Ltd" -> "Motovolt": the legal name is
+              // noise on a card riders scan for the brand.
+              const brand = model.vendor?.name?.trim().split(/\s+/)[0] ?? model.name;
+              const specs = [
+                model.battery_range_km != null ? `${model.battery_range_km} km` : null,
+                model.top_speed_kmph != null ? `${model.top_speed_kmph} km/h` : null,
+              ].filter(Boolean).join("  ·  ");
               return (
                 <View
                   key={model.id}
-                  className="flex-row items-center justify-between px-4 py-3"
+                  className="flex-row items-center p-3"
                   style={
                     i > 0
                       ? { borderTopWidth: 1, borderColor: COLORS.border }
                       : undefined
                   }
                 >
-                  <Text
-                    style={{ color: COLORS.textPrimary }}
-                    className="text-xs font-bold flex-1 mr-2"
-                    numberOfLines={2}
+                  <View
+                    className="w-14 h-14 rounded-xl mr-3 overflow-hidden"
+                    style={{ backgroundColor: COLORS.gray[100] }}
                   >
-                    {[model.vendor?.name, model.name]
-                      .filter(Boolean)
-                      .join(" - ")}
-                    {model.battery_range_km != null
-                      ? ` / ${model.battery_range_km} km`
-                      : ""}
-                    {model.top_speed_kmph != null
-                      ? ` / ${model.top_speed_kmph} km/h`
-                      : ""}
-                  </Text>
+                    {model.image_url ? (
+                      <ExpoImage
+                        source={model.image_url}
+                        style={{ width: "100%", height: "100%" }}
+                        contentFit="contain"
+                        cachePolicy="memory-disk"
+                        transition={0}
+                        accessibilityLabel={model.name}
+                      />
+                    ) : null}
+                  </View>
+
+                  <View className="flex-1 mr-2">
+                    <Text
+                      style={{ color: COLORS.textPrimary }}
+                      className="text-sm font-extrabold"
+                      numberOfLines={1}
+                    >
+                      {brand}
+                    </Text>
+                    <Text
+                      style={{ color: COLORS.textSecondary }}
+                      className="text-xs font-semibold mt-0.5"
+                      numberOfLines={1}
+                    >
+                      {model.name}
+                      {specs ? `   ${specs}` : ""}
+                    </Text>
+                  </View>
+
                   <View
                     className="rounded-full px-2.5 py-1"
                     style={{ backgroundColor: tone + "1A" }}
                   >
-                    <Text
-                      style={{ color: tone }}
-                      className="text-xs font-bold"
-                    >
+                    <Text style={{ color: tone }} className="text-xs font-bold">
                       {hasStock
                         ? t("vehicles.availableCount", { count })
                         : t("vehicles.soldOut")}

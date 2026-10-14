@@ -26,11 +26,26 @@ export const LocationConsentNotice: React.FC<{ onEnabled: () => void }> = ({ onE
 
     return (
         <View
-            className="flex-row items-center mt-2 px-3.5 py-2.5 rounded-2xl"
-            style={{ backgroundColor: COLORS.warning + '1F' }}
+            className="flex-row items-center mt-2 px-3.5 py-3 rounded-2xl border"
+            // Opaque, not a tint: a translucent fill let the map's labels and
+            // roads show through the text and made the switch hard to find.
+            style={{
+                backgroundColor: COLORS.card,
+                borderColor: COLORS.warning,
+                shadowColor: COLORS.black,
+                shadowOpacity: 0.12,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 3 },
+                elevation: 5,
+            }}
         >
-            <LocateOff size={14} color={COLORS.warning} />
-            <Text style={{ color: COLORS.textPrimary }} className="text-[11px] font-bold mx-2 flex-1">
+            <View
+                className="w-8 h-8 rounded-full items-center justify-center"
+                style={{ backgroundColor: COLORS.warning + '24' }}
+            >
+                <LocateOff size={16} color={COLORS.warning} />
+            </View>
+            <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold mx-3 flex-1 leading-snug">
                 {t('stations.locationConsentOff')}
             </Text>
             {saving ? (
