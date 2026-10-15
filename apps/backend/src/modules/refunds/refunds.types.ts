@@ -1,3 +1,5 @@
+import type { DepositRow } from "../deposits/deposits.types";
+
 /**
  * `refund_status` uses `succeeded`, matching `payment_status` — the old
  * `success` was the odd one out across the two tables.
@@ -35,6 +37,8 @@ export interface RefundBookingSummary {
     plan_price_at_cancellation: number | null;
     vehicle_model_name: string | null;
     station_name: string | null;
+    /** Plate of the scooter handed over, null if it never was. */
+    vehicle_registration_number: string | null;
     rider_name: string | null;
     rider_phone: string | null;
 }
@@ -67,6 +71,13 @@ export interface RefundRow {
     rejected_at: string | null;
     rejected_by: { id: string; full_name: string } | null;
     rejection_reason: string | null;
+    /**
+     * Who approved the payout and when. No column holds this — it is read from
+     * the audit trail (`refund.submitted` / `refund.processed`), so it is null
+     * for a refund that was never approved and for system-completed ones.
+     */
+    approved_by: { id: string; full_name: string } | null;
+    approved_at: string | null;
     /** `refunds.reason`. */
     refund_type: RefundType;
     gateway_refund_id: string | null;
@@ -129,4 +140,120 @@ export interface ReviewRefundInput {
 
 export interface RejectRefundInput {
     reason: string;
+}
+
+// ---------------------------------------------------------------------------
+// Deposit journey — see depositJourney.service.ts
+// ---------------------------------------------------------------------------
+
+
+export interface JourneyPayment {
+    transaction_id: string;
+    gateway_payment_id: string;
+    gateway_order_id: string | null;
+    gateway: string;
+    amount: number;
+    method: "upi" | "card" | "netbanking" | "wallet" | "cash" | null;
+    status: string;
+    captured_at: string;
+    /** Every invoice this one payment settled. */
+    invoices: { invoice_id: string; invoice_number: string; purpose: string; allocated_amount: number }[];
+}
+
+export interface JourneyInvoice {
+    id: string;
+    invoice_number: string;
+    purpose: string;
+    status: string;
+    issued_on: string | null;
+    due_on: string | null;
+    total_amount: number;
+}
+
+export interface JourneyDamage {
+    id: string;
+    amount: number;
+    status: string;
+    notes: string | null;
+    created_at: string;
+}
+
+export interface JourneyRental {
+    id: string;
+    picked_up_at: string;
+    due_back_at: string;
+    returned_at: string | null;
+    end_reason: string | null;
+    vehicle: { name: string; registration_number: string } | null;
+    return: {
+        status: string;
+        requested_at: string | null;
+        requested_reason: string | null;
+        inspected_at: string | null;
+        inspection_notes: string | null;
+        approved_at: string | null;
+        rejected_at: string | null;
+        rejection_reason: string | null;
+        other_charges_amount: number;
+        payment_verified_at: string | null;
+    } | null;
+    settlement: {
+        settled_at: string;
+        deposit_amount: number;
+        late_fee_amount: number;
+        damage_amount: number;
+        other_charges_amount: number;
+        total_charges: number;
+        net_amount: number;
+        outcome: "refund_due" | "amount_due" | "balanced";
+    } | null;
+}
+
+export type JourneyTone = "success" | "info" | "warning" | "danger" | "muted";
+
+export interface JourneyTimelineEvent {
+    /** ISO instant. */
+    at: string;
+    kind: "payment" | "deposit" | "rental" | "return" | "settlement" | "damage" | "refund";
+    tone: JourneyTone;
+    title: string;
+    detail: string | null;
+    amount?: number;
+}
+
+export interface DepositJourney {
+    /** The deposit id — the journey is one-to-one with it. */
+    id: string;
+    deposit: DepositRow;
+    rider: { id: string; full_name: string; phone: string | null; email: string | null } | null;
+    subscription: {
+        id: string;
+        status: string;
+        started_on: string | null;
+        ended_at: string | null;
+        plan_name: string | null;
+        vehicle_model_name: string | null;
+        hub_name: string | null;
+        plan_price: number;
+        deposit_amount: number;
+        duration_days: number | null;
+        billing_period: string | null;
+        booking_id: string | null;
+        booking_start_on: string | null;
+    };
+    payments: JourneyPayment[];
+    invoices: JourneyInvoice[];
+    rentals: JourneyRental[];
+    damages: JourneyDamage[];
+    refunds: RefundRow[];
+    totals: {
+        collected: number;
+        deposit_amount: number;
+        onboarding_charge: number;
+        damage_total: number;
+        refunded: number;
+        refund_in_flight: number;
+        retained: number;
+    };
+    timeline: JourneyTimelineEvent[];
 }

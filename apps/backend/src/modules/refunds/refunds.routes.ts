@@ -50,6 +50,28 @@ router.post(
     asyncHandler(c.createRefundHandler),
 );
 
+// Declared before "/:id" so "journeys" is not read as a refund id.
+router.get(
+    "/journeys",
+    requireAction("refunds", "view"),
+    validate({ query: v.listJourneysQuery }),
+    asyncHandler(c.listDepositJourneysHandler),
+);
+
+router.get(
+    "/journeys/:subscriptionId",
+    requireAction("refunds", "view"),
+    validate({ params: v.subscriptionIdParam }),
+    asyncHandler(c.getDepositJourneyHandler),
+);
+
+router.get(
+    "/:id/journey",
+    requireAction("refunds", "view"),
+    validate({ params: v.refundIdParam }),
+    asyncHandler(c.getRefundJourneyHandler),
+);
+
 router.get(
     "/:id",
     requireAction("refunds", "view"),

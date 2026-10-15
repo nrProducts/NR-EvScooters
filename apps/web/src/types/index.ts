@@ -1011,6 +1011,8 @@ export interface RefundBookingSummary {
   plan_price_at_cancellation: number | null;
   vehicle_model_name: string | null;
   station_name: string | null;
+  /** Plate of the scooter handed over, null if it never was. */
+  vehicle_registration_number: string | null;
   rider_name: string | null;
   rider_phone: string | null;
 }
@@ -1033,9 +1035,14 @@ export interface Refund {
   rejected_at: string | null;
   rejected_by: { id: string; full_name: string } | null;
   rejection_reason: string | null;
+  /** From the audit trail; null until a payout has been approved. */
+  approved_by: { id: string; full_name: string } | null;
+  approved_at: string | null;
   refund_type: RefundType;
   gateway_refund_id: string | null;
   source_gateway_payment_id: string | null;
+  /** The captured payment this refund reverses. */
+  payment_transaction_id: string;
   attempt_count: number;
   last_attempted_at: string | null;
   failure_reason: string | null;
@@ -1577,4 +1584,117 @@ export interface PrivacyRequest {
   assigned_to: { id: string; full_name: string } | null;
   /** Past the published response period and not yet closed. */
   is_overdue: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Deposit journey — mirrors apps/backend/src/modules/refunds/refunds.types.ts
+// ---------------------------------------------------------------------------
+
+export interface JourneyPayment {
+  transaction_id: string;
+  gateway_payment_id: string;
+  gateway_order_id: string | null;
+  gateway: string;
+  amount: number;
+  method: "upi" | "card" | "netbanking" | "wallet" | "cash" | null;
+  status: string;
+  captured_at: string;
+  invoices: { invoice_id: string; invoice_number: string; purpose: string; allocated_amount: number }[];
+}
+
+export interface JourneyInvoice {
+  id: string;
+  invoice_number: string;
+  purpose: string;
+  status: string;
+  issued_on: string | null;
+  due_on: string | null;
+  total_amount: number;
+}
+
+export interface JourneyDamage {
+  id: string;
+  amount: number;
+  status: string;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface JourneyRental {
+  id: string;
+  picked_up_at: string;
+  due_back_at: string;
+  returned_at: string | null;
+  end_reason: string | null;
+  vehicle: { name: string; registration_number: string } | null;
+  return: {
+    status: string;
+    requested_at: string | null;
+    requested_reason: string | null;
+    inspected_at: string | null;
+    inspection_notes: string | null;
+    approved_at: string | null;
+    rejected_at: string | null;
+    rejection_reason: string | null;
+    other_charges_amount: number;
+    payment_verified_at: string | null;
+  } | null;
+  settlement: {
+    settled_at: string;
+    deposit_amount: number;
+    late_fee_amount: number;
+    damage_amount: number;
+    other_charges_amount: number;
+    total_charges: number;
+    net_amount: number;
+    outcome: "refund_due" | "amount_due" | "balanced";
+  } | null;
+}
+
+export type JourneyTone = "success" | "info" | "warning" | "danger" | "muted";
+
+export interface JourneyTimelineEvent {
+  at: string;
+  kind: "payment" | "deposit" | "rental" | "return" | "settlement" | "damage" | "refund";
+  tone: JourneyTone;
+  title: string;
+  detail: string | null;
+  amount?: number;
+}
+
+export interface DepositJourney {
+  /** The deposit id — the journey is one-to-one with it. */
+  id: string;
+  deposit: Deposit;
+  rider: { id: string; full_name: string; phone: string | null; email: string | null } | null;
+  subscription: {
+    id: string;
+    status: string;
+    started_on: string | null;
+    ended_at: string | null;
+    plan_name: string | null;
+    vehicle_model_name: string | null;
+    hub_name: string | null;
+    plan_price: number;
+    deposit_amount: number;
+    duration_days: number | null;
+    billing_period: string | null;
+    booking_id: string | null;
+    booking_start_on: string | null;
+  };
+  payments: JourneyPayment[];
+  invoices: JourneyInvoice[];
+  rentals: JourneyRental[];
+  damages: JourneyDamage[];
+  refunds: Refund[];
+  totals: {
+    collected: number;
+    deposit_amount: number;
+    onboarding_charge: number;
+    damage_total: number;
+    refunded: number;
+    refund_in_flight: number;
+    retained: number;
+  };
+  timeline: JourneyTimelineEvent[];
 }

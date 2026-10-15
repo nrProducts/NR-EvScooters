@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/refunds";
+import type { DepositStatus } from "@/types";
 
 export function useRefunds(filters: api.RefundFilters) {
   return useQuery({ queryKey: ["refunds", filters], queryFn: () => api.fetchRefunds(filters) });
@@ -19,6 +20,8 @@ export function useCreateRefund() {
     mutationFn: (depositId: string) => api.createRefund(depositId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["refunds"] });
+      qc.invalidateQueries({ queryKey: ["deposit-journeys"] });
+      qc.invalidateQueries({ queryKey: ["refund-journey"] });
       qc.invalidateQueries({ queryKey: ["deposits"] });
     },
   });
@@ -30,6 +33,8 @@ export function useRetryRefund() {
     mutationFn: (id: string) => api.retryRefund(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["refunds"] });
+      qc.invalidateQueries({ queryKey: ["deposit-journeys"] });
+      qc.invalidateQueries({ queryKey: ["refund-journey"] });
       qc.invalidateQueries({ queryKey: ["deposits"] });
     },
   });
@@ -41,6 +46,8 @@ export function useReviewRefund() {
     mutationFn: ({ id, input }: { id: string; input: api.ReviewRefundInput }) => api.reviewRefund(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["refunds"] });
+      qc.invalidateQueries({ queryKey: ["deposit-journeys"] });
+      qc.invalidateQueries({ queryKey: ["refund-journey"] });
       qc.invalidateQueries({ queryKey: ["refund-settlement"] });
     },
   });
@@ -52,7 +59,21 @@ export function useRejectRefund() {
     mutationFn: ({ id, reason }: { id: string; reason: string }) => api.rejectRefund(id, reason),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["refunds"] });
+      qc.invalidateQueries({ queryKey: ["deposit-journeys"] });
+      qc.invalidateQueries({ queryKey: ["refund-journey"] });
       qc.invalidateQueries({ queryKey: ["deposits"] });
     },
+  });
+}
+
+export function useDepositJourneys(filters: { status?: DepositStatus | "all"; page?: number; pageSize?: number }) {
+  return useQuery({ queryKey: ["deposit-journeys", filters], queryFn: () => api.fetchDepositJourneys(filters) });
+}
+
+export function useRefundJourney(refundId: string | undefined) {
+  return useQuery({
+    queryKey: ["refund-journey", refundId],
+    queryFn: () => api.fetchRefundJourney(refundId!),
+    enabled: !!refundId,
   });
 }

@@ -37,7 +37,7 @@ import { cumulativeRentalDaysForUser } from "../rentals/rentalDays";
  * refund row already held. Nothing writes them, so nothing can disagree.
  */
 
-const REFUND_COLUMNS = `
+export const REFUND_COLUMNS = `
     id, user_id, payment_transaction_id, amount, gross_amount, status, reason,
     deduction_transaction_fee, deduction_other_charges, deduction_cancellation_charge,
     reviewed_at, review_note, rejected_at, rejection_reason,
@@ -59,7 +59,8 @@ const REFUND_COLUMNS = `
                         plans(vehicle_models(name)),
                         hubs(name)
                     ),
-                    users(full_name, phone)
+                    users(full_name, phone),
+                    rentals(rental_vehicle_assignments(assigned_at, vehicles(registration_number)))
                 )
             )
         ),
@@ -74,7 +75,8 @@ const REFUND_COLUMNS = `
                         plans(vehicle_models(name)),
                         hubs(name)
                     ),
-                    users(full_name, phone)
+                    users(full_name, phone),
+                    rentals(rental_vehicle_assignments(assigned_at, vehicles(registration_number)))
                 )
             )
         )
@@ -101,7 +103,7 @@ function unwrap<T>(raw: unknown): T | null {
     return (v as T) ?? null;
 }
 
-interface RawRefundRow {
+export interface RawRefundRow {
     id: string;
     user_id: string;
     payment_transaction_id: string;
@@ -146,7 +148,7 @@ interface RawRefundRow {
  * join dead-ended at `invoices` even though `payment_allocations` had it.
  * Falls back to that route when the order one comes up empty.
  */
-function chainOf(row: RawRefundRow) {
+export function chainOf(row: RawRefundRow) {
     const txn = unwrap<{
         gateway_payment_id: string | null; payment_orders: unknown; payment_allocations: unknown;
     }>(row.payment_transactions);
@@ -162,12 +164,27 @@ function chainOf(row: RawRefundRow) {
             if (invoice) break;
         }
     }
-    const subscription = unwrap<{ id: string; bookings: unknown; users: unknown }>(invoice?.subscriptions);
+    const subscription = unwrap<{ id: string; bookings: unknown; users: unknown; rentals?: unknown }>(invoice?.subscriptions);
     const booking = unwrap<{
         id: string; requested_start_on: string; booking_cancellations: unknown;
         plans: unknown; hubs: unknown;
     }>(subscription?.bookings);
     return { txn, subscription, booking };
+}
+
+/** The most recently assigned scooter across the subscription's rentals, if one was ever handed over. */
+function latestRegistration(rentals: unknown): string | null {
+    const rows = (Array.isArray(rentals) ? rentals : rentals ? [rentals] : []) as { rental_vehicle_assignments?: unknown }[];
+    const all: { assigned_at: string; reg: string | null }[] = [];
+    for (const r of rows) {
+        const list = Array.isArray(r.rental_vehicle_assignments) ? r.rental_vehicle_assignments : r.rental_vehicle_assignments ? [r.rental_vehicle_assignments] : [];
+        for (const a of list as { assigned_at: string; vehicles: unknown }[]) {
+            const v = unwrap<{ registration_number: string }>(a.vehicles);
+            all.push({ assigned_at: a.assigned_at, reg: v?.registration_number ?? null });
+        }
+    }
+    all.sort((x, y) => y.assigned_at.localeCompare(x.assigned_at));
+    return all.find((a) => a.reg)?.reg ?? null;
 }
 
 function toRefundBookingSummary(row: RawRefundRow): RefundBookingSummary | null {
@@ -190,12 +207,13 @@ function toRefundBookingSummary(row: RawRefundRow): RefundBookingSummary | null 
         plan_price_at_cancellation: null,
         vehicle_model_name: unwrap<{ name: string }>(plan?.vehicle_models)?.name ?? null,
         station_name: unwrap<{ name: string }>(booking.hubs)?.name ?? null,
+        vehicle_registration_number: latestRegistration(subscription?.rentals),
         rider_name: rider?.full_name ?? null,
         rider_phone: rider?.phone ?? null,
     };
 }
 
-function toRefundRow(row: RawRefundRow, depositId: string | null = null): RefundRow {
+export function toRefundRow(row: RawRefundRow, depositId: string | null = null): RefundRow {
     const { txn, booking } = chainOf(row);
     const deductions = {
         transaction_fee: Number(row.deduction_transaction_fee ?? 0),
@@ -221,6 +239,8 @@ function toRefundRow(row: RawRefundRow, depositId: string | null = null): Refund
         rejected_at: row.rejected_at,
         rejected_by: unwrap<{ id: string; full_name: string }>(row.rejected_by),
         rejection_reason: row.rejection_reason,
+        approved_by: null,
+        approved_at: null,
         refund_type: row.reason,
         gateway_refund_id: row.gateway_refund_id,
         source_gateway_payment_id: txn?.gateway_payment_id ?? null,
@@ -233,6 +253,44 @@ function toRefundRow(row: RawRefundRow, depositId: string | null = null): Refund
         created_at: row.created_at,
         booking: toRefundBookingSummary(row),
     };
+}
+
+/**
+ * Fills `approved_by` / `approved_at` from the audit trail, one query for the
+ * whole page. The first payout action with a human actor is the approval; a
+ * later retry does not rewrite it.
+ */
+export async function attachApprovers(rows: RefundRow[]): Promise<RefundRow[]> {
+    const ids = rows.filter((r) => r.status !== "pending" && r.status !== "rejected").map((r) => r.id);
+    if (ids.length === 0) return rows;
+    const { data, error } = await supabaseAdmin
+        .from("audit_logs")
+        .select("entity_id, actor_user_id, created_at")
+        .eq("entity_type", "refund")
+        .in("entity_id", ids)
+        .in("action", ["refund.submitted", "refund.processed"])
+        .not("actor_user_id", "is", null)
+        .order("created_at", { ascending: true });
+    if (error) throw error;
+
+    const first = new Map<string, { actor: string; at: string }>();
+    for (const a of data ?? []) {
+        if (a.entity_id && a.actor_user_id && !first.has(a.entity_id)) {
+            first.set(a.entity_id, { actor: a.actor_user_id, at: a.created_at });
+        }
+    }
+    if (first.size === 0) return rows;
+
+    const actorIds = [...new Set([...first.values()].map((f) => f.actor))];
+    const { data: users, error: usersError } = await supabaseAdmin
+        .from("users").select("id, full_name").in("id", actorIds);
+    if (usersError) throw usersError;
+    const names = new Map((users ?? []).map((u) => [u.id, u.full_name as string]));
+
+    return rows.map((r) => {
+        const f = first.get(r.id);
+        return f ? { ...r, approved_by: { id: f.actor, full_name: names.get(f.actor) ?? "Staff" }, approved_at: f.at } : r;
+    });
 }
 
 /** Strips the staff-internal fields off a RefundRow for GET /refunds/me — see MyRefundRow's doc comment. */
@@ -1057,7 +1115,7 @@ export async function listRefunds(filters: ListRefundsFilters): Promise<Paginate
     const { data, error, count } = await query;
     if (error) throw error;
     return paginate(
-        ((data ?? []) as unknown as RawRefundRow[]).map((r) => toRefundRow(r)),
+        await attachApprovers(((data ?? []) as unknown as RawRefundRow[]).map((r) => toRefundRow(r))),
         count ?? 0,
         filters,
     );
@@ -1071,7 +1129,8 @@ export async function getRefundById(id: string): Promise<RefundRow> {
     // note on RefundRow.deposit_id.
     const { subscription } = chainOf(refund);
     const deposit = subscription ? await getDepositForSubscriptionOrNull(subscription.id) : null;
-    return toRefundRow(refund, deposit?.id ?? null);
+    const [withApprover] = await attachApprovers([toRefundRow(refund, deposit?.id ?? null)]);
+    return withApprover;
 }
 
 export interface RefundSettlementLine {

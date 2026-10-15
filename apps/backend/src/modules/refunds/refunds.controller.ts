@@ -2,9 +2,23 @@ import { Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import * as service from "./refunds.service";
+import * as journeys from "./depositJourney.service";
 import {
-    InitiateRefundBody, ListRefundsQuery, MyRefundsQuery, RejectRefundBody, ReviewRefundBody,
+    InitiateRefundBody, ListJourneysQuery, ListRefundsQuery, MyRefundsQuery, RejectRefundBody, ReviewRefundBody,
 } from "./refunds.validation";
+
+/** Deposit journey — payment to refund, in order. See depositJourney.service.ts. */
+export async function listDepositJourneysHandler(req: AuthedRequest, res: Response) {
+    res.json(await journeys.listDepositJourneys(validatedQuery<ListJourneysQuery>(req)));
+}
+
+export async function getDepositJourneyHandler(req: AuthedRequest, res: Response) {
+    res.json(await journeys.getDepositJourneyBySubscription(req.params.subscriptionId as string));
+}
+
+export async function getRefundJourneyHandler(req: AuthedRequest, res: Response) {
+    res.json(await journeys.getDepositJourneyByRefund(req.params.id as string));
+}
 
 export async function listRefundsHandler(req: AuthedRequest, res: Response) {
     const { status, refundType, bookingId, ...page } = validatedQuery<ListRefundsQuery>(req);
