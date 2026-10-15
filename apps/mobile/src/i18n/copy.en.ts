@@ -335,6 +335,7 @@ export const en = {
     'kyc.emergency.error.save': 'Could not save. Please try again.',
 
     'kyc.doc.rejected': 'Rejected',
+    'kyc.doc.rejectedSeeTop': "Needs correction. See the note at the top of this page.",
     'kyc.doc.removeReupload': 'Remove & re-upload',
     'kyc.doc.aadhaarNumber': 'Aadhaar Number',
     'kyc.doc.documentNumber': 'Document Number',

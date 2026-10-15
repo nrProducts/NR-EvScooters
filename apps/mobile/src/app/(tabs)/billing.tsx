@@ -373,10 +373,11 @@ function AttentionNote({ label, tone = 'warning' }: { label: string; tone?: 'war
 export default function BillingScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useT();
-  const { bookingId, booking, invoices, deposit, loading, error, reload, patchInvoices } = useMyBilling();
+  const { bookingId, booking, invoices, deposit, loading, error, reload, patchInvoices, reloadInvoices } = useMyBilling();
   const { refreshing, onRefresh } = useRefresh(() => reload(true));
   const profile = useAuthStore((s) => s.profile);
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
+  const refreshProfileIfStale = useAuthStore((s) => s.refreshProfileIfStale);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
 
@@ -429,10 +430,21 @@ export default function BillingScreen() {
 
     setCardActionInvoiceId(invoiceId);
     try {
-      await referralRepository.applyCard(cardId, invoiceId);
-      // Not awaited: the screen is already right; this only swaps in the
-      // server's own ids and figures.
-      void Promise.all([reload(true), reloadReferralSummary()]);
+      const redemption = await referralRepository.applyCard(cardId, invoiceId);
+      // The response already carries the real redemption id and the discount
+      // the server applied, so the referral summary is patched from it rather
+      // than refetched.
+      setReferralSummary((current) => current && {
+        ...current,
+        reserved_redemptions: current.reserved_redemptions.map((r) => (
+          r.id === `pending-${cardId}`
+            ? { id: redemption.id, invoice_id: redemption.invoice_id, discount_amount: redemption.discount_amount }
+            : r
+        )),
+      });
+      // One request: the invoice list, to swap the optimistic total for the
+      // server's own. Nothing else on this screen changed.
+      void reloadInvoices().catch(() => undefined);
     } catch (err) {
       if (invoice && card) shiftInvoiceTotal(invoiceId, discount);
       if (snapshot) setReferralSummary(snapshot);
@@ -466,7 +478,7 @@ export default function BillingScreen() {
         realId = fresh.reserved_redemptions.find((r) => r.invoice_id === invoiceId)?.id ?? redemptionId;
       }
       await referralRepository.releaseCard(realId);
-      void Promise.all([reload(true), reloadReferralSummary()]);
+      void reloadInvoices().catch(() => undefined);
     } catch (err) {
       if (reservation) shiftInvoiceTotal(invoiceId, -restored);
       if (snapshot) setReferralSummary(snapshot);
@@ -599,8 +611,8 @@ export default function BillingScreen() {
   // refreshed the profile. Same fix as Home/My Scooter.
   useFocusEffect(
     useCallback(() => {
-      void refreshProfile();
-    }, [refreshProfile]),
+      void refreshProfileIfStale();
+    }, [refreshProfileIfStale]),
   );
 
   // Return status must always outrank a stale expired-plan reading: a
@@ -744,7 +756,7 @@ export default function BillingScreen() {
       });
       setPaymentPhase('confirming');
       await billingRepository.verifyPayment(verifyPayload);
-      reload();
+      void reload(true);
     } catch (err) {
       if (err instanceof PaymentCancelledError || err instanceof PaymentUnavailableError) {
         setPayError(err.message);
@@ -791,7 +803,7 @@ export default function BillingScreen() {
       });
       setPaymentPhase('confirming');
       await billingRepository.verifyPayment(verifyPayload);
-      reload();
+      void reload(true);
     } catch (err) {
       if (err instanceof PaymentCancelledError || err instanceof PaymentUnavailableError) {
         setBookingPaymentError(err.message);
@@ -854,7 +866,7 @@ export default function BillingScreen() {
       setPaymentPhase('confirming');
       await billingRepository.verifyPayment(verifyPayload);
       setRechargePreview(null);
-      reload();
+      void reload(true);
     } catch (err) {
       if (err instanceof PaymentCancelledError || err instanceof PaymentUnavailableError) {
         setRechargeError(err.message);

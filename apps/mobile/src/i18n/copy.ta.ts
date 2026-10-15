@@ -320,6 +320,7 @@ export const ta: Copy = {
     'kyc.emergency.error.save': 'சேமிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.',
 
     'kyc.doc.rejected': 'நிராகரிக்கப்பட்டது',
+    'kyc.doc.rejectedSeeTop': "திருத்தம் தேவை. இந்தப் பக்கத்தின் மேலே உள்ள குறிப்பைப் பார்க்கவும்.",
     'kyc.doc.removeReupload': 'அகற்றி மீண்டும் பதிவேற்று',
     'kyc.doc.aadhaarNumber': 'ஆதார் எண்',
     'kyc.doc.documentNumber': 'ஆவண எண்',

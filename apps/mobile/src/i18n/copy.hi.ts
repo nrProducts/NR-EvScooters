@@ -317,6 +317,7 @@ export const hi: Copy = {
     'kyc.emergency.error.save': 'सेव नहीं हो सका। कृपया फिर से कोशिश करें।',
 
     'kyc.doc.rejected': 'अस्वीकृत',
+    'kyc.doc.rejectedSeeTop': "सुधार की ज़रूरत है। इस पेज के ऊपर दिया गया नोट देखें।",
     'kyc.doc.removeReupload': 'हटाएं और फिर से अपलोड करें',
     'kyc.doc.aadhaarNumber': 'आधार नंबर',
     'kyc.doc.documentNumber': 'दस्तावेज़ नंबर',

@@ -118,6 +118,7 @@ export default function HomeScreen() {
     useState<ApiMaintenanceNotice | null>(null);
   const { cancelling, cancelBooking } = useCancelBooking();
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
+  const refreshProfileIfStale = useAuthStore((s) => s.refreshProfileIfStale);
   const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
 
@@ -144,8 +145,8 @@ export default function HomeScreen() {
   // no longer agrees with until something unrelated happens to refresh it.
   useFocusEffect(
     useCallback(() => {
-      void refreshProfile();
-    }, [refreshProfile]),
+      void refreshProfileIfStale();
+    }, [refreshProfileIfStale]),
   );
 
   // Loaded even mid-rental: ActiveRentalCard reuses the featured model's

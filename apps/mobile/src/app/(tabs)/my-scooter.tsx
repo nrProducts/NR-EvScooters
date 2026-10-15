@@ -59,10 +59,11 @@ export default function MyScooterScreen() {
   // profile.has_active_rental actually CHANGES in the store, and nothing
   // here was ever refreshing that flag. Mirrors home.tsx's identical fix.
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
+  const refreshProfileIfStale = useAuthStore((s) => s.refreshProfileIfStale);
   useFocusEffect(
     useCallback(() => {
-      void refreshProfile();
-    }, [refreshProfile]),
+      void refreshProfileIfStale();
+    }, [refreshProfileIfStale]),
   );
 
   // Same settlement card Home shows — fetched here too so a rider who lands

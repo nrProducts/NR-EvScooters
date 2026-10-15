@@ -3,7 +3,7 @@ import { ENV } from '../constants/env';
 import { getAccessToken, getSupabase } from './supabase';
 import { ApiError } from './ApiError';
 import { signInWithGoogleBrowser } from './googleAuth';
-import { cachedGet, clearApiCache } from './apiCache';
+import { cachedGet, invalidateForWrite } from './apiCache';
 
 // Re-exported so existing `import { ApiError } from '../lib/api'` keeps working.
 export { ApiError };
@@ -82,15 +82,16 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const method = options.method ?? 'GET';
 
-    // Writes are never cached, and ANY write drops the read cache — a payment,
-    // booking, profile edit or consent change is exactly when the next screen
-    // must see fresh data. Cleared in `finally` so a rejected write (it may
-    // have partly applied) is treated the same as a successful one.
+    // Writes are never cached, and a write drops the reads it can have
+    // changed (apiCache.ts WRITE_RULES) — a payment, booking, profile edit or
+    // consent change is exactly when the next screen must see fresh data.
+    // Invalidated in `finally` so a rejected write (it may have partly
+    // applied) is treated the same as a successful one.
     if (method !== 'GET') {
         try {
             return await performRequest<T>(path, options);
         } finally {
-            clearApiCache();
+            invalidateForWrite(path);
         }
     }
 

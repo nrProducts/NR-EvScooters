@@ -12,6 +12,8 @@ import { clearApiCache } from '../lib/apiCache';
  * together) into a single in-flight sign-out instead of stacking calls.
  */
 let signOutInFlight: Promise<void> | null = null;
+/** When the profile in the store was last fetched; read by refreshProfileIfStale. */
+let lastProfileAt = 0;
 
 interface AuthState {
     session: SessionRef | null;
@@ -31,7 +33,14 @@ interface AuthState {
     signingOut: boolean;
 
     bootstrap: () => () => void;
+    /** Always fetches. Use after a mutation, where the new truth is the point. */
     refreshProfile: () => Promise<void>;
+    /**
+     * Fetches only if the profile in the store is older than `maxAgeMs`. For
+     * screen-focus refreshes: every tab used to re-request /users/me each time
+     * it was opened, for data the store already held a few seconds old.
+     */
+    refreshProfileIfStale: (maxAgeMs?: number) => Promise<void>;
     requestOtp: (phone: string) => Promise<void>;
     verifyOtp: (phone: string, code: string) => Promise<void>;
     signInWithGoogle: () => Promise<void>;
@@ -75,10 +84,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
     },
 
+    refreshProfileIfStale: async (maxAgeMs = 60_000) => {
+        const { profile } = get();
+        if (profile && Date.now() - lastProfileAt < maxAgeMs) return;
+        await get().refreshProfile();
+    },
+
     refreshProfile: async () => {
         set({ loadingProfile: true, error: null });
         try {
             const profile = await userRepository.me();
+            lastProfileAt = Date.now();
             set({ profile, loadingProfile: false });
         } catch (err) {
             const message = err instanceof ApiError ? err.message : 'Could not load your profile.';
@@ -120,6 +136,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             await authRepository.signOut();
             // One account's cached reads must never be served to the next.
             clearApiCache();
+            lastProfileAt = 0;
             set({ session: null, profile: null, error: null, hasSeenKycIntro: false });
             // The LANGUAGE deliberately survives — it is a device preference,
             // and dropping a rider back into English at the login screen is

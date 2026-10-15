@@ -306,7 +306,12 @@ export async function updateOwnDocument(
         next.rejection_reason = null;
         next.verified_by_user_id = null;
         next.verified_at = null;
-        next.submitted_at = new Date().toISOString();
+        // Back to a DRAFT, not straight into review. Stamping submitted_at here
+        // meant the rider's own correction silently queued itself: staff were
+        // never notified, and the Submit button that followed was refused with
+        // "already awaiting review". The rider now fixes what was rejected and
+        // then submits once, which is what notifies staff.
+        next.submitted_at = null;
     }
 
     const { data, error } = await supabaseAdmin
@@ -388,8 +393,11 @@ export async function submitKyc(userId: string, actor: AuthContext, req?: Reques
 
     const current = deriveKycStatus(docs);
     if (current === "verified") throw businessRule("Your KYC is already verified.");
+    // Already in the queue: nothing to do, and not an error. A double tap or a
+    // retry after a dropped response should land on the same "in review" state
+    // rather than a red message about something that went fine.
     if (current === "pending" && docs.every((d) => d.submitted_at)) {
-        throw conflict("Your KYC is already awaiting review.");
+        return getKycForUser(userId);
     }
 
     const stamp = new Date().toISOString();

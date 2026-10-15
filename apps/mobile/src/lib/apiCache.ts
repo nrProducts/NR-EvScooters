@@ -52,25 +52,26 @@ const POLICIES: Policy[] = [
     { test: /^\/vehicle-models\/[^/]+\/availability$/, ttlMs: 20 * SECOND },
 
     // The rider's own state — short windows, plus cleared on every write.
-    { test: /^\/users\/me\/notifications\/unread-count$/, ttlMs: 10 * SECOND },
-    { test: /^\/users\/me(\/|$)/, ttlMs: 20 * SECOND },
-    { test: /^\/bookings\/me/, ttlMs: 20 * SECOND },
-    { test: /^\/rentals\/me/, ttlMs: 20 * SECOND },
-    { test: /^\/invoices\/me/, ttlMs: 20 * SECOND },
-    { test: /^\/refunds\/me/, ttlMs: 20 * SECOND },
-    { test: /^\/deposits\/me/, ttlMs: 20 * SECOND },
-    { test: /^\/damages\/me/, ttlMs: 20 * SECOND },
-    { test: /^\/referrals\/me/, ttlMs: 20 * SECOND },
-    { test: /^\/maintenance\/me/, ttlMs: 20 * SECOND },
+    { test: /^\/users\/me\/notifications\/unread-count$/, ttlMs: 30 * SECOND },
+    { test: /^\/users\/me(\/|$)/, ttlMs: 60 * SECOND },
+    { test: /^\/bookings\/me/, ttlMs: 60 * SECOND },
+    { test: /^\/rentals\/me/, ttlMs: 60 * SECOND },
+    { test: /^\/invoices\/me/, ttlMs: 60 * SECOND },
+    { test: /^\/refunds\/me/, ttlMs: 60 * SECOND },
+    { test: /^\/deposits\/me/, ttlMs: 60 * SECOND },
+    { test: /^\/damages\/me/, ttlMs: 60 * SECOND },
+    { test: /^\/referrals\/me/, ttlMs: 60 * SECOND },
+    { test: /^\/maintenance\/me/, ttlMs: 60 * SECOND },
 ];
 
 interface Entry {
     value: unknown;
     expiresAt: number;
+    path: string;
 }
 
 const store = new Map<string, Entry>();
-const inflight = new Map<string, Promise<unknown>>();
+const inflight = new Map<string, { promise: Promise<unknown>; path: string }>();
 
 /** Bumped by clearApiCache so a response that was in flight at clear time is not stored. */
 let generation = 0;
@@ -92,7 +93,51 @@ function clone<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
-/** Drops everything. Called after any successful write and on sign-out. */
+/**
+ * Which cached reads a write can have changed.
+ *
+ * Dropping the WHOLE cache after every write meant a reward card, a read
+ * receipt or a profile edit also threw away reads that could not possibly have
+ * changed, and the next screen paid for them again. Each rule below names the
+ * reads its write touches; a write with no rule falls back to dropping
+ * everything, which is always safe.
+ */
+const RIDER_STATE =
+    /^\/(users\/me|bookings\/me|rentals\/me|invoices\/me|refunds\/me|deposits\/me|damages\/me|referrals\/me|maintenance\/me)|^\/vehicle-models\/[^/]+\/availability$/;
+
+const WRITE_RULES: Array<{ test: RegExp; clears: RegExp | 'none' }> = [
+    { test: /^\/users\/me\/push-token$/, clears: 'none' },
+    { test: /^\/users\/me\/notifications/, clears: /^\/users\/me\/notifications/ },
+    { test: /^\/users\/me\/(consents|legal|privacy|support)/, clears: /^\/users\/me\/(consents|legal|privacy|support)/ },
+    { test: /^\/users\/me\/kyc/, clears: /^\/users\/me(\/kyc.*)?$/ },
+    { test: /^\/users\/me(\/photo)?$/, clears: /^\/users\/me$/ },
+    // A reward card changes one invoice and the referral summary, nothing else.
+    { test: /^\/referrals\/(apply-card|redemptions\/)/, clears: /^\/(invoices|referrals)\/me/ },
+    { test: /^\/referrals\//, clears: /^\/(users\/me$|referrals\/me|invoices\/me)/ },
+    // Money, bookings and returns ripple through everything the rider owns —
+    // but not through the vehicle catalogue, terms or the station list.
+    { test: /^\/(payments|bookings|rentals|damages)\//, clears: RIDER_STATE },
+];
+
+/** Drops what a write to `path` may have changed (see WRITE_RULES). */
+export function invalidateForWrite(path: string): void {
+    const rule = WRITE_RULES.find((r) => r.test.test(path));
+    if (!rule) {
+        clearApiCache();
+        return;
+    }
+    if (rule.clears === 'none') return;
+
+    generation += 1;
+    for (const [key, entry] of store) {
+        if (rule.clears.test(entry.path)) store.delete(key);
+    }
+    for (const [key, pending] of inflight) {
+        if (rule.clears.test(pending.path)) inflight.delete(key);
+    }
+}
+
+/** Drops everything. Called on sign-out and for a write with no specific rule. */
 export function clearApiCache(): void {
     generation += 1;
     store.clear();
@@ -128,22 +173,22 @@ export async function cachedGet<T>(
     }
 
     const pending = inflight.get(key);
-    if (pending) return clone((await pending) as T);
+    if (pending) return clone((await pending.promise) as T);
 
     const startedAt = generation;
     const promise = load().then((value) => {
         // A write (or sign-out) landed while this was in flight: what came back
         // may predate it, so it is returned to its caller but never stored.
         if (ttl > 0 && startedAt === generation) {
-            store.set(key, { value, expiresAt: Date.now() + ttl });
+            store.set(key, { value, expiresAt: Date.now() + ttl, path });
         }
         return value;
     });
 
-    inflight.set(key, promise);
+    inflight.set(key, { promise, path });
     try {
         return clone(await promise);
     } finally {
-        if (inflight.get(key) === promise) inflight.delete(key);
+        if (inflight.get(key)?.promise === promise) inflight.delete(key);
     }
 }

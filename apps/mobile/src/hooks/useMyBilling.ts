@@ -95,6 +95,15 @@ export function useMyBilling() {
          */
         patchInvoices: (fn: (invoices: ApiInvoice[]) => ApiInvoice[]) =>
             setBilling((prev) => ({ ...prev, invoices: fn(prev.invoices) })),
+        /**
+         * Re-reads ONLY the invoice list. A reward card changes one invoice and
+         * nothing else, so refetching the booking, deposit, damages and ride
+         * state alongside it (reload) was seven extra requests for no new data.
+         */
+        reloadInvoices: async (): Promise<void> => {
+            const page = await billingRepository.myInvoices({ pageSize: 50 });
+            setBilling((prev) => ({ ...prev, invoices: page.data }));
+        },
         reload: (background = false): Promise<void> =>
             Promise.all([reloadRide(background), load(background)]).then(() => undefined),
     };

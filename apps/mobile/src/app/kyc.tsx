@@ -38,6 +38,14 @@ import { useT, type CopyKey } from '../i18n';
 
 type Step = 0 | 1 | 2 | 3 | 4;
 
+/** YYYY-MM-DD that is also a real calendar day: "2026-10-56" has the shape but is not a date. */
+function isRealIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+}
+
 /** Keys, not titles — module scope does not re-run on a language change. */
 const STEP_TITLE_KEYS: CopyKey[] = [
   'kyc.step.photo', 'kyc.step.emergency', 'kyc.step.aadhaar', 'kyc.step.licence', 'kyc.step.review',
@@ -156,7 +164,7 @@ export default function KycScreen() {
       notify(t('kyc.error.expiry.title'), t('kyc.error.expiry.message'));
       return;
     }
-    if (draft.expires_on && !/^\d{4}-\d{2}-\d{2}$/.test(draft.expires_on.trim())) {
+    if (draft.expires_on && !isRealIsoDate(draft.expires_on.trim())) {
       notify(t('kyc.error.date.title'), t('kyc.error.date.message'));
       return;
     }
@@ -399,6 +407,17 @@ export default function KycScreen() {
 const StatusHeader: React.FC<{ kyc: ApiKycSummary; percent: number }> = ({ kyc, percent }) => {
   const { t } = useT();
 
+  // Rejected documents grouped by their reason: "Aadhaar, Licence: photo not clear".
+  const rejectionNotes = React.useMemo(() => {
+    const byReason = new Map<string, string[]>();
+    for (const d of kyc.documents) {
+      if (d.verification_status !== 'rejected' || !d.rejection_reason) continue;
+      const label = t(DOC_TYPE_LABEL_KEY[d.document_type]);
+      byReason.set(d.rejection_reason, [...(byReason.get(d.rejection_reason) ?? []), label]);
+    }
+    return [...byReason.entries()].map(([reason, docs]) => ({ reason, docs: docs.join(', ') }));
+  }, [kyc.documents, t]);
+
   return (
   <View
     className="rounded-2xl p-4 border mb-4"
@@ -436,13 +455,28 @@ const StatusHeader: React.FC<{ kyc: ApiKycSummary; percent: number }> = ({ kyc, 
 
     {kyc.kyc_status === 'rejected' ? (
       <View
-        className="flex-row items-center mt-3 px-3 py-2 rounded-xl"
+        className="mt-3 px-3 py-2.5 rounded-xl"
         style={{ backgroundColor: COLORS.danger + '10' }}
       >
-        <AlertTriangle size={12} color={COLORS.danger} />
-        <Text style={{ color: COLORS.danger }} className="text-[10px] font-bold ml-1.5 flex-1">
-          {t('kyc.header.rejected')}
-        </Text>
+        <View className="flex-row items-center">
+          <AlertTriangle size={12} color={COLORS.danger} />
+          <Text style={{ color: COLORS.danger }} className="text-[10px] font-bold ml-1.5 flex-1">
+            {t('kyc.header.rejected')}
+          </Text>
+        </View>
+        {/* Staff reject the whole KYC with ONE reason, which lands on every
+            document. Repeating it inside each step made the same sentence
+            appear on pages it had nothing to do with, so it is stated once
+            here, grouped by reason, naming the documents it applies to. */}
+        {rejectionNotes.map((note) => (
+          <Text
+            key={note.reason}
+            style={{ color: COLORS.danger }}
+            className="text-[11px] font-semibold leading-relaxed mt-1.5"
+          >
+            {note.docs}: {note.reason}
+          </Text>
+        ))}
       </View>
     ) : kyc.kyc_status === 'pending' ? (
       <View
@@ -779,15 +813,10 @@ const DocumentStep: React.FC<DocumentStepProps> = ({
         ) : null}
       </View>
 
-      {rejected && doc?.rejection_reason ? (
-        <View className="px-3 py-2.5 rounded-xl mb-3 mt-2" style={{ backgroundColor: COLORS.danger + '10' }}>
-          <Text style={{ color: COLORS.danger }} className="text-[10px] font-black uppercase tracking-wider mb-1">
-            {t('kyc.doc.rejected')}
-          </Text>
-          <Text style={{ color: COLORS.danger }} className="text-[11px] font-semibold leading-relaxed">
-            {doc.rejection_reason}
-          </Text>
-        </View>
+      {rejected ? (
+        <Text style={{ color: COLORS.danger }} className="text-[11px] font-semibold mb-3 mt-2">
+          {t('kyc.doc.rejectedSeeTop')}
+        </Text>
       ) : null}
 
       {onFile ? (
