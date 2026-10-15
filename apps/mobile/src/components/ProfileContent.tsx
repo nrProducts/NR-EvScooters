@@ -368,10 +368,10 @@ function FullProfileLayout({
         </TouchableOpacity>
 
         <View className="w-full" style={{ gap: 6 }}>
-          <Text className="font-sans text-center font-semibold" style={{ color: '#FFFFFF', fontSize: 22 }} numberOfLines={1}>
+          <Text className="font-sans text-center font-semibold" style={{ color: '#FFFFFF', fontSize: 18 }} numberOfLines={1}>
             {profile.full_name}
           </Text>
-          <Text className="font-sans text-center" style={{ color: 'rgba(255,255,255,0.88)', fontSize: 14, letterSpacing: -0.14 }} numberOfLines={1}>
+          <Text className="font-sans text-center" style={{ color: 'rgba(255,255,255,0.88)', fontSize: 12, letterSpacing: -0.12 }} numberOfLines={1}>
             {profile.email ?? (profile.phone ? formatPhoneLocal(profile.phone) : '—')}
           </Text>
         </View>
@@ -386,7 +386,7 @@ function FullProfileLayout({
                 paddingLeft: 14, paddingRight: 13, paddingVertical: 8,
               }}
             >
-              <Text className="font-sans" style={{ color: i === 0 ? GREEN_DARK : '#FFFFFF', fontSize: 12, fontWeight: '600' }}>{chip}</Text>
+              <Text className="font-sans" style={{ color: i === 0 ? GREEN_DARK : '#FFFFFF', fontSize: 11, fontWeight: '600' }}>{chip}</Text>
             </View>
           ))}
         </View>
@@ -443,11 +443,11 @@ function FullProfileLayout({
                     <View className="items-center" style={{ width: 96, gap: 4 }}>
                       <View className="flex-row items-center justify-center" style={{ gap: 5 }}>
                         <Icon size={15} color={GREEN} />
-                        <Text className="font-sans" style={{ color: INK, fontSize: 13, fontWeight: '600', letterSpacing: -0.13 }} numberOfLines={1}>
+                        <Text className="font-sans" style={{ color: INK, fontSize: 12, fontWeight: '600', letterSpacing: -0.12 }} numberOfLines={1}>
                           {item.value}
                         </Text>
                       </View>
-                      <Text className="font-sans text-center" style={{ color: '#5F7468', fontSize: 11, letterSpacing: -0.11 }} numberOfLines={1}>
+                      <Text className="font-sans text-center" style={{ color: '#5F7468', fontSize: 10, letterSpacing: -0.1 }} numberOfLines={1}>
                         {item.label}
                       </Text>
                     </View>
@@ -460,7 +460,7 @@ function FullProfileLayout({
           {/* 1:1442 — details */}
           <View style={{ gap: 16 }}>
             <View style={{ gap: 12 }}>
-              <Text className="font-sans" style={{ color: INK, fontSize: 15, fontWeight: '600' }}>{t('profile.myDetails')}</Text>
+              <Text className="font-sans" style={{ color: INK, fontSize: 14, fontWeight: '600' }}>{t('profile.myDetails')}</Text>
 
               {!profile.can_rent ? (
                 <Text className="font-sans" style={{ color: '#000', fontSize: 12, lineHeight: 18 }}>
@@ -485,8 +485,8 @@ function FullProfileLayout({
                         <Icon size={20} color={GREEN_DARK} />
                       </View>
                       <View style={{ gap: 4 }}>
-                        <Text className="font-sans" style={{ color: '#5F7468', fontSize: 12 }}>{card.label}</Text>
-                        <Text className="font-sans" style={{ color: INK, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>{card.value}</Text>
+                        <Text className="font-sans" style={{ color: '#5F7468', fontSize: 11 }}>{card.label}</Text>
+                        <Text className="font-sans" style={{ color: INK, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{card.value}</Text>
                       </View>
                     </View>
                   );
@@ -530,11 +530,11 @@ function FullProfileLayout({
                   >
                     <Icon size={20} color={GREEN_DARK} />
                   </View>
-                  <Text style={{ color: INK, fontSize: 14, fontWeight: '500' }} className="font-sans flex-1 ml-1">{item.label}</Text>
+                  <Text style={{ color: INK, fontSize: 13, fontWeight: '500' }} className="font-sans flex-1 ml-1">{item.label}</Text>
                   {item.value ? (
                     // lineHeight set explicitly: Devanagari and Tamil overflow the
                     // default box at this size.
-                    <Text className="font-sans" style={{ color: '#5F7468', fontSize: 13, lineHeight: 18 }}>{item.value}</Text>
+                    <Text className="font-sans" style={{ color: '#5F7468', fontSize: 12, lineHeight: 18 }}>{item.value}</Text>
                   ) : null}
                   <ChevronRight size={16} color={GREEN_DARK} />
                 </TouchableOpacity>
@@ -548,7 +548,7 @@ function FullProfileLayout({
               style={{ padding: 16, gap: 8, borderRadius: 14, backgroundColor: COLORS.danger + '12' }}
             >
               <LogOut size={16} color={COLORS.danger} />
-              <Text className="font-sans" style={{ color: COLORS.danger, fontSize: 14 }}>{t('auth.logout')}</Text>
+              <Text className="font-sans" style={{ color: COLORS.danger, fontSize: 13 }}>{t('auth.logout')}</Text>
             </TouchableOpacity>
           </View>
         </View>
