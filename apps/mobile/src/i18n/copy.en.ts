@@ -844,6 +844,7 @@ export const en = {
 
     // --- referrals ----------------------------------------------------------
     'referrals.title': 'Refer & Earn',
+    'home.referEarn.body': 'Invite a friend, earn ₹{amount}',
     'referrals.loadFailed': 'Could not load your referrals.',
     'referrals.inviteHeading': 'Invite friends to Swapngo',
     'referrals.inviteBody': 'Share your code — once a friend completes their first paid booking, you earn a ₹{amount} reward card for your next renewal.',

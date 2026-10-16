@@ -430,7 +430,7 @@ function FullProfileLayout({
             <View
               className="flex-row items-center justify-center"
               style={{
-                backgroundColor: STRIP_BG, borderRadius: 16, paddingVertical: 20, gap: 12,
+                backgroundColor: STRIP_BG, borderRadius: 16, paddingVertical: 20,
                 borderWidth: 1, borderColor: GREEN_EDGE,
                 shadowColor: GREEN_DARK, shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 },
               }}
@@ -440,7 +440,7 @@ function FullProfileLayout({
                 return (
                   <React.Fragment key={item.key}>
                     {i > 0 ? <View style={{ width: 1, alignSelf: 'stretch', backgroundColor: GREEN_EDGE }} /> : null}
-                    <View className="items-center" style={{ width: 96, gap: 4 }}>
+                    <View className="items-center" style={{ flex: 1, minWidth: 0, paddingHorizontal: 6, gap: 4 }}>
                       <View className="flex-row items-center justify-center" style={{ gap: 5 }}>
                         <Icon size={15} color={GREEN} />
                         <Text className="font-sans" style={{ color: INK, fontSize: 12, fontWeight: '600', letterSpacing: -0.12 }} numberOfLines={1}>

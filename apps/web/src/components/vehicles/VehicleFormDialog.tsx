@@ -151,12 +151,6 @@ export function VehicleFormDialog({
           <Field label="Color">
             <Input value={form.color ?? ""} onChange={(e) => set("color", e.target.value)} placeholder="Color" />
           </Field>
-          <Field label="QR code">
-            <Input value={form.qr_code ?? ""} onChange={(e) => set("qr_code", e.target.value)} placeholder="QR code" />
-          </Field>
-          <Field label="IMEI / IoT device">
-            <Input value={form.imei ?? ""} onChange={(e) => set("imei", e.target.value)} placeholder="IMEI / IoT device" />
-          </Field>
           <Field label="Purchase date">
             <Input type="date" value={form.purchase_date ?? ""} onChange={(e) => set("purchase_date", e.target.value)} />
           </Field>

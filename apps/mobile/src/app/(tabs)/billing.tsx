@@ -1380,13 +1380,10 @@ export default function BillingScreen() {
           <View
             className="rounded-3xl p-5 mb-7 border"
             style={{
-              backgroundColor: COLORS.primary + '0A',
+              // Opaque on purpose: a translucent fill lets Android's elevation
+              // shadow bleed through as a grey frame on some devices.
+              backgroundColor: '#F1FAF5',
               borderColor: COLORS.primary + '26',
-              shadowColor: COLORS.black,
-              shadowOpacity: 0.04,
-              shadowRadius: 16,
-              shadowOffset: { width: 0, height: 4 },
-              elevation: 1,
             }}
           >
             {/* The badge said "PAST DUE" in brand green, because the pill was

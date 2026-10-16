@@ -1,46 +1,37 @@
 /**
  * Generates the battery-station marker icons used by the Battery Stations
- * map — one location-pin per status colour, plus a bolt glyph layered on
- * top of each (see BatteryStationMarker.tsx / BatteryStationMapView.web.tsx):
+ * map — one image per status colour:
  *
  *   node scripts/generate-station-icons.mjs
  *
- * Why a generator rather than committed art: these are tiny flat glyphs, and
- * a script makes "nudge the stroke weight" a one-line change instead of a
- * round trip through a design tool. The PNGs it writes ARE committed — this
- * is here so they can be regenerated, not run at build time.
+ * Each image is the full marker: a rounded teardrop pin with a white bolt in
+ * its head, standing on concentric ripple rings (the "charging point with
+ * indicator" mark). The bolt and ripples are baked into the one image, so the
+ * map needs a single symbol layer per marker. The PNGs this writes ARE
+ * committed — the script is here so they can be regenerated, not run at build.
  *
- * Four pre-coloured pins (one per status), not one white pin tinted at
- * render time via an SDF `icon-color`: SDF tinting needs the browser/native
- * GL layer to treat the image as a genuine signed-distance field, and a
- * plain hard-edged alpha mask like these generator primitives draw is not
- * one — it rendered unreliably (markers not appearing at all on some
- * builds). Four flat RGBA images, exactly like the three status icons this
- * replaced, is the same approach already proven to work earlier in this
- * file's history — see git log for the pre-SDF version.
+ * Four pre-coloured images, not one tinted at render time via an SDF
+ * `icon-color`: SDF tinting needs a genuine signed-distance field, and a
+ * flat RGBA image is the approach already proven reliable on this map.
  *
- *   station-pin-working.png       green pin (COLORS.success)
- *   station-pin-maintenance.png   amber pin (COLORS.warning)
- *   station-pin-not-working.png   red pin   (COLORS.danger)
- *   station-pin-offline.png       grey pin  (COLORS.gray[500]) — fallback
- *                                  for a status this match expression
- *                                  doesn't recognise.
- *   station-bolt.png              white bolt, layered on top of every pin.
+ *   station-pin-working.png       green  (COLORS.success)
+ *   station-pin-maintenance.png   amber  (COLORS.warning)
+ *   station-pin-not-working.png   red    (COLORS.danger)
+ *   station-pin-offline.png       grey   (COLORS.gray[500]) — fallback
  *
- * Each pin is drawn as a white halo shape slightly larger than the coloured
- * fill on top of it — baked-in contrast against the map tiles underneath,
- * since a flat RGBA image has no paint-time icon-halo-color the way an SDF
- * icon would.
+ * Geometry is in image pixels. The pin's TIP and the ripples' centre sit at
+ * (TIP_X, TIP_Y); BatteryStationMarker anchors the image at its bottom edge
+ * and offsets it by TIP_OFFSET_FROM_BOTTOM (H - TIP_Y) so the tip lands on
+ * the coordinate. Shapes are rasterised 4x4 supersampled for smooth edges.
  */
 import { deflateSync } from 'node:zlib';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'map');
 
-// Mirrors apps/mobile/src/constants/theme.ts COLORS — kept in sync by hand,
-// same as every other duplicated brand-colour constant in this repo.
+// Mirrors apps/mobile/src/constants/theme.ts COLORS — kept in sync by hand.
 const STATUS_COLORS = {
     working: '#21C45D',
     maintenance: '#F59E0B',
@@ -48,108 +39,126 @@ const STATUS_COLORS = {
     offline: '#6B7280',
 };
 
-// --- tiny raster canvas -------------------------------------------------
-
-function createCanvas(width, height) {
-    return { width, height, data: new Uint8Array(width * height * 4) }; // RGBA, all transparent
-}
+const W = 200;
+const H = 240;
+const TIP_X = 100;
+const TIP_Y = 212;
+const HEAD_Y = 84;
+const HEAD_R = 56;
 
 function hexToRgb(hex) {
     const n = parseInt(hex.slice(1), 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-function plot(canvas, x, y, [r, g, b], alpha = 255) {
-    const px = Math.round(x);
-    const py = Math.round(y);
-    if (px < 0 || py < 0 || px >= canvas.width || py >= canvas.height) return;
-    const i = (py * canvas.width + px) * 4;
-    canvas.data[i] = r;
-    canvas.data[i + 1] = g;
-    canvas.data[i + 2] = b;
-    // Keep the strongest alpha so overlapping shapes don't thin out.
-    canvas.data[i + 3] = Math.max(canvas.data[i + 3], alpha);
+const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+
+// --- shapes: each is (x, y) => boolean ------------------------------------
+
+const inEllipse = (cx, cy, rx, ry) => (x, y) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
+
+function ring(cx, cy, rx, ry, w) {
+    const outer = inEllipse(cx, cy, rx + w / 2, ry + w / 2);
+    const inner = inEllipse(cx, cy, rx - w / 2, ry - w / 2);
+    return (x, y) => outer(x, y) && !inner(x, y);
 }
 
-function fillCircle(canvas, cx, cy, r, rgb) {
-    for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
-        for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
-            if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) plot(canvas, x, y, rgb);
-        }
+function inPolygon(points, x, y) {
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const [xi, yi] = points[i];
+        const [xj, yj] = points[j];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
     }
+    return inside;
 }
 
-/**
- * Fills a closed polygon (list of [x, y] vertices, in order) with a classic
- * scanline algorithm: for each row, find where the polygon's edges cross it,
- * sort those x's, and fill the spans between each pair.
- */
-function fillPolygon(canvas, points, rgb) {
-    const ys = points.map((p) => p[1]);
-    const yMin = Math.max(0, Math.floor(Math.min(...ys)));
-    const yMax = Math.min(canvas.height - 1, Math.ceil(Math.max(...ys)));
+function distToSegment(px, py, [ax, ay], [bx, by]) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
 
-    for (let y = yMin; y <= yMax; y++) {
-        const scanY = y + 0.5;
-        const xs = [];
-        for (let i = 0; i < points.length; i++) {
-            const [x0, y0] = points[i];
-            const [x1, y1] = points[(i + 1) % points.length];
-            if ((y0 <= scanY && y1 > scanY) || (y1 <= scanY && y0 > scanY)) {
-                xs.push(x0 + ((scanY - y0) / (y1 - y0)) * (x1 - x0));
+/** Teardrop: head circle plus the tangent triangle down to the tip. */
+function teardrop() {
+    const d = TIP_Y - HEAD_Y;
+    const alpha = Math.asin(HEAD_R / d);
+    // Distance from the tip to each tangent point, and the half-angle at the tip.
+    const along = Math.sqrt(d * d - HEAD_R * HEAD_R);
+    const dy = along * Math.cos(alpha);
+    const dx = along * Math.sin(alpha);
+    const tri = [[TIP_X, TIP_Y], [TIP_X - dx, TIP_Y - dy], [TIP_X + dx, TIP_Y - dy]];
+    const head = inEllipse(TIP_X, HEAD_Y, HEAD_R, HEAD_R);
+    return (x, y) => head(x, y) || inPolygon(tri, x, y);
+}
+
+/** Bold bolt, corners rounded by dilating a slimmer core by BOLT_ROUND. */
+function bolt() {
+    const BOLT_ROUND = 3.5;
+    const core = [
+        [7, -28], [-15, 4], [-2, 4], [-8, 28], [15, -6], [2, -6],
+    ].map(([x, y]) => [TIP_X + x, HEAD_Y + y]);
+    return (x, y) => {
+        if (inPolygon(core, x, y)) return true;
+        for (let i = 0; i < core.length; i++) {
+            if (distToSegment(x, y, core[i], core[(i + 1) % core.length]) <= BOLT_ROUND) return true;
+        }
+        return false;
+    };
+}
+
+// --- rasteriser -----------------------------------------------------------
+
+const SS = 4;
+
+/** layers: [{ shape, color: (x, y) => [r,g,b], opacity }], painted in order. */
+function render(layers) {
+    const data = new Uint8Array(W * H * 4);
+    for (let py = 0; py < H; py++) {
+        for (let px = 0; px < W; px++) {
+            let r = 0, g = 0, b = 0, a = 0;
+            for (const { shape, color, opacity } of layers) {
+                let hit = 0;
+                for (let sy = 0; sy < SS; sy++) {
+                    for (let sx = 0; sx < SS; sx++) {
+                        if (shape(px + (sx + 0.5) / SS, py + (sy + 0.5) / SS)) hit++;
+                    }
+                }
+                const cov = (hit / (SS * SS)) * opacity;
+                if (cov === 0) continue;
+                const [lr, lg, lb] = color(px + 0.5, py + 0.5);
+                const outA = cov + a * (1 - cov);
+                r = (lr * cov + r * a * (1 - cov)) / outA;
+                g = (lg * cov + g * a * (1 - cov)) / outA;
+                b = (lb * cov + b * a * (1 - cov)) / outA;
+                a = outA;
             }
-        }
-        xs.sort((a, b) => a - b);
-        for (let i = 0; i + 1 < xs.length; i += 2) {
-            const xStart = Math.max(0, Math.round(xs[i]));
-            const xEnd = Math.min(canvas.width - 1, Math.round(xs[i + 1]));
-            for (let x = xStart; x <= xEnd; x++) plot(canvas, x, y, rgb);
+            const i = (py * W + px) * 4;
+            data[i] = Math.round(r);
+            data[i + 1] = Math.round(g);
+            data[i + 2] = Math.round(b);
+            data[i + 3] = Math.round(a * 255);
         }
     }
+    return { width: W, height: H, data };
 }
 
-const WHITE = [255, 255, 255];
+function drawMarker(colorHex) {
+    const base = hexToRgb(colorHex);
+    const light = mix(base, [255, 255, 255], 0.28);
+    const solid = (rgb) => () => rgb;
+    // Pin body: lighter at the top, true status colour toward the tip.
+    const body = (_x, y) => mix(light, base, Math.min(1, Math.max(0, (y - 28) / 150)));
 
-/**
- * The classic map-pin silhouette: a round head (circle) with a triangular
- * tail tapering to a point, the two composited together. Union of a circle
- * and a triangle rather than one smooth bezier outline — this generator has
- * no curve-fill primitive, and at the ~20px the map actually renders this
- * icon, the straight tangent seam disappears into the downsample anyway.
- *
- * Drawn twice at two radii: a white halo (bigger) first, then the status
- * colour (smaller) on top, baking in a crisp border against the map tiles.
- */
-function drawPinShape(canvas, cx, cy, r, tailHalfWidth, tailTipY, rgb) {
-    fillCircle(canvas, cx, cy, r, rgb);
-    fillPolygon(canvas, [
-        [cx - tailHalfWidth, cy + r * 0.6],
-        [cx + tailHalfWidth, cy + r * 0.6],
-        [cx, tailTipY],
-    ], rgb);
-}
-
-function drawPin(canvas, colorHex) {
-    const cx = 48;
-    const cy = 44;
-    drawPinShape(canvas, cx, cy, 36, 28, 126, WHITE);
-    drawPinShape(canvas, cx, cy, 30, 22, 120, hexToRgb(colorHex));
-}
-
-/**
- * A bold lightning bolt — the classic "Z with a flipped triangle on each
- * end" silhouette, drawn fat rather than thin since this renders at ~14px
- * on the map and a thin bolt disappears at that size.
- */
-function drawBolt(canvas) {
-    fillPolygon(canvas, [
-        [54, 6],
-        [24, 50],
-        [42, 50],
-        [30, 90],
-        [72, 40],
-        [52, 40],
-    ], WHITE);
+    return render([
+        { shape: ring(TIP_X, TIP_Y, 88, 22, 4), color: solid(base), opacity: 0.22 },
+        { shape: ring(TIP_X, TIP_Y, 62, 15, 4), color: solid(base), opacity: 0.38 },
+        { shape: inEllipse(TIP_X, TIP_Y, 38, 9), color: solid(base), opacity: 0.3 },
+        { shape: inEllipse(TIP_X, TIP_Y, 16, 4), color: solid(base), opacity: 0.55 },
+        { shape: teardrop(), color: body, opacity: 1 },
+        { shape: bolt(), color: solid([255, 255, 255]), opacity: 1 },
+    ]);
 }
 
 // --- PNG encoding -------------------------------------------------------
@@ -200,9 +209,7 @@ function encodePng(canvas) {
     ]);
 }
 
-function writeIcon(name, width, height, draw) {
-    const canvas = createCanvas(width, height);
-    draw(canvas);
+function writeIcon(name, canvas) {
     const file = join(OUT_DIR, `${name}.png`);
     writeFileSync(file, encodePng(canvas));
     console.log(`wrote ${file}`);
@@ -210,6 +217,7 @@ function writeIcon(name, width, height, draw) {
 
 mkdirSync(OUT_DIR, { recursive: true });
 for (const [status, hex] of Object.entries(STATUS_COLORS)) {
-    writeIcon(`station-pin-${status}`, 96, 128, (canvas) => drawPin(canvas, hex));
+    writeIcon(`station-pin-${status}`, drawMarker(hex));
 }
-writeIcon('station-bolt', 96, 96, drawBolt);
+// Superseded: the bolt is baked into the pin now.
+rmSync(join(OUT_DIR, 'station-bolt.png'), { force: true });

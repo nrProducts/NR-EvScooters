@@ -44,12 +44,28 @@ const STATION_LAYER_ID = 'battery-station-points';
 const STATION_SELECTED_LAYER_ID = 'battery-station-selected';
 const PIN_ICON_NAME = 'station-pin';
 
-const PIN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42">
-  <path d="M16 1C7.7 1 1 7.7 1 16c0 10.5 15 24.5 15 24.5S31 26.5 31 16C31 7.7 24.3 1 16 1Z" fill="${COLORS.primary}" stroke="#FFFFFF" stroke-width="2"/>
-  <circle cx="16" cy="16" r="6" fill="#FFFFFF"/>
+// Same marker the native map uses (scripts/generate-station-icons.mjs): a
+// teardrop pin with a white bolt, standing on ripple rings. 200x240, pin tip
+// and ripple centre at (100, 212) — 28px above the bottom edge.
+const PIN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <defs>
+    <linearGradient id="g" x1="0" y1="28" x2="0" y2="212" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${COLORS.primary}" stop-opacity="0.72"/>
+      <stop offset="0.2" stop-color="${COLORS.primary}"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="${COLORS.primary}" stroke-width="4">
+    <ellipse cx="100" cy="212" rx="88" ry="22" stroke-opacity="0.22"/>
+    <ellipse cx="100" cy="212" rx="62" ry="15" stroke-opacity="0.38"/>
+  </g>
+  <ellipse cx="100" cy="212" rx="38" ry="9" fill="${COLORS.primary}" fill-opacity="0.3"/>
+  <ellipse cx="100" cy="212" rx="16" ry="4" fill="${COLORS.primary}" fill-opacity="0.55"/>
+  <path d="M100 212 L49.6 108.6 A56 56 0 1 1 150.4 108.6 Z" fill="url(#g)"/>
+  <path d="M107 56 L85 88 L98 88 L92 112 L115 78 L102 78 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="7" stroke-linejoin="round"/>
 </svg>`;
 const PIN_DATA_URI = `data:image/svg+xml;base64,${btoa(PIN_SVG)}`;
-const PIN_ICON_SIZE = 1;
+const PIN_ICON_SIZE = 0.3;
+const PIN_TIP_OFFSET_FROM_BOTTOM = 28;
 
 const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStationMapProps>(function BatteryStationMapView(
     { stations, selectedStationId, onSelectStation, onPressMap, userCoords },
@@ -165,6 +181,7 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
                         'icon-allow-overlap': true,
                         'icon-ignore-placement': true,
                         'icon-anchor': 'bottom',
+                        'icon-offset': [0, PIN_TIP_OFFSET_FROM_BOTTOM],
                     }}
                 />
             </Source>

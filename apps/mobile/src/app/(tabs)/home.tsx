@@ -20,6 +20,7 @@ import { HomeQuickLinks } from "../../components/home/HomeQuickLinks";
 import { isReturnLocked } from "../../lib/returnLock";
 import { useDismissibleBanner } from "../../lib/dismissedBanners";
 import { NeedHelpCard } from "../../components/home/NeedHelpCard";
+import { ReferEarnStrip } from "../../components/home/ReferEarnStrip";
 import { Badge } from "../../components/ui/Badge";
 import { SkeletonList } from "../../components/ui/Skeleton";
 import { pullToRefresh } from "../../components/ui/PullToRefresh";
@@ -296,13 +297,6 @@ export default function HomeScreen() {
         }}
         refreshControl={pullToRefresh(refreshing, () => void handleRefresh())}
       >
-        {/*
-          No referral promo card here by design — referrals now work (see
-          /referrals and Profile > "Refer & Earn"), but a rider does not need
-          reminding about them on every Home visit. Keep detailed referral
-          content behind its own screen rather than adding a card here.
-        */}
-
         <KycBanner />
 
         <MaintenanceNoticeBanner notice={maintenanceNotice} />
@@ -644,6 +638,8 @@ export default function HomeScreen() {
         {/* My plan goes dead while a return is in flight — it leads somewhere
             the backend will refuse. See lib/returnLock.ts. */}
         <HomeQuickLinks returnLocked={isReturnLocked(activeRental)} />
+        {/* A single slim line, deliberately — detail lives on /referrals. */}
+        <ReferEarnStrip />
         <NeedHelpCard />
       </PageScroll>
     </AppShell>
