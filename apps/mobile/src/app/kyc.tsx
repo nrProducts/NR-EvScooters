@@ -18,14 +18,15 @@ import { Spinner } from '../components/Spinner';
 import { FormField } from '../components/ui/FormField';
 import { DatePickerField } from '../components/ui/DatePickerField';
 import { CheckRow } from '../components/ui/CheckRow';
+import { ReferralCodeEntry } from '../components/ReferralCodeEntry';
 import { useAuthStore } from '../store/useAuthStore';
 import { useMyKyc } from '../hooks/useKyc';
 import { useConsent } from '../hooks/useConsent';
 import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { pickDocument, pickPhoto } from '../lib/filePicker';
-import { computeInitialKycStep } from '../lib/kycProgress';
-import { formatPhoneLocal } from '../lib/authValidation';
+import { computeInitialKycStep, computeKycProgressPercent } from '../lib/kycProgress';
+import { formatPhoneLocal, isValidPhone, sanitizePhoneInput } from '../lib/authValidation';
 import { COLORS } from '../constants/theme';
 import {
   DOC_TYPE_LABEL_KEY, KYC_STATUS_LABEL_KEY, KYC_STATUS_TONE, VERIFICATION_LABEL_KEY,
@@ -36,6 +37,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT, type CopyKey } from '../i18n';
 
 type Step = 0 | 1 | 2 | 3 | 4;
+
+/** YYYY-MM-DD that is also a real calendar day: "2026-10-56" has the shape but is not a date. */
+function isRealIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+}
 
 /** Keys, not titles — module scope does not re-run on a language change. */
 const STEP_TITLE_KEYS: CopyKey[] = [
@@ -67,7 +76,16 @@ export default function KycScreen() {
   // skip-or-submit) is actually done.
   const { onboarding } = useLocalSearchParams<{ onboarding?: string }>();
   const hideChrome = onboarding === '1';
-  const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) =>
+  // A plain function, NOT a component defined inline — the latter (`const
+  // Shell: React.FC<...> = (...) => ...` inside this render body) is a new
+  // component TYPE on every render, and React remounts a subtree whenever
+  // its wrapping type changes identity, even though the JSX looks identical.
+  // That's exactly what closed the keyboard after every single character
+  // typed into the Aadhaar/licence number field: each keystroke's setState
+  // re-ran KycScreen, which redefined Shell, which tore down and rebuilt
+  // the whole tree below it — including the focused TextInput. A function
+  // that just returns JSX, called directly, has no such identity to change.
+  const shell = (children: React.ReactNode) =>
     hideChrome ? (
       <View style={{ flex: 1, backgroundColor: COLORS.background }}>{children}</View>
     ) : (
@@ -75,7 +93,11 @@ export default function KycScreen() {
     );
 
   // The hook owns loading, refreshing, upload and submit state.
-  const { kyc, loading, refreshing, error, uploading, submitting, refresh, retry, actions } = useMyKyc();
+  const { kyc, loading, refreshing, error, uploading, submitting: submittingKyc, refresh, retry, actions } = useMyKyc();
+  // The hook's flag clears when the submit call returns, before the profile
+  // refresh in submit() below — this keeps the button busy through that too.
+  const [finishingSubmit, setFinishingSubmit] = useState(false);
+  const submitting = submittingKyc || finishingSubmit;
 
   const [step, setStep] = useState<Step>(0);
   const [maxStepReached, setMaxStepReached] = useState<Step>(0);
@@ -142,7 +164,7 @@ export default function KycScreen() {
       notify(t('kyc.error.expiry.title'), t('kyc.error.expiry.message'));
       return;
     }
-    if (draft.expires_on && !/^\d{4}-\d{2}-\d{2}$/.test(draft.expires_on.trim())) {
+    if (draft.expires_on && !isRealIsoDate(draft.expires_on.trim())) {
       notify(t('kyc.error.date.title'), t('kyc.error.date.message'));
       return;
     }
@@ -214,7 +236,12 @@ export default function KycScreen() {
       return;
     }
     // KYC status gates scooter unlock, so the cached profile must catch up.
-    await refreshProfile();
+    setFinishingSubmit(true);
+    try {
+      await refreshProfile();
+    } finally {
+      setFinishingSubmit(false);
+    }
     notify(t('kyc.submitted.title'), t('kyc.submitted.message'));
     router.replace('/home');
   };
@@ -231,38 +258,34 @@ export default function KycScreen() {
   };
 
   if (loading) {
-    return (
-      <Shell>
-        <View className="flex-1 items-center justify-center">
-          <Spinner size={32} color={COLORS.primary} />
-          <Text style={{ color: COLORS.textSecondary }} className="font-medium mt-4 text-xs">
-            {t('kyc.loading')}
-          </Text>
-        </View>
-      </Shell>
+    return shell(
+      <View className="flex-1 items-center justify-center">
+        <Spinner size={32} color={COLORS.primary} />
+        <Text style={{ color: COLORS.textSecondary }} className="font-medium mt-4 text-xs">
+          {t('kyc.loading')}
+        </Text>
+      </View>,
     );
   }
 
   if (error || !kyc) {
-    return (
-      <Shell>
-        <ErrorState
-          message={error?.message ?? t('kyc.loadFailed')}
-          offline={error?.isOffline}
-          onRetry={() => void retry()}
-        />
-      </Shell>
+    return shell(
+      <ErrorState
+        message={error?.message ?? t('kyc.loadFailed')}
+        offline={error?.isOffline}
+        onRetry={() => void retry()}
+      />,
     );
   }
 
-  return (
-    <Shell>
+  return shell(
+    <>
       <PageScroll
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
         refreshControl={pullToRefresh(refreshing, () => void refresh())}
       >
-        <StatusHeader kyc={kyc} />
+        <StatusHeader kyc={kyc} percent={computeKycProgressPercent(profile, kyc)} />
 
         {locked ? (
           <View
@@ -375,14 +398,25 @@ export default function KycScreen() {
       ) : null}
 
       <PreviewModal preview={preview} onClose={() => setPreview(null)} />
-    </Shell>
+    </>,
   );
 }
 
 // ---------------------------------------------------------------------------
 
-const StatusHeader: React.FC<{ kyc: ApiKycSummary }> = ({ kyc }) => {
+const StatusHeader: React.FC<{ kyc: ApiKycSummary; percent: number }> = ({ kyc, percent }) => {
   const { t } = useT();
+
+  // Rejected documents grouped by their reason: "Aadhaar, Licence: photo not clear".
+  const rejectionNotes = React.useMemo(() => {
+    const byReason = new Map<string, string[]>();
+    for (const d of kyc.documents) {
+      if (d.verification_status !== 'rejected' || !d.rejection_reason) continue;
+      const label = t(DOC_TYPE_LABEL_KEY[d.document_type]);
+      byReason.set(d.rejection_reason, [...(byReason.get(d.rejection_reason) ?? []), label]);
+    }
+    return [...byReason.entries()].map(([reason, docs]) => ({ reason, docs: docs.join(', ') }));
+  }, [kyc.documents, t]);
 
   return (
   <View
@@ -402,7 +436,7 @@ const StatusHeader: React.FC<{ kyc: ApiKycSummary }> = ({ kyc }) => {
             {t('kyc.header.title')}
           </Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-            {t('kyc.header.percent', { percent: kyc.completion_percent })}
+            {t('kyc.header.percent', { percent })}
           </Text>
         </View>
       </View>
@@ -413,7 +447,7 @@ const StatusHeader: React.FC<{ kyc: ApiKycSummary }> = ({ kyc }) => {
       <View
         className="h-full rounded-full"
         style={{
-          width: `${kyc.completion_percent}%`,
+          width: `${percent}%`,
           backgroundColor: kyc.kyc_status === 'rejected' ? COLORS.danger : COLORS.primary,
         }}
       />
@@ -421,13 +455,28 @@ const StatusHeader: React.FC<{ kyc: ApiKycSummary }> = ({ kyc }) => {
 
     {kyc.kyc_status === 'rejected' ? (
       <View
-        className="flex-row items-center mt-3 px-3 py-2 rounded-xl"
+        className="mt-3 px-3 py-2.5 rounded-xl"
         style={{ backgroundColor: COLORS.danger + '10' }}
       >
-        <AlertTriangle size={12} color={COLORS.danger} />
-        <Text style={{ color: COLORS.danger }} className="text-[10px] font-bold ml-1.5 flex-1">
-          {t('kyc.header.rejected')}
-        </Text>
+        <View className="flex-row items-center">
+          <AlertTriangle size={12} color={COLORS.danger} />
+          <Text style={{ color: COLORS.danger }} className="text-[10px] font-bold ml-1.5 flex-1">
+            {t('kyc.header.rejected')}
+          </Text>
+        </View>
+        {/* Staff reject the whole KYC with ONE reason, which lands on every
+            document. Repeating it inside each step made the same sentence
+            appear on pages it had nothing to do with, so it is stated once
+            here, grouped by reason, naming the documents it applies to. */}
+        {rejectionNotes.map((note) => (
+          <Text
+            key={note.reason}
+            style={{ color: COLORS.danger }}
+            className="text-[11px] font-semibold leading-relaxed mt-1.5"
+          >
+            {note.docs}: {note.reason}
+          </Text>
+        ))}
       </View>
     ) : kyc.kyc_status === 'pending' ? (
       <View
@@ -617,29 +666,41 @@ const EmergencyContactStep: React.FC<{
 }> = ({ initialName, initialPhone, onBack, onNext }) => {
   const { t } = useT();
   const [name, setName] = useState(initialName);
-  const [phone, setPhone] = useState(initialPhone);
-  const [error, setError] = useState('');
+  const [phone, setPhone] = useState(formatPhoneLocal(initialPhone));
+  const [nameError, setNameError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
-    if (name.trim() && !/^[A-Za-z\s'-]+$/.test(name.trim())) {
-      setError(t('kyc.emergency.error.name'));
-      return;
+    let hasError = false;
+    if (!name.trim()) {
+      setNameError(t('kyc.emergency.error.nameRequired'));
+      hasError = true;
+    } else if (!/^[A-Za-z\s'-]+$/.test(name.trim())) {
+      setNameError(t('kyc.emergency.error.name'));
+      hasError = true;
+    } else {
+      setNameError('');
     }
-    if (!/^\+?[1-9]\d{7,14}$/.test(phone.trim())) {
-      setError(t('kyc.emergency.error.phone'));
-      return;
+    if (!isValidPhone(phone)) {
+      setPhoneError(t('kyc.emergency.error.phone'));
+      hasError = true;
+    } else {
+      setPhoneError('');
     }
-    setError('');
+    if (hasError) return;
+
+    setSaveError('');
     setSaving(true);
     try {
       await userRepository.updateMe({
-        emergency_contact_name: name.trim() || undefined,
-        emergency_contact_phone: phone.trim(),
+        emergency_contact_name: name.trim(),
+        emergency_contact_phone: sanitizePhoneInput(phone),
       });
       await onNext();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('kyc.emergency.error.save'));
+      setSaveError(err instanceof ApiError ? err.message : t('kyc.emergency.error.save'));
     } finally {
       setSaving(false);
     }
@@ -656,22 +717,28 @@ const EmergencyContactStep: React.FC<{
 
       <FormField
         label={t('kyc.emergency.name')}
+        required
         value={name}
-        onChangeText={setName}
+        onChangeText={(next) => {
+          setName(next);
+          if (nameError) setNameError('');
+        }}
         placeholder={t('kyc.emergency.namePlaceholder')}
         autoCapitalize="words"
+        error={nameError}
       />
       <FormField
         label={t('kyc.emergency.phone')}
         required
         value={phone}
-        onChangeText={(t) => {
-          setPhone(t);
-          if (error) setError('');
+        onChangeText={(next) => {
+          setPhone(sanitizePhoneInput(next));
+          if (phoneError) setPhoneError('');
+          if (saveError) setSaveError('');
         }}
         placeholder={t('kyc.emergency.phonePlaceholder')}
         keyboardType="phone-pad"
-        error={error}
+        error={phoneError || saveError}
       />
 
       <View className="flex-row mt-2" style={{ gap: 10 }}>
@@ -746,15 +813,10 @@ const DocumentStep: React.FC<DocumentStepProps> = ({
         ) : null}
       </View>
 
-      {rejected && doc?.rejection_reason ? (
-        <View className="px-3 py-2.5 rounded-xl mb-3 mt-2" style={{ backgroundColor: COLORS.danger + '10' }}>
-          <Text style={{ color: COLORS.danger }} className="text-[10px] font-black uppercase tracking-wider mb-1">
-            {t('kyc.doc.rejected')}
-          </Text>
-          <Text style={{ color: COLORS.danger }} className="text-[11px] font-semibold leading-relaxed">
-            {doc.rejection_reason}
-          </Text>
-        </View>
+      {rejected ? (
+        <Text style={{ color: COLORS.danger }} className="text-[11px] font-semibold mb-3 mt-2">
+          {t('kyc.doc.rejectedSeeTop')}
+        </Text>
       ) : null}
 
       {onFile ? (
@@ -1036,6 +1098,10 @@ const ReviewStep: React.FC<{
         </Text>
       </View>
     ) : null}
+
+    <View className="mt-4">
+      <ReferralCodeEntry />
+    </View>
 
     <View className="mt-4" style={{ gap: 10 }}>
       {/* A declaration of accuracy, not consent — it belongs on the submit

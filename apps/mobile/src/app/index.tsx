@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image, Keyboard } from 'react-native';
 import { Spinner } from '../components/Spinner';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
 import { ApiError } from '../lib/ApiError';
 import { COLORS } from '../constants/theme';
-import { isValidPhone, toE164 } from '../lib/authValidation';
+import { isValidPhone, sanitizePhoneInput, toE164 } from '../lib/authValidation';
 import { Phone, ArrowRight } from 'lucide-react-native';
 import { useT } from '../i18n';
 
@@ -34,6 +34,8 @@ export default function LoginScreen() {
     const e164 = toE164(phone);
     setError('');
     setBusy('otp');
+    // Same reason as otp-verify.tsx: the phone pad hides the button's spinner.
+    Keyboard.dismiss();
     try {
       await requestOtp(e164);
       router.push({ pathname: '/otp-verify', params: { phone: e164 } });
@@ -109,12 +111,13 @@ export default function LoginScreen() {
                 <TextInput
                   value={phone}
                   onChangeText={(t) => {
-                    setPhone(t);
+                    setPhone(sanitizePhoneInput(t));
                     if (error) setError('');
                   }}
                   placeholder={t('auth.mobileNumberPlaceholder')}
                   placeholderTextColor={COLORS.textSecondary}
                   keyboardType="phone-pad"
+                  maxLength={13}
                   autoComplete="tel"
                   accessibilityLabel={t('auth.mobileNumberPlaceholder')}
                   className="flex-1 text-base font-semibold ml-3"

@@ -162,6 +162,27 @@ export async function fetchGatewayPayment(paymentId: string): Promise<GatewayPay
 }
 
 /**
+ * Every payment attempted against a gateway order. Used to recover a payment
+ * whose client callback and webhook were both lost.
+ */
+export async function fetchGatewayOrderPayments(orderId: string): Promise<GatewayPayment[]> {
+    const res = await withGatewayErrors(
+        () => getRazorpay().orders.fetchPayments(orderId),
+    ) as unknown as { items?: Array<Record<string, unknown>> };
+    return (res.items ?? []).map((raw) => ({
+        id: String(raw.id),
+        order_id: raw.order_id ? String(raw.order_id) : null,
+        amount: Number(raw.amount),
+        currency: String(raw.currency),
+        status: raw.status as GatewayPayment["status"],
+        method: raw.method ? String(raw.method) : null,
+        captured: raw.captured === true,
+        error_code: raw.error_code ? String(raw.error_code) : null,
+        error_description: raw.error_description ? String(raw.error_description) : null,
+    }));
+}
+
+/**
  * Creates the gateway order, with SDK failures mapped to real API errors.
  *
  * This is the call that 401s when the key pair is dead, and it is the first

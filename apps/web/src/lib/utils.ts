@@ -10,7 +10,8 @@ export function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
 }
 
@@ -78,4 +79,17 @@ export function initials(name: string) {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+}
+
+/** "15 Oct 2026, 03:42 PM" — date, year AND time, for money records where the hour matters. */
+export function formatFullDateTime(value: string | Date) {
+  const d = typeof value === "string" ? new Date(value) : value;
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
 }

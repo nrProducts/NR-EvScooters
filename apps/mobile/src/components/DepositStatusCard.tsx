@@ -74,7 +74,7 @@ export function DepositStatusCard({
           {t('deposit.securityDeposit')}
         </Text>
         <Text style={{ color: COLORS.textPrimary }} className="text-xl font-black">
-          ₹{deposit.amount.toFixed(0)}
+          ₹{deposit.amount.toFixed(2)}
         </Text>
       </View>
 
@@ -84,7 +84,7 @@ export function DepositStatusCard({
             {t('deposit.refundableNow')}
           </Text>
           <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">
-            ₹{deposit.refundable_amount.toFixed(0)}
+            ₹{deposit.refundable_amount.toFixed(2)}
           </Text>
         </View>
       ) : null}
@@ -101,7 +101,7 @@ export function DepositStatusCard({
           style={{ color: COLORS.textSecondary, borderTopWidth: 1, borderTopColor: COLORS.border }}
           className="text-[11px] font-medium mt-3 pt-2 leading-4"
         >
-          {t('deposit.onboardingNote', { amount: `₹${onboardingCharge.toFixed(0)}` })}
+          {t('deposit.onboardingNote', { amount: `₹${onboardingCharge.toFixed(2)}` })}
         </Text>
       ) : null}
     </View>

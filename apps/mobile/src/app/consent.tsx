@@ -37,7 +37,9 @@ export default function ConsentScreen() {
     // See src/i18n/documentLanguage.ts.
     const docLang = documentLanguage(lang);
 
-    const { state, notice, loading, saving, error, save } = useConsent();
+    const { state, notice, loading, saving: savingConsent, error, save } = useConsent();
+    const [accepting, setAccepting] = useState(false);
+    const saving = savingConsent || accepting;
     const refreshProfile = useAuthStore((s) => s.refreshProfile);
     const [optional, setOptional] = useState<Record<string, boolean>>({});
     const [expanded, setExpanded] = useState<string | null>(null);
@@ -84,12 +86,13 @@ export default function ConsentScreen() {
 
     // Seed the optional toggles from the server, so a rider who returns to
     // this screen sees what they actually chose last time. Anything the rider
-    // has never decided stays OFF — never pre-ticked.
+    // has never decided starts ON (the product default); an explicit earlier
+    // switch-off is respected.
     useEffect(() => {
         if (!state) return;
         const seed: Record<string, boolean> = {};
         for (const item of state.items) {
-            if (!item.required) seed[item.purpose] = item.granted;
+            if (!item.required) seed[item.purpose] = item.decided_at ? item.granted : true;
         }
         setOptional(seed);
     }, [state]);
@@ -103,12 +106,12 @@ export default function ConsentScreen() {
         [state],
     );
 
-    const accept = async () => {
+    const recordAcceptance = async () => {
         const grants = [
             ...required.map((i) => ({ purpose: i.purpose, granted: true })),
             ...optionalItems.map((i) => ({
                 purpose: i.purpose,
-                granted: optional[i.purpose] ?? false,
+                granted: optional[i.purpose] ?? true,
             })),
         ];
         const result = await save(grants);
@@ -155,6 +158,18 @@ export default function ConsentScreen() {
         await refreshProfile();
 
         router.replace((next as never) ?? ('/kyc-intro' as never));
+    };
+
+    // `savingConsent` covers only the first of the three calls above; the
+    // terms acceptance and profile refresh after it used to run with the
+    // button live again and no spinner — a dead pause, and a double-submit.
+    const accept = async () => {
+        setAccepting(true);
+        try {
+            await recordAcceptance();
+        } finally {
+            setAccepting(false);
+        }
     };
 
     if (loading || !state || !notice) {
@@ -233,7 +248,7 @@ export default function ConsentScreen() {
                     key={item.purpose}
                     title={t(`purpose.${item.purpose}.title` as CopyKey)}
                     summary={t(`purpose.${item.purpose}.summary` as CopyKey)}
-                    value={optional[item.purpose] ?? false}
+                    value={optional[item.purpose] ?? true}
                     onChange={(v) => setOptional((prev) => ({ ...prev, [item.purpose]: v }))}
                     disabled={saving}
                 />

@@ -150,6 +150,9 @@ The old rows are kept in `supabase_migrations.schema_migrations_backup_20261006`
   insert into public.staff_profiles (user_id, staff_code)
   select id, 'STF-ADMIN-01' from public.users where email = 'admin@example.com';
   update public.users set role = 'admin' where email = 'admin@example.com';
+  -- the signup trigger made a rider profile; staff/admin accounts have none
+  delete from public.rider_profiles
+   where user_id = (select id from public.users where email = 'admin@example.com');
   commit;
   ```
   Then register the Custom Access Token hook (Dashboard → Authentication →

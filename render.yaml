@@ -156,7 +156,7 @@ services:
   # 2. Admin console + rider web app (static)
   # ---------------------------------------------------------------------------
   - type: web
-    name: nr-evscooters-web
+    name: swapngo-admin
     runtime: static
     branch: main
     rootDir: .
@@ -208,7 +208,7 @@ services:
   #    billing/return screens, account, support) runs the same code as the app.
   # ---------------------------------------------------------------------------
   - type: web
-    name: nr-evscooters-rider-web
+    name: swapngo-rider-web
     runtime: static
     branch: main
     rootDir: .

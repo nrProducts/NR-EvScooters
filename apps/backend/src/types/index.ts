@@ -127,7 +127,7 @@ export const USER_STATUSES: readonly UserStatus[] = [
 
 export type KycStatus = Enums["kyc_status"];
 export const KYC_STATUSES: readonly KycStatus[] = [
-    "not_submitted", "pending", "partially_verified", "verified", "rejected",
+    "not_submitted", "incomplete", "pending", "partially_verified", "verified", "rejected",
 ] as const;
 
 /** Note the spelling: the new enum is `driving_licence`, not `driving_license`. */
@@ -236,6 +236,8 @@ export type EmittedNotificationCode =
     | "adhoc_charge_added"
     // Deposits.
     | "deposit_forfeited"
+    // Referrals.
+    | "referral_reward_issued"
     // Support and broadcasts.
     | "support_ticket_created"
     | "support_status_updated"
@@ -257,6 +259,7 @@ export const EMITTED_NOTIFICATION_CODES: readonly EmittedNotificationCode[] = [
     "refund_needs_approval", "refund_initiated", "refund_completed", "refund_rejected",
     "adhoc_charge_added",
     "deposit_forfeited",
+    "referral_reward_issued",
     "support_ticket_created", "support_status_updated", "admin_broadcast",
 ] as const;
 

@@ -150,7 +150,7 @@ export function PreBookModal({ open, onClose }: { open: boolean; onClose: () => 
 
       const res = await fetch(`${API_BASE}/public/pre-book`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Client-App": "website" },
         body: JSON.stringify({
           full_name: values.full_name,
           phone: values.phone,

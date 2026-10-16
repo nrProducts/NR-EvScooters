@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, Modal, Image, AppState, ScrollView } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect, useSegments } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
+import { Image as ExpoImage } from 'expo-image';
+import { useProfilePhoto } from '../hooks/useProfilePhoto';
 import { useNotificationBadgeStore } from '../store/useNotificationBadgeStore';
 import { COLORS } from '../constants/theme';
 import { userRepository, rentalRepository } from '../services';
@@ -31,7 +33,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   const router = useRouter();
   const { t } = useT();
   const profile = useAuthStore((s) => s.profile);
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const photo = useProfilePhoto();
   const [profileOpen, setProfileOpen] = useState(false);
   const unreadNotifications = useNotificationBadgeStore((s) => s.unreadCount);
   const insets = useSafeAreaInsets();
@@ -41,24 +43,6 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   // Only pushed screens (booking-history, browse-vehicles, …) show the arrow.
   const segments = useSegments();
   const canGoBack = segments[0] !== '(tabs)' && router.canGoBack();
-
-  // profile.profile_photo_url is a private-bucket storage path, not a
-  // fetchable URL (see users.types.ts) — it only tells us a photo exists.
-  // Actually rendering it means minting a signed URL via GET /me/photo/url,
-  // same as the KYC document previews do.
-  const hasPhoto = !!profile?.profile_photo_url;
-  useEffect(() => {
-    if (!hasPhoto) {
-      setPhotoUrl(null);
-      return;
-    }
-    let cancelled = false;
-    userRepository.myPhotoUrl()
-      .then((result) => { if (!cancelled) setPhotoUrl(result.url); })
-      .catch(() => { if (!cancelled) setPhotoUrl(null); });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.profile_photo_url]);
 
   // Polling fallback for the unread badge — the primary path is the foreground
   // push listener in _layout.tsx; this closes the gap for a push that never
@@ -127,9 +111,21 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
             style={{ height: 16, width: 76 }}
             resizeMode="contain"
           />
+          {/* Live-rental indicator. Deliberately NOT brand-tinted and set off
+              from the wordmark: at ml-2 in pale green it read as part of the
+              logo lockup ("swapngo Day 1") rather than as status. A neutral
+              pill with a green dot says "something is running" at a glance,
+              and 11px on grey clears the contrast the 10px tint did not. */}
           {rentalDay != null ? (
-            <View className="ml-2 rounded-full px-2 py-0.5" style={{ backgroundColor: COLORS.primary + '14' }}>
-              <Text style={{ color: COLORS.primaryPressed }} className="text-[10px] font-bold">
+            <View
+              className="ml-3 flex-row items-center rounded-full pl-1.5 pr-2.5 py-1"
+              style={{ backgroundColor: COLORS.gray[100], borderWidth: 1, borderColor: COLORS.border }}
+            >
+              <View
+                className="w-1.5 h-1.5 rounded-full mr-1.5"
+                style={{ backgroundColor: COLORS.primary }}
+              />
+              <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-bold">
                 {t('appShell.dayN', { day: rentalDay })}
               </Text>
             </View>
@@ -168,8 +164,8 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
           className="w-9 h-9 rounded-full items-center justify-center border overflow-hidden"
           style={{ backgroundColor: COLORS.primary + '1A', borderColor: COLORS.primary + '40' }}
         >
-          {photoUrl ? (
-            <Image source={{ uri: photoUrl }} className="w-9 h-9" resizeMode="cover" />
+          {photo ? (
+            <ExpoImage source={{ uri: photo.uri, cacheKey: photo.cacheKey }} cachePolicy="disk" style={{ width: 36, height: 36 }} contentFit="cover" transition={0} />
           ) : (
             <User size={18} color={COLORS.primary} />
           )}

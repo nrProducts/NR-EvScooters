@@ -1,5 +1,6 @@
 import React from 'react';
 import { ScrollView, View, useWindowDimensions, type ScrollViewProps } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 /**
  * The one page-level scroll container every tab/pushed screen should use,
@@ -20,6 +21,11 @@ import { ScrollView, View, useWindowDimensions, type ScrollViewProps } from 'rea
  * launch) but wrong on the web export: it runs on the build machine, which
  * has no real window, and freezes at 0/stale (see onboarding.tsx and
  * SplashAnimation.tsx for the same fix applied earlier).
+ *
+ * Keyboard-aware, so a field low on the page (KYC, Support) scrolls above the
+ * soft keyboard instead of being typed into blind. Same component and offset
+ * as the login and profile-setup screens; with no field focused it behaves as
+ * a plain ScrollView.
  */
 const DESKTOP_BREAKPOINT = 768;
 const CONTENT_MAX_WIDTH = 560;
@@ -34,8 +40,10 @@ export const PageScroll = React.forwardRef<ScrollView, ScrollViewProps>(function
   const isWide = width >= DESKTOP_BREAKPOINT;
 
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
       ref={ref}
+      bottomOffset={24}
+      keyboardShouldPersistTaps="handled"
       style={[{ flex: 1 }, style]}
       contentContainerStyle={[
         {
@@ -50,6 +58,6 @@ export const PageScroll = React.forwardRef<ScrollView, ScrollViewProps>(function
       <View style={isWide ? { width: '100%', maxWidth: CONTENT_MAX_WIDTH } : { width: '100%' }}>
         {children}
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 });

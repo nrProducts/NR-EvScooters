@@ -13,7 +13,7 @@ import {
 } from "../deposits/deposits.service";
 import { AuthContext, Paginated } from "../../types";
 import {
-    ListRefundsFilters, RefundBookingSummary, RefundRow, RefundType,
+    ListRefundsFilters, MyRefundRow, RefundBookingSummary, RefundRow, RefundType,
     ReviewRefundInput, RejectRefundInput,
 } from "./refunds.types";
 import { businessToday } from "../../common/dates";
@@ -37,7 +37,7 @@ import { cumulativeRentalDaysForUser } from "../rentals/rentalDays";
  * refund row already held. Nothing writes them, so nothing can disagree.
  */
 
-const REFUND_COLUMNS = `
+export const REFUND_COLUMNS = `
     id, user_id, payment_transaction_id, amount, gross_amount, status, reason,
     deduction_transaction_fee, deduction_other_charges, deduction_cancellation_charge,
     reviewed_at, review_note, rejected_at, rejection_reason,
@@ -59,7 +59,24 @@ const REFUND_COLUMNS = `
                         plans(vehicle_models(name)),
                         hubs(name)
                     ),
-                    users(full_name, phone)
+                    users(full_name, phone),
+                    rentals(rental_vehicle_assignments(assigned_at, vehicles(registration_number)))
+                )
+            )
+        ),
+        payment_allocations(
+            invoices(
+                subscription_id,
+                subscriptions(
+                    id,
+                    bookings(
+                        id, requested_start_on,
+                        booking_cancellations(cancelled_at, reason, penalty_amount),
+                        plans(vehicle_models(name)),
+                        hubs(name)
+                    ),
+                    users(full_name, phone),
+                    rentals(rental_vehicle_assignments(assigned_at, vehicles(registration_number)))
                 )
             )
         )
@@ -86,7 +103,7 @@ function unwrap<T>(raw: unknown): T | null {
     return (v as T) ?? null;
 }
 
-interface RawRefundRow {
+export interface RawRefundRow {
     id: string;
     user_id: string;
     payment_transaction_id: string;
@@ -120,17 +137,54 @@ interface RawRefundRow {
  * ONE invoice (`invoice_id` NOT NULL). That is a real tightening: the old
  * order carried a `booking_id` and a free-text `purpose`, and one order could
  * be claimed to have settled any number of invoices.
+ *
+ * `payment_orders.invoice_id` is only set for invoice-purpose orders, though
+ * — a pay-first BOOKING order (what a cancellation refund reverses) never
+ * gets one; its only link to an invoice is the `payment_allocations` row
+ * written once the booking materializes (see
+ * `succeededTransactionsForSubscription`'s doc comment, which the same split
+ * forced on payment lookup). Reading only the order route here left
+ * `booking_cancellation` refunds with no rider/booking/vehicle to show — the
+ * join dead-ended at `invoices` even though `payment_allocations` had it.
+ * Falls back to that route when the order one comes up empty.
  */
-function chainOf(row: RawRefundRow) {
-    const txn = unwrap<{ gateway_payment_id: string | null; payment_orders: unknown }>(row.payment_transactions);
+export function chainOf(row: RawRefundRow) {
+    const txn = unwrap<{
+        gateway_payment_id: string | null; payment_orders: unknown; payment_allocations: unknown;
+    }>(row.payment_transactions);
     const order = unwrap<{ invoice_id: string; invoices: unknown }>(txn?.payment_orders);
-    const invoice = unwrap<{ subscription_id: string; subscriptions: unknown }>(order?.invoices);
-    const subscription = unwrap<{ id: string; bookings: unknown; users: unknown }>(invoice?.subscriptions);
+    let invoice = unwrap<{ subscription_id: string; subscriptions: unknown }>(order?.invoices);
+    if (!invoice) {
+        const allocations = Array.isArray(txn?.payment_allocations)
+            ? txn?.payment_allocations : (txn?.payment_allocations ? [txn.payment_allocations] : []);
+        for (const allocation of allocations ?? []) {
+            invoice = unwrap<{ subscription_id: string; subscriptions: unknown }>(
+                (allocation as { invoices: unknown } | null)?.invoices,
+            );
+            if (invoice) break;
+        }
+    }
+    const subscription = unwrap<{ id: string; bookings: unknown; users: unknown; rentals?: unknown }>(invoice?.subscriptions);
     const booking = unwrap<{
         id: string; requested_start_on: string; booking_cancellations: unknown;
         plans: unknown; hubs: unknown;
     }>(subscription?.bookings);
     return { txn, subscription, booking };
+}
+
+/** The most recently assigned scooter across the subscription's rentals, if one was ever handed over. */
+function latestRegistration(rentals: unknown): string | null {
+    const rows = (Array.isArray(rentals) ? rentals : rentals ? [rentals] : []) as { rental_vehicle_assignments?: unknown }[];
+    const all: { assigned_at: string; reg: string | null }[] = [];
+    for (const r of rows) {
+        const list = Array.isArray(r.rental_vehicle_assignments) ? r.rental_vehicle_assignments : r.rental_vehicle_assignments ? [r.rental_vehicle_assignments] : [];
+        for (const a of list as { assigned_at: string; vehicles: unknown }[]) {
+            const v = unwrap<{ registration_number: string }>(a.vehicles);
+            all.push({ assigned_at: a.assigned_at, reg: v?.registration_number ?? null });
+        }
+    }
+    all.sort((x, y) => y.assigned_at.localeCompare(x.assigned_at));
+    return all.find((a) => a.reg)?.reg ?? null;
 }
 
 function toRefundBookingSummary(row: RawRefundRow): RefundBookingSummary | null {
@@ -153,12 +207,13 @@ function toRefundBookingSummary(row: RawRefundRow): RefundBookingSummary | null 
         plan_price_at_cancellation: null,
         vehicle_model_name: unwrap<{ name: string }>(plan?.vehicle_models)?.name ?? null,
         station_name: unwrap<{ name: string }>(booking.hubs)?.name ?? null,
+        vehicle_registration_number: latestRegistration(subscription?.rentals),
         rider_name: rider?.full_name ?? null,
         rider_phone: rider?.phone ?? null,
     };
 }
 
-function toRefundRow(row: RawRefundRow, depositId: string | null = null): RefundRow {
+export function toRefundRow(row: RawRefundRow, depositId: string | null = null): RefundRow {
     const { txn, booking } = chainOf(row);
     const deductions = {
         transaction_fee: Number(row.deduction_transaction_fee ?? 0),
@@ -184,6 +239,8 @@ function toRefundRow(row: RawRefundRow, depositId: string | null = null): Refund
         rejected_at: row.rejected_at,
         rejected_by: unwrap<{ id: string; full_name: string }>(row.rejected_by),
         rejection_reason: row.rejection_reason,
+        approved_by: null,
+        approved_at: null,
         refund_type: row.reason,
         gateway_refund_id: row.gateway_refund_id,
         source_gateway_payment_id: txn?.gateway_payment_id ?? null,
@@ -195,6 +252,64 @@ function toRefundRow(row: RawRefundRow, depositId: string | null = null): Refund
         processed_at: row.completed_at,
         created_at: row.created_at,
         booking: toRefundBookingSummary(row),
+    };
+}
+
+/**
+ * Fills `approved_by` / `approved_at` from the audit trail, one query for the
+ * whole page. The first payout action with a human actor is the approval; a
+ * later retry does not rewrite it.
+ */
+export async function attachApprovers(rows: RefundRow[]): Promise<RefundRow[]> {
+    const ids = rows.filter((r) => r.status !== "pending" && r.status !== "rejected").map((r) => r.id);
+    if (ids.length === 0) return rows;
+    const { data, error } = await supabaseAdmin
+        .from("audit_logs")
+        .select("entity_id, actor_user_id, created_at")
+        .eq("entity_type", "refund")
+        .in("entity_id", ids)
+        .in("action", ["refund.submitted", "refund.processed"])
+        .not("actor_user_id", "is", null)
+        .order("created_at", { ascending: true });
+    if (error) throw error;
+
+    const first = new Map<string, { actor: string; at: string }>();
+    for (const a of data ?? []) {
+        if (a.entity_id && a.actor_user_id && !first.has(a.entity_id)) {
+            first.set(a.entity_id, { actor: a.actor_user_id, at: a.created_at });
+        }
+    }
+    if (first.size === 0) return rows;
+
+    const actorIds = [...new Set([...first.values()].map((f) => f.actor))];
+    const { data: users, error: usersError } = await supabaseAdmin
+        .from("users").select("id, full_name").in("id", actorIds);
+    if (usersError) throw usersError;
+    const names = new Map((users ?? []).map((u) => [u.id, u.full_name as string]));
+
+    return rows.map((r) => {
+        const f = first.get(r.id);
+        return f ? { ...r, approved_by: { id: f.actor, full_name: names.get(f.actor) ?? "Staff" }, approved_at: f.at } : r;
+    });
+}
+
+/** Strips the staff-internal fields off a RefundRow for GET /refunds/me — see MyRefundRow's doc comment. */
+export function toMyRefundRow(row: RefundRow): MyRefundRow {
+    return {
+        id: row.id,
+        booking_id: row.booking_id,
+        amount: row.amount,
+        gross_amount: row.gross_amount,
+        deductions: row.deductions,
+        deduction_total: row.deduction_total,
+        status: row.status,
+        refund_type: row.refund_type,
+        rejection_reason: row.rejection_reason,
+        failure_reason: row.failure_reason,
+        initiated_at: row.initiated_at,
+        processed_at: row.processed_at,
+        created_at: row.created_at,
+        booking: row.booking,
     };
 }
 
@@ -212,18 +327,75 @@ function toRefundRow(row: RawRefundRow, depositId: string | null = null): Refund
  * The payer is read off the ORDER, not the transaction — the transaction
  * only records what the gateway did.
  */
+interface SucceededTransaction {
+    id: string;
+    amount: number;
+    payment_orders: unknown;
+}
+
+/**
+ * Every succeeded payment transaction that actually belongs to this
+ * subscription — the one place that resolution happens, used by both
+ * `paymentForRefund` (ranks them for headroom) and `existingRefund` (just
+ * needs the id set). Keeping this as one function is load-bearing: the two
+ * callers drifting apart is exactly how `existingRefund` ended up unscoped
+ * (see its own doc comment).
+ *
+ * A payment reaches its subscription by TWO different routes and both have
+ * to be searched:
+ *
+ *   • an INVOICE-purpose order carries `payment_orders.invoice_id`, so the
+ *     order itself names the invoice;
+ *   • a pay-first BOOKING order does not. That column stays null — there is
+ *     no invoice when the order is created, only once the capture runs
+ *     materializeBookingFromOrder — and the link that does exist is the
+ *     `payment_allocations` row written at that point.
+ *
+ * Searching only the first route meant every pay-first booking cancellation
+ * failed to find the payment the rider had just made, threw "No captured
+ * payment found to refund against", and had that throw swallowed by
+ * recordCancellation — a refund silently never created.
+ */
+async function succeededTransactionsForSubscription(subscriptionId: string): Promise<SucceededTransaction[]> {
+    const { data: viaOrder, error } = await supabaseAdmin
+        .from("payment_transactions")
+        .select("id, amount, payment_orders!inner(user_id, invoices!inner(subscription_id))")
+        .eq("payment_orders.invoices.subscription_id", subscriptionId)
+        .eq("status", "succeeded");
+    if (error) throw error;
+
+    const { data: allocations, error: allocError } = await supabaseAdmin
+        .from("payment_allocations")
+        .select("payment_transaction_id, invoices!inner(subscription_id)")
+        .eq("invoices.subscription_id", subscriptionId);
+    if (allocError) throw allocError;
+
+    const allocatedIds = (allocations ?? []).map((a) => a.payment_transaction_id);
+    let viaAllocation: SucceededTransaction[] = [];
+    if (allocatedIds.length > 0) {
+        const { data: allocPayments, error: allocPayError } = await supabaseAdmin
+            .from("payment_transactions")
+            .select("id, amount, payment_orders!inner(user_id)")
+            .in("id", allocatedIds)
+            .eq("status", "succeeded");
+        if (allocPayError) throw allocPayError;
+        viaAllocation = (allocPayments ?? []) as unknown as SucceededTransaction[];
+    }
+
+    // Same payment can arrive by both routes; the id keys it either way.
+    const byId = new Map<string, SucceededTransaction>();
+    for (const row of [...((viaOrder ?? []) as unknown as SucceededTransaction[]), ...viaAllocation]) {
+        byId.set(row.id, row);
+    }
+    return [...byId.values()];
+}
+
 export async function paymentForRefund(
     subscriptionId: string,
     minHeadroom = 0,
 ): Promise<{ id: string; userId: string } | null> {
-    const { data, error } = await supabaseAdmin
-        .from("payment_transactions")
-        .select("id, amount, payment_orders!inner(user_id, invoices!inner(subscription_id))")
-        .eq("payment_orders.invoices.subscription_id", subscriptionId)
-        .eq("status", "succeeded")
-        .order("amount", { ascending: false });
-    if (error) throw error;
-    if (!data || data.length === 0) return null;
+    const data = await succeededTransactionsForSubscription(subscriptionId);
+    if (data.length === 0) return null;
 
     const ids = data.map((d) => d.id);
     const { data: refs, error: refError } = await supabaseAdmin
@@ -260,13 +432,32 @@ async function readRefund(id: string): Promise<RawRefundRow | null> {
     return (data as unknown as RawRefundRow) ?? null;
 }
 
-/** An existing live refund of this reason against this subscription, if any. */
+/**
+ * An existing live refund of this reason against this subscription, if any.
+ *
+ * Used to be `.eq("payment_transactions.payment_orders.invoices.subscription_id",
+ * subscriptionId)` directly on the `refunds` select — a PostgREST filter on a
+ * column reached through embeds that have no `!inner` hint. Without `!inner`,
+ * that filter narrows which NESTED rows come back, not which TOP-LEVEL
+ * `refunds` rows match; it was never restricting the query to this
+ * subscription at all. The `.limit(1).order(created_at desc)` then just
+ * handed back the most recently created live `booking_cancellation` refund
+ * IN THE WHOLE TABLE, regardless of whose it was — so a rider cancelling a
+ * paid booking while any other refund of the same type/status existed
+ * anywhere had their cancellation silently wired onto a stranger's refund
+ * instead of getting their own, and their real money never got a refund row
+ * at all. Scoped explicitly now, against the same payment-transaction set
+ * `paymentForRefund` resolves for this subscription.
+ */
 async function existingRefund(subscriptionId: string, reason: RefundType): Promise<RawRefundRow | null> {
+    const transactions = await succeededTransactionsForSubscription(subscriptionId);
+    if (transactions.length === 0) return null;
+
     const { data, error } = await supabaseAdmin
         .from("refunds")
         .select(REFUND_COLUMNS)
         .eq("reason", reason as NonNullable<RefundType>)
-        .eq("payment_transactions.payment_orders.invoices.subscription_id", subscriptionId)
+        .in("payment_transaction_id", transactions.map((t) => t.id))
         .in("status", ["pending", "processing", "succeeded"])
         .order("created_at", { ascending: false })
         .limit(1)
@@ -903,6 +1094,7 @@ export async function listRefunds(filters: ListRefundsFilters): Promise<Paginate
     let query = supabaseAdmin.from("refunds").select(REFUND_COLUMNS, { count: "exact" });
     if (filters.status) query = query.eq("status", filters.status);
     if (filters.refundType) query = query.eq("reason", filters.refundType);
+    if (filters.userId) query = query.eq("user_id", filters.userId);
 
     // Filtering by booking is a three-hop path now, so it is resolved to a
     // subscription id first rather than expressed as an embedded filter.
@@ -923,7 +1115,7 @@ export async function listRefunds(filters: ListRefundsFilters): Promise<Paginate
     const { data, error, count } = await query;
     if (error) throw error;
     return paginate(
-        ((data ?? []) as unknown as RawRefundRow[]).map((r) => toRefundRow(r)),
+        await attachApprovers(((data ?? []) as unknown as RawRefundRow[]).map((r) => toRefundRow(r))),
         count ?? 0,
         filters,
     );
@@ -937,7 +1129,8 @@ export async function getRefundById(id: string): Promise<RefundRow> {
     // note on RefundRow.deposit_id.
     const { subscription } = chainOf(refund);
     const deposit = subscription ? await getDepositForSubscriptionOrNull(subscription.id) : null;
-    return toRefundRow(refund, deposit?.id ?? null);
+    const [withApprover] = await attachApprovers([toRefundRow(refund, deposit?.id ?? null)]);
+    return withApprover;
 }
 
 export interface RefundSettlementLine {

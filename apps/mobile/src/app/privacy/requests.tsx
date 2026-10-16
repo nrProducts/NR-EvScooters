@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
-    View, Text, ScrollView, TouchableOpacity, TextInput,
+    View, Text, TouchableOpacity, TextInput,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRight, ShieldAlert } from 'lucide-react-native';
@@ -110,7 +111,11 @@ export default function PrivacyRequestsScreen() {
 
     return (
         <AppShell title={t('privacy.requests.heading')}>
-            <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 32 }}>
+            <KeyboardAwareScrollView
+                bottomOffset={24}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 32 }}
+            >
                 {mode === 'correction' ? (
                     <Card title={t('privacy.data.correct')} help={t('privacy.data.correct.help')}>
                         <ChipSelect<CorrectableField>
@@ -262,7 +267,7 @@ export default function PrivacyRequestsScreen() {
                         {t('request.due', { date: formatDate(nextDue) })}
                     </Text>
                 ) : null}
-            </ScrollView>
+            </KeyboardAwareScrollView>
         </AppShell>
     );
 }

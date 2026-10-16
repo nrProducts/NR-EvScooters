@@ -1,19 +1,25 @@
 /**
  * The product shot used across the marketing site (Hero, Vehicles). Kept as a
- * component rather than a bare <img> so every call site shares the same asset,
- * framing and alt text — swap the files in apps/website/public to change it
- * everywhere.
+ * component rather than a bare <img> so every call site shares the same
+ * asset, framing and alt text.
  *
- * The source PNG is ~1.3MB at 1374px, which is far more than any layout here
- * asks for, so two WebP renditions are offered first and the PNG is left as
- * the fallback for anything that cannot take WebP. `sizes` describes the real
- * layout (roughly full width on a phone, capped around 40rem on desktop) so a
- * phone downloads the 760px file — about 81KB — rather than the original.
+ * Points at the actual fleet vehicle's own catalog photo — the same file the
+ * rider app reads via vehicle_model_media (My Scooter tab, Browse Vehicles) —
+ * from Supabase's public `vehicle-model-images` bucket, rather than a
+ * separate static file maintained only on the website. One real photo, one
+ * place it lives; update the vehicle's photo in the admin console and both
+ * apps and the site pick it up without a deploy. The bucket is genuinely
+ * public (see supabase/migrations/20260820100600_storage_buckets.sql) — no
+ * signing needed, safe to reference directly from an unauthenticated page.
  *
- * <picture> is `display: contents` so it leaves no box of its own: the <img>
- * keeps behaving exactly as it did when it was the call site's direct child,
- * and every existing aspect/width class still applies to it.
+ * No responsive srcset here (unlike the old locally-hosted version): this is
+ * one fixed file at a fixed size, not a build-time asset with pre-generated
+ * renditions. If this becomes a real weight concern, the move is a resizing
+ * proxy in front of the bucket, not hand-rolled breakpoints again.
  */
+const FLEET_VEHICLE_PHOTO_URL =
+  "https://cndqvdskrcmivqflbttl.supabase.co/storage/v1/object/public/vehicle-model-images/Light_Blue_Bike_MotovoltMvs7.webp";
+
 export function ScooterIllustration({
   className,
   priority = false,
@@ -28,22 +34,13 @@ export function ScooterIllustration({
   priority?: boolean;
 }) {
   return (
-    <picture className="contents">
-      <source
-        type="image/webp"
-        srcSet="/scooter-760.webp 760w, /scooter-1200.webp 1200w"
-        sizes="(min-width: 1024px) 40rem, 92vw"
-      />
-      <img
-        src="/scooter.png"
-        alt="Swapngo electric scooter available for rent in Chennai"
-        width={1374}
-        height={1145}
-        loading={priority ? "eager" : "lazy"}
-        decoding="async"
-        {...(priority ? { fetchPriority: "high" as const } : {})}
-        className={`object-contain ${className ?? ""}`}
-      />
-    </picture>
+    <img
+      src={FLEET_VEHICLE_PHOTO_URL}
+      alt="Swapngo electric scooter available for rent in Chennai"
+      loading={priority ? "eager" : "lazy"}
+      decoding="async"
+      {...(priority ? { fetchPriority: "high" as const } : {})}
+      className={`object-contain ${className ?? ""}`}
+    />
   );
 }

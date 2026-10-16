@@ -34,6 +34,7 @@ import NotificationManagerPage from "@/pages/settings/NotificationManagerPage";
 import PiiAccessPage from "@/pages/privacy/PiiAccessPage";
 import RightsQueuePage from "@/pages/privacy/RightsQueuePage";
 import AuditLogPage from "@/pages/audit/AuditLogPage";
+import ErrorLogsPage from "@/pages/errorLogs/ErrorLogsPage";
 import AttendanceRouter from "@/pages/attendance/AttendanceRouter";
 import LeaveRouter from "@/pages/leave/LeaveRouter";
 import MyProfilePage from "@/pages/profile/MyProfilePage";
@@ -105,6 +106,7 @@ export function AppRoutes() {
         <Route path="/privacy/requests" element={<RightsQueuePage />} />
         <Route path="/privacy/access-log" element={<PiiAccessPage />} />
         <Route path="/audit" element={<AuditLogPage />} />
+        <Route path="/error-logs" element={<ErrorLogsPage />} />
 
         {/* Mini HRMS — AttendanceRouter/LeaveRouter branch by role internally
             too (see their own comments), so the two paths mounting the same

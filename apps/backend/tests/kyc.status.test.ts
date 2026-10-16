@@ -70,6 +70,21 @@ describe("deriveKycStatus", () => {
         expect(deriveKycStatus([doc("aadhaar", "verified")])).toBe("partially_verified");
         expect(deriveKycStatus([doc("passport", "verified")])).toBe("not_submitted");
     });
+
+    it("is incomplete, not pending, with only one of several mandatory documents uploaded", () => {
+        // The real bug this guards: a rider who has uploaded Aadhaar alone
+        // (driving_licence still missing) must NOT read the same as a rider
+        // who uploaded everything and is genuinely awaiting review — the
+        // admin queue's "Pending" tab offered Approve/Reject on a submission
+        // that submitKyc() itself would refuse to accept as complete.
+        expect(deriveKycStatus([doc("aadhaar", "pending")])).toBe("incomplete");
+    });
+
+    it("is pending only once every mandatory document type is present", () => {
+        expect(
+            deriveKycStatus([doc("aadhaar", "pending"), doc("driving_licence", "pending", FUTURE)]),
+        ).toBe("pending");
+    });
 });
 
 describe("kycCompletionPercent", () => {

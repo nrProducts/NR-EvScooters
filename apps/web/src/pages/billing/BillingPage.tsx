@@ -22,6 +22,8 @@ import {
   useUpdateDiscountRule, useWaiveRiderCharge,
 } from "@/hooks/useBilling";
 import { useCancellationTiers, useReplaceCancellationTiers } from "@/hooks/useCancellationTiers";
+import { useReferralProgram, useUpdateReferralProgram } from "@/hooks/useReferralProgram";
+import type { ReferralQualifyingEvent } from "@/services/api/referrals";
 import { useReturnRecoverySettings, useUpdateReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { useVehicles } from "@/hooks/useVehicles";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
@@ -44,7 +46,7 @@ const RIDER_CHARGE_STATUS_OPTIONS: (RiderChargeStatus | "all")[] = [
 ];
 const RIDER_DISCOUNT_STATUS_OPTIONS: (RiderDiscountStatus | "all")[] = ["all", "pending", "applied", "cancelled"];
 
-type BillingTab = "rules" | "cancellation" | "charges" | "discountRules" | "discounts";
+type BillingTab = "rules" | "cancellation" | "charges" | "discountRules" | "discounts" | "referrals";
 
 export default function BillingPage() {
   const [tab, setTab] = useState<BillingTab>("rules");
@@ -60,6 +62,7 @@ export default function BillingPage() {
           <TabsTrigger value="charges">Rider Charges</TabsTrigger>
           <TabsTrigger value="discountRules">Discount Rules</TabsTrigger>
           <TabsTrigger value="discounts">Discounts</TabsTrigger>
+          <TabsTrigger value="referrals">Referrals</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -68,6 +71,7 @@ export default function BillingPage() {
       {tab === "charges" && <RiderChargesTab />}
       {tab === "discountRules" && <DiscountRulesTab />}
       {tab === "discounts" && <DiscountsTab />}
+      {tab === "referrals" && <ReferralProgramTab />}
     </div>
   );
 }
@@ -1556,5 +1560,187 @@ function CancelDiscountDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Referrals — the single live programme (supabase/migrations/
+// 20261010100000_referral_rewards.sql: `referral_programs`). A rider who
+// refers someone earns a fixed-value discount CARD once the referee meets
+// the qualifying event below — not cash, not a wallet balance. Editing these
+// terms never changes a card or referral already issued: the amount and
+// event are frozen onto each one the moment it is created, so tightening or
+// loosening the rule here only affects what happens next.
+// ---------------------------------------------------------------------------
+
+const QUALIFYING_EVENT_LABELS: Record<ReferralQualifyingEvent, string> = {
+  signup: "Signup",
+  kyc_verified: "KYC verified",
+  first_paid_booking: "First paid booking",
+};
+
+interface ReferralProgramDraft {
+  enabled: boolean;
+  reward_amount: string;
+  qualifying_event: ReferralQualifyingEvent;
+  reward_expiry_days: string;
+  max_rewards_per_referrer: string;
+  min_renewal_amount: string;
+}
+
+function ReferralProgramTab() {
+  const { data, isLoading, isError, refetch } = useReferralProgram();
+  const save = useUpdateReferralProgram();
+
+  const [draft, setDraft] = useState<ReferralProgramDraft | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!data) return;
+    setDraft({
+      enabled: data.enabled,
+      reward_amount: String(data.reward_amount),
+      qualifying_event: data.qualifying_event,
+      reward_expiry_days: data.reward_expiry_days === null ? "" : String(data.reward_expiry_days),
+      max_rewards_per_referrer: data.max_rewards_per_referrer === null ? "" : String(data.max_rewards_per_referrer),
+      min_renewal_amount: String(data.min_renewal_amount),
+    });
+  }, [data]);
+
+  if (isLoading || !draft) return <Card className="p-4"><p className="text-sm text-muted-foreground">Loading referral programme…</p></Card>;
+  if (isError) return <Card className="p-4"><p className="text-sm text-destructive">Couldn&apos;t load the referral programme. <button className="underline" onClick={() => refetch()}>Retry</button></p></Card>;
+
+  const rewardAmount = Number(draft.reward_amount);
+  const minRenewalAmount = Number(draft.min_renewal_amount);
+  const rewardExpiryDays = draft.reward_expiry_days.trim() === "" ? null : Number(draft.reward_expiry_days);
+  const maxRewardsPerReferrer = draft.max_rewards_per_referrer.trim() === "" ? null : Number(draft.max_rewards_per_referrer);
+
+  const invalid =
+    Number.isNaN(rewardAmount) || rewardAmount < 0 ||
+    Number.isNaN(minRenewalAmount) || minRenewalAmount < 0 ||
+    (rewardExpiryDays !== null && (!Number.isInteger(rewardExpiryDays) || rewardExpiryDays < 1)) ||
+    (maxRewardsPerReferrer !== null && (!Number.isInteger(maxRewardsPerReferrer) || maxRewardsPerReferrer < 1)) ||
+    (draft.enabled && rewardAmount <= 0);
+
+  const dirty = !!data && (
+    draft.enabled !== data.enabled ||
+    rewardAmount !== data.reward_amount ||
+    draft.qualifying_event !== data.qualifying_event ||
+    rewardExpiryDays !== data.reward_expiry_days ||
+    maxRewardsPerReferrer !== data.max_rewards_per_referrer ||
+    minRenewalAmount !== data.min_renewal_amount
+  );
+
+  const handleSave = () => {
+    setSaveError(null);
+    save.mutate(
+      {
+        enabled: draft.enabled,
+        reward_amount: rewardAmount,
+        qualifying_event: draft.qualifying_event,
+        reward_expiry_days: rewardExpiryDays,
+        max_rewards_per_referrer: maxRewardsPerReferrer,
+        min_renewal_amount: minRenewalAmount,
+      },
+      {
+        onSuccess: () => toastSuccess("Referral programme saved"),
+        onError: (err) => { setSaveError(err instanceof Error ? err.message : "Could not save."); toastError(err, "Could not save referral programme"); },
+      },
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Referral Programme</CardTitle>
+          <CardDescription>
+            A rider who refers someone earns a fixed-value discount card once the referee meets the qualifying event
+            below — not cash, not a wallet balance. One card per successful referral; a rider may hold several and
+            spends one at a time on a future renewal. Changing these terms never alters a card already issued.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3.5 py-3">
+            <div>
+              <p className="text-sm font-medium">Referrals enabled</p>
+              <p className="text-xs text-muted-foreground">
+                Off by default. While off, applying a code is refused with &ldquo;Referrals are not available right now.&rdquo;
+              </p>
+            </div>
+            <Switch
+              checked={draft.enabled}
+              onCheckedChange={(v) => { setSaveError(null); setDraft((d) => d && { ...d, enabled: v }); }}
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Reward amount (₹ per successful referral)</Label>
+              <Input
+                type="number" min={0} value={draft.reward_amount}
+                onChange={(e) => { setSaveError(null); setDraft((d) => d && { ...d, reward_amount: e.target.value }); }}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Qualifying event</Label>
+              <Select
+                value={draft.qualifying_event}
+                onValueChange={(v) => { setSaveError(null); setDraft((d) => d && { ...d, qualifying_event: v as ReferralQualifyingEvent }); }}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(QUALIFYING_EVENT_LABELS) as ReferralQualifyingEvent[]).map((ev) => (
+                    <SelectItem key={ev} value={ev}>{QUALIFYING_EVENT_LABELS[ev]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Card expires after (days)</Label>
+              <Input
+                type="number" min={1} placeholder="Never expires" value={draft.reward_expiry_days}
+                onChange={(e) => { setSaveError(null); setDraft((d) => d && { ...d, reward_expiry_days: e.target.value }); }}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Max rewards per referrer</Label>
+              <Input
+                type="number" min={1} placeholder="No limit" value={draft.max_rewards_per_referrer}
+                onChange={(e) => { setSaveError(null); setDraft((d) => d && { ...d, max_rewards_per_referrer: e.target.value }); }}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Minimum renewal amount to redeem a card (₹)</Label>
+              <Input
+                type="number" min={0} value={draft.min_renewal_amount}
+                onChange={(e) => { setSaveError(null); setDraft((d) => d && { ...d, min_renewal_amount: e.target.value }); }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Not enforced yet — spending a card at renewal isn&apos;t wired up. Safe to set now for when it is.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" disabled={invalid || !dirty || save.isPending} onClick={handleSave}>
+              {save.isPending ? "Saving…" : "Save Programme"}
+            </Button>
+            {draft.enabled && rewardAmount <= 0 && (
+              <span className="text-xs text-destructive">Set a reward amount greater than ₹0 before enabling.</span>
+            )}
+            {saveError && <span className="text-xs text-destructive">{saveError}</span>}
+          </div>
+
+          {data?.updated_at && (
+            <p className="text-xs text-muted-foreground">Last saved {formatDate(data.updated_at)}.</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -34,6 +34,7 @@ const INLINED: Record<string, string | undefined> = {
     EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
     EXPO_PUBLIC_MAP_STYLE_URL: process.env.EXPO_PUBLIC_MAP_STYLE_URL,
     EXPO_PUBLIC_GEOCODE_URL: process.env.EXPO_PUBLIC_GEOCODE_URL,
+    EXPO_PUBLIC_SENTRY_DSN: process.env.EXPO_PUBLIC_SENTRY_DSN,
 };
 
 function read(name: string): string | undefined {
@@ -105,5 +106,12 @@ export const ENV = {
      */
     get geocodeUrl(): string {
         return read('EXPO_PUBLIC_GEOCODE_URL') ?? '';
+    },
+    /**
+     * Sentry project DSN for crash reporting. Optional: unset means crash
+     * reporting is off and nothing else changes — see lib/sentry.ts.
+     */
+    get sentryDsn(): string {
+        return read('EXPO_PUBLIC_SENTRY_DSN') ?? '';
     },
 };

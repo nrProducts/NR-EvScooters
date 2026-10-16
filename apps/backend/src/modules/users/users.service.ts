@@ -21,6 +21,7 @@ import {
 import type { UploadedFile } from "../kyc/kyc.storage";
 import { businessToday } from "../../common/dates";
 import { previewOverdueLateFee } from "../rentals/overdueLateFee";
+import { scrubAuthIdentity } from "../privacy/privacy.erasure";
 
 /**
  * A user is five tables now.
@@ -1023,6 +1024,29 @@ export async function softDeleteUser(id: string, actor: AuthContext, req?: Reque
     // not whenever it happens to expire.
     const { error: signOutError } = await supabaseAdmin.auth.admin.signOut(id, "global");
     if (signOutError) console.warn("[users.delete] could not revoke sessions", signOutError.message);
+
+    // A rider who never finished onboarding (no name on file) has nothing
+    // worth preserving a phone/email claim FOR — there is no KYC, no rental
+    // history, nothing restoreUser would meaningfully bring back. Left as-is,
+    // their phone/email stays locked in Auth (auth.users, not public.users —
+    // a SEPARATE uniqueness check) until the full ~37-day DPDPA erasure
+    // window, which blocks the common real case: someone's phone-OTP signup
+    // stalled, they switch to Google, and typing the SAME number into their
+    // profile fails with "already registered" against their own abandoned
+    // stub — with no visible way to resolve it short of a formal erasure
+    // request. Releasing the identifier immediately here, the same way
+    // scrubAuthIdentity does for a full erasure, is safe specifically
+    // BECAUSE the account is still empty: there is no real identity bound
+    // to this phone/email yet. A rider who DID complete onboarding keeps the
+    // conservative behaviour (locked until erasure) — restoring an account
+    // with real history must still be able to prove ownership the same way
+    // it always could.
+    if (!before.full_name) {
+        const scrubbed = await scrubAuthIdentity(id);
+        if (!scrubbed) {
+            console.warn(`[users.delete] could not release phone/email for incomplete account ${id}`);
+        }
+    }
 
     await writeAudit({
         actorId: actor.id,

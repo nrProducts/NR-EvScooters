@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, TouchableOpacity, Linking, Platform } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
+import { Image as ExpoImage } from "expo-image";
 import {
-  ChevronRight,
   MapPin,
   Calendar,
   Navigation,
@@ -49,6 +49,7 @@ import type {
   ApiReturnSettlement,
 } from "../../types/api";
 import { ScooterStatusCard } from "../../components/ScooterStatusCard";
+import { ReturnTrackerCard } from "../../components/ReturnTrackerCard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useT } from "../../i18n";
 
@@ -117,6 +118,7 @@ export default function HomeScreen() {
     useState<ApiMaintenanceNotice | null>(null);
   const { cancelling, cancelBooking } = useCancelBooking();
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
+  const refreshProfileIfStale = useAuthStore((s) => s.refreshProfileIfStale);
   const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
 
@@ -143,8 +145,8 @@ export default function HomeScreen() {
   // no longer agrees with until something unrelated happens to refresh it.
   useFocusEffect(
     useCallback(() => {
-      void refreshProfile();
-    }, [refreshProfile]),
+      void refreshProfileIfStale();
+    }, [refreshProfileIfStale]),
   );
 
   // Loaded even mid-rental: ActiveRentalCard reuses the featured model's
@@ -295,11 +297,10 @@ export default function HomeScreen() {
         refreshControl={pullToRefresh(refreshing, () => void handleRefresh())}
       >
         {/*
-          <ReferAndEarnBanner /> was here. It already rendered nothing —
-          referralRepository.mine() now always rejects and the banner treats
-          that as "no promo" — but it still fired a doomed request on every
-          Home mount. Removed with the referral field on profile-setup; see
-          docs/final-system-audit (finding M5).
+          No referral promo card here by design — referrals now work (see
+          /referrals and Profile > "Refer & Earn"), but a rider does not need
+          reminding about them on every Home visit. Keep detailed referral
+          content behind its own screen rather than adding a card here.
         */}
 
         <KycBanner />
@@ -317,6 +318,10 @@ export default function HomeScreen() {
                   everything on Home that needs the rider's attention sits at
                   the top of the screen, in one band, before the summary of
                   what is already fine. */}
+              {/* Return submitted: a small tracker above everything else, so a
+                  rider who has asked to hand the scooter back can see it was
+                  received and which step is next. */}
+              <ReturnTrackerCard rental={activeRental} />
               <ScooterStatusCard
                 rental={activeRental}
                 settlement={settlement}
@@ -535,82 +540,106 @@ export default function HomeScreen() {
             ) : featured ? (
               <FeaturedScooterCard model={featured} />
             ) : null}
+          </>
+        ) : null}
 
-            <View className="flex-row items-center justify-between mb-3">
-              <Text
-                style={{ color: COLORS.textPrimary }}
-                className="text-sm font-semibold"
-              >
-                {t("vehicles.availableScooters")}
-              </Text>
-              <TouchableOpacity
-                onPress={() => router.push("/browse-vehicles")}
-                className="flex-row items-center"
-              >
-                <Text
-                  style={{ color: COLORS.primary }}
-                  className="text-xs font-bold mr-1"
+        {/* Fleet availability — shown in every phase, not just while the rider
+            can book: riders point friends here to see what's on offer. The
+            old separate browse screen is gone; this is the only list. */}
+        <Text
+          style={{ color: COLORS.textPrimary }}
+          className="text-sm font-semibold mb-3"
+        >
+          {t("vehicles.availableScooters")}
+        </Text>
+
+        {loadingList && list.length === 0 ? (
+          <SkeletonList count={2} />
+        ) : listError && list.length === 0 ? (
+          <ErrorState message={listError} onRetry={() => void loadList()} />
+        ) : (
+          <View
+            className="rounded-2xl border overflow-hidden mb-5"
+            style={{
+              backgroundColor: COLORS.card,
+              borderColor: COLORS.border,
+              shadowColor: COLORS.black,
+              shadowOpacity: 0.03,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 3 },
+              elevation: 1,
+            }}
+          >
+            {list.slice(0, 5).map((model, i) => {
+              const count = model.availability.available_count;
+              const hasStock = count > 0;
+              const tone = hasStock ? COLORS.primary : COLORS.textSecondary;
+              // "Motovolt Mobility Pvt. Ltd" -> "Motovolt": the legal name is
+              // noise on a card riders scan for the brand.
+              const brand = model.vendor?.name?.trim().split(/\s+/)[0] ?? model.name;
+              const specs = [
+                model.battery_range_km != null ? `${model.battery_range_km} km` : null,
+                model.top_speed_kmph != null ? `${model.top_speed_kmph} km/h` : null,
+              ].filter(Boolean).join("  ·  ");
+              return (
+                <View
+                  key={model.id}
+                  className="flex-row items-center p-3"
+                  style={
+                    i > 0
+                      ? { borderTopWidth: 1, borderColor: COLORS.border }
+                      : undefined
+                  }
                 >
-                  {t("common.seeAll")}
-                </Text>
-                <ChevronRight size={14} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-
-            {loadingList && list.length === 0 ? (
-              <SkeletonList count={2} />
-            ) : listError && list.length === 0 ? (
-              <ErrorState message={listError} onRetry={() => void loadList()} />
-            ) : (
-              <View
-                className="rounded-2xl border overflow-hidden mb-5"
-                style={{
-                  backgroundColor: COLORS.card,
-                  borderColor: COLORS.border,
-                  shadowColor: COLORS.black,
-                  shadowOpacity: 0.03,
-                  shadowRadius: 12,
-                  shadowOffset: { width: 0, height: 3 },
-                  elevation: 1,
-                }}
-              >
-                {list.slice(0, 5).map((model, i) => (
                   <View
-                    key={model.id}
-                    className="flex-row items-center justify-between px-4 py-3"
-                    style={
-                      i > 0
-                        ? { borderTopWidth: 1, borderColor: COLORS.border }
-                        : undefined
-                    }
+                    className="w-14 h-14 rounded-xl mr-3 overflow-hidden"
+                    style={{ backgroundColor: COLORS.gray[100] }}
                   >
+                    {model.image_url ? (
+                      <ExpoImage
+                        source={model.image_url}
+                        style={{ width: "100%", height: "100%" }}
+                        contentFit="contain"
+                        cachePolicy="memory-disk"
+                        transition={0}
+                        accessibilityLabel={model.name}
+                      />
+                    ) : null}
+                  </View>
+
+                  <View className="flex-1 mr-2">
                     <Text
                       style={{ color: COLORS.textPrimary }}
-                      className="text-xs font-bold flex-1 mr-2"
+                      className="text-sm font-extrabold"
                       numberOfLines={1}
                     >
-                      {[model.vendor?.name, model.name]
-                        .filter(Boolean)
-                        .join(" - ")}
-                      {model.battery_range_km != null
-                        ? ` / ${model.battery_range_km} km`
-                        : ""}
-                      {model.top_speed_kmph != null
-                        ? ` / ${model.top_speed_kmph} km/h`
-                        : ""}
+                      {brand}
                     </Text>
                     <Text
                       style={{ color: COLORS.textSecondary }}
-                      className="text-xs font-semibold"
+                      className="text-xs font-semibold mt-0.5"
+                      numberOfLines={1}
                     >
-                      {model.availability.available_count}
+                      {model.name}
+                      {specs ? `   ${specs}` : ""}
                     </Text>
                   </View>
-                ))}
-              </View>
-            )}
-          </>
-        ) : null}
+
+                  <View
+                    className="rounded-full px-2.5 py-1"
+                    style={{ backgroundColor: tone + "1A" }}
+                  >
+                    <Text style={{ color: tone }} className="text-xs font-bold">
+                      {hasStock
+                        ? t("vehicles.availableCount", { count })
+                        : t("vehicles.soldOut")}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
 
         {/* My plan goes dead while a return is in flight — it leads somewhere
             the backend will refuse. See lib/returnLock.ts. */}

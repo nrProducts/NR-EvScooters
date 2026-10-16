@@ -2,11 +2,41 @@ import { Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import * as service from "./refunds.service";
-import { InitiateRefundBody, ListRefundsQuery, RejectRefundBody, ReviewRefundBody } from "./refunds.validation";
+import * as journeys from "./depositJourney.service";
+import {
+    InitiateRefundBody, ListJourneysQuery, ListRefundsQuery, MyRefundsQuery, RejectRefundBody, ReviewRefundBody,
+} from "./refunds.validation";
+
+/** Deposit journey — payment to refund, in order. See depositJourney.service.ts. */
+export async function listDepositJourneysHandler(req: AuthedRequest, res: Response) {
+    res.json(await journeys.listDepositJourneys(validatedQuery<ListJourneysQuery>(req)));
+}
+
+export async function getDepositJourneyHandler(req: AuthedRequest, res: Response) {
+    res.json(await journeys.getDepositJourneyBySubscription(req.params.subscriptionId as string));
+}
+
+export async function getRefundJourneyHandler(req: AuthedRequest, res: Response) {
+    res.json(await journeys.getDepositJourneyByRefund(req.params.id as string));
+}
 
 export async function listRefundsHandler(req: AuthedRequest, res: Response) {
     const { status, refundType, bookingId, ...page } = validatedQuery<ListRefundsQuery>(req);
     res.json(await service.listRefunds({ ...page, status, refundType, bookingId }));
+}
+
+/**
+ * Rider's own refunds — booking cancellations, deposit releases, goodwill —
+ * so "refund requested" doesn't go dark after the initial push notification.
+ * userId is always the caller's, never client-supplied, same as
+ * myInvoicesHandler. Trimmed to rider-safe fields via toMyRefundRow.
+ */
+export async function myRefundsHandler(req: AuthedRequest, res: Response) {
+    const { bookingId, ...page } = validatedQuery<MyRefundsQuery>(req);
+    const result = await service.listRefunds({
+        ...page, userId: req.user!.id, bookingId, sortBy: "created_at", sortDir: "desc",
+    });
+    res.json({ ...result, data: result.data.map(service.toMyRefundRow) });
 }
 
 export async function getRefundHandler(req: AuthedRequest, res: Response) {

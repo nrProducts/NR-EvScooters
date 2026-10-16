@@ -1,18 +1,16 @@
-import { ArrowRight, BatteryCharging, MapPin, Check } from "lucide-react";
+import { ArrowRight, BatteryCharging, Check } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { ScooterIllustration } from "@/components/ui/ScooterIllustration";
 import { Blob } from "@/components/ui/Blob";
 import { Reveal } from "@/components/ui/Reveal";
-import { useSiteData } from "@/lib/siteData";
 import { useBookingCta } from "@/lib/bookingCta";
 import { PRE_BOOKING_MODE } from "@/content/launchMode";
 
 const TRUST_POINTS = ["Flexible plans", "Unlimited kilometres", "Battery swapping", "Easy booking"];
 
 export function Hero() {
-  const { stats } = useSiteData();
   const bookingCta = useBookingCta("hero");
 
   return (
@@ -75,42 +73,15 @@ export function Hero() {
               <div className="overflow-hidden rounded-[1.5rem]">
                 <ScooterIllustration className="aspect-[4/3] w-full" priority />
               </div>
-              {/* Same handwritten accent as the Motovolt MVS7 card further down
-                  the page — the two scooter visuals on the site read as one
-                  pair now instead of two unrelated treatments. Hidden below
-                  `sm`: on a phone-width card the photo is small enough that
-                  this large script text reads as too big and crowds the
-                  scooter itself — the "Battery swap" badge already carries
-                  the page's message there. */}
-              <span
-                aria-hidden
-                className="pointer-events-none absolute right-7 top-7 hidden -rotate-3 font-script text-3xl leading-[0.85] text-primary sm:block"
-              >
-                Ride
-                <br />
-                Green
-              </span>
             </div>
 
-            <div className="absolute -left-3 top-5 flex items-center gap-2 rounded-2xl bg-white px-3 py-2 shadow-soft ring-1 ring-border sm:-left-8 sm:top-10 sm:gap-3 sm:rounded-[1.75rem] sm:px-4 sm:py-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sage sm:h-10 sm:w-10">
-                <MapPin className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" aria-hidden />
+            <div className="absolute -left-3 top-5 flex items-center gap-1.5 rounded-xl bg-white px-2.5 py-1.5 shadow-soft ring-1 ring-border sm:-left-5 sm:top-8">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-mist">
+                <BatteryCharging className="h-3 w-3 text-primary" aria-hidden />
               </span>
               <div className="leading-tight">
-                <p className="text-xs font-semibold text-foreground sm:text-sm">Available nearby</p>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">
-                  {stats.scootersAvailable != null ? `${stats.scootersAvailable} scooters ready` : "Scooters ready now"}
-                </p>
-              </div>
-            </div>
-
-            <div className="absolute bottom-4 right-3 flex items-center gap-2 rounded-2xl bg-white px-3 py-2 shadow-soft ring-1 ring-border sm:-right-6 sm:bottom-10 sm:gap-3 sm:rounded-[1.75rem] sm:px-4 sm:py-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-mist sm:h-10 sm:w-10">
-                <BatteryCharging className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" aria-hidden />
-              </span>
-              <div className="leading-tight">
-                <p className="text-xs font-semibold text-foreground sm:text-sm">Battery swap</p>
-                <p className="text-[11px] text-muted-foreground sm:text-xs">~2 min, and you're riding</p>
+                <p className="text-[11px] font-semibold text-foreground">Battery swap</p>
+                <p className="text-[10px] text-muted-foreground">~2 min, and you're riding</p>
               </div>
             </div>
           </div>

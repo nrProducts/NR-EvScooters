@@ -213,7 +213,7 @@ async function removeFrom(bucket: string, paths: string[]): Promise<number> {
  * deleting the auth user would cascade to public.users, which the financial
  * foreign keys forbid.
  */
-async function scrubAuthIdentity(userId: string): Promise<boolean> {
+export async function scrubAuthIdentity(userId: string): Promise<boolean> {
     try {
         const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
             email: `erased+${userId}@invalid.local`,

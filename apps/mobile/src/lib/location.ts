@@ -17,19 +17,41 @@
  * GPS stream is the biggest battery cost a map screen can add.
  */
 
+import { api } from './api';
+
 export interface Coordinates {
     latitude: number;
     longitude: number;
 }
 
+async function locationConsentGranted(): Promise<boolean> {
+    try {
+        const state = await api.myConsents();
+        const item = state.items.find((i) => i.purpose === 'location_services');
+        // Never decided counts as ON: the choice defaults on and only an
+        // explicit switch-off withdraws it.
+        return !item || !item.decided_at || item.granted;
+    } catch {
+        return false;
+    }
+}
+
 export type LocationOutcome =
     | { status: 'granted'; coords: Coordinates }
+    /** The rider switched "Nearby battery stations" off in Privacy & data. */
+    | { status: 'consent_off' }
     /** The rider said no. A normal outcome, not an error. */
     | { status: 'denied' }
     /** Native module absent, location services off, or no fix available. */
     | { status: 'unavailable' };
 
 export async function requestForegroundLocation(): Promise<LocationOutcome> {
+    // The rider's own "Nearby battery stations" choice in Privacy & data. Off
+    // means the app must not read the position at all — the OS permission is
+    // a separate, coarser gate. Fails closed: if the choice cannot be read,
+    // the location is not read either.
+    if (!(await locationConsentGranted())) return { status: 'consent_off' };
+
     let Location: typeof import('expo-location');
     try {
         Location = await import('expo-location');

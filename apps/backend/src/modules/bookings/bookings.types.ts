@@ -55,7 +55,7 @@ export interface CreateBookingInput {
  * refunds table's `succeeded`, and `not_required` is the absence of a refund
  * row for a cancellation that owed nothing.
  */
-export type BookingRefundStatus = "pending" | "processing" | "processed" | "not_required" | "failed";
+export type BookingRefundStatus = "pending" | "processing" | "processed" | "not_required" | "failed" | "rejected";
 
 export interface CancelBookingInput {
     reason?: string;
@@ -115,6 +115,8 @@ export interface BookingView {
     refund_completed_at: string | null;
     /** `refunds.gateway_refund_id`. */
     refund_transaction_id: string | null;
+    /** `refunds.rejection_reason` — only set when refund_status is "rejected". */
+    refund_rejection_reason: string | null;
 
     // --- subscription state (all null until payment creates the subscription) ---
     /** `subscriptions.status`, narrowed. `due` was renamed `past_due`. */

@@ -5,12 +5,15 @@ import { setUnauthorizedHandler } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
 import type { ApiMe, RoleName } from '../types/api';
 import { useLangStore } from '../i18n';
+import { clearApiCache } from '../lib/apiCache';
 
 /**
  * Collapses overlapping sign-out triggers (e.g. two 401s arriving close
  * together) into a single in-flight sign-out instead of stacking calls.
  */
 let signOutInFlight: Promise<void> | null = null;
+/** When the profile in the store was last fetched; read by refreshProfileIfStale. */
+let lastProfileAt = 0;
 
 interface AuthState {
     session: SessionRef | null;
@@ -26,9 +29,18 @@ interface AuthState {
      * See the comment on _layout.tsx's routing effect.
      */
     hasSeenKycIntro: boolean;
+    /** True while a sign-out is reaching the server — the root layout covers the app meanwhile. */
+    signingOut: boolean;
 
     bootstrap: () => () => void;
+    /** Always fetches. Use after a mutation, where the new truth is the point. */
     refreshProfile: () => Promise<void>;
+    /**
+     * Fetches only if the profile in the store is older than `maxAgeMs`. For
+     * screen-focus refreshes: every tab used to re-request /users/me each time
+     * it was opened, for data the store already held a few seconds old.
+     */
+    refreshProfileIfStale: (maxAgeMs?: number) => Promise<void>;
     requestOtp: (phone: string) => Promise<void>;
     verifyOtp: (phone: string, code: string) => Promise<void>;
     signInWithGoogle: () => Promise<void>;
@@ -43,6 +55,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     loadingProfile: false,
     error: null,
     hasSeenKycIntro: false,
+    signingOut: false,
 
     /**
      * Called once from the root layout; returns an unsubscribe.
@@ -71,10 +84,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         });
     },
 
+    refreshProfileIfStale: async (maxAgeMs = 60_000) => {
+        const { profile } = get();
+        if (profile && Date.now() - lastProfileAt < maxAgeMs) return;
+        await get().refreshProfile();
+    },
+
     refreshProfile: async () => {
         set({ loadingProfile: true, error: null });
         try {
             const profile = await userRepository.me();
+            lastProfileAt = Date.now();
             set({ profile, loadingProfile: false });
         } catch (err) {
             const message = err instanceof ApiError ? err.message : 'Could not load your profile.';
@@ -111,8 +131,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     signOut: async () => {
         if (signOutInFlight) return signOutInFlight;
+        set({ signingOut: true });
         signOutInFlight = (async () => {
             await authRepository.signOut();
+            // One account's cached reads must never be served to the next.
+            clearApiCache();
+            lastProfileAt = 0;
             set({ session: null, profile: null, error: null, hasSeenKycIntro: false });
             // The LANGUAGE deliberately survives — it is a device preference,
             // and dropping a rider back into English at the login screen is
@@ -126,6 +150,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             await signOutInFlight;
         } finally {
             signOutInFlight = null;
+            set({ signingOut: false });
         }
     },
 

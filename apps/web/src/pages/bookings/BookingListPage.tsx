@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { PackageCheck } from "lucide-react";
+import { PackageCheck, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
@@ -15,7 +16,10 @@ import {
 } from "@/components/ui/dialog";
 import { RentalOperationsSummaryCards } from "@/components/bookings/RentalOperationsSummaryCards";
 import { AdminCreateBookingDialog } from "@/components/bookings/AdminCreateBookingDialog";
-import { usePickupQueue, useAvailableVehicles, useConfirmPickup } from "@/hooks/useBookings";
+import { usePickupQueue, useAvailableVehicles, useConfirmPickup, useAdminCancelBooking } from "@/hooks/useBookings";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { usePreBookings } from "@/hooks/usePreBookings";
 import { useReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { useTableSort } from "@/hooks/useTableSort";
@@ -208,6 +212,14 @@ export default function BookingListPage() {
   const [page, setPage] = useState(1);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  // True once staff choose to swap the already-reserved scooter for a
+  // different one. Picker is hidden by default when a vehicle is already
+  // held — most pickups just hand over what's reserved — this is the
+  // explicit opt-in for the exceptional case (reserved unit turns out
+  // damaged, rider wants a different colour, etc).
+  const [overrideVehicle, setOverrideVehicle] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<PickupBooking | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
   const [vehicleSearch, setVehicleSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -221,7 +233,7 @@ export default function BookingListPage() {
     sortDir: sort.dir,
   });
   const { data: availableVehicles, isLoading: vehiclesLoading } = useAvailableVehicles(
-    pickupTarget && !pickupTarget.vehicle ? pickupTarget.id : undefined,
+    pickupTarget && (!pickupTarget.vehicle || overrideVehicle) ? pickupTarget.id : undefined,
   );
   const preBookings = usePreBookings({ page, pageSize: 8 });
   // Case/space-insensitive so "22ab0005" or "TN 22 AB 0005" still matches
@@ -234,6 +246,7 @@ export default function BookingListPage() {
       v.registration_number.toLowerCase().replace(/\s+/g, "").includes(normalizedVehicleSearch),
   );
   const confirmPickup = useConfirmPickup();
+  const adminCancelBooking = useAdminCancelBooking();
 
   const baseColumns: DataTableColumn<PickupBooking>[] = [
     { header: "Rider", key: "rider", render: (b) => b.rider.full_name },
@@ -363,17 +376,45 @@ export default function BookingListPage() {
             </Button>
           );
         }
+        const canCancel = (b.status === "confirmed" || b.status === "pending_payment")
+          && hasAction(user, "bookings", "cancel");
         if (b.status === "confirmed" && hasAction(user, "bookings", "edit")) {
+          return (
+            <div className="flex justify-end items-center gap-1.5">
+              <Button
+                size="sm"
+                onClick={() => {
+                  setPickupTarget(b);
+                  setSelectedVehicleId(null);
+                  setVehicleSearch("");
+                  setOverrideVehicle(false);
+                }}
+              >
+                <PackageCheck className="h-3.5 w-3.5" /> Confirm pickup
+              </Button>
+              {canCancel && (
+                <IconButton
+                  label="Cancel booking"
+                  size="icon"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive shrink-0"
+                  onClick={() => { setCancelTarget(b); setCancelReason(""); }}
+                >
+                  <XCircle className="h-3.5 w-3.5" />
+                </IconButton>
+              )}
+            </div>
+          );
+        }
+        if (canCancel) {
           return (
             <Button
               size="sm"
-              onClick={() => {
-                setPickupTarget(b);
-                setSelectedVehicleId(null);
-                setVehicleSearch("");
-              }}
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={() => { setCancelTarget(b); setCancelReason(""); }}
             >
-              <PackageCheck className="h-3.5 w-3.5" /> Confirm pickup
+              <XCircle className="h-3.5 w-3.5" /> Cancel
             </Button>
           );
         }
@@ -632,54 +673,76 @@ export default function BookingListPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {pickupTarget?.vehicle ? (
-            <div className="rounded-lg border border-border p-3 text-sm">
-              <p className="font-medium">{pickupTarget.vehicle.registration_number}</p>
-              <p className="text-xs text-muted-foreground">
-                {pickupTarget.vehicle.name} · already reserved
-              </p>
+          {pickupTarget?.vehicle && !overrideVehicle ? (
+            <div className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
+              <div>
+                <p className="font-medium">{pickupTarget.vehicle.registration_number}</p>
+                <p className="text-xs text-muted-foreground">
+                  {pickupTarget.vehicle.name} · already reserved
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { setOverrideVehicle(true); setSelectedVehicleId(null); setVehicleSearch(""); }}
+              >
+                Change scooter
+              </Button>
             </div>
-          ) : vehiclesLoading ? (
-            <Skeleton className="h-32 w-full" />
-          ) : !availableVehicles || availableVehicles.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              No scooters are available at this station right now.
-            </p>
           ) : (
             <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Select a scooter to hand over:</p>
-              <SearchBar
-                value={vehicleSearch}
-                onChange={setVehicleSearch}
-                placeholder="Search by registration number…"
-              />
-              {filteredAvailableVehicles.length === 0 ? (
+              {overrideVehicle && pickupTarget?.vehicle && (
+                <button
+                  type="button"
+                  className="text-xs text-primary underline underline-offset-2"
+                  onClick={() => { setOverrideVehicle(false); setSelectedVehicleId(null); }}
+                >
+                  Keep the reserved scooter ({pickupTarget.vehicle.registration_number}) instead
+                </button>
+              )}
+              {vehiclesLoading ? (
+                <Skeleton className="h-32 w-full" />
+              ) : !availableVehicles || availableVehicles.length === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">
-                  No scooter matches "{vehicleSearch}".
+                  No other scooters are available at this station right now.
                 </p>
               ) : (
-                <div className="max-h-64 space-y-2 overflow-y-auto">
-                  {filteredAvailableVehicles.map((v) => (
-                    <label
-                      key={v.id}
-                      className="flex cursor-pointer items-center justify-between rounded-lg border border-border p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-accent"
-                    >
-                      <div>
-                        <p className="font-medium">{v.registration_number}</p>
-                        <p className="text-xs text-muted-foreground">{v.name}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">{v.battery_percentage}%</span>
-                        <input
-                          type="radio"
-                          name="vehicle"
-                          checked={selectedVehicleId === v.id}
-                          onChange={() => setSelectedVehicleId(v.id)}
-                        />
-                      </div>
-                    </label>
-                  ))}
-                </div>
+                <>
+                  <p className="text-xs text-muted-foreground">Select a scooter to hand over:</p>
+                  <SearchBar
+                    value={vehicleSearch}
+                    onChange={setVehicleSearch}
+                    placeholder="Search by registration number…"
+                  />
+                  {filteredAvailableVehicles.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      No scooter matches "{vehicleSearch}".
+                    </p>
+                  ) : (
+                    <div className="max-h-64 space-y-2 overflow-y-auto">
+                      {filteredAvailableVehicles.map((v) => (
+                        <label
+                          key={v.id}
+                          className="flex cursor-pointer items-center justify-between rounded-lg border border-border p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-accent"
+                        >
+                          <div>
+                            <p className="font-medium">{v.registration_number}</p>
+                            <p className="text-xs text-muted-foreground">{v.name}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">{v.battery_percentage}%</span>
+                            <input
+                              type="radio"
+                              name="vehicle"
+                              checked={selectedVehicleId === v.id}
+                              onChange={() => setSelectedVehicleId(v.id)}
+                            />
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -695,11 +758,19 @@ export default function BookingListPage() {
               Cancel
             </Button>
             <Button
-              disabled={(!pickupTarget?.vehicle && !selectedVehicleId) || confirmPickup.isPending}
+              disabled={
+                ((!pickupTarget?.vehicle || overrideVehicle) && !selectedVehicleId) || confirmPickup.isPending
+              }
               onClick={() => {
                 if (pickupTarget) {
+                  // Reserved + not overriding -> omit vehicleId, backend uses
+                  // held_vehicle_id. Either overriding, or nothing was ever
+                  // reserved -> the explicit pick the admin just made.
+                  const vehicleId = pickupTarget.vehicle && !overrideVehicle
+                    ? undefined
+                    : selectedVehicleId!;
                   confirmPickup.mutate(
-                    { bookingId: pickupTarget.id, vehicleId: pickupTarget.vehicle ? undefined : selectedVehicleId! },
+                    { bookingId: pickupTarget.id, vehicleId },
                     {
                       onSuccess: () => {
                         toastSuccess("Handover confirmed");
@@ -718,6 +789,43 @@ export default function BookingListPage() {
       </Dialog>
 
       <AdminCreateBookingDialog open={createOpen} onOpenChange={setCreateOpen} />
+
+      <ConfirmDialog
+        open={!!cancelTarget}
+        onOpenChange={(o) => !o && setCancelTarget(null)}
+        title={`Cancel ${cancelTarget?.rider.full_name}'s booking?`}
+        description="No cancellation fee applies — this is a staff cancellation, not the rider's. The full amount captured will be queued as a refund."
+        confirmLabel="Cancel booking"
+        destructive
+        loading={adminCancelBooking.isPending}
+        disabled={cancelReason.trim().length < 3}
+        onConfirm={() => {
+          if (!cancelTarget) return;
+          adminCancelBooking.mutate(
+            { bookingId: cancelTarget.id, reason: cancelReason.trim() },
+            {
+              onSuccess: () => {
+                toastSuccess("Booking cancelled", "The full amount has been queued for refund.");
+                setCancelTarget(null);
+              },
+              onError: (err) => toastError(err, "Could not cancel this booking"),
+            },
+          );
+        }}
+      >
+        <Label>Reason (at least 3 characters)</Label>
+        <Textarea
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+          placeholder="e.g. Vehicle double-booked — no scooter available for this rider"
+          rows={3}
+        />
+        {adminCancelBooking.isError && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {adminCancelBooking.error instanceof ApiError ? adminCancelBooking.error.message : "Something went wrong."}
+          </p>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }

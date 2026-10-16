@@ -13,6 +13,7 @@ import { hasGrantedConsent } from "../consent/consent.service";
 import { assertValidDocNumber, last4 } from "./kyc.docnumber";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
+import { qualifyKycReferralIfApplicable } from "../referrals/referrals.service";
 import { businessToday } from "../../common/dates";
 import {
     assertValidFile, buildStoragePath, createSignedUrl, pathBelongsToUser,
@@ -109,7 +110,13 @@ export function deriveKycStatus(docs: Array<Pick<DocumentRow, "document_type" | 
 
     if (verified === MANDATORY_KYC_DOC_TYPES.length) return "verified";
     if (verified > 0) return "partially_verified";
-    return "pending";
+    // All mandatory types present but none verified yet — this is what
+    // submitKyc() actually requires before it will submit, so it's the only
+    // case that belongs in the admin's actionable queue. Fewer than that is
+    // a rider still mid-upload (e.g. Aadhaar in, driving licence not yet) —
+    // 'incomplete', not 'pending': nothing for an admin to review yet.
+    if (mandatory.length >= MANDATORY_KYC_DOC_TYPES.length) return "pending";
+    return "incomplete";
 }
 
 // ---------------------------------------------------------------------------
@@ -299,7 +306,12 @@ export async function updateOwnDocument(
         next.rejection_reason = null;
         next.verified_by_user_id = null;
         next.verified_at = null;
-        next.submitted_at = new Date().toISOString();
+        // Back to a DRAFT, not straight into review. Stamping submitted_at here
+        // meant the rider's own correction silently queued itself: staff were
+        // never notified, and the Submit button that followed was refused with
+        // "already awaiting review". The rider now fixes what was rejected and
+        // then submits once, which is what notifies staff.
+        next.submitted_at = null;
     }
 
     const { data, error } = await supabaseAdmin
@@ -381,8 +393,11 @@ export async function submitKyc(userId: string, actor: AuthContext, req?: Reques
 
     const current = deriveKycStatus(docs);
     if (current === "verified") throw businessRule("Your KYC is already verified.");
+    // Already in the queue: nothing to do, and not an error. A double tap or a
+    // retry after a dropped response should land on the same "in review" state
+    // rather than a red message about something that went fine.
     if (current === "pending" && docs.every((d) => d.submitted_at)) {
-        throw conflict("Your KYC is already awaiting review.");
+        return getKycForUser(userId);
     }
 
     const stamp = new Date().toISOString();
@@ -760,6 +775,15 @@ export async function approveKyc(userId: string, actor: AuthContext, req?: Reque
         screen: "/kyc",
         riderId: userId,
         excludeUserId: actor.id,
+    });
+
+    // A referral configured to qualify on KYC rather than a first payment
+    // resolves here. Never allowed to block the approval itself — the
+    // approval is real and complete whether or not a referral is attached.
+    await qualifyKycReferralIfApplicable(userId).catch((err) => {
+        console.error("[kyc] referral qualification failed", {
+            userId, error: err instanceof Error ? err.message : String(err),
+        });
     });
 
     // No direct write to users.kyc_status: the trigger derives it. This

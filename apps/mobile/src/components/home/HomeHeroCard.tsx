@@ -34,11 +34,7 @@ export const HomeHeroCard: React.FC<HomeHeroCardProps> = ({ phase, featured }) =
       return;
     }
     if (phase === 'kyc_in_review') return;
-    if (featured) {
-      void startBooking(featured.id, featured.name);
-    } else {
-      router.push('/browse-vehicles');
-    }
+    if (featured) void startBooking(featured.id, featured.name);
   };
 
   const disabled = phase === 'kyc_in_review';

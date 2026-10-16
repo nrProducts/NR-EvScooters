@@ -7,6 +7,7 @@ import { billingRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
 import { ApiError } from '../lib/ApiError';
 import { useAuthStore } from '../store/useAuthStore';
+import { setPaymentPhase } from '../store/usePaymentProgressStore';
 import type { ApiReturnSettlement } from '../types/api';
 import { useT, type CopyKey } from '../i18n';
 
@@ -102,6 +103,7 @@ export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => 
     if (!settlement.due_invoice_id) return;
     setPayError(null);
     setPaying(true);
+    setPaymentPhase('processing');
     try {
       const order = await billingRepository.createOrderForInvoice(settlement.due_invoice_id);
       const verifyPayload = await openRazorpayCheckout({
@@ -116,6 +118,7 @@ export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => 
           name: profile?.full_name,
         },
       });
+      setPaymentPhase('confirming');
       await billingRepository.verifyPayment(verifyPayload);
       // onPaid() (loadSettlement) alone only refreshes this card's own data.
       // The return status card sitting right next to it, and any
@@ -133,6 +136,7 @@ export function usePaySettlement(settlement: ApiReturnSettlement, onPaid: () => 
       }
     } finally {
       setPaying(false);
+      setPaymentPhase(null);
     }
   };
 
@@ -177,7 +181,7 @@ export function SettlementCard({
           </Text>
         </View>
         <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black mt-2">
-          ₹{settlement.due_amount.toFixed(0)}
+          ₹{settlement.due_amount.toFixed(2)}
         </Text>
         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5 mb-3">
           {t('settlement.additionalDue')}
@@ -192,7 +196,7 @@ export function SettlementCard({
           <Text className="text-white text-xs font-bold ml-2">
             {paying
               ? t('settlement.processing')
-              : t('scooterStatus.pay', { amount: `₹${settlement.due_amount.toFixed(0)}` })}
+              : t('scooterStatus.pay', { amount: `₹${settlement.due_amount.toFixed(2)}` })}
           </Text>
         </TouchableOpacity>
         {payError ? (
@@ -244,7 +248,7 @@ export function SettlementCard({
           <View className="flex-row items-center justify-between">
             <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">{t('settlement.refundAmount')}</Text>
             <Text style={{ color: COLORS.success }} className="text-lg font-black">
-              ₹{settlement.refund_amount.toFixed(0)}
+              ₹{settlement.refund_amount.toFixed(2)}
             </Text>
           </View>
         </>
@@ -260,7 +264,7 @@ function SettlementLine({ label, amount }: { label: string; amount: number }) {
     <View className="flex-row items-center justify-between py-0.5">
       <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">{label}</Text>
       <Text style={{ color: amount < 0 ? COLORS.danger : COLORS.textPrimary }} className="text-xs font-semibold">
-        {amount < 0 ? '-' : ''}₹{Math.abs(amount).toFixed(0)}
+        {amount < 0 ? '-' : ''}₹{Math.abs(amount).toFixed(2)}
       </Text>
     </View>
   );

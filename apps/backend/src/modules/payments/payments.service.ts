@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import Razorpay from "razorpay";
 import { supabaseAdmin } from "../../config/supabase";
-import { createGatewayOrder, fetchGatewayPayment } from "../../config/razorpay";
+import { createGatewayOrder, fetchGatewayOrderPayments, fetchGatewayPayment } from "../../config/razorpay";
 import { env } from "../../config/env";
 import { badRequest, businessRule, conflict, notFound } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
-import { addDays, businessToday, calculateRentalPeriod } from "../../common/dates";
+import { addDays, businessToday, calculateRentalPeriod, hasPassedCutover } from "../../common/dates";
 import { computeInvoiceLateFee, lateFeeRuleFor } from "./renewalFee";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
@@ -14,7 +14,7 @@ import {
     assertVehicleAvailable, hasActiveBookingForUser, requireBookablePlan,
 } from "../bookings/bookings.service";
 import { hasActiveRentalForUser } from "../users/users.service";
-import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
+import { confirmCardRedemptionForInvoice, qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { AuthContext } from "../../types";
 import { Json } from "../../types/database.types";
 import { CreateOrderResult, OrderLine, VerifyPaymentInput } from "./payments.types";
@@ -162,7 +162,7 @@ export async function createBookingOrder(
     if (quote.amount <= 0) throw businessRule("This plan has no payable amount.");
     const amount = quote.amount;
 
-    const idempotencyKey = `booking:${actor.id}:${input.plan_id}:${input.start_day}:${amount}`;
+    const idempotencyKey = await buildBookingIdempotencyKey(actor.id, input.plan_id, input.start_day, amount);
 
     const reusable = await findReusableBookingOrder(actor.id, idempotencyKey, quote.lines);
     if (reusable) return reusable;
@@ -231,6 +231,46 @@ export async function createBookingOrder(
     });
 
     return toOrderResult(order, quote.lines);
+}
+
+/**
+ * The deterministic key (user+plan+day+amount) exists to coalesce a rider
+ * double-tapping "Pay" into ONE order, not two. That's correct right up
+ * until the booking it eventually produces gets CANCELLED — a rider told
+ * "book again" after a staff cancellation is making a genuinely new
+ * attempt, but a plain deterministic key would collide with their own
+ * already-`paid` order from the first attempt: reopenDeadBookingOrder
+ * explicitly won't touch a `paid` row (see its own comment), so the retry
+ * fell through to inserting a duplicate idempotency_key, hit the unique
+ * constraint, and surfaced as a bare Postgres error with no ApiError
+ * wrapping — "Something went wrong" on the rider's screen, no record of
+ * why anywhere.
+ *
+ * Fix: count how many of this rider's bookings for this exact plan+day have
+ * already been cancelled, and fold that count into the key. First attempt
+ * gets the plain key as always (same-tap double-submits still coalesce).
+ * Each cancel-and-retry afterwards gets its own distinct, stable key — still
+ * one order per actual attempt, never colliding with an attempt that's
+ * already been spent and cancelled.
+ */
+async function buildBookingIdempotencyKey(
+    userId: string,
+    planId: string,
+    startDay: string,
+    amount: number,
+): Promise<string> {
+    const base = `booking:${userId}:${planId}:${startDay}:${amount}`;
+
+    const { count, error } = await supabaseAdmin
+        .from("bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("plan_id", planId)
+        .eq("requested_start_on", startDay)
+        .eq("status", "cancelled");
+    if (error) throw error;
+
+    return count && count > 0 ? `${base}:retry-${count}` : base;
 }
 
 async function findReusableBookingOrder(
@@ -1102,6 +1142,61 @@ export async function verifyPayment(input: VerifyPaymentInput, actor: AuthContex
     });
 }
 
+/**
+ * Recovers a payment the app never got to verify.
+ *
+ * The rider can pay successfully and still never hit `verifyPayment` — the
+ * checkout sheet errors after the UPI app returns ("Something went wrong"),
+ * the app is killed, or the connection drops — and the webhook is the only
+ * other path. This asks the gateway what actually happened to the order and
+ * applies a captured payment through the same idempotent core, so calling it
+ * repeatedly (or alongside verify / the webhook) is safe.
+ *
+ * Authenticity comes from fetching the payment from the gateway with our own
+ * credentials, scoped to an order the caller owns; no client-supplied
+ * signature is involved.
+ */
+export async function syncOrderPayment(
+    gatewayOrderId: string,
+    actor: AuthContext,
+): Promise<{ status: "paid" | "pending" | "none" }> {
+    const order = await findOrderByGatewayOrderId(gatewayOrderId);
+    if (!order || order.user_id !== actor.id) throw notFound("Payment order not found.");
+
+    const payments = await fetchGatewayOrderPayments(gatewayOrderId);
+    const captured = payments.find(
+        (p) => p.status === "captured" && p.captured && p.order_id === gatewayOrderId,
+    );
+
+    if (!captured) {
+        return { status: payments.some((p) => p.status === "authorized") ? "pending" : "none" };
+    }
+
+    if (captured.currency !== order.currency) {
+        throw badRequest("Payment currency does not match the order.");
+    }
+    if (captured.amount !== rupeesToPaise(Number(order.amount))) {
+        throw badRequest("Payment amount does not match the order.");
+    }
+
+    await applyPaymentSuccess({
+        paymentOrderId: order.id,
+        gatewayPaymentId: captured.id,
+        gatewaySignature: null,
+        amount: captured.amount / 100,
+        method: captured.method,
+        rawPayload: { source: "order_sync", payment: captured },
+    });
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: actor.id, action: "payment.verified",
+        entityType: "payment_order", entityId: order.id,
+        after: { gateway_payment_id: captured.id, method: captured.method, amount: captured.amount / 100, via: "order_sync" },
+    });
+
+    return { status: "paid" };
+}
+
 /** Moves a still-open order to `attempted` — the rider reached the gateway. */
 async function markOrderAttempted(orderId: string): Promise<void> {
     const { error } = await supabaseAdmin
@@ -1626,6 +1721,11 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     // wrong dependency: the state machine must not be correct only because
     // of a gateway setting made in a dashboard we do not control.
     const settled = await isInvoiceSettled(invoiceId);
+    // A reserved referral card redeems the moment its invoice is genuinely
+    // paid, not before — same "settlement, not arrival of money" rule the
+    // comment above this applies to the booking/rental state machine.
+    // Never-throws: see the function's own doc comment.
+    if (settled) await confirmCardRedemptionForInvoice(invoiceId);
 
     // WHICH PERIOD is being paid, not what the invoice is labelled.
     //
@@ -1780,7 +1880,22 @@ async function materializeBookingFromOrder(
         if (error) {
             const message = (error as { message?: string }).message ?? "";
             if ((error as { code?: string }).code === "P0001" && /active_booking_exists/.test(message)) {
-                await handleUnfulfillableBooking(order, transactionId, capturedAmount);
+                await handleUnfulfillableBooking(
+                    order, transactionId, capturedAmount,
+                    "rider already had an active booking/rental at capture",
+                );
+                return;
+            }
+            if ((error as { code?: string }).code === "P0001" && /vehicle_not_available/.test(message)) {
+                // The last available unit at this model+hub was claimed by a
+                // concurrent capture (or went into maintenance) between this
+                // rider's checkout starting and their payment actually
+                // landing. Same resolution as the other unfulfillable case:
+                // the money is real, there is nothing to hand over for it.
+                await handleUnfulfillableBooking(
+                    order, transactionId, capturedAmount,
+                    "no vehicle was available for this model/hub at capture",
+                );
                 return;
             }
             throw error;
@@ -1881,19 +1996,17 @@ async function handleUnfulfillableBooking(
     order: { id: string; user_id: string },
     transactionId: string,
     capturedAmount: number,
+    reason: string,
 ): Promise<void> {
     await writeAudit({
         actorId: null, targetUserId: order.user_id, action: "payment.booking_unfulfillable",
         entityType: "payment_transaction", entityId: transactionId,
-        after: {
-            order_id: order.id, captured: round2(capturedAmount),
-            reason: "rider already had an active booking/rental at capture",
-        },
+        after: { order_id: order.id, captured: round2(capturedAmount), reason },
     });
     await notifyUser(order.user_id, {
         template: "payment_failed",
         title: "Booking Could Not Be Completed",
-        body: "Your payment went through, but you already have an active booking or rental. Our team will refund this payment shortly.",
+        body: "Your payment went through, but we're unable to fulfil this booking. Our team will refund this payment shortly.",
         screen: "billing",
     });
     await notify({
@@ -1901,7 +2014,7 @@ async function handleUnfulfillableBooking(
         referenceType: "payment_order",
         referenceId: order.id,
         title: "Booking payment needs a manual refund",
-        bodyFallback: "{rider} paid for a booking they can't have (already active). Refund manually.",
+        bodyFallback: `{rider} paid for a booking that can't be fulfilled (${reason}). Refund manually.`,
         screen: "/payments",
         riderId: order.user_id,
     });
@@ -2165,7 +2278,7 @@ async function applyRenewalSuccess(
         .maybeSingle();
     if (currentError) throw currentError;
 
-    const activateNow = !current || businessToday() > current.due_on;
+    const activateNow = !current || hasPassedCutover(current.due_on);
 
     if (!activateNow) {
         await writeAudit({

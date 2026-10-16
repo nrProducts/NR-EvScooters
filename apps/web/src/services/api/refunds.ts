@@ -1,5 +1,7 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
-import type { PaginatedResult, Refund, RefundDeductions, RefundStatus, RefundType } from "@/types";
+import type {
+  DepositJourney, DepositStatus, PaginatedResult, Refund, RefundDeductions, RefundStatus, RefundType,
+} from "@/types";
 
 export interface RefundFilters {
   status?: RefundStatus | "all";
@@ -73,4 +75,22 @@ export async function reviewRefund(id: string, input: ReviewRefundInput): Promis
 /** POST /refunds/:id/reject — the refund is not owed. Terminal. */
 export async function rejectRefund(id: string, reason: string): Promise<Refund> {
   return apiClient.post<Refund>(`/refunds/${id}/reject`, { reason });
+}
+
+/** GET /refunds/journeys — one row per deposit, payment to refund. */
+export async function fetchDepositJourneys(
+  filters: { status?: DepositStatus | "all"; page?: number; pageSize?: number } = {},
+): Promise<PaginatedResult<DepositJourney>> {
+  const { status, page = 1, pageSize = 8 } = filters;
+  const res = await apiClient.get<BackendPaginated<DepositJourney>>("/refunds/journeys", {
+    page,
+    pageSize,
+    status: status && status !== "all" ? status : undefined,
+  });
+  return toPaginatedResult(res);
+}
+
+/** GET /refunds/:id/journey — the journey a refund belongs to. */
+export async function fetchRefundJourney(refundId: string): Promise<DepositJourney> {
+  return apiClient.get<DepositJourney>(`/refunds/${refundId}/journey`);
 }

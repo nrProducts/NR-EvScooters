@@ -115,14 +115,18 @@ export default function BookingHistoryScreen() {
                         <Badge label={t(REFUND_STATUS_LABEL_KEY[b.refund_status])} tone={REFUND_STATUS_TONE[b.refund_status]} />
                       </View>
                       <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
-                        {t('bookingHistory.refundLine', {
-                          // Formatted here, not in the dictionary: the rupee
-                          // symbol and the number's grouping follow the
-                          // device's region, not the app's language — see the
-                          // note on formatDate in constants/status.ts.
-                          fee: `₹${b.cancellation_penalty_amount ?? 0}`,
-                          refund: `₹${b.refund_amount ?? 0}`,
-                        })}
+                        {b.refund_status === 'rejected'
+                          ? t('bookingHistory.refundRejectedLine', {
+                              reason: b.refund_rejection_reason ?? '',
+                            })
+                          : t('bookingHistory.refundLine', {
+                              // Formatted here, not in the dictionary: the rupee
+                              // symbol and the number's grouping follow the
+                              // device's region, not the app's language — see the
+                              // note on formatDate in constants/status.ts.
+                              fee: `₹${b.cancellation_penalty_amount ?? 0}`,
+                              refund: `₹${b.refund_amount ?? 0}`,
+                            })}
                       </Text>
                     </View>
                   ) : null}

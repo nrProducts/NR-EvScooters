@@ -1,7 +1,7 @@
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
-    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRefund,
     ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload, KycDocType,
     ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
@@ -69,7 +69,12 @@ export interface VehicleCatalogRepository {
 
 export interface ReferralRepository {
     mine(): Promise<ApiReferralSummary>;
-    redeem(code: string): Promise<void>;
+    /** Applies a code to the caller's own account — idempotent, see ApiRedeemReferralResult. */
+    redeem(code: string): Promise<ApiRedeemReferralResult>;
+    /** Spends an available card on one of the caller's own unpaid invoices. */
+    applyCard(cardId: string, invoiceId: string): Promise<ApiRedemption>;
+    /** Undoes an unpaid reservation — the rider changed their mind or wants a different card. */
+    releaseCard(redemptionId: string): Promise<void>;
 }
 
 export interface HistoryParams {
@@ -131,6 +136,8 @@ export interface BillingRepository {
     myDeposit(bookingId: string): Promise<ApiDeposit | null>;
     myDamages(bookingId: string): Promise<ApiDamage[]>;
     disputeDamage(damageId: string, reason: string): Promise<ApiDamage>;
+    /** The rider's own refunds — booking cancellations, deposit releases, goodwill. Powers the Billing refund-status card. */
+    myRefunds(params: HistoryParams & { bookingId?: string }): Promise<Paginated<ApiRefund>>;
 }
 
 export interface RentalRepository {

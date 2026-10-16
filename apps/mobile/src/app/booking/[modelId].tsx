@@ -3,30 +3,40 @@ import { View, Text, ScrollView, TouchableOpacity, Linking, Platform } from 'rea
 import { Spinner } from '../../components/Spinner';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  ChevronLeft, ChevronRight, ChevronsRight, MapPin, Bike, Navigation, Check, AlertTriangle, CheckCircle2,
+  ChevronLeft, MapPin, Bike, Navigation, Check, AlertTriangle, CheckCircle2,
   ShieldCheck, Zap, Lock, BadgePercent, Calendar, ArrowRight,
-  CreditCard, Landmark, Wallet, Smartphone,
 } from 'lucide-react-native';
 import { Badge } from '../../components/ui/Badge';
-import { Sheet } from '../../components/ui/Sheet';
 import { ErrorState } from '../../components/ui/ErrorState';
+import { SwipeToPay } from '../../components/SwipeToPay';
 import { useBookingStore } from '../../store/useBookingStore';
 import { useAuthStore } from '../../store/useAuthStore';
+import { setPaymentPhase } from '../../store/usePaymentProgressStore';
 import { vehicleCatalogRepository, billingRepository } from '../../services';
 import { notify, notifyError } from '../../lib/confirm';
 import { buildMapsUrl, buildWebMapsUrl } from '../../lib/maps';
 import { getNextBookableDay, rentalPeriodEndDay } from '../../lib/bookingDays';
-import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
+import {
+  openCheckoutPreferUpiIntent,
+  PaymentCancelledError,
+  PaymentTimedOutError,
+  PaymentUnavailableError,
+} from '../../lib/razorpayCheckout';
 import { DEFAULT_CANCELLATION_TIERS } from '../../lib/cancellationPolicy';
 import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
-import type { ApiAvailability, ApiOrderLine, ApiPaymentOrder, ApiPlan, ApiPlanQuote, ApiVehicleModelDetail } from '../../types/api';
+import type {
+  ApiAvailability, ApiOrderLine, ApiPaymentOrder, ApiPlan, ApiPlanQuote, ApiVehicleModelDetail,
+  VerifyPaymentPayload,
+} from '../../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT, type CopyKey } from '../../i18n';
+import { requestForegroundLocation } from '../../lib/location';
 import { BILLING_CYCLE_LABEL_KEY } from '../../constants/status';
 
-// Device geolocation isn't wired up yet — the backend's nearest_station RPC
-// still does the real PostGIS work against whatever coordinates are sent.
+// Used only to pick a station when the rider's real position is unavailable
+// (permission denied, services off). The distance badge is hidden in that
+// case — measuring from this point would show a nonsense figure.
 const PLACEHOLDER_LOCATION = { lat: 9.9312, lng: 76.2673 };
 
 const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
@@ -34,6 +44,26 @@ const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 function formatDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+/**
+ * Settles a capture, retrying a transient failure.
+ *
+ * Safe to repeat: the backend applies a capture once and returns early on a
+ * replay, so the only thing a second attempt can add is the confirmation the
+ * first one failed to bring back. Worth spending a few seconds on — the
+ * alternative is a rider who paid being told nothing is confirmed.
+ */
+async function verifyWithRetry(payload: VerifyPaymentPayload): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await billingRepository.verifyPayment(payload);
+      return;
+    } catch (err) {
+      if (attempt >= 2) throw err;
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+    }
+  }
 }
 
 const TrustRow: React.FC = () => {
@@ -56,84 +86,10 @@ const TrustRow: React.FC = () => {
 };
 
 /**
- * Informational — the actual selection happens on Razorpay's secure screen.
- * Keys, not labels: module scope does not re-run on a language change.
- */
-const PAYMENT_METHOD_KEYS = [
-  { Icon: Smartphone, titleKey: 'booking.paymentMethods.upi', subtitleKey: 'booking.paymentMethods.upiSubtitle' },
-  { Icon: CreditCard, titleKey: 'booking.paymentMethods.cards', subtitleKey: 'booking.paymentMethods.cardsSubtitle' },
-  { Icon: Landmark, titleKey: 'booking.paymentMethods.netBanking', subtitleKey: 'booking.paymentMethods.netBankingSubtitle' },
-  { Icon: Wallet, titleKey: 'booking.paymentMethods.wallets', subtitleKey: 'booking.paymentMethods.walletsSubtitle' },
-] as const satisfies readonly { Icon: typeof Smartphone; titleKey: CopyKey; subtitleKey: CopyKey }[];
-
-/**
- * A single collapsed row ("Pay using · UPI, Cards & more · Change") that
- * opens a sheet with the real detail — the four-method list moved off the
- * main scroll and behind a tap. "Change" is honest, not decorative: it
- * opens something, it just isn't an in-app method picker (Razorpay owns
- * that, same as PaymentMethodsCard's old footnote said).
- */
-const PaymentMethodRow: React.FC = () => {
-  const { t } = useT();
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <TouchableOpacity
-        onPress={() => setOpen(true)}
-        accessibilityRole="button"
-        className="rounded-2xl border flex-row items-center px-4 py-3.5"
-        style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, gap: 12 }}
-      >
-        <View className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.primary + '14' }}>
-          <Wallet size={18} color={COLORS.primary} />
-        </View>
-        <View className="flex-1">
-          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
-            {t('booking.paymentMethods.payUsing')}
-          </Text>
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mt-0.5">
-            {t('booking.paymentMethods.anyMethod')}
-          </Text>
-        </View>
-        <Text style={{ color: COLORS.primary }} className="text-xs font-extrabold mr-0.5">
-          {t('booking.paymentMethods.change')}
-        </Text>
-        <ChevronRight size={16} color={COLORS.primary} />
-      </TouchableOpacity>
-
-      <Sheet visible={open} onClose={() => setOpen(false)} title={t('booking.paymentMethods.title')}>
-        <View className="px-6 pb-2">
-          {PAYMENT_METHOD_KEYS.map(({ Icon, titleKey, subtitleKey }, i) => (
-            <View
-              key={titleKey}
-              className="flex-row items-center py-3"
-              style={i < PAYMENT_METHOD_KEYS.length - 1 ? { borderBottomWidth: 1, borderColor: COLORS.border } : undefined}
-            >
-              <View className="w-9 h-9 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: COLORS.primary + '14' }}>
-                <Icon size={17} color={COLORS.primary} />
-              </View>
-              <View className="flex-1">
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{t(titleKey)}</Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">{t(subtitleKey)}</Text>
-              </View>
-            </View>
-          ))}
-          <View className="flex-row items-center mt-3" style={{ gap: 6 }}>
-            <Lock size={12} color={COLORS.textSecondary} />
-            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium flex-1">
-              {t('booking.paymentMethods.chooseOnRazorpay')}
-            </Text>
-          </View>
-        </View>
-      </Sheet>
-    </>
-  );
-};
-
-/**
  * The whole booking flow on ONE screen: pickup station, plan, price, and a
- * single "Pay ₹X" button that opens Razorpay Checkout directly (card / UPI /
- * wallet selection happens in that sheet). No separate review screen.
+ * drag-to-confirm bar that opens Razorpay Checkout. Method selection is
+ * Razorpay's job alone — it already shows UPI/Cards/Net Banking/Wallets on
+ * its own screen, so there is no in-app picker duplicating that choice.
  */
 export default function BookingScreen() {
   const insets = useSafeAreaInsets();
@@ -150,14 +106,22 @@ export default function BookingScreen() {
 
   const [model, setModel] = useState<ApiVehicleModelDetail | null>(null);
   const [loadingModel, setLoadingModel] = useState(true);
+  const [hasRiderLocation, setHasRiderLocation] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
   const [availability, setAvailability] = useState<ApiAvailability | null>(null);
   const [loadingAvailability, setLoadingAvailability] = useState(false);
 
   const [quote, setQuote] = useState<ApiPaymentOrder | ApiPlanQuote | null>(null);
+  // True from the moment a plan/start day changes until its price arrives, so
+  // the summary never shows the previous plan's figures or the unadjusted
+  // estimate as if they were the answer.
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState(false);
+  /** Paid, but the confirmation never reached us — see the note in handlePay. */
+  const [confirming, setConfirming] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  const [swipeResetSignal, setSwipeResetSignal] = useState(0);
 
   const load = () => {
     setLoadingModel(true);
@@ -174,7 +138,15 @@ export default function BookingScreen() {
 
   useEffect(() => {
     load();
-    void loadNearestStation(PLACEHOLDER_LOCATION.lat, PLACEHOLDER_LOCATION.lng);
+    void (async () => {
+      const outcome = await requestForegroundLocation();
+      if (outcome.status === 'granted') {
+        setHasRiderLocation(true);
+        await loadNearestStation(outcome.coords.latitude, outcome.coords.longitude);
+      } else {
+        await loadNearestStation(PLACEHOLDER_LOCATION.lat, PLACEHOLDER_LOCATION.lng);
+      }
+    })();
     setStartDay(getNextBookableDay());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId]);
@@ -193,12 +165,15 @@ export default function BookingScreen() {
   // Authoritative price for the chosen plan, before any booking exists.
   useEffect(() => {
     const planId = draft.plan?.id;
-    if (!planId) { setQuote(null); return; }
+    setQuote(null);
+    if (!planId) { setQuoteLoading(false); return; }
     let cancelled = false;
+    setQuoteLoading(true);
     billingRepository
       .quotePlan(planId, draft.startDay ?? undefined)
       .then((q) => { if (!cancelled) setQuote(q); })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setQuoteLoading(false); });
     return () => { cancelled = true; };
   }, [draft.plan?.id, draft.startDay]);
 
@@ -221,6 +196,7 @@ export default function BookingScreen() {
     if (noneAvailable) return t('booking.blocked.noneAvailable');
     if (plans.length === 0) return t('booking.blocked.noPlans');
     if (!draft.plan) return t('booking.blocked.choosePlan');
+    if (quoteLoading) return t('booking.blocked.updatingPrice');
     return null;
   };
 
@@ -245,6 +221,7 @@ export default function BookingScreen() {
     if (!draft.plan || !draft.station || !draft.startDay || !model) return;
     setPayError(null);
     setPaying(true);
+    setPaymentPhase('processing');
     try {
       // Pay-first: this creates ONLY a payment intent — no booking exists until
       // the payment captures and the backend materialises it.
@@ -255,7 +232,7 @@ export default function BookingScreen() {
         start_day: draft.startDay,
       });
       setQuote(order);
-      const verifyPayload = await openRazorpayCheckout({
+      const verifyPayload = await openCheckoutPreferUpiIntent({
         key: order.keyId,
         amount: Math.round(order.amount * 100),
         currency: order.currency,
@@ -269,20 +246,38 @@ export default function BookingScreen() {
           name: profile?.full_name,
         },
       });
-      await billingRepository.verifyPayment(verifyPayload);
-      await refreshProfile();
+      // PAST THIS LINE THE MONEY HAS LEFT THE RIDER'S ACCOUNT.
+      //
+      // Nothing below may surface as "payment failed, try again" — that is an
+      // instruction to pay twice for one booking. Verify is idempotent (the
+      // backend returns early on a replayed capture) so it is safe to retry,
+      // and the capture webhook materialises the booking independently of
+      // this call ever reaching us. So a failure here means only that WE did
+      // not get to see the confirmation, which is what `confirming` says.
+      setPaymentPhase('confirming');
+      try {
+        await verifyWithRetry(verifyPayload);
+      } catch {
+        setConfirming(true);
+      }
+      await refreshProfile().catch(() => undefined);
       setPaid(true);
     } catch (err) {
       if (err instanceof PaymentCancelledError) {
         // Nothing was created — a retry just makes a fresh (or reused) intent.
         setPayError(t('booking.error.paymentCancelled'));
+      } else if (err instanceof PaymentTimedOutError) {
+        setPayError(t('booking.error.paymentTimedOut'));
       } else if (err instanceof PaymentUnavailableError || err instanceof ApiError) {
         setPayError(err.message);
       } else {
         setPayError(t('booking.error.generic'));
       }
+      // Snaps the swipe bar back to the start so the rider can drag again.
+      setSwipeResetSignal((n) => n + 1);
     } finally {
       setPaying(false);
+      setPaymentPhase(null);
     }
   };
 
@@ -296,15 +291,22 @@ export default function BookingScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: COLORS.background }}>
         <View className="flex-1 items-center justify-center px-8">
-          <View className="w-16 h-16 rounded-full items-center justify-center mb-5" style={{ backgroundColor: COLORS.success + '1A' }}>
-            <CheckCircle2 size={32} color={COLORS.success} />
+          <View
+            className="w-16 h-16 rounded-full items-center justify-center mb-5"
+            style={{ backgroundColor: (confirming ? COLORS.warning : COLORS.success) + '1A' }}
+          >
+            {confirming ? <Spinner size={32} color={COLORS.warning} /> : <CheckCircle2 size={32} color={COLORS.success} />}
           </View>
-          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">{t('booking.confirmed.title')}</Text>
+          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
+            {t(confirming ? 'booking.confirming.title' : 'booking.confirmed.title')}
+          </Text>
           <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium text-center mt-2 leading-relaxed">
-            {t('booking.confirmed.body', {
-              station: draft.station?.name ?? t('booking.confirmed.yourPickupStation'),
-              scooter: model?.name ?? t('booking.confirmed.yourScooter'),
-            })}
+            {confirming
+              ? t('booking.confirming.body')
+              : t('booking.confirmed.body', {
+                  station: draft.station?.name ?? t('booking.confirmed.yourPickupStation'),
+                  scooter: model?.name ?? t('booking.confirmed.yourScooter'),
+                })}
           </Text>
           <TouchableOpacity onPress={handleDone} className="mt-8 py-4 px-8 rounded-2xl items-center" style={{ backgroundColor: COLORS.primary }}>
             <Text className="text-white text-sm font-bold">{t('booking.confirmed.done')}</Text>
@@ -358,7 +360,7 @@ export default function BookingScreen() {
                     <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold mt-0.5">{draft.station.name}</Text>
                   ) : null}
                 </View>
-                {draft.station?.distance_km != null ? (
+                {hasRiderLocation && draft.station?.distance_km != null ? (
                   <Badge label={`${draft.station.distance_km.toFixed(1)} km`} tone="neutral" />
                 ) : null}
               </View>
@@ -404,10 +406,12 @@ export default function BookingScreen() {
             </View>
 
             {/* Plan picker */}
-            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-1">{t('booking.choosePlan')}</Text>
-            <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3">
-              {plans.length > 0 ? t('booking.choosePlanHint') : t('booking.noPlansHint')}
-            </Text>
+            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold mb-3">{t('booking.choosePlan')}</Text>
+            {plans.length === 0 ? (
+              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-3">
+                {t('booking.noPlansHint')}
+              </Text>
+            ) : null}
             <View style={{ gap: 10 }}>
               {plans.map((plan: ApiPlan) => {
                 const selected = draft.plan?.id === plan.id;
@@ -493,7 +497,14 @@ export default function BookingScreen() {
                     </View>
                   </View>
 
-                  {lines.length > 0 ? (
+                  {quoteLoading ? (
+                    <View className="py-3 items-center" style={{ gap: 8 }}>
+                      <Spinner size={18} color={COLORS.primary} />
+                      <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
+                        {t('booking.updatingPrice')}
+                      </Text>
+                    </View>
+                  ) : lines.length > 0 ? (
                     lines.map((line, i) => (
                       <View key={i} className="flex-row items-center justify-between py-1.5">
                         <Text style={{ color: line.amount < 0 ? COLORS.success : COLORS.textSecondary }} className="text-[13px] font-medium flex-1 pr-3">
@@ -535,7 +546,11 @@ export default function BookingScreen() {
                         </Text>
                       ) : null}
                     </View>
-                    <Text style={{ color: COLORS.primary }} className="text-2xl font-black">{money(total)}</Text>
+                    {quoteLoading ? (
+                      <Spinner size={20} color={COLORS.primary} />
+                    ) : (
+                      <Text style={{ color: COLORS.primary }} className="text-2xl font-black">{money(total)}</Text>
+                    )}
                   </View>
                 </View>
 
@@ -563,9 +578,6 @@ export default function BookingScreen() {
                         <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">12:00 PM</Text>
                       </View>
                     </View>
-                    <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-medium mt-2 text-center">
-                      {t('booking.fixedNoonCycleNote')}
-                    </Text>
                   </View>
                 ) : null}
 
@@ -607,25 +619,16 @@ export default function BookingScreen() {
                       className="px-4 py-2.5 text-[11px] font-medium leading-4"
                     >
                       {!draft.plan.deposit_refundable
-                        ? t('booking.depositTermsNonRefundable', {
-                            onboarding: money(draft.plan.onboarding_charge_amount),
-                            deposit: money(draft.plan.deposit_amount),
-                          })
+                        ? t('booking.depositTermsNonRefundable')
                         : draft.plan.min_rental_days_for_refund > 0
-                          ? t('booking.depositTermsWithDays', {
-                              onboarding: money(draft.plan.onboarding_charge_amount),
-                              deposit: money(draft.plan.deposit_amount),
-                              days: draft.plan.min_rental_days_for_refund,
-                            })
-                          : t('booking.depositTerms', {
-                              onboarding: money(draft.plan.onboarding_charge_amount),
-                              deposit: money(draft.plan.deposit_amount),
-                            })}
+                          ? t('booking.depositTermsWithDays', { days: draft.plan.min_rental_days_for_refund })
+                          : t('booking.depositTerms')}
+                      {draft.plan.onboarding_charge_amount > 0
+                        ? ` ${t('booking.onboardingNonRefundable', { onboarding: money(draft.plan.onboarding_charge_amount) })}`
+                        : ''}
                     </Text>
                   </View>
                 ) : null}
-
-                <PaymentMethodRow />
 
                 <TrustRow />
 
@@ -651,9 +654,8 @@ export default function BookingScreen() {
             ) : null}
           </ScrollView>
 
-          {/* Sticky checkout bar — one full-width pill carries the amount in
-              its own label rather than sitting beside a separate total, with
-              a circular leading badge standing in for a slide gesture. */}
+          {/* Sticky checkout bar — a real drag-to-confirm control, not a tap
+              button styled to look like one. */}
           <View
             className="px-4 pt-3"
             style={{
@@ -668,33 +670,20 @@ export default function BookingScreen() {
               elevation: 12,
             }}
           >
-            <TouchableOpacity
-              onPress={handlePay}
-              disabled={busy || blockedReason() !== null}
-              accessibilityRole="button"
-              className="rounded-full flex-row items-center overflow-hidden"
-              style={{
-                backgroundColor: COLORS.primary,
-                opacity: busy || blockedReason() !== null ? 0.5 : 1,
-                minHeight: 56,
-              }}
-            >
-              <View
-                className="items-center justify-center"
-                style={{ width: 56, height: 56, backgroundColor: 'rgba(255,255,255,0.18)' }}
-              >
-                {busy ? <Spinner size={18} color="#FFF" /> : <ChevronsRight size={22} color="#FFF" />}
-              </View>
-              <Text className="flex-1 text-white text-base font-black text-center pr-14" numberOfLines={1}>
-                {busy
-                  ? t('booking.processing')
-                  : blockedReason()
-                    ? (blockedReason() as string)
-                    : draft.plan
-                      ? t('booking.payCta', { amount: money(total) })
-                      : t('booking.continue')}
-              </Text>
-            </TouchableOpacity>
+            <SwipeToPay
+              busy={busy}
+              disabled={blockedReason() !== null}
+              onConfirm={handlePay}
+              resetSignal={swipeResetSignal}
+              processingLabel={t('booking.processing')}
+              label={
+                blockedReason()
+                  ? (blockedReason() as string)
+                  : draft.plan
+                    ? t('booking.swipeToPay', { amount: money(total) })
+                    : t('booking.continue')
+              }
+            />
           </View>
         </>
       )}

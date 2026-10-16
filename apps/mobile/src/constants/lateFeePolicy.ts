@@ -47,7 +47,7 @@ export const LATE_FEE_POLICY_TITLE_KEY: CopyKey = 'lateFee.title';
 export function lateFeePolicySections(t: TranslateFn, feePerDay = 0): LateFeePolicySection[] {
   // Formatted here rather than inside the dictionary: the rupee symbol and
   // the number's grouping follow the device's region, not the app's language.
-  const rate = feePerDay > 0 ? `₹${feePerDay.toFixed(0)}` : null;
+  const rate = feePerDay > 0 ? `₹${feePerDay.toFixed(2)}` : null;
 
   return [
     {
@@ -74,7 +74,7 @@ export function lateFeePolicySections(t: TranslateFn, feePerDay = 0): LateFeePol
  */
 export function lateFeePolicyExample(t: TranslateFn, feePerDay = 0): string[] {
   const money = (days: number) =>
-    feePerDay > 0 ? t('lateFee.example.equals', { amount: `₹${(feePerDay * days).toFixed(0)}` }) : '';
+    feePerDay > 0 ? t('lateFee.example.equals', { amount: `₹${(feePerDay * days).toFixed(2)}` }) : '';
   return [
     t('lateFee.example.intro'),
     t('lateFee.example.onTime'),

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Send } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Bell, Search, Send, Users, X } from "lucide-react";
 import { Spinner } from "@/components/common/Spinner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,12 +20,20 @@ import { useEmailDeliveryLog, useNotificationSettings, useNotificationTypeSummar
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
+import * as usersApi from "@/services/api/users";
+import type { BroadcastAudience } from "@/services/api/notifications";
 import { formatDateTime, cn } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { notificationLink } from "@/lib/notificationLink";
 import { useAuthStore } from "@/store/authStore";
 import type { EmailDeliveryLogEntry, MyNotification, NotificationDeliveryStatus, NotificationLogEntry } from "@/types";
+
+const AUDIENCE_OPTIONS: { value: BroadcastAudience; label: string; help: string }[] = [
+  { value: "all", label: "All active riders", help: "Sends to every active rider with the app installed." },
+  { value: "active_rental", label: "Riders with a scooter assigned", help: "Only riders who currently have an active rental." },
+  { value: "individual", label: "Specific riders", help: "Pick one or more riders by name, email or phone." },
+];
 
 const STATUS_OPTIONS: (NotificationDeliveryStatus | "all")[] = ["all", "sent", "pending", "failed"];
 
@@ -108,6 +117,23 @@ function AdminBroadcastTab() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [result, setResult] = useState<string | null>(null);
+  const [audience, setAudience] = useState<BroadcastAudience>("all");
+  const [selectedRiders, setSelectedRiders] = useState<{ id: string; name: string }[]>([]);
+  const [riderSearch, setRiderSearch] = useState("");
+  const [riderTerm, setRiderTerm] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setRiderTerm(riderSearch), 300);
+    return () => clearTimeout(t);
+  }, [riderSearch]);
+
+  const riderSearchEnabled = audience === "individual" && riderTerm.trim().length >= 2;
+  const { data: riderResults, isFetching: isSearchingRiders } = useQuery({
+    queryKey: ["broadcast-rider-search", riderTerm],
+    queryFn: () => usersApi.fetchUsers({ search: riderTerm, role: "rider", pageSize: 8 }),
+    enabled: riderSearchEnabled,
+  });
+  const selectedIds = new Set(selectedRiders.map((r) => r.id));
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useNotificationLog({
@@ -132,7 +158,9 @@ function AdminBroadcastTab() {
     { header: "Sent", key: "sent_at", sortKey: "created_at", render: (n) => (n.sent_at ? formatDateTime(n.sent_at) : "—"), hideOnMobile: true },
   ];
 
-  const canSend = title.trim() && body.trim() && canSendBroadcast;
+  const canSend = !!title.trim() && !!body.trim() && canSendBroadcast
+    && (audience !== "individual" || selectedRiders.length > 0);
+  const audienceHelp = AUDIENCE_OPTIONS.find((a) => a.value === audience)?.help ?? "";
 
   return (
     <div className="space-y-4">
@@ -146,12 +174,106 @@ function AdminBroadcastTab() {
               <Label>Title</Label>
               <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
             </div>
+            <div className="space-y-1.5">
+              <Label>Send to</Label>
+              <Select
+                value={audience}
+                onValueChange={(v) => {
+                  setAudience(v as BroadcastAudience);
+                  if (v !== "individual") {
+                    setSelectedRiders([]);
+                    setRiderSearch("");
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {AUDIENCE_OPTIONS.map((a) => (
+                    <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label>Message</Label>
             <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} />
           </div>
-          <p className="text-xs text-muted-foreground">Sends to every active rider with the app installed.</p>
+
+          {audience === "individual" ? (
+            <div className="space-y-2">
+              {selectedRiders.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedRiders.map((r) => (
+                    <Badge key={r.id} variant="secondary" className="gap-1 pr-1">
+                      {r.name}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRiders((prev) => prev.filter((p) => p.id !== r.id))}
+                        className="rounded-full p-0.5 hover:bg-card-hover"
+                        aria-label={`Remove ${r.name}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={riderSearch}
+                  onChange={(e) => setRiderSearch(e.target.value)}
+                  placeholder="Search riders by name, email or phone…"
+                  className="pl-9"
+                />
+              </div>
+              {riderSearchEnabled && (
+                <div className="max-h-48 overflow-y-auto scrollbar-thin rounded-md border border-border">
+                  {isSearchingRiders && (
+                    <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
+                      <Spinner className="h-3.5 w-3.5" /> Searching…
+                    </div>
+                  )}
+                  {!isSearchingRiders && (riderResults?.data.length ?? 0) === 0 && (
+                    <p className="px-3 py-4 text-center text-xs text-muted-foreground">No riders match "{riderTerm}".</p>
+                  )}
+                  {!isSearchingRiders && riderResults?.data.map((r) => {
+                    const already = selectedIds.has(r.id);
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        disabled={already}
+                        onClick={() => {
+                          setSelectedRiders((prev) => [...prev, { id: r.id, name: r.full_name }]);
+                          setRiderSearch("");
+                        }}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-smooth",
+                          "hover:bg-card-hover disabled:cursor-not-allowed disabled:opacity-40",
+                        )}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{r.full_name}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{r.email ?? r.phone ?? "—"}</span>
+                        </span>
+                        {already ? (
+                          <span className="shrink-0 text-[0.6875rem] text-muted-foreground">Added</span>
+                        ) : (
+                          <Users className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">{audienceHelp}</p>
+          )}
 
           {broadcast.isError && (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -164,7 +286,12 @@ function AdminBroadcastTab() {
             disabled={!canSend || broadcast.isPending}
             onClick={() =>
               broadcast.mutate(
-                { title: title.trim(), body: body.trim() },
+                {
+                  title: title.trim(),
+                  body: body.trim(),
+                  audience,
+                  user_ids: audience === "individual" ? selectedRiders.map((r) => r.id) : undefined,
+                },
                 {
                   onSuccess: (res) => {
                     const message = `Sent to ${res.sent} of ${res.targeted} riders (${res.failed} failed).`;
@@ -172,6 +299,8 @@ function AdminBroadcastTab() {
                     toastSuccess("Broadcast sent", message);
                     setTitle("");
                     setBody("");
+                    setSelectedRiders([]);
+                    setRiderSearch("");
                   },
                   onError: (err) => toastError(err, "Could not send broadcast"),
                 },

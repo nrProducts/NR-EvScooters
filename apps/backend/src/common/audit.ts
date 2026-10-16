@@ -53,6 +53,12 @@ export type AuditAction =
     | "damage.created" | "damage.disputed" | "damage.resolved" | "damage.waived"
     | "refund.initiated" | "refund.submitted" | "refund.processed" | "refund.failed"
     | "refund.reviewed" | "refund.rejected"
+    // A cancellation owed money but the refund could not be opened. The
+    // cancellation still stands, so this row is the only trace staff have
+    // that someone is owed a payout nothing is currently tracking.
+    | "refund.initiation_failed"
+    | "referral.applied" | "referral.reward_issued" | "referral_program.updated"
+    | "referral.card_applied" | "referral.card_redeemed" | "referral.card_released"
     // The `plan.*` names are kept even though the state they describe moved
     // from bookings to `subscriptions`: the events are the same events, and
     // renaming them would split the history in two.
@@ -111,7 +117,7 @@ export interface AuditEntry {
         | "return_recovery_setting" | "cancellation_tier"
         | "consent_record" | "consent_notice" | "privacy_request" | "retention_run"
         | "legal_document" | "legal_acceptance"
-        | "referral"
+        | "referral" | "referral_program"
         | "attendance_record" | "leave_request" | "holiday";
     entityId: string;
     before?: Record<string, unknown> | null;

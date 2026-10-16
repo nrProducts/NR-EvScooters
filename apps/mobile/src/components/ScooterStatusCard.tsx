@@ -120,7 +120,7 @@ export function ScooterStatusCard({
     return (
       <StatusShell tone="danger" icon={CreditCard} title={t('scooterStatus.paymentRequired')}>
         <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black mt-1">
-          ₹{settlement!.due_amount.toFixed(0)}
+          ₹{settlement!.due_amount.toFixed(2)}
         </Text>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5 mb-3">
           {t('scooterStatus.paymentRequired.body')}
@@ -129,7 +129,7 @@ export function ScooterStatusCard({
           tone="danger"
           onPress={() => void pay()}
           busy={paying}
-          label={t('scooterStatus.pay', { amount: `₹${settlement!.due_amount.toFixed(0)}` })}
+          label={t('scooterStatus.pay', { amount: `₹${settlement!.due_amount.toFixed(2)}` })}
         />
         {payError ? (
           <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mt-3">{payError}</Text>
@@ -183,7 +183,7 @@ export function ScooterStatusCard({
     return (
       <StatusShell tone="danger" icon={AlertTriangle} title={t('scooterStatus.recoveryRequired')}>
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium">
-          {t('scooterStatus.recoveryRequired.body', { amount: `₹${lateAmount.toFixed(0)}` })}
+          {t('scooterStatus.recoveryRequired.body', { amount: `₹${lateAmount.toFixed(2)}` })}
         </Text>
       </StatusShell>
     );
@@ -239,7 +239,7 @@ export function ScooterStatusCard({
 
     return (
       <StatusShell
-        tone="danger"
+        tone="overdue"
         icon={AlertTriangle}
         // Zero days is a real state, not a bug: on the FIRST day after a plan
         // ends, renewing costs no late fee at all (today is the day the new
@@ -271,7 +271,7 @@ export function ScooterStatusCard({
           */}
           {shownAmount > 0
             ? [
-                t('scooterStatus.lateFeeBuilt', { amount: `₹${shownAmount.toFixed(0)}` }),
+                t('scooterStatus.lateFeeBuilt', { amount: `₹${shownAmount.toFixed(2)}` }),
                 renewing ? t('scooterStatus.renewToClear') : t('scooterStatus.returnAsap'),
               ].join(' ')
             : renewing
@@ -279,7 +279,7 @@ export function ScooterStatusCard({
               // false, and "renew to clear it" points at a debt that does not
               // exist — the accurate and more useful message is the deadline.
               ? feePerDay > 0
-                ? t('scooterStatus.renewFreeToday', { rate: `₹${feePerDay.toFixed(0)}` })
+                ? t('scooterStatus.renewFreeToday', { rate: `₹${feePerDay.toFixed(2)}` })
                 : t('scooterStatus.renewToKeepRiding')
               : t('scooterStatus.returnAsap')}
         </Text>
@@ -295,7 +295,7 @@ export function ScooterStatusCard({
     const remaining = rental.next_due_at ? describeDaysLeft(rental.next_due_at, t) : null;
     return (
       <StatusShell
-        tone={eligibility.isLate ? 'danger' : 'primary'}
+        tone={eligibility.isLate ? 'overdue' : 'primary'}
         icon={RefreshCw}
         title={
           eligibility.isLate
@@ -338,14 +338,14 @@ function describeDaysLeft(nextDueAt: string, t: TranslateFn): string | null {
     : t('scooterStatus.daysLeftOther', { count: remaining });
 }
 
-const TONE_COLOR: Record<'danger' | 'warning' | 'success' | 'primary', string> = {
-  danger: COLORS.danger, warning: COLORS.warning, success: COLORS.success, primary: COLORS.primary,
+const TONE_COLOR: Record<'danger' | 'overdue' | 'warning' | 'success' | 'primary', string> = {
+  danger: COLORS.danger, overdue: COLORS.overdue, warning: COLORS.warning, success: COLORS.success, primary: COLORS.primary,
 };
 
 function StatusShell({
   tone, icon: Icon, title, titleAccessory, dismissKey, children,
 }: {
-  tone: 'danger' | 'warning' | 'success' | 'primary';
+  tone: 'danger' | 'overdue' | 'warning' | 'success' | 'primary';
   icon: React.ComponentType<{ size?: number; color?: string }>;
   title: string;
   /** Trailing control on the title row — an InfoHint, in practice. */
@@ -400,7 +400,7 @@ function StatusShell({
 function ActionButton({
   tone, onPress, busy, label,
 }: {
-  tone: 'danger' | 'warning' | 'success' | 'primary' | 'outline';
+  tone: 'danger' | 'overdue' | 'warning' | 'success' | 'primary' | 'outline';
   onPress: () => void;
   busy?: boolean;
   label: string;

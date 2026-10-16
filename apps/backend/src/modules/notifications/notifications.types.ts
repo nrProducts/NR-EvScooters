@@ -71,7 +71,7 @@ export interface NotificationRow {
  */
 export type RiderAppScreen =
     | "home" | "my-scooter" | "billing" | "support" | "kyc" | "notifications"
-    | "booking-history" | "battery-stations" | "profile" | "privacy";
+    | "booking-history" | "battery-stations" | "profile" | "privacy" | "referrals";
 
 export interface NotifyInput {
     /**
@@ -122,11 +122,15 @@ export interface ListAdminNotificationsFilters {
     sortDir: "asc" | "desc";
 }
 
+export type BroadcastAudience = "all" | "active_rental" | "individual";
+
 export interface BroadcastInput {
     title: string;
     body: string;
     screen?: string;
-    /** Omit to send to every active rider. */
+    /** "all" (default) and "active_rental" resolve their own recipients server-side. */
+    audience: BroadcastAudience;
+    /** Only read when audience is "individual". */
     user_ids?: string[];
 }
 

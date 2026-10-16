@@ -18,9 +18,9 @@ export const ROLE_NAMES: RoleName[] = ['rider', 'staff', 'admin'];
 export type AccountStatus = 'active' | 'inactive' | 'suspended';
 export const ACCOUNT_STATUSES: AccountStatus[] = ['active', 'inactive', 'suspended'];
 
-export type KycStatus = 'not_submitted' | 'pending' | 'partially_verified' | 'verified' | 'rejected';
+export type KycStatus = 'not_submitted' | 'incomplete' | 'pending' | 'partially_verified' | 'verified' | 'rejected';
 export const KYC_STATUSES: KycStatus[] = [
-    'not_submitted', 'pending', 'partially_verified', 'verified', 'rejected',
+    'not_submitted', 'incomplete', 'pending', 'partially_verified', 'verified', 'rejected',
 ];
 
 /**
@@ -374,7 +374,7 @@ export type VehicleStatus = 'available' | 'reserved' | 'assigned' | 'maintenance
  * the future checkout phase rather than a reversal. 'not_required' covers a
  * cancellation whose refund works out to zero.
  */
-export type BookingRefundStatus = 'pending' | 'processing' | 'processed' | 'not_required' | 'failed';
+export type BookingRefundStatus = 'pending' | 'processing' | 'processed' | 'not_required' | 'failed' | 'rejected';
 
 export interface ApiBooking {
     id: string;
@@ -419,21 +419,78 @@ export interface ApiBooking {
     refund_initiated_at: string | null;
     refund_completed_at: string | null;
     refund_transaction_id: string | null;
+    /** Set only when refund_status is 'rejected' — why nothing is owed. */
+    refund_rejection_reason: string | null;
 }
 
-export interface ApiReferralReward {
+export type ApiReferralStatus = 'pending' | 'qualified' | 'rejected' | 'revoked';
+export type ApiRewardCardStatus = 'available' | 'reserved' | 'redeemed' | 'expired' | 'revoked';
+
+export interface ApiReferralView {
     id: string;
-    amount: number;
-    reason: string;
+    status: ApiReferralStatus;
+    code_used: string;
+    /** First name only — never the referee's phone or full legal name. */
+    referee_display_name: string;
+    qualified_at: string | null;
     created_at: string;
 }
 
+/** What THIS account sees after applying someone else's code — who referred them, and the attribution's own status. */
+export interface ApiMyAttribution {
+    status: ApiReferralStatus;
+    code_used: string;
+    referrer_display_name: string;
+    created_at: string;
+}
+
+export interface ApiRewardCard {
+    id: string;
+    amount: number;
+    status: ApiRewardCardStatus;
+    issued_at: string;
+    expires_at: string | null;
+}
+
 export interface ApiReferralSummary {
+    /** Null only for a non-rider account. */
     referral_code: string | null;
+    program_enabled: boolean;
+    /** Rupees — what a successful referral is currently worth, from the live programme config. */
+    reward_amount: number;
     referred_count: number;
+    pending_count: number;
     qualified_count: number;
-    offer_amount: number;
-    rewards: ApiReferralReward[];
+    cards: ApiRewardCard[];
+    available_card_count: number;
+    total_earned: number;
+    history: ApiReferralView[];
+    my_attribution: ApiMyAttribution | null;
+    /** Cards currently held against an unpaid invoice — at most one per invoice. */
+    reserved_redemptions: ApiReservedRedemption[];
+}
+
+export interface ApiReservedRedemption {
+    id: string;
+    invoice_id: string;
+    discount_amount: number;
+}
+
+export type ApiRedeemReferralResult =
+    | { outcome: 'applied'; attribution: ApiMyAttribution }
+    | { outcome: 'already_applied'; attribution: ApiMyAttribution };
+
+export type ApiRedemptionStatus = 'reserved' | 'redeemed' | 'released';
+
+/** What applying a card to an invoice hands back — the breakdown, shown immediately. */
+export interface ApiRedemption {
+    id: string;
+    status: ApiRedemptionStatus;
+    invoice_id: string;
+    original_amount: number;
+    discount_amount: number;
+    final_amount: number;
+    reserved_at: string;
 }
 
 export interface ApiPickupBooking extends ApiBooking {
@@ -506,6 +563,12 @@ export interface VerifyPaymentPayload {
     razorpay_order_id: string;
     razorpay_payment_id: string;
     razorpay_signature: string;
+    /**
+     * Set when checkout errored but the gateway had already captured the
+     * payment. There is no signature to send, so the backend settles the
+     * order by asking the gateway instead (POST /payments/orders/:id/sync).
+     */
+    recovered?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -642,6 +705,51 @@ export interface ApiDeposit {
     refund_eligibility: 'not_eligible' | 'eligible' | 'refund_processed';
 }
 
+/** `refund_status` uses `succeeded`, matching `payment_status` on invoices. */
+export type RefundStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'rejected';
+
+export type RefundType = 'deposit_release' | 'booking_cancellation' | 'settlement' | 'goodwill';
+
+export interface ApiRefundDeductions {
+    transaction_fee: number;
+    other_charges: number;
+    cancellation_charge: number;
+}
+
+export interface ApiRefundBookingSummary {
+    id: string;
+    cancelled_at: string | null;
+    cancellation_reason: string | null;
+    cancellation_penalty_amount: number | null;
+    plan_price_at_cancellation: number | null;
+    vehicle_model_name: string | null;
+    station_name: string | null;
+    rider_name: string | null;
+    rider_phone: string | null;
+}
+
+/**
+ * The rider's own view of a refund — trimmed server-side (GET /refunds/me)
+ * to drop staff-internal fields (who reviewed/rejected it, gateway ids,
+ * retry counts). Powers the Billing refund-status card.
+ */
+export interface ApiRefund {
+    id: string;
+    booking_id: string | null;
+    amount: number;
+    gross_amount: number;
+    deductions: ApiRefundDeductions;
+    deduction_total: number;
+    status: RefundStatus;
+    refund_type: RefundType;
+    rejection_reason: string | null;
+    failure_reason: string | null;
+    initiated_at: string;
+    processed_at: string | null;
+    created_at: string;
+    booking: ApiRefundBookingSummary | null;
+}
+
 /**
  * `recorded` is `assessed`; `settled` and `waived` are new terminal states —
  * a scratch written off previously had nowhere to go.
@@ -755,8 +863,14 @@ export interface ApiRental {
 export interface ApiOverdueLateFee {
     /** RETURN-path day count: the handover day counts, because the rider rode the scooter through it. */
     daysLate: number;
-    /** RETURN-path money — what the Return sheet collects and the adhoc invoice is raised for. */
+    /** RETURN-path money — the late-fee line alone. The Return sheet collects `totalDue`. */
     lateFee: number;
+    /** Plan days kept past the due time, priced at the plan's per-day rate (return path only). */
+    rentalCharge: number;
+    /** The plan's price for one day (price / plan days). */
+    rentalDailyRate: number;
+    /** `rentalCharge + lateFee` — what the rider pays before returning. */
+    totalDue: number;
     isLate: boolean;
     feePerDay: number;
     dueOn: string | null;

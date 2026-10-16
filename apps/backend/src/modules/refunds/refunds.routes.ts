@@ -27,6 +27,11 @@ import * as v from "./refunds.validation";
  * told they were giving read access and was in fact giving the ability to
  * move money out of the business.
  */
+/** Rider's own refunds — mounted at /refunds/me, before the admin router below. */
+export const riderRouter = Router();
+riderRouter.use(requireAuth);
+riderRouter.get("/", validate({ query: v.myRefundsQuery }), asyncHandler(c.myRefundsHandler));
+
 const router = Router();
 router.use(requireAuth);
 
@@ -43,6 +48,28 @@ router.post(
     requireAction("refunds", "approve"),
     validate({ body: v.initiateRefundBody }),
     asyncHandler(c.createRefundHandler),
+);
+
+// Declared before "/:id" so "journeys" is not read as a refund id.
+router.get(
+    "/journeys",
+    requireAction("refunds", "view"),
+    validate({ query: v.listJourneysQuery }),
+    asyncHandler(c.listDepositJourneysHandler),
+);
+
+router.get(
+    "/journeys/:subscriptionId",
+    requireAction("refunds", "view"),
+    validate({ params: v.subscriptionIdParam }),
+    asyncHandler(c.getDepositJourneyHandler),
+);
+
+router.get(
+    "/:id/journey",
+    requireAction("refunds", "view"),
+    validate({ params: v.refundIdParam }),
+    asyncHandler(c.getRefundJourneyHandler),
 );
 
 router.get(

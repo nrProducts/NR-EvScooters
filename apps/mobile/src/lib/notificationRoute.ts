@@ -19,7 +19,7 @@
 /** Top-level screens a notification may open. Each is a real route under src/app. */
 const OPENABLE_SCREENS = new Set([
   'home', 'my-scooter', 'billing', 'support', 'kyc', 'notifications',
-  'booking-history', 'battery-stations', 'profile', 'privacy', 'terms',
+  'booking-history', 'battery-stations', 'profile', 'privacy', 'terms', 'referrals',
 ]);
 
 /**

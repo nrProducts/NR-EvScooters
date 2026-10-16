@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BatteryCharging, Copy, Info, Navigation, X } from 'lucide-react-native';
 import { COLORS } from '../../../constants/theme';
+import { TAB_BAR_FOOTPRINT } from '../../../lib/tabBar';
 import { StationStatusBadge } from './StationStatusBadge';
 import { formatDistance } from '../utils/distance';
 import { formatStationName, type BatteryStation } from '../types/batteryStation.types';
@@ -33,7 +34,13 @@ export const StationDetailsBottomSheet: React.FC<{
                 backgroundColor: COLORS.card,
                 borderTopLeftRadius: 28,
                 borderTopRightRadius: 28,
-                paddingBottom: 16 + insets.bottom,
+                // This sheet sits on the battery-stations tab, where the
+                // floating pill nav bar is always on screen — padding for
+                // just the OS safe-area inset left the Navigate/Copy/Details
+                // row (the LAST thing in the ScrollView) tucked underneath
+                // it, unreachable. Same TAB_BAR_FOOTPRINT pattern every other
+                // (tabs) screen's scroll tail already uses — see lib/tabBar.ts.
+                paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 16,
                 maxHeight: '62%',
                 shadowColor: '#0F172A',
                 shadowOpacity: 0.18,
@@ -83,9 +90,7 @@ export const StationDetailsBottomSheet: React.FC<{
                 </View>
 
                 <View className="rounded-2xl p-4 mb-4" style={{ backgroundColor: COLORS.background }}>
-                    <DetailRow label={t('stationSheet.qisIds')} value={station.qisIds.join('\n')} mono />
-                    <DetailRow label={t('stationSheet.latitude')} value={station.latitude.toFixed(6)} mono />
-                    <DetailRow label={t('stationSheet.longitude')} value={station.longitude.toFixed(6)} mono last />
+                    <DetailRow label={t('stationSheet.qisIds')} value={station.qisIds.join('\n')} mono last />
                 </View>
 
                 <View className="flex-row" style={{ gap: 10 }}>

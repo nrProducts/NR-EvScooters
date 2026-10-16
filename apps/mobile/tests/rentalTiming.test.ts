@@ -80,7 +80,7 @@ describe('describeExpiry', () => {
     const d = describeExpiry(endOfIstDay('2026-08-31'), ist('2026-08-31', '09:00'));
     expect(d?.tone).toBe('danger');
     expect(d?.daysLeft).toBe(0);
-    expect(d?.text).toContain('last day');
+    expect(d?.text).toContain('Plan End');
   });
 
   it('reports how far past expiry a rider is', () => {
@@ -93,6 +93,25 @@ describe('describeExpiry', () => {
 
   it('singularises a one-day overrun', () => {
     expect(describeExpiry(endOfIstDay('2026-08-30'), now)?.text).toBe('Expired 1 day ago');
+  });
+
+  it('reports expired once the exact deadline has passed, even on the same IST calendar day', () => {
+    // Rentals run instant-to-instant (e.g. noon to noon), not midnight to
+    // midnight — a noon expiry and a 16:30 "now" both bucket to the same IST
+    // day, so daysLeft alone can't tell this apart from "last day, not due
+    // yet". This is the case that used to keep showing "last day" for hours
+    // after the plan had actually expired.
+    const d = describeExpiry(ist('2026-08-31', '12:00').toISOString(), ist('2026-08-31', '16:30'));
+    expect(d?.tone).toBe('danger');
+    expect(d?.daysLeft).toBe(0);
+    expect(d?.text).toBe('Expired today');
+    expect(d?.headline).toBe('Your plan expired today.');
+  });
+
+  it('still shows "Plan End" before the exact deadline on the expiry day', () => {
+    const d = describeExpiry(ist('2026-08-31', '12:00').toISOString(), ist('2026-08-31', '09:00'));
+    expect(d?.tone).toBe('danger');
+    expect(d?.text).toContain('Plan End');
   });
 
   it('exposes the warning threshold', () => {

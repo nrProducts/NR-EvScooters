@@ -6,6 +6,19 @@
  * EAS Build never sees a repo-local file that isn't checked in, so it must be
  * uploaded as a secret file env var instead — see `eas env:set`).
  */
+
+/**
+ * Sentry's config plugin adds a Gradle step that uploads source maps to
+ * Sentry, and that step FAILS THE BUILD when it has no auth token. So the
+ * plugin is only applied once all three values exist as EAS environment
+ * variables (SENTRY_AUTH_TOKEN as a secret). Until then crash reporting still
+ * works — the SDK is autolinked and initialised from EXPO_PUBLIC_SENTRY_DSN —
+ * only the stack traces stay minified.
+ */
+const sentryUploadConfigured = Boolean(
+  process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
+);
+
 module.exports = {
   expo: {
     name: 'Swapngo',
@@ -19,7 +32,13 @@ module.exports = {
       icon: './assets/images/icon.png',
     },
     android: {
-      package: 'in.swapngo.evscooters',
+      // MUST match the Play Console app listing exactly — that package name
+      // is permanent once a release has been created there, and this one
+      // already has an "Internal testing" release in progress under
+      // in.swapngo.rider. Changing this requires a matching
+      // google-services.json for the SAME package (see the comment on
+      // googleServicesFile below) or push notifications silently break.
+      package: 'in.swapngo.rider',
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
       /**
        * Permissions pulled in by dependencies that this app does not use.
@@ -95,6 +114,16 @@ module.exports = {
         },
       ],
       './plugins/withUpiIntentQueries',
+      ...(sentryUploadConfigured
+        ? [[
+            '@sentry/react-native/expo',
+            {
+              url: 'https://sentry.io/',
+              organization: process.env.SENTRY_ORG,
+              project: process.env.SENTRY_PROJECT,
+            },
+          ]]
+        : []),
     ],
     experiments: {
       typedRoutes: true,
@@ -126,6 +155,9 @@ module.exports = {
       EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
       EXPO_PUBLIC_MAP_STYLE_URL: process.env.EXPO_PUBLIC_MAP_STYLE_URL,
       EXPO_PUBLIC_GEOCODE_URL: process.env.EXPO_PUBLIC_GEOCODE_URL,
+      // A DSN only allows SENDING events to the project, so it is public by
+      // design — Sentry's own docs ship it in the client.
+      EXPO_PUBLIC_SENTRY_DSN: process.env.EXPO_PUBLIC_SENTRY_DSN,
     },
     owner: 'nr-products',
   },

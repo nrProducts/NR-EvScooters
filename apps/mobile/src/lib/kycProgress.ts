@@ -32,3 +32,31 @@ export function computeInitialKycStep(
   if (!isOnFile(kyc?.documents.find((d) => d.document_type === 'driving_licence'))) return 3;
   return 4;
 }
+
+/**
+ * The header bar's percentage, from what the rider has actually DONE.
+ *
+ * The server's `completion_percent` counts only admin-VERIFIED documents, so
+ * the bar sat at 0% through every step the rider completes and through the
+ * whole review wait, jumping to 100% only once staff approved. This follows
+ * the wizard instead: photo, emergency contact, Aadhaar and licence are 20%
+ * each, handing the application in for review reaches 90%, and 100% is
+ * reserved for fully verified.
+ */
+export function computeKycProgressPercent(
+  profile: ProfileProgressFields | null | undefined,
+  kyc: (KycProgressFields & { kyc_status?: string }) | null | undefined,
+): number {
+  if (kyc?.kyc_status === 'verified') return 100;
+
+  const done = [
+    !!profile?.profile_photo_url,
+    !!profile?.emergency_contact_name && !!profile?.emergency_contact_phone,
+    isOnFile(kyc?.documents.find((d) => d.document_type === 'aadhaar')),
+    isOnFile(kyc?.documents.find((d) => d.document_type === 'driving_licence')),
+  ].filter(Boolean).length;
+
+  const submitted = kyc?.kyc_status === 'pending' || kyc?.kyc_status === 'partially_verified';
+  if (done === 4 && submitted) return 90;
+  return done * 20;
+}

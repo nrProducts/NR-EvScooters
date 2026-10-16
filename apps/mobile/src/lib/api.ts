@@ -3,6 +3,7 @@ import { ENV } from '../constants/env';
 import { getAccessToken, getSupabase } from './supabase';
 import { ApiError } from './ApiError';
 import { signInWithGoogleBrowser } from './googleAuth';
+import { cachedGet, invalidateForWrite } from './apiCache';
 
 // Re-exported so existing `import { ApiError } from '../lib/api'` keeps working.
 export { ApiError };
@@ -13,7 +14,7 @@ import type {
     ApiNominee, ApiPrivacyRequest, ApiPrivacySummary, ConsentPurpose, CorrectableField,
     DpRequestType, GeocodeArea,
     ApiOverdueLateFee, ApiOverdueLateFeeInvoice, ApiReturnStage, ApiVehicleDocument,
-    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRefund, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
     ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
     ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
@@ -47,6 +48,18 @@ interface RequestOptions {
      * rather than racing it.
      */
     signal?: AbortSignal;
+    /**
+     * Overrides TIMEOUT_MS for one request. Only for calls where giving up
+     * early is worse than waiting — settling a captured payment, above all:
+     * the money is already gone, so a premature abort buys nothing and costs
+     * the rider their confirmation.
+     */
+    timeoutMs?: number;
+    /**
+     * Skip the read cache for this GET (an explicit pull-to-refresh). The fresh
+     * result still replaces the cached one.
+     */
+    fresh?: boolean;
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -67,17 +80,45 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
  * that belongs to the app's core surface.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const { method = 'GET', body, query, form, signal } = options;
+    const method = options.method ?? 'GET';
+
+    // Writes are never cached, and a write drops the reads it can have
+    // changed (apiCache.ts WRITE_RULES) — a payment, booking, profile edit or
+    // consent change is exactly when the next screen must see fresh data.
+    // Invalidated in `finally` so a rejected write (it may have partly
+    // applied) is treated the same as a successful one.
+    if (method !== 'GET') {
+        try {
+            return await performRequest<T>(path, options);
+        } finally {
+            invalidateForWrite(path);
+        }
+    }
+
+    // A caller-supplied abort signal means type-ahead search: each keystroke is
+    // meant to cancel the last, so de-duplicating or caching it would defeat that.
+    if (options.signal) return performRequest<T>(path, options);
+
+    return cachedGet<T>(
+        buildUrl(path, options.query),
+        path,
+        () => performRequest<T>(path, options),
+        options.fresh === true,
+    );
+}
+
+async function performRequest<T>(path: string, options: RequestOptions): Promise<T> {
+    const { method = 'GET', body, query, form, signal, timeoutMs = TIMEOUT_MS } = options;
 
     const token = await getAccessToken();
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { 'X-Client-App': 'mobile' };
     if (token) headers.Authorization = `Bearer ${token}`;
     // Let fetch set the multipart boundary itself — setting Content-Type by
     // hand here is the classic way to break a React Native upload.
     if (!form && body !== undefined) headers['Content-Type'] = 'application/json';
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     // Chain rather than replace: whichever fires first wins, and the timeout
     // still applies to a caller who passes a signal they never abort.
     const onExternalAbort = () => controller.abort();
@@ -193,7 +234,16 @@ export const api = {
             phone,
             options: { shouldCreateUser: true },
         });
-        if (error) throw new ApiError(mapOtpStatus(error), 'OTP_REQUEST_FAILED', error.message);
+        if (error) {
+            // GoTrue wraps a rejected sign-up (the database refuses a phone that is
+            // not an Indian mobile) in this generic text, which tells a rider nothing.
+            const rejected = /database error saving new user/i.test(error.message);
+            throw new ApiError(
+                rejected ? 400 : mapOtpStatus(error),
+                'OTP_REQUEST_FAILED',
+                rejected ? 'Enter a valid 10-digit Indian mobile number.' : error.message,
+            );
+        }
     },
 
     async verifyPhoneOtp(phone: string, token: string): Promise<void> {
@@ -411,6 +461,10 @@ export const api = {
         request<ApiBooking>(`/bookings/${bookingId}/cancel`, {
             method: 'POST',
             body: reason ? { reason } : {},
+            // A cancel writes the booking, ends the plan and queues the refund.
+            // Giving up at the default 20s reported "could not cancel" for a
+            // cancellation that then completed.
+            timeoutMs: 45000,
         }),
 
     bookingHistory: (params: { page?: number; pageSize?: number } = {}) =>
@@ -443,8 +497,27 @@ export const api = {
     createPaymentOrderForInvoice: (invoiceId: string) =>
         request<ApiPaymentOrder>(`/payments/invoices/${invoiceId}/order`, { method: 'POST' }),
 
+    // Settles money that has ALREADY left the rider's account, and on a
+    // booking order it also materialises the booking, invoice and allocation —
+    // more work than the default timeout allows for on a cold backend, and
+    // the one call where timing out early is strictly worse than waiting.
     verifyPayment: (payload: VerifyPaymentPayload) =>
-        request<{ status: string }>('/payments/verify', { method: 'POST', body: payload }),
+        payload.recovered
+            ? request<{ status: string }>(
+                  `/payments/orders/${encodeURIComponent(payload.razorpay_order_id)}/sync`,
+                  { method: 'POST', timeoutMs: 45000 },
+              )
+            : request<{ status: string }>('/payments/verify', {
+                  method: 'POST',
+                  body: payload,
+                  timeoutMs: 45000,
+              }),
+    /** Asks the backend whether the gateway captured a payment for this order. */
+    syncPaymentOrder: (gatewayOrderId: string) =>
+        request<{ status: 'paid' | 'pending' | 'none' }>(
+            `/payments/orders/${encodeURIComponent(gatewayOrderId)}/sync`,
+            { method: 'POST', timeoutMs: 45000 },
+        ),
 
     // --- rider billing (payment history, deposit, damage) ------------------
     myInvoices: (params: { page?: number; pageSize?: number; bookingId?: string } = {}) =>
@@ -457,6 +530,11 @@ export const api = {
     myDamagesForBooking: (bookingId: string) =>
         request<ApiDamage[]>('/damages/me', { query: { bookingId } }),
 
+    myRefunds: (params: { page?: number; pageSize?: number; bookingId?: string } = {}) =>
+        request<Paginated<ApiRefund>>('/refunds/me', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
+
     disputeDamage: (damageId: string, reason: string) =>
         request<ApiDamage>(`/damages/${damageId}/dispute`, { method: 'POST', body: { reason } }),
 
@@ -464,7 +542,13 @@ export const api = {
     myReferralSummary: () => request<ApiReferralSummary>('/referrals/me'),
 
     redeemReferralCode: (code: string) =>
-        request<void>('/referrals/redeem', { method: 'POST', body: { code } }),
+        request<ApiRedeemReferralResult>('/referrals/redeem', { method: 'POST', body: { code } }),
+
+    applyReferralCard: (cardId: string, invoiceId: string) =>
+        request<ApiRedemption>('/referrals/apply-card', { method: 'POST', body: { card_id: cardId, invoice_id: invoiceId } }),
+
+    releaseReferralCard: (redemptionId: string) =>
+        request<void>(`/referrals/redemptions/${redemptionId}/release`, { method: 'POST' }),
 
     // --- rentals -------------------------------------------------------
     myCurrentRental: () => request<ApiRental>('/rentals/me/current'),

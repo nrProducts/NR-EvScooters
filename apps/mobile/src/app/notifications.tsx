@@ -43,7 +43,9 @@ export default function NotificationsScreen() {
     useMyNotifications();
 
   const openNotification = async (n: ApiNotification) => {
-    if (!n.read_at) await markRead(n.id);
+    // Not awaited: marking read is bookkeeping, and waiting on it made every
+    // tap sit dead for a network round-trip before anything happened.
+    if (!n.read_at) void markRead(n.id);
     if (!n.payload?.screen) return;
     // Resolved rather than pushed as-is — see lib/notificationRoute.ts for
     // how stored screens drifted out of step with this app's routes.

@@ -23,5 +23,12 @@ export const broadcastBody = z.object({
     title: z.string().trim().min(1, "Enter a title.").max(120),
     body: z.string().trim().min(1, "Enter a message.").max(500),
     screen: z.string().trim().max(200).optional(),
+    // "all" (every active rider) and "active_rental" (riders with a scooter
+    // on hand right now) resolve their own recipient list server-side;
+    // "individual" is the only audience that reads user_ids at all.
+    audience: z.enum(["all", "active_rental", "individual"]).default("all"),
     user_ids: z.array(z.string().uuid()).max(5000).optional(),
-});
+}).refine(
+    (body) => body.audience !== "individual" || (body.user_ids && body.user_ids.length > 0),
+    { message: "Select at least one rider.", path: ["user_ids"] },
+);

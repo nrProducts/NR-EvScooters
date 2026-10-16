@@ -18,6 +18,14 @@ export const LANGS: readonly Lang[] = ['en', 'ta', 'hi'] as const;
 export const DEFAULT_LANG: Lang = 'en';
 
 /**
+ * Temporary kill switch for rider-facing language selection — the picker,
+ * the Profile settings row and the inline toggles are all hidden while this
+ * is false, but nothing underneath (storage, sync, translations) is removed.
+ * Flip back to true to re-enable; no other changes needed.
+ */
+export const LANGUAGE_SELECTION_ENABLED = false;
+
+/**
  * Each language named IN ITSELF, never translated.
  *
  * Someone who only reads Tamil has to be able to find Tamil, which they

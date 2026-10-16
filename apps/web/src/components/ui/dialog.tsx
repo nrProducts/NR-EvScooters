@@ -3,7 +3,36 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const Dialog = DialogPrimitive.Root;
+/**
+ * Radix's modal Dialog sets `document.body.style.pointerEvents = 'none'`
+ * while open, to stop clicks reaching anything behind it, and restores it on
+ * close. That restore can race and lose when the dialog closes as a
+ * SIDE EFFECT of state updated elsewhere in the same tick — exactly what
+ * every confirm-and-mutate flow in this app does (ConfirmDialog's onConfirm
+ * calls setDeleteTarget(null) to close the dialog AND toastSuccess(...) to
+ * show a toast, both in one mutation onSuccess callback). When the race is
+ * lost, body is left permanently un-clickable — the whole admin app looks
+ * frozen after any successful action, with no error and no visible cause.
+ *
+ * Forcing pointer-events clear a tick after every close, regardless of
+ * whether Radix's own cleanup already ran, costs nothing (an extra no-op
+ * style reset) and makes the app survive the race instead of relying on
+ * Radix never losing it.
+ */
+const Dialog = ({
+  open,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Root>) => {
+  React.useEffect(() => {
+    if (open) return;
+    const id = setTimeout(() => {
+      document.body.style.pointerEvents = "";
+    }, 0);
+    return () => clearTimeout(id);
+  }, [open]);
+
+  return <DialogPrimitive.Root open={open} {...props} />;
+};
 const DialogTrigger = DialogPrimitive.Trigger;
 
 const DialogOverlay = React.forwardRef<

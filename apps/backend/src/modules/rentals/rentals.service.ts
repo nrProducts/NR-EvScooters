@@ -13,7 +13,7 @@ import {
 } from "./rentals.types";
 import { LATE_RETURN_FEE_PER_DAY, MAX_LATE_PENALTY_DAYS } from "./returnPolicy.constants";
 import { paidPeriodIds } from "../payments/renewalPeriod";
-import { businessToday, formatTimeOfDayForCopy } from "../../common/dates";
+import { businessToday, hasPassedCutover } from "../../common/dates";
 import { getSettings as getReturnRecoverySettings } from "../return-recovery-settings/return-recovery-settings.service";
 import {
     ensureOverdueLateFeeInvoice, isOverdueLateFeeSettled, OverdueLateFeeInvoiceResult, overdueLateFeeStatusFor,
@@ -307,16 +307,44 @@ async function periodsFor(subscriptionIds: string[]): Promise<Map<string, {
         (data ?? []).filter((row) => row.status === "scheduled").map((row) => row.id),
     );
 
+    const currentRows = new Map<string, { id: string; starts_on: string; due_on: string }>();
+    const scheduledRows = new Map<string, { id: string; starts_on: string; due_on: string }>();
+
     for (const row of data ?? []) {
-        const entry = map.get(row.subscription_id)
-            ?? { currentStart: null, nextDue: null, scheduledStart: null };
         if (row.status === "current") {
-            entry.currentStart = row.starts_on;
-            entry.nextDue = row.due_on;
+            currentRows.set(row.subscription_id, row);
         } else if (paid.has(row.id)) {
-            entry.scheduledStart = row.starts_on;
+            scheduledRows.set(row.subscription_id, row);
         }
-        map.set(row.subscription_id, entry);
+    }
+
+    // Same live-cutover read as bookings.service.ts's equivalent loop: once
+    // the `current` period's own due_on cutover has passed, a paid
+    // `scheduled` period is the ACTUAL active one from the rider's point of
+    // view, regardless of whether payment-overdue-sweep (hourly, :10 past)
+    // has promoted it in the DB yet. DB `status` columns are untouched —
+    // this only changes what this read reports.
+    for (const [subscriptionId, current] of currentRows) {
+        const entry = map.get(subscriptionId)
+            ?? { currentStart: null, nextDue: null, scheduledStart: null };
+        const scheduled = scheduledRows.get(subscriptionId);
+
+        if (scheduled && hasPassedCutover(current.due_on)) {
+            entry.currentStart = scheduled.starts_on;
+            entry.nextDue = scheduled.due_on;
+            scheduledRows.delete(subscriptionId);
+        } else {
+            entry.currentStart = current.starts_on;
+            entry.nextDue = current.due_on;
+        }
+        map.set(subscriptionId, entry);
+    }
+
+    for (const [subscriptionId, scheduled] of scheduledRows) {
+        const entry = map.get(subscriptionId)
+            ?? { currentStart: null, nextDue: null, scheduledStart: null };
+        entry.scheduledStart = scheduled.starts_on;
+        map.set(subscriptionId, entry);
     }
     return map;
 }
@@ -652,12 +680,39 @@ export async function requestReturn(
     // `late_fee_per_day` is read above, off return_recovery_settings — the
     // configured rate rather than the constant, so the rider is never quoted a
     // number the settlement will not charge.
-    await notifyUser(actor.id, {
+    // A rider returning before the plan's minimum rental days has forfeited
+    // the deposit. Said now, at the moment they commit to returning, rather
+    // than discovered on the settlement a week later.
+    let depositNote = "";
+    if (subscription) {
+        try {
+            const deposit = await getDepositForSubscriptionOrNull(subscription.id);
+            if (
+                deposit && deposit.status === "held"
+                && deposit.min_rental_days_required > 0
+                && deposit.rental_days_completed < deposit.min_rental_days_required
+            ) {
+                depositNote = ` As you have completed ${deposit.rental_days_completed} of the `
+                    + `${deposit.min_rental_days_required} rental days required, your security deposit `
+                    + "is not eligible for a refund.";
+            }
+        } catch {
+            // Best-effort wording; never blocks the notification.
+        }
+    }
+
+    // Date only: the handover time is the fixed cycle time, and quoting it
+    // here read as a deadline to the minute.
+    const handoverBy = dueAt.toLocaleDateString("en-IN", {
+        day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata",
+    });
+
+    void notifyUser(actor.id, {
         template: "rental_return_requested",
         title: "Return Requested",
-        body: `Hand your scooter in by ${dueAt.toLocaleDateString()} `
-            + `${formatTimeOfDayForCopy(dueAt)}. Our team will confirm the handover.`
-            + (late_fee_per_day > 0 ? ` A late fee of ₹${late_fee_per_day} per day applies after that.` : ""),
+        body: `Hand your scooter in by ${handoverBy}. Our team will confirm the handover.`
+            + (late_fee_per_day > 0 ? ` A late fee of ₹${late_fee_per_day} per day applies after that.` : "")
+            + depositNote,
         screen: "my-scooter",
     });
 

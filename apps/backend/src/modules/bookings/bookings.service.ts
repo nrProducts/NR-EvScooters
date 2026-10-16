@@ -1,4 +1,6 @@
 import { supabaseAdmin } from "../../config/supabase";
+import { hasPaidReturnGateInvoice } from "../rentals/overdueLateFee";
+import { hasPassedCutover } from "../../common/dates";
 import { businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
@@ -121,6 +123,7 @@ interface BookingContext {
     refundInitiatedAt: string | null;
     refundCompletedAt: string | null;
     refundTransactionId: string | null;
+    refundRejectionReason: string | null;
     activeRental: BookingActiveRental | null;
     /**
      * The vehicle the rental currently holds, once riding — from the open
@@ -144,7 +147,7 @@ const EMPTY_CONTEXT: BookingContext = {
     referralDiscountAmount: null,
     cancelledAt: null, cancellationReason: null, cancellationPenaltyAmount: null,
     refundAmount: null, refundStatus: null, refundInitiatedAt: null, refundCompletedAt: null,
-    refundTransactionId: null, activeRental: null, currentVehicle: null,
+    refundTransactionId: null, refundRejectionReason: null, activeRental: null, currentVehicle: null,
 };
 
 /** `refunds.status` → the vocabulary the clients already speak. */
@@ -154,6 +157,13 @@ function toRefundStatus(status: string | null | undefined): BookingRefundStatus 
     if (status === "pending") return "pending";
     if (status === "processing") return "processing";
     if (status === "failed") return "failed";
+    // Was falling through to null, same as an unrecognised value — which
+    // made a REJECTED refund (an admin decided nothing is owed) render
+    // identically to no refund ever having existed: the conditional refund
+    // block in Booking History is keyed on refund_status being truthy, so
+    // a rejection just made the whole section vanish instead of explaining
+    // itself.
+    if (status === "rejected") return "rejected";
     return null;
 }
 
@@ -253,7 +263,7 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
             refundIds.length
                 ? supabaseAdmin
                     .from("refunds")
-                    .select("id, amount, status, initiated_at, completed_at, gateway_refund_id")
+                    .select("id, amount, status, initiated_at, completed_at, gateway_refund_id, rejection_reason")
                     .in("id", refundIds)
                 : Promise.resolve({ data: [], error: null } as const),
             subscriptionIds.length
@@ -289,17 +299,51 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
             .map((period) => period.id),
     );
 
+    // Promoting a paid-ahead `scheduled` period to `current` is normally
+    // payment-overdue-sweep's job (hourly, :10 past — see that function), so
+    // between the noon cutover and the next sweep run a rider who paid early
+    // would otherwise see yesterday's period and "renewal scheduled" for up
+    // to an hour after their new plan has actually started. Rather than
+    // widen that window by tightening the cron, read it live here: if the
+    // `current` row's own cutover has already passed and a paid `scheduled`
+    // row exists, show the scheduled row as the active period regardless of
+    // whether the sweep has run yet. DB state (`status` columns) is left
+    // untouched — the sweep still does that, this only affects display.
+    const currentByBooking = new Map<string, { id: string; starts_on: string; due_on: string }>();
+    const scheduledByBooking = new Map<string, { id: string; starts_on: string; ends_on: string }>();
+
     for (const period of periodsRes.data ?? []) {
         const ctx = ctxFor(period.subscription_id);
         if (!ctx) continue;
         if (period.status === "current") {
-            ctx.currentPeriodStart = period.starts_on;
-            ctx.nextDueAt = period.due_on;
+            currentByBooking.set(period.subscription_id, period);
         } else if (paidPeriods.has(period.id)) {
-            ctx.renewalStatus = "scheduled";
-            ctx.scheduledStartDate = period.starts_on;
-            ctx.scheduledDurationDays = inclusiveDays(period.starts_on, period.ends_on);
+            scheduledByBooking.set(period.subscription_id, period);
         }
+    }
+
+    for (const [subscriptionId, current] of currentByBooking) {
+        const ctx = ctxFor(subscriptionId);
+        if (!ctx) continue;
+        const scheduled = scheduledByBooking.get(subscriptionId);
+
+        if (scheduled && hasPassedCutover(current.due_on)) {
+            ctx.currentPeriodStart = scheduled.starts_on;
+            ctx.nextDueAt = scheduled.ends_on;
+            // Already live — not "scheduled" from the rider's point of view.
+            scheduledByBooking.delete(subscriptionId);
+        } else {
+            ctx.currentPeriodStart = current.starts_on;
+            ctx.nextDueAt = current.due_on;
+        }
+    }
+
+    for (const [subscriptionId, scheduled] of scheduledByBooking) {
+        const ctx = ctxFor(subscriptionId);
+        if (!ctx) continue;
+        ctx.renewalStatus = "scheduled";
+        ctx.scheduledStartDate = scheduled.starts_on;
+        ctx.scheduledDurationDays = inclusiveDays(scheduled.starts_on, scheduled.ends_on);
     }
 
     for (const pause of pausesRes.data ?? []) {
@@ -380,6 +424,7 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
             ctx.refundInitiatedAt = refund.initiated_at;
             ctx.refundCompletedAt = refund.completed_at;
             ctx.refundTransactionId = refund.gateway_refund_id;
+            ctx.refundRejectionReason = refund.rejection_reason;
         } else {
             // A cancellation with no refund row owed nothing.
             ctx.refundAmount = 0;
@@ -481,6 +526,7 @@ export function toBookingView(row: RawBookingRow, ctx: BookingContext = EMPTY_CO
         refund_initiated_at: ctx.refundInitiatedAt,
         refund_completed_at: ctx.refundCompletedAt,
         refund_transaction_id: ctx.refundTransactionId,
+        refund_rejection_reason: ctx.refundRejectionReason,
         plan_status: ctx.planStatus,
         plan_activated_at: ctx.planActivatedAt,
         plan_duration_days: ctx.planDurationDays,
@@ -1033,10 +1079,34 @@ async function recordCancellation(input: {
                 input.actor,
             );
         } catch (err) {
+            // The cancellation itself must still go through — the rider asked
+            // for it and the plan is already ended. But money owed and not
+            // queued is the worst thing this function can do quietly, and a
+            // console line is invisible in practice: that is how every
+            // pay-first cancellation lost its refund unnoticed. The audit row
+            // is the durable record staff can find and act on.
+            const message = err instanceof Error ? err.message : String(err);
             console.error("[bookings] opening cancellation refund failed", {
                 bookingId: input.bookingId,
-                error: err instanceof Error ? err.message : String(err),
+                amount: input.refundAmount,
+                error: message,
             });
+            await writeAudit({
+                actorId: input.actor.id,
+                // The actor may be staff cancelling on someone's behalf, so
+                // naming them here would misattribute who is owed the money.
+                // entityType/entityId identify the booking, and the rider
+                // follows from it.
+                targetUserId: null,
+                action: "refund.initiation_failed",
+                entityType: "booking",
+                entityId: input.bookingId,
+                after: {
+                    subscription_id: input.subscriptionId,
+                    owed_amount: input.refundAmount,
+                    error: message,
+                },
+            }).catch(() => undefined);
         }
     }
 
@@ -1087,16 +1157,22 @@ export async function cancelMyBooking(
     // Only a 'confirmed' booking was ever actually paid for.
     const wasPaid = existing.status === "confirmed";
     const context = (await loadBookingContext([bookingId])).get(bookingId) ?? EMPTY_CONTEXT;
-    const deposit = wasPaid && context.subscriptionId
-        ? await getDepositForSubscriptionOrNull(context.subscriptionId)
-        : null;
 
+    // Three independent reads — run together, not back to back. Each is a
+    // network round trip, and on a cancel they were the bulk of the wait.
+    //
     // Everything is computed from what was ACTUALLY captured, not the
     // plan-price snapshot — a discounted booking paid less than the snapshot,
     // and refunding the snapshot trips the DB's over-refund guard.
-    const capturedTotal = wasPaid && context.subscriptionId
-        ? await capturedAmountForSubscription(context.subscriptionId)
-        : 0;
+    const [deposit, capturedTotal, tiers] = await Promise.all([
+        wasPaid && context.subscriptionId
+            ? getDepositForSubscriptionOrNull(context.subscriptionId)
+            : Promise.resolve(null),
+        wasPaid && context.subscriptionId
+            ? capturedAmountForSubscription(context.subscriptionId)
+            : Promise.resolve(0),
+        getCancellationTiers(),
+    ]);
     const depositAmount = deposit?.amount ?? 0;
     // The onboarding charge comes out of planPaid, not out of the refund: it
     // is non-refundable, so it must be neither given back nor charged a
@@ -1104,7 +1180,6 @@ export async function cancelMyBooking(
     const onboardingCharge = wasPaid ? Number(existing.onboarding_charge_snapshot ?? 0) : 0;
     const planPaid = Math.max(0, capturedTotal - depositAmount - onboardingCharge);
 
-    const tiers = await getCancellationTiers();
     const charge = computeCancellationCharge({
         planPaid,
         depositAmount,
@@ -1170,7 +1245,11 @@ export async function cancelMyBooking(
         },
     });
 
-    await notifyUser(actor.id, {
+    // Fire-and-forget: both helpers swallow their own errors, and a push
+    // gateway or mail server round trip is not part of "your booking is
+    // cancelled". Awaiting them is what pushed the response past the app's
+    // timeout while the cancellation itself had already succeeded.
+    void notifyUser(actor.id, {
         template: "booking_cancelled",
         title: "Booking Cancelled",
         body: penaltyAmount > 0
@@ -1181,7 +1260,7 @@ export async function cancelMyBooking(
         screen: "booking-history",
     });
 
-    await notify({
+    void notify({
         notificationType: "booking_cancelled",
         referenceType: "booking",
         referenceId: bookingId,
@@ -1339,6 +1418,15 @@ export async function requestEarlyRecharge(bookingId: string, actor: AuthContext
         throw businessRule(
             "You've requested a return for this scooter, so your plan can't be renewed. "
             + "Cancel the return with our team first if you'd like to keep riding.",
+        );
+    }
+
+    // Paying the overdue-days invoice is committing to the return — see
+    // hasPaidReturnGateInvoice. Renewing now would sell the same days twice.
+    if (await hasPaidReturnGateInvoice(context.subscriptionId)) {
+        throw businessRule(
+            "You've already settled this plan to return the scooter, so it can't be renewed. "
+            + "Return the scooter, then book a new plan if you'd like to keep riding.",
         );
     }
 

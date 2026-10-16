@@ -112,9 +112,12 @@ export function SiteDataProvider({ children }: { children: ReactNode }) {
 
     (async () => {
       try {
+        const clientHeaders = { "X-Client-App": "website" };
         const [plansRes, statsRes] = await Promise.all([
-          fetch(`${API_BASE}/public/plans`, { signal: controller.signal }).then((r) => (r.ok ? r.json() : null)),
-          fetch(`${API_BASE}/public/stats`, { signal: controller.signal }).then((r) => (r.ok ? r.json() : null)),
+          fetch(`${API_BASE}/public/plans`, { signal: controller.signal, headers: clientHeaders })
+            .then((r) => (r.ok ? r.json() : null)),
+          fetch(`${API_BASE}/public/stats`, { signal: controller.signal, headers: clientHeaders })
+            .then((r) => (r.ok ? r.json() : null)),
         ]);
 
         if (!plansRes) throw new Error("plans request failed");

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, useWindowDimensions,
+  View, Text, TextInput, TouchableOpacity, Keyboard, useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
@@ -76,12 +76,17 @@ export default function OtpVerifyScreen() {
     }
     setError('');
     setVerifying(true);
+    // The number pad covers the Verify button, so its spinner was hidden and
+    // an auto-submitted code looked like a frozen screen. Lower it while the
+    // code is checked; a wrong code raises it again below.
+    Keyboard.dismiss();
     try {
       await verifyOtp(phone, value);
       // Root layout redirects from here.
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('otp.error.verifyFailed'));
       setCode('');
+      inputRef.current?.focus();
     } finally {
       setVerifying(false);
     }

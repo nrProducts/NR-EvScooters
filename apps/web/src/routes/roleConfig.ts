@@ -30,6 +30,7 @@ import {
   ClipboardList,
   CalendarClock,
   CalendarOff,
+  Bug,
 } from "lucide-react";
 import type { ModuleKey, Role, StaffUser } from "@/types";
 import { hasModule } from "@/lib/permissions";
@@ -255,6 +256,12 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Audit Log", path: "/audit", icon: ScrollText, roles: ["admin", "staff"], moduleKey: "audit", group: "compliance",
+  },
+  {
+    // Admin-only, deliberately — raw request errors (occasionally a stack
+    // trace) are a more internal surface than the business audit trail, and
+    // this exists for debugging production/UAT, not for day-to-day staff use.
+    label: "Error Logs", path: "/error-logs", icon: Bug, roles: ["admin"], moduleKey: "error_logs", group: "compliance",
   },
 
   // Ungrouped — pinned at the bottom, outside any accordion section.

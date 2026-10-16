@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -15,15 +16,16 @@ import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { RowActionsButton } from "@/components/ui/row-actions-button";
+import { DepositJourneyDialog, journeyHeadline, vehicleNumbers } from "@/components/refunds/DepositJourneyDrawer";
 import {
-  useRefunds, useRetryRefund, useReviewRefund, useRejectRefund,
+  useDepositJourneys, useRefundJourney, useRefunds, useRetryRefund, useReviewRefund, useRejectRefund,
 } from "@/hooks/useRefunds";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatFullDateTime } from "@/lib/utils";
 import { ApiError } from "@/services/api/httpClient";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
-import type { Refund, RefundStatus, RefundType } from "@/types";
+import type { DepositJourney, DepositStatus, Refund, RefundStatus, RefundType } from "@/types";
 
 const STATUS_OPTIONS: (RefundStatus | "all")[] = [
   "all", "pending", "processing", "succeeded", "failed", "rejected",
@@ -38,13 +40,18 @@ const REFUND_TYPE_LABEL: Record<RefundType, string> = {
   goodwill: "Goodwill",
 };
 
+type RefundsTab = "refunds" | "journeys";
+
 export default function RefundsPage() {
+  const [tab, setTab] = useState<RefundsTab>("refunds");
   const [status, setStatus] = useState<RefundStatus | "all">("all");
   const [refundType, setRefundType] = useState<RefundType | "all">("all");
   const [page, setPage] = useState(1);
   const [reviewTarget, setReviewTarget] = useState<Refund | null>(null);
   const [approveTarget, setApproveTarget] = useState<Refund | null>(null);
   const [rejectTarget, setRejectTarget] = useState<Refund | null>(null);
+  const [journeyRefundId, setJourneyRefundId] = useState<string | null>(null);
+  const journey = useRefundJourney(journeyRefundId ?? undefined);
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useRefunds({
     status, refundType, page, pageSize: 8, sortBy: sort.by as "created_at" | "amount", sortDir: sort.dir,
@@ -90,12 +97,13 @@ export default function RefundsPage() {
         <span className="text-sm">
           {r.booking?.vehicle_model_name ?? "—"}
           {r.booking?.station_name ? ` · ${r.booking.station_name}` : ""}
+          {r.booking?.vehicle_registration_number ? <span className="block font-mono text-xs">{r.booking.vehicle_registration_number}</span> : null}
         </span>
       ),
       hideOnMobile: true,
     },
     {
-      header: "Original Amount",
+      header: "Refundable",
       key: "gross_amount",
       sortKey: "amount",
       render: (r) => formatCurrency(r.gross_amount),
@@ -148,13 +156,41 @@ export default function RefundsPage() {
       render: (r) => (
         <span className="text-xs">
           {r.reviewed_by?.full_name ?? "—"}
-          {r.reviewed_at ? <span className="block text-muted-foreground">{formatDate(r.reviewed_at)}</span> : null}
+          {r.reviewed_at ? <span className="block text-muted-foreground">{formatFullDateTime(r.reviewed_at)}</span> : null}
         </span>
       ),
       hideOnMobile: true,
     },
-    { header: "Initiated", key: "initiated_at", sortKey: "created_at", render: (r) => formatDate(r.initiated_at), hideOnMobile: true },
-    { header: "Approved / Done", key: "processed_at", render: (r) => (r.processed_at ? formatDate(r.processed_at) : "—"), hideOnMobile: true },
+    { header: "Initiated", key: "initiated_at", sortKey: "created_at", render: (r) => formatFullDateTime(r.initiated_at), hideOnMobile: true },
+    { header: "Completed", key: "processed_at", render: (r) => (r.processed_at ? formatFullDateTime(r.processed_at) : "—"), hideOnMobile: true },
+    {
+      header: "Rejected",
+      key: "rejected_at",
+      render: (r) => (r.rejected_at ? (
+        <span className="text-xs">
+          {formatFullDateTime(r.rejected_at)}
+          {r.rejected_by ? <span className="block text-muted-foreground">{r.rejected_by.full_name}</span> : null}
+        </span>
+      ) : "—"),
+      hideOnMobile: true,
+    },
+    {
+      header: "Payout attempts",
+      key: "attempt_count",
+      render: (r) => (
+        <span className="text-xs">
+          {r.attempt_count}
+          {r.last_attempted_at ? <span className="block text-muted-foreground">{formatFullDateTime(r.last_attempted_at)}</span> : null}
+        </span>
+      ),
+      hideOnMobile: true,
+    },
+    {
+      header: "Original payment",
+      key: "source_gateway_payment_id",
+      render: (r) => <span className="font-mono text-xs">{r.source_gateway_payment_id ?? "—"}</span>,
+      hideOnMobile: true,
+    },
     {
       header: "Transaction ID",
       key: "gateway_refund_id",
@@ -205,16 +241,27 @@ export default function RefundsPage() {
     },
   ];
 
-  usePageSubtitle(`${data?.total ?? 0} refunds — review, approve or reject each one`);
+  usePageSubtitle(
+    tab === "refunds"
+      ? `${data?.total ?? 0} refunds — review, approve or reject each one`
+      : "Every deposit from the rider's payment to the refund — dates, amounts and who handled it",
+  );
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as RefundsTab)}>
+          <TabsList>
+            <TabsTrigger value="refunds">Refunds</TabsTrigger>
+            <TabsTrigger value="journeys">Deposit &amp; Refund Journey</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <Button variant="outline" size="sm" asChild>
           <Link to="/bookings?tab=settled">Returns &amp; Settlements</Link>
         </Button>
       </div>
 
+      {tab === "journeys" ? <JourneysTab /> : (
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
           <Select
@@ -256,17 +303,160 @@ export default function RefundsPage() {
           isError={isError}
           onRetry={() => refetch()}
           emptyTitle="No refunds match your filters"
+          onRowClick={(r) => setJourneyRefundId(r.id)}
           sort={sort}
           onSortChange={onSortChange}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
       </Card>
+      )}
 
+      <DepositJourneyDialog
+        open={!!journeyRefundId}
+        onClose={() => setJourneyRefundId(null)}
+        journey={journey.data}
+        isLoading={journey.isLoading}
+        isError={journey.isError}
+      />
       <ReviewRefundDialog refund={reviewTarget} onOpenChange={(o) => !o && setReviewTarget(null)} />
       <ApproveRefundDialog refund={approveTarget} onOpenChange={(o) => !o && setApproveTarget(null)} />
       <RejectRefundDialog refund={rejectTarget} onOpenChange={(o) => !o && setRejectTarget(null)} />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Deposit & Refund Journey — one row per deposit, payment to refund.
+// ---------------------------------------------------------------------------
+
+const DEPOSIT_STATUS_OPTIONS: (DepositStatus | "all")[] = ["all", "pending", "held", "released", "forfeited"];
+
+function JourneysTab() {
+  const [status, setStatus] = useState<DepositStatus | "all">("all");
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<DepositJourney | null>(null);
+  const { data, isLoading, isError, refetch } = useDepositJourneys({ status, page, pageSize: 8 });
+
+  const columns: DataTableColumn<DepositJourney>[] = [
+    {
+      header: "Rider",
+      key: "rider",
+      render: (j) => (
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{j.rider?.full_name ?? "—"}</p>
+          <p className="truncate text-xs text-muted-foreground">{j.rider?.phone ?? ""}</p>
+        </div>
+      ),
+    },
+    {
+      header: "Scooter · Plan",
+      key: "plan",
+      hideOnMobile: true,
+      render: (j) => (
+        <div className="min-w-0 text-xs">
+          <p className="truncate text-sm">{j.subscription.vehicle_model_name ?? "—"}</p>
+          {vehicleNumbers(j) ? <p className="truncate font-mono">{vehicleNumbers(j)}</p> : null}
+          <p className="truncate text-muted-foreground">
+            {[j.subscription.plan_name, j.subscription.hub_name].filter(Boolean).join(" · ") || "—"}
+          </p>
+        </div>
+      ),
+    },
+    {
+      header: "Paid",
+      key: "paid",
+      render: (j) => {
+        const first = j.payments[0];
+        return (
+          <div className="text-xs">
+            <p className="text-sm">{formatCurrency(j.totals.deposit_amount + j.totals.onboarding_charge)}</p>
+            <p className="text-muted-foreground">
+              {formatCurrency(j.totals.deposit_amount)} deposit
+              {j.totals.onboarding_charge > 0 ? ` + ${formatCurrency(j.totals.onboarding_charge)} onboarding` : ""}
+            </p>
+            {first ? (
+              <p className="text-muted-foreground">
+                {formatFullDateTime(first.captured_at)}{first.method ? ` · ${first.method.toUpperCase()}` : ""}
+              </p>
+            ) : null}
+          </div>
+        );
+      },
+    },
+    {
+      header: "Rental",
+      key: "rental",
+      hideOnMobile: true,
+      render: (j) => {
+        const r = j.rentals[0];
+        return r ? (
+          <div className="text-xs">
+            <p>{formatFullDateTime(r.picked_up_at)}</p>
+            <p className="text-muted-foreground">
+              {r.returned_at ? `returned ${formatFullDateTime(r.returned_at)}` : "still riding"}
+            </p>
+          </div>
+        ) : <span className="text-xs text-muted-foreground">Not picked up</span>;
+      },
+    },
+    { header: "Deposit", key: "status", render: (j) => <StatusBadge status={j.deposit.status} /> },
+    {
+      header: "Refund",
+      key: "refund",
+      render: (j) => {
+        const latest = j.refunds[j.refunds.length - 1];
+        return latest ? (
+          <div className="space-y-1">
+            <StatusBadge status={latest.status} />
+            <p className="text-xs text-muted-foreground">{formatCurrency(latest.amount)}</p>
+          </div>
+        ) : <span className="text-xs text-muted-foreground">—</span>;
+      },
+    },
+    {
+      header: "Where it stands",
+      key: "headline",
+      hideOnMobile: true,
+      render: (j) => <span className="text-xs text-muted-foreground">{journeyHeadline(j)}</span>,
+    },
+  ];
+
+  return (
+    <>
+      <Card>
+        <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
+          <Select value={status} onValueChange={(v) => { setStatus(v as DepositStatus | "all"); setPage(1); }}>
+            <SelectTrigger className="sm:w-48"><SelectValue placeholder="Deposit status" /></SelectTrigger>
+            <SelectContent>
+              {DEPOSIT_STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s} className="capitalize">
+                  {s === "all" ? "Any deposit status" : s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">Click a row for the full start-to-end record.</p>
+        </div>
+        <DataTable
+          columns={columns}
+          data={data?.data ?? []}
+          isLoading={isLoading}
+          isError={isError}
+          onRetry={() => refetch()}
+          onRowClick={setSelected}
+          emptyTitle="No deposits match your filter"
+        />
+        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+      </Card>
+      <DepositJourneyDialog
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        journey={selected ?? undefined}
+        isLoading={false}
+        isError={false}
+      />
+    </>
   );
 }
 
@@ -311,7 +501,7 @@ function ReviewRefundDialog({ refund, onOpenChange }: { refund: Refund | null; o
           <DialogTitle>Review refund — {refund?.booking?.rider_name ?? "rider"}</DialogTitle>
           <DialogDescription>
             {REFUND_TYPE_LABEL[refund?.refund_type ?? "goodwill"]}
-            {refund?.booking?.cancelled_at ? ` · cancelled ${formatDate(refund.booking.cancelled_at)}` : ""}
+            {refund?.booking?.cancelled_at ? ` · cancelled ${formatFullDateTime(refund.booking.cancelled_at)}` : ""}
           </DialogDescription>
         </DialogHeader>
 
@@ -423,7 +613,7 @@ function ApproveRefundDialog({ refund, onOpenChange }: { refund: Refund | null; 
             {refund.reviewed_by && (
               <p className="pt-1 text-[0.6875rem] text-muted-foreground">
                 Reviewed by {refund.reviewed_by.full_name}
-                {refund.reviewed_at ? ` on ${formatDate(refund.reviewed_at)}` : ""}
+                {refund.reviewed_at ? ` on ${formatFullDateTime(refund.reviewed_at)}` : ""}
                 {refund.review_note ? ` — ${refund.review_note}` : ""}
               </p>
             )}

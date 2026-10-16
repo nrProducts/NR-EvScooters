@@ -22,6 +22,8 @@ export function useConsent() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    // Which single toggle is being written, so only ITS control shows a spinner.
+    const [pendingPurpose, setPendingPurpose] = useState<ConsentPurpose | null>(null);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -81,6 +83,7 @@ export function useConsent() {
         async (purpose: ConsentPurpose, granted: boolean) => {
             if (!notice) return { ok: false as const, stale: false };
             setSaving(true);
+            setPendingPurpose(purpose);
             setError(null);
             try {
                 const next = granted
@@ -99,10 +102,11 @@ export function useConsent() {
                 return { ok: false as const, stale };
             } finally {
                 setSaving(false);
+                setPendingPurpose(null);
             }
         },
         [notice, docLang, load],
     );
 
-    return { state, notice, loading, saving, error, reload: load, save, setOne };
+    return { state, notice, loading, saving, pendingPurpose, error, reload: load, save, setOne };
 }

@@ -16,7 +16,12 @@ export function buildMapsUrl(lat: number, lng: number, platform: 'ios' | 'androi
         : `https://maps.apple.com/?daddr=${lat},${lng}`;
 }
 
-/** Cross-platform web fallback — works in any browser if no maps app can open the deep link. */
+/**
+ * Cross-platform web fallback — a universal link, not a custom scheme, so it
+ * works in any browser (opening the matching maps app on a phone if one's
+ * installed, otherwise the Google Maps website) and whenever a geo:/maps:
+ * deep link can't be opened.
+ */
 export function buildWebMapsUrl(lat: number, lng: number): string {
     return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 }

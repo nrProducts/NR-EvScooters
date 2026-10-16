@@ -5,12 +5,13 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useAuthStore } from '../store/useAuthStore';
 import { userRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
-import { isValidPhone, toE164 } from '../lib/authValidation';
+import { isValidPhone, sanitizePhoneInput, toE164 } from '../lib/authValidation';
 import { COLORS } from '../constants/theme';
 import { FormField } from '../components/ui/FormField';
 import { ChipSelect } from '../components/ui/ChipSelect';
 import { DatePickerField } from '../components/ui/DatePickerField';
 import { SearchableSelectField } from '../components/ui/SearchableSelectField';
+import { ReferralCodeEntry } from '../components/ReferralCodeEntry';
 import { INDIAN_STATES } from '../constants/indianStates';
 import { User, Mail, Phone, ArrowRight } from 'lucide-react-native';
 import type { Gender } from '../types/api';
@@ -211,7 +212,7 @@ export default function ProfileSetupScreen() {
                 ref={emailOrPhoneRef}
                 value={phone}
                 onChangeText={(v) => {
-                  setPhone(v);
+                  setPhone(sanitizePhoneInput(v));
                   if (error) setError('');
                 }}
                 placeholder={t('profileSetup.phonePlaceholder')}
@@ -303,16 +304,12 @@ export default function ProfileSetupScreen() {
           autoComplete="postal-code"
         />
 
-        {/*
-          The Referral Code field was here.
-          Referrals are not part of the current database schema — `referrals`,
-          `referral_rewards` and `users.referral_code` have no successor, and
-          the backend module is a documented stub that refuses every call (see
-          apps/backend/src/modules/referrals/referrals.service.ts). Asking for
-          a code that can only ever come back "invalid or expired" is worse
-          than not asking, so the field is gone until referrals have a schema
-          again. See docs/final-system-audit (finding M5).
-        */}
+        <Text style={{ color: COLORS.textSecondary }} className="text-sm font-bold mb-2">
+          {t('profileSetup.referralCode')}
+        </Text>
+        <View className="mb-4">
+          <ReferralCodeEntry />
+        </View>
 
         {error ? (
           <Text style={{ color: COLORS.danger }} className="text-xs font-semibold mb-4 px-1">

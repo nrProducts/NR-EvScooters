@@ -59,10 +59,11 @@ export default function MyScooterScreen() {
   // profile.has_active_rental actually CHANGES in the store, and nothing
   // here was ever refreshing that flag. Mirrors home.tsx's identical fix.
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
+  const refreshProfileIfStale = useAuthStore((s) => s.refreshProfileIfStale);
   useFocusEffect(
     useCallback(() => {
-      void refreshProfile();
-    }, [refreshProfile]),
+      void refreshProfileIfStale();
+    }, [refreshProfileIfStale]),
   );
 
   // Same settlement card Home shows — fetched here too so a rider who lands
@@ -217,7 +218,7 @@ export default function MyScooterScreen() {
                   <DetailRow
                     icon={CreditCard}
                     label={t('scooter.plan')}
-                    value={`${state.rental.plan.name} · ₹${state.rental.plan.price.toFixed(0)}/${t(BILLING_CYCLE_LABEL_KEY[state.rental.plan.billing_cycle])}`}
+                    value={`${state.rental.plan.name} · ₹${state.rental.plan.price.toFixed(2)}/${t(BILLING_CYCLE_LABEL_KEY[state.rental.plan.billing_cycle])}`}
                   />
                 ) : null}
                 <DetailRow
@@ -252,7 +253,7 @@ export default function MyScooterScreen() {
                       value={expiry.text}
                       valueColor={
                         expiry.tone === 'neutral' ? undefined
-                          : expiry.tone === 'danger' ? COLORS.danger : COLORS.warning
+                          : expiry.tone === 'danger' ? COLORS.overdue : COLORS.warning
                       }
                     />
                   );
@@ -381,7 +382,7 @@ export default function MyScooterScreen() {
                     <DetailRow
                       icon={CreditCard}
                       label={t('scooter.plan')}
-                      value={`${state.booking.plan.name} · ₹${state.booking.plan.price.toFixed(0)}/${t(BILLING_CYCLE_LABEL_KEY[state.booking.plan.billing_cycle])}`}
+                      value={`${state.booking.plan.name} · ₹${state.booking.plan.price.toFixed(2)}/${t(BILLING_CYCLE_LABEL_KEY[state.booking.plan.billing_cycle])}`}
                       first={!state.booking.vehicle}
                     />
                   ) : null}

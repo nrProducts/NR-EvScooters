@@ -22,6 +22,7 @@ const PUNCTUATION_ONLY_KEYS: readonly CopyKey[] = [
     // Pure interpolation, no literal word of its own — "{a}, {b}, {c}" is the
     // same three commas in every language.
     'stationSearch.rowA11y',
+    'stations.nearestNameLine',
     // A machine format, not prose — the placeholder tells the rider the
     // FIELD ORDER (year, month, day), which does not change with language.
     'datePicker.placeholder',
@@ -34,14 +35,7 @@ const PUNCTUATION_ONLY_KEYS: readonly CopyKey[] = [
  */
 const PROPER_NOUN_KEYS: readonly CopyKey[] = [
     'booking.trust.razorpay', // the payment gateway's own name
-    'booking.paymentMethods.upi', // an acronym, not a word — UPI stays UPI
     'status.paymentMethod.upi',
-    // Wallet/card provider names — GPay, PhonePe, Paytm, Visa, Mastercard,
-    // RuPay, Mobikwik are brand names, not translated in any of their own
-    // Tamil- or Hindi-language marketing either.
-    'booking.paymentMethods.upiSubtitle',
-    'booking.paymentMethods.cardsSubtitle',
-    'booking.paymentMethods.walletsSubtitle',
 ];
 
 /**

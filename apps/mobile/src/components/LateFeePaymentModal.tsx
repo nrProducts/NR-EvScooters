@@ -13,6 +13,8 @@ import { billingRepository, rentalRepository } from '../services';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../lib/razorpayCheckout';
 import { ApiError } from '../lib/ApiError';
 import { useAuthStore } from '../store/useAuthStore';
+import { setPaymentPhase } from '../store/usePaymentProgressStore';
+import { PaymentProgressOverlay } from './PaymentProgressOverlay';
 import { formatDate } from '../constants/status';
 import type { ApiOverdueLateFee, ApiRental } from '../types/api';
 import { useT } from '../i18n';
@@ -53,6 +55,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
   const handlePay = async () => {
     setPayError(null);
     setPaying(true);
+    setPaymentPhase('processing');
     try {
       const invoice = await rentalRepository.payOverdueLateFee();
       if (!invoice.isPaid) {
@@ -69,6 +72,7 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
             name: profile?.full_name,
           },
         });
+        setPaymentPhase('confirming');
         await billingRepository.verifyPayment(verifyPayload);
       }
       onPaid();
@@ -82,11 +86,12 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
       }
     } finally {
       setPaying(false);
+      setPaymentPhase(null);
     }
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { if (!paying) onClose(); }}>
       <KeyboardAvoidingView
         behavior="padding"
         style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.45)' }}
@@ -116,11 +121,11 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
           <View className="px-6 pb-2">
             <View
               className="rounded-2xl p-3.5 mb-4"
-              style={{ backgroundColor: COLORS.danger + '14', borderWidth: 1, borderColor: COLORS.danger + '33' }}
+              style={{ backgroundColor: COLORS.overdue + '14', borderWidth: 1, borderColor: COLORS.overdue + '33' }}
             >
               <View className="flex-row items-center mb-1">
-                <AlertTriangle size={14} color={COLORS.danger} />
-                <Text style={{ color: COLORS.danger }} className="text-xs font-extrabold ml-2">
+                <AlertTriangle size={14} color={COLORS.overdue} />
+                <Text style={{ color: COLORS.overdue }} className="text-xs font-extrabold ml-2">
                   {t('lateFeeGate.planExpired')}
                 </Text>
               </View>
@@ -154,7 +159,16 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
                 />
               }
             />
-            <DetailLine label={t('lateFeeGate.lateFee')} value={`₹${lateFee.lateFee.toFixed(0)}`} />
+            {lateFee.rentalCharge > 0 ? (
+              <DetailLine
+                label={t('lateFeeGate.rentalCharge', {
+                  days: lateFee.daysLate,
+                  rate: lateFee.rentalDailyRate.toFixed(2),
+                })}
+                value={`₹${lateFee.rentalCharge.toFixed(2)}`}
+              />
+            ) : null}
+            <DetailLine label={t('lateFeeGate.lateFee')} value={`₹${lateFee.lateFee.toFixed(2)}`} />
 
             <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
 
@@ -162,8 +176,8 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
               <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">
                 {t('lateFeeGate.amountDue')}
               </Text>
-              <Text style={{ color: COLORS.danger }} className="text-lg font-black">
-                ₹{lateFee.lateFee.toFixed(0)}
+              <Text style={{ color: COLORS.overdue }} className="text-lg font-black">
+                ₹{lateFee.totalDue.toFixed(2)}
               </Text>
             </View>
           </View>
@@ -174,23 +188,25 @@ export const LateFeePaymentModal: React.FC<LateFeePaymentModalProps> = ({
               disabled={paying}
               accessibilityRole="button"
               className="w-full py-4 rounded-2xl flex-row justify-center items-center"
-              style={{ backgroundColor: COLORS.danger, opacity: paying ? 0.6 : 1 }}
+              style={{ backgroundColor: COLORS.overdue, opacity: paying ? 0.6 : 1 }}
             >
               {paying ? (
                 <Spinner size={18} color="#FFF" />
               ) : (
                 <Text className="text-white font-bold text-sm">
-                  {t('lateFeeGate.payButton', { amount: `₹${lateFee.lateFee.toFixed(0)}` })}
+                  {t('lateFeeGate.payButton', { amount: `₹${lateFee.totalDue.toFixed(2)}` })}
                 </Text>
               )}
             </TouchableOpacity>
             {payError ? (
-              <Text style={{ color: COLORS.danger }} className="text-xs font-semibold text-center mt-3">
+              <Text style={{ color: COLORS.overdue }} className="text-xs font-semibold text-center mt-3">
                 {payError}
               </Text>
             ) : null}
           </View>
         </View>
+        {/* This Modal draws above the root's overlay, so it carries its own. */}
+        <PaymentProgressOverlay />
       </KeyboardAvoidingView>
     </Modal>
   );

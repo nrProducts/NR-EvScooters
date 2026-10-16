@@ -6,7 +6,7 @@ import { translate, type TranslateFn } from './translate';
 import { DEFAULT_LANG, isLang, type CopyKey, type Lang } from './types';
 
 export type { Copy, CopyKey, Lang, SupportedLanguage } from './types';
-export { DEFAULT_LANG, LANGS, LANG_LABELS, LANG_ACCESSIBLE_NAMES, isLang } from './types';
+export { DEFAULT_LANG, LANGS, LANG_LABELS, LANG_ACCESSIBLE_NAMES, LANGUAGE_SELECTION_ENABLED, isLang } from './types';
 export { translate, translatorFor, type TranslateFn } from './translate';
 export { detectDeviceLanguage, normaliseLocale } from './deviceLanguage';
 export { INTL_LOCALE_TAG } from './localeMapping';

@@ -16,8 +16,8 @@ export const LocationButton: React.FC<{
     const { t } = useT();
     return (
         <MapControlButton
-            icon={permission === 'denied' ? LocateOff : LocateFixed}
-            label={t(permission === 'denied' ? 'mapControl.enableLocation' : 'mapControl.centreOnMe')}
+            icon={permission === 'denied' || permission === 'consent_off' ? LocateOff : LocateFixed}
+            label={t(permission === 'denied' || permission === 'consent_off' ? 'mapControl.enableLocation' : 'mapControl.centreOnMe')}
             onPress={onPress}
             busy={isLocating}
             active={permission === 'granted'}

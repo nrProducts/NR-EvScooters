@@ -51,6 +51,30 @@ function dateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Mirrors apps/backend/src/common/dates.ts's noonOfBusinessDay — the two must agree. */
+function noonOfBusinessDay(dateOnly: string): string {
+  return `${dateOnly}T12:00:00+05:30`;
+}
+
+/**
+ * Has the noon cutover for this date already happened?
+ *
+ * Deliberately NOT a calendar-day comparison (`dateStr(now) > dateOnly`) —
+ * under the noon-to-noon rental cycle, a plan due "today" has already ended
+ * as of noon, hours before the calendar day itself rolls over. A date-only
+ * check here is exactly what left isLate (and the red "overdue" state it
+ * drives) false all the way until midnight on the due date, even though the
+ * backend's own late-fee math (hasPassedCutover, computeLateRenewalFee) had
+ * already started charging for it hours earlier. Mirrors the same-named
+ * helper in apps/backend/src/common/dates.ts and supabase/functions/_shared
+ * /dates.ts — all three must agree.
+ */
+export function hasPassedCutover(dateOnly: string, now: Date = new Date()): boolean {
+  // Strictly after, not >=: AT the cutover instant is still on time, same
+  // rule the backend's lateDaysSince uses ("elapsedMs <= 0 is not late").
+  return now.getTime() > new Date(noonOfBusinessDay(dateOnly)).getTime();
+}
+
 export interface RenewalEligibility {
   /** Whether "Renew Plan" should be offered at all right now. */
   canRenew: boolean;
@@ -85,7 +109,7 @@ export function getRenewalEligibility(
     && (planStatus === 'active' || planStatus === 'past_due')
     && !!nextDueAt
     && dateStr(now) >= nextDueAt;
-  const isLate = !!nextDueAt && dateStr(now) > nextDueAt;
+  const isLate = !!nextDueAt && hasPassedCutover(nextDueAt, now);
   return { canRenew, isLate, alreadyScheduled };
 }
 

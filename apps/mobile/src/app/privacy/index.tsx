@@ -29,7 +29,7 @@ export default function PrivacyHubScreen() {
     const { t } = useT();
     const hydrate = useLangStore((s) => s.hydrate);
     const langReady = useLangStore((s) => s.ready);
-    const { state, loading, saving, error, reload, setOne } = useConsent();
+    const { state, loading, saving, pendingPurpose, error, reload, setOne } = useConsent();
 
     useEffect(() => {
         if (!langReady) void hydrate();
@@ -57,8 +57,9 @@ export default function PrivacyHubScreen() {
                                 key={item.purpose}
                                 title={t(`purpose.${item.purpose}.title` as CopyKey)}
                                 summary={t(`purpose.${item.purpose}.summary` as CopyKey)}
-                                value={item.granted}
-                                busy={saving}
+                                value={item.decided_at ? item.granted : true}
+                                busy={pendingPurpose === item.purpose}
+                                disabled={saving}
                                 onChange={(next) => void setOne(item.purpose, next)}
                             />
                         ))}

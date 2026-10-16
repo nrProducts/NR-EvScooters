@@ -193,23 +193,28 @@ describe('referrals', () => {
     const otherCode = (await referrals.mine()).referral_code!;
 
     await asRider();
-    await referrals.redeem(otherCode);
+    const result = await referrals.redeem(otherCode);
+    expect(result.outcome).toBe('applied');
+    expect(result.attribution.code_used).toBe(otherCode);
+
     const summaryAfter = await referrals.mine();
-    expect(summaryAfter.referral_code).toBeTruthy();
+    expect(summaryAfter.my_attribution?.code_used).toBe(otherCode);
   });
 
-  it('rejects redeeming the same code twice', async () => {
+  it('is idempotent — redeeming again returns the SAME attribution rather than erroring', async () => {
     await asNewRider();
     const otherCode = (await referrals.mine()).referral_code!;
 
     await asRider();
-    await referrals.redeem(otherCode);
-    await expectStatus(() => referrals.redeem(otherCode), 409);
+    const first = await referrals.redeem(otherCode);
+    const second = await referrals.redeem(otherCode);
+    expect(second.outcome).toBe('already_applied');
+    expect(second.attribution.created_at).toBe(first.attribution.created_at);
   });
 
   it('rejects an unknown code', async () => {
     await asRider();
-    await expectStatus(() => referrals.redeem('NOTREAL1'), 404);
+    await expectStatus(() => referrals.redeem('NOTREAL1'), 422);
   });
 
   it('rejects self-referral', async () => {

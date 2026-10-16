@@ -4,7 +4,7 @@ import { getSupabase } from '../lib/supabase';
 import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
-    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary,
+    ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRefund,
     ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload, ListVehicleModelsParams,
     MaintenanceHistoryParams, Paginated, ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
@@ -196,6 +196,9 @@ export class ApiBillingRepository implements BillingRepository {
     disputeDamage(damageId: string, reason: string): Promise<ApiDamage> {
         return api.disputeDamage(damageId, reason);
     }
+    myRefunds(params: HistoryParams & { bookingId?: string }): Promise<Paginated<ApiRefund>> {
+        return api.myRefunds(params);
+    }
 }
 
 export class ApiRentalRepository implements RentalRepository {
@@ -255,7 +258,13 @@ export class ApiReferralRepository implements ReferralRepository {
     mine(): Promise<ApiReferralSummary> {
         return api.myReferralSummary();
     }
-    async redeem(code: string): Promise<void> {
-        await api.redeemReferralCode(code);
+    redeem(code: string): Promise<ApiRedeemReferralResult> {
+        return api.redeemReferralCode(code);
+    }
+    applyCard(cardId: string, invoiceId: string): Promise<ApiRedemption> {
+        return api.applyReferralCard(cardId, invoiceId);
+    }
+    releaseCard(redemptionId: string): Promise<void> {
+        return api.releaseReferralCard(redemptionId);
     }
 }
