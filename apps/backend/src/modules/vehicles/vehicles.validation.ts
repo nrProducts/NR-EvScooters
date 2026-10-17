@@ -95,11 +95,14 @@ export const createVehicleDocumentBody = z.object({
     expires_on: dateSchema,
 });
 
+// Multipart, so "no issue date" arrives as an empty string, not null — and a
+// replacement file alone (no fields) is a valid edit, which is why there is no
+// "at least one field" rule here: the file isn't part of the body, so the
+// service checks that something actually changed instead.
 export const updateVehicleDocumentBody = z
     .object({
-        doc_number: z.string().trim().min(1).max(80).optional(),
-        issued_on: dateSchema.nullable().optional(),
+        doc_number: z.string().trim().min(1, "Enter the document number.").max(80).optional(),
+        issued_on: z.preprocess((v) => (v === "" ? null : v), dateSchema.nullable()).optional(),
         expires_on: dateSchema.optional(),
     })
-    .strict()
-    .refine((v) => Object.keys(v).length > 0, "Provide at least one field to update.");
+    .strict();

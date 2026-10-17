@@ -24,7 +24,7 @@ export function useCreateVehicle() {
 export function useUpdateVehicle() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<api.VehicleFormInput> }) =>
+    mutationFn: ({ id, patch }: { id: string; patch: api.VehicleUpdateInput }) =>
       api.updateVehicle(id, patch),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["vehicles"] });
@@ -72,6 +72,15 @@ export function useCreateVehicleDocument() {
   return useMutation({
     mutationFn: ({ vehicleId, input }: { vehicleId: string; input: api.VehicleDocumentFormInput }) =>
       api.createVehicleDocument(vehicleId, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle"] }),
+  });
+}
+
+export function useUpdateVehicleDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ documentId, input }: { documentId: string; input: api.VehicleDocumentUpdateInput }) =>
+      api.updateVehicleDocument(documentId, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle"] }),
   });
 }

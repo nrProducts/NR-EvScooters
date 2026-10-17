@@ -397,10 +397,7 @@ export async function createVehicleDocument(
     if (error) {
         // Insert failed after the file landed — don't leave an orphaned object.
         if (storagePath) await removeVehicleDocumentFile(storagePath);
-        if ((error as { code?: string }).code === "23505") {
-            throw conflict("This vehicle already has a document of this type with this number.");
-        }
-        throw error;
+        throw mapVehicleDocumentError(error);
     }
 
     await writeAudit({
@@ -423,6 +420,9 @@ export async function updateVehicleDocument(
     actor: AuthContext,
 ): Promise<VehicleDocumentRow> {
     const existing = await requireVehicleDocument(documentId);
+    const hasFieldChange =
+        input.doc_number !== undefined || input.issued_on !== undefined || input.expires_on !== undefined;
+    if (!hasFieldChange && !file) throw businessRule("Nothing to update — change a field or choose a new file.");
 
     let storagePath = existing.storage_path;
     let previousPath: string | null = null;
@@ -443,7 +443,7 @@ export async function updateVehicleDocument(
     const { error } = await supabaseAdmin.from("vehicle_documents").update(patch as never).eq("id", documentId);
     if (error) {
         if (file) await removeVehicleDocumentFile(storagePath);
-        throw error;
+        throw mapVehicleDocumentError(error);
     }
 
     // Replacing an existing file — remove the old object only after the
@@ -481,6 +481,21 @@ export async function deleteVehicleDocument(documentId: string, actor: AuthConte
         before: { vehicle_id: existing.vehicle_id, document_type: existing.document_type },
         after: null,
     });
+}
+
+/** 23505 = same type + number already on this vehicle; 23514 = expiry before issue date. */
+function mapVehicleDocumentError(error: { code?: string }): unknown {
+    if (error.code === "23505") {
+        return conflict("This vehicle already has a document of this type with this number.", {
+            doc_number: "This vehicle already has a document of this type with this number.",
+        });
+    }
+    if (error.code === "23514") {
+        return businessRule("The expiry date can't be before the issue date.", {
+            expires_on: "The expiry date can't be before the issue date.",
+        });
+    }
+    return error;
 }
 
 async function requireVehicleDocumentRow(documentId: string): Promise<VehicleDocumentRow> {

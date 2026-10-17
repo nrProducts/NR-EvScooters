@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Pencil, FileText, Recycle, Plus, Trash2, ExternalLink, UserX } from "lucide-react";
 import { Spinner } from "@/components/common/Spinner";
@@ -18,9 +18,12 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistorySplitView } from "@/components/vehicles/VehicleHistorySplitView";
 import {
-  useVehicle, useUpdateVehicle, useScrapVehicle, useUnassignVehicle, useCreateVehicleDocument, useDeleteVehicleDocument,
+  useVehicle, useUpdateVehicle, useScrapVehicle, useUnassignVehicle, useCreateVehicleDocument, useUpdateVehicleDocument,
+  useDeleteVehicleDocument,
 } from "@/hooks/useVehicles";
-import { getVehicleDocumentUrl, type VehicleDocumentFormInput } from "@/services/api/vehicles";
+import {
+  getVehicleDocumentUrl, toVehicleUpdate, type VehicleDocumentFormInput, type VehicleDocumentUpdateInput,
+} from "@/services/api/vehicles";
 import { ApiError } from "@/services/api/httpClient";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { formatDate, formatCurrency } from "@/lib/utils";
@@ -38,11 +41,13 @@ export default function VehicleDetailPage() {
   const scrapVehicle = useScrapVehicle();
   const unassignVehicle = useUnassignVehicle();
   const createDocument = useCreateVehicleDocument();
+  const updateDocument = useUpdateVehicleDocument();
   const deleteDocument = useDeleteVehicleDocument();
   const [editOpen, setEditOpen] = useState(false);
   const [scrapOpen, setScrapOpen] = useState(false);
   const [unassignOpen, setUnassignOpen] = useState(false);
   const [addDocOpen, setAddDocOpen] = useState(false);
+  const [editDoc, setEditDoc] = useState<VehicleDocument | null>(null);
   const [deleteDoc, setDeleteDoc] = useState<VehicleDocument | null>(null);
   const [openingDocId, setOpeningDocId] = useState<string | null>(null);
 
@@ -180,6 +185,11 @@ export default function VehicleDetailPage() {
                         </Button>
                       )}
                       {canEdit && (
+                        <Button variant="ghost" size="icon" onClick={() => setEditDoc(doc)} title="Edit">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canEdit && (
                         <Button variant="ghost" size="icon" onClick={() => setDeleteDoc(doc)} title="Delete">
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -231,7 +241,7 @@ export default function VehicleDetailPage() {
         isPending={updateVehicle.isPending}
         error={updateVehicle.error}
         onSubmit={(input) =>
-          updateVehicle.mutate({ id: vehicle.id, patch: input }, {
+          updateVehicle.mutate({ id: vehicle.id, patch: toVehicleUpdate(input) }, {
             onSuccess: () => {
               toastSuccess("Vehicle updated");
               setEditOpen(false);
@@ -275,12 +285,19 @@ export default function VehicleDetailPage() {
         error={unassignVehicle.error}
       />
 
-      <AddDocumentDialog
-        open={addDocOpen}
-        onOpenChange={setAddDocOpen}
-        isPending={createDocument.isPending}
-        error={createDocument.error}
-        onSubmit={(input) =>
+      <DocumentDialog
+        open={addDocOpen || !!editDoc}
+        onOpenChange={(o) => {
+          if (o) return;
+          setAddDocOpen(false);
+          setEditDoc(null);
+          createDocument.reset();
+          updateDocument.reset();
+        }}
+        document={editDoc}
+        isPending={createDocument.isPending || updateDocument.isPending}
+        error={editDoc ? updateDocument.error : createDocument.error}
+        onSubmitAdd={(input) =>
           createDocument.mutate({ vehicleId: vehicle.id, input }, {
             onSuccess: () => {
               toastSuccess("Document added");
@@ -289,6 +306,16 @@ export default function VehicleDetailPage() {
             onError: (err) => toastError(err, "Could not add document"),
           })
         }
+        onSubmitEdit={(input) => {
+          if (!editDoc) return;
+          updateDocument.mutate({ documentId: editDoc.id, input }, {
+            onSuccess: () => {
+              toastSuccess("Document updated");
+              setEditDoc(null);
+            },
+            onError: (err) => toastError(err, "Could not update document"),
+          });
+        }}
       />
 
       <ConfirmDialog
@@ -322,51 +349,84 @@ const DOCUMENT_TYPES: { value: VehicleDocumentType; label: string }[] = [
   { value: "permit", label: "Permit" },
 ];
 
-function AddDocumentDialog({
+/**
+ * Add a document, or edit one already recorded (pass `document`). Editing
+ * keeps the type fixed — a different type is a different document — and
+ * changes the number, dates, or file; a new file replaces the old one.
+ */
+function DocumentDialog({
   open,
   onOpenChange,
-  onSubmit,
+  document,
+  onSubmitAdd,
+  onSubmitEdit,
   isPending,
   error,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (input: VehicleDocumentFormInput) => void;
+  /** The document being edited; omitted when adding. */
+  document?: VehicleDocument | null;
+  onSubmitAdd: (input: VehicleDocumentFormInput) => void;
+  onSubmitEdit: (input: VehicleDocumentUpdateInput) => void;
   isPending: boolean;
   error: unknown;
 }) {
+  const editing = !!document;
   const [docType, setDocType] = useState<VehicleDocumentType>("registration");
   const [docNumber, setDocNumber] = useState("");
   const [issuedOn, setIssuedOn] = useState("");
   const [expiresOn, setExpiresOn] = useState("");
   const [file, setFile] = useState<File | null>(null);
 
-  const reset = () => {
-    setDocType("registration");
-    setDocNumber("");
-    setIssuedOn("");
-    setExpiresOn("");
+  // Load the document's current values each time the dialog opens for it
+  // (or blank fields for Add), so a cancelled edit never leaks into the next.
+  useEffect(() => {
+    if (!open) return;
+    setDocType(document?.doc_type ?? "registration");
+    setDocNumber(document?.doc_number ?? "");
+    setIssuedOn(document?.issued_date ?? "");
+    setExpiresOn(document?.expires_on ?? "");
     setFile(null);
+  }, [open, document]);
+
+  const datesInvalid = !!issuedOn && !!expiresOn && expiresOn < issuedOn;
+  const unchanged = !!document
+    && docNumber.trim() === document.doc_number
+    && issuedOn === (document.issued_date ?? "")
+    && expiresOn === document.expires_on
+    && !file;
+  const canSubmit = docNumber.trim().length > 0 && expiresOn.length > 0 && !datesInvalid && !unchanged && !isPending;
+
+  const submit = () => {
+    if (editing) {
+      onSubmitEdit({
+        doc_number: docNumber.trim(),
+        issued_on: issuedOn || null,
+        expires_on: expiresOn,
+        file: file ?? undefined,
+      });
+    } else {
+      onSubmitAdd({
+        doc_type: docType,
+        doc_number: docNumber.trim(),
+        issued_on: issuedOn || undefined,
+        expires_on: expiresOn,
+        file: file ?? undefined,
+      });
+    }
   };
 
-  const canSubmit = docNumber.trim().length > 0 && expiresOn.length > 0 && !isPending;
-
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        onOpenChange(o);
-        if (!o) reset();
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add a document</DialogTitle>
+          <DialogTitle>{editing ? "Edit document" : "Add a document"}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-1.5">
           <Label>Document type</Label>
-          <Select value={docType} onValueChange={(v) => setDocType(v as VehicleDocumentType)}>
+          <Select value={docType} onValueChange={(v) => setDocType(v as VehicleDocumentType)} disabled={editing}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -376,6 +436,11 @@ function AddDocumentDialog({
               ))}
             </SelectContent>
           </Select>
+          {editing && (
+            <p className="text-[0.6875rem] text-muted-foreground">
+              The type can&rsquo;t be changed. To record a different type, add a new document.
+            </p>
+          )}
         </div>
         <div className="space-y-1.5">
           <Label>Document number</Label>
@@ -391,13 +456,25 @@ function AddDocumentDialog({
             <Input type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} />
           </div>
         </div>
+        {datesInvalid && (
+          <p className="text-xs text-destructive">The expiry date can&rsquo;t be before the issue date.</p>
+        )}
         <div className="space-y-1.5">
-          <Label>File (optional — JPEG, PNG or PDF)</Label>
+          <Label>
+            {editing ? "Replace file (optional — JPEG, PNG or PDF)" : "File (optional — JPEG, PNG or PDF)"}
+          </Label>
           <Input
             type="file"
             accept="image/jpeg,image/png,application/pdf"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
+          {document && (
+            <p className="text-[0.6875rem] text-muted-foreground">
+              {document.has_file
+                ? "A file is on record. Choose a new one only to replace it — the old file is deleted."
+                : "No file uploaded yet — choose one so the rider can view this document."}
+            </p>
+          )}
         </div>
 
         {!!error && (
@@ -410,20 +487,9 @@ function AddDocumentDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            disabled={!canSubmit}
-            onClick={() =>
-              onSubmit({
-                doc_type: docType,
-                doc_number: docNumber.trim(),
-                issued_on: issuedOn || undefined,
-                expires_on: expiresOn,
-                file: file ?? undefined,
-              })
-            }
-          >
+          <Button disabled={!canSubmit} onClick={submit}>
             {isPending && <Spinner className="h-4 w-4" />}
-            Add document
+            {editing ? "Save changes" : "Add document"}
           </Button>
         </DialogFooter>
       </DialogContent>

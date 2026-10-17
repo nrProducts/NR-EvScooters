@@ -56,8 +56,40 @@ export interface VehicleFormInput {
   batch_number?: string;
 }
 
-/** The model a vehicle belongs to is fixed at creation. */
-export type VehicleUpdateInput = Partial<Omit<VehicleFormInput, "vehicle_model_id">>;
+/**
+ * PATCH /vehicles/:id body. The model is fixed at creation and the backend's
+ * schema is strict, so `vehicle_model_id` must never be sent (it 400s with
+ * "Unrecognized key"). `null` clears an optional field.
+ */
+export interface VehicleUpdateInput {
+  name?: string | null;
+  registration_number?: string;
+  vin?: string;
+  color?: string | null;
+  qr_code?: string | null;
+  imei?: string | null;
+  purchase_date?: string | null;
+  batch_number?: string | null;
+}
+
+/**
+ * The edit form's values → a PATCH body. Built field by field rather than by
+ * spreading the form, so nothing the update endpoint rejects (the model, the
+ * hub) can leak through. The form is pre-filled, so an optional field that
+ * comes back empty was cleared by the admin and is sent as null.
+ */
+export function toVehicleUpdate(form: VehicleFormInput): VehicleUpdateInput {
+  return {
+    name: form.name || null,
+    registration_number: form.registration_number,
+    vin: form.vin,
+    color: form.color || null,
+    qr_code: form.qr_code || null,
+    imei: form.imei || null,
+    purchase_date: form.purchase_date || null,
+    batch_number: form.batch_number || null,
+  };
+}
 
 /** POST /vehicles — requireStaff. */
 export async function createVehicle(input: VehicleFormInput): Promise<Vehicle> {
@@ -133,6 +165,29 @@ export async function createVehicleDocument(vehicleId: string, input: VehicleDoc
   form.append("expires_on", input.expires_on);
   if (input.file) form.append("file", input.file);
   return apiClient.postForm<VehicleDocument>(`/vehicles/${vehicleId}/documents`, form);
+}
+
+export interface VehicleDocumentUpdateInput {
+  doc_number: string;
+  /** null clears a previously recorded issue date. */
+  issued_on: string | null;
+  expires_on: string;
+  /** A replacement file. Omitted keeps the current file. */
+  file?: File;
+}
+
+/**
+ * PATCH /vehicles/documents/:documentId — requireStaff, multipart. The type
+ * is fixed once recorded; number, dates and the file can change. A new file
+ * replaces the old one, which the backend deletes once the update commits.
+ */
+export async function updateVehicleDocument(documentId: string, input: VehicleDocumentUpdateInput): Promise<VehicleDocument> {
+  const form = new FormData();
+  form.append("doc_number", input.doc_number);
+  form.append("issued_on", input.issued_on ?? "");
+  form.append("expires_on", input.expires_on);
+  if (input.file) form.append("file", input.file);
+  return apiClient.patchForm<VehicleDocument>(`/vehicles/documents/${documentId}`, form);
 }
 
 /** DELETE /vehicles/documents/:documentId — requireStaff. */
