@@ -165,11 +165,34 @@ describe("revenue engine — gross / net / deposits", () => {
         w.seqByPeriod.set("period-1", 1);
 
         const r = computeFromWindow(w);
-        const methodTotal = [...r.byMethod.entries()]
-            .filter(([k]) => k !== "__deposit__")
-            .reduce((s, [, v]) => s + v.amount, 0);
+        const methodTotal = [...r.byMethod.values()].reduce((s, v) => s + v.amount, 0);
         expect(Math.round(methodTotal)).toBe(r.figures.gross);
         expect(r.figures.gross).toBe(1500); // 1000 (plan share of a) + 500 (b)
+        expect(r.byMethod.get("upi")).toEqual({ amount: 1000, deposit: 500, count: 1 });
+        expect(r.figures.depositPayments).toBe(500);
+        expect(r.figures.totalCollected).toBe(2000); // every rupee captured
+    });
+
+    it("total collected = revenue + deposit share of payments (2 riders × 4,100)", () => {
+        const w = emptyWindow();
+        w.allocs = [
+            alloc({ invoiceId: "a", amount: 4100, invoiceTotal: 4100, method: "upi" }),
+            alloc({ invoiceId: "b", amount: 4100, invoiceTotal: 4100, method: "upi" }),
+        ];
+        for (const id of ["a", "b"]) {
+            w.itemsByInvoice.set(id, [
+                item({ invoiceId: id, itemType: "plan_fee", amount: 2200 }),
+                item({ invoiceId: id, itemType: "onboarding_charge", amount: 500 }),
+                item({ invoiceId: id, itemType: "adjustment", amount: -100, description: "Welcome discount" }),
+                item({ invoiceId: id, itemType: "deposit", amount: 1500 }),
+            ]);
+        }
+        w.seqByPeriod.set("period-1", 1);
+
+        const r = computeFromWindow(w);
+        expect(r.figures.gross).toBe(5200);
+        expect(r.figures.depositPayments).toBe(3000);
+        expect(r.figures.totalCollected).toBe(8200);
     });
 });
 
@@ -177,6 +200,7 @@ describe("export renderers", () => {
     const summary: RevenueSummary = {
         range: { from: FROM, to: TO },
         gross: 9730, refunds: 0, net: 9730, lateFees: 1350, additionalCharges: 100, damageCharges: 0,
+        depositPayments: 10000, totalCollected: 19730,
         deposits: { collected: 10000, refunded: 0, adjusted: 0, held: 10000 },
         pendingRefunds: 0,
     };

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  ArrowRight, Banknote, ChevronDown, Download, PiggyBank, TrendingUp, Undo2, Wallet,
+  ArrowRight, Banknote, ChevronDown, Download, HandCoins, PiggyBank, TrendingUp, Undo2, Wallet,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { RevenuePerformanceChart } from "@/components/revenue/RevenuePerformance
 import { RevenueVsRefundsChart } from "@/components/revenue/RevenueVsRefundsChart";
 import { RevenueDonut } from "@/components/revenue/RevenueDonut";
 import { FinancialSummaryCard } from "@/components/revenue/FinancialSummaryCard";
+import { MoneyCollectedCard } from "@/components/revenue/MoneyCollectedCard";
 import { PeriodPicker, type PeriodState } from "@/components/revenue/PeriodPicker";
 import {
   useRevenueSummary, useRevenueTrend, useRevenueByType, useRevenueByMethod,
@@ -197,11 +198,16 @@ export default function RevenuePage() {
 
       {/* ── KPI row ────────────────────────────────────────────────────── */}
       {summaryQ.isLoading || !s ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <RevenueKpiCard
+            label="Total Collected" value={s.totalCollected} previous={s.previous?.totalCollected}
+            deltaPct={s.deltaPct?.totalCollected} compareLabel={compareLabel} icon={HandCoins} tone="info"
+            tooltip="Every rupee received in this period: Revenue + Security Deposits."
+          />
           <RevenueKpiCard
             label="Gross Revenue" value={s.gross} previous={s.previous?.gross} deltaPct={s.deltaPct?.gross}
             compareLabel={compareLabel} icon={TrendingUp} tone="primary"
@@ -224,6 +230,13 @@ export default function RevenuePage() {
           />
         </div>
       )}
+
+      {/* ── Where the money came from ──────────────────────────────────── */}
+      <MoneyCollectedCard
+        summary={s} byType={byTypeQ.data}
+        isLoading={summaryQ.isLoading || byTypeQ.isLoading}
+        periodLabel={`${range.from} to ${range.to}`}
+      />
 
       {/* ── Performance chart + financial summary ──────────────────────── */}
       <div className="grid gap-5 xl:grid-cols-3">
@@ -304,7 +317,7 @@ export default function RevenuePage() {
               <EmptyState title="No payments in this period" />
             ) : (
               (() => {
-                const total = byMethodQ.data.reduce((sum, x) => sum + x.amount, 0) || 1;
+                const total = byMethodQ.data.reduce((sum, x) => sum + x.total, 0) || 1;
                 return (
                   <div className="space-y-3">
                     {byMethodQ.data.map((m) => (
@@ -312,13 +325,17 @@ export default function RevenuePage() {
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-muted-foreground">{METHOD_LABEL[m.method] ?? m.method}</span>
                           <span className="tabular-nums">
-                            <span className="font-medium text-foreground">{formatCurrency(m.amount)}</span>
-                            <span className="ml-1.5 text-muted-foreground">{Math.round((m.amount / total) * 100)}%</span>
+                            <span className="font-medium text-foreground">{formatCurrency(m.total)}</span>
+                            <span className="ml-1.5 text-muted-foreground">{Math.round((m.total / total) * 100)}%</span>
                           </span>
                         </div>
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                          <div className="h-full rounded-full bg-primary" style={{ width: `${(m.amount / total) * 100}%` }} />
+                        <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
+                          <div className="h-full bg-primary" style={{ width: `${(m.amount / total) * 100}%` }} />
+                          <div className="h-full bg-info" style={{ width: `${(m.deposit / total) * 100}%` }} />
                         </div>
+                        <p className="text-[0.6875rem] text-muted-foreground">
+                          Revenue {formatCurrency(m.amount)} · Deposit {formatCurrency(m.deposit)} · {m.count} payment{m.count === 1 ? "" : "s"}
+                        </p>
                       </div>
                     ))}
                   </div>

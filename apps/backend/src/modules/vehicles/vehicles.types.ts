@@ -46,7 +46,7 @@ export interface VehicleRow {
     purchase_date: string | null;
     /** Which hub the vehicle belongs to. New; there was no such column. */
     hub_id: string | null;
-    /** Manufacturing batch/lot number. Nullable; unique when present. */
+    /** Batch this unit belongs to (e.g. "1" for the first 20 units). Nullable; shared across the batch. */
     batch_number: string | null;
     created_at: string;
     updated_at: string | null;

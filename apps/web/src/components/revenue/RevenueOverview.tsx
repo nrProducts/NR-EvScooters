@@ -1,11 +1,12 @@
 import { Link } from "react-router-dom";
 import {
-  ArrowRight, Banknote, CalendarRange, Landmark, PiggyBank, RotateCcw, TrendingUp, Undo2, Wallet,
+  ArrowRight, Banknote, CalendarRange, HandCoins, Landmark, PiggyBank, RotateCcw, TrendingUp, Undo2, Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RevenueStatCard } from "./RevenueStatCard";
-import { useRevenueSummary } from "@/hooks/useRevenue";
+import { MoneyCollectedCard } from "./MoneyCollectedCard";
+import { useRevenueByType, useRevenueSummary } from "@/hooks/useRevenue";
 import { rangeForPreset, previousRange } from "@/lib/period";
 
 /**
@@ -22,6 +23,7 @@ export function RevenueOverview({ part = "revenue" }: { part?: "revenue" | "depo
   const { data, isLoading } = useRevenueSummary(range, previousRange(range));
   const weekQ = useRevenueSummary(week);
   const yearQ = useRevenueSummary(year);
+  const byTypeQ = useRevenueByType(range);
 
   if (part === "deposits") {
     return (
@@ -79,19 +81,19 @@ export function RevenueOverview({ part = "revenue" }: { part?: "revenue" | "depo
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <RevenueStatCard
-            label="Weekly Revenue" icon={CalendarRange} tone="info"
-            value={weekQ.data?.net ?? 0}
-            tooltip="Net revenue for the current week (Mon–today)."
+            label="Total Collected" icon={HandCoins} tone="purple"
+            value={data.totalCollected} deltaPct={data.deltaPct?.totalCollected} previous={data.previous?.totalCollected}
+            tooltip="Every rupee received this month: Revenue + Security Deposits."
           />
           <RevenueStatCard
-            label="Monthly Revenue" icon={CalendarRange} tone="info"
-            value={data.net} deltaPct={data.deltaPct?.net} previous={data.previous?.net}
-            tooltip="Net revenue this month vs last month."
+            label="Weekly Revenue" icon={CalendarRange} tone="info"
+            value={weekQ.data?.net ?? 0}
+            tooltip="Net revenue for the current week (Mon–today). Excludes deposits."
           />
           <RevenueStatCard
             label="Yearly Revenue" icon={CalendarRange} tone="info"
             value={yearQ.data?.net ?? 0}
-            tooltip="Net revenue for the current calendar year."
+            tooltip="Net revenue for the current calendar year. Excludes deposits."
           />
           <RevenueStatCard
             label="Gross Revenue" icon={TrendingUp} tone="success"
@@ -104,13 +106,18 @@ export function RevenueOverview({ part = "revenue" }: { part?: "revenue" | "depo
             tooltip="Completed refunds that reverse revenue (booking cancellation + goodwill). Deposit refunds are not counted here."
           />
           <RevenueStatCard
-            label="Net Revenue" icon={Banknote} tone="success"
+            label="Net Revenue (Month)" icon={Banknote} tone="success"
             value={data.net} deltaPct={data.deltaPct?.net} previous={data.previous?.net}
             emphasis
-            tooltip="Gross Revenue − Completed Refunds."
+            tooltip="Gross Revenue − Completed Refunds, this month."
           />
         </div>
       )}
+
+      <MoneyCollectedCard
+        summary={data} byType={byTypeQ.data}
+        isLoading={isLoading || byTypeQ.isLoading} periodLabel="This month"
+      />
     </section>
   );
 }

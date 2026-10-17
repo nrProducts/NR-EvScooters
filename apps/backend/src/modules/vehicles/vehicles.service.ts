@@ -855,7 +855,7 @@ function escapeLike(input: string): string {
     return input.replace(/[%_\\,()]/g, "");
 }
 
-/** 23505 = unique_violation on registration_number / vin / qr_code / imei / batch_number. */
+/** 23505 = unique_violation on registration_number / vin / qr_code / imei. batch_number is shared by a batch, so never unique. */
 function mapPostgresError(error: { code?: string; message?: string }): Error {
     if (error.code === "23505") {
         if (error.message?.includes("registration_number")) {
@@ -871,11 +871,6 @@ function mapPostgresError(error: { code?: string; message?: string }): Error {
         }
         if (error.message?.includes("imei")) {
             return conflict("This IMEI is already in use.", { imei: "This IMEI is already in use." });
-        }
-        if (error.message?.includes("batch_number")) {
-            return conflict("This batch number is already in use.", {
-                batch_number: "This batch number is already in use.",
-            });
         }
         return conflict("That value is already in use.");
     }
