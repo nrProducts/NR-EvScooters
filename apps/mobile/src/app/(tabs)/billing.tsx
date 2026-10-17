@@ -19,6 +19,7 @@ import { billingRepository, rentalRepository, referralRepository } from '../../s
 import { useReferralSummary } from '../../hooks/useReferralSummary';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
 import { getRenewalEligibility } from '../../lib/returnPolicy';
+import { CycleTime } from '../../components/ui/CycleTime';
 import { SettlementCard } from '../../components/SettlementCard';
 import { DepositStatusCard } from '../../components/DepositStatusCard';
 import { RefundStatusCard } from '../../components/RefundStatusCard';
@@ -708,7 +709,9 @@ export default function BillingScreen() {
   // hasActiveReturn above.
   const isDue = booking?.plan_status === 'past_due' && !hasActiveReturn;
   const renewalStatus = booking?.renewal_status ?? null;
-  const renewalEligibility = getRenewalEligibility(booking?.plan_status ?? null, booking?.next_due_at ?? null, renewalStatus);
+  const renewalEligibility = getRenewalEligibility(
+    booking?.plan_status ?? null, booking?.next_due_at ?? null, renewalStatus, undefined, booking?.cycle_time,
+  );
   // Hidden once an outstanding invoice already exists — that IS the renewal,
   // priced and payable, and offering "Review & Renew" beside it would raise a
   // second one for the same period. The overdue late fee no longer reaches
@@ -1183,6 +1186,7 @@ export default function BillingScreen() {
                 {renewalIsLate
                   ? t('billing.planExpired')
                   : planEndsToday ? t('billing.planEndsToday') : t('billing.planEndsOn', { date: formatDate(booking?.next_due_at ?? null) })}
+                {!renewalIsLate && booking?.next_due_at ? <CycleTime cycleTime={booking.cycle_time} /> : null}
               </Text>
               <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mb-4 leading-relaxed">
                 {renewalIsLate
@@ -1288,6 +1292,7 @@ export default function BillingScreen() {
               <View className="flex-1 ml-3">
                 <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold">
                   {t('billing.renewalScheduled', { date: formatDate(booking?.scheduled_start_date ?? null) })}
+                  {booking?.scheduled_start_date ? <CycleTime cycleTime={booking.cycle_time} /> : null}
                 </Text>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
                   {t('billing.currentPlanActiveUntilThen')}
@@ -1435,12 +1440,15 @@ export default function BillingScreen() {
               <View>
                 <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">
                   {formatDate(booking?.current_period_start ?? null)}
+                  {booking?.current_period_start ? <CycleTime cycleTime={booking.cycle_time} /> : null}
                 </Text>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mt-0.5">{t('billing.started')}</Text>
               </View>
               <View className="items-end">
                 <Text style={{ color: renewalIsLate ? COLORS.overdue : COLORS.textPrimary }} className="text-xs font-bold">
-                  {formatDate(booking?.next_due_at ?? null)}{renewalIsLate ? t('billing.expired') : ''}
+                  {formatDate(booking?.next_due_at ?? null)}
+                  {booking?.next_due_at ? <CycleTime cycleTime={booking.cycle_time} /> : null}
+                  {renewalIsLate ? t('billing.expired') : ''}
                 </Text>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mt-0.5">{t('billing.ends')}</Text>
               </View>

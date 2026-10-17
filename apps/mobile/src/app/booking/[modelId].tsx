@@ -554,10 +554,9 @@ export default function BookingScreen() {
                   </View>
                 </View>
 
-                {/* Every rental is a fixed noon-to-noon cycle — shown plainly
-                    rather than left for the rider to infer from a bare date,
-                    and with no time picker anywhere: the system decides this,
-                    not the rider. */}
+                {/* The clock starts at pickup and ends at that same time on the
+                    last day — stated plainly, with no time picker: the pickup
+                    decides this, not the rider. */}
                 {draft.startDay ? (
                   <View className="rounded-2xl border p-4" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
                     <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mb-2">
@@ -568,14 +567,14 @@ export default function BookingScreen() {
                         <Text style={{ color: COLORS.textPrimary }} className="text-sm font-black">
                           {formatDay(draft.startDay)}
                         </Text>
-                        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">12:00 PM</Text>
+                        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">{t('booking.period.atPickup')}</Text>
                       </View>
                       <ArrowRight size={16} color={COLORS.textSecondary} />
                       <View className="items-end">
                         <Text style={{ color: COLORS.textPrimary }} className="text-sm font-black">
                           {formatDay(rentalPeriodEndDay(draft.startDay, draft.plan.duration_days))}
                         </Text>
-                        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">12:00 PM</Text>
+                        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">{t('booking.period.sameTime')}</Text>
                       </View>
                     </View>
                   </View>

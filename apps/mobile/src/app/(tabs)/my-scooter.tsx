@@ -22,7 +22,7 @@ import {
   VEHICLE_STATUS_TONE, formatDate,
 } from '../../constants/status';
 import { describeExpiry, rentalDayNumber } from '../../lib/rentalTiming';
-import { canReturnYet, getRenewalEligibility } from '../../lib/returnPolicy';
+import { canReturnYet, formatCycleTime, getRenewalEligibility } from '../../lib/returnPolicy';
 import { isReturnLocked } from '../../lib/returnLock';
 import { useReturnLock } from '../../components/ReturnLockSheet';
 import { useCurrentRideOrBooking } from '../../hooks/useCurrentRideOrBooking';
@@ -118,7 +118,9 @@ export default function MyScooterScreen() {
   // "day before" window) — offered here too so a rider whose plan is ending
   // isn't forced to the Billing tab just to see that renewing is an option.
   const canRenew = state.kind === 'rental'
-    ? getRenewalEligibility(state.rental.plan_status, state.rental.next_due_at, state.rental.renewal_status).canRenew
+    ? getRenewalEligibility(
+        state.rental.plan_status, state.rental.next_due_at, state.rental.renewal_status, undefined, state.rental.cycle_time,
+      ).canRenew
     : false;
 
   // ONE decision, read by the plan row, the documents card and the support
@@ -241,6 +243,7 @@ export default function MyScooterScreen() {
                         icon={CalendarClock}
                         label={t('scooter.planEnded')}
                         value={formatDate(state.rental.expires_at)}
+                        suffix={formatCycleTime(state.rental.cycle_time)}
                       />
                     );
                   }
@@ -306,7 +309,7 @@ export default function MyScooterScreen() {
                   </TouchableOpacity>
                   {!canReturn && state.rental.next_due_at ? (
                     <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-2">
-                      {t('scooter.returnAfter', { date: formatDate(state.rental.next_due_at) })}
+                      {t('scooter.returnAfter', { date: `${formatDate(state.rental.next_due_at)}, ${formatCycleTime(state.rental.cycle_time)}` })}
                     </Text>
                   ) : null}
                 </>

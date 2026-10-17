@@ -286,16 +286,16 @@ interface SubscriptionSlice {
  * per row would be an N+1 on the admin list.
  */
 async function periodsFor(subscriptionIds: string[]): Promise<Map<string, {
-    currentStart: string | null; nextDue: string | null; scheduledStart: string | null;
+    currentStart: string | null; nextDue: string | null; scheduledStart: string | null; cycleTime: string | null;
 }>> {
     const map = new Map<string, {
-        currentStart: string | null; nextDue: string | null; scheduledStart: string | null;
+        currentStart: string | null; nextDue: string | null; scheduledStart: string | null; cycleTime: string | null;
     }>();
     if (subscriptionIds.length === 0) return map;
 
     const { data, error } = await supabaseAdmin
         .from("subscription_periods")
-        .select("id, subscription_id, status, starts_on, due_on")
+        .select("id, subscription_id, status, starts_on, due_on, subscriptions(cycle_time)")
         .in("subscription_id", subscriptionIds)
         .in("status", ["current", "scheduled"]);
     if (error) throw error;
@@ -307,7 +307,7 @@ async function periodsFor(subscriptionIds: string[]): Promise<Map<string, {
         (data ?? []).filter((row) => row.status === "scheduled").map((row) => row.id),
     );
 
-    const currentRows = new Map<string, { id: string; starts_on: string; due_on: string }>();
+    const currentRows = new Map<string, { id: string; starts_on: string; due_on: string; subscriptions: unknown }>();
     const scheduledRows = new Map<string, { id: string; starts_on: string; due_on: string }>();
 
     for (const row of data ?? []) {
@@ -326,10 +326,13 @@ async function periodsFor(subscriptionIds: string[]): Promise<Map<string, {
     // this only changes what this read reports.
     for (const [subscriptionId, current] of currentRows) {
         const entry = map.get(subscriptionId)
-            ?? { currentStart: null, nextDue: null, scheduledStart: null };
+            ?? { currentStart: null, nextDue: null, scheduledStart: null, cycleTime: null };
         const scheduled = scheduledRows.get(subscriptionId);
 
-        if (scheduled && hasPassedCutover(current.due_on)) {
+        const cycleTime = (Array.isArray(current.subscriptions) ? current.subscriptions[0] : current.subscriptions) as
+            { cycle_time: string } | null;
+        entry.cycleTime = cycleTime?.cycle_time ?? null;
+        if (scheduled && hasPassedCutover(current.due_on, new Date(), cycleTime?.cycle_time)) {
             entry.currentStart = scheduled.starts_on;
             entry.nextDue = scheduled.due_on;
             scheduledRows.delete(subscriptionId);
@@ -342,14 +345,14 @@ async function periodsFor(subscriptionIds: string[]): Promise<Map<string, {
 
     for (const [subscriptionId, scheduled] of scheduledRows) {
         const entry = map.get(subscriptionId)
-            ?? { currentStart: null, nextDue: null, scheduledStart: null };
+            ?? { currentStart: null, nextDue: null, scheduledStart: null, cycleTime: null };
         entry.scheduledStart = scheduled.starts_on;
         map.set(subscriptionId, entry);
     }
     return map;
 }
 
-type PeriodInfo = { currentStart: string | null; nextDue: string | null; scheduledStart: string | null };
+type PeriodInfo = { currentStart: string | null; nextDue: string | null; scheduledStart: string | null; cycleTime: string | null };
 
 function toReturnFields(row: RawRentalRow, feePerDay: number) {
     const ret = latestReturn(row.rental_returns);
@@ -434,6 +437,7 @@ function toRentalView(
             : null,
         plan_status: narrowPlanStatus(subscription?.status),
         next_due_at: period?.nextDue ?? null,
+        cycle_time: period?.cycleTime ?? null,
         current_period_start: period?.currentStart ?? null,
         renewal_status: period?.scheduledStart ? "scheduled" : "none",
         scheduled_start_date: period?.scheduledStart ?? null,

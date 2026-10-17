@@ -11,4 +11,4 @@
  * (POST /public/pre-book) are left in place either way — turning this off
  * does not delete or disable them, it just stops routing visitors to them.
  */
-export const PRE_BOOKING_MODE = true;
+export const PRE_BOOKING_MODE = false;

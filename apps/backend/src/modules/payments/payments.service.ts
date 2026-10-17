@@ -2255,7 +2255,7 @@ async function applyRenewalSuccess(
 
     const { data: subscription, error } = await supabaseAdmin
         .from("subscriptions")
-        .select("id, user_id, status, duration_days_snapshot")
+        .select("id, user_id, status, duration_days_snapshot, cycle_time")
         .eq("id", subscriptionId)
         .maybeSingle();
     if (error) throw error;
@@ -2278,7 +2278,7 @@ async function applyRenewalSuccess(
         .maybeSingle();
     if (currentError) throw currentError;
 
-    const activateNow = !current || hasPassedCutover(current.due_on);
+    const activateNow = !current || hasPassedCutover(current.due_on, new Date(), subscription.cycle_time);
 
     if (!activateNow) {
         await writeAudit({

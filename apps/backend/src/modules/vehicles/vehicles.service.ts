@@ -8,7 +8,8 @@ import { notify } from "../notifications/notify.service";
 import { adminCancelBooking } from "../bookings/bookings.service";
 import { completeRide } from "../rentals/rentals.service";
 import { Paginated, AuthContext } from "../../types";
-import { businessToday, noonOfBusinessDay } from "../../common/dates";
+import { businessToday } from "../../common/dates";
+import { anchorCycleAtPickup } from "../subscriptions/cycleAnchor";
 import {
     CreateVehicleDocumentInput, CreateVehicleInput, ListVehiclesFilters, RiderVehicleDocumentRow, ScrapRecordRow,
     ScrapVehicleInput, UpdateVehicleDocumentInput, UpdateVehicleInput, VehicleBookingRow, VehicleDetail,
@@ -1042,18 +1043,17 @@ export async function assignVehicleToUser(
         );
     }
 
-    const period = await currentPeriodDatesForSubscription(subscriptionId);
+    // Same clock rule as confirmPickup: a first hand-over starts the cycle now
+    // and sets the subscription's cycle time; a swap keeps the running clock.
+    const anchor = await anchorCycleAtPickup(subscriptionId);
     const { data: rental, error: rentalError } = await supabaseAdmin
         .from("rentals")
         .insert({
             user_id: userId,
             subscription_id: subscriptionId,
             status: "active",
-            // Fixed noon-to-noon cycle, same as the ordinary confirmPickup
-            // path — the rental's start/due-back are the period's own dates,
-            // never the literal moment staff click "assign," walk-in or not.
-            picked_up_at: noonOfBusinessDay(period.starts_on),
-            due_back_at: noonOfBusinessDay(period.ends_on),
+            picked_up_at: anchor.startAt,
+            due_back_at: anchor.endAt,
         })
         .select("id")
         .single();
@@ -1112,24 +1112,4 @@ export async function assignVehicleToUser(
     });
 
     return { vehicle: await requireVehicle(vehicleId), rentalId: rental.id };
-}
-
-/**
- * When the rental starts and is due back: the subscription's current period,
- * noon-anchored by the caller. The period is the only thing that knows the
- * answer — the rental runs for as long as the rider is paying for it.
- */
-async function currentPeriodDatesForSubscription(
-    subscriptionId: string,
-): Promise<{ starts_on: string; ends_on: string }> {
-    const { data, error } = await supabaseAdmin
-        .from("v_subscription_current_period")
-        .select("starts_on, ends_on")
-        .eq("subscription_id", subscriptionId)
-        .maybeSingle();
-    if (error) throw error;
-    if (!data?.starts_on || !data?.ends_on) {
-        throw businessRule("This subscription has no current billing period to rent against.");
-    }
-    return { starts_on: data.starts_on, ends_on: data.ends_on };
 }

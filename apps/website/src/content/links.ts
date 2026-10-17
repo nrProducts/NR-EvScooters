@@ -10,12 +10,11 @@
  * /rider portal. There's no iOS app planned, so this is where an iPhone
  * rider is meant to land instead.
  *
- * No localhost fallback: this is a production marketing site, and a build
- * with the env var unset must degrade to "coming soon" (see PLAY_STORE_URL's
- * identical pattern below), never silently link out to a dev URL nobody but
- * a developer's own machine can reach.
+ * Defaults to the production rider web domain (never a localhost URL), so
+ * the "Web" CTA works even when the env var isn't set on the host; set
+ * VITE_RIDER_WEB_URL to point a preview/UAT build somewhere else.
  */
-export const RIDER_WEB_URL = import.meta.env.VITE_RIDER_WEB_URL || "";
+export const RIDER_WEB_URL = import.meta.env.VITE_RIDER_WEB_URL || "https://rider.swapngo.in";
 
 /** Empty until the Android rider app is published — the CTA falls back to "coming soon". */
 export const PLAY_STORE_URL = import.meta.env.VITE_PLAY_STORE_URL || "";

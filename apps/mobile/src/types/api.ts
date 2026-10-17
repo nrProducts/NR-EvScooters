@@ -588,6 +588,8 @@ export interface ApiBookingWithPlan extends ApiBooking {
     deposit_amount_at_booking: number | null;
     current_period_start: string | null;
     next_due_at: string | null;
+    /** `subscriptions.cycle_time` (`HH:MM:SS`, IST) — both ends of every period fall at this time: the pickup time, or 12:00 for older plans. */
+    cycle_time: string | null;
     plan_paused_at: string | null;
     plan_paused_days_total: number;
     /** 'scheduled' once an on-time/early renewal has been paid but not yet activated — see returnPolicy.ts's getRenewalEligibility. */
@@ -817,6 +819,8 @@ export interface ApiRental {
     // rental with no plan.
     plan_status: PlanStatus | null;
     next_due_at: string | null;
+    /** `subscriptions.cycle_time` (`HH:MM:SS`, IST) — see ApiBookingWithPlan.cycle_time. */
+    cycle_time: string | null;
     current_period_start: string | null;
     /** 'scheduled' once an on-time/early renewal has been paid but not yet activated. */
     renewal_status: RenewalStatus | null;

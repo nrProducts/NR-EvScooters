@@ -24,6 +24,16 @@ export function formatDate(value: string | Date) {
   }).format(d);
 }
 
+/**
+ * A subscription's cycle time (`"15:47:00"`, IST) as "3:47 PM" — the clock
+ * time a rental's periods start and end at. Null (older rows) reads as noon.
+ */
+export function formatCycleTime(cycleTime: string | null | undefined) {
+  const [h = 12, m = 0] = (cycleTime ?? "12:00").split(":").map(Number);
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
 /** Time only, e.g. "09:12 AM" — for the header attendance control's check-in/out stamp. */
 export function formatTime(value: string | Date) {
   const d = typeof value === "string" ? new Date(value) : value;

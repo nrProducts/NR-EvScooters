@@ -39,7 +39,30 @@ export function daysBetween(a: string, b: string): number {
  * with this `due_on` actually ends.
  */
 export function noonInstant(dateStr: string): Date {
-    return new Date(`${dateStr}T12:00:00+05:30`);
+    return cycleBoundaryAt(dateStr, "12:00:00");
+}
+
+/**
+ * The instant a period boundary on `dateStr` falls at for a subscription's
+ * `cycle_time` (the pickup time; 12:00 for plans that predate pickup-anchored
+ * cycles). Mirrors `cycleBoundaryAt` in apps/backend/src/common/dates.ts and
+ * `cycle_boundary_at()` in the database — all three must agree.
+ */
+export function cycleBoundaryAt(dateStr: string, cycleTime?: string | null): Date {
+    const [h = "12", m = "00", s = "00"] = (cycleTime ?? "12:00:00").split(":");
+    return new Date(`${dateStr}T${h.padStart(2, "0")}:${m.padStart(2, "0")}:${s.slice(0, 2).padStart(2, "0")}+05:30`);
+}
+
+/** An instant's IST clock time for copy — "3:47 PM". */
+export function formatClockTimeForCopy(instant: Date): string {
+    return new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true,
+    }).format(instant);
+}
+
+/** An instant's IST calendar day for copy — "18 Oct". */
+export function formatInstantDayForCopy(instant: Date): string {
+    return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(instant);
 }
 
 /**
@@ -52,11 +75,11 @@ export function noonInstant(dateStr: string): Date {
  * left every lapsed period sitting un-promoted and every late fee
  * un-charged from noon until the next day's run.
  */
-export function hasPassedCutover(dueOn: string, now: Date = new Date()): boolean {
+export function hasPassedCutover(dueOn: string, now: Date = new Date(), cycleTime?: string | null): boolean {
     // Strictly after, not >=: AT the cutover instant is still on time, same
     // rule as lateDaysSince (apps/backend/src/modules/payments/renewalFee.ts)
     // — "elapsedMs <= 0 is not late."
-    return now.getTime() > noonInstant(dueOn).getTime();
+    return now.getTime() > cycleBoundaryAt(dueOn, cycleTime).getTime();
 }
 
 /**

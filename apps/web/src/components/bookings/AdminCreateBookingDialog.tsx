@@ -79,10 +79,11 @@ export function AdminCreateBookingDialog({ open, onOpenChange }: { open: boolean
     if (plan && vehicle && plan.vehicle_model_id !== vehicle.vehicle_model_id) setPlanId(null);
   }, [vehicle, plan]);
 
-  // Every rental runs the fixed noon-to-noon cycle: an N-day plan is
-  // start -> start + N, exclusive of the end date (12:00 PM on both ends —
-  // see calculateRentalPeriod, apps/backend/src/common/dates.ts). Default
-  // end date mirrors that; the admin can override it, and a manual end date
+  // An N-day plan is start -> start + N, exclusive of the end date. These
+  // are the BOOKED dates: at pickup the period is re-dated to the pickup day
+  // and both ends fall at the pickup time (see anchorCycleAtPickup,
+  // apps/backend/src/modules/subscriptions/cycleAnchor.ts). Default end date
+  // mirrors that; the admin can override it, and a manual end date
   // then drives a custom duration using the same exclusive math.
   const addDays = (iso: string, n: number) =>
     new Date(new Date(`${iso}T00:00:00`).getTime() + n * 86_400_000).toISOString().slice(0, 10);

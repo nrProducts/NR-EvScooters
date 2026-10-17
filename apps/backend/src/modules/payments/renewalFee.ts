@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../../config/supabase";
-import { noonOfBusinessDay } from "../../common/dates";
+import { cycleBoundaryAt } from "../../common/dates";
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
@@ -172,7 +172,15 @@ export async function computeLateRenewalFee(
     dueDate: string,
     now: Date = new Date(),
 ): Promise<{ isLate: boolean; lateFee: number; daysLate: number; feePerDay: number; hoursLate: number }> {
-    const dueAt = new Date(noonOfBusinessDay(dueDate));
+    // Due at the subscription's own cycle time on dueDate — the pickup time,
+    // or noon for plans that predate pickup-anchored cycles.
+    const { data: sub, error: subError } = await supabaseAdmin
+        .from("subscriptions")
+        .select("cycle_time")
+        .eq("id", subscriptionId)
+        .maybeSingle();
+    if (subError) throw subError;
+    const dueAt = new Date(cycleBoundaryAt(dueDate, sub?.cycle_time));
     const { isLate, daysLate, hoursLate } = lateDaysSince(dueAt, now);
     if (!isLate) return { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0, hoursLate };
 

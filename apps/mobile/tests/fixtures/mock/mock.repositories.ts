@@ -862,6 +862,7 @@ function toApiRental(row: MockRentalRow): ApiRental {
         // means the return-gate fails open, same as a real rental with no plan.
         plan_status: null,
         next_due_at: null,
+        cycle_time: null,
         current_period_start: null,
         renewal_status: null,
         scheduled_start_date: null,

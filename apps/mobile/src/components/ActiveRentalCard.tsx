@@ -9,6 +9,7 @@ import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
 import { COLORS } from '../constants/theme';
 import { RENTAL_STATUS_LABEL_KEY, RENTAL_STATUS_TONE, formatDate } from '../constants/status';
 import { getRenewalEligibility } from '../lib/returnPolicy';
+import { CycleTime } from './ui/CycleTime';
 import { isReturnLocked } from '../lib/returnLock';
 import { useReturnLock } from './ReturnLockSheet';
 import { describeExpiry, rentalDayNumber } from '../lib/rentalTiming';
@@ -77,7 +78,9 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
   const lock = useReturnLock(returnRequested);
   // Same gate the My Scooter tab and Billing use — offered from the plan's
   // last day onward, and never while a paid renewal is already queued.
-  const renewal = getRenewalEligibility(rental.plan_status, rental.next_due_at, rental.renewal_status);
+  const renewal = getRenewalEligibility(
+    rental.plan_status, rental.next_due_at, rental.renewal_status, undefined, rental.cycle_time,
+  );
   const isActive = rental.status === 'active';
 
   return (
@@ -115,7 +118,11 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
             style={{ color: renewal.isLate ? COLORS.overdue : COLORS.textSecondary }}
             className="text-xs font-bold mt-2"
           >
-            {t('rental.periodRange', { start: formatDate(periodStart), end: formatDate(dueDate) })}
+            {formatDate(periodStart)}
+            <CycleTime cycleTime={rental.cycle_time} />
+            {'  —  '}
+            {formatDate(dueDate)}
+            <CycleTime cycleTime={rental.cycle_time} />
           </Text>
         ) : null}
 

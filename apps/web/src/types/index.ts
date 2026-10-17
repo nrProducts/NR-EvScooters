@@ -414,7 +414,14 @@ export interface PickupBooking {
   vehicle: { id: string; name: string; registration_number: string; status: VehicleStatus } | null;
   /** Recurring-billing state — set once the booking reaches 'fulfilled', null before and after (see BookingStatus). */
   plan_status: BookingPlanStatus | null;
+  /** Current period's `starts_on`. */
+  current_period_start: string | null;
   next_due_at: string | null;
+  /**
+   * `subscriptions.cycle_time` (`HH:MM:SS`, IST) — the clock time both ends of
+   * every period fall on: the pickup time, or 12:00 for older plans.
+   */
+  cycle_time: string | null;
   /** 'scheduled' once an on-time/early renewal has been paid but not yet activated. */
   renewal_status: "none" | "scheduled";
   scheduled_start_date: string | null;

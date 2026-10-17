@@ -354,8 +354,7 @@ export interface RevenueBreakdownResult {
     figures: RevenueMoneyFigures;
     deposits: DepositFigures;
     byType: Map<RevenueType, { amount: number; count: number }>;
-    /** amount = revenue share, deposit = deposit share, per payment method. */
-    byMethod: Map<string, { amount: number; deposit: number; count: number }>;
+    byMethod: Map<string, { amount: number; count: number }>;
     pendingRefunds: number;
     /** per-allocation revenue share, keyed for trend bucketing */
     revenueEvents: { at: string; gross: number; lateFee: number; additional: number }[];
@@ -364,7 +363,7 @@ export interface RevenueBreakdownResult {
 
 export function computeFromWindow(w: WindowData): RevenueBreakdownResult {
     const byType = new Map<RevenueType, { amount: number; count: number }>();
-    const byMethod = new Map<string, { amount: number; deposit: number; count: number }>();
+    const byMethod = new Map<string, { amount: number; count: number }>();
     const revenueEvents: RevenueBreakdownResult["revenueEvents"] = [];
     let gross = 0;
     let lateFees = 0;
@@ -372,12 +371,18 @@ export function computeFromWindow(w: WindowData): RevenueBreakdownResult {
     let damageCharges = 0;
     let depositCashIn = 0;
 
+    const bump = (m: Map<string, { amount: number; count: number }>, k: string, amt: number) => {
+        const cur = m.get(k) ?? { amount: 0, count: 0 };
+        cur.amount += amt;
+        cur.count += 1;
+        m.set(k, cur);
+    };
+
     for (const a of w.allocs) {
         const items = w.itemsByInvoice.get(a.invoiceId) ?? [];
         if (items.length === 0) continue;
         const total = a.invoiceTotal;
         let allocRevenue = 0;
-        let allocDeposit = 0;
         let allocLateFee = 0;
         let allocAdditional = 0;
 
@@ -385,7 +390,6 @@ export function computeFromWindow(w: WindowData): RevenueBreakdownResult {
             const share = a.amount * (it.amount / total);
             if (it.itemType === "deposit") {
                 depositCashIn += share;
-                allocDeposit += share;
                 continue;
             }
             const cls = classifyItem(it, a, w);
@@ -399,13 +403,7 @@ export function computeFromWindow(w: WindowData): RevenueBreakdownResult {
             else if (cls === "additional_charge") { additionalCharges += share; allocAdditional += share; }
         }
         gross += allocRevenue;
-        if (allocRevenue !== 0 || allocDeposit !== 0) {
-            const m = byMethod.get(a.method ?? "other") ?? { amount: 0, deposit: 0, count: 0 };
-            m.amount += allocRevenue;
-            m.deposit += allocDeposit;
-            m.count += 1;
-            byMethod.set(a.method ?? "other", m);
-        }
+        if (allocRevenue !== 0) bump(byMethod, a.method ?? "other", allocRevenue);
         revenueEvents.push({ at: a.capturedAt, gross: allocRevenue, lateFee: allocLateFee, additional: allocAdditional });
     }
 
@@ -444,12 +442,13 @@ export function computeFromWindow(w: WindowData): RevenueBreakdownResult {
         lateFees: r2(lateFees),
         additionalCharges: r2(additionalCharges),
         damageCharges: r2(damageCharges),
-        depositPayments: r2(depositCashIn),
-        totalCollected: r2(gross + depositCashIn),
     };
 
+    // fold deposit cash-in into by-method total so §10 reconciles to money received
+    if (depositCashIn !== 0) bump(byMethod, "__deposit__", depositCashIn);
+
     for (const [k, v] of byType) byType.set(k, { amount: r2(v.amount), count: v.count });
-    for (const [k, v] of byMethod) byMethod.set(k, { amount: r2(v.amount), deposit: r2(v.deposit), count: v.count });
+    for (const [k, v] of byMethod) byMethod.set(k, { amount: r2(v.amount), count: v.count });
 
     return {
         figures, deposits, byType, byMethod,
@@ -487,8 +486,6 @@ export async function getRevenueSummary(
             lateFees: pct(cur.figures.lateFees, prev.figures.lateFees),
             additionalCharges: pct(cur.figures.additionalCharges, prev.figures.additionalCharges),
             damageCharges: pct(cur.figures.damageCharges, prev.figures.damageCharges),
-            depositPayments: pct(cur.figures.depositPayments, prev.figures.depositPayments),
-            totalCollected: pct(cur.figures.totalCollected, prev.figures.totalCollected),
             depositsCollected: pct(cur.deposits.collected, prev.deposits.collected),
         };
     }
@@ -564,10 +561,9 @@ export async function getRevenueByMethod(from: string, to: string): Promise<Reve
     const w = await loadWindow(from, to);
     const cur = computeFromWindow(w);
     return [...cur.byMethod.entries()]
-        .map(([method, v]) => ({
-            method, amount: v.amount, deposit: v.deposit, total: r2(v.amount + v.deposit), count: v.count,
-        }))
-        .sort((a, b) => b.total - a.total);
+        .filter(([k]) => k !== "__deposit__")
+        .map(([method, v]) => ({ method, amount: r2(v.amount), count: v.count }))
+        .sort((a, b) => b.amount - a.amount);
 }
 
 export async function getRefundBreakdown(from: string, to: string): Promise<RefundBreakdown> {
@@ -809,8 +805,6 @@ export async function buildRevenueExport(
 
 function summaryRows(summary: RevenueSummary): [string, number][] {
     return [
-        ["Total Collected", summary.totalCollected],
-        ["Deposit Payments", summary.depositPayments],
         ["Gross Revenue", summary.gross],
         ["Refunds", summary.refunds],
         ["Net Revenue", summary.net],

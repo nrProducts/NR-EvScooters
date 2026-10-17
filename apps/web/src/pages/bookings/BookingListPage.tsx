@@ -25,7 +25,7 @@ import { useReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import type { PickupQueueFilters } from "@/services/api/bookings";
-import { formatDate, formatDateTime, formatCurrency, formatPhoneLocal } from "@/lib/utils";
+import { formatCycleTime, formatDate, formatDateTime, formatCurrency, formatPhoneLocal } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
 import { hasAction } from "@/lib/permissions";
@@ -94,15 +94,16 @@ function lifecycleStatus(b: PickupBooking): { label: string; tone: "success" | "
  * gate).
  *
  * Mirrors that backend rule exactly rather than inventing a second one:
- * anchored to 12:00 PM IST on the due date (not local midnight — a due date
+ * anchored to the subscription's cycle time (the pickup time, or 12:00 PM for
+ * older plans) IST on the due date (not local midnight — a due date
  * is an IST calendar day, and this ran in the browser's own timezone before,
  * which could read a different day depending on where the admin's browser
  * was set), and late starts the INSTANT that passes — the first, even
  * partial, day already counts as a full day. No 24-hour grace.
  */
-function daysLateSinceNoon(dueDate: string | null): number {
+function daysLateSinceDue(dueDate: string | null, cycleTime: string | null): number {
   if (!dueDate) return 0;
-  const dueAt = new Date(`${dueDate}T12:00:00+05:30`);
+  const dueAt = new Date(`${dueDate}T${(cycleTime ?? "12:00:00").slice(0, 8)}+05:30`);
   if (Number.isNaN(dueAt.getTime())) return 0;
   const elapsedMs = Date.now() - dueAt.getTime();
   if (elapsedMs <= 0) return 0;
@@ -261,17 +262,32 @@ export default function BookingListPage() {
       hideOnMobile: true,
     },
     {
-      // Every rental runs a fixed noon-to-noon cycle (see calculateRentalPeriod,
-      // apps/backend/src/common/dates.ts) — stated explicitly here rather than
-      // leaving staff to assume a bare date means "whenever pickup happened."
+      // The clock starts at pickup: until then the dates are the booked ones
+      // and the time is not known yet. After pickup both ends fall at the
+      // subscription's cycle time (the pickup time; 12:00 PM for older plans).
       header: "Rental Period",
       key: "start",
       sortKey: "start_day",
       render: (b) => (
         <div className="min-w-0">
-          <p className="text-sm">{formatDate(b.start_day)} · 12:00 PM</p>
-          {b.next_due_at && (
-            <p className="text-xs text-muted-foreground">to {formatDate(b.next_due_at)} · 12:00 PM</p>
+          {b.status === "fulfilled" || b.status === "completed" ? (
+            <>
+              <p className="text-sm">
+                {formatDate(b.current_period_start ?? b.start_day)}
+                <span className="text-[11px] text-muted-foreground"> · {formatCycleTime(b.cycle_time)}</span>
+              </p>
+              {b.next_due_at && (
+                <p className="text-xs text-muted-foreground">
+                  to {formatDate(b.next_due_at)}
+                  <span className="text-[11px]"> · {formatCycleTime(b.cycle_time)}</span>
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="text-sm">{formatDate(b.start_day)}</p>
+              <p className="text-xs text-muted-foreground">Starts at pickup</p>
+            </>
           )}
         </div>
       ),
@@ -315,12 +331,20 @@ export default function BookingListPage() {
         if (!b.next_due_at) return "—";
         if (b.plan_status !== "past_due") {
           // Active (paid up) or paused (clock frozen) — just the date, no warning.
-          return <span className="text-muted-foreground">{formatDate(b.next_due_at)}</span>;
+          return (
+            <span className="text-muted-foreground">
+              {formatDate(b.next_due_at)}
+              <span className="text-[11px]"> · {formatCycleTime(b.cycle_time)}</span>
+            </span>
+          );
         }
-        const daysLate = daysLateSinceNoon(b.next_due_at);
+        const daysLate = daysLateSinceDue(b.next_due_at, b.cycle_time);
         return (
           <div className="text-destructive">
-            <p className="font-medium">Due {formatDate(b.next_due_at)}</p>
+            <p className="font-medium">
+              Due {formatDate(b.next_due_at)}
+              <span className="text-[11px] font-normal"> · {formatCycleTime(b.cycle_time)}</span>
+            </p>
             <p className="text-xs">
               {daysLate} day{daysLate === 1 ? "" : "s"} overdue
               {b.late_fee_override != null ? ` · ${formatCurrency(b.late_fee_override)}/day override` : " · late fee applies"}

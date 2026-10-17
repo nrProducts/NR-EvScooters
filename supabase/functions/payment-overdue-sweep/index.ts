@@ -74,7 +74,7 @@ interface PeriodRow {
     sequence_number: number;
     due_on: string;
     ends_on: string;
-    subscriptions: { id: string; user_id: string; status: string } | null;
+    subscriptions: { id: string; user_id: string; status: string; cycle_time: string } | null;
 }
 
 Deno.serve(async (_req) => {
@@ -95,7 +95,7 @@ Deno.serve(async (_req) => {
     const { data: candidates, error } = await admin
         .from("subscription_periods")
         .select(
-            "id, subscription_id, sequence_number, due_on, ends_on, subscriptions(id, user_id, status)",
+            "id, subscription_id, sequence_number, due_on, ends_on, subscriptions(id, user_id, status, cycle_time)",
         )
         .eq("status", "current")
         .lte("due_on", today);
@@ -106,9 +106,27 @@ Deno.serve(async (_req) => {
     }
 
     const now = new Date();
-    const lapsed = ((candidates ?? []) as unknown as PeriodRow[]).filter((p) =>
-        hasPassedCutover(p.due_on, now),
+    const lapsedByTime = ((candidates ?? []) as unknown as PeriodRow[]).filter((p) =>
+        hasPassedCutover(p.due_on, now, unwrap<{ cycle_time: string }>(p.subscriptions)?.cycle_time),
     );
+
+    // The clock starts at PICKUP. A subscription with no rental yet has not
+    // started its first period, however long ago it was booked, so it can be
+    // neither overdue nor promoted — confirmPickup re-dates its period #1.
+    const lapsedSubIds = [...new Set(lapsedByTime.map((p) => p.subscription_id))];
+    const pickedUp = new Set<string>();
+    if (lapsedSubIds.length) {
+        const { data: rentalRows, error: rentalsError } = await admin
+            .from("rentals")
+            .select("subscription_id")
+            .in("subscription_id", lapsedSubIds);
+        if (rentalsError) {
+            console.error(`[${SOURCE}] rentals query failed`, rentalsError);
+            return json({ error: "Query failed." }, 500);
+        }
+        for (const r of rentalRows ?? []) pickedUp.add(r.subscription_id as string);
+    }
+    const lapsed = lapsedByTime.filter((p) => pickedUp.has(p.subscription_id));
 
     let promoted = 0;
     let markedPastDue = 0;

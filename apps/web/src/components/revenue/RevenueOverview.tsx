@@ -1,12 +1,11 @@
 import { Link } from "react-router-dom";
 import {
-  ArrowRight, Banknote, CalendarRange, HandCoins, Landmark, PiggyBank, RotateCcw, TrendingUp, Undo2, Wallet,
+  ArrowRight, Banknote, CalendarRange, Landmark, PiggyBank, RotateCcw, TrendingUp, Undo2, Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RevenueStatCard } from "./RevenueStatCard";
-import { MoneyCollectedCard } from "./MoneyCollectedCard";
-import { useRevenueByType, useRevenueSummary } from "@/hooks/useRevenue";
+import { useRevenueSummary } from "@/hooks/useRevenue";
 import { rangeForPreset, previousRange } from "@/lib/period";
 
 /**
@@ -23,7 +22,6 @@ export function RevenueOverview({ part = "revenue" }: { part?: "revenue" | "depo
   const { data, isLoading } = useRevenueSummary(range, previousRange(range));
   const weekQ = useRevenueSummary(week);
   const yearQ = useRevenueSummary(year);
-  const byTypeQ = useRevenueByType(range);
 
   if (part === "deposits") {
     return (
@@ -75,25 +73,25 @@ export function RevenueOverview({ part = "revenue" }: { part?: "revenue" | "depo
       </div>
 
       {isLoading || !data ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+          {Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <RevenueStatCard
-            label="Total Collected" icon={HandCoins} tone="purple"
-            value={data.totalCollected} deltaPct={data.deltaPct?.totalCollected} previous={data.previous?.totalCollected}
-            tooltip="Every rupee received this month: Revenue + Security Deposits."
-          />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           <RevenueStatCard
             label="Weekly Revenue" icon={CalendarRange} tone="info"
             value={weekQ.data?.net ?? 0}
-            tooltip="Net revenue for the current week (Mon–today). Excludes deposits."
+            tooltip="Net revenue for the current week (Mon–today)."
+          />
+          <RevenueStatCard
+            label="Monthly Revenue" icon={CalendarRange} tone="info"
+            value={data.net} deltaPct={data.deltaPct?.net} previous={data.previous?.net}
+            tooltip="Net revenue this month vs last month."
           />
           <RevenueStatCard
             label="Yearly Revenue" icon={CalendarRange} tone="info"
             value={yearQ.data?.net ?? 0}
-            tooltip="Net revenue for the current calendar year. Excludes deposits."
+            tooltip="Net revenue for the current calendar year."
           />
           <RevenueStatCard
             label="Gross Revenue" icon={TrendingUp} tone="success"
@@ -106,18 +104,19 @@ export function RevenueOverview({ part = "revenue" }: { part?: "revenue" | "depo
             tooltip="Completed refunds that reverse revenue (booking cancellation + goodwill). Deposit refunds are not counted here."
           />
           <RevenueStatCard
-            label="Net Revenue (Month)" icon={Banknote} tone="success"
+            label="Net Revenue" icon={Banknote} tone="success"
             value={data.net} deltaPct={data.deltaPct?.net} previous={data.previous?.net}
             emphasis
-            tooltip="Gross Revenue − Completed Refunds, this month."
+            tooltip="Gross Revenue − Completed Refunds."
+          />
+          <RevenueStatCard
+            label="Deposits" icon={PiggyBank} tone="purple"
+            value={data.deposits.collected} deltaPct={data.deltaPct?.depositsCollected}
+            previous={data.previous?.deposits.collected}
+            tooltip="Security deposits collected this month. Rider money — refundable, not part of revenue."
           />
         </div>
       )}
-
-      <MoneyCollectedCard
-        summary={data} byType={byTypeQ.data}
-        isLoading={isLoading || byTypeQ.isLoading} periodLabel="This month"
-      />
     </section>
   );
 }

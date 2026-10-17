@@ -50,10 +50,6 @@ export interface RevenueMoneyFigures {
     lateFees: number;
     additionalCharges: number;
     damageCharges: number;
-    /** Deposit share of the payments captured in the window (rider money, not revenue). */
-    depositPayments: number;
-    /** Every rupee captured in the window: gross + depositPayments. */
-    totalCollected: number;
 }
 
 export interface DepositFigures {
@@ -108,12 +104,7 @@ export interface RefundBreakdown {
 
 export interface RevenueByMethodRow {
     method: string; // upi | card | netbanking | wallet | cash | other
-    /** Revenue share taken through this method. */
     amount: number;
-    /** Deposit share taken through this method. */
-    deposit: number;
-    /** amount + deposit — everything captured through this method. */
-    total: number;
     count: number;
 }
 

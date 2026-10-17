@@ -11,6 +11,8 @@ interface DetailRowProps {
   first?: boolean;
   /** Overrides the value colour, e.g. to tint an expiry that's close or past. */
   valueColor?: string;
+  /** Small trailing text after the value, e.g. a deadline's clock time. */
+  suffix?: string;
 }
 
 /**
@@ -18,10 +20,13 @@ interface DetailRowProps {
  * of each other and draw their own top divider, so the parent only needs
  * `rounded-2xl border overflow-hidden`.
  */
-export const DetailRow: React.FC<DetailRowProps> = ({ icon: Icon, label, value, first, valueColor }) => (
+export const DetailRow: React.FC<DetailRowProps> = ({ icon: Icon, label, value, first, valueColor, suffix }) => (
   <View className="flex-row items-center px-4 py-3.5" style={{ borderTopWidth: first ? 0 : 1, borderColor: COLORS.border }}>
     <Icon size={15} color={COLORS.textSecondary} />
     <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-2.5 flex-1">{label}</Text>
-    <Text style={{ color: valueColor ?? COLORS.textPrimary }} className="text-xs font-extrabold">{value}</Text>
+    <Text style={{ color: valueColor ?? COLORS.textPrimary }} className="text-xs font-extrabold">
+      {value}
+      {suffix ? <Text className="text-[10px] font-medium">{` · ${suffix}`}</Text> : null}
+    </Text>
   </View>
 );

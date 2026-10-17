@@ -29,7 +29,7 @@
 // =========================================================================
 
 import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
-import { addDays, businessToday, formatBusinessDayForCopy } from "../_shared/dates.ts";
+import { addDays, businessToday, cycleBoundaryAt, formatBusinessDayForCopy, formatClockTimeForCopy } from "../_shared/dates.ts";
 import { notifyUser } from "../_shared/notify.ts";
 
 const SOURCE = "payment-due-reminder";
@@ -46,7 +46,7 @@ interface PeriodRow {
     sequence_number: number;
     due_on: string;
     base_amount_snapshot: number;
-    subscriptions: { id: string; user_id: string; status: string } | null;
+    subscriptions: { id: string; user_id: string; status: string; cycle_time: string } | null;
 }
 
 function unwrap<T>(raw: unknown): T | null {
@@ -54,17 +54,20 @@ function unwrap<T>(raw: unknown): T | null {
     return (v as T) ?? null;
 }
 
-function messageFor(daysUntilDue: number, amount: number, dueOn: string): { title: string; body: string } {
+function messageFor(
+    daysUntilDue: number, amount: number, dueOn: string, cycleTime: string,
+): { title: string; body: string } {
     const dueDay = formatBusinessDayForCopy(dueOn);
+    const dueTime = formatClockTimeForCopy(cycleBoundaryAt(dueOn, cycleTime));
     if (daysUntilDue === 0) {
         return {
             title: "Payment Due Today",
-            body: `Your rental payment of ₹${amount} is due today by 12:00 PM.`,
+            body: `Your rental payment of ₹${amount} is due today by ${dueTime}.`,
         };
     }
     return {
         title: "Payment Due Soon",
-        body: `Your rental payment of ₹${amount} is due at 12:00 PM on ${dueDay} (in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}).`,
+        body: `Your rental payment of ₹${amount} is due at ${dueTime} on ${dueDay} (in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}).`,
     };
 }
 
@@ -89,7 +92,7 @@ Deno.serve(async (_req) => {
         const { data: periods, error } = await admin
             .from("subscription_periods")
             .select(
-                "id, subscription_id, sequence_number, due_on, base_amount_snapshot, subscriptions(id, user_id, status)",
+                "id, subscription_id, sequence_number, due_on, base_amount_snapshot, subscriptions(id, user_id, status, cycle_time)",
             )
             .eq("status", "current")
             .eq("due_on", addDays(today, offsetDays));
@@ -100,7 +103,7 @@ Deno.serve(async (_req) => {
         }
 
         for (const period of (periods ?? []) as unknown as PeriodRow[]) {
-            const subscription = unwrap<{ id: string; user_id: string; status: string }>(
+            const subscription = unwrap<{ id: string; user_id: string; status: string; cycle_time: string }>(
                 period.subscriptions,
             );
             if (!subscription) continue;
@@ -109,12 +112,22 @@ Deno.serve(async (_req) => {
             if (subscription.status !== "active" && subscription.status !== "past_due") continue;
             matched++;
 
+            // Not picked up yet: the clock has not started, and confirmPickup
+            // will re-date this period, so its due date is not real yet.
+            const { count: rentalCount } = await admin
+                .from("rentals")
+                .select("id", { count: "exact", head: true })
+                .eq("subscription_id", subscription.id);
+            if (!rentalCount) continue;
+
             if (await isRenewalPaid(admin, period)) {
                 skippedPaid++;
                 continue;
             }
 
-            const { title, body } = messageFor(offsetDays, Number(period.base_amount_snapshot), period.due_on);
+            const { title, body } = messageFor(
+                offsetDays, Number(period.base_amount_snapshot), period.due_on, subscription.cycle_time,
+            );
             const result = await notifyUser(admin, subscription.user_id, {
                 typeCode: "payment_due",
                 subjectType: "subscription_period",

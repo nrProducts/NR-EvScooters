@@ -116,7 +116,7 @@ export const ta: Copy = {
     'rental.daysRemaining.one': '1 நாள் மீதம்',
     'rental.daysRemaining.other': '{count} நாட்கள் மீதம்',
     'rental.dayOf': 'நாள் {day} / {total}',
-    'rental.periodRange': '{start}, மதியம் 12:00  —  {end}, மதியம் 12:00',
+    'rental.periodRange': '{start}, {time}  —  {end}, {time}',
 
     // --- scooter status card (Home alert strip) ---------------------------
     'scooterStatus.paymentRequired': 'கட்டணம் தேவை',
@@ -726,7 +726,7 @@ export const ta: Copy = {
     'booking.availableHere': 'இங்கே {count} கிடைக்கிறது',
     'booking.unavailable': 'கிடைக்கவில்லை',
     'booking.available': 'கிடைக்கிறது',
-    'booking.startsNow.title': 'உங்கள் திட்டம் இன்று மதியம் 12:00 மணிக்குத் தொடங்குகிறது',
+    'booking.startsNow.title': 'ஸ்கூட்டரைப் பெற்றதும் உங்கள் திட்டம் தொடங்குகிறது',
     'booking.startsNow.body': 'இன்று காலை 8 – இரவு 8 மணிக்குள் உங்கள் ஸ்கூட்டரைப் பெறுங்கள்.',
     'booking.choosePlan': 'ஒரு திட்டத்தைத் தேர்ந்தெடுக்கவும்',
     'booking.noPlansHint': 'இந்த ஸ்கூட்டருக்கு இன்னும் திட்டங்கள் விற்பனையில் இல்லை.',
@@ -753,6 +753,8 @@ export const ta: Copy = {
     'deposit.onboardingNote':
         'முன்பதிவின்போது செலுத்திய {amount} சேர்க்கைக் கட்டணம் திரும்பத் தரப்படாது; அது இந்த வைப்புத்தொகையின் பகுதி அல்ல.',
     'booking.rentalPeriod': 'வாடகைக் காலம்',
+    'booking.period.atPickup': 'பிக்அப் நேரத்தில்',
+    'booking.period.sameTime': 'பிக்அப் செய்த அதே நேரம் வரை',
     'booking.onboardingCharge': 'சேர்க்கைக் கட்டணம்',
     'booking.onboardingFee': 'சேர்க்கைக் கட்டணம்',
     'booking.securityDeposit': 'பாதுகாப்பு வைப்புத்தொகை',
@@ -1005,7 +1007,7 @@ export const ta: Copy = {
 
     // --- request return -------------------------------------------------------
     'requestReturn.deadline.todayByMidnight': 'இன்று மதியம் 12:00 மணிக்குள்',
-    'requestReturn.deadline.dateByMidnight': '{date} மதியம் 12:00 மணிக்குள்',
+    'requestReturn.deadline.dateByMidnight': '{date} {time} மணிக்குள்',
     'requestReturn.deadline.daysAgoOne': '1 நாள் முன்பு',
     'requestReturn.deadline.daysAgoOther': '{days} நாட்கள் முன்பு',
     'requestReturn.requested.title': 'திருப்பு கோரப்பட்டது',

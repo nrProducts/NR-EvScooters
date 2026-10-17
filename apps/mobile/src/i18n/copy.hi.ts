@@ -119,7 +119,7 @@ export const hi: Copy = {
     'rental.daysRemaining.one': '1 दिन बाकी',
     'rental.daysRemaining.other': '{count} दिन बाकी',
     'rental.dayOf': 'दिन {day} / {total}',
-    'rental.periodRange': '{start}, दोपहर 12:00  —  {end}, दोपहर 12:00',
+    'rental.periodRange': '{start}, {time}  —  {end}, {time}',
 
     // --- scooter status card (Home alert strip) ---------------------------
     'scooterStatus.paymentRequired': 'भुगतान करना ज़रूरी है',
@@ -721,7 +721,7 @@ export const hi: Copy = {
     'booking.availableHere': 'यहां {count} उपलब्ध हैं',
     'booking.unavailable': 'उपलब्ध नहीं',
     'booking.available': 'उपलब्ध',
-    'booking.startsNow.title': 'आपका प्लान आज दोपहर 12:00 बजे शुरू होता है',
+    'booking.startsNow.title': 'स्कूटर लेते ही आपका प्लान शुरू हो जाता है',
     'booking.startsNow.body': 'आज सुबह 8 बजे से रात 8 बजे के बीच अपना स्कूटर ले लें।',
     'booking.choosePlan': 'एक प्लान चुनें',
     'booking.noPlansHint': 'इस स्कूटर के लिए अभी कोई प्लान उपलब्ध नहीं है।',
@@ -748,6 +748,8 @@ export const hi: Copy = {
     'deposit.onboardingNote':
         'बुकिंग के समय दिया गया {amount} का ऑनबोर्डिंग शुल्क वापस नहीं मिलेगा और यह इस जमा राशि का हिस्सा नहीं है।',
     'booking.rentalPeriod': 'किराया अवधि',
+    'booking.period.atPickup': 'स्कूटर लेने के समय',
+    'booking.period.sameTime': 'पिकअप वाले समय तक',
     'booking.onboardingCharge': 'ऑनबोर्डिंग शुल्क',
     'booking.onboardingFee': 'ऑनबोर्डिंग शुल्क',
     'booking.securityDeposit': 'सुरक्षा जमा राशि',
@@ -1000,7 +1002,7 @@ export const hi: Copy = {
 
     // --- request return -------------------------------------------------------
     'requestReturn.deadline.todayByMidnight': 'आज दोपहर 12:00 बजे तक',
-    'requestReturn.deadline.dateByMidnight': '{date} दोपहर 12:00 बजे तक',
+    'requestReturn.deadline.dateByMidnight': '{date} {time} तक',
     'requestReturn.deadline.daysAgoOne': '1 दिन पहले',
     'requestReturn.deadline.daysAgoOther': '{days} दिन पहले',
     'requestReturn.requested.title': 'रिटर्न का अनुरोध किया गया',

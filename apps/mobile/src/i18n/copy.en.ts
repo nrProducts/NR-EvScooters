@@ -121,10 +121,9 @@ export const en = {
     'rental.daysRemaining.other': '{count} days remaining',
     'rental.dayOf': 'Day {day} of {total}',
     // "05 Sep 2026, 12:00 PM  —  12 Sep 2026, 12:00 PM". The dash spacing is
-    // part of the layout. Every rental period runs noon to noon — see
-    // apps/backend/src/common/dates.ts's calculateRentalPeriod — so the time
-    // is always literally "12:00 PM" on both ends, never computed.
-    'rental.periodRange': '{start}, 12:00 PM  —  {end}, 12:00 PM',
+    // part of the layout. Both ends fall at the subscription's cycle time
+    // (the pickup time; 12:00 PM for older plans) — {time}, from cycle_time.
+    'rental.periodRange': '{start}, {time}  —  {end}, {time}',
 
     // --- scooter status card (Home alert strip) ---------------------------
     'scooterStatus.paymentRequired': 'Payment Required',
@@ -768,7 +767,7 @@ export const en = {
 
     // --- request return -------------------------------------------------------
     'requestReturn.deadline.todayByMidnight': 'today by 12:00 PM',
-    'requestReturn.deadline.dateByMidnight': '{date} by 12:00 PM',
+    'requestReturn.deadline.dateByMidnight': '{date} by {time}',
     'requestReturn.deadline.daysAgoOne': '1 day ago',
     'requestReturn.deadline.daysAgoOther': '{days} days ago',
     'requestReturn.requested.title': 'Return Requested',
@@ -1265,7 +1264,7 @@ export const en = {
     'booking.availableHere': '{count} available here',
     'booking.unavailable': 'Unavailable',
     'booking.available': 'Available',
-    'booking.startsNow.title': 'Your plan starts at 12:00 PM today',
+    'booking.startsNow.title': 'Your plan starts when you pick up your scooter',
     'booking.startsNow.body': 'Collect your scooter today between 8 AM and 8 PM.',
     'booking.choosePlan': 'Choose a plan',
     'booking.noPlansHint': 'No plans are on sale for this scooter yet.',
@@ -1292,6 +1291,8 @@ export const en = {
     'deposit.onboardingNote':
         'The {amount} onboarding charge paid at booking is non-refundable and is not part of this deposit.',
     'booking.rentalPeriod': 'Rental Period',
+    'booking.period.atPickup': 'At pickup time',
+    'booking.period.sameTime': 'Same time as pickup',
     'booking.onboardingCharge': 'Onboarding charge',
     'booking.onboardingFee': 'Onboarding fee',
     'booking.securityDeposit': 'Security deposit',

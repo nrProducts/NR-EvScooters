@@ -115,6 +115,8 @@ describe("previewOverdueLateFee", () => {
         queue("pricing_rules", { data: null, error: null });
         queue("pricing_rules", { data: { amount: 50, is_active: true }, error: null });
         // A Rs 1999 weekly plan: 1999 / 7 = 285.57 per day, 2 days late.
+        // computeLateRenewalFee reads the subscription's cycle_time first (noon here).
+        queue("subscriptions", { data: { cycle_time: "12:00:00" }, error: null });
         queue("subscriptions", { data: { plan_price_snapshot: 1999, duration_days_snapshot: 7 }, error: null });
 
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);

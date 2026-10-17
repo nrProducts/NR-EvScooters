@@ -13,7 +13,7 @@ import {
 import { rentalRepository } from '../services';
 import { useDismissibleBanner } from '../lib/dismissedBanners';
 import { usePaySettlement } from './SettlementCard';
-import { computeLateReturnPenalty, effectiveDueAt, getRenewalEligibility } from '../lib/returnPolicy';
+import { computeLateReturnPenalty, effectiveDueAt, formatCycleTime, getRenewalEligibility } from '../lib/returnPolicy';
 import type { ApiOverdueLateFee, ApiRental, ApiReturnSettlement, ApiReturnStage } from '../types/api';
 import { useT, type TranslateFn } from '../i18n';
 
@@ -103,7 +103,9 @@ export function ScooterStatusCard({
   const lateAmount = overdue?.isLate ? overdue.lateFee : estimate.penaltyAmount;
   const recoveryRequired = !!rental.recovery_flagged_at;
   const overdueNow = overdue ? overdue.isLate : estimate.isLate;
-  const eligibility = getRenewalEligibility(rental.plan_status, rental.next_due_at, rental.renewal_status);
+  const eligibility = getRenewalEligibility(
+    rental.plan_status, rental.next_due_at, rental.renewal_status, undefined, rental.cycle_time,
+  );
 
   // --- Priority order: exactly one of these renders. -----------------------
   //
@@ -206,7 +208,7 @@ export function ScooterStatusCard({
           {[
             rental.scheduled_start_date
               ? t('scooterStatus.renewalScheduled.starts', {
-                  date: formatDay(rental.scheduled_start_date),
+                  date: `${formatDay(rental.scheduled_start_date)}, ${formatCycleTime(rental.cycle_time)}`,
                 })
               : null,
             t('scooterStatus.renewalScheduled.body'),
@@ -303,10 +305,10 @@ export function ScooterStatusCard({
             : rental.next_due_at
               ? remaining
                 ? t('scooterStatus.planEndsOnWithLeft', {
-                    date: formatDay(rental.next_due_at),
+                    date: `${formatDay(rental.next_due_at)}, ${formatCycleTime(rental.cycle_time)}`,
                     remaining,
                   })
-                : t('scooterStatus.planEndsOn', { date: formatDay(rental.next_due_at) })
+                : t('scooterStatus.planEndsOn', { date: `${formatDay(rental.next_due_at)}, ${formatCycleTime(rental.cycle_time)}` })
               : t('scooterStatus.planStatus')
         }
       >

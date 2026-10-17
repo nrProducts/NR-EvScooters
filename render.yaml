@@ -63,10 +63,10 @@ services:
     branch: main
     rootDir: .
     # Deploy only after the GitHub "Release" workflow is green for the commit:
-    # backend build + tests, the database migration, and — on main — the
+    # backend build + tests, the database migration, and on main the
     # manually approved prod-deploy. New code therefore never starts before
-    # the schema it expects. (UAT, a dashboard-managed service, uses the same
-    # setting with branch develop.)
+    # the schema it expects. Same setting on the three static sites below.
+    # (This file describes PRODUCTION; the UAT services are dashboard-managed.)
     autoDeployTrigger: checksPass
     buildFilter:
       paths:
@@ -160,7 +160,7 @@ services:
     runtime: static
     branch: main
     rootDir: .
-    autoDeploy: true
+    autoDeployTrigger: checksPass   # after the Release workflow is green
     buildFilter:
       paths:
         - apps/web/**
@@ -212,7 +212,7 @@ services:
     runtime: static
     branch: main
     rootDir: .
-    autoDeploy: true
+    autoDeployTrigger: checksPass   # after the Release workflow is green
     buildFilter:
       paths:
         - apps/mobile/**
