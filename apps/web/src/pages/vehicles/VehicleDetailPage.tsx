@@ -116,8 +116,6 @@ export default function VehicleDetailPage() {
             <Detail label="VIN" value={vehicle.vin} />
             <Detail label="Current rider" value={vehicle.current_rider?.full_name ?? "Unassigned"} />
             <Detail label="Color" value={vehicle.color ?? "Not recorded"} />
-            <Detail label="QR code" value={vehicle.qr_code ?? "Not assigned"} />
-            <Detail label="IMEI / IoT device" value={vehicle.imei ?? "Not recorded"} />
             <Detail label="Batch number" value={vehicle.batch_number ?? "Not recorded"} />
             <Detail label="Purchase date" value={vehicle.purchase_date ? formatDate(vehicle.purchase_date) : "Not recorded"} />
           </CardContent>

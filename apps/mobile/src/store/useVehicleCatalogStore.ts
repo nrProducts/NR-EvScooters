@@ -47,7 +47,9 @@ export const useVehicleCatalogStore = create<VehicleCatalogState>((set, get) => 
     loadingAvailableCount: false,
 
     loadFeatured: async () => {
-        set({ loadingFeatured: true, featuredError: null });
+        // Skeleton only on the first load — Home re-runs this on every focus,
+        // and a refresh should swap the counts in place, not flash the card.
+        set({ loadingFeatured: get().featured === null, featuredError: null });
         try {
             const summary = await vehicleCatalogRepository.featured();
             // featured() 404s to null when no model is flagged.

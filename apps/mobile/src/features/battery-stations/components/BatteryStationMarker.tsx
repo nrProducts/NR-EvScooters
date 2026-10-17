@@ -3,10 +3,11 @@ import { Layer } from '@maplibre/maplibre-react-native';
 import { COLORS } from '../../../constants/theme';
 
 /**
- * Station markers — every station, unclustered, as a location-pin silhouette
- * with a white bolt in its head (registered by BatteryStationMapView via
- * <Images>, see scripts/generate-station-icons.mjs). Four pre-coloured pin
- * images, selected per status by STATUS_ICON_EXPRESSION — not one white pin
+ * Station markers — every station, unclustered, as a location pin with a
+ * white bolt in its head, standing on ripple rings (all baked into one image,
+ * registered by BatteryStationMapView via <Images>, see
+ * scripts/generate-station-icons.mjs). Four pre-coloured images, selected per
+ * status by STATUS_PIN_EXPRESSION — not one white pin
  * tinted at render time via an SDF `icon-color`. SDF tinting needs the image
  * to be a genuine signed-distance field; a plain hard-edged alpha mask is
  * not one, and it rendered unreliably (markers not appearing at all). Four
@@ -21,8 +22,12 @@ import { COLORS } from '../../../constants/theme';
  */
 
 export const STATION_LAYER_ID = 'battery-station-points';
-const STATION_ICON_LAYER_ID = 'battery-station-icon';
 const STATION_SELECTED_LAYER_ID = 'battery-station-selected';
+
+// The marker images are 200x240 with the pin tip 28px above the bottom edge
+// (see scripts/generate-station-icons.mjs).
+export const PIN_ICON_SIZE = 0.3;
+export const TIP_OFFSET_FROM_BOTTOM = 28;
 
 /** Matched to StationStatusBadge so the map and the sheet agree. */
 export const STATUS_PIN_EXPRESSION = [
@@ -57,24 +62,12 @@ export const BatteryStationMarker: React.FC<{ selectedStationId: string | null }
             filter={['!', ['has', 'point_count']]}
             layout={{
                 'icon-image': STATUS_PIN_EXPRESSION as unknown as string,
-                'icon-size': 0.28,
-                'icon-allow-overlap': true,
-                'icon-ignore-placement': true,
-            }}
-        />
-
-        <Layer
-            id={STATION_ICON_LAYER_ID}
-            type="symbol"
-            filter={['!', ['has', 'point_count']]}
-            layout={{
-                'icon-image': 'station-bolt',
-                'icon-size': 0.14,
-                // In EMs of this layer's OWN icon-size (the style spec
-                // multiplies offset by icon-size) — see
-                // BatteryStationMapView.web.tsx for how -40 was derived from
-                // the pin and bolt images' geometry.
-                'icon-offset': [0, -40],
+                'icon-size': PIN_ICON_SIZE,
+                // Bottom-anchored, then nudged down by the image's empty
+                // space under the pin tip (the lower half of the ripples), so
+                // the tip — not the image edge — sits on the coordinate.
+                'icon-anchor': 'bottom',
+                'icon-offset': [0, TIP_OFFSET_FROM_BOTTOM],
                 'icon-allow-overlap': true,
                 'icon-ignore-placement': true,
             }}

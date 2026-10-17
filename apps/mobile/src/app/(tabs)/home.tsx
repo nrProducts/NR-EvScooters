@@ -20,6 +20,7 @@ import { HomeQuickLinks } from "../../components/home/HomeQuickLinks";
 import { isReturnLocked } from "../../lib/returnLock";
 import { useDismissibleBanner } from "../../lib/dismissedBanners";
 import { NeedHelpCard } from "../../components/home/NeedHelpCard";
+import { ReferEarnStrip } from "../../components/home/ReferEarnStrip";
 import { Badge } from "../../components/ui/Badge";
 import { SkeletonList } from "../../components/ui/Skeleton";
 import { pullToRefresh } from "../../components/ui/PullToRefresh";
@@ -151,10 +152,17 @@ export default function HomeScreen() {
 
   // Loaded even mid-rental: ActiveRentalCard reuses the featured model's
   // artwork, since the rental payload carries no image of its own.
-  useEffect(() => {
-    void loadFeatured();
-    void loadList();
-  }, [loadFeatured, loadList]);
+  //
+  // On focus, not mount: the store is global and Home stays mounted under the
+  // tabs, so a once-only load kept showing the pre-booking "N available"
+  // after the rider paid and came back — capture holds a vehicle, which
+  // drops the live count, but nothing here ever asked again.
+  useFocusEffect(
+    useCallback(() => {
+      void loadFeatured();
+      void loadList();
+    }, [loadFeatured, loadList]),
+  );
 
   // Independent of has_active_rental/has_active_booking — a rider can be
   // mid-displacement (no temp vehicle yet) with neither flag set.
@@ -296,13 +304,6 @@ export default function HomeScreen() {
         }}
         refreshControl={pullToRefresh(refreshing, () => void handleRefresh())}
       >
-        {/*
-          No referral promo card here by design — referrals now work (see
-          /referrals and Profile > "Refer & Earn"), but a rider does not need
-          reminding about them on every Home visit. Keep detailed referral
-          content behind its own screen rather than adding a card here.
-        */}
-
         <KycBanner />
 
         <MaintenanceNoticeBanner notice={maintenanceNotice} />
@@ -644,6 +645,8 @@ export default function HomeScreen() {
         {/* My plan goes dead while a return is in flight — it leads somewhere
             the backend will refuse. See lib/returnLock.ts. */}
         <HomeQuickLinks returnLocked={isReturnLocked(activeRental)} />
+        {/* A single slim line, deliberately — detail lives on /referrals. */}
+        <ReferEarnStrip />
         <NeedHelpCard />
       </PageScroll>
     </AppShell>

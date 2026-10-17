@@ -110,7 +110,7 @@ create-order response rather than from its own environment.
 | `PAYMENT_ORDER_TTL_MINUTES` | falls back to `BOOKING_PAYMENT_GRACE_MINUTES` | keep ≤ the vehicle hold |
 | `BOOKING_PAYMENT_GRACE_MINUTES` | `30` | |
 | `DEPOSIT_REFUND_ELIGIBILITY_DAYS` | `15` | |
-| `DAMAGE_DISPUTE_WINDOW_HOURS` | `72` | |
+| `DAMAGE_DISPUTE_WINDOW_HOURS` | `168` | |
 | `NODE_ENV` | `development` | **must be `production`** or the secret checks do not apply |
 
 `DEFAULT_DEPOSIT_AMOUNT` still exists but is a fallback only —
