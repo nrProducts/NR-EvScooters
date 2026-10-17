@@ -177,7 +177,7 @@ export const env = {
     /** Minutes a `pending_payment` booking is held before the expiry sweep releases its vehicle. */
     bookingPaymentGraceMinutes: intFromEnv("BOOKING_PAYMENT_GRACE_MINUTES", 30),
     /** Hours a rider has to dispute a recorded damage before the refund-eligibility sweep ignores it. */
-    damageDisputeWindowHours: intFromEnv("DAMAGE_DISPUTE_WINDOW_HOURS", 72),
+    damageDisputeWindowHours: intFromEnv("DAMAGE_DISPUTE_WINDOW_HOURS", 168),
     /** Days after vehicle return before a held deposit becomes refund-eligible. */
     depositRefundEligibilityDays: intFromEnv("DEPOSIT_REFUND_ELIGIBILITY_DAYS", 15),
 

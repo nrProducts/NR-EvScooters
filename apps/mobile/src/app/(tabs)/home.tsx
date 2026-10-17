@@ -152,10 +152,17 @@ export default function HomeScreen() {
 
   // Loaded even mid-rental: ActiveRentalCard reuses the featured model's
   // artwork, since the rental payload carries no image of its own.
-  useEffect(() => {
-    void loadFeatured();
-    void loadList();
-  }, [loadFeatured, loadList]);
+  //
+  // On focus, not mount: the store is global and Home stays mounted under the
+  // tabs, so a once-only load kept showing the pre-booking "N available"
+  // after the rider paid and came back — capture holds a vehicle, which
+  // drops the live count, but nothing here ever asked again.
+  useFocusEffect(
+    useCallback(() => {
+      void loadFeatured();
+      void loadList();
+    }, [loadFeatured, loadList]),
+  );
 
   // Independent of has_active_rental/has_active_booking — a rider can be
   // mid-displacement (no temp vehicle yet) with neither flag set.
