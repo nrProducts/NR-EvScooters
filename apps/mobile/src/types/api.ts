@@ -462,6 +462,12 @@ export interface ApiRewardCard {
 export interface ApiReferralSummary {
     /** Null only for a non-rider account. */
     referral_code: string | null;
+    /**
+     * False until this rider has booked a scooter — their code doesn't work
+     * for anyone before that (the backend refuses it). Optional so an older
+     * backend without the field keeps the previous behaviour.
+     */
+    can_refer?: boolean;
     program_enabled: boolean;
     /** Rupees — what a successful referral is currently worth, from the live programme config. */
     reward_amount: number;

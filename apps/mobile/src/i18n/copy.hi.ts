@@ -1097,6 +1097,10 @@ export const hi: Copy = {
     // --- referrals ----------------------------------------------------------
     'referrals.title': 'रेफ़र करें और कमाएं',
     'home.referEarn.body': 'दोस्त को बुलाएं, ₹{amount} कमाएं',
+    'home.referEarn.locked': 'रिवॉर्ड पाने के लिए पहला स्कूटर बुक करें',
+    'referrals.locked.title': 'रेफ़र करने के लिए पहले स्कूटर बुक करें',
+    'referrals.locked.body': 'आपका रेफ़रल कोड पहली स्कूटर बुकिंग के बाद चालू होगा। तब तक दोस्त इसका उपयोग नहीं कर सकते।',
+    'referrals.locked.cta': 'स्कूटर बुक करें',
     'referrals.loadFailed': 'आपके रेफ़रल लोड नहीं हो सके।',
     'referrals.inviteHeading': 'दोस्तों को Swapngo पर आमंत्रित करें',
     'referrals.inviteBody': 'अपना कोड शेयर करें — दोस्त की पहली बुकिंग पूरी होते ही, आपको अगली रिन्यूअल के लिए ₹{amount} का रिवॉर्ड कार्ड मिलेगा।',

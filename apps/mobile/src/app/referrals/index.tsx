@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Gift, Copy, Share2, Check, Users, Clock, Ticket } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { Gift, Copy, Share2, Check, Users, Clock, Ticket, Lock } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
 import { Spinner } from '../../components/Spinner';
 import { Badge } from '../../components/ui/Badge';
@@ -42,6 +43,7 @@ const CARD_STATUS_TONE: Record<ApiRewardCardStatus, 'success' | 'warning' | 'dan
  */
 export default function ReferralsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { t } = useT();
   const { summary, loading, error, reload } = useReferralSummary();
   const [copied, setCopied] = useState(false);
@@ -87,6 +89,26 @@ export default function ReferralsScreen() {
                   : t('referrals.programDisabled')}
               </Text>
 
+              {/* Not booked yet: the code doesn't work for anyone until the
+                  rider's first booking (the backend refuses it), so it isn't
+                  offered for sharing — the rider is told how to unlock it. */}
+              {summary.can_refer === false ? (
+                <View className="rounded-xl px-4 py-3.5 mb-2" style={{ backgroundColor: '#FFFFFF22' }}>
+                  <View className="flex-row items-center mb-1.5">
+                    <Lock size={14} color="#FFF" />
+                    <Text className="text-white text-[13px] font-extrabold ml-2 flex-1">{t('referrals.locked.title')}</Text>
+                  </View>
+                  <Text className="text-white/90 text-xs font-medium leading-relaxed mb-3">{t('referrals.locked.body')}</Text>
+                  <TouchableOpacity
+                    onPress={() => router.push('/home' as never)}
+                    accessibilityRole="button"
+                    className="self-start rounded-lg px-3.5 py-2"
+                    style={{ backgroundColor: '#FFFFFF' }}
+                  >
+                    <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-extrabold">{t('referrals.locked.cta')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
               <View
                 className="flex-row items-center justify-between rounded-xl px-4 py-3 mb-2"
                 style={{ backgroundColor: '#FFFFFF22' }}
@@ -113,6 +135,7 @@ export default function ReferralsScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
+              )}
             </View>
 
             {/* --- counts --------------------------------------------------- */}

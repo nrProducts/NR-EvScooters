@@ -863,6 +863,10 @@ export const en = {
     // --- referrals ----------------------------------------------------------
     'referrals.title': 'Refer & Earn',
     'home.referEarn.body': 'Invite a friend, earn ₹{amount}',
+    'home.referEarn.locked': 'Book your first scooter to unlock rewards',
+    'referrals.locked.title': 'Book your first scooter to start referring',
+    'referrals.locked.body': "Your referral code unlocks after your first scooter booking. Until then, friends can't use it.",
+    'referrals.locked.cta': 'Book a scooter',
     'referrals.loadFailed': 'Could not load your referrals.',
     'referrals.inviteHeading': 'Invite friends to Swapngo',
     'referrals.inviteBody': 'Share your code — once a friend completes their first paid booking, you earn a ₹{amount} reward card for your next renewal.',

@@ -159,10 +159,23 @@ describe("redeemReferralCode", () => {
         await expect(redeemReferralCode("referee-1", "STAFFC", actor)).rejects.toThrow(/invalid or unavailable/i);
     });
 
+    it("refuses a code whose owner has not booked a scooter yet", async () => {
+        // KYC done, no booking: a rider may not refer until they have booked
+        // themselves — enforced at redemption, not just hidden in the app.
+        queue("referrals", { data: null, error: null });
+        queue("users", { data: { created_at: new Date().toISOString(), referral_code: "SELFCD", deleted_at: null }, error: null });
+        queue("users", { data: { id: "referrer-1", full_name: "Referrer One", role: "rider", deleted_at: null }, error: null });
+        queue("subscriptions", { data: null, error: null, count: 0 }); // never booked
+        await expect(redeemReferralCode("referee-1", "GOODCD", actor))
+            .rejects.toThrow(/needs to book a scooter first/i);
+        expect(calls).not.toContain("referral_programs"); // stopped before anything else
+    });
+
     it("refuses when there is no enabled programme — the seeded default (disabled, ₹0)", async () => {
         queue("referrals", { data: null, error: null });
         queue("users", { data: { created_at: new Date().toISOString(), referral_code: "SELFCD", deleted_at: null }, error: null });
         queue("users", { data: { id: "referrer-1", full_name: "Referrer One", role: "rider", deleted_at: null }, error: null });
+        queue("subscriptions", { data: null, error: null, count: 1 }); // referrer has booked
         queue("referral_programs", { data: null, error: null }); // nothing enabled
         await expect(redeemReferralCode("referee-1", "GOODCD", actor)).rejects.toThrow(/not available right now/i);
     });
@@ -171,6 +184,7 @@ describe("redeemReferralCode", () => {
         queue("referrals", { data: null, error: null }); // no existing attribution
         queue("users", { data: { created_at: new Date().toISOString(), referral_code: "SELFCD", deleted_at: null }, error: null }); // referee
         queue("users", { data: { id: "referrer-1", full_name: "Referrer One", role: "rider", deleted_at: null }, error: null }); // referrer
+        queue("subscriptions", { data: null, error: null, count: 1 }); // referrer has booked
         queue("referral_programs", {
             data: { id: "prog-1", reward_amount: 200, reward_expiry_days: 90, qualifying_event: "first_paid_booking" },
             error: null,
@@ -186,7 +200,7 @@ describe("redeemReferralCode", () => {
         expect(result.attribution.referrer_display_name).toBe("Referrer");
         // Not qualified immediately: first_paid_booking has not happened yet,
         // so qualifyReferral's extra .from() calls must never fire here.
-        expect(calls).toEqual(["referrals", "users", "users", "referral_programs", "referrals"]);
+        expect(calls).toEqual(["referrals", "users", "users", "subscriptions", "referral_programs", "referrals"]);
     });
 
     it("records an identity mark on success when the referee has a phone on file", async () => {
@@ -194,6 +208,7 @@ describe("redeemReferralCode", () => {
         queue("users", { data: { created_at: new Date().toISOString(), referral_code: "SELFCD", deleted_at: null, phone: "+919600999046" }, error: null });
         queue("referral_identity_marks", { data: null, error: null }); // no prior mark for this phone
         queue("users", { data: { id: "referrer-1", full_name: "Referrer One", role: "rider", deleted_at: null }, error: null });
+        queue("subscriptions", { data: null, error: null, count: 1 }); // referrer has booked
         queue("referral_programs", {
             data: { id: "prog-1", reward_amount: 200, reward_expiry_days: 90, qualifying_event: "first_paid_booking" },
             error: null,
@@ -204,7 +219,7 @@ describe("redeemReferralCode", () => {
         const result = await redeemReferralCode("referee-phone", "GOODCD", actor);
         expect(result.outcome).toBe("applied");
         expect(calls).toEqual([
-            "referrals", "users", "referral_identity_marks", "users", "referral_programs", "referrals", "referral_identity_marks",
+            "referrals", "users", "referral_identity_marks", "users", "subscriptions", "referral_programs", "referrals", "referral_identity_marks",
         ]);
     });
 
