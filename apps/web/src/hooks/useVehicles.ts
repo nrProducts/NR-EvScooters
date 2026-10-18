@@ -92,3 +92,15 @@ export function useDeleteVehicleDocument() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle"] }),
   });
 }
+
+export function usePreviewVehicleImport() {
+  return useMutation({ mutationFn: (file: File) => api.previewVehicleImport(file) });
+}
+
+export function useCommitVehicleImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rows: api.VehicleImportRow[]) => api.commitVehicleImport(rows),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicles"] }),
+  });
+}

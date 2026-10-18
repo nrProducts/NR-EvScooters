@@ -45,6 +45,28 @@ export const createVehicleBody = z.object({
     batch_number: z.string().trim().min(1).max(60).optional(),
 }).strict();
 
+/**
+ * POST /vehicles/import/commit — the rows the admin confirmed, exactly as the
+ * preview returned them. Only the shape is checked here; commitImport
+ * re-validates every value against the same rules as the single form.
+ */
+const importCell = z.string().max(500).nullable();
+export const commitVehicleImportBody = z.object({
+    rows: z.array(z.object({
+        row: z.number().int().min(2),
+        registration_number: importCell,
+        vin: importCell,
+        model: importCell,
+        name: importCell,
+        hub_code: importCell,
+        color: importCell,
+        qr_code: importCell,
+        imei: importCell,
+        purchase_date: importCell,
+        batch_number: importCell,
+    })).min(1, "There are no vehicles to import.").max(500),
+});
+
 export const updateVehicleBody = z
     .object({
         name: z.string().trim().min(1).max(120).nullable().optional(),

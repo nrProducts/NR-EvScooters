@@ -200,3 +200,71 @@ export async function getVehicleDocumentUrl(documentId: string): Promise<string>
   const { url } = await apiClient.get<{ url: string }>(`/vehicles/documents/${documentId}/url`);
   return url;
 }
+
+// ---------------------------------------------------------------------------
+// Bulk import — template → preview (nothing saved) → confirm → commit.
+// See apps/backend/src/modules/vehicles/vehicles.import.ts
+// ---------------------------------------------------------------------------
+
+/** One spreadsheet row as typed, plus what the server made of it. */
+export interface VehicleImportRow {
+  /** The row number in the spreadsheet, so errors point at the row the admin sees. */
+  row: number;
+  registration_number: string | null;
+  vin: string | null;
+  model: string | null;
+  name: string | null;
+  hub_code: string | null;
+  color: string | null;
+  qr_code: string | null;
+  imei: string | null;
+  purchase_date: string | null;
+  batch_number: string | null;
+  vehicle_model_id: string | null;
+  hub_id: string | null;
+  /** Empty when the row can be imported. */
+  errors: string[];
+}
+
+export interface VehicleImportPreview {
+  total: number;
+  valid: number;
+  invalid: number;
+  rows: VehicleImportRow[];
+}
+
+export interface VehicleImportResult {
+  created: number;
+  vehicles: { id: string; registration_number: string }[];
+}
+
+/** GET /vehicles/import/template — saves the .xlsx with live models and hub codes as dropdowns. */
+export async function downloadVehicleImportTemplate(): Promise<void> {
+  const { blob, filename } = await apiClient.getBlob("/vehicles/import/template");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** POST /vehicles/import/preview — checks every row; writes nothing. */
+export async function previewVehicleImport(file: File): Promise<VehicleImportPreview> {
+  const form = new FormData();
+  form.append("file", file);
+  return apiClient.postForm<VehicleImportPreview>("/vehicles/import/preview", form);
+}
+
+/** POST /vehicles/import/commit — the server re-checks these rows, then saves all of them or none. */
+export async function commitVehicleImport(rows: VehicleImportRow[]): Promise<VehicleImportResult> {
+  return apiClient.post<VehicleImportResult>("/vehicles/import/commit", {
+    rows: rows.map((r) => ({
+      row: r.row, registration_number: r.registration_number, vin: r.vin, model: r.model, name: r.name,
+      hub_code: r.hub_code, color: r.color, qr_code: r.qr_code, imei: r.imei,
+      purchase_date: r.purchase_date, batch_number: r.batch_number,
+    })),
+  });
+}

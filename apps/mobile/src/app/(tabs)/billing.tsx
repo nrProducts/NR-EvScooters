@@ -32,9 +32,9 @@ import type {
 } from '../../types/api';
 import {
   BILLING_CYCLE_LABEL_KEY, PAYMENT_METHOD_LABEL_KEY, PAYMENT_STATE_LABEL_KEY, PAYMENT_STATE_TONE,
-  PLAN_STATUS_LABEL_KEY,
+  PLAN_STATUS_LABEL_KEY, REFUND_STATUS_LABEL_KEY, REFUND_STATUS_TONE,
 } from '../../constants/status';
-import { useT, type TranslateFn } from '../../i18n';
+import { useT, type CopyKey, type TranslateFn } from '../../i18n';
 
 /**
  * `PURPOSE_LABEL`, `invoiceLabel`, `dueLabel` and `invoiceLines` all take `t`
@@ -355,6 +355,60 @@ function PaymentHistoryCard({
   );
 }
 
+/** When a refund belongs in Payment History: when it landed, or when it was raised. */
+function refundHistoryDate(refund: ApiRefund): string {
+  return refund.processed_at ?? refund.initiated_at ?? refund.created_at;
+}
+
+const REFUND_TYPE_LABEL_KEY: Record<ApiRefund['refund_type'], CopyKey> = {
+  booking_cancellation: 'billing.history.refund.bookingCancellation',
+  deposit_release: 'billing.history.refund.deposit',
+  settlement: 'billing.history.refund.settlement',
+  goodwill: 'billing.history.refund.goodwill',
+};
+
+/**
+ * A refund's row in Payment History — money coming BACK, so a green "+"
+ * amount, beside the same status badge Booking History uses. `succeeded`
+ * maps to that badge's `processed` ("Refunded").
+ */
+function RefundHistoryCard({ refund }: { refund: ApiRefund }) {
+  const { t } = useT();
+  const badgeStatus = refund.status === 'succeeded' ? 'processed' : refund.status;
+  const note = refund.status === 'rejected' ? refund.rejection_reason
+    : refund.status === 'failed' ? refund.failure_reason
+      : null;
+  return (
+    <View
+      className="rounded-2xl border mb-3 p-4"
+      style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, shadowColor: COLORS.black, shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 1 }}
+    >
+      <View className="flex-row items-center justify-between">
+        <View className="flex-1 pr-3">
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold">
+            {t(REFUND_TYPE_LABEL_KEY[refund.refund_type])}
+          </Text>
+          <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
+            {formatDate(refundHistoryDate(refund))}, {formatTime(refundHistoryDate(refund))}
+          </Text>
+        </View>
+        <View className="items-end">
+          <Text
+            style={{ color: refund.status === 'succeeded' ? COLORS.success : COLORS.textPrimary }}
+            className="text-base font-bold mb-1"
+          >
+            +₹{Number(refund.amount).toFixed(2)}
+          </Text>
+          <Badge label={t(REFUND_STATUS_LABEL_KEY[badgeStatus])} tone={REFUND_STATUS_TONE[badgeStatus]} />
+        </View>
+      </View>
+      {note ? (
+        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-2">{note}</Text>
+      ) : null}
+    </View>
+  );
+}
+
 /**
  * Small "needs attention" indicator. Amber for a bill that is merely
  * outstanding; RED once it is genuinely past due, which is the same red Home
@@ -548,12 +602,13 @@ export default function BillingScreen() {
   // that money is already the card above (SettlementCard reads the same
   // underlying refund through rentalRepository.settlement()), so showing it
   // again here would double the one payout. 'succeeded' is excluded too —
-  // once the money has actually arrived, the original push notification and
-  // Booking History's status badge already say so; this list is for refunds
-  // still open or that need the rider's attention (rejected/failed).
+  // once the money has actually arrived, the push notification and its row in
+  // Payment History say so; these cards are for refunds still open or that
+  // need the rider's attention (rejected/failed). The same list feeds Payment
+  // History, which shows every refund whatever its status.
   const [myRefunds, setMyRefunds] = useState<ApiRefund[]>([]);
   const loadMyRefunds = useCallback(() => {
-    void billingRepository.myRefunds({ pageSize: 10 }).then((res) => setMyRefunds(res.data)).catch(() => {
+    void billingRepository.myRefunds({ pageSize: 50 }).then((res) => setMyRefunds(res.data)).catch(() => {
       // Non-critical, same reasoning as loadSettlement: the rest of Billing
       // renders fine without it.
     });
@@ -901,9 +956,20 @@ export default function BillingScreen() {
   // Sorted on the SAME date the row displays (see historyDate) — ordering by
   // a future due_on while showing the raised date put rows in an order the
   // dates on screen did not explain.
-  const paymentHistoryItems = visibleInvoices
-    .filter((inv) => inv.payment_state === 'paid' || inv.payment_state === 'partial')
-    .sort((a, b) => (historyDate(a) < historyDate(b) ? 1 : -1));
+  const paidInvoices = visibleInvoices
+    .filter((inv) => inv.payment_state === 'paid' || inv.payment_state === 'partial');
+
+  // Payment History is every payment AND every refund, newest first, on the
+  // date each row shows. A refund is money coming back, so it belongs in the
+  // same record as the money that went out — riders were left with no list
+  // of their refunds at all once one had landed.
+  const paymentHistoryItems: Array<
+    { kind: 'invoice'; key: string; date: string; invoice: ApiInvoice }
+    | { kind: 'refund'; key: string; date: string; refund: ApiRefund }
+  > = [
+    ...paidInvoices.map((invoice) => ({ kind: 'invoice' as const, key: `inv-${invoice.id}`, date: historyDate(invoice), invoice })),
+    ...myRefunds.map((refund) => ({ kind: 'refund' as const, key: `ref-${refund.id}`, date: refundHistoryDate(refund), refund })),
+  ].sort((a, b) => (a.date < b.date ? 1 : -1));
 
   const availableReferralCards = referralSummary?.cards.filter((c) => c.status === 'available') ?? [];
 
@@ -1130,13 +1196,17 @@ export default function BillingScreen() {
       {paymentHistoryItems.length === 0 ? (
         <EmptyState icon={Receipt} title={t('billing.noPayments')} />
       ) : (
-        paymentHistoryItems.map((inv) => (
-          <PaymentHistoryCard
-            key={inv.id}
-            invoice={inv}
-            expanded={expandedHistoryKey === inv.id}
-            onToggle={() => setExpandedHistoryKey(expandedHistoryKey === inv.id ? null : inv.id)}
-          />
+        paymentHistoryItems.map((item) => (
+          item.kind === 'refund' ? (
+            <RefundHistoryCard key={item.key} refund={item.refund} />
+          ) : (
+            <PaymentHistoryCard
+              key={item.key}
+              invoice={item.invoice}
+              expanded={expandedHistoryKey === item.invoice.id}
+              onToggle={() => setExpandedHistoryKey(expandedHistoryKey === item.invoice.id ? null : item.invoice.id)}
+            />
+          )
         ))
       )}
     </>

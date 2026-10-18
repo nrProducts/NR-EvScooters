@@ -4,6 +4,7 @@ import { requireAction } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import { vehicleDocumentUpload } from "./vehicles.documents.upload";
+import { vehicleImportUpload } from "./vehicles.import.upload";
 import * as c from "./vehicles.controller";
 import * as v from "./vehicles.validation";
 
@@ -23,6 +24,27 @@ router.post(
     requireAction("vehicles", "create"),
     validate({ body: v.createVehicleBody }),
     asyncHandler(c.createVehicleHandler),
+);
+
+// --- bulk import (template → preview → commit) ---------------------------
+// Declared before "/:id" so "import" is never parsed as a vehicle id. Same
+// "create" grant as adding one vehicle — it is the same act, many times.
+router.get("/import/template", requireAction("vehicles", "create"), asyncHandler(c.importTemplateHandler));
+
+// Reads and checks the file; writes nothing.
+router.post(
+    "/import/preview",
+    requireAction("vehicles", "create"),
+    vehicleImportUpload,
+    asyncHandler(c.importPreviewHandler),
+);
+
+// Re-checks the confirmed rows server-side, then inserts them all or none.
+router.post(
+    "/import/commit",
+    requireAction("vehicles", "create"),
+    validate({ body: v.commitVehicleImportBody }),
+    asyncHandler(c.importCommitHandler),
 );
 
 router.get(
