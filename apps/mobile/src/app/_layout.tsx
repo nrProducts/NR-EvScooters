@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import { Spinner } from "../components/Spinner";
 import { Stack, useNavigationContainerRef, useRootNavigationState, useRouter, useSegments } from "expo-router";
 import * as Sentry from "@sentry/react-native";
@@ -18,6 +18,7 @@ import { DialogHost } from "../components/ui/DialogHost";
 import { NotificationToastHost } from "../components/NotificationToastHost";
 import { PaymentProgressOverlay } from "../components/PaymentProgressOverlay";
 import { registerForPushNotificationsAsync } from "../lib/pushNotifications";
+import { onServiceWorkerMessage, syncWebPush } from "../lib/webPush";
 import { resolveNotificationRoute } from "../lib/notificationRoute";
 import { resolveRootRedirect } from "../lib/rootRedirect";
 import { missingEnvVars } from "../constants/env";
@@ -207,6 +208,34 @@ function RootLayout() {
       }
     })();
   }, [profile]);
+
+  // Rider WEB app: re-save this browser's push subscription for the signed-in
+  // rider (refreshes it, re-points a shared browser, replaces one that the
+  // browser rotated). Silent — it never prompts, and does nothing unless this
+  // rider turned browser notifications on here. See lib/webPush.ts.
+  useEffect(() => {
+    if (Platform.OS !== "web" || !profile?.id) return;
+    void syncWebPush(profile.id);
+  }, [profile?.id]);
+
+  // Rider WEB app: the service worker (public/sw.js) tells open tabs when a
+  // push lands (refresh the bell badge) and when its notification is tapped
+  // (navigate in-app rather than reloading). Same allowlist as the native tap.
+  useEffect(() => {
+    if (Platform.OS !== "web" || !navigationState?.key) return;
+    return onServiceWorkerMessage((message) => {
+      if (message.type === "swapngo:push-received") {
+        void useNotificationBadgeStore.getState().refresh();
+        return;
+      }
+      const href = resolveNotificationRoute(message.href) ?? "/notifications";
+      try {
+        router.push(href as never);
+      } catch (err) {
+        console.warn("[web-push] tap navigation failed:", href, err);
+      }
+    });
+  }, [router, navigationState?.key]);
 
   // Tapping a push notification navigates straight to the screen named in
   // its payload (falls back to the notification history screen).

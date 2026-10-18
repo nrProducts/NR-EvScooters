@@ -17,7 +17,7 @@ import type {
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRefund, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
     ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
-    ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
+    ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload, WebPushSubscriptionJson,
 } from '../types/api';
 
 type OnUnauthorized = () => void;
@@ -288,8 +288,18 @@ export const api = {
             body: { token, platform: Platform.OS === 'ios' ? 'ios' : 'android' },
         }),
 
+    // --- web push (rider web app only — see lib/webPush.ts) ----------------
+    webPushConfig: () =>
+        request<{ enabled: boolean; publicKey: string | null }>('/users/me/web-push/config'),
+
+    saveWebPushSubscription: (subscription: WebPushSubscriptionJson) =>
+        request<void>('/users/me/web-push/subscriptions', { method: 'POST', body: subscription }),
+
+    removeWebPushSubscription: (endpoint: string) =>
+        request<void>('/users/me/web-push/subscriptions', { method: 'DELETE', body: { endpoint } }),
+
     // --- notifications -----------------------------------------------------
-    myNotifications: (params: { page?: number; pageSize?: number } = {}) =>
+    myNotifications:(params: { page?: number; pageSize?: number } = {}) =>
         request<Paginated<ApiNotification>>('/users/me/notifications', {
             query: params as Record<string, string | number | boolean | undefined>,
         }),

@@ -14,10 +14,13 @@
  * Allowlist, not a denylist: anything not named here resolves to null, and
  * the caller shows a message instead of navigating. Keep in step with
  * `RiderAppScreen` in apps/backend/src/modules/notifications/notifications.types.ts.
+ *
+ * public/sw.js (the rider web app's service worker) carries a copy of this
+ * resolver; tests/webPushServiceWorker.test.ts fails if the two drift.
  */
 
 /** Top-level screens a notification may open. Each is a real route under src/app. */
-const OPENABLE_SCREENS = new Set([
+export const OPENABLE_SCREENS: ReadonlySet<string> = new Set([
   'home', 'my-scooter', 'billing', 'support', 'kyc', 'notifications',
   'booking-history', 'battery-stations', 'profile', 'privacy', 'terms', 'referrals',
 ]);
@@ -26,7 +29,7 @@ const OPENABLE_SCREENS = new Set([
  * Values already stored on sent notifications that no longer match a route,
  * mapped to where that notification is about now.
  */
-const LEGACY_SCREEN_ALIASES: Record<string, string> = {
+export const LEGACY_SCREEN_ALIASES: Readonly<Record<string, string>> = {
   // Payment success/failure — billing is where payments live in this app.
   payments: 'billing',
   // Pickup confirmed, scooter assigned, return requested/declined — all about
@@ -50,7 +53,11 @@ export function resolveNotificationRoute(screen: unknown): string | null {
   const path = screen.split(/[?#]/)[0].trim().replace(/^\/+|\/+$/g, '').toLowerCase();
   if (!path) return null;
 
-  const aliased = LEGACY_SCREEN_ALIASES[path] ?? path;
+  // Own keys only: a plain index would hand back Object.prototype members for
+  // "constructor" / "__proto__", and the .split below then throws.
+  const aliased = Object.prototype.hasOwnProperty.call(LEGACY_SCREEN_ALIASES, path)
+    ? LEGACY_SCREEN_ALIASES[path]
+    : path;
   const [first, ...rest] = aliased.split('/');
 
   if (rest.length === 0) {

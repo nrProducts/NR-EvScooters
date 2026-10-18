@@ -42,6 +42,7 @@ written. The drop is written but deliberately not applied — see
 | Emergency contact name + phone | R | `app/kyc.tsx` step 1 | `users.emergency_contact_*` | Admin console | **Third party's data.** Collected from the rider, not the contact |
 | Nominee name, relationship, phone, email | R | `app/privacy/nominee.tsx` | `users.nominee_*` | Admin console | **Third party's data.** Minimised to one contact channel; the rider is told to inform them |
 | Push token (device id) | R | `expo-notifications` → `POST /users/me/push-token` | `users.push_token` | **Expo Push** | Cleared on erasure |
+| Browser push subscription (endpoint + encryption keys, user agent) | R | Rider web app, only after the rider taps "Enable notifications" → `POST /users/me/web-push/subscriptions` | `web_push_subscriptions` | **Browser push services** | Deleted on sign-out, on opt-out, when the push service reports it expired, after 120 days unseen, and on erasure |
 | Referral code | R | Generated | `users.referral_code` | — | Cleared on erasure |
 
 ---
@@ -103,6 +104,7 @@ log and no off switch. Now proxied through `apps/backend/src/modules/geocode`.
 | **MSG91** | Phone number, OTP code | SMS delivery | DPA required |
 | **Razorpay** | Name, contact, payment instrument | Payments and refunds | DPA required |
 | **Expo Push** | Device push token, notification title/body | App notifications | DPA required |
+| **Browser push services** (Google FCM for Chrome/Edge/Android, Mozilla autopush, Apple Web Push) | Endpoint URL and an end-to-end **encrypted** payload; they cannot read the notification text | Rider web app notifications | Chosen by the rider's browser, not by us; standard terms only. Payment amounts are kept out of notification text anyway (`web-push.service.ts`) |
 | **Geocoder** (Photon-compatible, `GEOCODE_URL`) | Search term + **coarsened** position | Area search | No identity sent. Contract status open |
 | **MapLibre tiles** (`ENV.mapStyleUrl`) | Map viewport | Map rendering | No identity sent |
 

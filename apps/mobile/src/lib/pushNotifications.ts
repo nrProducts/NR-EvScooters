@@ -25,6 +25,11 @@ Notifications.setNotificationHandler({
  * permission prompt must still be able to sign in and use the app.
  */
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
+    // The rider web app uses standard Web Push instead (lib/webPush.ts), and
+    // asks only when the rider taps "Enable notifications". Going on here
+    // would fire the browser's permission prompt unprompted on every sign-in
+    // — which browsers penalise, and which can never yield an Expo token.
+    if (Platform.OS === 'web') return null;
     try {
         if (Platform.OS === 'android') {
             await Notifications.setNotificationChannelAsync('default', {

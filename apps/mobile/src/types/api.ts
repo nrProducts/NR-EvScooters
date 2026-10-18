@@ -207,6 +207,13 @@ export interface ApiDocument {
     created_at: string;
 }
 
+/** PushSubscription.toJSON() — what POST /users/me/web-push/subscriptions takes. */
+export interface WebPushSubscriptionJson {
+    endpoint: string;
+    expirationTime?: number | null;
+    keys: { p256dh: string; auth: string };
+}
+
 export interface ApiNotificationPayload {
     title: string;
     body: string;

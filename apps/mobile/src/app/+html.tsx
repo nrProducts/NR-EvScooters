@@ -117,6 +117,15 @@ export default function Root({ children }: PropsWithChildren) {
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        {/* Installable web app (public/manifest.webmanifest). On iPhone/iPad
+            this is not cosmetic: iOS 16.4+ delivers Web Push ONLY to a site
+            added to the Home Screen, which needs the manifest and
+            display:standalone. See lib/webPush.ts. */}
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta name="theme-color" content="#21C45D" />
+        <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="Swapngo" />
         <ScrollViewStyleReset />
         <TextScaleOverride />
         <FocusRingReset />

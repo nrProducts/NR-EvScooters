@@ -1,14 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
     ERASED_CHILD_TABLES, ERASED_USER_COLUMNS, RETAINED_TABLES,
 } from "../src/modules/privacy/privacy.erasure";
 
 const MIGRATIONS = join(__dirname, "../../../supabase/migrations");
-const RETENTION_SQL = readFileSync(
-    join(MIGRATIONS, "20260819102600_operational_functions.sql"), "utf8",
-);
+const ANONYMISE_MARKER = "create or replace function public.anonymise_user";
+
+/**
+ * The migration holding the LATEST anonymise_user() — the one the database
+ * actually runs. Filename order is apply order, so it is the last file that
+ * (re)defines the function; a later redefinition adding a table must be what
+ * these assertions read, not the original.
+ */
+const RETENTION_SQL = readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .map((f) => readFileSync(join(MIGRATIONS, f), "utf8"))
+    .filter((sql) => sql.includes(ANONYMISE_MARKER))
+    .at(-1)!;
 const USERS_SERVICE = readFileSync(
     join(__dirname, "../src/modules/users/users.service.ts"), "utf8",
 );
@@ -17,9 +28,7 @@ const COMPLIANCE_SQL = readFileSync(
 );
 
 /** The anonymise_user() body, isolated from the rest of the migration. */
-const ANONYMISE_FN = RETENTION_SQL.slice(
-    RETENTION_SQL.indexOf("create or replace function public.anonymise_user"),
-);
+const ANONYMISE_FN = RETENTION_SQL.slice(RETENTION_SQL.indexOf(ANONYMISE_MARKER));
 
 /**
  * Columns on `users` the API actually reads back to a caller. Parsed from

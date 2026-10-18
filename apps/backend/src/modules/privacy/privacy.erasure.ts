@@ -43,6 +43,7 @@ export const ERASED_CHILD_TABLES: Readonly<Record<string, string>> = {
     user_addresses: "The rider's postal address",
     user_related_persons: "The nominee and emergency contact — third parties' data",
     user_devices: "Push tokens, which identify a physical handset",
+    web_push_subscriptions: "Browser push endpoints, which identify a browser install",
 };
 
 /**

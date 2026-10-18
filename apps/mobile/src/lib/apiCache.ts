@@ -107,6 +107,7 @@ const RIDER_STATE =
 
 const WRITE_RULES: Array<{ test: RegExp; clears: RegExp | 'none' }> = [
     { test: /^\/users\/me\/push-token$/, clears: 'none' },
+    { test: /^\/users\/me\/web-push\//, clears: 'none' },
     { test: /^\/users\/me\/notifications/, clears: /^\/users\/me\/notifications/ },
     { test: /^\/users\/me\/(consents|legal|privacy|support)/, clears: /^\/users\/me\/(consents|legal|privacy|support)/ },
     { test: /^\/users\/me\/kyc/, clears: /^\/users\/me(\/kyc.*)?$/ },
