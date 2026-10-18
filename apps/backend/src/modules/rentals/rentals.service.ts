@@ -1114,6 +1114,41 @@ export function settlementDepositAmount(
     return nonRefundableByPlan || forfeitedForShortRental ? 0 : (deposit?.amount ?? 0);
 }
 
+type SettlementDeposit = NonNullable<Parameters<typeof settlementDepositAmount>[0]>;
+
+/**
+ * The rider's "Ride Completed" message. When the deposit is not coming back,
+ * it says so and WHY — the same two rules, in the same order, that
+ * settlementDepositAmount applies to the settlement itself, so the message can
+ * never disagree with what the rider is actually paid:
+ *
+ *   1. the plan's deposit is non-refundable, or
+ *   2. the rider finished short of the plan's minimum rental days
+ *      ("7 of the 45 rental days").
+ *
+ * Only a deposit still `held` qualifies, exactly like settlementDepositAmount:
+ * one already forfeited for damage before this return was explained when that
+ * happened. Pure and exported so the wording is tested directly.
+ *
+ * No rupee amount on purpose: browser notifications hide any body quoting
+ * money (web-push.service.ts), and this explanation is the part the rider
+ * must see. The amount itself stays in the app (deposit card, settlement).
+ */
+export function returnCompletedBody(deposit: SettlementDeposit | null): string {
+    const thanks = "Thanks for returning your scooter.";
+    if (!deposit || deposit.status !== "held" || !(Number(deposit.amount) > 0)) return thanks;
+
+    if (deposit.is_refundable === false) {
+        return `${thanks} Your plan's security deposit is non-refundable, so it will not be refunded.`;
+    }
+    if (deposit.min_rental_days_required > 0 && deposit.rental_days_completed < deposit.min_rental_days_required) {
+        return `${thanks} You completed ${deposit.rental_days_completed} of the `
+            + `${deposit.min_rental_days_required} rental days your plan requires, so your `
+            + "security deposit is not eligible for a refund.";
+    }
+    return thanks;
+}
+
 /**
  * Closes the open return and writes the settlement.
  *
@@ -1133,7 +1168,7 @@ async function settleReturn(
     input: { inspected?: boolean; other_charges_amount?: number },
     actor: AuthContext,
     settledAt: Date,
-): Promise<void> {
+): Promise<SettlementDeposit | null> {
     const ret = openReturn(before.rental_returns);
 
     // Critical Validation (Overdue Rider → Return spec): a return with a
@@ -1233,6 +1268,11 @@ async function settleReturn(
             actor,
         );
     }
+
+    // Read BEFORE the caller's settleDepositOnReturn — that is what moves a
+    // short-rental deposit from held to forfeited, and the rider's
+    // "return completed" message (returnCompletedBody) needs to say why.
+    return deposit;
 }
 
 /**
@@ -1266,7 +1306,7 @@ export async function completeRide(
     await assertInspected(before, input);
 
     const endedAt = new Date();
-    await settleReturn(before, input, actor, endedAt);
+    const deposit = await settleReturn(before, input, actor, endedAt);
 
     const { error } = await supabaseAdmin
         .from("rentals")
@@ -1314,7 +1354,7 @@ export async function completeRide(
         await notifyUser(rider.id, {
             template: "rental_completed",
             title: "Ride Completed",
-            body: "Thanks for returning your scooter.",
+            body: returnCompletedBody(deposit),
             screen: "booking-history",
         });
     }
@@ -1353,7 +1393,7 @@ export async function moveRideToMaintenance(
     await assertInspected(before, input);
 
     const endedAt = new Date();
-    await settleReturn(before, input, actor, endedAt);
+    const deposit = await settleReturn(before, input, actor, endedAt);
 
     const { error: rentalError } = await supabaseAdmin
         .from("rentals")
@@ -1413,7 +1453,7 @@ export async function moveRideToMaintenance(
         await notifyUser(rider.id, {
             template: "rental_completed",
             title: "Ride Completed",
-            body: "Thanks for returning your scooter.",
+            body: returnCompletedBody(deposit),
             screen: "booking-history",
         });
     }

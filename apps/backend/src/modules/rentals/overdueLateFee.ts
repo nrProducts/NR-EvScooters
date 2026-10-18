@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "../../config/supabase";
 import { businessToday } from "../../common/dates";
-import { computeLateRenewalFee, lateFeeReferenceDate } from "../payments/renewalFee";
+import { computeLateRenewalFee, lateFeeReferenceDate, OVERDUE_LATE_FEE_LINE_PREFIX } from "../payments/renewalFee";
 
 /**
  * The gate between an overdue rider and "Return Scooter".
@@ -156,18 +156,26 @@ async function findAdhocInvoice(
     subscriptionId: string,
     sinceIso: string,
 ): Promise<{ id: string; total_amount: number } | null> {
+    // `adhoc` alone is NOT "the overdue late fee": a staff Add Charge (a lost
+    // key) and a damage charge are adhoc invoices too. Matching on purpose
+    // alone let a rider's own Billing screen void a key-replacement charge as
+    // a "leftover late fee" the moment they opened it (UAT, 2026-10-18), and
+    // could re-price one into a late fee. Line 1 carries the fixed late-fee
+    // wording on every invoice this module creates, and on nothing else.
     const { data, error } = await supabaseAdmin
         .from("invoices")
-        .select("id, total_amount")
+        .select("id, total_amount, invoice_items!inner(line_number, description)")
         .eq("subscription_id", subscriptionId)
         .eq("purpose", "adhoc")
         .neq("status", "void")
+        .eq("invoice_items.line_number", 1)
+        .like("invoice_items.description", `${OVERDUE_LATE_FEE_LINE_PREFIX}%`)
         .gte("created_at", sinceIso)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
     if (error) throw error;
-    return data;
+    return data ? { id: data.id, total_amount: Number(data.total_amount) } : null;
 }
 
 /**
@@ -253,7 +261,7 @@ export interface OverdueLateFeeInvoiceResult {
  * debt on two different screens.
  */
 export function overdueLateFeeDescription(daysLate: number, feePerDay: number): string {
-    return `Overdue plan renewal — late fee (${daysLate} day${daysLate > 1 ? "s" : ""} @ ₹${feePerDay}/day)`;
+    return `${OVERDUE_LATE_FEE_LINE_PREFIX} (${daysLate} day${daysLate > 1 ? "s" : ""} @ ₹${feePerDay}/day)`;
 }
 
 /** The rental-days line that sits beside the late fee on the same invoice. */

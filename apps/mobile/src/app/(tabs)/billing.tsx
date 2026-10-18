@@ -18,7 +18,7 @@ import { setPaymentPhase } from '../../store/usePaymentProgressStore';
 import { billingRepository, rentalRepository, referralRepository } from '../../services';
 import { useReferralSummary } from '../../hooks/useReferralSummary';
 import { openRazorpayCheckout, PaymentCancelledError, PaymentUnavailableError } from '../../lib/razorpayCheckout';
-import { getRenewalEligibility } from '../../lib/returnPolicy';
+import { formatCycleTime, getRenewalEligibility } from '../../lib/returnPolicy';
 import { CycleTime } from '../../components/ui/CycleTime';
 import { SettlementCard } from '../../components/SettlementCard';
 import { DepositStatusCard } from '../../components/DepositStatusCard';
@@ -1433,24 +1433,58 @@ export default function BillingScreen() {
               </View>
             ) : null}
 
+            {/* Started | Ends — two equal columns, label over date over time.
+                This was one line per side (date · time · expired) with no
+                width limit, so on a narrow phone the two sides ran into each
+                other ("12:00 PM13 Oct 2026"). */}
             <View
-              className="flex-row items-center justify-between pt-3"
+              className="flex-row pt-4"
               style={{ borderTopWidth: 1, borderColor: COLORS.primary + '1F' }}
             >
-              <View>
-                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">
+              <View className="flex-1 pr-4">
+                <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">
+                  {t('billing.started')}
+                </Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold mt-1.5" numberOfLines={1}>
                   {formatDate(booking?.current_period_start ?? null)}
-                  {booking?.current_period_start ? <CycleTime cycleTime={booking.cycle_time} /> : null}
                 </Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mt-0.5">{t('billing.started')}</Text>
+                {booking?.current_period_start ? (
+                  <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5">
+                    {formatCycleTime(booking.cycle_time)}
+                  </Text>
+                ) : null}
               </View>
-              <View className="items-end">
-                <Text style={{ color: renewalIsLate ? COLORS.overdue : COLORS.textPrimary }} className="text-xs font-bold">
+
+              <View style={{ width: 1, backgroundColor: COLORS.primary + '1F' }} />
+
+              <View className="flex-1 pl-4">
+                <View className="flex-row items-center" style={{ gap: 6 }}>
+                  <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">
+                    {t('billing.ends')}
+                  </Text>
+                  {renewalIsLate ? (
+                    <View className="px-1.5 py-0.5 rounded-full" style={{ backgroundColor: COLORS.overdue + '1F' }}>
+                      <Text style={{ color: COLORS.overdue }} className="text-[9px] font-bold uppercase tracking-wider">
+                        {t('billing.expired')}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text
+                  style={{ color: renewalIsLate ? COLORS.overdue : COLORS.textPrimary }}
+                  className="text-sm font-bold mt-1.5"
+                  numberOfLines={1}
+                >
                   {formatDate(booking?.next_due_at ?? null)}
-                  {booking?.next_due_at ? <CycleTime cycleTime={booking.cycle_time} /> : null}
-                  {renewalIsLate ? t('billing.expired') : ''}
                 </Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider mt-0.5">{t('billing.ends')}</Text>
+                {booking?.next_due_at ? (
+                  <Text
+                    style={{ color: renewalIsLate ? COLORS.overdue : COLORS.textSecondary }}
+                    className="text-xs font-medium mt-0.5"
+                  >
+                    {formatCycleTime(booking.cycle_time)}
+                  </Text>
+                ) : null}
               </View>
             </View>
           </View>

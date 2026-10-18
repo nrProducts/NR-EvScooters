@@ -341,6 +341,14 @@ export async function computeInvoiceLateFee(invoice: {
  * currentPeriodWindow in overdueLateFee.ts: a fee paid off during an EARLIER
  * overdue cycle must not silently cover a later one.
  */
+/**
+ * How line 1 of every overdue-late-fee invoice begins (rentals/overdueLateFee.ts
+ * writes it) — and what tells that invoice apart from the other `adhoc`
+ * invoices: staff Add Charge (a lost key) and damage charges. Do not reword:
+ * invoices already issued carry this text and are recognised by it.
+ */
+export const OVERDUE_LATE_FEE_LINE_PREFIX = "Overdue plan renewal — late fee";
+
 async function lateFeeAlreadyCharged(
     subscriptionId: string,
     subscriptionPeriodId: string,
@@ -364,12 +372,17 @@ async function lateFeeAlreadyCharged(
     if (currentError) throw currentError;
     if (!current) return round2(total);
 
+    // Overdue-late-fee invoices only. A paid key-replacement or damage charge
+    // is also `adhoc`, and counting it here took its amount off the renewal's
+    // late fee — a ₹500 key payment silently waived ₹500 of late fee.
     const { data: adhoc, error: adhocError } = await supabaseAdmin
         .from("invoices")
-        .select("id, total_amount")
+        .select("id, total_amount, invoice_items!inner(line_number, description)")
         .eq("subscription_id", subscriptionId)
         .eq("purpose", "adhoc")
         .neq("status", "void")
+        .eq("invoice_items.line_number", 1)
+        .like("invoice_items.description", `${OVERDUE_LATE_FEE_LINE_PREFIX}%`)
         .gte("created_at", current.created_at);
     if (adhocError) throw adhocError;
     if ((adhoc ?? []).length === 0) return round2(total);

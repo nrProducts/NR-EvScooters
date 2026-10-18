@@ -967,7 +967,7 @@ export const hi: Copy = {
     'billing.cycleRental': '{cycle} किराया',
     'billing.started': 'शुरू हुआ',
     'billing.ends': 'खत्म होगा',
-    'billing.expired': ' · खत्म हो गया',
+    'billing.expired': 'खत्म हो गया',
     'billing.checkoutDescription.weeklyRecharge': 'साप्ताहिक किराया — रिचार्ज',
     'billing.checkoutDescription.scooterBooking': 'स्कूटर बुकिंग',
 

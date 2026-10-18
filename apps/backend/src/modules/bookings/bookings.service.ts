@@ -12,7 +12,7 @@ import { hasOpenReturn, hasOpenReturnForUser } from "../rentals/abandonedRenewal
 import { returnStageSummaryFor } from "../returns/returns.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { getDepositForSubscriptionOrNull } from "../deposits/deposits.service";
-import { initiateCancellationRefund } from "../refunds/refunds.service";
+import { initiateCancellationRefund, syncProcessingRefundsForRead } from "../refunds/refunds.service";
 import { generatePeriodInvoice } from "../billing/billing.service";
 import {
     computeLateRenewalFee, lateFeeOverrideCode, lateFeeRateFor, lateFeeReferenceDate,
@@ -1000,6 +1000,10 @@ export async function getMyBookingHistory(
     userId: string,
     filters: BookingHistoryFilters,
 ): Promise<Paginated<BookingView>> {
+    // Booking History shows each cancelled booking's refund status, read
+    // straight off `refunds` — settle any refund the gateway has finished
+    // first, so it never says "Processing" for money already returned.
+    await syncProcessingRefundsForRead();
     const [from, to] = toRange(filters);
     const { data, error, count } = await supabaseAdmin
         .from("bookings")

@@ -972,7 +972,7 @@ export const ta: Copy = {
     'billing.cycleRental': '{cycle} வாடகை',
     'billing.started': 'தொடங்கியது',
     'billing.ends': 'முடிவு',
-    'billing.expired': ' · காலாவதியானது',
+    'billing.expired': 'காலாவதியானது',
     'billing.checkoutDescription.weeklyRecharge': 'வார வாடகை — புதுப்பித்தல்',
     'billing.checkoutDescription.scooterBooking': 'ஸ்கூட்டர் முன்பதிவு',
 

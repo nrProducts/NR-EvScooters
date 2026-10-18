@@ -734,7 +734,7 @@ export const en = {
     'billing.cycleRental': '{cycle} rental',
     'billing.started': 'Started',
     'billing.ends': 'Ends',
-    'billing.expired': ' · expired',
+    'billing.expired': 'Expired',
     'billing.checkoutDescription.weeklyRecharge': 'Weekly Rental — Recharge',
     'billing.checkoutDescription.scooterBooking': 'Scooter Booking',
 
