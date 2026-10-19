@@ -206,10 +206,10 @@ export const hi: Copy = {
         'दर {rate} प्रति दिन है। आप इसे चाहे रिन्यू करके साफ़ करें या रिटर्न से पहले भुगतान करके — यह एक ही कर्ज़ है, और एक बार भुगतान करने पर यह इस चक्र के लिए पूरी तरह चुक जाता है।',
     'lateFee.oneFee.noRate':
         'आप इसे चाहे रिन्यू करके साफ़ करें या रिटर्न से पहले भुगतान करके — यह एक ही कर्ज़ है, और एक बार भुगतान करने पर यह इस चक्र के लिए पूरी तरह चुक जाता है।',
-    'lateFee.example.intro': 'मान लीजिए आपका प्लान 1 तारीख को दोपहर 12:00 बजे खत्म होता है:',
-    'lateFee.example.onTime': '· 12:00 बजे या उससे पहले भुगतान करें → समय पर, कोई फ़ीस नहीं',
-    'lateFee.example.sameDay': '· उसी दिन 12:00 बजे के बाद कभी भी भुगतान करें → 1 दिन{amount}',
-    'lateFee.example.nextDay': '· अगले दिन 12:00 बजे के बाद भुगतान करें → 2 दिन{amount}',
+    'lateFee.example.intro': 'मान लीजिए आपने सुबह 10:00 बजे पिकअप किया, तो आपका प्लान 1 तारीख को सुबह 10:00 बजे खत्म होता है:',
+    'lateFee.example.onTime': '· सुबह 10:00 बजे या उससे पहले भुगतान करें → समय पर, कोई फ़ीस नहीं',
+    'lateFee.example.sameDay': '· उसी दिन सुबह 10:00 बजे के बाद कभी भी भुगतान करें → 1 दिन{amount}',
+    'lateFee.example.nextDay': '· अगले दिन सुबह 10:00 बजे के बाद भुगतान करें → 2 दिन{amount}',
     'lateFee.example.equals': ' = {amount}',
 
     // --- settlement card --------------------------------------------------
@@ -1019,7 +1019,7 @@ export const hi: Copy = {
     'bookingGate.completeKyc': 'केवाईसी पूरा करें',
 
     // --- request return -------------------------------------------------------
-    'requestReturn.deadline.todayByMidnight': 'आज दोपहर 12:00 बजे तक',
+    'requestReturn.deadline.todayByMidnight': 'आज, आपके पिकअप के समय तक',
     'requestReturn.deadline.dateByMidnight': '{date} {time} तक',
     'requestReturn.deadline.daysAgoOne': '1 दिन पहले',
     'requestReturn.deadline.daysAgoOther': '{days} दिन पहले',
