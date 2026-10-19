@@ -109,7 +109,11 @@ const WRITE_RULES: Array<{ test: RegExp; clears: RegExp | 'none' }> = [
     { test: /^\/users\/me\/push-token$/, clears: 'none' },
     { test: /^\/users\/me\/web-push\//, clears: 'none' },
     { test: /^\/users\/me\/notifications/, clears: /^\/users\/me\/notifications/ },
-    { test: /^\/users\/me\/(consents|legal|privacy|support)/, clears: /^\/users\/me\/(consents|legal|privacy|support)/ },
+    // Also drops the profile itself: GET /users/me carries consent_up_to_date
+    // and terms_up_to_date, and the routing gate reads them right after the
+    // consent screen saves. A cached `false` there bounced the rider straight
+    // back to /consent.
+    { test: /^\/users\/me\/(consents|legal|privacy|support)/, clears: /^\/users\/me(\/(consents|legal|privacy|support).*)?$/ },
     { test: /^\/users\/me\/kyc/, clears: /^\/users\/me(\/kyc.*)?$/ },
     { test: /^\/users\/me(\/photo)?$/, clears: /^\/users\/me$/ },
     // A reward card changes one invoice and the referral summary, nothing else.

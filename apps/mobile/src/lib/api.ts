@@ -269,7 +269,7 @@ export const api = {
     },
 
     // --- users -----------------------------------------------------------
-    me: () => request<ApiMe>('/users/me'),
+    me: (options: { fresh?: boolean } = {}) => request<ApiMe>('/users/me', { fresh: options.fresh }),
 
     updateMe: (patch: UpdateUserPayload) =>
         request<ApiUserDetail>('/users/me', { method: 'PATCH', body: patch }),
