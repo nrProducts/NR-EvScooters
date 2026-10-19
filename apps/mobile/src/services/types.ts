@@ -20,7 +20,8 @@ export interface UploadPhotoResult {
  */
 
 export interface UserRepository {
-    me(): Promise<ApiMe>;
+    /** `fresh` skips the read cache — for re-reading the profile right after a write. */
+    me(options?: { fresh?: boolean }): Promise<ApiMe>;
     updateMe(patch: UpdateUserPayload): Promise<ApiUserDetail>;
     uploadMyPhoto(photo: LocalFile): Promise<UploadPhotoResult>;
     myPhotoUrl(): Promise<ApiSignedUrl>;

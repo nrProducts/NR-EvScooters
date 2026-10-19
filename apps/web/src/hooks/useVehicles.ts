@@ -24,7 +24,7 @@ export function useCreateVehicle() {
 export function useUpdateVehicle() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<api.VehicleFormInput> }) =>
+    mutationFn: ({ id, patch }: { id: string; patch: api.VehicleUpdateInput }) =>
       api.updateVehicle(id, patch),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["vehicles"] });
@@ -76,10 +76,31 @@ export function useCreateVehicleDocument() {
   });
 }
 
+export function useUpdateVehicleDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ documentId, input }: { documentId: string; input: api.VehicleDocumentUpdateInput }) =>
+      api.updateVehicleDocument(documentId, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle"] }),
+  });
+}
+
 export function useDeleteVehicleDocument() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (documentId: string) => api.deleteVehicleDocument(documentId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle"] }),
+  });
+}
+
+export function usePreviewVehicleImport() {
+  return useMutation({ mutationFn: (file: File) => api.previewVehicleImport(file) });
+}
+
+export function useCommitVehicleImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rows: api.VehicleImportRow[]) => api.commitVehicleImport(rows),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicles"] }),
   });
 }

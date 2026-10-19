@@ -776,14 +776,14 @@ export async function createOrderForInvoice(
     if (!invoice || invoice.user_id !== actor.id) throw notFound("Invoice not found.");
     if (invoice.status === "void") throw businessRule("This invoice has been voided.");
 
-    const { data: balance, error: balanceError } = await supabaseAdmin
-        .from("v_invoice_balances")
-        .select("is_paid")
-        .eq("invoice_id", invoiceId)
-        .maybeSingle();
-    if (balanceError) throw balanceError;
-    if (balance?.is_paid) throw conflict("This invoice has already been paid.");
-
+    // No `is_paid` short-circuit here. `is_paid` only says the invoice's OWN
+    // lines are covered, and a period renewal's late fee is not one of them —
+    // it is computed live and written onto the bill at capture
+    // (recordLateFeeCharge). A referral card covering the whole plan fee
+    // leaves exactly that: a ₹0, "paid" invoice with ₹X of late fee still
+    // owed, and the old check answered the rider's Pay with "This invoice has
+    // already been paid." createOrderForInvoiceInternal refuses with the same
+    // message when balance + late fee is really ₹0.
     return createOrderForInvoiceInternal(invoiceId, actor);
 }
 
@@ -2255,7 +2255,7 @@ async function applyRenewalSuccess(
 
     const { data: subscription, error } = await supabaseAdmin
         .from("subscriptions")
-        .select("id, user_id, status, duration_days_snapshot")
+        .select("id, user_id, status, duration_days_snapshot, cycle_time")
         .eq("id", subscriptionId)
         .maybeSingle();
     if (error) throw error;
@@ -2278,7 +2278,7 @@ async function applyRenewalSuccess(
         .maybeSingle();
     if (currentError) throw currentError;
 
-    const activateNow = !current || hasPassedCutover(current.due_on);
+    const activateNow = !current || hasPassedCutover(current.due_on, new Date(), subscription.cycle_time);
 
     if (!activateNow) {
         await writeAudit({

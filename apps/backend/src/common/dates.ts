@@ -69,13 +69,50 @@ export function endOfBusinessDay(dateStr: string): string {
 }
 
 /**
- * The rental-cycle cutover: noon (12:00:00) IST on a calendar day, as an
- * instant. Every rental period in this system starts and ends at this exact
- * moment — see `calculateRentalPeriod` below, the one place that decides
- * what a plan's duration actually means in wall-clock terms.
+ * ── The cycle time ───────────────────────────────────────────────────────
+ *
+ * Every period boundary of a subscription falls at one IST clock time,
+ * `subscriptions.cycle_time`: the moment staff confirmed pickup (a rental
+ * picked up at 3:47 PM is due back at 3:47 PM), or 12:00 for subscriptions
+ * that predate pickup-anchored cycles. Period rows keep storing plain dates;
+ * `cycleBoundaryAt(date, cycleTime)` turns one into the instant it means.
+ * Mirrors `cycle_boundary_at()` in the database and `_shared/dates.ts`.
+ */
+export const DEFAULT_CYCLE_TIME = "12:00:00";
+
+/** `"15:47"` / `"15:47:00"` / null → `"HH:MM:SS"`, defaulting to noon. */
+export function normalizeCycleTime(cycleTime?: string | null): string {
+    if (!cycleTime) return DEFAULT_CYCLE_TIME;
+    const [h = "12", m = "00", s = "00"] = cycleTime.split(":");
+    return `${h.padStart(2, "0")}:${m.padStart(2, "0")}:${s.slice(0, 2).padStart(2, "0")}`;
+}
+
+/** The instant a period boundary on `dateStr` falls at, for this subscription's cycle time. */
+export function cycleBoundaryAt(dateStr: string, cycleTime?: string | null): string {
+    return `${dateStr}T${normalizeCycleTime(cycleTime)}+05:30`;
+}
+
+/** An instant's IST clock time, truncated to the minute — what pickup sets `cycle_time` to. */
+export function istClockTime(instant: Date): string {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(instant);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+    return `${get("hour")}:${get("minute")}:00`;
+}
+
+/** A cycle time for rider-facing copy — `"15:47:00"` → `"3:47 PM"`. */
+export function formatCycleTimeForCopy(cycleTime?: string | null): string {
+    return formatTimeOfDayForCopy(cycleBoundaryAt("2026-01-01", cycleTime));
+}
+
+/**
+ * Noon IST on a calendar day — the cycle time of every subscription created
+ * before pickup-anchored cycles. Prefer `cycleBoundaryAt` with the
+ * subscription's own `cycle_time` wherever one is in reach.
  */
 export function noonOfBusinessDay(dateStr: string): string {
-    return `${dateStr}T12:00:00+05:30`;
+    return cycleBoundaryAt(dateStr, DEFAULT_CYCLE_TIME);
 }
 
 /**
@@ -92,16 +129,18 @@ export function noonOfBusinessDay(dateStr: string): string {
  * sweep instead of activating on the spot. Mirrors `hasPassedCutover` in
  * supabase/functions/_shared/dates.ts — the two must agree.
  */
-export function hasPassedCutover(dateStr: string, now: Date = new Date()): boolean {
+export function hasPassedCutover(
+    dateStr: string, now: Date = new Date(), cycleTime?: string | null,
+): boolean {
     // Strictly after, not >=: AT the cutover instant is still on time, same
     // rule as lateDaysSince (renewalFee.ts) — "elapsedMs <= 0 is not late."
-    return now.getTime() > new Date(noonOfBusinessDay(dateStr)).getTime();
+    return now.getTime() > new Date(cycleBoundaryAt(dateStr, cycleTime)).getTime();
 }
 
 export interface RentalPeriod {
-    /** The instant the rental period begins — noon IST on `startDate`. */
+    /** The instant the rental period begins — `startDate` at the cycle time. */
     startAt: string;
-    /** The instant the rental period ends — noon IST on `endDate`. */
+    /** The instant the rental period ends — `endDate` at the cycle time. */
     endAt: string;
     /** `YYYY-MM-DD`, the date whose noon opens the period. */
     startDate: string;
@@ -173,11 +212,13 @@ export function describeHoursLate(hoursLate: number): string {
         : `${days} day${days === 1 ? "" : "s"} late`;
 }
 
-export function calculateRentalPeriod(startDate: string, durationDays: number): RentalPeriod {
+export function calculateRentalPeriod(
+    startDate: string, durationDays: number, cycleTime?: string | null,
+): RentalPeriod {
     const endDate = addDays(startDate, durationDays);
     return {
-        startAt: noonOfBusinessDay(startDate),
-        endAt: noonOfBusinessDay(endDate),
+        startAt: cycleBoundaryAt(startDate, cycleTime),
+        endAt: cycleBoundaryAt(endDate, cycleTime),
         startDate,
         endDate,
     };

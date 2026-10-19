@@ -8,24 +8,26 @@ name: Release
 # secrets or app data — those are one-time setup per environment
 # (supabase/SETUP.md).
 #
-# It is also the release gate for the backend. The Render services use
-# "auto-deploy: after CI checks pass", so Render deploys a commit only once
-# every job here has finished green: backend-check (build + tests), the
-# database deploy, and — on main — the approved prod-deploy. That is why this
-# runs on EVERY push to develop/main, not only supabase/** changes: Render
-# deploys nothing for a commit with zero checks.
+# It is also the release gate for the apps. Every Render service (backend,
+# admin, rider web, website) uses "auto-deploy: after CI checks pass", so
+# Render deploys a commit only once every job here has finished green:
+# backend-check, the database deploy, and on main the approved prod-deploy.
+# Code therefore never goes live before the schema it expects. The backend and
+# the static sites then deploy in parallel, so a front-end change that needs a
+# NEW backend endpoint should ship the backend part in an earlier release.
+# This runs on EVERY push to develop/main because Render deploys nothing for a
+# commit with zero checks.
 #
-# GitHub setup (Settings -> Environments), each with the same four secrets:
-#   uat              SUPABASE_ACCESS_TOKEN  token from the UAT Supabase account
-#                    SUPABASE_DB_PASSWORD   UAT database password
-#                    SUPABASE_PROJECT_ID    cndqvdskrcmivqflbttl
-#                    SEND_SMS_HOOK_SECRET   that project's Send SMS hook secret
-#                                           (config.toml references it; the CLI
-#                                           refuses to run if it is malformed)
-#   production-plan  prod token / password / ref; deployment branch: main
-#   production       same values as production-plan; deployment branch: main;
-#                    required reviewer = the person who approves prod deploys
-# production-plan has no reviewer so the dry-run is visible BEFORE approval.
+# GitHub setup (Settings -> Environments). Secrets, in each of
+# uat / production-plan / production:
+#   SUPABASE_ACCESS_TOKEN  token from that environment's Supabase account
+#   SUPABASE_DB_PASSWORD   that project's database password
+#   SUPABASE_PROJECT_ID    UAT: cndqvdskrcmivqflbttl
+#   SEND_SMS_HOOK_SECRET   that project's Send SMS hook secret (config.toml
+#                          references it; the CLI refuses to run if malformed)
+# production: deployment branch main; required reviewer = whoever approves
+# prod. production-plan has no reviewer so its dry-run is readable BEFORE
+# that approval.
 
 on:
   pull_request:

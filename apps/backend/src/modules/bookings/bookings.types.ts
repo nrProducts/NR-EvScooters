@@ -131,6 +131,12 @@ export interface BookingView {
     current_period_start: string | null;
     /** Current period's `due_on`. */
     next_due_at: string | null;
+    /**
+     * `subscriptions.cycle_time` as `HH:MM:SS` — the IST clock time both ends
+     * of every period fall on (the pickup time; 12:00:00 for older plans).
+     * `current_period_start` / `next_due_at` are dates read at this time.
+     */
+    cycle_time: string | null;
     /** The open `subscription_pauses.paused_at`, if the plan is paused. */
     plan_paused_at: string | null;
     /** Sum of `subscription_pauses.days_paused`. */

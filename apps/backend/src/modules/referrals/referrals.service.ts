@@ -168,6 +168,22 @@ async function getActiveProgram(): Promise<ActiveProgram | null> {
  * non-rider account behind the code) returns the SAME message, so trying
  * codes against this endpoint cannot be used to enumerate which ones exist.
  */
+/**
+ * Whether this rider has booked a scooter — the condition for being allowed
+ * to REFER. A subscription row exists only once a booking has been paid for
+ * (pay-first: materialize_booking_from_order creates the booking and its
+ * subscription together, at capture) or created by staff, and it outlives the
+ * plan ending, so a rider who booked once stays eligible.
+ */
+export async function hasBookedScooter(userId: string): Promise<boolean> {
+    const { count, error } = await supabaseAdmin
+        .from("subscriptions")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId);
+    if (error) throw error;
+    return (count ?? 0) > 0;
+}
+
 export async function redeemReferralCode(
     refereeUserId: string,
     code: string,
@@ -220,6 +236,14 @@ export async function redeemReferralCode(
     if (referrerError) throw referrerError;
     if (!referrer || referrer.deleted_at || referrer.role !== "rider" || referrer.id === refereeUserId) {
         throw businessRule("This referral code is invalid or unavailable.");
+    }
+    // A rider can only refer once they have booked a scooter themselves.
+    // Enforced HERE, not just hidden in the app: a code copied before the
+    // rule existed, or read off someone's screen, must not work either.
+    if (!(await hasBookedScooter(referrer.id))) {
+        throw businessRule(
+            "This referral code isn't active yet. The rider who shared it needs to book a scooter first.",
+        );
     }
 
     const program = await getActiveProgram();
@@ -543,10 +567,11 @@ export async function getMyReferralSummary(userId: string): Promise<ReferralSumm
         expires_at: c.expires_at,
     }));
 
-    const myAttribution = await findMyAttribution(userId);
+    const [myAttribution, canRefer] = await Promise.all([findMyAttribution(userId), hasBookedScooter(userId)]);
 
     return {
         referral_code: code,
+        can_refer: canRefer,
         program_enabled: !!program,
         reward_amount: program ? Number(program.reward_amount) : 0,
         referred_count: history.length,

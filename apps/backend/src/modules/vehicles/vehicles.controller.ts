@@ -2,6 +2,8 @@ import { Response } from "express";
 import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import * as service from "./vehicles.service";
+import * as importService from "./vehicles.import";
+import { badRequest } from "../../common/AppError";
 import {
     CreateVehicleDocumentInput, CreateVehicleInput, ListVehiclesFilters, ScrapVehicleInput,
     UpdateVehicleDocumentInput, UpdateVehicleInput,
@@ -19,6 +21,26 @@ export async function listVehiclesHandler(req: AuthedRequest, res: Response) {
 export async function getVehicleHandler(req: AuthedRequest, res: Response) {
     const vehicle = await service.getVehicleById(req.params.id as string);
     res.json(vehicle);
+}
+
+export async function importTemplateHandler(_req: AuthedRequest, res: Response) {
+    const body = await importService.buildImportTemplate();
+    const filename = "swapngo-vehicle-import-template.xlsx";
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    // The browser fetch() can only read this header cross-origin if it's exposed.
+    res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+    res.send(body);
+}
+
+export async function importPreviewHandler(req: AuthedRequest, res: Response) {
+    if (!req.file) throw badRequest("Choose the filled-in template to upload.");
+    res.json(await importService.previewImport(req.file.buffer));
+}
+
+export async function importCommitHandler(req: AuthedRequest, res: Response) {
+    const { rows } = req.body as { rows: importService.RawImportRow[] };
+    res.status(201).json(await importService.commitImport(rows, req.user!, req));
 }
 
 export async function createVehicleHandler(req: AuthedRequest, res: Response) {

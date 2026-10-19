@@ -3,6 +3,12 @@ import { businessRule, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { sendExpoPush } from "../../common/push";
 import { writeAudit } from "../../common/audit";
+import {
+    listSubscriptions as listWebPushSubscriptions,
+    listSubscriptionsByUser as listWebPushSubscriptionsByUser,
+    sendToSubscriptions, toWebPushPayload,
+} from "../web-push/web-push.service";
+import { WebPushSubscriptionRow } from "../web-push/web-push.types";
 import { AuthContext, Paginated } from "../../types";
 import {
     AdminNotificationRow, BroadcastInput, BroadcastResult, ListAdminNotificationsFilters,
@@ -93,14 +99,74 @@ function toNotificationRow(row: RawMessageRow): NotificationRow {
     };
 }
 
+type PushContent = Pick<NotifyInput, "title" | "body"> & { template: string; screen?: string };
+
+interface RecipientPushResult {
+    /** Devices/browsers that could have received it — excludes subscriptions found dead. */
+    live: number;
+    delivered: number;
+    errors: string[];
+}
+
+/**
+ * Sends one notification to every channel a recipient has: each native
+ * handset (Expo, `user_devices`) and each browser (Web Push,
+ * `web_push_subscriptions`). Never throws.
+ *
+ * Delivered means "reached at least one of them". It used to be all-or-
+ * nothing over Expo tokens alone, which reported a notification the rider's
+ * phone DID show as failed because an old tablet's token had gone stale.
+ */
+async function pushToRecipient(
+    tokens: string[],
+    webSubscriptions: WebPushSubscriptionRow[],
+    content: PushContent,
+    deliveryId: string,
+): Promise<RecipientPushResult> {
+    const [expo, web] = await Promise.all([
+        Promise.allSettled(tokens.map((token) => sendExpoPush(token, {
+            title: content.title, body: content.body, data: { screen: content.screen },
+        }))),
+        sendToSubscriptions(webSubscriptions, toWebPushPayload(content, deliveryId)),
+    ]);
+
+    const errors = [
+        ...expo.flatMap((r) => r.status === "rejected"
+            ? [r.reason instanceof Error ? r.reason.message : String(r.reason)]
+            : []),
+        ...web.errors,
+    ];
+    return {
+        live: tokens.length + web.attempted - web.gone,
+        delivered: expo.filter((r) => r.status === "fulfilled").length + web.delivered,
+        errors,
+    };
+}
+
+/** Records the outcome on the delivery row. Nothing live to send to leaves it 'pending'. */
+async function settleDelivery(deliveryId: string, result: RecipientPushResult): Promise<"sent" | "failed" | "pending"> {
+    if (result.live === 0) return "pending";
+    if (result.delivered > 0) {
+        await supabaseAdmin
+            .from("notification_deliveries")
+            .update({ status: "sent", sent_at: new Date().toISOString() })
+            .eq("id", deliveryId);
+        return "sent";
+    }
+    await supabaseAdmin
+        .from("notification_deliveries")
+        .update({ status: "failed", error: result.errors.join("; ").slice(0, 1000) || "Push delivery failed." })
+        .eq("id", deliveryId);
+    return "failed";
+}
+
 /**
  * Best-effort push delivery for an already-created `notification_deliveries`
  * row. Never throws — a delivery failure must not roll back the business
  * action that triggered it.
  *
- * The token lookup changed: a rider can have several devices now
- * (`user_devices`), so this sends to every live one rather than the single
- * `users.push_token` that whichever device logged in last had overwritten.
+ * A rider can have several devices (`user_devices`) and several browsers
+ * (`web_push_subscriptions`, the rider web app); this sends to every live one.
  */
 export async function deliverPush(
     deliveryId: string,
@@ -109,23 +175,35 @@ export async function deliverPush(
     // staff fan-out delivers through this too, with admin-console paths.
     input: Pick<NotifyInput, "title" | "body" | "template"> & { screen?: string },
 ): Promise<void> {
-    const { data: devices, error: deviceError } = await supabaseAdmin
-        .from("user_devices")
-        .select("push_token")
-        .eq("user_id", userId)
-        .is("revoked_at", null);
-
-    const tokens = (devices ?? []).map((d) => d.push_token).filter(Boolean);
-    if (deviceError || tokens.length === 0) return; // No device yet — stays 'pending'.
-
     try {
-        await Promise.all(tokens.map((token) => sendExpoPush(token, {
-            title: input.title, body: input.body, data: { screen: input.screen },
-        })));
-        await supabaseAdmin
-            .from("notification_deliveries")
-            .update({ status: "sent", sent_at: new Date().toISOString() })
-            .eq("id", deliveryId);
+        const [{ data: devices, error: deviceError }, webSubscriptions] = await Promise.all([
+            supabaseAdmin
+                .from("user_devices")
+                .select("push_token")
+                .eq("user_id", userId)
+                .is("revoked_at", null),
+            listWebPushSubscriptions(userId).catch((err: unknown) => {
+                console.error("[notifications] web push subscription lookup failed", {
+                    userId, error: err instanceof Error ? err.message : String(err),
+                });
+                return [] as WebPushSubscriptionRow[];
+            }),
+        ]);
+        if (deviceError) {
+            console.error("[notifications] device lookup failed", { userId, error: deviceError.message });
+        }
+
+        const tokens = (devices ?? []).map((d) => d.push_token).filter(Boolean);
+        // No device or browser yet — stays 'pending'.
+        if (tokens.length === 0 && webSubscriptions.length === 0) return;
+
+        const result = await pushToRecipient(tokens, webSubscriptions, input, deliveryId);
+        const status = await settleDelivery(deliveryId, result);
+        if (result.errors.length > 0) {
+            console.error("[notifications] push delivery failed on some channels", {
+                userId, template: input.template, status, errors: result.errors,
+            });
+        }
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error("[notifications] push delivery failed", {
@@ -362,22 +440,34 @@ export async function broadcastNotification(
     for (const d of devices ?? []) {
         tokensByUser.set(d.user_id, [...(tokensByUser.get(d.user_id) ?? []), d.push_token]);
     }
+    const webByUser = await listWebPushSubscriptionsByUser(targetIds).catch((err: unknown) => {
+        console.error("[notifications] broadcast web push lookup failed", {
+            error: err instanceof Error ? err.message : String(err),
+        });
+        return new Map<string, WebPushSubscriptionRow[]>();
+    });
 
     let sent = 0;
     let failed = 0;
     await Promise.all((messages ?? []).map(async (message) => {
         const deliveryId = deliveryByMessage.get(message.id);
         const tokens = tokensByUser.get(message.user_id) ?? [];
-        if (!deliveryId || tokens.length === 0) return; // No device — stays 'pending'.
+        const webSubscriptions = webByUser.get(message.user_id) ?? [];
+        // No device or browser — stays 'pending'.
+        if (!deliveryId || (tokens.length === 0 && webSubscriptions.length === 0)) return;
         try {
-            await Promise.all(tokens.map((token) => sendExpoPush(token, {
-                title: input.title, body: input.body, data: { screen: input.screen },
-            })));
-            await supabaseAdmin
-                .from("notification_deliveries")
-                .update({ status: "sent", sent_at: new Date().toISOString() })
-                .eq("id", deliveryId);
-            sent += 1;
+            const result = await pushToRecipient(
+                tokens, webSubscriptions, { template, title: input.title, body: input.body, screen: input.screen },
+                deliveryId,
+            );
+            const status = await settleDelivery(deliveryId, result);
+            if (status === "sent") sent += 1;
+            if (status === "failed") {
+                failed += 1;
+                console.error("[notifications] broadcast delivery failed", {
+                    userId: message.user_id, errors: result.errors,
+                });
+            }
         } catch (err) {
             const reason = err instanceof Error ? err.message : String(err);
             await supabaseAdmin

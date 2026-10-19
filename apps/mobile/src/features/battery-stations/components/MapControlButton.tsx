@@ -27,11 +27,13 @@ export const MapControlButton: React.FC<{
         style={{
             backgroundColor: active ? COLORS.primary : COLORS.card,
             opacity: disabled ? 0.5 : 1,
+            // No shadow while faded — on Android an elevated view at
+            // opacity < 1 shows its shadow through as a grey box.
             shadowColor: '#0F172A',
-            shadowOpacity: 0.14,
+            shadowOpacity: disabled ? 0 : 0.14,
             shadowRadius: 10,
             shadowOffset: { width: 0, height: 3 },
-            elevation: 5,
+            elevation: disabled ? 0 : 5,
         }}
     >
         {busy ? (

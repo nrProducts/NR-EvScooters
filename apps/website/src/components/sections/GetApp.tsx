@@ -57,7 +57,7 @@ export function GetApp() {
           <PlatformButton
             icon={Globe}
             eyebrow="Web"
-            label={PRE_BOOKING_MODE ? "Coming Soon" : RIDER_WEB_URL ? "Ride from your browser" : "Coming soon"}
+            label={PRE_BOOKING_MODE ? "Coming Soon" : RIDER_WEB_URL ? "Start booking" : "Coming soon"}
             href={RIDER_WEB_URL}
             disabled={PRE_BOOKING_MODE || !RIDER_WEB_URL}
             external

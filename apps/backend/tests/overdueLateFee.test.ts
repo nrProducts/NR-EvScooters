@@ -23,6 +23,7 @@ class TableStub {
     eq = (...a: unknown[]) => this.record("eq", a);
     neq = (...a: unknown[]) => this.record("neq", a);
     gte = (...a: unknown[]) => this.record("gte", a);
+    like = (...a: unknown[]) => this.record("like", a);
     order = (...a: unknown[]) => this.record("order", a);
     limit = (...a: unknown[]) => this.record("limit", a);
     maybeSingle = (...a: unknown[]) => this.record("maybeSingle", a);
@@ -115,6 +116,8 @@ describe("previewOverdueLateFee", () => {
         queue("pricing_rules", { data: null, error: null });
         queue("pricing_rules", { data: { amount: 50, is_active: true }, error: null });
         // A Rs 1999 weekly plan: 1999 / 7 = 285.57 per day, 2 days late.
+        // computeLateRenewalFee reads the subscription's cycle_time first (noon here).
+        queue("subscriptions", { data: { cycle_time: "12:00:00" }, error: null });
         queue("subscriptions", { data: { plan_price_snapshot: 1999, duration_days_snapshot: 7 }, error: null });
 
         const preview = await previewOverdueLateFee(SUBSCRIPTION_ID);
@@ -401,6 +404,27 @@ describe("syncOverdueLateFeeInvoiceForUser", () => {
 
         const update = stubsByTable.invoices[1].calls.find(([name]) => name === "update");
         expect(update?.[1][0]).toMatchObject({ status: "void" });
+    });
+
+    /**
+     * UAT, 2026-10-18: an admin's "Replacement key" Add Charge is an adhoc
+     * invoice too. Looking up "the late-fee invoice" by purpose alone found
+     * it, and the rider's own Billing screen voided it as a leftover late fee
+     * the moment they opened it. The lookup must ask for the late-fee wording.
+     */
+    it("only ever looks up a LATE-FEE invoice, never a staff or damage charge", async () => {
+        queue("rentals", { data: { subscription_id: SUBSCRIPTION_ID }, error: null });
+        queue("subscription_periods", { data: { id: PERIOD_ID, due_on: "2026-08-30" }, error: null });
+        queue("subscription_periods", { data: { id: PERIOD_ID, created_at: "2026-08-25T00:00:00.000Z" }, error: null });
+        queue("invoices", { data: null, error: null }); // PostgREST: the key charge does not match
+
+        await syncOverdueLateFeeInvoiceForUser(USER_ID);
+
+        const lookup = stubsByTable.invoices[0].calls;
+        expect(lookup).toContainEqual(["eq", ["invoice_items.line_number", 1]]);
+        expect(lookup).toContainEqual(["like", ["invoice_items.description", "Overdue plan renewal — late fee%"]]);
+        expect(lookup.find(([name]) => name === "select")?.[1][0]).toContain("invoice_items!inner");
+        expect(lookup.some(([name]) => name === "update")).toBe(false);
     });
 
     it("never voids an invoice money has already been allocated to", async () => {

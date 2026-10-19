@@ -8,6 +8,7 @@ import bookingsRoutes from "../modules/bookings/bookings.routes";
 import stationsRoutes from "../modules/stations/stations.routes";
 import { batteryStationsRouter, adminBatteryStationsRouter } from "../modules/battery-stations/battery-stations.routes";
 import { riderNotificationsRouter, adminNotificationsRouter } from "../modules/notifications/notifications.routes";
+import { riderWebPushRouter } from "../modules/web-push/web-push.routes";
 import rentalsRoutes from "../modules/rentals/rentals.routes";
 import maintenanceRoutes from "../modules/maintenance/maintenance.routes";
 import invoicesRoutes, { riderRouter as riderInvoicesRouter } from "../modules/invoices/invoices.routes";
@@ -76,6 +77,7 @@ router.use("/auth", authRoutes);
 // their own routers rather than falling through to /users/:id.
 router.use("/users/me/kyc", riderKycRouter);
 router.use("/users/me/notifications", riderNotificationsRouter);
+router.use("/users/me/web-push", riderWebPushRouter);
 router.use("/users/me/support", riderSupportRouter);
 router.use("/users/me/consents", riderConsentRouter);
 router.use("/users/me/privacy", riderPrivacyRouter);

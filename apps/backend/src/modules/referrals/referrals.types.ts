@@ -47,6 +47,12 @@ export interface ReservedRedemptionView {
 export interface ReferralSummary {
     /** Null only for a non-rider account — riders always have one by the time this resolves. */
     referral_code: string | null;
+    /**
+     * False until this rider has booked a scooter. Their code does not work
+     * for anyone until then (redeemReferralCode refuses it), so the app shows
+     * "book your first scooter" instead of the code.
+     */
+    can_refer: boolean;
     program_enabled: boolean;
     /** Rupees. Shown so the rider knows what a successful referral is currently worth. */
     reward_amount: number;

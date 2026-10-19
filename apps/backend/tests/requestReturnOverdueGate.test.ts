@@ -28,6 +28,7 @@ class TableStub {
     neq = (...a: unknown[]) => this.record("neq", a);
     in = (...a: unknown[]) => this.record("in", a);
     gte = (...a: unknown[]) => this.record("gte", a);
+    like = (...a: unknown[]) => this.record("like", a);
     order = (...a: unknown[]) => this.record("order", a);
     limit = (...a: unknown[]) => this.record("limit", a);
     maybeSingle = (...a: unknown[]) => this.record("maybeSingle", a);

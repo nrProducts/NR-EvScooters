@@ -12,7 +12,7 @@ import { hasOpenReturn, hasOpenReturnForUser } from "../rentals/abandonedRenewal
 import { returnStageSummaryFor } from "../returns/returns.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
 import { getDepositForSubscriptionOrNull } from "../deposits/deposits.service";
-import { initiateCancellationRefund } from "../refunds/refunds.service";
+import { initiateCancellationRefund, syncProcessingRefundsForRead } from "../refunds/refunds.service";
 import { generatePeriodInvoice } from "../billing/billing.service";
 import {
     computeLateRenewalFee, lateFeeOverrideCode, lateFeeRateFor, lateFeeReferenceDate,
@@ -32,7 +32,10 @@ import {
     BookingLifecycleStatus, BookingRefundStatus, BookingStatus, BookingView, CancelBookingInput,
     ConfirmPickupInput, CreateBookingInput, PickupBookingView, PickupQueueFilters,
 } from "./bookings.types";
-import { businessToday, formatBusinessDayForCopy, noonOfBusinessDay } from "../../common/dates";
+import {
+    businessToday, formatBusinessDayForCopy, formatCycleTimeForCopy, normalizeCycleTime,
+} from "../../common/dates";
+import { anchorCycleAtPickup, type CycleAnchor } from "../subscriptions/cycleAnchor";
 import { env } from "../../config/env";
 import {
     BEYOND_LAST_TIER_PENALTY_PERCENT, DEFAULT_CANCELLATION_TIERS, type CancellationTier,
@@ -102,6 +105,8 @@ interface BookingContext {
     planDurationDays: number | null;
     currentPeriodStart: string | null;
     nextDueAt: string | null;
+    /** `subscriptions.cycle_time` — the IST clock time every period boundary falls on. */
+    cycleTime: string | null;
     pausedAt: string | null;
     pausedDaysTotal: number;
     renewalStatus: "none" | "scheduled";
@@ -141,7 +146,7 @@ interface BookingContext {
 
 const EMPTY_CONTEXT: BookingContext = {
     subscriptionId: null, planStatus: null, subscriptionEnded: false, planActivatedAt: null,
-    planDurationDays: null, currentPeriodStart: null, nextDueAt: null, pausedAt: null,
+    planDurationDays: null, currentPeriodStart: null, nextDueAt: null, cycleTime: null, pausedAt: null,
     pausedDaysTotal: 0, renewalStatus: "none", scheduledStartDate: null,
     scheduledDurationDays: null, lateFeeOverride: null, lateFeePerDay: 0,
     referralDiscountAmount: null,
@@ -192,7 +197,7 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
     const [subsRes, cancellationsRes] = await Promise.all([
         supabaseAdmin
             .from("subscriptions")
-            .select("id, booking_id, status, started_on, duration_days_snapshot")
+            .select("id, booking_id, status, started_on, duration_days_snapshot, cycle_time")
             .in("booking_id", bookingIds),
         supabaseAdmin
             .from("booking_cancellations")
@@ -210,6 +215,7 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
         ctx.subscriptionId = sub.id;
         ctx.planActivatedAt = sub.started_on;
         ctx.planDurationDays = sub.duration_days_snapshot;
+        ctx.cycleTime = normalizeCycleTime(sub.cycle_time);
         ctx.subscriptionEnded = sub.status === "ended" || sub.status === "cancelled";
         ctx.planStatus =
             sub.status === "active" || sub.status === "past_due" || sub.status === "paused"
@@ -327,7 +333,7 @@ async function loadBookingContext(bookingIds: string[]): Promise<Map<string, Boo
         if (!ctx) continue;
         const scheduled = scheduledByBooking.get(subscriptionId);
 
-        if (scheduled && hasPassedCutover(current.due_on)) {
+        if (scheduled && hasPassedCutover(current.due_on, new Date(), ctx.cycleTime)) {
             ctx.currentPeriodStart = scheduled.starts_on;
             ctx.nextDueAt = scheduled.ends_on;
             // Already live — not "scheduled" from the rider's point of view.
@@ -533,6 +539,7 @@ export function toBookingView(row: RawBookingRow, ctx: BookingContext = EMPTY_CO
         deposit_amount_at_booking: Number(row.deposit_amount_snapshot),
         current_period_start: ctx.currentPeriodStart,
         next_due_at: ctx.nextDueAt,
+        cycle_time: ctx.cycleTime,
         plan_paused_at: ctx.pausedAt,
         plan_paused_days_total: ctx.pausedDaysTotal,
         renewal_status: ctx.renewalStatus,
@@ -993,6 +1000,10 @@ export async function getMyBookingHistory(
     userId: string,
     filters: BookingHistoryFilters,
 ): Promise<Paginated<BookingView>> {
+    // Booking History shows each cancelled booking's refund status, read
+    // straight off `refunds` — settle any refund the gateway has finished
+    // first, so it never says "Processing" for money already returned.
+    await syncProcessingRefundsForRead();
     const [from, to] = toRange(filters);
     const { data, error, count } = await supabaseAdmin
         .from("bookings")
@@ -1852,18 +1863,14 @@ export async function confirmPickup(
         throw businessRule("This vehicle does not match the booked model.");
     }
 
-    // The rental runs the FIXED noon-to-noon cycle the booking's period
-    // already names — never a duration added to "now." Whether the rider
-    // arrives at 9am or 5pm on their booked day, or two days late, the
-    // rental's start and due-back instants are exactly noon on
-    // currentPeriodStart and noon on nextDueAt. `picked_up_at`/`due_back_at`
-    // record that fixed cycle, not the literal moment staff clicked confirm —
-    // see calculateRentalPeriod, the one place this is decided.
-    if (!context.currentPeriodStart || !context.nextDueAt) {
-        throw businessRule("This subscription has no current billing period to rent against.");
-    }
-    const pickedUpAt = noonOfBusinessDay(context.currentPeriodStart);
-    const dueBackAt = noonOfBusinessDay(context.nextDueAt);
+    // The rental clock starts NOW, at pickup, and ends at this same clock time
+    // N days later: picked up 3:47 PM on the 17th on a 1-day plan → due back
+    // 3:47 PM on the 18th. Period #1 was dated from the booked day at payment
+    // time; it is re-dated here to the pickup day, and the subscription's
+    // cycle_time becomes the pickup time, so every renewal continues from
+    // exactly when the previous period ends. Done after the booking claim
+    // (step 1) so a losing racer never moves the clock; re-running it on a
+    // retry just re-anchors to the retry's own moment.
 
     // Step 1: claim the booking. Guarded on 'confirmed', so a racing call
     // cannot also open a rental for it.
@@ -1876,6 +1883,19 @@ export async function confirmPickup(
         .maybeSingle();
     if (claimError) throw claimError;
     if (!claimedBooking) throw conflict("This booking has already been confirmed.");
+
+    let anchor: CycleAnchor;
+    try {
+        anchor = await anchorCycleAtPickup(context.subscriptionId, new Date());
+    } catch (err) {
+        await supabaseAdmin
+            .from("bookings")
+            .update({ status: "confirmed", held_vehicle_id: vehicleId })
+            .eq("id", bookingId);
+        throw err;
+    }
+    const pickedUpAt = anchor.startAt;
+    const dueBackAt = anchor.endAt;
 
     // Step 2: open the rental.
     const { data: rental, error: rentalError } = await supabaseAdmin
@@ -1936,8 +1956,8 @@ export async function confirmPickup(
     await notifyUser(booking.user_id, {
         template: "pickup_confirmed",
         title: "Scooter Picked Up",
-        body: `Enjoy your ride! Your rental runs until 12:00 PM on `
-            + `${formatBusinessDayForCopy(context.nextDueAt)}.`,
+        body: `Enjoy your ride! Your rental runs until ${formatCycleTimeForCopy(anchor.cycleTime)} on `
+            + `${formatBusinessDayForCopy(anchor.endDate)}.`,
         screen: "my-scooter",
     });
 

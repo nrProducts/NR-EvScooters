@@ -86,10 +86,10 @@ async function request<T>(
 }
 
 /** Multipart upload — no Content-Type set manually so fetch adds the boundary itself. */
-async function postFormData<T>(path: string, formData: FormData): Promise<T> {
+async function postFormData<T>(path: string, formData: FormData, method: "POST" | "PATCH" = "POST"): Promise<T> {
   const headers = await authHeader();
   const res = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
+    method,
     headers: { "X-Client-App": "web", ...headers },
     body: formData,
   });
@@ -140,6 +140,7 @@ export const apiClient = {
   getBlob,
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, { body }),
   postForm: <T>(path: string, formData: FormData) => postFormData<T>(path, formData),
+  patchForm: <T>(path: string, formData: FormData) => postFormData<T>(path, formData, "PATCH"),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, { body }),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, { body }),
   delete: <T>(path: string) => request<T>("DELETE", path),

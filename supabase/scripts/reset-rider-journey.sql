@@ -25,6 +25,7 @@
 --   bookings, subscriptions, periods, pauses, adjustments, deposits
 --   rentals + assignments/returns/feedback/settlements
 --   invoices + items, payment orders/transactions/allocations
+--   reward-card redemptions on those invoices (a reserved card is freed)
 --   refunds, incidents + damages + disputes tied to their rentals
 --   support tickets, notifications, audit rows
 --
@@ -132,6 +133,20 @@ begin
      where damage_id in (select id from public.damages where incident_id = any (v_incidents));
     delete from public.damages   where incident_id = any (v_incidents);
     delete from public.incidents where id = any (v_incidents);
+
+    -- ── reward cards spent on these invoices ─────────────────────────────
+    -- referral_card_redemptions pins invoices ON DELETE RESTRICT, so without
+    -- this the invoice delete below fails for any rider who ever tapped "Add"
+    -- on a reward card — and the whole reset rolls back. A card only
+    -- RESERVED on an invoice goes back to 'available', exactly as
+    -- release_referral_card_redemption() would; a card already REDEEMED
+    -- (paid) stays spent.
+    update public.referral_reward_cards
+       set status = 'available', updated_at = now()
+     where status = 'reserved'
+       and id in (select reward_card_id from public.referral_card_redemptions
+                   where invoice_id = any (v_invoices) and status = 'reserved');
+    delete from public.referral_card_redemptions where invoice_id = any (v_invoices);
 
     -- ── billing documents ────────────────────────────────────────────────
     delete from public.invoice_items where invoice_id = any (v_invoices);

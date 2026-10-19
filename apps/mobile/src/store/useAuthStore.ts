@@ -6,6 +6,7 @@ import { ApiError } from '../lib/ApiError';
 import type { ApiMe, RoleName } from '../types/api';
 import { useLangStore } from '../i18n';
 import { clearApiCache } from '../lib/apiCache';
+import { releaseWebPushOnSignOut } from '../lib/webPush';
 
 /**
  * Collapses overlapping sign-out triggers (e.g. two 401s arriving close
@@ -93,7 +94,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     refreshProfile: async () => {
         set({ loadingProfile: true, error: null });
         try {
-            const profile = await userRepository.me();
+            // Always fresh: every caller refreshes BECAUSE something just
+            // changed (consent, KYC, a booking), so a cached copy is exactly
+            // the stale answer the routing gate must not see.
+            const profile = await userRepository.me({ fresh: true });
             lastProfileAt = Date.now();
             set({ profile, loadingProfile: false });
         } catch (err) {
@@ -133,6 +137,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (signOutInFlight) return signOutInFlight;
         set({ signingOut: true });
         signOutInFlight = (async () => {
+            // Web only, and first: stop this browser receiving the outgoing
+            // rider's notifications while the session that can remove the
+            // subscription still exists. Bounded and never throws.
+            await releaseWebPushOnSignOut();
             await authRepository.signOut();
             // One account's cached reads must never be served to the next.
             clearApiCache();

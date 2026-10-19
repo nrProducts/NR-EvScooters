@@ -308,6 +308,11 @@ export default function HomeScreen() {
 
         <MaintenanceNoticeBanner notice={maintenanceNotice} />
 
+        {/* Refer & Earn — at the top of Home, right under the two banners
+            that only appear when something needs the rider's action. A
+            single slim line, deliberately; detail lives on /referrals. */}
+        <ReferEarnStrip />
+
         {/* ---- Primary slot: exactly one card, chosen by the journey phase ---- */}
         {journey.phase === "active_rental" ? (
           activeRental ? (
@@ -645,8 +650,6 @@ export default function HomeScreen() {
         {/* My plan goes dead while a return is in flight — it leads somewhere
             the backend will refuse. See lib/returnLock.ts. */}
         <HomeQuickLinks returnLocked={isReturnLocked(activeRental)} />
-        {/* A single slim line, deliberately — detail lives on /referrals. */}
-        <ReferEarnStrip />
         <NeedHelpCard />
       </PageScroll>
     </AppShell>

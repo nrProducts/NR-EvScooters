@@ -17,6 +17,7 @@ import { notify } from '../lib/confirm';
 import { formatPhoneLocal } from '../lib/authValidation';
 import { Image as ExpoImage } from 'expo-image';
 import { useProfilePhoto } from '../hooks/useProfilePhoto';
+import { WebPushCard } from './WebPushCard';
 import { appVersion } from '../lib/appVersion';
 import { useT, LANG_LABELS, LANGUAGE_SELECTION_ENABLED } from '../i18n';
 
@@ -510,6 +511,8 @@ function FullProfileLayout({
         <View style={{ gap: 16 }}>
           <View style={{ height: 1, backgroundColor: GREEN_EDGE }} />
           <View style={{ gap: 12 }}>
+            {/* Rider web app only — renders nothing on the native app. */}
+            <WebPushCard />
             {menu.map((item) => {
               const Icon = item.icon;
               return (

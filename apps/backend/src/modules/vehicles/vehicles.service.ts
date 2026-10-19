@@ -8,7 +8,8 @@ import { notify } from "../notifications/notify.service";
 import { adminCancelBooking } from "../bookings/bookings.service";
 import { completeRide } from "../rentals/rentals.service";
 import { Paginated, AuthContext } from "../../types";
-import { businessToday, noonOfBusinessDay } from "../../common/dates";
+import { businessToday } from "../../common/dates";
+import { anchorCycleAtPickup } from "../subscriptions/cycleAnchor";
 import {
     CreateVehicleDocumentInput, CreateVehicleInput, ListVehiclesFilters, RiderVehicleDocumentRow, ScrapRecordRow,
     ScrapVehicleInput, UpdateVehicleDocumentInput, UpdateVehicleInput, VehicleBookingRow, VehicleDetail,
@@ -396,10 +397,7 @@ export async function createVehicleDocument(
     if (error) {
         // Insert failed after the file landed — don't leave an orphaned object.
         if (storagePath) await removeVehicleDocumentFile(storagePath);
-        if ((error as { code?: string }).code === "23505") {
-            throw conflict("This vehicle already has a document of this type with this number.");
-        }
-        throw error;
+        throw mapVehicleDocumentError(error);
     }
 
     await writeAudit({
@@ -422,6 +420,9 @@ export async function updateVehicleDocument(
     actor: AuthContext,
 ): Promise<VehicleDocumentRow> {
     const existing = await requireVehicleDocument(documentId);
+    const hasFieldChange =
+        input.doc_number !== undefined || input.issued_on !== undefined || input.expires_on !== undefined;
+    if (!hasFieldChange && !file) throw businessRule("Nothing to update — change a field or choose a new file.");
 
     let storagePath = existing.storage_path;
     let previousPath: string | null = null;
@@ -442,7 +443,7 @@ export async function updateVehicleDocument(
     const { error } = await supabaseAdmin.from("vehicle_documents").update(patch as never).eq("id", documentId);
     if (error) {
         if (file) await removeVehicleDocumentFile(storagePath);
-        throw error;
+        throw mapVehicleDocumentError(error);
     }
 
     // Replacing an existing file — remove the old object only after the
@@ -480,6 +481,21 @@ export async function deleteVehicleDocument(documentId: string, actor: AuthConte
         before: { vehicle_id: existing.vehicle_id, document_type: existing.document_type },
         after: null,
     });
+}
+
+/** 23505 = same type + number already on this vehicle; 23514 = expiry before issue date. */
+function mapVehicleDocumentError(error: { code?: string }): unknown {
+    if (error.code === "23505") {
+        return conflict("This vehicle already has a document of this type with this number.", {
+            doc_number: "This vehicle already has a document of this type with this number.",
+        });
+    }
+    if (error.code === "23514") {
+        return businessRule("The expiry date can't be before the issue date.", {
+            expires_on: "The expiry date can't be before the issue date.",
+        });
+    }
+    return error;
 }
 
 async function requireVehicleDocumentRow(documentId: string): Promise<VehicleDocumentRow> {
@@ -855,7 +871,7 @@ function escapeLike(input: string): string {
     return input.replace(/[%_\\,()]/g, "");
 }
 
-/** 23505 = unique_violation on registration_number / vin / qr_code / imei / batch_number. */
+/** 23505 = unique_violation on registration_number / vin / qr_code / imei. batch_number is shared by a batch, so never unique. */
 function mapPostgresError(error: { code?: string; message?: string }): Error {
     if (error.code === "23505") {
         if (error.message?.includes("registration_number")) {
@@ -871,11 +887,6 @@ function mapPostgresError(error: { code?: string; message?: string }): Error {
         }
         if (error.message?.includes("imei")) {
             return conflict("This IMEI is already in use.", { imei: "This IMEI is already in use." });
-        }
-        if (error.message?.includes("batch_number")) {
-            return conflict("This batch number is already in use.", {
-                batch_number: "This batch number is already in use.",
-            });
         }
         return conflict("That value is already in use.");
     }
@@ -1047,18 +1058,17 @@ export async function assignVehicleToUser(
         );
     }
 
-    const period = await currentPeriodDatesForSubscription(subscriptionId);
+    // Same clock rule as confirmPickup: a first hand-over starts the cycle now
+    // and sets the subscription's cycle time; a swap keeps the running clock.
+    const anchor = await anchorCycleAtPickup(subscriptionId);
     const { data: rental, error: rentalError } = await supabaseAdmin
         .from("rentals")
         .insert({
             user_id: userId,
             subscription_id: subscriptionId,
             status: "active",
-            // Fixed noon-to-noon cycle, same as the ordinary confirmPickup
-            // path — the rental's start/due-back are the period's own dates,
-            // never the literal moment staff click "assign," walk-in or not.
-            picked_up_at: noonOfBusinessDay(period.starts_on),
-            due_back_at: noonOfBusinessDay(period.ends_on),
+            picked_up_at: anchor.startAt,
+            due_back_at: anchor.endAt,
         })
         .select("id")
         .single();
@@ -1117,24 +1127,4 @@ export async function assignVehicleToUser(
     });
 
     return { vehicle: await requireVehicle(vehicleId), rentalId: rental.id };
-}
-
-/**
- * When the rental starts and is due back: the subscription's current period,
- * noon-anchored by the caller. The period is the only thing that knows the
- * answer — the rental runs for as long as the rider is paying for it.
- */
-async function currentPeriodDatesForSubscription(
-    subscriptionId: string,
-): Promise<{ starts_on: string; ends_on: string }> {
-    const { data, error } = await supabaseAdmin
-        .from("v_subscription_current_period")
-        .select("starts_on, ends_on")
-        .eq("subscription_id", subscriptionId)
-        .maybeSingle();
-    if (error) throw error;
-    if (!data?.starts_on || !data?.ends_on) {
-        throw businessRule("This subscription has no current billing period to rent against.");
-    }
-    return { starts_on: data.starts_on, ends_on: data.ends_on };
 }

@@ -33,7 +33,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "What happens after I book?",
     answer:
-      "You'll get a pickup station and a reminder as your slot approaches. Hand over is confirmed in the app. Every rental runs a fixed 12:00 PM to 12:00 PM cycle based on your booked date, whatever time you actually collect the scooter.",
+      "You'll get a pickup station and a reminder as your slot approaches. Hand over is confirmed in the app. Your rental starts the moment the scooter is handed over to you and ends at that same time on the last day of your plan — pick up at 3:45 PM on a 1-day plan and it's due back at 3:45 PM the next day.",
   },
   {
     question: "How long does a rental plan last?",

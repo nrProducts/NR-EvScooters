@@ -212,4 +212,18 @@ export const env = {
      * env var can't silently send enquiries nowhere.
      */
     contactInboxEmail: process.env.CONTACT_INBOX_EMAIL ?? "contact@swapngo.in",
+
+    // --- Web Push (rider web app, see config/webPush.ts) -------------------
+    // Optional everywhere: unset means the rider web app shows notifications
+    // as "not available" and every send is a silent no-op — the native Expo
+    // push path is unaffected. Generate a pair ONCE per environment with
+    //   npx web-push generate-vapid-keys
+    // and never rotate casually: every existing browser subscription is bound
+    // to the public key it was created with and dies with it.
+    /** VAPID public key (base64url). Public by design — browsers need it to subscribe. */
+    vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? "",
+    /** VAPID private key (base64url). Backend only — it signs every push. */
+    vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? "",
+    /** Contact the push services can reach us at: a mailto: or https: URL. */
+    vapidSubject: process.env.VAPID_SUBJECT ?? "mailto:support@swapngo.in",
 };

@@ -63,10 +63,10 @@ services:
     branch: main
     rootDir: .
     # Deploy only after the GitHub "Release" workflow is green for the commit:
-    # backend build + tests, the database migration, and — on main — the
+    # backend build + tests, the database migration, and on main the
     # manually approved prod-deploy. New code therefore never starts before
-    # the schema it expects. (UAT, a dashboard-managed service, uses the same
-    # setting with branch develop.)
+    # the schema it expects. Same setting on the three static sites below.
+    # (This file describes PRODUCTION; the UAT services are dashboard-managed.)
     autoDeployTrigger: checksPass
     buildFilter:
       paths:
@@ -152,6 +152,16 @@ services:
       - key: MSG91_SENDER_ID
         sync: false
 
+      # --- Web Push (rider web app browser notifications) — optional -------
+      # One pair per environment: npx web-push generate-vapid-keys
+      # Blank = browser notifications show "not available"; nothing breaks.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:support@swapngo.in
+
   # ---------------------------------------------------------------------------
   # 2. Admin console + rider web app (static)
   # ---------------------------------------------------------------------------
@@ -160,7 +170,7 @@ services:
     runtime: static
     branch: main
     rootDir: .
-    autoDeploy: true
+    autoDeployTrigger: checksPass   # after the Release workflow is green
     buildFilter:
       paths:
         - apps/web/**
@@ -212,7 +222,7 @@ services:
     runtime: static
     branch: main
     rootDir: .
-    autoDeploy: true
+    autoDeployTrigger: checksPass   # after the Release workflow is green
     buildFilter:
       paths:
         - apps/mobile/**
@@ -223,6 +233,19 @@ services:
         - render.yaml
     buildCommand: rm -rf node_modules apps/*/node_modules && corepack enable && pnpm install --frozen-lockfile --filter mobile... && pnpm --filter mobile build:web
     staticPublishPath: apps/mobile/dist
+    # Web Push service worker (apps/mobile/public/sw.js). no-cache so a fixed
+    # worker reaches riders on their next visit; the explicit types because
+    # a worker served with the wrong MIME type fails to register.
+    headers:
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /sw.js
+        name: Content-Type
+        value: application/javascript; charset=utf-8
+      - path: /manifest.webmanifest
+        name: Content-Type
+        value: application/manifest+json
     # Expo Router's static export pre-renders one HTML file per route
     # (including literal `[param].html` files for dynamic routes), but every
     # file loads the same JS bundle and Expo Router then takes over client-side

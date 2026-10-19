@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "../../config/supabase";
+import { env } from "../../config/env";
 import {
     describeGatewayError, getRazorpay, RefundSimulation, resolveRefundSimulation,
 } from "../../config/razorpay";
@@ -1049,11 +1050,17 @@ async function releaseDepositIfFullyRefunded(
         .eq("status", "held");
 }
 
-/** Called from the webhook dispatch for refund.processed/refund.failed. Idempotent. */
+/**
+ * Applies the gateway's final word on a payout — from the refund.processed /
+ * refund.failed webhook, or from syncProcessingRefunds asking Razorpay
+ * directly. Idempotent, and safe when both race: only the call that actually
+ * moves the row out of `processing` releases the deposit and tells the rider.
+ */
 export async function applyRefundWebhookResult(
     gatewayRefundId: string,
     outcome: "success" | "failed",
     failureReason?: string,
+    source: "webhook" | "gateway_sync" = "webhook",
 ): Promise<void> {
     const { data: found, error } = await supabaseAdmin
         .from("refunds")
@@ -1065,11 +1072,14 @@ export async function applyRefundWebhookResult(
     if (!refund || refund.status === "succeeded") return; // Unknown, or already applied.
 
     if (outcome === "success") {
-        await supabaseAdmin
+        const { data: moved, error: updateError } = await supabaseAdmin
             .from("refunds")
-            .update({ status: "succeeded", completed_at: new Date().toISOString() })
+            .update({ status: "succeeded", completed_at: new Date().toISOString(), failure_reason: null })
             .eq("id", refund.id)
-            .neq("status", "succeeded");
+            .neq("status", "succeeded")
+            .select("id");
+        if (updateError) throw updateError;
+        if (!moved || moved.length === 0) return; // The other path got there first.
 
         const { subscription } = chainOf(refund);
         if (subscription) {
@@ -1079,18 +1089,151 @@ export async function applyRefundWebhookResult(
         await writeAudit({
             actorId: null, targetUserId: refund.user_id, action: "refund.processed",
             entityType: "refund", entityId: refund.id,
-            after: { gateway_refund_id: gatewayRefundId, source: "webhook" },
+            after: { gateway_refund_id: gatewayRefundId, source },
+        });
+
+        // processRefund tells the rider when Razorpay settles on the spot; a
+        // refund that settled LATER (the usual case — Razorpay answers
+        // "pending") reached the rider through nothing at all until now.
+        await notifyUser(refund.user_id, {
+            template: "refund_completed",
+            title: "Refund Completed",
+            body: refund.reason === "booking_cancellation"
+                ? `Your refund of ₹${Number(refund.amount)} for the cancelled booking has been completed.`
+                : "Your security deposit refund has been completed.",
+            screen: refund.reason === "booking_cancellation" ? "booking-history" : "billing",
         });
     } else {
         await markRefundFailed(refund.id, failureReason ?? "Refund failed at the gateway.");
         await writeAudit({
             actorId: null, targetUserId: refund.user_id, action: "refund.failed",
-            entityType: "refund", entityId: refund.id, after: { source: "webhook" },
+            entityType: "refund", entityId: refund.id, after: { source },
         });
     }
 }
 
+/** At most one gateway sync per this window, however often the lists are opened. */
+const REFUND_SYNC_INTERVAL_MS = 60_000;
+/** A list must never wait on the gateway longer than this; the sync finishes in the background. */
+const REFUND_SYNC_WAIT_MS = 4_000;
+let lastRefundSyncAt = 0;
+let refundSyncInFlight: Promise<void> | null = null;
+
+/**
+ * Asks Razorpay for the current status of every refund still `processing`,
+ * and applies the ones that have settled or failed.
+ *
+ * The refund.processed webhook was the ONLY thing that ever completed a
+ * real refund. Razorpay answers "pending" for nearly every refund, so with
+ * the webhook missing (not configured in the dashboard, a wrong URL or
+ * secret, an outage) refunds the bank had long since paid sat at
+ * "Processing" forever, in the admin console and the rider app alike. This
+ * is the fallback: the webhook is still the fast path, this makes the screen
+ * correct regardless.
+ *
+ * Skips simulated payouts (`sim_refund_…` — the gateway has never heard of
+ * them). Never throws: a gateway hiccup must not break the list that
+ * triggered it.
+ */
+export async function syncProcessingRefunds(
+    fetchRefund: (gatewayRefundId: string) => Promise<{ status: string; error_description?: string | null }>
+        = (id) => getRazorpay().refunds.fetch(id) as Promise<{ status: string }>,
+): Promise<{ checked: number; completed: number; failed: number }> {
+    const result = { checked: 0, completed: 0, failed: 0 };
+    try {
+        const { data, error } = await supabaseAdmin
+            .from("refunds")
+            .select("id, gateway_refund_id")
+            .eq("status", "processing")
+            .not("gateway_refund_id", "is", null)
+            .not("gateway_refund_id", "like", "sim_%")
+            .order("last_attempted_at", { ascending: true })
+            .limit(25);
+        if (error) throw error;
+
+        for (const row of data ?? []) {
+            const gatewayRefundId = row.gateway_refund_id as string;
+            try {
+                const remote = await fetchRefund(gatewayRefundId);
+                result.checked += 1;
+                if (remote.status === "processed") {
+                    await applyRefundWebhookResult(gatewayRefundId, "success", undefined, "gateway_sync");
+                    result.completed += 1;
+                } else if (remote.status === "failed") {
+                    await applyRefundWebhookResult(
+                        gatewayRefundId, "failed",
+                        remote.error_description ?? "Refund failed at the gateway.", "gateway_sync",
+                    );
+                    result.failed += 1;
+                }
+            } catch (err) {
+                console.warn("[refunds] could not fetch refund status from the gateway", {
+                    refundId: row.id, error: describeGatewayError(err),
+                });
+            }
+        }
+        if (result.completed || result.failed) {
+            console.info("[refunds] gateway sync applied refund outcomes", result);
+        }
+    } catch (err) {
+        console.error("[refunds] gateway sync failed", { error: describeGatewayError(err) });
+    }
+    return result;
+}
+
+/**
+ * Throttled, time-boxed syncProcessingRefunds for the read paths. The first
+ * caller in a window waits up to REFUND_SYNC_WAIT_MS so the list it is about
+ * to return already shows the new status; anything slower carries on in the
+ * background and shows on the next load.
+ */
+export async function syncProcessingRefundsForRead(): Promise<void> {
+    // No keys (local dev): there is no gateway to ask. Simulated payouts are
+    // already excluded by their sim_ id, so a simulation switch is no reason
+    // to leave REAL refunds stuck.
+    if (!env.razorpayKeyId || !env.razorpayKeySecret) return;
+    const now = Date.now();
+    if (!refundSyncInFlight && now - lastRefundSyncAt < REFUND_SYNC_INTERVAL_MS) return;
+    if (!refundSyncInFlight) {
+        lastRefundSyncAt = now;
+        refundSyncInFlight = syncProcessingRefunds()
+            .then(() => undefined)
+            .finally(() => { refundSyncInFlight = null; });
+    }
+    await Promise.race([
+        refundSyncInFlight,
+        new Promise((resolve) => setTimeout(resolve, REFUND_SYNC_WAIT_MS)),
+    ]);
+}
+
+/** How often the server re-checks open refunds with Razorpay on its own. */
+const REFUND_BACKGROUND_SYNC_MS = 2 * 60_000;
+
+/**
+ * Keeps refund statuses current without anyone opening a screen.
+ *
+ * The read-path syncs above only fix the screens that call them; the rider
+ * app also reads refund status through Booking History, the return
+ * settlement stage and the deposit journey, each straight off `refunds`.
+ * Settling the ROW is what makes every one of those correct at once, and any
+ * screen added later too. Shares the read paths' throttle, so the two never
+ * double up. Started once from server.ts; `unref` so it never holds the
+ * process open.
+ */
+export function startRefundStatusSync(): void {
+    const tick = () => {
+        void syncProcessingRefundsForRead().catch((err) => {
+            console.error("[refunds] background status sync failed", { error: describeGatewayError(err) });
+        });
+    };
+    tick();
+    setInterval(tick, REFUND_BACKGROUND_SYNC_MS).unref();
+}
+
 export async function listRefunds(filters: ListRefundsFilters): Promise<Paginated<RefundRow>> {
+    // Admin Refunds screen AND the rider's GET /refunds/me both come through
+    // here — settle any refund the gateway has finished before listing.
+    await syncProcessingRefundsForRead();
     let query = supabaseAdmin.from("refunds").select(REFUND_COLUMNS, { count: "exact" });
     if (filters.status) query = query.eq("status", filters.status);
     if (filters.refundType) query = query.eq("reason", filters.refundType);
@@ -1122,6 +1265,7 @@ export async function listRefunds(filters: ListRefundsFilters): Promise<Paginate
 }
 
 export async function getRefundById(id: string): Promise<RefundRow> {
+    await syncProcessingRefundsForRead();
     const refund = await readRefund(id);
     if (!refund) throw notFound("Refund not found.");
 

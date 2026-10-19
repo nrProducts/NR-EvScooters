@@ -89,6 +89,8 @@ export interface RentalView extends RentalReturnFields, RentalPlanPeriodFields {
     plan_status: "active" | "past_due" | "paused" | null;
     /** The current period's `due_on`. */
     next_due_at: string | null;
+    /** `subscriptions.cycle_time` (`HH:MM:SS`, IST) — when both ends of each period fall: the pickup time, or 12:00 for older plans. */
+    cycle_time: string | null;
     /** The current period's `starts_on`. */
     current_period_start: string | null;
     /** `scheduled` once a renewal period exists but has not started. */

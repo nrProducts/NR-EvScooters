@@ -31,7 +31,7 @@
 // =========================================================================
 
 import { adminClient, isConfigured, json, notConfigured, type Admin } from "../_shared/client.ts";
-import { addDays, businessToday, formatBusinessDayForCopy } from "../_shared/dates.ts";
+import { addDays, businessToday, formatClockTimeForCopy, formatInstantDayForCopy } from "../_shared/dates.ts";
 import { notifyUser } from "../_shared/notify.ts";
 import { notifyStaff } from "../_shared/notifyStaff.ts";
 
@@ -87,13 +87,14 @@ Deno.serve(async (_req) => {
         return json({ error: "Could not resolve the business date." }, 500);
     }
 
-    // due_back_at is a timestamp, so the target DAY is a half-open range.
+    // due_back_at is a timestamp, so the target DAY is a half-open range —
+    // an IST day, since due times now fall at any clock time (the pickup time).
     const { data: rentals, error } = await admin
         .from("rentals")
         .select("id, user_id, due_back_at")
         .eq("status", "active")
-        .gte("due_back_at", `${target}T00:00:00Z`)
-        .lt("due_back_at", `${addDays(target, 1)}T00:00:00Z`);
+        .gte("due_back_at", `${target}T00:00:00+05:30`)
+        .lt("due_back_at", `${addDays(target, 1)}T00:00:00+05:30`);
 
     if (error) {
         console.error(`[${SOURCE}] failed to query rentals`, error);
@@ -113,14 +114,15 @@ Deno.serve(async (_req) => {
         }
 
         const vehicleName = await currentVehicleName(admin, row.id);
-        const dueDay = formatBusinessDayForCopy(row.due_back_at.slice(0, 10));
+        const dueDay = formatInstantDayForCopy(new Date(row.due_back_at));
+        const dueTime = formatClockTimeForCopy(new Date(row.due_back_at));
 
         const result = await notifyUser(admin, row.user_id, {
             typeCode: "plan_expiring",
             subjectType: "rental",
             subjectId: row.id,
             title: "Your Plan Ends Soon",
-            body: `Your plan for ${vehicleName ?? "your scooter"} ends at 12:00 PM on ${dueDay} (in ${WARN_DAYS_BEFORE} days). `
+            body: `Your plan for ${vehicleName ?? "your scooter"} ends at ${dueTime} on ${dueDay} (in ${WARN_DAYS_BEFORE} days). `
                 + (feePerDay > 0
                     ? `Renew or return it by then, or a ₹${feePerDay}/day late fee applies.`
                     : "Renew or return it by then."),
@@ -135,7 +137,7 @@ Deno.serve(async (_req) => {
             subjectType: "rental",
             subjectId: row.id,
             title: "Plan Ending Soon",
-            body: `${vehicleName ?? "A scooter"}'s plan ends at 12:00 PM on ${dueDay} (in ${WARN_DAYS_BEFORE} days).`,
+            body: `${vehicleName ?? "A scooter"}'s plan ends at ${dueTime} on ${dueDay} (in ${WARN_DAYS_BEFORE} days).`,
             screen: "/bookings",
             payload: { due_back_at: row.due_back_at, rider_id: row.user_id },
         });

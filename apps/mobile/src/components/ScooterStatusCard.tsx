@@ -13,7 +13,7 @@ import {
 import { rentalRepository } from '../services';
 import { useDismissibleBanner } from '../lib/dismissedBanners';
 import { usePaySettlement } from './SettlementCard';
-import { computeLateReturnPenalty, effectiveDueAt, getRenewalEligibility } from '../lib/returnPolicy';
+import { computeLateReturnPenalty, effectiveDueAt, formatCycleTime, getRenewalEligibility } from '../lib/returnPolicy';
 import type { ApiOverdueLateFee, ApiRental, ApiReturnSettlement, ApiReturnStage } from '../types/api';
 import { useT, type TranslateFn } from '../i18n';
 
@@ -103,7 +103,9 @@ export function ScooterStatusCard({
   const lateAmount = overdue?.isLate ? overdue.lateFee : estimate.penaltyAmount;
   const recoveryRequired = !!rental.recovery_flagged_at;
   const overdueNow = overdue ? overdue.isLate : estimate.isLate;
-  const eligibility = getRenewalEligibility(rental.plan_status, rental.next_due_at, rental.renewal_status);
+  const eligibility = getRenewalEligibility(
+    rental.plan_status, rental.next_due_at, rental.renewal_status, undefined, rental.cycle_time,
+  );
 
   // --- Priority order: exactly one of these renders. -----------------------
   //
@@ -206,7 +208,7 @@ export function ScooterStatusCard({
           {[
             rental.scheduled_start_date
               ? t('scooterStatus.renewalScheduled.starts', {
-                  date: formatDay(rental.scheduled_start_date),
+                  date: `${formatDay(rental.scheduled_start_date)}, ${formatCycleTime(rental.cycle_time)}`,
                 })
               : null,
             t('scooterStatus.renewalScheduled.body'),
@@ -303,10 +305,10 @@ export function ScooterStatusCard({
             : rental.next_due_at
               ? remaining
                 ? t('scooterStatus.planEndsOnWithLeft', {
-                    date: formatDay(rental.next_due_at),
+                    date: `${formatDay(rental.next_due_at)}, ${formatCycleTime(rental.cycle_time)}`,
                     remaining,
                   })
-                : t('scooterStatus.planEndsOn', { date: formatDay(rental.next_due_at) })
+                : t('scooterStatus.planEndsOn', { date: `${formatDay(rental.next_due_at)}, ${formatCycleTime(rental.cycle_time)}` })
               : t('scooterStatus.planStatus')
         }
       >
@@ -342,6 +344,22 @@ const TONE_COLOR: Record<'danger' | 'overdue' | 'warning' | 'success' | 'primary
   danger: COLORS.danger, overdue: COLORS.overdue, warning: COLORS.warning, success: COLORS.success, primary: COLORS.primary,
 };
 
+/**
+ * `hex` at `alpha` laid over white, as an OPAQUE colour — the same shade a
+ * translucent tint shows on the white page, without the translucency.
+ *
+ * The card used to be `tint + '0A'` (4% alpha) with `elevation`. Android
+ * draws an elevation shadow under the WHOLE view, and a translucent
+ * background lets it show through, so on many phones the banner rendered as
+ * a grey box with the content inset inside it. An opaque fill hides it.
+ */
+function tintOnWhite(hex: string, alpha: number): string {
+  const n = Number.parseInt(hex.slice(1, 7), 16);
+  const mix = (channel: number) => Math.round(channel * alpha + 255 * (1 - alpha))
+    .toString(16).padStart(2, '0');
+  return `#${mix((n >> 16) & 0xff)}${mix((n >> 8) & 0xff)}${mix(n & 0xff)}`;
+}
+
 function StatusShell({
   tone, icon: Icon, title, titleAccessory, dismissKey, children,
 }: {
@@ -369,7 +387,8 @@ function StatusShell({
     <View
       className="rounded-2xl p-4 mb-5"
       style={{
-        backgroundColor: tint + '0A', borderWidth: 1, borderColor: tint + '26',
+        // 0x0A/0x26 of 0xFF — the alphas this card has always used, now pre-blended.
+        backgroundColor: tintOnWhite(tint, 0x0a / 0xff), borderWidth: 1, borderColor: tintOnWhite(tint, 0x26 / 0xff),
         shadowColor: COLORS.black, shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 1,
       }}
     >

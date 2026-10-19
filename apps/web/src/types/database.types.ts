@@ -2787,6 +2787,7 @@ export type Database = {
       subscriptions: {
         Row: {
           billing_period_snapshot: Database["public"]["Enums"]["billing_period"]
+          cycle_time: string
           booking_id: string
           created_at: string
           deposit_amount_snapshot: number
@@ -2802,6 +2803,7 @@ export type Database = {
         }
         Insert: {
           billing_period_snapshot: Database["public"]["Enums"]["billing_period"]
+          cycle_time?: string
           booking_id: string
           created_at?: string
           deposit_amount_snapshot: number
@@ -2817,6 +2819,7 @@ export type Database = {
         }
         Update: {
           billing_period_snapshot?: Database["public"]["Enums"]["billing_period"]
+          cycle_time?: string
           booking_id?: string
           created_at?: string
           deposit_amount_snapshot?: number

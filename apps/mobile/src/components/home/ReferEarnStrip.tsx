@@ -34,7 +34,11 @@ export const ReferEarnStrip: React.FC = () => {
       <Text style={{ color: COLORS.textPrimary }} className="flex-1 text-xs font-semibold ml-2" numberOfLines={1}>
         <Text style={{ color: COLORS.primaryPressed }} className="font-extrabold">{t('referrals.title')}</Text>
         {'  ·  '}
-        {t('home.referEarn.body', { amount: summary.reward_amount })}
+        {/* Not booked yet: referring isn't open to them, so the strip says how
+            to unlock it rather than promising a reward they can't earn yet. */}
+        {summary.can_refer === false
+          ? t('home.referEarn.locked')
+          : t('home.referEarn.body', { amount: summary.reward_amount })}
       </Text>
       <ChevronRight size={14} color={COLORS.primaryPressed} />
     </TouchableOpacity>

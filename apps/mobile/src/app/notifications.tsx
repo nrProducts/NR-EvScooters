@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Platform } from 'react-native';
 import { Spinner } from '../components/Spinner';
+import { WebPushCard } from '../components/WebPushCard';
 import { useRouter } from 'expo-router';
 import { Bell, ChevronRight, Check } from 'lucide-react-native';
 import { AppShell } from '../components/AppShell';
@@ -76,16 +77,24 @@ export default function NotificationsScreen() {
           contentContainerStyle={{ paddingBottom: insets.bottom + 24, flexGrow: 1 }}
           refreshControl={pullToRefresh(refreshing, refresh)}
           ListHeaderComponent={
-            unreadCount > 0 ? (
-              <View className="flex-row items-center justify-between px-5 pt-4 pb-2">
-                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-bold uppercase tracking-wider">
-                  {t('notifications.unreadCount', { count: unreadCount })}
-                </Text>
-                <TouchableOpacity onPress={() => void markAllRead()} accessibilityRole="button">
-                  <Text style={{ color: COLORS.primary }} className="text-xs font-bold">{t('notifications.markAllRead')}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null
+            <>
+              {/* Web only — renders nothing on the native app. */}
+              {Platform.OS === 'web' ? (
+                <View className="px-5 pt-4">
+                  <WebPushCard variant="prompt" />
+                </View>
+              ) : null}
+              {unreadCount > 0 ? (
+                <View className="flex-row items-center justify-between px-5 pt-4 pb-2">
+                  <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-bold uppercase tracking-wider">
+                    {t('notifications.unreadCount', { count: unreadCount })}
+                  </Text>
+                  <TouchableOpacity onPress={() => void markAllRead()} accessibilityRole="button">
+                    <Text style={{ color: COLORS.primary }} className="text-xs font-bold">{t('notifications.markAllRead')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </>
           }
           ListEmptyComponent={
             <EmptyState icon={Bell} title={t('notifications.empty.title')} subtitle={t('notifications.empty.subtitle')} />

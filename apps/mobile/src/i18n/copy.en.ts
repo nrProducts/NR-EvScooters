@@ -121,10 +121,9 @@ export const en = {
     'rental.daysRemaining.other': '{count} days remaining',
     'rental.dayOf': 'Day {day} of {total}',
     // "05 Sep 2026, 12:00 PM  —  12 Sep 2026, 12:00 PM". The dash spacing is
-    // part of the layout. Every rental period runs noon to noon — see
-    // apps/backend/src/common/dates.ts's calculateRentalPeriod — so the time
-    // is always literally "12:00 PM" on both ends, never computed.
-    'rental.periodRange': '{start}, 12:00 PM  —  {end}, 12:00 PM',
+    // part of the layout. Both ends fall at the subscription's cycle time
+    // (the pickup time; 12:00 PM for older plans) — {time}, from cycle_time.
+    'rental.periodRange': '{start}, {time}  —  {end}, {time}',
 
     // --- scooter status card (Home alert strip) ---------------------------
     'scooterStatus.paymentRequired': 'Payment Required',
@@ -217,10 +216,10 @@ export const en = {
         'The rate is {rate} per day. Whichever way you clear it — renewing or paying before a return — it is the same debt, and paying it once settles it for this cycle.',
     'lateFee.oneFee.noRate':
         'Whichever way you clear it — renewing or paying before a return — it is the same debt, and paying it once settles it for this cycle.',
-    'lateFee.example.intro': 'Say your plan ends at 12:00 PM on the 1st:',
-    'lateFee.example.onTime': '· Pay at 12:00 PM or earlier → on time, no fee',
-    'lateFee.example.sameDay': '· Pay any time after 12:00 PM the same day → 1 day{amount}',
-    'lateFee.example.nextDay': '· Pay after 12:00 PM the next day → 2 days{amount}',
+    'lateFee.example.intro': 'Say you picked up at 10:00 AM, so your plan ends at 10:00 AM on the 1st:',
+    'lateFee.example.onTime': '· Pay at 10:00 AM or earlier → on time, no fee',
+    'lateFee.example.sameDay': '· Pay any time after 10:00 AM the same day → 1 day{amount}',
+    'lateFee.example.nextDay': '· Pay after 10:00 AM the next day → 2 days{amount}',
     // The " = ₹668" tail. Its own key because the equals sign and spacing are
     // typography, not arithmetic, and a language may want them differently.
     'lateFee.example.equals': ' = {amount}',
@@ -491,6 +490,21 @@ export const en = {
     'notifications.fallbackTitle': 'Notification',
     'notifications.unavailable.title': 'Nothing to open',
     'notifications.unavailable.message': "This notification isn't linked to a screen anymore. It may be about something that's already been taken care of.",
+    // Browser notifications — the rider WEB app only (components/WebPushCard.tsx).
+    'webPush.title': 'Browser notifications',
+    'webPush.explainer': "Get updates about your booking, scooter pickup, returns and payments on this device, even when Swapngo isn't open. Payment details are never shown in a notification.",
+    'webPush.enable': 'Enable notifications',
+    'webPush.disable': 'Turn off',
+    'webPush.status.enabled': 'On for this browser',
+    'webPush.status.denied': 'Notifications are blocked for this site. To turn them on, allow notifications for this site in your browser settings, then come back here.',
+    'webPush.status.unsupported': "This browser doesn't support notifications. Try the latest Chrome, Edge or Firefox, or use the Swapngo app.",
+    'webPush.status.insecure': 'Notifications need a secure (https) connection.',
+    'webPush.status.iosInstall': 'On iPhone and iPad, notifications work only from the Home Screen: tap Share, then "Add to Home Screen", and open Swapngo from there (iOS 16.4 or later).',
+    'webPush.status.serverDisabled': 'Browser notifications are not available right now.',
+    'webPush.status.dismissed': 'Notifications were not turned on. You can try again any time.',
+    'webPush.enabled.title': 'Notifications enabled',
+    'webPush.enabled.message': "You'll get Swapngo updates on this device.",
+    'webPush.failed.title': "Couldn't enable notifications",
     'notFound.title': 'Page not found',
     'notFound.message': "The page you were looking for isn't available. It may have moved or no longer exists.",
     'notFound.goHome': 'Go to Home',
@@ -659,7 +673,11 @@ export const en = {
     'billing.lateFeeParenOne': 'Late fee (1 day × ₹{rate}/day)',
     'billing.lateFeeParenOther': 'Late fee ({days} days × ₹{rate}/day)',
     'billing.noPayments': 'No payments yet',
-    'billing.paymentHistory': 'Booking History',
+    'billing.paymentHistory': 'Payment History',
+    'billing.history.refund.bookingCancellation': 'Booking Cancellation Refund',
+    'billing.history.refund.deposit': 'Security Deposit Refund',
+    'billing.history.refund.settlement': 'Return Settlement Refund',
+    'billing.history.refund.goodwill': 'Goodwill Refund',
     'billing.paymentRequired': 'Payment required',
     'billing.scooterWontStart': "Your scooter won't start until this is paid.",
     'billing.totalAcross': '₹{total} total across {count} invoices',
@@ -720,7 +738,7 @@ export const en = {
     'billing.cycleRental': '{cycle} rental',
     'billing.started': 'Started',
     'billing.ends': 'Ends',
-    'billing.expired': ' · expired',
+    'billing.expired': 'Expired',
     'billing.checkoutDescription.weeklyRecharge': 'Weekly Rental — Recharge',
     'billing.checkoutDescription.scooterBooking': 'Scooter Booking',
 
@@ -767,8 +785,8 @@ export const en = {
     'bookingGate.completeKyc': 'Complete KYC',
 
     // --- request return -------------------------------------------------------
-    'requestReturn.deadline.todayByMidnight': 'today by 12:00 PM',
-    'requestReturn.deadline.dateByMidnight': '{date} by 12:00 PM',
+    'requestReturn.deadline.todayByMidnight': 'today, by your pickup time',
+    'requestReturn.deadline.dateByMidnight': '{date} by {time}',
     'requestReturn.deadline.daysAgoOne': '1 day ago',
     'requestReturn.deadline.daysAgoOther': '{days} days ago',
     'requestReturn.requested.title': 'Return Requested',
@@ -845,6 +863,10 @@ export const en = {
     // --- referrals ----------------------------------------------------------
     'referrals.title': 'Refer & Earn',
     'home.referEarn.body': 'Invite a friend, earn ₹{amount}',
+    'home.referEarn.locked': 'Book your first scooter to unlock rewards',
+    'referrals.locked.title': 'Book your first scooter to start referring',
+    'referrals.locked.body': "Your referral code unlocks after your first scooter booking. Until then, friends can't use it.",
+    'referrals.locked.cta': 'Book a scooter',
     'referrals.loadFailed': 'Could not load your referrals.',
     'referrals.inviteHeading': 'Invite friends to Swapngo',
     'referrals.inviteBody': 'Share your code — once a friend completes their first paid booking, you earn a ₹{amount} reward card for your next renewal.',
@@ -1265,7 +1287,7 @@ export const en = {
     'booking.availableHere': '{count} available here',
     'booking.unavailable': 'Unavailable',
     'booking.available': 'Available',
-    'booking.startsNow.title': 'Your plan starts at 12:00 PM today',
+    'booking.startsNow.title': 'Your plan starts when you pick up your scooter',
     'booking.startsNow.body': 'Collect your scooter today between 8 AM and 8 PM.',
     'booking.choosePlan': 'Choose a plan',
     'booking.noPlansHint': 'No plans are on sale for this scooter yet.',
@@ -1292,6 +1314,8 @@ export const en = {
     'deposit.onboardingNote':
         'The {amount} onboarding charge paid at booking is non-refundable and is not part of this deposit.',
     'booking.rentalPeriod': 'Rental Period',
+    'booking.period.atPickup': 'At pickup time',
+    'booking.period.sameTime': 'Same time as pickup',
     'booking.onboardingCharge': 'Onboarding charge',
     'booking.onboardingFee': 'Onboarding fee',
     'booking.securityDeposit': 'Security deposit',

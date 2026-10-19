@@ -59,11 +59,14 @@ export const HomeQuickLinks: React.FC<HomeQuickLinksProps> = ({ returnLocked = f
             style={{
               backgroundColor: COLORS.card,
               opacity: isLocked ? 0.55 : 1,
+              // No shadow while faded: Android draws elevation under the whole
+              // view, and a view at opacity < 1 lets it show through as a grey
+              // box. A locked card shouldn't look raised anyway.
               shadowColor: COLORS.black,
-              shadowOpacity: 0.04,
+              shadowOpacity: isLocked ? 0 : 0.04,
               shadowRadius: 10,
               shadowOffset: { width: 0, height: 3 },
-              elevation: 1,
+              elevation: isLocked ? 0 : 1,
             }}
           >
             <View

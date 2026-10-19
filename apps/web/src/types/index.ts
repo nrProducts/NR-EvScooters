@@ -414,7 +414,14 @@ export interface PickupBooking {
   vehicle: { id: string; name: string; registration_number: string; status: VehicleStatus } | null;
   /** Recurring-billing state — set once the booking reaches 'fulfilled', null before and after (see BookingStatus). */
   plan_status: BookingPlanStatus | null;
+  /** Current period's `starts_on`. */
+  current_period_start: string | null;
   next_due_at: string | null;
+  /**
+   * `subscriptions.cycle_time` (`HH:MM:SS`, IST) — the clock time both ends of
+   * every period fall on: the pickup time, or 12:00 for older plans.
+   */
+  cycle_time: string | null;
   /** 'scheduled' once an on-time/early renewal has been paid but not yet activated. */
   renewal_status: "none" | "scheduled";
   scheduled_start_date: string | null;
@@ -513,7 +520,7 @@ export interface Vehicle {
   purchase_date: string | null;
   /** Which hub the vehicle belongs to. New; there was no such column. */
   hub_id: string | null;
-  /** Manufacturing batch/lot number. Nullable; unique when present. */
+  /** Batch this unit belongs to (e.g. "1" for the first 20 units). Nullable; shared across the batch. */
   batch_number: string | null;
   created_at: string;
   updated_at: string | null;

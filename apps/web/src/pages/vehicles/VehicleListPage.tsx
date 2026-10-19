@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, Zap, ChevronDown, ChevronRight, UserX,
+  BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, Zap, ChevronDown, ChevronRight, UserX, FileSpreadsheet,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
+import { BulkImportVehiclesDialog } from "@/components/vehicles/BulkImportVehiclesDialog";
 import { VehicleHistoryDialog } from "@/components/vehicles/VehicleHistoryDialog";
 import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
 import { useVehicles, useCreateVehicle, useUpdateVehicle, useUnassignVehicle } from "@/hooks/useVehicles";
@@ -43,6 +44,7 @@ export default function VehicleListPage() {
   const [status, setStatus] = useState<VehicleStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [historyTarget, setHistoryTarget] = useState<string | null>(null);
   const [maintenanceTarget, setMaintenanceTarget] = useState<Vehicle | null>(null);
   const [issueDescription, setIssueDescription] = useState("");
@@ -227,7 +229,10 @@ export default function VehicleListPage() {
   return (
     <div className="space-y-4 animate-fade-in">
       {hasAction(user, "vehicles", "create") && (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <FileSpreadsheet className="h-4 w-4" /> Bulk import
+          </Button>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" /> Add vehicle
           </Button>
@@ -300,6 +305,8 @@ export default function VehicleListPage() {
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
       </Card>
+
+      <BulkImportVehiclesDialog open={importOpen} onOpenChange={setImportOpen} />
 
       <VehicleFormDialog
         open={createOpen}

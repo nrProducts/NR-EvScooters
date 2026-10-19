@@ -46,12 +46,14 @@ vi.mock("../src/modules/refunds/refunds.service", () => ({
     applyRefundWebhookResult: vi.fn(async () => {}),
 }));
 const NO_LATE_FEE = { isLate: false, lateFee: 0, daysLate: 0, feePerDay: 0 };
+/** What computeInvoiceLateFee returns; reset to NO_LATE_FEE before each test. */
+const lateFeeRef = { current: NO_LATE_FEE };
 
 vi.mock("../src/modules/payments/renewalFee", () => ({
     // computeInvoiceLateFee is what the order path calls now: it resolves
     // WHICH date the invoice is late against before doing the arithmetic,
     // because a renewal invoice belongs to the period being bought.
-    computeInvoiceLateFee: async () => NO_LATE_FEE,
+    computeInvoiceLateFee: async () => lateFeeRef.current,
     computeLateRenewalFee: async () => NO_LATE_FEE,
     lateFeeRuleFor: async () => null,
     lateFeeRateFor: async () => 0,
@@ -130,6 +132,7 @@ beforeEach(() => {
     fake = createFakeSupabase((q) => handler(q));
     fakeRef.current = fake as unknown as Record<string, unknown>;
     ordersCreated = [];
+    lateFeeRef.current = NO_LATE_FEE;
 });
 
 describe("createOrderForInvoice — amount authority", () => {
@@ -152,6 +155,19 @@ describe("createOrderForInvoice — amount authority", () => {
         handler = baseHandler({ isPaid: true, balance: 0 });
         await expect(createOrderForInvoice("invoice-1", RIDER)).rejects.toThrow(/already been paid/i);
         expect(ordersCreated).toHaveLength(0);
+    });
+
+    it("still collects the late fee on a renewal a referral card brought to ₹0", async () => {
+        // Rider 9600999046 (UAT, 2026-10-18): ₹1 plan fee − ₹1 reward card = a
+        // ₹0 invoice that v_invoice_balances calls paid, with ₹10.50 of late
+        // fee still owed. Pay used to answer "already been paid".
+        handler = baseHandler({ isPaid: true, balance: 0 });
+        lateFeeRef.current = { isLate: true, lateFee: 10.5, daysLate: 7, feePerDay: 1.5 };
+
+        const result = await createOrderForInvoice("invoice-1", RIDER);
+
+        expect(result.amount).toBe(10.5);
+        expect(ordersCreated[0]?.amount).toBe(1050); // paise
     });
 
     it("refuses a voided invoice", async () => {

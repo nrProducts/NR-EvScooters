@@ -51,9 +51,21 @@ function dateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Mirrors apps/backend/src/common/dates.ts's noonOfBusinessDay — the two must agree. */
-function noonOfBusinessDay(dateOnly: string): string {
-  return `${dateOnly}T12:00:00+05:30`;
+/**
+ * The instant a period boundary on `dateOnly` falls at, for the
+ * subscription's `cycle_time` (the pickup time; 12:00 for older plans).
+ * Mirrors cycleBoundaryAt in apps/backend/src/common/dates.ts — the two must agree.
+ */
+export function cycleBoundaryAt(dateOnly: string, cycleTime?: string | null): string {
+  const [h = '12', m = '00', s = '00'] = (cycleTime ?? '12:00:00').split(':');
+  return `${dateOnly}T${h.padStart(2, '0')}:${m.padStart(2, '0')}:${s.slice(0, 2).padStart(2, '0')}+05:30`;
+}
+
+/** A cycle time (`"15:47:00"`) for display — "3:47 PM". Null reads as noon. */
+export function formatCycleTime(cycleTime?: string | null): string {
+  const [h = 12, m = 0] = (cycleTime ?? '12:00').split(':').map(Number);
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
 /**
@@ -69,10 +81,10 @@ function noonOfBusinessDay(dateOnly: string): string {
  * helper in apps/backend/src/common/dates.ts and supabase/functions/_shared
  * /dates.ts — all three must agree.
  */
-export function hasPassedCutover(dateOnly: string, now: Date = new Date()): boolean {
+export function hasPassedCutover(dateOnly: string, now: Date = new Date(), cycleTime?: string | null): boolean {
   // Strictly after, not >=: AT the cutover instant is still on time, same
   // rule the backend's lateDaysSince uses ("elapsedMs <= 0 is not late").
-  return now.getTime() > new Date(noonOfBusinessDay(dateOnly)).getTime();
+  return now.getTime() > new Date(cycleBoundaryAt(dateOnly, cycleTime)).getTime();
 }
 
 export interface RenewalEligibility {
@@ -103,13 +115,14 @@ export function getRenewalEligibility(
   nextDueAt: string | null,
   renewalStatus: 'none' | 'scheduled' | null,
   now: Date = new Date(),
+  cycleTime?: string | null,
 ): RenewalEligibility {
   const alreadyScheduled = renewalStatus === 'scheduled';
   const canRenew = !alreadyScheduled
     && (planStatus === 'active' || planStatus === 'past_due')
     && !!nextDueAt
     && dateStr(now) >= nextDueAt;
-  const isLate = !!nextDueAt && hasPassedCutover(nextDueAt, now);
+  const isLate = !!nextDueAt && hasPassedCutover(nextDueAt, now, cycleTime);
   return { canRenew, isLate, alreadyScheduled };
 }
 
@@ -265,6 +278,7 @@ export function describeReturnDeadline(
   if (daysLate === 0) {
     return t('requestReturn.deadline.dateByMidnight', {
       date: due.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
+      time: due.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
     });
   }
   return daysLate === 1

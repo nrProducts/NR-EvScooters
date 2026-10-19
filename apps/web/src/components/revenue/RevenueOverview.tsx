@@ -73,11 +73,11 @@ export function RevenueOverview({ part = "revenue" }: { part?: "revenue" | "depo
       </div>
 
       {isLoading || !data ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+          {Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           <RevenueStatCard
             label="Weekly Revenue" icon={CalendarRange} tone="info"
             value={weekQ.data?.net ?? 0}
@@ -108,6 +108,12 @@ export function RevenueOverview({ part = "revenue" }: { part?: "revenue" | "depo
             value={data.net} deltaPct={data.deltaPct?.net} previous={data.previous?.net}
             emphasis
             tooltip="Gross Revenue − Completed Refunds."
+          />
+          <RevenueStatCard
+            label="Deposits" icon={PiggyBank} tone="purple"
+            value={data.deposits.collected} deltaPct={data.deltaPct?.depositsCollected}
+            previous={data.previous?.deposits.collected}
+            tooltip="Security deposits collected this month. Rider money — refundable, not part of revenue."
           />
         </div>
       )}
