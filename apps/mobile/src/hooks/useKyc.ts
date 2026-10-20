@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { kycRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
-import type { ApiKycSummary, KycDocType } from '../types/api';
+import type { ApiDocument, ApiKycSummary, KycDocType } from '../types/api';
 import type { UpdateDocumentInput, UploadDocumentInput } from '../services/types';
 
 const asApiError = (err: unknown, fallback: string) =>
@@ -34,6 +34,19 @@ export function useMyKyc() {
     void load('initial');
   }, [load]);
 
+  /** Re-reads KYC and returns this type's pending/verified document, if any. Never throws. */
+  const findOnFile = useCallback(async (type: KycDocType): Promise<ApiDocument | null> => {
+    try {
+      const summary = await kycRepository.mine();
+      setKyc(summary);
+      return summary.documents.find(
+        (d) => d.document_type === type && d.verification_status !== 'rejected',
+      ) ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const actions = useMemo(
     () => ({
       /** Uploads a new document, or corrects a rejected one in place. */
@@ -51,6 +64,15 @@ export function useMyKyc() {
           await load('refresh');
           return result;
         } catch (err) {
+          // 409 on a NEW upload means the server already holds a pending or
+          // verified document of this type — typically an earlier attempt the
+          // app gave up on (timeout) but the server saved, or a second request
+          // from the same press. The rider's document is on file, so treat it
+          // as the success it is rather than a dead-end error.
+          if (!existingId && err instanceof ApiError && err.status === 409) {
+            const onFile = await findOnFile(input.doc_type);
+            if (onFile) return onFile;
+          }
           return asApiError(err, 'Upload failed. Please try again.');
         } finally {
           setUploading(null);
@@ -98,7 +120,7 @@ export function useMyKyc() {
         }
       },
     }),
-    [load],
+    [load, findOnFile],
   );
 
   return {
