@@ -61,6 +61,13 @@ export interface UserProfile {
     created_at: string;
     updated_at: string | null;
     deleted_at: string | null;
+    /**
+     * `users.last_seen_at` — the last time this user made an authenticated
+     * request (their last ACTIVITY), stamped by requireAuth and throttled to a
+     * few minutes. Null for an account that has never made an authed request.
+     * Distinct from `last_login_at` (sign-in only, from Auth) on UserDetail.
+     */
+    last_seen_at: string | null;
 
     /** `staff_profiles.staff_code`. Null for riders, who have no staff profile. */
     staff_code: string | null;
@@ -147,12 +154,9 @@ export interface UserListItem extends UserProfile {
 export interface UserDetail extends UserListItem {
     /**
      * Last successful sign-in, read from Supabase Auth rather than a column.
-     *
-     * There is no `users.last_login_at` in the new schema, and adding one
-     * would mean writing to the users table on every session resolution to
-     * duplicate a value `auth.users.last_sign_in_at` already keeps accurately.
-     * It costs one admin lookup, so it is on the detail response only — the
-     * list would need one per row.
+     * This is LOGIN only — distinct from `last_seen_at` on UserProfile, which
+     * is the last authenticated request (activity). Kept on the detail response
+     * because it costs one Auth admin lookup.
      */
     last_login_at: string | null;
     kyc_completion_percent: number;

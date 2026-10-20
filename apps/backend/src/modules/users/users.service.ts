@@ -43,7 +43,7 @@ import { scrubAuthIdentity } from "../privacy/privacy.erasure";
  */
 const PROFILE_SELECT = `
     id, full_name, email, phone, date_of_birth, gender, role, status,
-    photo_storage_path, preferred_language, created_at, updated_at, deleted_at,
+    photo_storage_path, preferred_language, created_at, updated_at, deleted_at, last_seen_at,
     rider_profiles(kyc_status, onboarding_completed_at),
     staff_profiles(staff_code, must_change_password, joined_on),
     user_addresses(line_1, line_2, city, state, postal_code, country, is_primary),
@@ -65,6 +65,7 @@ interface RawUserRow {
     created_at: string;
     updated_at: string | null;
     deleted_at: string | null;
+    last_seen_at: string | null;
     rider_profiles: unknown;
     staff_profiles: unknown;
     user_addresses: unknown;
@@ -137,6 +138,7 @@ function toProfile(row: RawUserRow): UserProfile {
         created_at: row.created_at,
         updated_at: row.updated_at,
         deleted_at: row.deleted_at,
+        last_seen_at: row.last_seen_at,
         staff_code: staff?.staff_code ?? null,
         must_change_password: staff?.must_change_password ?? false,
         joined_on: staff?.joined_on ?? null,
@@ -1675,7 +1677,7 @@ export async function hasActiveRentalForUser(userId: string): Promise<boolean> {
     return (count ?? 0) > 0;
 }
 
-/** Last successful sign-in, from Auth. See the note on UserDetail. */
+/** Last successful sign-in, from Auth. See the note on UserListItem. */
 async function lastLoginFor(userId: string): Promise<string | null> {
     const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId);
     if (error) {
