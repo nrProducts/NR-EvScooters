@@ -123,6 +123,20 @@ describe('invalidateForWrite', () => {
     expect(await has('e', '/legal/documents/terms')).toBe(true);
   });
 
+  it('a consent or terms write drops the cached profile (consent_up_to_date lives there)', async () => {
+    await seed('a', '/users/me');
+    await seed('b', '/users/me/consents');
+    await seed('c', '/legal/documents/terms');
+    invalidateForWrite('/users/me/consents');
+    expect(await has('a', '/users/me')).toBe(false);
+    expect(await has('b', '/users/me/consents')).toBe(false);
+    expect(await has('c', '/legal/documents/terms')).toBe(true);
+
+    await seed('d', '/users/me');
+    invalidateForWrite('/users/me/legal/acceptances');
+    expect(await has('d', '/users/me')).toBe(false);
+  });
+
   it('marking a notification read leaves everything else alone', async () => {
     await seed('a', '/users/me');
     await seed('b', '/users/me/notifications');

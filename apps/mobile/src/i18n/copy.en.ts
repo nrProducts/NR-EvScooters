@@ -216,10 +216,10 @@ export const en = {
         'The rate is {rate} per day. Whichever way you clear it — renewing or paying before a return — it is the same debt, and paying it once settles it for this cycle.',
     'lateFee.oneFee.noRate':
         'Whichever way you clear it — renewing or paying before a return — it is the same debt, and paying it once settles it for this cycle.',
-    'lateFee.example.intro': 'Say your plan ends at 12:00 PM on the 1st:',
-    'lateFee.example.onTime': '· Pay at 12:00 PM or earlier → on time, no fee',
-    'lateFee.example.sameDay': '· Pay any time after 12:00 PM the same day → 1 day{amount}',
-    'lateFee.example.nextDay': '· Pay after 12:00 PM the next day → 2 days{amount}',
+    'lateFee.example.intro': 'Say you picked up at 10:00 AM, so your plan ends at 10:00 AM on the 1st:',
+    'lateFee.example.onTime': '· Pay at 10:00 AM or earlier → on time, no fee',
+    'lateFee.example.sameDay': '· Pay any time after 10:00 AM the same day → 1 day{amount}',
+    'lateFee.example.nextDay': '· Pay after 10:00 AM the next day → 2 days{amount}',
     // The " = ₹668" tail. Its own key because the equals sign and spacing are
     // typography, not arithmetic, and a language may want them differently.
     'lateFee.example.equals': ' = {amount}',
@@ -785,7 +785,7 @@ export const en = {
     'bookingGate.completeKyc': 'Complete KYC',
 
     // --- request return -------------------------------------------------------
-    'requestReturn.deadline.todayByMidnight': 'today by 12:00 PM',
+    'requestReturn.deadline.todayByMidnight': 'today, by your pickup time',
     'requestReturn.deadline.dateByMidnight': '{date} by {time}',
     'requestReturn.deadline.daysAgoOne': '1 day ago',
     'requestReturn.deadline.daysAgoOther': '{days} days ago',

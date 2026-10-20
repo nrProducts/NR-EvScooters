@@ -269,7 +269,7 @@ export const api = {
     },
 
     // --- users -----------------------------------------------------------
-    me: () => request<ApiMe>('/users/me'),
+    me: (options: { fresh?: boolean } = {}) => request<ApiMe>('/users/me', { fresh: options.fresh }),
 
     updateMe: (patch: UpdateUserPayload) =>
         request<ApiUserDetail>('/users/me', { method: 'PATCH', body: patch }),
@@ -413,7 +413,10 @@ export const api = {
         if (input.expires_on) form.append('expires_on', input.expires_on);
         await appendFile(form, 'front', input.front);
         if (input.back) await appendFile(form, 'back', input.back);
-        return request<ApiDocument>('/users/me/kyc/documents', { method: 'POST', form });
+        // Two full-size phone photos over mobile data, then two storage writes
+        // server-side. At the default 20s the app gave up on uploads the server
+        // went on to save, and the rider's retry was refused as a duplicate.
+        return request<ApiDocument>('/users/me/kyc/documents', { method: 'POST', form, timeoutMs: 60000 });
     },
 
     updateMyDocument: async (
@@ -425,7 +428,8 @@ export const api = {
         if (input.expires_on) form.append('expires_on', input.expires_on);
         if (input.front) await appendFile(form, 'front', input.front);
         if (input.back) await appendFile(form, 'back', input.back);
-        return request<ApiDocument>(`/users/me/kyc/documents/${documentId}`, { method: 'PATCH', form });
+        // Same payload size as uploadMyDocument — same timeout.
+        return request<ApiDocument>(`/users/me/kyc/documents/${documentId}`, { method: 'PATCH', form, timeoutMs: 60000 });
     },
 
     deleteMyDocument: (documentId: string) =>

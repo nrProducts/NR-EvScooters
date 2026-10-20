@@ -329,6 +329,17 @@ export default function BookingListPage() {
       key: "payment_due",
       render: (b) => {
         if (!b.next_due_at) return "—";
+        // Before pickup cycle_time is still the column default (12:00) and the
+        // due date is provisional — pickup re-dates the period and sets the
+        // real clock time. Same rule as the Rental Period column above.
+        if (b.status !== "fulfilled" && b.status !== "completed") {
+          return (
+            <span className="text-muted-foreground">
+              {formatDate(b.next_due_at)}
+              <span className="text-[11px]"> · at pickup time</span>
+            </span>
+          );
+        }
         if (b.plan_status !== "past_due") {
           // Active (paid up) or paused (clock frozen) — just the date, no warning.
           return (

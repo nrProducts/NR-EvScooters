@@ -61,8 +61,8 @@ export class SupabaseAuthRepository implements AuthRepository {
 }
 
 export class ApiUserRepository implements UserRepository {
-    me(): Promise<ApiMe> {
-        return api.me();
+    me(options?: { fresh?: boolean }): Promise<ApiMe> {
+        return api.me(options);
     }
     updateMe(patch: UpdateUserPayload): Promise<ApiUserDetail> {
         return api.updateMe(patch);

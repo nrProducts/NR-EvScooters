@@ -94,7 +94,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     refreshProfile: async () => {
         set({ loadingProfile: true, error: null });
         try {
-            const profile = await userRepository.me();
+            // Always fresh: every caller refreshes BECAUSE something just
+            // changed (consent, KYC, a booking), so a cached copy is exactly
+            // the stale answer the routing gate must not see.
+            const profile = await userRepository.me({ fresh: true });
             lastProfileAt = Date.now();
             set({ profile, loadingProfile: false });
         } catch (err) {
