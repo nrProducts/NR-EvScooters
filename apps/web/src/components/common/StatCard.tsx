@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { CardContent } from "@/components/ui/card";
 import { MotionCard } from "@/components/motion/MotionCard";
+import { CountUp } from "@/components/common/CountUp";
 import { cn } from "@/lib/utils";
 
 export interface StatCardProps {
@@ -28,7 +29,12 @@ export function StatCard({ label, value, icon: Icon, trend, tone = "default" }: 
       <CardContent className="flex h-full items-center justify-between gap-2 p-3.5">
         <div className="flex min-w-0 flex-col gap-1">
           <span className="truncate text-[0.6875rem] font-medium text-muted-foreground">{label}</span>
-          <span className="text-lg font-semibold tracking-tight">{value}</span>
+          <span className="text-lg font-semibold tracking-tight">
+            {/* Numeric counts animate up from 0; pre-formatted strings render as-is. */}
+            {typeof value === "number"
+              ? <CountUp value={value} format={(n) => Math.round(n).toLocaleString("en-IN")} />
+              : value}
+          </span>
           {trend && (
             <span
               className={cn(
