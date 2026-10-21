@@ -3,6 +3,7 @@ import { ArrowDownRight, ArrowUpRight, Info } from "lucide-react";
 import { CardContent } from "@/components/ui/card";
 import { MotionCard } from "@/components/motion/MotionCard";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CountUp } from "@/components/common/CountUp";
 import { cn, formatCurrency } from "@/lib/utils";
 
 type Tone = "primary" | "neutral" | "muted-red" | "info";
@@ -74,7 +75,7 @@ export function RevenueKpiCard({
         </div>
 
         <p className={cn("mt-1.5 font-semibold tracking-tight", emphasis ? "text-2xl" : "text-xl")}>
-          {formatCurrency(value)}
+          <CountUp value={value} format={formatCurrency} />
         </p>
 
         <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[0.6875rem]">

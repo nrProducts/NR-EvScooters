@@ -32,7 +32,7 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
-import { initials, formatDate, formatPhoneLocal } from "@/lib/utils";
+import { initials, formatDate, formatDateTime, timeAgo, formatPhoneLocal } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "incomplete", "pending", "partially_verified", "verified", "rejected"];
@@ -229,6 +229,19 @@ export default function UserListPage() {
       hideOnMobile: true,
     },
     { header: "Joined", key: "created_at", sortKey: "created_at", render: (u) => formatDate(u.created_at), hideOnMobile: true },
+    {
+      header: "Last active",
+      key: "last_seen_at",
+      render: (u) => (u.last_seen_at ? (
+        <div className="min-w-0">
+          <p className="truncate">{formatDateTime(u.last_seen_at)}</p>
+          <p className="truncate text-xs text-muted-foreground">{timeAgo(u.last_seen_at)}</p>
+        </div>
+      ) : (
+        <span className="text-muted-foreground">Never</span>
+      )),
+      hideOnMobile: true,
+    },
     {
       header: "Actions",
       key: "actions",

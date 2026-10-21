@@ -6,6 +6,7 @@ import { CardContent, CardHeader } from "@/components/ui/card";
 import { MotionCard } from "@/components/motion/MotionCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/EmptyState";
+import { CountUp } from "@/components/common/CountUp";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { RevenueGranularity, RevenueTrendPoint } from "@/services/api/revenue";
 
@@ -111,7 +112,9 @@ export function RevenuePerformanceChart({
             <Skeleton className="mt-1.5 h-8 w-40" />
           ) : (
             <div className="mt-0.5 flex items-baseline gap-2">
-              <span className="text-2xl font-semibold tracking-tight">{formatCurrency(total)}</span>
+              <span className="text-2xl font-semibold tracking-tight">
+                <CountUp value={total} format={formatCurrency} />
+              </span>
               {deltaPct != null && (
                 <span className={cn("flex items-center gap-0.5 text-xs font-semibold", up ? "text-primary" : "text-destructive")}>
                   {up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}

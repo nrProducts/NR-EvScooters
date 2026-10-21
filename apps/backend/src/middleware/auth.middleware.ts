@@ -76,7 +76,7 @@ export async function requireAuth(req: AuthedRequest, _res: Response, next: Next
         // it is the only 1:1 child this path needs, and it is legitimately
         // absent for staff and admin accounts (see handle_new_auth_user);
         // an embed returns null there instead of erroring.
-        .select("id, email, role, status, deleted_at, rider_profiles(kyc_status)")
+        .select("id, email, role, status, deleted_at, last_seen_at, rider_profiles(kyc_status)")
         .eq("id", data.user.id)
         .maybeSingle();
 
@@ -123,7 +123,34 @@ export async function requireAuth(req: AuthedRequest, _res: Response, next: Next
         kycStatus: extractKycStatus(profile),
         isDeleted: false,
     };
+
+    // Record last activity. Fire-and-forget and throttled, so the hot path is
+    // not slowed and we don't write on every single request — the admin "last
+    // active" column only needs minute-level freshness.
+    void touchLastSeen(profile.id, profile.last_seen_at);
+
     next();
+}
+
+/** How stale `last_seen_at` must be before a request bothers to rewrite it. */
+const LAST_SEEN_THROTTLE_MS = 5 * 60 * 1000;
+
+/**
+ * Stamps `users.last_seen_at` with now, unless it was already written within
+ * the throttle window. Never throws into the request — last activity is a
+ * nice-to-have, not a reason to fail an otherwise-authenticated call.
+ */
+async function touchLastSeen(userId: string, current: string | null): Promise<void> {
+    try {
+        if (current && Date.now() - Date.parse(current) < LAST_SEEN_THROTTLE_MS) return;
+        const { error } = await supabaseAdmin
+            .from("users")
+            .update({ last_seen_at: new Date().toISOString() })
+            .eq("id", userId);
+        if (error) console.warn("[auth] could not update last_seen_at", { userId, error: error.message });
+    } catch (err) {
+        console.warn("[auth] last_seen_at update threw", { userId, error: (err as Error)?.message });
+    }
 }
 
 /**

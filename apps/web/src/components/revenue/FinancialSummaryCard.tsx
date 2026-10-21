@@ -1,6 +1,7 @@
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MotionCard } from "@/components/motion/MotionCard";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CountUp } from "@/components/common/CountUp";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { RevenueSummary } from "@/services/api/revenue";
 
@@ -12,7 +13,9 @@ function Line({ label, value, negative, total }: { label: string; value: number;
     )}>
       <span className={cn(total ? "text-foreground" : "text-muted-foreground")}>{label}</span>
       <span className={cn("tabular-nums", negative && "text-destructive", total && "text-primary")}>
-        {negative && value > 0 ? "−" : ""}{formatCurrency(value)}
+        {negative && value > 0 ? "−" : ""}
+        {/* Only the net total (the hero figure) counts up; breakdown rows stay static to avoid noise. */}
+        {total ? <CountUp value={value} format={formatCurrency} /> : formatCurrency(value)}
       </span>
     </div>
   );

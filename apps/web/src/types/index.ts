@@ -188,7 +188,10 @@ export interface AppUser {
   updated_at: string;
   deleted_at: string | null;
   staff_code: string | null;
+  /** Last sign-in (login only), from Supabase Auth — present on the detail response. */
   last_login_at: string | null;
+  /** Last authenticated request (last activity), from `users.last_seen_at`. Null if never active. */
+  last_seen_at: string | null;
   /** One value now — `users.role`. Was an array off `user_roles`. */
   role: BackendRoleName;
   assigned_vehicle: { id: string; vin: string; model: string; name: string; registration_number: string } | null;
