@@ -1,17 +1,48 @@
-import { ArrowRight, BatteryCharging, Check } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ArrowRight, BatteryCharging, Bike, Check } from "lucide-react";
 import { Container } from "@/components/ui/Container";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonVariants } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { ScooterIllustration } from "@/components/ui/ScooterIllustration";
 import { Blob } from "@/components/ui/Blob";
 import { Reveal } from "@/components/ui/Reveal";
 import { useBookingCta } from "@/lib/bookingCta";
+import { useSiteData } from "@/lib/siteData";
+import { trackEvent } from "@/lib/analytics";
 import { PRE_BOOKING_MODE } from "@/content/launchMode";
 
 const TRUST_POINTS = ["Flexible plans", "Unlimited kilometres", "Battery swapping", "Easy booking"];
 
 export function Hero() {
   const bookingCta = useBookingCta("hero");
+  // Live fleet count from GET /public/stats (loaded once on page mount by
+  // SiteDataProvider). The button just reveals it — no second fetch needed.
+  const { stats, plansStatus, live } = useSiteData();
+  const [checked, setChecked] = useState(false);
+
+  const available = stats.scootersAvailable;
+  let availabilityMessage: ReactNode;
+  if (!live && plansStatus !== "error") {
+    availabilityMessage = "Checking availability…";
+  } else if (available != null && available > 0) {
+    availabilityMessage = (
+      <>
+        <strong className="font-semibold text-foreground">{available}</strong>{" "}
+        scooter{available === 1 ? "" : "s"} available to book right now.
+      </>
+    );
+  } else if (available === 0) {
+    availabilityMessage = PRE_BOOKING_MODE
+      ? "Launching soon in Chennai — pre-book to reserve yours."
+      : "All scooters are out right now — book to grab the next one.";
+  } else {
+    availabilityMessage = "Couldn't check right now. Please try again in a moment.";
+  }
+
+  const handleCheckAvailability = () => {
+    setChecked(true);
+    trackEvent("check_availability");
+  };
 
   return (
     <section id="home" className="relative overflow-hidden bg-background">
@@ -45,7 +76,28 @@ export function Hero() {
             <Button href="#how-it-works" variant="light" size="lg" className="border border-border">
               How it works
             </Button>
+            <button
+              type="button"
+              onClick={handleCheckAvailability}
+              className={buttonVariants({ variant: "outline", size: "lg", className: "w-full sm:w-auto" })}
+            >
+              <Bike className="h-4 w-4" aria-hidden />
+              Check availability
+            </button>
           </div>
+
+          {checked && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mt-4 inline-flex items-center gap-2.5 rounded-2xl bg-sage/60 px-4 py-2.5 ring-1 ring-border"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white shadow-soft">
+                <Bike className="h-3.5 w-3.5 text-primary" aria-hidden />
+              </span>
+              <p className="text-sm text-foreground/80">{availabilityMessage}</p>
+            </div>
+          )}
 
           {/* Subtle, not a warning banner — per spec, the site should read as
               "getting ready", never "unavailable". */}
