@@ -1064,16 +1064,17 @@ export const hi: Copy = {
     'ui.searchLabelFor': '{field} खोजें',
 
     // --- vehicle documents card (placeholder) -------------------------------
-    'vehicleDocs.title': 'वाहन दस्तावेज़',
+    'vehicleDocs.title': 'सवारी के दस्तावेज़',
+    'vehicleDocs.dl': 'ड्राइविंग लाइसेंस',
+    'vehicleDocs.dlHint': 'KYC में दिया गया आपका लाइसेंस',
     'vehicleDocs.rc': 'पंजीकरण प्रमाणपत्र',
     'vehicleDocs.rcHint': 'स्कूटर के पंजीकृत होने का प्रमाण (RC)',
     'vehicleDocs.insurance': 'बीमा',
     'vehicleDocs.insuranceHint': 'सक्रिय थर्ड-पार्टी कवर',
-    'vehicleDocs.puc': 'PUC प्रमाणपत्र',
-    'vehicleDocs.pucHint': 'प्रदूषण नियंत्रण',
     'vehicleDocs.footer':
         'हमारी टीम के अपलोड करना पूरा करने के बाद आप यहां अपने स्कूटर के दस्तावेज़ देख और डाउनलोड कर पाएंगे।',
     'vehicleDocs.expiresOn': '{date} तक मान्य',
+    'vehicleDocs.expiredOn': '{date} को समाप्त हो गया',
     'vehicleDocs.error.openFailed.title': 'दस्तावेज़ नहीं खोला जा सका',
 
     // --- app shell (header + profile sheet) ---------------------------------

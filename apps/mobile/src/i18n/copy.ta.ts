@@ -1069,16 +1069,17 @@ export const ta: Copy = {
     'ui.searchLabelFor': '{field} தேடு',
 
     // --- vehicle documents card (placeholder) -------------------------------
-    'vehicleDocs.title': 'வாகன ஆவணங்கள்',
+    'vehicleDocs.title': 'பயண ஆவணங்கள்',
+    'vehicleDocs.dl': 'ஓட்டுநர் உரிமம்',
+    'vehicleDocs.dlHint': 'KYC-இல் வழங்கிய உங்கள் உரிமம்',
     'vehicleDocs.rc': 'பதிவுச் சான்றிதழ்',
     'vehicleDocs.rcHint': 'ஸ்கூட்டர் பதிவு செய்யப்பட்டதற்கான சான்று (RC)',
     'vehicleDocs.insurance': 'காப்பீடு',
     'vehicleDocs.insuranceHint': 'செயலில் உள்ள மூன்றாம் தரப்பு காப்பீடு',
-    'vehicleDocs.puc': 'PUC சான்றிதழ்',
-    'vehicleDocs.pucHint': 'மாசுக் கட்டுப்பாடு',
     'vehicleDocs.footer':
         'எங்கள் குழு பதிவேற்றத்தை முடித்தவுடன் உங்கள் ஸ்கூட்டரின் ஆவணங்களை இங்கே பார்க்கவும் பதிவிறக்கவும் முடியும்.',
     'vehicleDocs.expiresOn': '{date} வரை செல்லுபடியாகும்',
+    'vehicleDocs.expiredOn': '{date} அன்று காலாவதியானது',
     'vehicleDocs.error.openFailed.title': 'ஆவணத்தைத் திறக்க முடியவில்லை',
 
     // --- app shell (header + profile sheet) ---------------------------------
