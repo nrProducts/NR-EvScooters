@@ -377,7 +377,7 @@ export async function createVehicleDocument(
     let storagePath: string | null = null;
     if (file) {
         const mime = assertValidVehicleDocumentFile(file);
-        storagePath = buildVehicleDocumentStoragePath(vehicleId, input.document_type, mime);
+        storagePath = buildVehicleDocumentStoragePath(vehicleId, input.doc_type, mime);
         await uploadVehicleDocumentFile(storagePath, file, mime);
     }
 
@@ -385,7 +385,7 @@ export async function createVehicleDocument(
         .from("vehicle_documents")
         .insert({
             vehicle_id: vehicleId,
-            document_type: input.document_type,
+            document_type: input.doc_type,
             document_number: input.doc_number,
             issued_on: input.issued_on ?? null,
             expires_on: input.expires_on,
@@ -407,7 +407,7 @@ export async function createVehicleDocument(
         entityType: "vehicle_document",
         entityId: data.id,
         before: null,
-        after: { vehicle_id: vehicleId, document_type: input.document_type, expires_on: input.expires_on },
+        after: { vehicle_id: vehicleId, document_type: input.doc_type, expires_on: input.expires_on },
     });
 
     return requireVehicleDocumentRow(data.id);

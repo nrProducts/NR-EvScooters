@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { updateVehicleDocumentBody } from "../src/modules/vehicles/vehicles.validation";
+import { createVehicleDocumentBody, updateVehicleDocumentBody } from "../src/modules/vehicles/vehicles.validation";
 
 describe("updateVehicleDocumentBody (admin edit, multipart)", () => {
     it("accepts a full edit from the admin form", () => {
@@ -24,5 +24,15 @@ describe("updateVehicleDocumentBody (admin edit, multipart)", () => {
         expect(updateVehicleDocumentBody.safeParse({ expires_on: "17-10-2027" }).success).toBe(false);
         expect(updateVehicleDocumentBody.safeParse({ doc_number: "   " }).success).toBe(false);
         expect(updateVehicleDocumentBody.safeParse({ doc_type: "insurance" }).success).toBe(false);
+    });
+});
+
+describe("createVehicleDocumentBody (admin add, multipart)", () => {
+    it("parses to the keys CreateVehicleDocumentInput / the service read — doc_type, not document_type", () => {
+        const r = createVehicleDocumentBody.safeParse({
+            doc_type: "registration", doc_number: "TN14AW1375", expires_on: "2041-09-08",
+        });
+        expect(r.success).toBe(true);
+        expect(r.success && r.data).toEqual({ doc_type: "registration", doc_number: "TN14AW1375", expires_on: "2041-09-08" });
     });
 });

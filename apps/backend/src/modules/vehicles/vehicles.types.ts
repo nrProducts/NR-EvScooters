@@ -65,7 +65,8 @@ export interface VehicleRow {
 export type VehicleDocumentType = "registration" | "insurance" | "puc" | "fitness" | "permit";
 
 export interface CreateVehicleDocumentInput {
-    document_type: VehicleDocumentType;
+    // Must match createVehicleDocumentBody — the validator replaces req.body with its parse, so any other key name arrives as undefined.
+    doc_type: VehicleDocumentType;
     doc_number: string;
     issued_on?: string;
     expires_on: string;

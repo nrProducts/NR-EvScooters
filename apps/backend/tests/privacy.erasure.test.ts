@@ -81,6 +81,9 @@ const NOT_PERSONAL_DATA = new Set([
     // Security/session metadata, not personal data — same category as
     // created_at/updated_at.
     "last_login_at",
+    // Last authenticated request (20261020100000_user_last_seen_at.sql) — the
+    // activity counterpart of last_login_at, same category.
+    "last_seen_at",
     "must_change_password",
     // Which of the app's 3 shipped languages the rider's UI renders in — a
     // display preference, not data ABOUT the person, and not something a
