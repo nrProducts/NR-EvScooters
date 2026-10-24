@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "../../config/supabase";
-import { businessRule, conflict, notFound } from "../../common/AppError";
+import { badRequest, businessRule, conflict, notFound } from "../../common/AppError";
 import { paginate, toRange } from "../../common/pagination";
 import { writeAudit } from "../../common/audit";
 import { calculateRentalPeriod } from "../../common/dates";
@@ -105,7 +105,7 @@ function toChargeRuleRow(
 ): ChargeRuleRow {
     return {
         id: row.id,
-        charge_code: row.code,
+        charge_code: baseRuleCode(row.code, row.scope, row.scope_ref_id),
         charge_name: row.name,
         description: row.description,
         amount_type: row.amount_type,
@@ -248,7 +248,11 @@ async function listRules(
         .select(RULE_COLUMNS, { count: "exact" })
         .eq("kind", kind);
 
-    if (filters.code) query = query.eq("code", filters.code);
+    // Scoped rules are stored under ruleCodeFor's qualified code, so a code
+    // filter alongside a vehicle filter has to qualify it the same way.
+    if (filters.code) {
+        query = query.eq("code", ruleCodeFor(filters.code, filters.vehicleId ? "vehicle" : "global", filters.vehicleId));
+    }
     if (filters.scope) query = query.eq("scope", filters.scope as ChargeRuleRow["scope"]);
     if (filters.vehicleId) query = query.eq("scope_ref_id", filters.vehicleId);
     if (filters.active !== undefined) query = query.eq("is_active", filters.active);
@@ -294,12 +298,29 @@ export async function getChargeRuleById(id: string): Promise<ChargeRuleRow> {
  * global `transaction_fee` and a vehicle-scoped one could coexist under the
  * same code. They cannot now.
  *
- * The scoped rule therefore carries a qualified code — `<code>:<ref>` — the
- * same convention the per-subscription late-fee override uses. That keeps the
- * uniqueness meaningful (one rule per code) while still allowing an override.
+ * The scoped rule therefore carries a qualified code — `<code>_<ref>` with the
+ * ref's hyphens as underscores — the same convention the per-subscription
+ * late-fee override uses (lateFeeOverrideCode). That keeps the uniqueness
+ * meaningful (one rule per code) while still allowing an override.
+ *
+ * It used to be `<code>:<ref>`, which `pricing_rules.code`'s check
+ * (`^[a-z][a-z0-9_]*$`) rejects: every non-global rule failed to insert with
+ * a 23514 that surfaced as a 500. Migration 52 found and fixed the identical
+ * bug in the late-fee override; this one was missed.
  */
-function ruleCodeFor(code: string, scope: string, refId: string | null | undefined): string {
-    return scope === "global" || !refId ? code : `${code}:${refId}`;
+export function ruleCodeFor(code: string, scope: string, refId: string | null | undefined): string {
+    return scope === "global" || !refId ? code : `${code}_${refId.replace(/-/g, "_")}`;
+}
+
+/**
+ * The console's code for a stored rule — ruleCodeFor's suffix removed, so a
+ * vehicle-scoped `other_<uuid>` reads back as `other` and the edit form and
+ * code labels keep working.
+ */
+export function baseRuleCode(code: string, scope: string, refId: string | null | undefined): string {
+    if (scope === "global" || !refId) return code;
+    const suffix = `_${refId.replace(/-/g, "_")}`;
+    return code.endsWith(suffix) ? code.slice(0, -suffix.length) : code;
 }
 
 async function createRule(
@@ -347,6 +368,11 @@ async function createRule(
                     ? "A rule already exists for this code. Edit or deactivate it first."
                     : "A rule already exists for this code at this scope. Edit or deactivate it first.",
             );
+        }
+        // A check constraint (code format, date range, percentage cap, scope
+        // ref) is bad input, not a server fault — don't let it become a 500.
+        if (error.code === "23514") {
+            throw badRequest("This rule's values aren't valid. Check the code, dates and amount.");
         }
         throw error;
     }
@@ -399,7 +425,12 @@ async function updateRule(
         .eq("kind", kind)
         .select(RULE_COLUMNS)
         .maybeSingle();
-    if (error) throw error;
+    if (error) {
+        if (error.code === "23514") {
+            throw badRequest("This rule's values aren't valid. Check the dates and amount.");
+        }
+        throw error;
+    }
     if (!data) throw notFound(kind === "charge" ? "Charge rule not found." : "Discount rule not found.");
     const row = data as unknown as RawRuleRow;
     return { row, vehicles: await vehiclesFor([row]) };

@@ -3780,6 +3780,7 @@ export type Database = {
           full_name: string
           gender: string | null
           id: string
+          last_seen_at: string | null
           phone: string | null
           photo_storage_path: string | null
           preferred_language: string
@@ -3799,6 +3800,7 @@ export type Database = {
           full_name: string
           gender?: string | null
           id: string
+          last_seen_at?: string | null
           phone?: string | null
           photo_storage_path?: string | null
           preferred_language?: string
@@ -3818,6 +3820,7 @@ export type Database = {
           full_name?: string
           gender?: string | null
           id?: string
+          last_seen_at?: string | null
           phone?: string | null
           photo_storage_path?: string | null
           preferred_language?: string

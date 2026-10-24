@@ -147,6 +147,8 @@ export default function KycScreen() {
    */
   const isOnFile = (doc?: ApiDocument) => !!doc && doc.verification_status !== 'rejected';
 
+  const uploadInFlight = useRef(false);
+
   const upload = async (type: KycDocType, draft: DraftDoc, existing?: ApiDocument) => {
     if (!draft.doc_number.trim()) {
       notify(t('kyc.error.docNumber.title'), t('kyc.error.docNumber.message'));
@@ -173,17 +175,28 @@ export default function KycScreen() {
       return;
     }
 
+    // The button's `uploading` disable lands only after a re-render, so a fast
+    // double press could send two uploads; the second was refused with
+    // "already awaiting review". A ref blocks it synchronously.
+    if (uploadInFlight.current) return;
+    uploadInFlight.current = true;
+
     const correcting = existing?.verification_status === 'rejected' ? existing.id : undefined;
-    const result = await actions.upload(
-      {
-        doc_type: type,
-        doc_number: draft.doc_number.trim(),
-        expires_on: draft.expires_on.trim() || undefined,
-        front: draft.front!,
-        back: draft.back ?? undefined,
-      },
-      correcting,
-    );
+    let result;
+    try {
+      result = await actions.upload(
+        {
+          doc_type: type,
+          doc_number: draft.doc_number.trim(),
+          expires_on: draft.expires_on.trim() || undefined,
+          front: draft.front!,
+          back: draft.back ?? undefined,
+        },
+        correcting,
+      );
+    } finally {
+      uploadInFlight.current = false;
+    }
 
     if (result instanceof ApiError) {
       notify(t('kyc.error.uploadFailed'), result.message);

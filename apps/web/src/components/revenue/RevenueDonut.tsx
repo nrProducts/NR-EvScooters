@@ -3,6 +3,7 @@ import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MotionCard } from "@/components/motion/MotionCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/EmptyState";
+import { CountUp } from "@/components/common/CountUp";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { RevenueByTypeRow } from "@/services/api/revenue";
 
@@ -60,7 +61,7 @@ export function RevenueDonut({
               </ResponsiveContainer>
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground">Gross</span>
-                <span className="text-lg font-semibold tracking-tight">{formatCurrency(gross)}</span>
+                <span className="text-lg font-semibold tracking-tight"><CountUp value={gross} format={formatCurrency} /></span>
               </div>
             </div>
 

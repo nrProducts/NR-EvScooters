@@ -1,17 +1,26 @@
-import { ArrowRight, BatteryCharging, Check } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, BatteryCharging, Bike, Check } from "lucide-react";
 import { Container } from "@/components/ui/Container";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonVariants } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { ScooterIllustration } from "@/components/ui/ScooterIllustration";
 import { Blob } from "@/components/ui/Blob";
 import { Reveal } from "@/components/ui/Reveal";
+import { AvailabilityModal } from "@/components/AvailabilityModal";
 import { useBookingCta } from "@/lib/bookingCta";
+import { trackEvent } from "@/lib/analytics";
 import { PRE_BOOKING_MODE } from "@/content/launchMode";
 
 const TRUST_POINTS = ["Flexible plans", "Unlimited kilometres", "Battery swapping", "Easy booking"];
 
 export function Hero() {
   const bookingCta = useBookingCta("hero");
+  const [availabilityOpen, setAvailabilityOpen] = useState(false);
+
+  const handleCheckAvailability = () => {
+    setAvailabilityOpen(true);
+    trackEvent("check_availability");
+  };
 
   return (
     <section id="home" className="relative overflow-hidden bg-background">
@@ -45,7 +54,16 @@ export function Hero() {
             <Button href="#how-it-works" variant="light" size="lg" className="border border-border">
               How it works
             </Button>
+            <button
+              type="button"
+              onClick={handleCheckAvailability}
+              className={buttonVariants({ variant: "outline", size: "lg", className: "w-full sm:w-auto" })}
+            >
+              <Bike className="h-4 w-4" aria-hidden />
+              Check availability
+            </button>
           </div>
+
 
           {/* Subtle, not a warning banner — per spec, the site should read as
               "getting ready", never "unavailable". */}
@@ -87,6 +105,13 @@ export function Hero() {
           </div>
         </Reveal>
       </Container>
+
+      <AvailabilityModal
+        open={availabilityOpen}
+        onClose={() => setAvailabilityOpen(false)}
+        bookingHref={bookingCta.href}
+        onBook={bookingCta.onClick}
+      />
     </section>
   );
 }

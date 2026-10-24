@@ -830,16 +830,17 @@ export const en = {
     'ui.searchLabelFor': 'Search {field}',
 
     // --- vehicle documents card (placeholder) -------------------------------
-    'vehicleDocs.title': 'Vehicle Documents',
+    'vehicleDocs.title': 'Riding Documents',
+    'vehicleDocs.dl': 'Driving Licence',
+    'vehicleDocs.dlHint': 'Your licence from KYC',
     'vehicleDocs.rc': 'Registration Certificate',
     'vehicleDocs.rcHint': 'Proof the scooter is registered (RC)',
     'vehicleDocs.insurance': 'Insurance',
     'vehicleDocs.insuranceHint': 'Active third-party cover',
-    'vehicleDocs.puc': 'PUC Certificate',
-    'vehicleDocs.pucHint': 'Pollution Under Control',
     'vehicleDocs.footer':
         "You'll be able to view and download each document here once it's uploaded.",
     'vehicleDocs.expiresOn': 'Valid until {date}',
+    'vehicleDocs.expiredOn': 'Expired on {date}',
     'vehicleDocs.error.openFailed.title': "Couldn't open document",
 
     // --- app shell (header + profile sheet) ---------------------------------

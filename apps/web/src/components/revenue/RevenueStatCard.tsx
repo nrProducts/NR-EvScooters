@@ -3,6 +3,7 @@ import { ArrowDownRight, ArrowUpRight, Info } from "lucide-react";
 import { CardContent } from "@/components/ui/card";
 import { MotionCard } from "@/components/motion/MotionCard";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CountUp } from "@/components/common/CountUp";
 import { cn, formatCurrency } from "@/lib/utils";
 
 type Tone = "default" | "success" | "warning" | "destructive" | "info" | "purple";
@@ -65,7 +66,7 @@ export function RevenueStatCard({
             )}
           </span>
           <span className={cn("font-semibold tracking-tight", emphasis ? "text-xl" : "text-lg")}>
-            {fmt(value)}
+            <CountUp value={value} format={fmt} />
           </span>
           {(deltaPct != null || subtext) && (
             <span

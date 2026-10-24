@@ -1,49 +1,70 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, Linking } from 'react-native';
-import { FileText, Lock, ShieldCheck, Leaf, ChevronRight } from 'lucide-react-native';
+import { FileText, Lock, ShieldCheck, IdCard, ChevronRight } from 'lucide-react-native';
 import { Spinner } from './Spinner';
-import { rentalRepository } from '../services';
+import { kycRepository, rentalRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
-import { notify } from '../lib/confirm';
+import { chooseAction, notify } from '../lib/confirm';
 import { COLORS } from '../constants/theme';
 import { useT, type CopyKey } from '../i18n';
-import type { ApiVehicleDocument, VehicleDocType } from '../types/api';
+import type { ApiDocument, ApiVehicleDocument, VehicleDocType } from '../types/api';
 
 /**
- * The vehicle paperwork a rider may be asked to produce at a checkpoint —
- * self-fetches the current vehicle's documents, same standalone-on-focus
- * pattern as ReturnStatusCard. Real data now: GET /rentals/me/vehicle-documents
- * resolves the rider's currently-assigned vehicle server-side and returns
- * whatever public.vehicle_documents rows exist for it, each with a signed
- * URL minted on tap rather than embedded — see vehicles.documents.storage.ts.
+ * The paperwork a rider may be asked to produce at a checkpoint —
+ * self-fetches on mount, same standalone pattern as ReturnStatusCard.
  *
- * Only the three types a rider would ever be asked for at a checkpoint are
- * shown; `fitness`/`permit` exist in the schema for fleet ops but have no
- * row in this card. A type with no document row yet, or a row with no file
- * uploaded, renders locked — same as before, just per-document now instead
- * of the whole card being a placeholder.
+ * Two sources:
+ *  · The rider's own driving licence, from their KYC
+ *    (GET /users/me/kyc). Every rider holding a scooter has one: it is a
+ *    mandatory KYC type and a rental cannot start without verified KYC.
+ *  · The scooter's RC and insurance (GET /rentals/me/vehicle-documents),
+ *    which resolves the currently-assigned vehicle server-side.
+ * Both open through a signed URL minted on tap rather than embedded.
+ *
+ * `fitness`/`permit` exist in the vehicle schema for fleet ops but have no
+ * row here. Nor does `puc`: the fleet is battery-electric, which is exempt
+ * from Pollution Under Control certification, so that row could only ever
+ * render locked. A document not uploaded yet renders locked.
  */
-const SHOWN_TYPES: { type: VehicleDocType; icon: typeof FileText; labelKey: CopyKey; hintKey: CopyKey }[] = [
+const VEHICLE_TYPES: { type: VehicleDocType; icon: typeof FileText; labelKey: CopyKey; hintKey: CopyKey }[] = [
   { type: 'registration', icon: FileText, labelKey: 'vehicleDocs.rc', hintKey: 'vehicleDocs.rcHint' },
   { type: 'insurance', icon: ShieldCheck, labelKey: 'vehicleDocs.insurance', hintKey: 'vehicleDocs.insuranceHint' },
-  { type: 'puc', icon: Leaf, labelKey: 'vehicleDocs.puc', hintKey: 'vehicleDocs.pucHint' },
 ];
+
+/** The licence to show: the latest one that hasn't been rejected (a rejected upload is not a licence on file). */
+function pickLicence(docs: ApiDocument[]): ApiDocument | null {
+  return (
+    docs
+      .filter((d) => d.document_type === 'driving_licence' && d.verification_status !== 'rejected')
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null
+  );
+}
+
+interface Row {
+  key: string;
+  icon: typeof FileText;
+  label: string;
+  subtitle: string;
+  available: boolean;
+  onOpen?: () => Promise<string | null>;
+}
 
 export const VehicleDocumentsCard: React.FC = () => {
   const { t } = useT();
   const [docs, setDocs] = useState<ApiVehicleDocument[]>([]);
+  const [licence, setLicence] = useState<ApiDocument | null>(null);
   const [loading, setLoading] = useState(true);
-  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [openingKey, setOpeningKey] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
-    rentalRepository
-      .vehicleDocuments()
-      .then(setDocs)
-      .catch(() => {
-        // Non-critical enhancement card — the rest of My Scooter still works
-        // without it, so fail quiet rather than show an error state here.
-        setDocs([]);
+    // Non-critical enhancement card — the rest of My Scooter still works
+    // without it, so each source fails quiet (its rows render locked) rather
+    // than showing an error state here.
+    void Promise.allSettled([rentalRepository.vehicleDocuments(), kycRepository.mine()])
+      .then(([vehicle, kyc]) => {
+        setDocs(vehicle.status === 'fulfilled' ? vehicle.value : []);
+        setLicence(kyc.status === 'fulfilled' ? pickLicence(kyc.value.documents) : null);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -52,17 +73,66 @@ export const VehicleDocumentsCard: React.FC = () => {
     load();
   }, [load]);
 
-  const openDocument = async (doc: ApiVehicleDocument) => {
-    setOpeningId(doc.id);
+  const open = async (key: string, getUrl: () => Promise<string | null>) => {
+    setOpeningKey(key);
     try {
-      const url = await rentalRepository.vehicleDocumentUrl(doc.id);
-      await Linking.openURL(url);
+      const url = await getUrl();
+      if (url) await Linking.openURL(url);
     } catch (err) {
       notify(t('vehicleDocs.error.openFailed.title'), err instanceof ApiError ? err.message : t('common.pleaseTryAgain'));
     } finally {
-      setOpeningId(null);
+      setOpeningKey(null);
     }
   };
+
+  /** A licence has two sides; ask which one when there is a back to show. */
+  const licenceUrl = async (doc: ApiDocument): Promise<string | null> => {
+    let side: 'front' | 'back' = 'front';
+    if (doc.has_back_side) {
+      const choice = await chooseAction({
+        title: t('vehicleDocs.dl'),
+        options: [
+          { key: 'front', label: t('kyc.doc.front') },
+          { key: 'back', label: t('kyc.doc.back') },
+        ],
+        cancelLabel: t('common.cancel'),
+      });
+      if (!choice) return null;
+      side = choice as 'front' | 'back';
+    }
+    return (await kycRepository.myDocumentUrl(doc.id, side)).url;
+  };
+
+  const licenceSubtitle = (doc: ApiDocument | null): string => {
+    if (!doc) return t('vehicleDocs.dlHint');
+    if (!doc.expires_on) return doc.doc_number_masked ?? t('vehicleDocs.dlHint');
+    return doc.is_expired
+      ? t('vehicleDocs.expiredOn', { date: doc.expires_on })
+      : t('vehicleDocs.expiresOn', { date: doc.expires_on });
+  };
+
+  const rows: Row[] = [
+    {
+      key: 'driving_licence',
+      icon: IdCard,
+      label: t('vehicleDocs.dl'),
+      subtitle: licenceSubtitle(licence),
+      available: !!licence,
+      onOpen: licence ? () => licenceUrl(licence) : undefined,
+    },
+    ...VEHICLE_TYPES.map(({ type, icon, labelKey, hintKey }): Row => {
+      const doc = docs.find((d) => d.doc_type === type);
+      const available = !!doc?.has_file;
+      return {
+        key: type,
+        icon,
+        label: t(labelKey),
+        subtitle: available && doc ? t('vehicleDocs.expiresOn', { date: doc.expires_on }) : t(hintKey),
+        available,
+        onOpen: available && doc ? () => rentalRepository.vehicleDocumentUrl(doc.id) : undefined,
+      };
+    }),
+  ];
 
   return (
     <View className="mt-6">
@@ -82,10 +152,13 @@ export const VehicleDocumentsCard: React.FC = () => {
         className="rounded-2xl border overflow-hidden"
         style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
       >
-        {SHOWN_TYPES.map(({ type, icon: Icon, labelKey, hintKey }, index) => {
-          const doc = docs.find((d) => d.doc_type === type);
-          const available = !!doc?.has_file;
-          const opening = doc ? openingId === doc.id : false;
+        {rows.map(({ key, icon: Icon, label, subtitle, available, onOpen }, index) => {
+          const opening = openingKey === key;
+
+          let trailing: React.ReactNode;
+          if (opening) trailing = <Spinner size={13} color={COLORS.textSecondary} />;
+          else if (available) trailing = <ChevronRight size={15} color={COLORS.textSecondary} />;
+          else trailing = <Lock size={13} color={COLORS.textSecondary} />;
 
           const row = (
             <View
@@ -98,29 +171,23 @@ export const VehicleDocumentsCard: React.FC = () => {
             >
               <Icon size={15} color={available ? COLORS.primary : COLORS.textSecondary} />
               <View className="flex-1 ml-2.5">
-                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">{t(labelKey)}</Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold">{label}</Text>
                 <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5">
-                  {available && doc ? t('vehicleDocs.expiresOn', { date: doc.expires_on }) : t(hintKey)}
+                  {subtitle}
                 </Text>
               </View>
-              {opening ? (
-                <Spinner size={13} color={COLORS.textSecondary} />
-              ) : available ? (
-                <ChevronRight size={15} color={COLORS.textSecondary} />
-              ) : (
-                <Lock size={13} color={COLORS.textSecondary} />
-              )}
+              {trailing}
             </View>
           );
 
-          if (!available) return <View key={type}>{row}</View>;
+          if (!available || !onOpen) return <View key={key}>{row}</View>;
           return (
             <TouchableOpacity
-              key={type}
-              onPress={() => void openDocument(doc!)}
-              disabled={opening}
+              key={key}
+              onPress={() => void open(key, onOpen)}
+              disabled={openingKey !== null}
               accessibilityRole="button"
-              accessibilityLabel={t(labelKey)}
+              accessibilityLabel={label}
             >
               {row}
             </TouchableOpacity>
