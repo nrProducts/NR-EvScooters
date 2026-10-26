@@ -186,6 +186,12 @@ export interface ListUsersFilters {
     includeDeleted: boolean;
     /** Exclude riders who already have an active booking or rental. */
     bookable?: boolean;
+    /** Only riders with a rental running right now. */
+    activeRental?: boolean;
+    /** Plan-due buckets, OR-ed: a rider matches if their current period is due in ANY of them. */
+    due?: UserDueBucket[];
     /** Only self-registered accounts still awaiting an admin's approve/reject. */
     pendingApproval?: boolean;
 }
+
+export type UserDueBucket = "overdue" | "today" | "d1" | "d2" | "d3";

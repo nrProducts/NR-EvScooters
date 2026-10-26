@@ -6,6 +6,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SearchBar } from "@/components/common/SearchBar";
@@ -35,6 +36,17 @@ import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { initials, formatDate, formatDateTime, timeAgo, formatPhoneLocal } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
+type DueBucket = "overdue" | "today" | "d1" | "d2" | "d3";
+/** One choice, soonest first. "Next 3 days" is today through day 3 together. */
+const DUE_CHOICES: { key: string; label: string; buckets: DueBucket[] }[] = [
+  { key: "overdue", label: "Overdue", buckets: ["overdue"] },
+  { key: "today", label: "Today", buckets: ["today"] },
+  { key: "d1", label: "1 day", buckets: ["d1"] },
+  { key: "d2", label: "2 days", buckets: ["d2"] },
+  { key: "d3", label: "3 days", buckets: ["d3"] },
+  { key: "soon", label: "Next 3 days", buckets: ["today", "d1", "d2", "d3"] },
+];
+
 const KYC_OPTIONS: (KycStatus | "all")[] = ["all", "not_submitted", "incomplete", "pending", "partially_verified", "verified", "rejected"];
 
 /** The role tabs plus a cross-role queue of self-registered accounts awaiting approval. */
@@ -56,6 +68,9 @@ export default function UserListPage() {
   })();
   const [search, setSearch] = useState("");
   const [kycStatus, setKycStatus] = useState<KycStatus | "all">("all");
+  const [activeRental, setActiveRental] = useState(false);
+  const [dueKey, setDueKey] = useState<string | null>(null);
+  const due = DUE_CHOICES.find((c) => c.key === dueKey)?.buckets ?? [];
   const [tab, setTab] = useState<UserTab>(initialTab);
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
@@ -69,6 +84,8 @@ export default function UserListPage() {
   const { data, isLoading, isError, refetch } = useUsers({
     search,
     kycStatus: isPendingTab ? "all" : kycStatus,
+    activeRental: !isPendingTab && tab === "rider" && activeRental,
+    due: !isPendingTab && tab === "rider" ? due : [],
     role: isPendingTab ? "all" : tab,
     pendingApproval: isPendingTab,
     page, pageSize: 8,
@@ -406,7 +423,7 @@ export default function UserListPage() {
             Self-registered accounts awaiting review. Approve as staff or rider, or reject to remove the request.
           </div>
         ) : (
-          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:flex-wrap sm:items-center">
             <Select
               value={kycStatus}
               onValueChange={(v) => {
@@ -425,6 +442,54 @@ export default function UserListPage() {
                 ))}
               </SelectContent>
             </Select>
+
+            {tab === "rider" && (
+              <>
+                <div className="flex items-center gap-2 sm:ml-2">
+                  <Switch
+                    checked={activeRental}
+                    onCheckedChange={(v) => { setActiveRental(v); setPage(1); }}
+                    aria-label="Active rental only"
+                  />
+                  <span className="text-sm">Active rental</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 sm:ml-2">
+                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Due</span>
+                  <div className="inline-flex flex-wrap rounded-lg bg-secondary p-1">
+                    {DUE_CHOICES.map((c) => {
+                      const on = dueKey === c.key;
+                      return (
+                        <button
+                          key={c.key}
+                          type="button"
+                          aria-pressed={on}
+                          // click the active one again to go back to "any"
+                          onClick={() => { setDueKey(on ? null : c.key); setPage(1); }}
+                          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-smooth ${
+                            on
+                              ? c.key === "overdue" ? "bg-destructive text-destructive-foreground shadow-soft" : "bg-card text-primary shadow-soft"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {c.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {(activeRental || dueKey || kycStatus !== "all") && (
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground underline"
+                    onClick={() => { setActiveRental(false); setDueKey(null); setKycStatus("all"); setPage(1); }}
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
 

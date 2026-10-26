@@ -149,6 +149,68 @@ function toProfile(row: RawUserRow): UserProfile {
 // List
 // ---------------------------------------------------------------------------
 
+/** Business-timezone date `n` days from today, as YYYY-MM-DD. */
+function businessDatePlus(n: number): string {
+    return businessToday(new Date(Date.now() + n * 86_400_000));
+}
+
+/**
+ * User ids matching the rider-state filters (active rental, plan due soon), or
+ * null when neither is set. "Due" is the current billing period's due date —
+ * the same `due_on` the grid shows as Plan ends — on a live subscription.
+ */
+async function riderStateUserIds(
+    filters: ListUsersFilters,
+): Promise<{ ids: string[]; dueOn: Map<string, string> } | null> {
+    const due = filters.due ?? [];
+    if (!filters.activeRental && due.length === 0) return null;
+
+    const dueOn = new Map<string, string>();
+    let ids: Set<string> | null = null;
+    const narrow = (next: Iterable<string>) => {
+        const n = new Set(next);
+        ids = ids ? new Set([...ids].filter((x) => n.has(x))) : n;
+    };
+
+    if (filters.activeRental) {
+        const { data, error } = await supabaseAdmin.from("rentals").select("user_id").eq("status", "active");
+        if (error) throw error;
+        narrow((data ?? []).map((r) => r.user_id as string));
+    }
+
+    if (due.length > 0) {
+        const today = businessToday();
+        const exact = (n: number) => businessDatePlus(n);
+        const clauses = due.map((b) => (b === "overdue" ? `due_on.lt.${today}`
+            : b === "today" ? `due_on.eq.${today}`
+                : `due_on.eq.${exact(Number(b.slice(1)))}`));
+        const { data: periods, error } = await supabaseAdmin
+            .from("v_subscription_current_period")
+            .select("user_id, subscription_id, due_on")
+            .or(clauses.join(","));
+        if (error) throw error;
+        const subIds = (periods ?? []).map((p) => p.subscription_id).filter((x): x is string => !!x);
+        if (subIds.length === 0) narrow([]);
+        else {
+            const { data: live, error: liveError } = await supabaseAdmin
+                .from("subscriptions")
+                .select("id, user_id")
+                .in("id", subIds)
+                .in("status", ["active", "paused", "past_due"]);
+            if (liveError) throw liveError;
+            const liveIds = new Set((live ?? []).map((s) => s.id as string));
+            for (const p of periods ?? []) {
+                if (p.subscription_id && p.due_on && liveIds.has(p.subscription_id)) {
+                    const prev = dueOn.get(p.user_id as string);
+                    if (!prev || p.due_on < prev) dueOn.set(p.user_id as string, p.due_on);
+                }
+            }
+            narrow((live ?? []).map((s) => s.user_id as string));
+        }
+    }
+    return { ids: [...(ids ?? [])], dueOn };
+}
+
 export async function listUsers(
     filters: ListUsersFilters,
     actor: AuthContext,
@@ -167,6 +229,18 @@ export async function listUsers(
         : PROFILE_SELECT;
 
     let query = supabaseAdmin.from("users").select(select, { count: "exact" });
+
+    // Rider-state filters resolve to a set of user ids first, so the page and
+    // the total both honour them. Several filters narrow together (AND).
+    const restrictTo = await riderStateUserIds(filters);
+    if (restrictTo) {
+        if (restrictTo.ids.length === 0) return paginate([], 0, filters);
+        query = query.in("id", restrictTo.ids);
+    }
+    // A due-date filter lists the soonest-due rider first, which no column on
+    // `users` can express — and the matching set is small (riders due in a
+    // few days) — so it is ordered and paged here instead of in SQL.
+    const byDueDate = !!restrictTo && (filters.due?.length ?? 0) > 0;
 
     if (!includeDeleted) query = query.is("deleted_at", null);
 
@@ -212,12 +286,22 @@ export async function listUsers(
     // Sorting by kyc_status has to name the embedded table; the other two
     // are ordinary columns on `users`.
     const sortColumn = filters.sortBy === "kyc_status" ? "rider_profiles(kyc_status)" : filters.sortBy;
-    query = query.order(sortColumn, { ascending: filters.sortDir === "asc" }).range(from, to);
+    query = byDueDate
+        ? query
+        : query.order(sortColumn, { ascending: filters.sortDir === "asc" }).range(from, to);
 
     const { data, error, count } = await query;
     if (error) throw error;
 
     let rows = (data ?? []) as unknown as RawUserRow[];
+    let totalCount = count ?? 0;
+    if (byDueDate && restrictTo) {
+        rows = rows.sort((a, b) =>
+            (restrictTo.dueOn.get(a.id) ?? "9999").localeCompare(restrictTo.dueOn.get(b.id) ?? "9999")
+            || a.full_name.localeCompare(b.full_name));
+        totalCount = rows.length;
+        rows = rows.slice(from, to + 1);
+    }
 
     // `bookable`: drop anyone who already has an active booking or rental —
     // adminCreateBooking rejects them, so they should never appear in the
@@ -264,7 +348,7 @@ export async function listUsers(
         };
     });
 
-    return paginate(items, count ?? 0, filters);
+    return paginate(items, totalCount, filters);
 }
 
 // ---------------------------------------------------------------------------
