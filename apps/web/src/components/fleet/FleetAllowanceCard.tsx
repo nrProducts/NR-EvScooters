@@ -45,8 +45,8 @@ export function FleetAllowanceCard({ variant = "dashboard" }: { variant?: "dashb
           {s ? <p className="mt-0.5 text-xs text-muted-foreground">{periodLabel} · {periodNote}</p> : null}
         </div>
         <div className="flex items-center gap-1">
-          {isAdmin ? (
-            <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)} disabled={!data}>
+          {isAdmin && data ? (
+            <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)}>
               <Settings2 className="h-3.5 w-3.5" /> Edit limit &amp; month
             </Button>
           ) : null}
@@ -67,7 +67,11 @@ export function FleetAllowanceCard({ variant = "dashboard" }: { variant?: "dashb
             <Skeleton className="h-3 w-full" />
           </div>
         ) : isError || !t || !s ? (
-          <p className="text-sm text-muted-foreground">The kilometre allowance is not available yet.</p>
+          <p className="text-sm text-muted-foreground">
+            The kilometre allowance isn&apos;t set up yet. It needs a database update (the
+            &ldquo;fleet kilometre allowance&rdquo; migration) before it can be shown or edited.
+            {isAdmin ? " The Edit button appears here once that is applied." : ""}
+          </p>
         ) : (
           <>
             <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
