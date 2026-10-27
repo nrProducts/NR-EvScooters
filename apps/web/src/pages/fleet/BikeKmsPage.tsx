@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { SearchBar } from "@/components/common/SearchBar";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { TrackingStatusPanel } from "@/components/fleet/TrackingStatusPanel";
 import { useBikeKms, useFleetTelemetry } from "@/hooks/useTelematics";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { cn, formatFullDateTime } from "@/lib/utils";
@@ -97,6 +98,8 @@ export default function BikeKmsPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
+      <TrackingStatusPanel />
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { label: "Fleet today", value: km(totals.today) },

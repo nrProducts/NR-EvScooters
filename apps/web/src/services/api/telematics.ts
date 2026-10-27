@@ -130,3 +130,27 @@ export interface BikeKms {
 export async function fetchBikeKms(): Promise<BikeKms[]> {
   return apiClient.get<BikeKms[]>("/telematics/distance");
 }
+
+export interface TrackingFeedStatus {
+  /** Latest time the feed's data was written, or null if never. */
+  last_updated_at: string | null;
+  can_refresh: boolean;
+  /** When a manual refresh will be allowed again, if not now. */
+  available_at: string | null;
+  reason: string | null;
+}
+
+export interface TrackingStatus {
+  live: TrackingFeedStatus & { every_minutes: number };
+  distance: TrackingFeedStatus & { every_hours: number; manual_runs_today: number; manual_cap: number };
+}
+
+/** GET /telematics/status — when each feed last updated, and whether a manual refresh is allowed now. */
+export async function fetchTrackingStatus(): Promise<TrackingStatus> {
+  return apiClient.get<TrackingStatus>("/telematics/status");
+}
+
+/** POST /telematics/refresh — ADMIN ONLY. Starts the sync in the background; watch "last updated". */
+export async function refreshTracking(kind: "live" | "distance"): Promise<{ started_at: string }> {
+  return apiClient.post<{ started_at: string }>("/telematics/refresh", { kind });
+}

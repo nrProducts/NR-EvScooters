@@ -7,6 +7,7 @@ import { useBikeKms, useFleetTelemetry } from "@/hooks/useTelematics";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { cn, timeAgo } from "@/lib/utils";
 import { isLowBattery, summariseFleet, type VehicleTelemetryListItem } from "@/services/api/telematics";
+import { TrackingStatusPanel } from "@/components/fleet/TrackingStatusPanel";
 import { FleetLiveMap, PIN_COLOR, hasPosition, pinColorFor } from "@/components/fleet/FleetLiveMap";
 
 type Filter = "all" | "live" | "stale" | "offline" | "low";
@@ -49,6 +50,8 @@ export default function LiveMapPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
+      <TrackingStatusPanel />
+
       <div className="flex flex-wrap items-center gap-2">
         <Link to="/bike-kms" className="order-last ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted/50">
           <Route className="h-4 w-4" /> Bike KMs

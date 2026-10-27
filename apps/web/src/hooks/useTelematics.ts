@@ -64,3 +64,20 @@ export function useBikeKms() {
     refetchInterval: 5 * 60_000,
   });
 }
+
+/** Refresh schedule and "last updated" for the tracking feeds. Polls faster while a manual refresh is running. */
+export function useTrackingStatus(fast: boolean) {
+  return useQuery({
+    queryKey: ["tracking-status"],
+    queryFn: api.fetchTrackingStatus,
+    refetchInterval: fast ? 5_000 : 30_000,
+  });
+}
+
+export function useRefreshTracking() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (kind: "live" | "distance") => api.refreshTracking(kind),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tracking-status"] }),
+  });
+}

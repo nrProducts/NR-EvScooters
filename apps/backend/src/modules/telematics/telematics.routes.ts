@@ -7,6 +7,7 @@ import { asyncHandler } from "../../common/asyncHandler";
 import * as service from "./telematics.service";
 import * as distance from "./distance.service";
 import * as control from "./control.service";
+import * as refresh from "./refresh.service";
 import { businessToday } from "../../common/dates";
 import type { AuthedRequest } from "../../middleware/auth.middleware";
 
@@ -45,6 +46,31 @@ router.get(
     requireAction("vehicles", "view"),
     asyncHandler(async (_req, res) => {
         res.json(await service.listBikeKms(businessToday()));
+    }),
+);
+
+// ---------------------------------------------------------------------------
+// Refresh status ("last updated", what refreshes how often) and manual refresh.
+// ---------------------------------------------------------------------------
+
+router.get(
+    "/status",
+    requireAction("vehicles", "view"),
+    asyncHandler(async (_req, res) => {
+        res.json(await refresh.getTrackingStatus());
+    }),
+);
+
+const refreshBody = z.object({ kind: z.enum(["live", "distance"]) });
+
+// Admin only: a refresh calls out to Intellicar, whose daily call allowance is
+// shared by everyone. Guard rails (cooldown, daily cap) live in refresh.service.
+router.post(
+    "/refresh",
+    requireAdmin,
+    validate({ body: refreshBody }),
+    asyncHandler(async (req: AuthedRequest, res) => {
+        res.status(202).json(await refresh.triggerRefresh(req.body.kind, req.user!.id));
     }),
 );
 
