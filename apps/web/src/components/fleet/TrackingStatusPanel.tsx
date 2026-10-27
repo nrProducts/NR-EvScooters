@@ -80,7 +80,7 @@ export function TrackingStatusPanel() {
     const busy = watching?.kind === kind || (refresh.isPending && refresh.variables === kind);
     const blockedReason = feed && !feed.can_refresh ? feed.reason : null;
     return (
-      <div className="grid gap-x-6 gap-y-2 border-t border-border px-4 py-3 first:border-t-0 md:grid-cols-[1.2fr_1.4fr_1.6fr_auto] md:items-center">
+      <div className="grid gap-x-6 gap-y-2 border-t border-border px-4 py-3 first:border-t-0 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1.6fr)_13rem] md:items-center">
         <div>
           <p className="text-sm font-medium">{title}</p>
           <p className="text-xs text-muted-foreground">{covers}</p>
@@ -112,7 +112,7 @@ export function TrackingStatusPanel() {
               {busy ? "Refreshing…" : "Refresh now"}
             </Button>
             {blockedReason && !busy ? (
-              <p className="mt-1 max-w-[16rem] text-[0.6875rem] text-muted-foreground md:ml-auto">{blockedReason}</p>
+              <p className="mt-1 text-[0.6875rem] text-muted-foreground md:ml-auto">{blockedReason}</p>
             ) : null}
             {busy ? <p className="mt-1 text-[0.6875rem] text-muted-foreground">Takes up to a minute.</p> : null}
           </div>
