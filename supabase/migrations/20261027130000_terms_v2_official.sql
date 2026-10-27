@@ -1,5 +1,5 @@
 -- =========================================================================
--- 20261027100000_terms_v2_official.sql
+-- 20261027130000_terms_v2_official.sql
 --
 -- Publishes Terms & Conditions version 2026-09-04.2 — the official text that
 -- replaces the "Draft pending legal review" seed (2026-09-04.1-draft) from
