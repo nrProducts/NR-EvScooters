@@ -66,6 +66,8 @@ export async function verifyReturnPayment(rentalId: string): Promise<ReturnDetai
 
 export interface ApproveReturnSettlementInput {
   endBatteryPct?: number;
+  /** Were the rider's ORIGINAL documents handed back? Required when any are still held. */
+  originalsReturned?: boolean;
 }
 
 /**

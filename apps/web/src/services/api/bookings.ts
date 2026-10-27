@@ -1,4 +1,5 @@
 import { apiClient, toPaginatedResult, type BackendPaginated } from "./httpClient";
+import type { OriginalsInput } from "./originals";
 import type { AvailableVehicle, BookingPlanStatus, BookingStatus, PaginatedResult, PickupBooking } from "@/types";
 
 export interface PickupQueueFilters {
@@ -53,9 +54,12 @@ export async function fetchAvailableVehicles(bookingId: string): Promise<Availab
   return apiClient.get<AvailableVehicle[]>(`/bookings/${bookingId}/available-vehicles`);
 }
 
-/** POST /bookings/:id/pickup — confirms handover. Omit vehicleId to use the already-allocated vehicle. */
-export async function confirmPickup(bookingId: string, vehicleId?: string) {
-  return apiClient.post(`/bookings/${bookingId}/pickup`, { vehicle_id: vehicleId });
+/**
+ * POST /bookings/:id/pickup — confirms handover. Omit vehicleId to use the already-allocated vehicle.
+ * `originals` is REQUIRED: which original documents were taken, or that none were.
+ */
+export async function confirmPickup(bookingId: string, vehicleId: string | undefined, originals: OriginalsInput) {
+  return apiClient.post(`/bookings/${bookingId}/pickup`, { vehicle_id: vehicleId, originals });
 }
 
 /**

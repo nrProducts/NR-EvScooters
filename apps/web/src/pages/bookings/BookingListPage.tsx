@@ -17,6 +17,9 @@ import {
 import { RentalOperationsSummaryCards } from "@/components/bookings/RentalOperationsSummaryCards";
 import { AdminCreateBookingDialog } from "@/components/bookings/AdminCreateBookingDialog";
 import { usePickupQueue, useAvailableVehicles, useConfirmPickup, useAdminCancelBooking } from "@/hooks/useBookings";
+import {
+  OriginalDocumentsPicker, EMPTY_ORIGINALS, draftToInput, type OriginalsDraft,
+} from "@/components/bookings/OriginalDocumentsPicker";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -219,6 +222,8 @@ export default function BookingListPage() {
   // explicit opt-in for the exceptional case (reserved unit turns out
   // damaged, rider wants a different colour, etc).
   const [overrideVehicle, setOverrideVehicle] = useState(false);
+  // Which original documents staff took at this pickup — required for every rider.
+  const [originalsDraft, setOriginalsDraft] = useState<OriginalsDraft>(EMPTY_ORIGINALS);
   const [cancelTarget, setCancelTarget] = useState<PickupBooking | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [vehicleSearch, setVehicleSearch] = useState("");
@@ -423,6 +428,7 @@ export default function BookingListPage() {
                   setSelectedVehicleId(null);
                   setVehicleSearch("");
                   setOverrideVehicle(false);
+                  setOriginalsDraft(EMPTY_ORIGINALS); // never carry one rider's answer to the next
                 }}
               >
                 <PackageCheck className="h-3.5 w-3.5" /> Confirm pickup
@@ -782,6 +788,8 @@ export default function BookingListPage() {
             </div>
           )}
 
+          <OriginalDocumentsPicker value={originalsDraft} onChange={setOriginalsDraft} />
+
           {confirmPickup.isError && (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {confirmPickup.error instanceof ApiError ? confirmPickup.error.message : "Something went wrong."}
@@ -794,10 +802,13 @@ export default function BookingListPage() {
             </Button>
             <Button
               disabled={
-                ((!pickupTarget?.vehicle || overrideVehicle) && !selectedVehicleId) || confirmPickup.isPending
+                ((!pickupTarget?.vehicle || overrideVehicle) && !selectedVehicleId)
+                || confirmPickup.isPending
+                || draftToInput(originalsDraft) === null
               }
               onClick={() => {
-                if (pickupTarget) {
+                const originals = draftToInput(originalsDraft);
+                if (pickupTarget && originals) {
                   // Reserved + not overriding -> omit vehicleId, backend uses
                   // held_vehicle_id. Either overriding, or nothing was ever
                   // reserved -> the explicit pick the admin just made.
@@ -805,7 +816,7 @@ export default function BookingListPage() {
                     ? undefined
                     : selectedVehicleId!;
                   confirmPickup.mutate(
-                    { bookingId: pickupTarget.id, vehicleId },
+                    { bookingId: pickupTarget.id, vehicleId, originals },
                     {
                       onSuccess: () => {
                         toastSuccess("Handover confirmed");

@@ -140,6 +140,7 @@ Deno.serve(async (_req) => {
     let failed = 0;
     let unknown = 0;
     let alerts = 0;
+    const snapshots: { vehicle_id: string; day: string; odometer_km: number; updated_at: string }[] = [];
 
     const normKey = (x: string | null) => (x ?? "").replace(/[\s-]/g, "").toUpperCase();
 
@@ -215,6 +216,23 @@ Deno.serve(async (_req) => {
         }
 
         alerts += await raiseAlerts(admin, v, previous.get(v.id), row);
+
+        // Keep today's latest odometer for the fleet kilometre allowance (it closes a
+        // period at its last day from these). No extra Intellicar call — the number is
+        // already in hand. Best-effort: a missing table must not break the sync.
+        if (typeof row.odometer_km === "number") {
+            snapshots.push({
+                vehicle_id: v.id,
+                day: new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10), // IST business day
+                odometer_km: row.odometer_km,
+                updated_at: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (snapshots.length > 0) {
+        const { error: snapError } = await admin.from("vehicle_odometer_daily").upsert(snapshots, { onConflict: "vehicle_id,day" });
+        if (snapError) console.error(`[${SOURCE}] could not save odometer snapshots`, snapError.message);
     }
 
     return json({ configured: true, vehicles: (vehicles ?? []).length, ok, failed, notOnAccount: unknown, alerts }, 200);

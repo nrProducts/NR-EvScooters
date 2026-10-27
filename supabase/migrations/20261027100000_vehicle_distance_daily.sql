@@ -11,7 +11,10 @@
 -- admin screens sum these rows for "today / 7 days / 30 days".
 -- =========================================================================
 
-create table public.vehicle_distance_daily (
+-- Written to be safe to run twice (IF NOT EXISTS, and cron.schedule replaces a job of the
+-- same name): on one database this table had already been created by hand before the
+-- pipeline reached this file, and a plain CREATE TABLE stopped the whole release there.
+create table if not exists public.vehicle_distance_daily (
     vehicle_id   uuid not null references public.vehicles (id) on delete cascade,
     day          date not null,
     distance_km  numeric(10,2) not null check (distance_km >= 0),
@@ -22,7 +25,7 @@ create table public.vehicle_distance_daily (
 comment on table public.vehicle_distance_daily is
     'Kilometres each scooter covered on each business day (IST), from Intellicar. Today''s row is refreshed every couple of hours; past days are final.';
 
-create index idx_vehicle_distance_daily_day on public.vehicle_distance_daily (day);
+create index if not exists idx_vehicle_distance_daily_day on public.vehicle_distance_daily (day);
 
 alter table public.vehicle_distance_daily enable row level security;
 

@@ -124,6 +124,8 @@ export interface BikeKms {
   km_today: number;
   km_7d: number;
   km_30d: number;
+  /** The rider who has this bike right now, or null when it is not with anyone. */
+  current_rider: { id: string; full_name: string; phone: string | null } | null;
   updated_at: string | null;
 }
 
@@ -153,4 +155,35 @@ export async function fetchTrackingStatus(): Promise<TrackingStatus> {
 /** POST /telematics/refresh — ADMIN ONLY. Starts the sync in the background; watch "last updated". */
 export async function refreshTracking(kind: "live" | "distance"): Promise<{ started_at: string }> {
   return apiClient.post<{ started_at: string }>("/telematics/refresh", { kind });
+}
+
+export interface ActivityDay {
+  day: string;
+  /** Hours with the key on — "running hours". */
+  ignition_hours: number;
+  /** Hours actually moving (speed above 2 km/h). */
+  moving_hours: number;
+  trips: number;
+  /** True once the day has ended — the figures will not change. */
+  is_final: boolean;
+  /** False when the bike reported nothing that day. */
+  has_data: boolean;
+}
+
+export type VehicleActivity =
+  | { available: false; reason: "not_configured" | "not_on_account" | "not_set_up" | "error"; message: string }
+  | {
+    available: true;
+    today: string;
+    /** Newest first: today, yesterday, … six days ago. */
+    days: ActivityDay[];
+    totals: { ignition_hours: number; moving_hours: number; trips: number };
+    computed_at: string | null;
+    /** Set when the figures shown could not be refreshed. */
+    note: string | null;
+  };
+
+/** GET /telematics/vehicles/:id/activity — last 7 days of running hours, cached server-side. */
+export async function fetchVehicleActivity(vehicleId: string): Promise<VehicleActivity> {
+  return apiClient.get<VehicleActivity>(`/telematics/vehicles/${vehicleId}/activity`);
 }

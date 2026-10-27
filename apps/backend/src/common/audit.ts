@@ -30,12 +30,13 @@ export type AuditAction =
     | "vehicle.immobilised" | "vehicle.mobilised" | "vehicle.created" | "vehicle.bulk_imported" | "vehicle.updated" | "vehicle.scrapped" | "vehicle.assigned"
     | "vehicle.document_uploaded" | "vehicle.document_updated" | "vehicle.document_deleted"
     | "maintenance.created" | "maintenance.updated" | "maintenance.outcome_set"
-    | "notification.broadcast" | "notification_setting.updated"
+    | "notification.broadcast" | "notification_setting.updated" | "fleet_km_settings.updated"
     | "invoice.refunded" | "invoice.adjusted" | "invoice.charge_added"
     // The late fee, at the moment it becomes a line on the bill rather than
     // an unattributed surplus. is_financial_audit_action() matches it on
     // "invoice", so it inherits the financial retention period.
     | "invoice.late_fee_charged"
+    | "rental.originals_returned" | "rental.originals_not_returned"
     | "rental.completed" | "rental.moved_to_maintenance" | "rental.return_requested" | "rental.return_rejected"
     | "return.inspected" | "return.payment_verified"
     | "referral.redeemed" | "referral.qualified"
@@ -113,7 +114,7 @@ export interface AuditEntry {
         | "invoice" | "payment_order" | "payment_transaction" | "payment_allocation"
         | "payment_webhook_event" | "deposit" | "refund" | "plan" | "pricing_rule"
         | "incident" | "damage" | "damage_dispute" | "support_ticket"
-        | "notification_broadcast" | "notification_setting" | "notification_message"
+        | "notification_broadcast" | "notification_setting" | "notification_message" | "fleet_km_settings"
         | "return_recovery_setting" | "cancellation_tier"
         | "consent_record" | "consent_notice" | "privacy_request" | "retention_run"
         | "legal_document" | "legal_acceptance"

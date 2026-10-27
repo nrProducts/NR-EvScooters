@@ -176,4 +176,6 @@ export interface MoveToMaintenanceInput {
     description: string;
     end_battery_pct?: number;
     inspected?: boolean;
+    /** Were the originals held for this rental handed back? Required when any are held. */
+    originals_returned?: boolean;
 }

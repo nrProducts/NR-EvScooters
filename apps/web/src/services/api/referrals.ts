@@ -37,3 +37,35 @@ export async function fetchReferralProgram(): Promise<ReferralProgram> {
 export async function updateReferralProgram(input: UpdateReferralProgramInput): Promise<ReferralProgram> {
   return apiClient.put<ReferralProgram>("/referrals/admin/program", input);
 }
+
+export type ReferralStatus = "pending" | "qualified" | "rejected" | "revoked";
+
+/** The other person on a referral, as staff see them. */
+export interface ReferralParty {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  status: string;
+}
+
+export interface UserReferralRow {
+  id: string;
+  status: ReferralStatus;
+  code_used: string;
+  created_at: string;
+  qualified_at: string | null;
+  /** The referrer on "referred by"; the referee on each "referred" row. */
+  person: ReferralParty;
+}
+
+export interface UserReferrals {
+  referred_by: UserReferralRow | null;
+  referred: UserReferralRow[];
+  referred_count: number;
+  qualified_count: number;
+}
+
+/** GET /referrals/admin/users/:userId — who referred this user, and who they referred. */
+export async function fetchUserReferrals(userId: string): Promise<UserReferrals> {
+  return apiClient.get<UserReferrals>(`/referrals/admin/users/${userId}`);
+}

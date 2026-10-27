@@ -30,7 +30,7 @@ const hhmm = (d: Date) => d.toLocaleTimeString("en-IN", { hour: "2-digit", minut
 
 /**
  * What refreshes how often, when each feed last updated, and (for admins) a
- * "Refresh now" for each. Shown on the Live Map and Bike KMs pages.
+ * "Refresh now" for each. Shown on the Live Map page and in the Vehicles screen's Bike KMs view.
  *
  * The manual refresh starts the sync in the background — it can take up to a
  * minute — so after pressing, the panel polls quickly until "last updated"

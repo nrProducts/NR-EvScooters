@@ -4,6 +4,8 @@ import {
   BatteryMedium, Eye, History, Plus, Wrench, CheckCircle2, Zap, ChevronDown, ChevronRight, UserX, FileSpreadsheet,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BikeKmsView } from "@/components/fleet/BikeKmsView";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,6 +57,15 @@ export default function VehicleListPage() {
   const [unassignReason, setUnassignReason] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  // "Vehicles" list or the "Bike KMs" view — kept in the URL (?view=kms) so a
+  // refresh, a bookmark and the dashboard link all land on the right one.
+  const view: "list" | "kms" = searchParams.get("view") === "kms" ? "kms" : "list";
+  const setView = (next: "list" | "kms") => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "kms") params.set("view", "kms");
+    else params.delete("view");
+    setSearchParams(params, { replace: true });
+  };
 
   useEffect(() => {
     if (searchParams.get("new")) {
@@ -264,17 +275,27 @@ export default function VehicleListPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      {hasAction(user, "vehicles", "create") && (
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
-            <FileSpreadsheet className="h-4 w-4" /> Bulk import
-          </Button>
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" /> Add vehicle
-          </Button>
-        </div>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs value={view} onValueChange={(v) => setView(v as "list" | "kms")}>
+          <TabsList>
+            <TabsTrigger value="list">Vehicles</TabsTrigger>
+            <TabsTrigger value="kms">Bike KMs</TabsTrigger>
+          </TabsList>
+        </Tabs>
 
+        {view === "list" && hasAction(user, "vehicles", "create") && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <FileSpreadsheet className="h-4 w-4" /> Bulk import
+            </Button>
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4" /> Add vehicle
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {view === "kms" ? <BikeKmsView /> : (
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
           <SearchBar
@@ -341,6 +362,7 @@ export default function VehicleListPage() {
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
       </Card>
+      )}
 
       <BulkImportVehiclesDialog open={importOpen} onOpenChange={setImportOpen} />
 

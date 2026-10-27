@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/services/api/bookings";
+import type { OriginalsInput } from "@/services/api/originals";
 
 export function usePickupQueue(filters: api.PickupQueueFilters, options?: { enabled?: boolean }) {
   return useQuery({
@@ -32,9 +33,13 @@ export function useAdminCreateBooking() {
 export function useConfirmPickup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ bookingId, vehicleId }: { bookingId: string; vehicleId?: string }) =>
-      api.confirmPickup(bookingId, vehicleId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pickup-queue"] }),
+    mutationFn: ({ bookingId, vehicleId, originals }: { bookingId: string; vehicleId?: string; originals: OriginalsInput }) =>
+      api.confirmPickup(bookingId, vehicleId, originals),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pickup-queue"] });
+      // the rider's "originals held" card must show what was just taken
+      qc.invalidateQueries({ queryKey: ["rider-originals"] });
+    },
   });
 }
 

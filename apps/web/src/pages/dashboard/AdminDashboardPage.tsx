@@ -15,6 +15,7 @@ import { ChartCard } from "@/components/common/ChartCard";
 import { MotionCard } from "@/components/motion/MotionCard";
 import { useBikeKms, useFleetTelemetry } from "@/hooks/useTelematics";
 import { FleetTrackingCard } from "@/components/dashboard/FleetTrackingCard";
+import { FleetAllowanceCard } from "@/components/fleet/FleetAllowanceCard";
 import { FleetStatusCard } from "@/components/dashboard/FleetStatusCard";
 import { RevenueOverview } from "@/components/revenue/RevenueOverview";
 import { HorizontalSummaryCard } from "@/components/dashboard/HorizontalSummaryCard";
@@ -116,9 +117,9 @@ export default function AdminDashboardPage() {
 
       <RevenueOverview part="revenue" />
 
-      {/* At-a-glance — Fleet Overview / Staff Attendance / Leave Management, side by side on larger
-          screens. Stretched (the grid default) rather than items-start, so all three sit on the same
-          bottom edge even though only Fleet Overview has a footer progress bar. */}
+      {/* At-a-glance — Fleet Overview beside the slim kilometre-allowance tile. Stretched (the grid
+          default), so both sit on the same bottom edge. Staff Attendance and Leave Management sit
+          below the Fleet Live Map. */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <HorizontalSummaryCard
           icon={Bike}
@@ -151,51 +152,27 @@ export default function AdminDashboardPage() {
           }
         />
 
-        <HorizontalSummaryCard
-          icon={Users}
-          title="Staff Attendance"
-          isLoading={isLoading || !summary}
-          metrics={[
-            { label: "Total", value: summary?.attendance.total_staff ?? 0 },
-            { label: "Present", value: summary?.attendance.present_today ?? 0, tone: "success" },
-            { label: "Absent", value: summary?.attendance.absent_today ?? 0, tone: "destructive" },
-            { label: "On Leave", value: summary?.attendance.on_leave_today ?? 0, tone: "info" },
-            { label: "Week Off", value: summary?.attendance.on_week_off_today ?? 0 },
-          ]}
-          linkLabel="View Attendance"
-          onLinkClick={() => navigate("/attendance")}
-        />
 
-        <HorizontalSummaryCard
-          icon={ClipboardList}
-          iconTone="warning"
-          title="Leave Management"
-          isLoading={isLoading || !summary}
-          primaryMetric={`${summary?.leave.pending_count ?? 0} Pending Request${summary?.leave.pending_count === 1 ? "" : "s"}`}
-          metrics={[
-            { label: "Pending", value: summary?.leave.pending_count ?? 0, tone: "warning" },
-            { label: "Approved", value: summary?.leave.approved_count ?? 0, tone: "success" },
-            { label: "Rejected", value: summary?.leave.rejected_count ?? 0, tone: "destructive" },
-          ]}
-          linkLabel="View Requests"
-          onLinkClick={() => navigate("/leave")}
-        />
+        {/* This month's kilometre allowance — a slim tile beside Fleet Overview; the full breakdown is in Vehicles → Bike KMs. */}
+        <FleetAllowanceCard variant="compact" className="lg:col-span-2" />
       </div>
 
-      {/* Station Network (wide, left) + Fleet Status / Quick Actions / Battery Stations (compact, right) */}
+      {/* Fleet live map (wide, left) + Fleet Status / Quick Actions / Battery Stations (compact, right) */}
       <div className="grid gap-3 lg:grid-cols-3">
         <ChartCard
           title="Fleet Live Map"
           description="Every bike, by status — green live, amber stale, grey offline, red low battery"
           className="lg:col-span-2"
+          fill
+          still
           action={
             <div className="flex gap-1">
-              <Button variant="ghost" size="sm" onClick={() => navigate("/bike-kms")}>Bike KMs</Button>
+              <Button variant="ghost" size="sm" onClick={() => navigate("/vehicles?view=kms")}>Bike KMs</Button>
               <Button variant="ghost" size="sm" onClick={() => navigate("/live-map")}>Open map</Button>
             </div>
           }
         >
-          <FleetLiveMap items={fleetTelemetry ?? []} kmToday={kmToday} heightClassName="h-[27rem]" />
+          <FleetLiveMap items={fleetTelemetry ?? []} kmToday={kmToday} heightClassName="min-h-[27rem] flex-1" />
         </ChartCard>
 
         <div className="flex flex-col gap-3">
@@ -238,6 +215,39 @@ export default function AdminDashboardPage() {
             <StationStatusGauge summary={stationSummary} isLoading={stationSummaryLoading} compact />
           </ChartCard>
         </div>
+      </div>
+
+      {/* Staff — below the fleet map */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <HorizontalSummaryCard
+          icon={Users}
+          title="Staff Attendance"
+          isLoading={isLoading || !summary}
+          metrics={[
+            { label: "Total", value: summary?.attendance.total_staff ?? 0 },
+            { label: "Present", value: summary?.attendance.present_today ?? 0, tone: "success" },
+            { label: "Absent", value: summary?.attendance.absent_today ?? 0, tone: "destructive" },
+            { label: "On Leave", value: summary?.attendance.on_leave_today ?? 0, tone: "info" },
+            { label: "Week Off", value: summary?.attendance.on_week_off_today ?? 0 },
+          ]}
+          linkLabel="View Attendance"
+          onLinkClick={() => navigate("/attendance")}
+        />
+
+        <HorizontalSummaryCard
+          icon={ClipboardList}
+          iconTone="warning"
+          title="Leave Management"
+          isLoading={isLoading || !summary}
+          primaryMetric={`${summary?.leave.pending_count ?? 0} Pending Request${summary?.leave.pending_count === 1 ? "" : "s"}`}
+          metrics={[
+            { label: "Pending", value: summary?.leave.pending_count ?? 0, tone: "warning" },
+            { label: "Approved", value: summary?.leave.approved_count ?? 0, tone: "success" },
+            { label: "Rejected", value: summary?.leave.rejected_count ?? 0, tone: "destructive" },
+          ]}
+          linkLabel="View Requests"
+          onLinkClick={() => navigate("/leave")}
+        />
       </div>
 
       <RevenueOverview part="deposits" />

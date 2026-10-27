@@ -20,6 +20,7 @@ import {
     previewOverdueLateFee,
 } from "./overdueLateFee";
 import { voidAbandonedRenewalInvoice } from "./abandonedRenewal";
+import { applyOriginalsAnswer, assertOriginalsAnswered } from "../originals/originals.service";
 
 /**
  * Rentals.
@@ -1392,6 +1393,10 @@ export async function moveRideToMaintenance(
     // still needs its deposit settlement recorded, damage or not.
     await assertInspected(before, input);
 
+    // Original documents still held for this rental: staff must say whether they were
+    // handed back — checked before anything is closed.
+    const heldOriginals = await assertOriginalsAnswered(id, input.originals_returned);
+
     const endedAt = new Date();
     const deposit = await settleReturn(before, input, actor, endedAt);
 
@@ -1446,6 +1451,18 @@ export async function moveRideToMaintenance(
             description: input.description,
         },
     });
+
+    // The return is done; record what happened to the originals. A failure here must
+    // not undo a completed return — it is logged and the rider's card still shows
+    // the documents as held.
+    try {
+        await applyOriginalsAnswer({
+            rentalId: id, userId: rider?.id ?? null, held: heldOriginals,
+            answer: input.originals_returned, actor,
+        });
+    } catch (err) {
+        console.error("[rentals] could not record the originals handback", { rentalId: id, err });
+    }
 
     // Rider-facing: just "your return is complete", same as completeRide —
     // the maintenance ticket is this vehicle's business, not theirs.

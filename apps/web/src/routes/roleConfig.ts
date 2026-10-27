@@ -137,7 +137,9 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Live Map", path: "/live-map", icon: Radio, roles: ["admin", "staff"], moduleKey: "vehicles", group: "fleet",
   },
   {
-    label: "Bike KMs", path: "/bike-kms", icon: RouteIcon, roles: ["admin", "staff"], moduleKey: "vehicles", group: "fleet",
+    // Lives inside Vehicles now (the "Bike KMs" toggle). Hidden from the sidebar; the
+    // route stays as a redirect so old links keep working.
+    label: "Bike KMs", path: "/bike-kms", icon: RouteIcon, roles: ["admin", "staff"], moduleKey: "vehicles", group: "fleet", hidden: true,
   },
   {
     label: "Battery Stations",

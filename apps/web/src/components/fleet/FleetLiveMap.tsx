@@ -19,26 +19,34 @@ export const pinColorFor = (t: VehicleTelemetryListItem) => (isLowBattery(t) ? P
 
 export const hasPosition = (t: VehicleTelemetryListItem) => t.lat !== null && t.lng !== null;
 
-// The lucide "bike" glyph, inlined as a static string so a marker can be a
-// plain DOM element. Nothing here comes from data, so it is not an injection point.
-const BIKE_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/></svg>';
+/** Marker size in px (the coloured dot, before its white ring). One place to resize every marker. */
+const DOT = 14;
 
-/** A round bike badge in the scooter's status colour. */
+/**
+ * One small dot per bike in its status colour, with a white ring and a soft shadow so it
+ * reads on any map tile. Plain dots, not scooter icons or pins: bikes parked at a hub sit
+ * within a few metres of each other, and anything bigger or fancier turns that cluster into
+ * a blob. WHICH bike it is shows on click (name, plate, battery, km today).
+ *
+ * Offline bikes are dimmed. The element is built only from a colour we control (never from
+ * data), and it is never given a CSS transform: MapLibre positions markers with one.
+ */
 function bikeMarkerElement(color: string, dim: boolean): HTMLElement {
   const el = document.createElement("div");
   el.style.cssText = [
-    "width:34px", "height:34px", "border-radius:50%", `background:${color}`,
-    "display:flex", "align-items:center", "justify-content:center",
-    "border:3px solid #fff", "box-shadow:0 2px 8px rgba(0,0,0,.35)", "cursor:pointer",
-    dim ? "opacity:.75" : "",
+    `width:${DOT}px`, `height:${DOT}px`, "border-radius:50%", `background:${color}`,
+    "border:2.5px solid #fff", "box-sizing:content-box",
+    "box-shadow:0 0 0 1px rgba(0,0,0,.18), 0 1px 3px rgba(0,0,0,.4)", "cursor:pointer",
+    dim ? "opacity:.7" : "",
   ].join(";");
-  el.innerHTML = BIKE_SVG;
   return el;
 }
 
+/** The popup opens just clear of the dot (the dot is DOT + 5px wide with its ring). */
+const POPUP_OFFSET = DOT / 2 + 8;
+
 /**
- * Every scooter on one map, each as a bike badge coloured by state (live /
+ * Every scooter on one map, each as a small dot coloured by state (live /
  * stale / offline / low battery). Used by the dashboard and the Live Map page.
  * `kmToday` optionally adds today's distance to each popup.
  */
@@ -128,7 +136,7 @@ export function FleetLiveMap({
       link.style.cssText = "display:inline-block;margin-top:4px;text-decoration:underline";
       popupEl.append(link);
 
-      const popup = new lib.Popup({ offset: 22, closeButton: false }).setDOMContent(popupEl);
+      const popup = new lib.Popup({ offset: POPUP_OFFSET, closeButton: false }).setDOMContent(popupEl);
       const marker = new lib.Marker({ element: bikeMarkerElement(pinColorFor(t), t.freshness === "offline") })
         .setLngLat([t.lng as number, t.lat as number])
         .setPopup(popup)
@@ -171,7 +179,12 @@ export function FleetLiveMap({
   }
   return (
     <div className={cn("relative w-full overflow-hidden rounded-xl border border-border", heightClassName)}>
-      <div ref={containerRef} className="h-full w-full" />
+      {/* Absolutely filled, so the map takes whatever height the wrapper has — a fixed one (the Live Map
+          page) or a flexible one (the dashboard card, which stretches to its neighbour). MapLibre's CSS forces
+          its OWN container to `position: relative`, so the absolute positioning lives on this wrapper. */}
+      <div className="absolute inset-0">
+        <div ref={containerRef} className="h-full w-full" />
+      </div>
       {status === "loading" && (
         <div className="absolute inset-0 flex items-center justify-center bg-secondary/40">
           <Spinner className="h-5 w-5 text-muted-foreground" />

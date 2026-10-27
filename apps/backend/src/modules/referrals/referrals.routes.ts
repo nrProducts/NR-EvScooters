@@ -1,10 +1,12 @@
 import { Router } from "express";
+import { z } from "zod";
 import { requireAuth } from "../../middleware/auth.middleware";
-import { requireAdmin } from "../../middleware/authorize.middleware";
+import { requireAdmin, requireAction } from "../../middleware/authorize.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { asyncHandler } from "../../common/asyncHandler";
 import * as c from "./referrals.controller";
 import * as v from "./referrals.validation";
+import { getUserReferralsForAdmin } from "./referrals.service";
 
 const router = Router();
 router.use(requireAuth);
@@ -35,6 +37,16 @@ router.put(
     requireAdmin,
     validate({ body: v.updateReferralProgramBody }),
     asyncHandler(c.updateReferralProgramHandler),
+);
+
+// Staff view of one user's referral graph (who referred them, who they referred).
+router.get(
+    "/admin/users/:userId",
+    requireAction("users", "view"),
+    validate({ params: z.object({ userId: z.string().uuid("A valid user id is required.") }) }),
+    asyncHandler(async (req, res) => {
+        res.json(await getUserReferralsForAdmin(req.params.userId as string));
+    }),
 );
 
 export default router;

@@ -133,7 +133,19 @@ export async function triggerRefresh(kind: RefreshKind, actorId: string): Promis
 
     // Fire and forget: the function takes up to a minute. Its outcome shows up
     // as "last updated" moving, which is what the screen watches.
-    void fetch(`${env.supabaseUrl.replace(/\/$/, "")}/functions/v1/${FUNCTION_FOR[kind]}`, {
+    startEdgeFunction(FUNCTION_FOR[kind]);
+
+    return { started_at: startedAt };
+}
+
+/**
+ * Starts one of the tracking Edge Functions in the background (it takes up to a
+ * minute, so nothing waits for it). Used by the manual "Refresh now" and by the
+ * fleet allowance when an admin changes the period, so the new period's
+ * starting odometers get captured straight away.
+ */
+export function startEdgeFunction(name: string): void {
+    void fetch(`${env.supabaseUrl.replace(/\/$/, "")}/functions/v1/${name}`, {
         method: "POST",
         headers: {
             "content-type": "application/json",
@@ -142,8 +154,6 @@ export async function triggerRefresh(kind: RefreshKind, actorId: string): Promis
         },
         body: "{}",
     })
-        .then((res) => { if (!res.ok) console.warn(`[telematics] manual ${kind} refresh returned HTTP ${res.status}`); })
-        .catch((err) => console.warn(`[telematics] manual ${kind} refresh failed`, err instanceof Error ? err.message : err));
-
-    return { started_at: startedAt };
+        .then((res) => { if (!res.ok) console.warn(`[telematics] ${name} returned HTTP ${res.status}`); })
+        .catch((err) => console.warn(`[telematics] ${name} failed`, err instanceof Error ? err.message : err));
 }

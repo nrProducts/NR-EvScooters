@@ -53,7 +53,7 @@ export default function LiveMapPage() {
       <TrackingStatusPanel />
 
       <div className="flex flex-wrap items-center gap-2">
-        <Link to="/bike-kms" className="order-last ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted/50">
+        <Link to="/vehicles?view=kms"className="order-last ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted/50">
           <Route className="h-4 w-4" /> Bike KMs
         </Link>
         {FILTERS.map((f) => {
