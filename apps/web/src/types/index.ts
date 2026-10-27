@@ -207,8 +207,14 @@ export interface AppUser {
   payment_status: "pending_payment" | "confirmed" | "active" | "past_due" | "paused" | null;
   /** `subscriptions.started_on`. Null before pickup or with no subscription. */
   plan_started_at: string | null;
-  /** The current period's `due_on`. <= today means due today or overdue. */
+  /** Current period start — same resolver as Rental Operations. */
+  current_period_start: string | null;
+  /** The current period's end (due date). <= today means due today or overdue. */
   next_due_at: string | null;
+  /** "HH:MM" — both ends of a period fall at this time. */
+  cycle_time: string | null;
+  /** Picked up; before pickup the period has no real time yet. */
+  picked_up: boolean;
   /**
    * Real money owed right now — the sum of every unpaid, non-void invoice
    * balance. 0 once every bill is paid, even while a completed rental's

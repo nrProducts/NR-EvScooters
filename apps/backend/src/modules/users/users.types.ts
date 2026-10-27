@@ -108,12 +108,21 @@ export interface UserListItem extends UserProfile {
     /** `subscriptions.started_on`. Null before pickup or with no subscription. */
     plan_started_at: string | null;
     /**
-     * `v_subscription_current_period.due_on` — the LAST usable day of the
-     * current billing period, and the next renewal date. Null with no live
-     * subscription. A value <= today means the rider is due today or overdue,
-     * whether or not the overdue sweep has flipped the status yet.
+     * Start of the current billing period. Resolved by bookings.service's
+     * loadBookingContext — the same resolver as Rental Operations — so a paid
+     * renewal shows as soon as the old period's cutover passes.
+     */
+    current_period_start: string | null;
+    /**
+     * End (due date) of the current billing period, from the same resolver.
+     * Null with no live subscription. A value <= today means the rider is due
+     * today or overdue.
      */
     next_due_at: string | null;
+    /** "HH:MM" — both ends of a period fall at this time (the pickup time). */
+    cycle_time: string | null;
+    /** The booking has been picked up; before that the period has no real time. */
+    picked_up: boolean;
     /**
      * Sum of every unpaid, non-void invoice balance for this rider — the real
      * money owed RIGHT NOW, from `v_invoice_balances`, not inferred from a
@@ -186,6 +195,12 @@ export interface ListUsersFilters {
     includeDeleted: boolean;
     /** Exclude riders who already have an active booking or rental. */
     bookable?: boolean;
+    /** Only riders with a rental running right now. */
+    activeRental?: boolean;
+    /** Plan-due buckets, OR-ed: a rider matches if their current period is due in ANY of them. */
+    due?: UserDueBucket[];
     /** Only self-registered accounts still awaiting an admin's approve/reject. */
     pendingApproval?: boolean;
 }
+
+export type UserDueBucket = "overdue" | "today" | "d1" | "d2" | "d3";

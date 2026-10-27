@@ -20,6 +20,11 @@ export type SaveInspectionBody = z.infer<typeof saveInspectionBody>;
 
 export const approveReturnSettlementBody = z.object({
     endBatteryPct: z.number().min(0).max(100).optional(),
+    /**
+     * Were the rider's ORIGINAL documents handed back? Required (by the service,
+     * not here) whenever any are still held for this rental; ignored otherwise.
+     */
+    originalsReturned: z.boolean().optional(),
 });
 export type ApproveReturnSettlementBody = z.infer<typeof approveReturnSettlementBody>;
 

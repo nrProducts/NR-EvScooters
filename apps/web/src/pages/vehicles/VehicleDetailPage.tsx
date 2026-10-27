@@ -15,6 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
+import { VehicleLiveCard } from "@/components/vehicles/VehicleLiveCard";
+import { VehicleActivityCard } from "@/components/vehicles/VehicleActivityCard";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistorySplitView } from "@/components/vehicles/VehicleHistorySplitView";
 import {
@@ -110,7 +112,7 @@ export default function VehicleDetailPage() {
           <CardHeader>
             <CardTitle>Vehicle details</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {/*
               Battery number and charge level are gone: a battery is swapped at
               a station, so it was never a property of a scooter. Service dates
@@ -126,6 +128,7 @@ export default function VehicleDetailPage() {
           </CardContent>
         </Card>
 
+        {/* Right: plan and documents. */}
         <div className="space-y-4">
           <Card>
             <CardHeader>
@@ -202,6 +205,12 @@ export default function VehicleDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Live tracking gets the full width — it is the busiest part of this page. */}
+      <VehicleLiveCard vehicleId={vehicle.id} registrationNumber={vehicle.registration_number} />
+
+      {/* Running hours for the last 7 days — Vehicle detail only. */}
+      <VehicleActivityCard vehicleId={vehicle.id} />
 
       {vehicle.scrap_record && (
         <Card>

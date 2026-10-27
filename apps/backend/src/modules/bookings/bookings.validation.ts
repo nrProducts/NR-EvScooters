@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isValidStartDay } from "./bookings.service";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
+import { ORIGINAL_DOC_TYPES } from "../originals/originals.types";
 
 const startDaySchema = z
     .string()
@@ -77,8 +78,26 @@ export const bookingHistoryQuery = z.object({
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
 });
 
+const originalDocument = z.object({
+    type: z.enum(ORIGINAL_DOC_TYPES),
+    // Only meaningful for "other"; the service drops it for the standard types.
+    other_label: z.string().trim().max(80, "Keep it under 80 characters.").optional(),
+});
+
 export const confirmPickupBody = z.object({
     vehicle_id: z.string().uuid("A valid vehicle id is required.").optional(),
+    /**
+     * REQUIRED for every pickup: either nothing was taken ({ none: true }) or the
+     * list of original documents that were. "Not answered" is not accepted, so a
+     * pickup can never silently skip the question.
+     */
+    originals: z.union(
+        [
+            z.object({ none: z.literal(true) }).strict(),
+            z.object({ documents: z.array(originalDocument).min(1, "Choose at least one document.").max(8) }).strict(),
+        ],
+        { error: "Record whether original documents were taken (or that none were)." },
+    ),
 });
 
 export const rejectBookingBody = z.object({

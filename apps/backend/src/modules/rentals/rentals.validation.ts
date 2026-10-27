@@ -33,6 +33,8 @@ export const moveToMaintenanceBody = z.object({
     description: z.string().trim().min(3, "Describe the issue.").max(1000),
     end_battery_pct: z.coerce.number().min(0).max(100).optional(),
     inspected: z.boolean().optional(),
+    /** Were the rider's ORIGINAL documents handed back? Required (by the service) whenever any are held. */
+    originals_returned: z.boolean().optional(),
 });
 
 /**

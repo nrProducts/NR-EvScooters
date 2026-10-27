@@ -171,6 +171,8 @@ export interface PaymentReviewView {
 
 export interface ApproveReturnSettlementInput {
     endBatteryPct?: number;
+    /** Were the originals held for this rental handed back? Required when any are held. */
+    originalsReturned?: boolean;
 }
 
 export interface ListSettlementsFilters {

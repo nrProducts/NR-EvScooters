@@ -13,6 +13,10 @@ export interface UserFilters {
   staffOnly?: boolean;
   /** Drop riders who already have an active booking or rental (the create-booking picker). */
   bookable?: boolean;
+  /** Riders with a rental running right now. */
+  activeRental?: boolean;
+  /** Plan-due buckets, OR-ed: overdue, due today, or exactly 1/2/3 days from today. */
+  due?: ("overdue" | "today" | "d1" | "d2" | "d3")[];
   /** Only self-registered accounts awaiting an admin's approve/reject. Overrides `role`. */
   pendingApproval?: boolean;
   page?: number;
@@ -23,7 +27,7 @@ export interface UserFilters {
 
 /** GET /users — requireStaff. See apps/backend/src/modules/users/users.routes.ts */
 export async function fetchUsers(filters: UserFilters = {}): Promise<PaginatedResult<AppUser>> {
-  const { search, kycStatus, accountStatus, role, staffOnly, bookable, pendingApproval, page = 1, pageSize = 8, sortBy, sortDir } = filters;
+  const { search, kycStatus, accountStatus, role, staffOnly, bookable, pendingApproval, activeRental, due, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<AppUser>>("/users", {
     page,
     pageSize,
@@ -33,6 +37,8 @@ export async function fetchUsers(filters: UserFilters = {}): Promise<PaginatedRe
     role: role && role !== "all" && !pendingApproval ? role : undefined,
     staffOnly: staffOnly ? "true" : undefined,
     bookable: bookable ? "true" : undefined,
+    activeRental: activeRental ? "true" : undefined,
+    due: due && due.length ? due.join(",") : undefined,
     pendingApproval: pendingApproval ? "true" : undefined,
     sortBy,
     sortDir,

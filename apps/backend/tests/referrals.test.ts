@@ -63,7 +63,7 @@ vi.mock("../src/modules/notifications/notifications.service", () => ({
 }));
 
 import {
-    applyCardToInvoice, confirmCardRedemptionForInvoice, getOrCreateReferralCode, isReferralExpired,
+    applyCardToInvoice, confirmCardRedemptionForInvoice, getOrCreateReferralCode, getUserReferralsForAdmin, isReferralExpired,
     qualifyReferralIfApplicable, redeemReferralCode, releaseCardFromInvoice, releaseCardIfReservedForInvoice,
 } from "../src/modules/referrals/referrals.service";
 import { redeemReferralBody } from "../src/modules/referrals/referrals.validation";
@@ -429,5 +429,48 @@ describe("qualifyReferralIfApplicable — exactly-once card issuance on first_pa
         await qualifyReferralIfApplicable("referee-6", actor);
         // Stops after reading the program — never reaches referral_reward_cards.
         expect(calls).toEqual(["referrals", "payment_orders", "bookings", "referrals", "referrals", "referral_programs"]);
+    });
+});
+
+describe("getUserReferralsForAdmin — a user's place in the referral graph", () => {
+    const row = (over: Record<string, unknown>) => ({
+        id: "ref-1", status: "pending", code_used: "AB12CD", qualified_at: null, created_at: "2026-10-01T00:00:00Z",
+        referrer_user_id: "referrer-1", referee_user_id: "me", ...over,
+    });
+
+    it("returns who referred the user and everyone the user referred, with names and phones", async () => {
+        queue("referrals", { data: [row({ id: "above" })], error: null });
+        queue("referrals", {
+            data: [
+                row({ id: "b1", referrer_user_id: "me", referee_user_id: "kid-1", status: "qualified", qualified_at: "2026-10-05T00:00:00Z" }),
+                row({ id: "b2", referrer_user_id: "me", referee_user_id: "kid-2" }),
+            ],
+            error: null,
+        });
+        queue("users", {
+            data: [
+                { id: "referrer-1", full_name: "Asha", phone: "+911111111111", status: "active" },
+                { id: "kid-1", full_name: "Bala", phone: "+912222222222", status: "active" },
+                { id: "kid-2", full_name: "Chitra", phone: null, status: "pending" },
+            ],
+            error: null,
+        });
+
+        const out = await getUserReferralsForAdmin("me");
+
+        expect(out.referred_by?.person).toMatchObject({ id: "referrer-1", full_name: "Asha", phone: "+911111111111" });
+        expect(out.referred.map((r) => r.person.full_name)).toEqual(["Bala", "Chitra"]);
+        expect(out.referred_count).toBe(2);
+        expect(out.qualified_count).toBe(1);
+    });
+
+    it("has no referrer and an empty list for a user outside the referral graph, and skips the users lookup", async () => {
+        queue("referrals", { data: [], error: null });
+        queue("referrals", { data: [], error: null });
+
+        const out = await getUserReferralsForAdmin("me");
+
+        expect(out).toEqual({ referred_by: null, referred: [], referred_count: 0, qualified_count: 0 });
+        expect(calls).not.toContain("users");
     });
 });

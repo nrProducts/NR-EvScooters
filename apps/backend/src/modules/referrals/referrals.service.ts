@@ -11,6 +11,7 @@ import { phoneIdentityHash } from "./referralIdentity";
 import {
     MyAttributionView, QualifyReferralResult, RedemptionView, ReferralProgramAdminView, RedeemReferralResult,
     ReferralSummary, ReferralView, RewardCardView, UpdateReferralProgramInput,
+    ReferralPartyAdminView, UserReferralAdminRow, UserReferralsAdminView,
 } from "./referrals.types";
 
 /**
@@ -891,4 +892,56 @@ export async function releaseCardIfReservedForInvoice(invoiceId: string): Promis
             invoiceId, error: err instanceof Error ? err.message : String(err),
         });
     }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Admin — one user's referral graph                                      */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Who referred this user (at most one — uq_referrals_referee) and everyone this
+ * user referred. Staff-only: unlike the rider-facing views it carries full names
+ * and phone numbers, so staff can follow a referral back to the people involved.
+ */
+export async function getUserReferralsForAdmin(userId: string): Promise<UserReferralsAdminView> {
+    const columns = "id, status, code_used, qualified_at, created_at, referrer_user_id, referee_user_id";
+    const [{ data: above, error: aboveErr }, { data: below, error: belowErr }] = await Promise.all([
+        supabaseAdmin.from("referrals").select(columns).eq("referee_user_id", userId).limit(1),
+        supabaseAdmin.from("referrals").select(columns).eq("referrer_user_id", userId).order("created_at", { ascending: false }),
+    ]);
+    if (aboveErr) throw aboveErr;
+    if (belowErr) throw belowErr;
+
+    const otherIds = [...new Set([
+        ...(above ?? []).map((r) => r.referrer_user_id),
+        ...(below ?? []).map((r) => r.referee_user_id),
+    ])];
+    const people = new Map<string, ReferralPartyAdminView>();
+    if (otherIds.length > 0) {
+        const { data: users, error: usersErr } = await supabaseAdmin
+            .from("users").select("id, full_name, phone, status").in("id", otherIds);
+        if (usersErr) throw usersErr;
+        for (const u of users ?? []) {
+            people.set(u.id, { id: u.id, full_name: u.full_name, phone: u.phone, status: u.status });
+        }
+    }
+    const personFor = (id: string): ReferralPartyAdminView =>
+        people.get(id) ?? { id, full_name: "Unknown user", phone: null, status: "unknown" };
+
+    const toRow = (r: { id: string; status: ReferralView["status"]; code_used: string; created_at: string; qualified_at: string | null }, otherId: string): UserReferralAdminRow => ({
+        id: r.id,
+        status: r.status,
+        code_used: r.code_used,
+        created_at: r.created_at,
+        qualified_at: r.qualified_at,
+        person: personFor(otherId),
+    });
+
+    const referred = (below ?? []).map((r) => toRow(r, r.referee_user_id));
+    return {
+        referred_by: above && above.length > 0 ? toRow(above[0], above[0].referrer_user_id) : null,
+        referred,
+        referred_count: referred.length,
+        qualified_count: referred.filter((r) => r.status === "qualified").length,
+    };
 }

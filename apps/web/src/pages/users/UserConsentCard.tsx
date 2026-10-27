@@ -18,21 +18,21 @@ export function UserConsentCard({ userId }: { userId: string }) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm">
           <ShieldCheck className="h-4 w-4" /> Consent
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="text-xs">
           What this rider has agreed to, and against which version of the privacy notice.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4 pt-1">
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
         ) : isError || !data ? (
           <EmptyState title="Could not load consent" description="The consent service did not respond." />
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-2">
             {!data.up_to_date && (
               <div className="flex gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
                 <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
@@ -46,7 +46,7 @@ export function UserConsentCard({ userId }: { userId: string }) {
 
             <div className="divide-y divide-border">
               {data.items.map((item) => (
-                <div key={item.purpose} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <div key={item.purpose} className="flex items-center justify-between gap-3 py-1.5 text-sm">
                   <div className="flex min-w-0 items-center gap-2">
                     {item.required && <Lock className="h-3 w-3 shrink-0 text-muted-foreground" />}
                     <span className="truncate font-medium">

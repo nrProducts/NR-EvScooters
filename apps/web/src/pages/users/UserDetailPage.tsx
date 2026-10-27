@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, Mail, MapPin, FileText, PlusCircle } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, FileText, PlusCircle, UserRound } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,7 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { UserConsentCard } from "./UserConsentCard";
 import { AddChargeDialog } from "@/components/users/AddChargeDialog";
-import { EmptyState } from "@/components/common/EmptyState";
+import { RiderOriginalsCard } from "@/components/users/RiderOriginalsCard";
+import { UserReferralsCard } from "@/components/users/UserReferralsCard";
 import { ErrorState } from "@/components/common/ErrorState";
 import { useUser } from "@/hooks/useUsers";
 import { useAuthStore } from "@/store/authStore";
@@ -24,9 +25,9 @@ export default function UserDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-3">
         <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-40 w-full" />
       </div>
     );
   }
@@ -35,33 +36,38 @@ export default function UserDetailPage() {
   const address = [user.address_line_1, user.address_line_2, user.city, user.state, user.postal_code]
     .filter(Boolean)
     .join(", ");
+  const emergency =
+    user.emergency_contact_name || user.emergency_contact_phone
+      ? `${user.emergency_contact_name ?? ""} ${user.emergency_contact_phone ?? ""}`.trim()
+      : "Not provided";
+  const isRider = user.role === "rider";
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/users")}>
+    <div className="space-y-3 animate-fade-in">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate("/users")}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <Avatar className="h-10 w-10">
+        <Avatar className="h-9 w-9">
           <AvatarImage src={user.profile_photo_url ?? undefined} alt={user.full_name} />
           <AvatarFallback>{initials(user.full_name || "?")}</AvatarFallback>
         </Avatar>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{user.full_name || "Unnamed user"}</h1>
-          <p className="text-sm text-muted-foreground">Joined {formatDate(user.created_at)}</p>
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-xl font-semibold leading-tight tracking-tight">{user.full_name || "Unnamed user"}</h1>
+          <span className="text-xs text-muted-foreground">Joined {formatDate(user.created_at)}</span>
         </div>
         <StatusBadge status={user.role} />
         <StatusBadge status={user.account_status} />
         <StatusBadge status={user.kyc_status} />
 
-        {user.role === "rider" && hasAction(viewer, "payments", "refund") && (
+        {isRider && hasAction(viewer, "payments", "refund") && (
           <Button size="sm" variant="outline" className="ml-auto" onClick={() => setChargeOpen(true)}>
             <PlusCircle className="h-3.5 w-3.5" /> Add Charge
           </Button>
         )}
       </div>
 
-      {user.role === "rider" && (
+      {isRider && (
         <AddChargeDialog
           userId={user.id}
           riderName={user.full_name || "this rider"}
@@ -70,34 +76,27 @@ export default function UserDetailPage() {
         />
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/* Row 1: who they are, and where they stand with us. */}
+      <div className="grid gap-3 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Profile</CardTitle>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm"><UserRound className="h-4 w-4" /> Profile</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <CardContent className="grid grid-cols-1 gap-x-6 gap-y-3 p-4 pt-1 sm:grid-cols-2">
             <Detail icon={Phone} label="Phone" value={user.phone ?? "Not provided"} />
             <Detail icon={Mail} label="Email" value={user.email ?? "Not provided"} />
             <Detail icon={MapPin} label="Address" value={address || "Not provided"} />
-            <Detail
-              icon={Phone}
-              label="Emergency contact"
-              value={
-                user.emergency_contact_name || user.emergency_contact_phone
-                  ? `${user.emergency_contact_name ?? ""} ${user.emergency_contact_phone ?? ""}`.trim()
-                  : "Not provided"
-              }
-            />
+            <Detail icon={Phone} label="Emergency contact" value={emergency} />
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Fleet &amp; plan</CardTitle>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="text-sm">Fleet &amp; plan</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm">
+          <CardContent className="space-y-1.5 p-4 pt-1 text-sm">
             <Row
-              label="Assigned vehicle"
+              label="Vehicle"
               value={
                 user.assigned_vehicle ? (
                   <button
@@ -113,82 +112,82 @@ export default function UserDetailPage() {
               }
             />
             <Row
-              label="Current plan"
+              label="Plan"
               value={user.current_plan ? `${user.current_plan.name} — ₹${user.current_plan.price.toFixed(0)}/${user.current_plan.billing_cycle}` : "None"}
             />
             {/* An open return is its own row here rather than replacing the
-                plan status: a detail page has the space to state both, and
-                staff opening this record need the return surfaced explicitly —
-                it is the thing waiting on them. Same fact the Users grid
-                folds into its Payment column. */}
+                plan status: staff opening this record need the return surfaced
+                explicitly — it is the thing waiting on them. Same fact the Users
+                grid folds into its Payment column. */}
             {user.open_return ? (
               <Row
                 label="Return"
-                value={
-                  <StatusBadge
-                    status={user.open_return.status === "inspected" ? "inspected" : "return_requested"}
-                  />
-                }
+                value={<StatusBadge status={user.open_return.status === "inspected" ? "inspected" : "return_requested"} />}
               />
             ) : null}
-            <Row label="Payment status" value={user.payment_status ? <StatusBadge status={user.payment_status} /> : "—"} />
+            <Row label="Payment" value={user.payment_status ? <StatusBadge status={user.payment_status} /> : "—"} />
             <Row
-              label="Outstanding balance"
+              label="Outstanding"
               value={user.outstanding_amount > 0
                 ? <span className="font-semibold text-destructive">{formatCurrency(user.outstanding_amount)}</span>
                 : "₹0"}
             />
             <Row label="KYC completion" value={`${user.kyc_completion_percent}%`} />
-            <Row label="Role" value={user.role} />
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-4 w-4" /> KYC documents
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {user.documents.length === 0 ? (
-            <EmptyState title="No documents uploaded" description="This user hasn't submitted any KYC documents yet." />
-          ) : (
-            <div className="divide-y divide-border">
-              {user.documents.map((doc) => (
-                <div key={doc.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                  <div>
-                    <p className="font-medium capitalize">{doc.doc_type.replace(/_/g, " ")}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {doc.doc_number_masked ?? "—"}
-                      {doc.expires_on ? ` · expires ${formatDate(doc.expires_on)}` : ""}
-                    </p>
+      {/* Row 2: referrals and the originals we hold, side by side. */}
+      {isRider && (
+        <div className="grid gap-3 md:grid-cols-2">
+          <UserReferralsCard userId={user.id} />
+          <RiderOriginalsCard userId={user.id} />
+        </div>
+      )}
+
+      {/* Row 3: KYC documents and consent, side by side. */}
+      <div className="grid gap-3 md:grid-cols-2">
+        <Card>
+          <CardHeader className="p-4 pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <FileText className="h-4 w-4" /> KYC documents
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-1">
+            {user.documents.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No documents uploaded. This user hasn&apos;t submitted any KYC documents yet.</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {user.documents.map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between gap-2 py-1.5 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium capitalize">{doc.doc_type.replace(/_/g, " ")}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {doc.doc_number_masked ?? "—"}
+                        {doc.expires_on ? ` · expires ${formatDate(doc.expires_on)}` : ""}
+                      </p>
+                    </div>
+                    <StatusBadge status={doc.verification_status} />
                   </div>
-                  <StatusBadge status={doc.verification_status} />
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      <UserConsentCard userId={user.id} />
-
-      <p className="text-xs text-muted-foreground">
-        Ride history and payment history aren't shown here — the backend doesn't expose an admin rentals or
-        invoices endpoint yet (only a rider's own history, via <code>/rentals/me/history</code>).
-      </p>
+        <UserConsentCard userId={user.id} />
+      </div>
     </div>
   );
 }
 
 function Detail({ icon: Icon, label, value }: { icon: typeof Phone; label: string; value: string }) {
   return (
-    <div className="flex items-start gap-2">
-      <Icon className="mt-0.5 h-4 w-4 text-muted-foreground" />
-      <div>
+    <div className="flex min-w-0 items-start gap-2">
+      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="font-medium">{value}</p>
+        <p className="break-words text-sm font-medium">{value}</p>
       </div>
     </div>
   );
@@ -196,9 +195,9 @@ function Detail({ icon: Icon, label, value }: { icon: typeof Phone; label: strin
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between gap-3">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
+      <span className="text-right font-medium">{value}</span>
     </div>
   );
 }

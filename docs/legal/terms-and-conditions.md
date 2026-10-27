@@ -1,3 +1,5 @@
+<!-- SUPERSEDED. The live Terms are docs/legal/terms-operative.md (version 2026-09-04.3), published by supabase/migrations/20261028120000_terms_v3_swap_partner.sql. This file is kept for reference only; do not publish from it. -->
+
 <!--
 DRAFT — NEEDS REVIEW BY AN INDIAN LAWYER BEFORE IT IS PUBLISHED OR RELIED ON.
 

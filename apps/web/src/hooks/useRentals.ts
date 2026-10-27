@@ -38,6 +38,8 @@ export function useMoveRideToMaintenance() {
     onSuccess: () => {
       invalidateAfterRentalMutation(qc);
       qc.invalidateQueries({ queryKey: ["maintenance"] });
+      qc.invalidateQueries({ queryKey: ["rental-originals"] });
+      qc.invalidateQueries({ queryKey: ["rider-originals"] });
     },
   });
 }

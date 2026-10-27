@@ -4,6 +4,7 @@ import { getAccessToken, getSupabase } from './supabase';
 import { ApiError } from './ApiError';
 import { signInWithGoogleBrowser } from './googleAuth';
 import { cachedGet, invalidateForWrite } from './apiCache';
+import { deviceId } from './deviceId';
 
 // Re-exported so existing `import { ApiError } from '../lib/api'` keeps working.
 export { ApiError };
@@ -335,10 +336,10 @@ export const api = {
      * not see. `language` is what they actually read, not their app-wide
      * preference, since the Tamil body may not exist.
      */
-    acceptTerms: (input: { version: string; language: 'en' | 'ta' }) =>
+    acceptTerms: async (input: { version: string; language: 'en' | 'ta' }) =>
         request<ApiLegalAcceptanceState>('/users/me/legal/acceptances', {
             method: 'POST',
-            body: { doc_type: 'terms', ...input },
+            body: { doc_type: 'terms', ...input, device_id: await deviceId() },
         }),
 
     // --- DPDPA consent ----------------------------------------------------
@@ -355,12 +356,15 @@ export const api = {
      * made against a notice that was retired while the screen was open — the
      * rider must never be recorded as consenting to words they did not see.
      */
-    setConsents: (input: {
+    setConsents: async (input: {
         notice_version: string;
         language: 'en' | 'ta';
         device_id?: string;
         grants: { purpose: ConsentPurpose; granted: boolean }[];
-    }) => request<ApiConsentState>('/users/me/consents', { method: 'POST', body: input }),
+    }) => request<ApiConsentState>('/users/me/consents', {
+        method: 'POST',
+        body: { ...input, device_id: input.device_id ?? (await deviceId()) },
+    }),
 
     withdrawConsent: (purpose: ConsentPurpose) =>
         request<ApiConsentState>(`/users/me/consents/${purpose}`, { method: 'DELETE' }),

@@ -46,7 +46,7 @@ const DOCS = [
         // (public.legal_documents). The long-form lawyer draft stays in
         // docs/legal/terms-and-conditions.md and is NOT published.
         src: "docs/legal/terms-operative.md",
-        mustMatchMigration: "supabase/migrations/20260904155921_legal_documents.sql",
+        mustMatchMigration: "supabase/migrations/20261028120000_terms_v3_swap_partner.sql",
         out: "terms.html",
         title: "Terms & Conditions — Swapngo",
         description: "The terms and conditions governing EV scooter rental bookings, payments, and returns with Swapngo in Chennai.",

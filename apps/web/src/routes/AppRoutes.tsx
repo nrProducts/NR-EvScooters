@@ -10,6 +10,8 @@ import ResetPasswordPage from "@/pages/auth/ResetPasswordPage";
 import ChangePasswordPage from "@/pages/auth/ChangePasswordPage";
 import DashboardRouter from "@/pages/dashboard/DashboardRouter";
 import BatteryStationsPage from "@/pages/battery-stations/BatteryStationsPage";
+import BikeKmsPage from "@/pages/fleet/BikeKmsPage";
+import LiveMapPage from "@/pages/fleet/LiveMapPage";
 import VehicleListPage from "@/pages/vehicles/VehicleListPage";
 import VehicleDetailPage from "@/pages/vehicles/VehicleDetailPage";
 import UserListPage from "@/pages/users/UserListPage";
@@ -74,6 +76,8 @@ export function AppRoutes() {
         <Route path="/battery-stations" element={<BatteryStationsPage />} />
 
         <Route path="/vehicles" element={<VehicleListPage />} />
+        <Route path="/live-map" element={<LiveMapPage />} />
+        <Route path="/bike-kms" element={<BikeKmsPage />} />
         <Route path="/vehicles/:id" element={<VehicleDetailPage />} />
 
         <Route path="/users" element={<UserListPage />} />

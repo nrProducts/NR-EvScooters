@@ -12,6 +12,7 @@ import {
 } from "../../types";
 import { ListUsersFilters, UserDetail, UserListItem, UserProfile } from "./users.types";
 import { ACTIVE_BOOKING_STATUSES } from "../bookings/bookings.types";
+import { loadBookingContext } from "../bookings/bookings.service";
 import { normaliseEmail, normalisePhone } from "./users.validation";
 import { applyPermissionProfile } from "./staff-permissions.service";
 import {
@@ -149,6 +150,68 @@ function toProfile(row: RawUserRow): UserProfile {
 // List
 // ---------------------------------------------------------------------------
 
+/** Business-timezone date `n` days from today, as YYYY-MM-DD. */
+function businessDatePlus(n: number): string {
+    return businessToday(new Date(Date.now() + n * 86_400_000));
+}
+
+/**
+ * User ids matching the rider-state filters (active rental, plan due soon), or
+ * null when neither is set. "Due" is the current billing period's due date —
+ * the same `due_on` the grid shows as Plan ends — on a live subscription.
+ */
+async function riderStateUserIds(
+    filters: ListUsersFilters,
+): Promise<{ ids: string[]; dueOn: Map<string, string> } | null> {
+    const due = filters.due ?? [];
+    if (!filters.activeRental && due.length === 0) return null;
+
+    const dueOn = new Map<string, string>();
+    let ids: Set<string> | null = null;
+    const narrow = (next: Iterable<string>) => {
+        const n = new Set(next);
+        ids = ids ? new Set([...ids].filter((x) => n.has(x))) : n;
+    };
+
+    if (filters.activeRental) {
+        const { data, error } = await supabaseAdmin.from("rentals").select("user_id").eq("status", "active");
+        if (error) throw error;
+        narrow((data ?? []).map((r) => r.user_id as string));
+    }
+
+    if (due.length > 0) {
+        const today = businessToday();
+        const exact = (n: number) => businessDatePlus(n);
+        const clauses = due.map((b) => (b === "overdue" ? `due_on.lt.${today}`
+            : b === "today" ? `due_on.eq.${today}`
+                : `due_on.eq.${exact(Number(b.slice(1)))}`));
+        const { data: periods, error } = await supabaseAdmin
+            .from("v_subscription_current_period")
+            .select("user_id, subscription_id, due_on")
+            .or(clauses.join(","));
+        if (error) throw error;
+        const subIds = (periods ?? []).map((p) => p.subscription_id).filter((x): x is string => !!x);
+        if (subIds.length === 0) narrow([]);
+        else {
+            const { data: live, error: liveError } = await supabaseAdmin
+                .from("subscriptions")
+                .select("id, user_id")
+                .in("id", subIds)
+                .in("status", ["active", "paused", "past_due"]);
+            if (liveError) throw liveError;
+            const liveIds = new Set((live ?? []).map((s) => s.id as string));
+            for (const p of periods ?? []) {
+                if (p.subscription_id && p.due_on && liveIds.has(p.subscription_id)) {
+                    const prev = dueOn.get(p.user_id as string);
+                    if (!prev || p.due_on < prev) dueOn.set(p.user_id as string, p.due_on);
+                }
+            }
+            narrow((live ?? []).map((s) => s.user_id as string));
+        }
+    }
+    return { ids: [...(ids ?? [])], dueOn };
+}
+
 export async function listUsers(
     filters: ListUsersFilters,
     actor: AuthContext,
@@ -167,6 +230,18 @@ export async function listUsers(
         : PROFILE_SELECT;
 
     let query = supabaseAdmin.from("users").select(select, { count: "exact" });
+
+    // Rider-state filters resolve to a set of user ids first, so the page and
+    // the total both honour them. Several filters narrow together (AND).
+    const restrictTo = await riderStateUserIds(filters);
+    if (restrictTo) {
+        if (restrictTo.ids.length === 0) return paginate([], 0, filters);
+        query = query.in("id", restrictTo.ids);
+    }
+    // A due-date filter lists the soonest-due rider first, which no column on
+    // `users` can express — and the matching set is small (riders due in a
+    // few days) — so it is ordered and paged here instead of in SQL.
+    const byDueDate = !!restrictTo && (filters.due?.length ?? 0) > 0;
 
     if (!includeDeleted) query = query.is("deleted_at", null);
 
@@ -212,12 +287,22 @@ export async function listUsers(
     // Sorting by kyc_status has to name the embedded table; the other two
     // are ordinary columns on `users`.
     const sortColumn = filters.sortBy === "kyc_status" ? "rider_profiles(kyc_status)" : filters.sortBy;
-    query = query.order(sortColumn, { ascending: filters.sortDir === "asc" }).range(from, to);
+    query = byDueDate
+        ? query
+        : query.order(sortColumn, { ascending: filters.sortDir === "asc" }).range(from, to);
 
     const { data, error, count } = await query;
     if (error) throw error;
 
     let rows = (data ?? []) as unknown as RawUserRow[];
+    let totalCount = count ?? 0;
+    if (byDueDate && restrictTo) {
+        rows = rows.sort((a, b) =>
+            (restrictTo.dueOn.get(a.id) ?? "9999").localeCompare(restrictTo.dueOn.get(b.id) ?? "9999")
+            || a.full_name.localeCompare(b.full_name));
+        totalCount = rows.length;
+        rows = rows.slice(from, to + 1);
+    }
 
     // `bookable`: drop anyone who already has an active booking or rental —
     // adminCreateBooking rejects them, so they should never appear in the
@@ -258,13 +343,16 @@ export async function listUsers(
             current_plan: planInfo?.plan ?? null,
             payment_status: planInfo?.payment_status ?? null,
             plan_started_at: planInfo?.plan_started_at ?? null,
+            current_period_start: planInfo?.current_period_start ?? null,
             next_due_at: planInfo?.next_due_at ?? null,
+            cycle_time: planInfo?.cycle_time ?? null,
+            picked_up: planInfo?.picked_up ?? false,
             outstanding_amount: outstanding.get(row.id) ?? pendingLateFees.get(row.id) ?? 0,
             open_return: openReturns.get(row.id) ?? null,
         };
     });
 
-    return paginate(items, count ?? 0, filters);
+    return paginate(items, totalCount, filters);
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +392,10 @@ export async function getUserById(id: string, actor: AuthContext): Promise<UserD
         current_plan: planInfo?.plan ?? null,
         payment_status: planInfo?.payment_status ?? null,
         plan_started_at: planInfo?.plan_started_at ?? null,
+        current_period_start: planInfo?.current_period_start ?? null,
         next_due_at: planInfo?.next_due_at ?? null,
+        cycle_time: planInfo?.cycle_time ?? null,
+        picked_up: planInfo?.picked_up ?? false,
         outstanding_amount: outstanding.get(id) ?? pendingLateFee?.get(id) ?? 0,
         open_return: openReturns.get(id) ?? null,
         last_login_at: lastLoginAt,
@@ -1482,41 +1573,47 @@ async function currentPlanByUser(userIds: string[]): Promise<Map<string, {
     plan: { id: string; name: string; price: number; billing_cycle: string } | null;
     payment_status: UserListItem["payment_status"];
     plan_started_at: string | null;
+    current_period_start: string | null;
     next_due_at: string | null;
+    cycle_time: string | null;
+    picked_up: boolean;
 }>> {
     type Entry = {
         plan: { id: string; name: string; price: number; billing_cycle: string } | null;
         payment_status: UserListItem["payment_status"];
         plan_started_at: string | null;
+        current_period_start: string | null;
         next_due_at: string | null;
+        cycle_time: string | null;
+        picked_up: boolean;
     };
     const map = new Map<string, Entry>();
     if (userIds.length === 0) return map;
 
-    const [subsRes, periodsRes] = await Promise.all([
-        supabaseAdmin
-            .from("subscriptions")
-            .select("id, user_id, status, started_on, plan_price_snapshot, billing_period_snapshot, plans(id, name)")
-            .in("user_id", userIds)
-            .in("status", ["active", "paused", "past_due"])
-            .order("started_on", { ascending: false }),
-        supabaseAdmin
-            .from("v_subscription_current_period")
-            .select("user_id, subscription_id, due_on")
-            .in("user_id", userIds),
-    ]);
+    const subsRes = await supabaseAdmin
+        .from("subscriptions")
+        .select("id, user_id, status, started_on, booking_id, plan_price_snapshot, billing_period_snapshot, plans(id, name), bookings(status)")
+        .in("user_id", userIds)
+        .in("status", ["active", "paused", "past_due"])
+        .order("started_on", { ascending: false });
     if (subsRes.error) throw subsRes.error;
-    if (periodsRes.error) throw periodsRes.error;
 
-    const dueBySubscription = new Map<string, string | null>(
-        (periodsRes.data ?? [])
-            .filter((p) => p.subscription_id)
-            .map((p) => [p.subscription_id as string, p.due_on] as const),
+    // The current period comes from the SAME resolver Rental Operations uses,
+    // so the two screens can never show different dates. It reads
+    // subscription_periods live and shows a paid renewal as soon as the old
+    // period's cutover passes, rather than waiting for payment-overdue-sweep to
+    // flip it to 'current' (which v_subscription_current_period, used here
+    // before, did wait for). bookings.service also imports this module; the
+    // cycle is safe because loadBookingContext is only read at call time.
+    const contexts = await loadBookingContext(
+        (subsRes.data ?? []).map((row) => row.booking_id).filter((id): id is string => !!id),
     );
 
     for (const row of subsRes.data ?? []) {
         if (map.has(row.user_id)) continue; // newest first — first hit per user wins
         const plan = one<{ id: string; name: string }>(row.plans);
+        const ctx = row.booking_id ? contexts.get(row.booking_id) : undefined;
+        const bookingStatus = one<{ status: string }>(row.bookings)?.status;
         map.set(row.user_id, {
             plan: plan
                 ? {
@@ -1530,7 +1627,11 @@ async function currentPlanByUser(userIds: string[]): Promise<Map<string, {
                 : null,
             payment_status: row.status as Entry["payment_status"],
             plan_started_at: row.started_on,
-            next_due_at: dueBySubscription.get(row.id) ?? null,
+            current_period_start: ctx?.currentPeriodStart ?? null,
+            next_due_at: ctx?.nextDueAt ?? null,
+            cycle_time: ctx?.cycleTime ?? null,
+            // Same test as Rental Operations: the clock starts at pickup.
+            picked_up: bookingStatus === "fulfilled" || bookingStatus === "completed",
         });
     }
 
@@ -1560,7 +1661,10 @@ async function currentPlanByUser(userIds: string[]): Promise<Map<string, {
                 : null,
             payment_status: row.status as Entry["payment_status"],
             plan_started_at: null,
+            current_period_start: null,
             next_due_at: null,
+            cycle_time: null,
+            picked_up: false,
         });
     }
 

@@ -89,6 +89,18 @@ export const listUsersQuery = z.object({
         .enum(["true", "false"])
         .default("false")
         .transform((v) => v === "true"),
+    // Riders with a rental running right now.
+    activeRental: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
+    // Comma-separated plan-due buckets, OR-ed together: overdue, today, d1, d2, d3.
+    // `d2` means due exactly two days from today (business timezone).
+    due: z
+      .string()
+      .optional()
+      .transform((v) => (v ? v.split(",").map((t) => t.trim()).filter(Boolean) : []))
+      .pipe(z.array(z.enum(["overdue", "today", "d1", "d2", "d3"])).max(5)),
     // Self-registered accounts an admin has not yet approved or rejected
     // (Users → Awaiting approval). Overrides the role/accountStatus filters.
     pendingApproval: z

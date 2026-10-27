@@ -8,6 +8,7 @@ import { listDamagesForRental } from "../damages/damages.service";
 import { getDepositForSubscriptionOrNull } from "../deposits/deposits.service";
 import { notifyUser } from "../notifications/notifications.service";
 import { businessToday } from "../../common/dates";
+import { applyOriginalsAnswer, assertOriginalsAnswered, heldDocumentsForRental } from "../originals/originals.service";
 import {
     ApproveReturnSettlementInput, ListSettlementsFilters, PaymentReviewView, ReturnDetailView,
     ReturnSettlementRow, ReturnSettlementStatus, ReturnStage, ReturnStageStatus, SaveInspectionInput,
@@ -653,6 +654,14 @@ export async function approveReturnSettlement(
                 // never issued (a first-attempt failure). Re-approving now
                 // issues it rather than silently returning the broken row.
                 await issueSettlementRefund(rentalId, before.subscription_id, before.user_id, existing, actor);
+                // Same for the originals: if the first attempt approved the return but could
+                // not record their handback, an answer on the retry is applied now.
+                if (input.originalsReturned !== undefined) {
+                    await applyOriginalsAnswer({
+                        rentalId, userId: before.user_id, answer: input.originalsReturned, actor,
+                        held: await heldDocumentsForRental(rentalId),
+                    });
+                }
                 return await getSettlementByRentalId(rentalId) ?? existing;
             }
         }
@@ -672,11 +681,27 @@ export async function approveReturnSettlement(
         );
     }
 
+    // If any original documents are still held for this rental, staff must say
+    // whether they were handed back — checked BEFORE anything is closed, so a
+    // missing answer stops the approval rather than leaving it half done.
+    const heldOriginals = await assertOriginalsAnswered(rentalId, input.originalsReturned);
+
     // Close the rental. This approves the return, releases the vehicle, ends
     // the subscription, starts the deposit clock AND writes the settlement
     // row — using the charges already staged at inspection (settleReturn
     // reads them off the return row itself; nothing fresh is passed in here).
     await completeRide(rentalId, { inspected: true, end_battery_pct: input.endBatteryPct }, actor);
+
+    // The return is done; record what happened to the originals. A failure here must
+    // not undo an approved return — it is logged, the card still shows the documents as
+    // held, and re-submitting the approval with the answer applies it (see above).
+    try {
+        await applyOriginalsAnswer({
+            rentalId, userId: before.user_id, held: heldOriginals, answer: input.originalsReturned, actor,
+        });
+    } catch (err) {
+        console.error("[returns] could not record the originals handback", { rentalId, err });
+    }
 
     const settlement = await getSettlementByRentalId(rentalId);
     if (!settlement) throw notFound("Settlement not found after creation.");

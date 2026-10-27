@@ -36,6 +36,7 @@ import {
     businessToday, formatBusinessDayForCopy, formatCycleTimeForCopy, normalizeCycleTime,
 } from "../../common/dates";
 import { anchorCycleAtPickup, type CycleAnchor } from "../subscriptions/cycleAnchor";
+import { recordOriginalsAtPickup } from "../originals/originals.service";
 import { env } from "../../config/env";
 import {
     BEYOND_LAST_TIER_PENALTY_PERCENT, DEFAULT_CANCELLATION_TIERS, type CancellationTier,
@@ -96,7 +97,7 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
 // Context assembly — everything that used to be a booking column
 // ---------------------------------------------------------------------------
 
-interface BookingContext {
+export interface BookingContext {
     subscriptionId: string | null;
     planStatus: BookingView["plan_status"];
     /** True when the subscription has ended — what the view reports as `completed`. */
@@ -188,7 +189,7 @@ function inclusiveDays(startsOn: string, endsOn: string): number {
  *
  * Six queries regardless of page size, rather than six per row.
  */
-async function loadBookingContext(bookingIds: string[]): Promise<Map<string, BookingContext>> {
+export async function loadBookingContext(bookingIds: string[]): Promise<Map<string, BookingContext>> {
     const contexts = new Map<string, BookingContext>();
     if (bookingIds.length === 0) return contexts;
 
@@ -1944,13 +1945,39 @@ export async function confirmPickup(
         throw assignmentError;
     }
 
+    // Step 4: record which ORIGINAL documents staff took (or that none were). This is
+    // part of the handover, not an afterthought: originals physically taken but not
+    // recorded are the one mistake this exists to prevent. So a failure here undoes
+    // the handover — rental (and its assignment, by cascade) removed, booking put
+    // back — the same way a failed assignment does, and staff can simply retry.
+    let originalsRecorded: { taken: boolean; documents: { type: string; other_label?: string }[] };
+    try {
+        originalsRecorded = await recordOriginalsAtPickup({
+            rentalId: rental.id,
+            userId: booking.user_id,
+            originals: input.originals,
+            actorId: actor.id,
+        });
+    } catch (err) {
+        await supabaseAdmin.from("rentals").delete().eq("id", rental.id);
+        await supabaseAdmin
+            .from("bookings")
+            .update({ status: "confirmed", held_vehicle_id: vehicleId })
+            .eq("id", bookingId);
+        throw err;
+    }
+
     await writeAudit({
         actorId: actor.id,
         targetUserId: booking.user_id,
         action: "booking.fulfilled",
         entityType: "booking",
         entityId: bookingId,
-        after: { vehicle_id: vehicleId, status: "fulfilled", rental_id: rental.id, due_back_at: dueBackAt },
+        after: {
+            vehicle_id: vehicleId, status: "fulfilled", rental_id: rental.id, due_back_at: dueBackAt,
+            originals_taken: originalsRecorded.taken,
+            original_documents: originalsRecorded.documents,
+        },
     });
 
     await notifyUser(booking.user_id, {
