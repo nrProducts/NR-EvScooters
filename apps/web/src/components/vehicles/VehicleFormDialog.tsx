@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/common/Spinner";
 import { useVehicleModelOptions } from "@/hooks/useVehicleModelOptions";
+import { useHubOptions } from "@/hooks/useHubOptions";
 import type { Vehicle } from "@/types";
 import type { VehicleFormInput } from "@/services/api/vehicles";
 import { ApiError } from "@/services/api/httpClient";
@@ -41,6 +42,7 @@ const emptyForm: VehicleFormInput = {
   registration_number: "",
   vin: "",
   vehicle_model_id: "",
+  hub_id: "",
   color: "",
   qr_code: "",
   imei: "",
@@ -54,6 +56,7 @@ function toForm(vehicle: Vehicle): VehicleFormInput {
     registration_number: vehicle.registration_number,
     vin: vehicle.vin,
     vehicle_model_id: vehicle.vehicle_model_id,
+    hub_id: vehicle.hub_id ?? "",
     color: vehicle.color ?? "",
     qr_code: vehicle.qr_code ?? "",
     imei: vehicle.imei ?? "",
@@ -80,6 +83,7 @@ export function VehicleFormDialog({
 }) {
   const [form, setForm] = useState<VehicleFormInput>(vehicle ? toForm(vehicle) : emptyForm);
   const { data: models = [] } = useVehicleModelOptions();
+  const { data: hubs = [] } = useHubOptions();
 
   useEffect(() => {
     if (open) setForm(vehicle ? toForm(vehicle) : emptyForm);
@@ -88,16 +92,20 @@ export function VehicleFormDialog({
   const set = <K extends keyof VehicleFormInput>(key: K, value: VehicleFormInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  // The display name is optional — a vehicle can just be its plate.
+  // The display name is optional — a vehicle can just be its plate. The hub is
+  // required for a new vehicle: availability is matched on model + hub, so a
+  // unit without one can never be booked.
   const canSubmit =
     form.registration_number.trim() &&
     form.vin.trim() &&
-    form.vehicle_model_id;
+    form.vehicle_model_id &&
+    (vehicle || form.hub_id);
 
   const handleSubmit = () => {
     onSubmit({
       ...form,
       name: form.name?.trim() || undefined,
+      hub_id: form.hub_id || undefined,
       color: form.color || undefined,
       qr_code: form.qr_code || undefined,
       imei: form.imei || undefined,
@@ -134,6 +142,18 @@ export function VehicleFormDialog({
               <SelectContent>
                 {models.map((m) => (
                   <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Hub">
+            <Select value={form.hub_id ?? ""} onValueChange={(v) => set("hub_id", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Choose a hub..." />
+              </SelectTrigger>
+              <SelectContent>
+                {hubs.map((h) => (
+                  <SelectItem key={h.id} value={h.id}>{h.name} ({h.code})</SelectItem>
                 ))}
               </SelectContent>
             </Select>

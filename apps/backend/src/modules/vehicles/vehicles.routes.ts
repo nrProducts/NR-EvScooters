@@ -26,6 +26,10 @@ router.post(
     asyncHandler(c.createVehicleHandler),
 );
 
+// Active hubs for the add/edit form's picker. Declared before "/:id" so
+// "hub-options" is never parsed as a vehicle id.
+router.get("/hub-options", requireAction("vehicles", "view"), asyncHandler(c.hubOptionsHandler));
+
 // --- bulk import (template → preview → commit) ---------------------------
 // Declared before "/:id" so "import" is never parsed as a vehicle id. Same
 // "create" grant as adding one vehicle — it is the same act, many times.

@@ -28,7 +28,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "How does the security deposit work?",
     answer:
-      "₹2,000 is collected with your first rental period on the current Weekly Unlimited plan, made up of a ₹500 one-time onboarding charge and a ₹1,500 refundable security deposit. The onboarding charge is not refundable. The ₹1,500 deposit is held against damage and becomes eligible for refund once you have completed a minimum of 45 rental days and the vehicle is returned in good condition, subject to deductions for damages, outstanding dues, penalties or other applicable charges.",
+      "₹1,500 is collected with your first rental period on the current Weekly Unlimited plan, made up of a ₹500 one-time onboarding charge and a ₹1,000 refundable security deposit. The onboarding charge is not refundable. The ₹1,000 deposit is held against damage and becomes eligible for refund once you have completed a minimum of 45 rental days and the vehicle is returned in good condition, subject to deductions for damages, outstanding dues, penalties or other applicable charges.",
   },
   {
     question: "What happens after I book?",
@@ -43,7 +43,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "Can I rent an electric scooter for a month in Chennai?",
     answer:
-      "Yes — Swapngo runs on a Weekly Unlimited plan that renews automatically, so you can keep the same scooter for a month or longer just by continuing to ride. There's no separate monthly plan or fixed monthly lock-in: you pay week to week and can stop whenever you like, which works out to a flexible month-long (or longer) rental without committing upfront.",
+      "Yes — Swapngo runs on a Weekly Unlimited plan that you renew each week in the app, so you can keep the same scooter for a month or longer just by renewing before your week ends. There's no separate monthly plan or fixed monthly lock-in: you pay week to week and can stop whenever you like, which works out to a flexible month-long (or longer) rental without committing upfront.",
   },
   {
     question: "What if my scooter's battery runs low?",

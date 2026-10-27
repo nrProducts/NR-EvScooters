@@ -1,3 +1,5 @@
+<!-- SUPERSEDED. The live Terms are docs/legal/terms-operative.md (version 2026-09-04.2), published by supabase/migrations/20261027100000_terms_v2_official.sql. This file is kept for reference only; do not publish from it. -->
+
 # Swapngo Rider Agreement — Terms & Conditions for E-Scooter Rental
 
 Issued by Swapngo Fleet Hub, a partnership firm registered in India, with its principal place of business at [full registered address, Chennai, Tamil Nadu – PIN] and GSTIN [GSTIN] ("Swapngo", "we", "us", "our").
