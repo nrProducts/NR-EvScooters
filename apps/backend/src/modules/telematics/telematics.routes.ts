@@ -8,6 +8,7 @@ import * as service from "./telematics.service";
 import * as distance from "./distance.service";
 import * as control from "./control.service";
 import * as refresh from "./refresh.service";
+import * as activity from "./activity.service";
 import { businessToday } from "../../common/dates";
 import type { AuthedRequest } from "../../middleware/auth.middleware";
 
@@ -71,6 +72,16 @@ router.post(
     validate({ body: refreshBody }),
     asyncHandler(async (req: AuthedRequest, res) => {
         res.status(202).json(await refresh.triggerRefresh(req.body.kind, req.user!.id));
+    }),
+);
+
+// Last 7 days of running hours / moving hours / trips / km for one bike (Vehicle detail page).
+router.get(
+    "/vehicles/:vehicleId/activity",
+    requireAction("vehicles", "view"),
+    validate({ params: vehicleIdParam }),
+    asyncHandler(async (req, res) => {
+        res.json(await activity.getVehicleActivity(req.params.vehicleId as string));
     }),
 );
 

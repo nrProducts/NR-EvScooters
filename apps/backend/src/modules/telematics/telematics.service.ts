@@ -89,6 +89,8 @@ export interface BikeKmsRow {
     km_today: number;
     km_7d: number;
     km_30d: number;
+    /** The rider who has this bike right now, or null when it is not with anyone. */
+    current_rider: { id: string; full_name: string; phone: string | null } | null;
     /** When the stored figures were last refreshed; null if never. */
     updated_at: string | null;
 }
@@ -112,7 +114,7 @@ export async function listBikeKms(today: string): Promise<BikeKmsRow[]> {
     const from30 = plusDays(today, -29);
     const from7 = plusDays(today, -6);
 
-    const [vehiclesRes, daysRes] = await Promise.all([
+    const [vehiclesRes, daysRes, ridersRes] = await Promise.all([
         supabaseAdmin
             .from("vehicles")
             .select("id, display_name, registration_number, status, vehicle_models(name)")
@@ -121,8 +123,17 @@ export async function listBikeKms(today: string): Promise<BikeKmsRow[]> {
             .select("vehicle_id, day, distance_km, updated_at")
             .gte("day", from30)
             .lte("day", today),
+        // Who holds each bike right now — the same view the Vehicles list uses for "Rider".
+        supabaseAdmin.from("v_rental_current_vehicle").select("vehicle_id, users(id, full_name, phone)"),
     ]);
     if (vehiclesRes.error) throw vehiclesRes.error;
+    if (ridersRes.error) throw ridersRes.error;
+
+    const riderByVehicle = new Map<string, { id: string; full_name: string; phone: string | null }>();
+    for (const r of (ridersRes.data ?? []) as unknown as { vehicle_id: string; users: unknown }[]) {
+        const u = (Array.isArray(r.users) ? r.users[0] : r.users) as { id: string; full_name: string; phone: string | null } | null;
+        if (r.vehicle_id && u) riderByVehicle.set(r.vehicle_id, u);
+    }
     // No distance table yet (not migrated) or a brief DB error: list the fleet with zeros
     // rather than failing the whole page.
     if (daysRes.error) console.warn("[telematics] vehicle_distance_daily unreadable", daysRes.error.message);
@@ -152,6 +163,7 @@ export async function listBikeKms(today: string): Promise<BikeKmsRow[]> {
                 km_today: round1(s?.t ?? 0),
                 km_7d: round1(s?.d7 ?? 0),
                 km_30d: round1(s?.d30 ?? 0),
+                current_rider: riderByVehicle.get(v.id) ?? null,
                 updated_at: s?.at ?? null,
             };
         })

@@ -18,12 +18,12 @@ let cached: { token: string; expiresAt: number } | null = null;
 /** The platform's token lasts ~15 days; renew well before that. */
 const TOKEN_TTL_MS = 10 * 24 * 3_600_000;
 
-async function post<T>(path: string, body: Record<string, unknown>): Promise<Envelope<T>> {
+async function post<T>(path: string, body: Record<string, unknown>, timeoutMs = 15_000): Promise<Envelope<T>> {
     const res = await fetch(`${env.intellicarBaseUrl.replace(/\/$/, "")}/${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(timeoutMs),
     });
     if (res.status === 429) throw new Error("Tracking platform rate limit reached — try again later.");
     if (res.status === 401) {
@@ -88,6 +88,35 @@ const num = (v: unknown): number | null => {
     const n = typeof v === "string" ? Number(v) : (v as number);
     return typeof n === "number" && Number.isFinite(n) ? n : null;
 };
+
+/**
+ * A vehicle's GPS history between two instants (epoch ms) — only the three
+ * fields the daily-activity calculation needs. A day of history is ~1,500-2,500
+ * readings, so a week is a large response: it gets a long timeout, and it must
+ * be called sparingly (it counts toward the 24 history calls per bike per day).
+ */
+export async function getGpsHistory(
+    vehicleNo: string,
+    startMs: number,
+    endMs: number,
+): Promise<{ commtime: number; speed: number | null; ignstatus: number | string | null }[]> {
+    const res = await post<Record<string, unknown>[]>("getgpshistory", {
+        token: await token(),
+        vehicleno: vehicleNo,
+        starttime: startMs,
+        endtime: endMs,
+    }, 90_000);
+    if (res.status !== "SUCCESS" || !Array.isArray(res.data)) {
+        throw new Error(res.msg ? `Tracking platform: ${res.msg}` : "Tracking platform returned no history.");
+    }
+    return res.data
+        .map((r) => ({
+            commtime: Number(r.commtime),
+            speed: num(r.speed),
+            ignstatus: (r.ignstatus as number | string | null | undefined) ?? null,
+        }))
+        .filter((r) => Number.isFinite(r.commtime));
+}
 
 /** Distance a vehicle travelled between two instants (epoch ms). */
 export async function getDistanceTravelled(

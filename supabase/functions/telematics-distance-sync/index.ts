@@ -149,5 +149,55 @@ Deno.serve(async (_req) => {
         }
     }
 
-    return json({ configured: true, vehicles: (vehicles ?? []).length, notOnAccount: skipped, days, rows }, 200);
+    // ---- Fleet kilometre allowance: each bike's odometer at the period's start -----
+    //
+    // Usage in the period = the odometer now minus the odometer when the period
+    // started. The "now" half is already refreshed every 5 minutes; the "start" half
+    // is captured here, ONCE per bike per period, from the distance call's `startodo`.
+    // Only bikes without one yet are fetched, so a normal run makes no extra calls.
+    let baselines = 0;
+    try {
+        const { data: settings } = await admin
+            .from("fleet_km_settings")
+            .select("period_start")
+            .limit(1)
+            .maybeSingle();
+        if (settings && settings.period_start <= today) {
+            const { data: have } = await admin
+                .from("fleet_km_baseline")
+                .select("vehicle_id")
+                .eq("period_start", settings.period_start);
+            const done = new Set((have ?? []).map((r: { vehicle_id: string }) => r.vehicle_id));
+            const periodStartMs = dayStartMs(settings.period_start);
+
+            for (const v of (vehicles ?? []) as { id: string; registration_number: string; vin: string | null }[]) {
+                if (done.has(v.id)) continue;
+                const vehicleNo = known.get(normKey(v.vin)) ?? known.get(normKey(v.registration_number));
+                if (!vehicleNo) continue;
+                try {
+                    const res = await post<{ startodo?: unknown }>("getdistancetravelled", {
+                        token, vehicleno: vehicleNo, starttime: periodStartMs, endtime: Date.now(),
+                    });
+                    await sleep(GAP_MS);
+                    const startOdo = res.status === "SUCCESS" ? num(res.data?.startodo) : null;
+                    if (startOdo === null || startOdo < 0) continue;
+                    const { error: baseError } = await admin
+                        .from("fleet_km_baseline")
+                        .upsert(
+                            { vehicle_id: v.id, period_start: settings.period_start, start_odo: Math.round(startOdo * 10) / 10 },
+                            { onConflict: "vehicle_id,period_start" },
+                        );
+                    if (baseError) console.error(`[${SOURCE}] could not save starting odometer for ${vehicleNo}`, baseError);
+                    else baselines++;
+                } catch (err) {
+                    console.error(`[${SOURCE}] starting odometer for ${vehicleNo} failed`, err);
+                }
+            }
+        }
+    } catch (err) {
+        // The allowance tables may not be migrated yet — never let that break the daily distance.
+        console.error(`[${SOURCE}] allowance baselines skipped`, err);
+    }
+
+    return json({ configured: true, vehicles: (vehicles ?? []).length, notOnAccount: skipped, days, rows, baselines }, 200);
 });

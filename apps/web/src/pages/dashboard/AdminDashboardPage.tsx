@@ -15,6 +15,7 @@ import { ChartCard } from "@/components/common/ChartCard";
 import { MotionCard } from "@/components/motion/MotionCard";
 import { useBikeKms, useFleetTelemetry } from "@/hooks/useTelematics";
 import { FleetTrackingCard } from "@/components/dashboard/FleetTrackingCard";
+import { FleetAllowanceCard } from "@/components/fleet/FleetAllowanceCard";
 import { FleetStatusCard } from "@/components/dashboard/FleetStatusCard";
 import { RevenueOverview } from "@/components/revenue/RevenueOverview";
 import { HorizontalSummaryCard } from "@/components/dashboard/HorizontalSummaryCard";
@@ -182,7 +183,10 @@ export default function AdminDashboardPage() {
         />
       </div>
 
-      {/* Station Network (wide, left) + Fleet Status / Quick Actions / Battery Stations (compact, right) */}
+      {/* How much of this month's kilometre allowance the fleet has used. */}
+      <FleetAllowanceCard />
+
+      {/* Fleet live map (wide, left) + Fleet Status / Quick Actions / Battery Stations (compact, right) */}
       <div className="grid gap-3 lg:grid-cols-3">
         <ChartCard
           title="Fleet Live Map"
@@ -190,7 +194,7 @@ export default function AdminDashboardPage() {
           className="lg:col-span-2"
           action={
             <div className="flex gap-1">
-              <Button variant="ghost" size="sm" onClick={() => navigate("/bike-kms")}>Bike KMs</Button>
+              <Button variant="ghost" size="sm" onClick={() => navigate("/vehicles?view=kms")}>Bike KMs</Button>
               <Button variant="ghost" size="sm" onClick={() => navigate("/live-map")}>Open map</Button>
             </div>
           }

@@ -81,3 +81,13 @@ export function useRefreshTracking() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tracking-status"] }),
   });
 }
+
+/** Last 7 days of running hours for one bike. The backend caches it, so this is cheap to call. */
+export function useVehicleActivity(vehicleId: string | undefined) {
+  return useQuery({
+    queryKey: ["vehicle-activity", vehicleId],
+    queryFn: () => api.fetchVehicleActivity(vehicleId!),
+    enabled: !!vehicleId,
+    staleTime: 10 * 60_000,
+  });
+}
