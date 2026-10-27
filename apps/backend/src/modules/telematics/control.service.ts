@@ -4,7 +4,7 @@ import { supabaseAdmin } from "../../config/supabase";
 import { businessRule, conflict, notFound, serviceUnavailable } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
 import { AuthContext } from "../../types";
-import { ControlMode, intellicarConfigured, sendControlCommand } from "./intellicar.client";
+import { ControlMode, intellicarConfigured, resolveVehicleNo, sendControlCommand } from "./intellicar.client";
 import { getVehicleTelemetry } from "./telematics.service";
 
 /**
@@ -52,7 +52,7 @@ export async function controlVehicle(
 
     const { data: vehicle, error } = await supabaseAdmin
         .from("vehicles")
-        .select("id, registration_number, status")
+        .select("id, registration_number, vin, status")
         .eq("id", input.vehicleId)
         .maybeSingle();
     if (error) throw error;
@@ -87,7 +87,9 @@ export async function controlVehicle(
     let providerCmdId: string | null = null;
     let failure: string | null = null;
     try {
-        providerCmdId = (await sendControlCommand(input.action, vehicle.registration_number, input.mode)).cmdId;
+        const vehicleNo = await resolveVehicleNo(vehicle.vin, vehicle.registration_number);
+        if (!vehicleNo) throw new Error("This vehicle is not on the tracking account, so it cannot be controlled remotely.");
+        providerCmdId = (await sendControlCommand(input.action, vehicleNo, input.mode)).cmdId;
     } catch (err) {
         failure = err instanceof Error ? err.message : "The command could not be sent.";
     }

@@ -47,6 +47,37 @@ async function token(): Promise<string> {
     return cached.token;
 }
 
+const normKey = (s: string) => s.replace(/[\s-]/g, "").toUpperCase();
+
+let listCache: { at: number; byNorm: Map<string, string> } | null = null;
+const LIST_TTL_MS = 10 * 60_000;
+
+/**
+ * Intellicar names a vehicle by whatever it was registered under on their
+ * side. For Swapngo that is the VIN / chassis number (e.g. MD92N41SKDH639243),
+ * NOT the number plate — sending the plate gets "not found". The account's own
+ * list is the source of truth, so a vehicle is matched against it by VIN first
+ * and plate second, and the EXACT string Intellicar uses is what gets sent.
+ * Returns null when the vehicle is not on the account at all.
+ */
+export async function resolveVehicleNo(vin: string | null, registration: string | null): Promise<string | null> {
+    if (!listCache || Date.now() - listCache.at > LIST_TTL_MS) {
+        const res = await post<{ vehicleno?: string }[]>("listvehicles", { token: await token() });
+        if (res.status !== "SUCCESS" || !Array.isArray(res.data)) {
+            throw new Error(res.msg ? `Tracking platform: ${res.msg}` : "Could not read the tracking vehicle list.");
+        }
+        const byNorm = new Map<string, string>();
+        for (const row of res.data) if (row?.vehicleno) byNorm.set(normKey(row.vehicleno), row.vehicleno);
+        listCache = { at: Date.now(), byNorm };
+    }
+    for (const candidate of [vin, registration]) {
+        if (!candidate) continue;
+        const hit = listCache.byNorm.get(normKey(candidate));
+        if (hit) return hit;
+    }
+    return null;
+}
+
 export interface DistanceResult {
     distance: number | null;
     startOdo: number | null;

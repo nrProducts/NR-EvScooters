@@ -14,6 +14,8 @@ export interface VehicleTelemetry {
     battery_temp_c: number | null;
     battery_voltage: number | null;
     battery_current_a: number | null;
+    /** The tracker's own odometer — the bike's total kilometres as of `gps_at`. */
+    odometer_km: number | null;
     gps_at: string | null;
     can_at: string | null;
     synced_at: string;

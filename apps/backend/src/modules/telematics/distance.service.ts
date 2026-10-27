@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../../config/supabase";
 import { notFound } from "../../common/AppError";
-import { getDistanceTravelled, intellicarConfigured } from "./intellicar.client";
+import { getDistanceTravelled, intellicarConfigured, resolveVehicleNo } from "./intellicar.client";
 
 /**
  * Distance covered during a rental.
@@ -72,7 +72,7 @@ export async function getRentalDistance(rentalId: string, opts: { refresh?: bool
         .from("rentals")
         .select(`
             id, picked_up_at, returned_at,
-            rental_vehicle_assignments(assigned_at, released_at, vehicles(registration_number))
+            rental_vehicle_assignments(assigned_at, released_at, vehicles(registration_number, vin))
         `)
         .eq("id", rentalId)
         .maybeSingle();
@@ -108,14 +108,15 @@ export async function getRentalDistance(rentalId: string, opts: { refresh?: bool
     }[];
     const windows = assignments
         .map((a) => {
-            const v = (Array.isArray(a.vehicles) ? a.vehicles[0] : a.vehicles) as { registration_number: string } | null;
+            const v = (Array.isArray(a.vehicles) ? a.vehicles[0] : a.vehicles) as { registration_number: string; vin: string | null } | null;
             return {
                 reg: v?.registration_number ?? null,
+                vin: v?.vin ?? null,
                 from: new Date(a.assigned_at).getTime(),
                 to: Math.min(a.released_at ? new Date(a.released_at).getTime() : rentalEnd, rentalEnd),
             };
         })
-        .filter((w): w is { reg: string; from: number; to: number } => !!w.reg && w.to > w.from)
+        .filter((w): w is { reg: string; vin: string | null; from: number; to: number } => !!w.reg && w.to > w.from)
         .sort((a, b) => a.from - b.from);
 
     if (windows.length === 0) {
@@ -126,7 +127,9 @@ export async function getRentalDistance(rentalId: string, opts: { refresh?: bool
         const segments: DistanceSegment[] = [];
         for (const [i, w] of windows.entries()) {
             if (i > 0) await sleep(GAP_MS);
-            const r = await getDistanceTravelled(w.reg, w.from, w.to);
+            const vehicleNo = await resolveVehicleNo(w.vin, w.reg);
+            if (!vehicleNo) throw new Error(`${w.reg} is not on the tracking account, so its distance cannot be read.`);
+            const r = await getDistanceTravelled(vehicleNo, w.from, w.to);
             segments.push({
                 registration_number: w.reg,
                 from: new Date(w.from).toISOString(),

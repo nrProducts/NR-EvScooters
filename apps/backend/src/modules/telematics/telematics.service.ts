@@ -16,11 +16,10 @@ const db = supabaseAdmin as unknown as SupabaseClient;
 const LIVE_MS = 15 * 60_000;
 const OFFLINE_MS = 6 * 3_600_000;
 
-const COLUMNS = `
-    vehicle_id, registration_number, lat, lng, speed_kmph, heading_deg, ignition_on, immobilised,
-    device_battery_v, vehicle_battery_v, soc_percent, battery_temp_c, battery_voltage, battery_current_a,
-    gps_at, can_at, synced_at, sync_error
-`;
+// Every column, deliberately: `odometer_km` arrived in a later migration, and an
+// explicit list naming it would make every live screen fail until that
+// migration is applied. With `*` a missing column is simply absent.
+const COLUMNS = "*";
 
 type Raw = Omit<VehicleTelemetry, "freshness">;
 
@@ -42,6 +41,7 @@ function toTelemetry(row: Raw): VehicleTelemetry {
         device_battery_v: numOrNull(row.device_battery_v), vehicle_battery_v: numOrNull(row.vehicle_battery_v),
         soc_percent: numOrNull(row.soc_percent), battery_temp_c: numOrNull(row.battery_temp_c),
         battery_voltage: numOrNull(row.battery_voltage), battery_current_a: numOrNull(row.battery_current_a),
+        odometer_km: numOrNull(row.odometer_km),
         freshness: freshnessOf(row.gps_at),
     };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapLibreMap, Marker as MapLibreMarker } from "maplibre-gl";
-import { BatteryMedium, ExternalLink, Gauge, KeyRound, Lock, LockOpen, MapPinOff, Radio, Thermometer, Zap } from "lucide-react";
+import { BatteryMedium, ExternalLink, Gauge, KeyRound, Lock, LockOpen, MapPinOff, Radio, Route, Thermometer, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VehicleControlDialog } from "@/components/vehicles/VehicleControlDialog";
 import { useAuthStore } from "@/store/authStore";
@@ -190,6 +190,7 @@ export function VehicleLiveCard({ vehicleId, registrationNumber }: { vehicleId: 
                 tone={t.immobilised ? "bad" : undefined}
               />
               <Metric icon={Thermometer} label="Battery temp" value={fmt(t.battery_temp_c, 1, " °C")} />
+              <Metric icon={Route} label="Odometer" value={t.odometer_km === null ? "—" : `${t.odometer_km.toLocaleString("en-IN", { maximumFractionDigits: 1 })} km`} sub="total distance" />
               <Metric icon={Zap} label="Pack voltage" value={fmt(t.battery_voltage, 1, " V")} sub={t.battery_current_a === null ? undefined : `${t.battery_current_a.toFixed(1)} A`} />
               <Metric icon={Zap} label="Tracker battery" value={fmt(t.device_battery_v, 1, " V")} />
               <Metric icon={Zap} label="Vehicle battery" value={fmt(t.vehicle_battery_v, 1, " V")} />

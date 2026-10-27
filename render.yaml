@@ -119,6 +119,12 @@ services:
       - key: RAZORPAY_WEBHOOK_SECRET
         sync: false
 
+      # --- Intellicar vehicle tracking (optional; admin-only features) -----
+      - key: INTELLICAR_USERNAME
+        sync: false
+      - key: INTELLICAR_PASSWORD
+        sync: false
+
       # --- Invited-staff password-set landing page (the web console URL) ---
       - key: INVITE_REDIRECT_URL
         sync: false

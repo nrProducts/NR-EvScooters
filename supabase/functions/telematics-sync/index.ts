@@ -65,10 +65,13 @@ const truthy = (v: unknown): boolean | null => {
 
 interface GpsData {
     commtime?: number; lat?: number; lng?: number; speed?: number; heading?: number;
-    ignstatus?: unknown; mobili?: unknown; devbattery?: number; vehbattery?: number;
+    ignstatus?: unknown; mobili?: unknown; devbattery?: number; vehbattery?: number; odometer?: number;
 }
 type CanValue = { value?: number; timestamp?: number } | undefined;
-interface CanData { soc?: CanValue; battery_temp?: CanValue; battery_voltage?: CanValue; current?: CanValue }
+interface CanData {
+    soc?: CanValue; battery_temp?: CanValue; battery_voltage?: CanValue; current?: CanValue;
+    maximum_cell_temperature?: CanValue;
+}
 
 Deno.serve(async (_req) => {
     if (!isConfigured()) return notConfigured();
@@ -93,7 +96,7 @@ Deno.serve(async (_req) => {
     // Vehicles that are on the road or could be: everything except retired.
     const { data: vehicles, error } = await admin
         .from("vehicles")
-        .select("id, registration_number, status, display_name")
+        .select("id, registration_number, vin, status, display_name")
         .neq("status", "retired")
         .limit(MAX_VEHICLES);
     if (error) {
@@ -104,15 +107,21 @@ Deno.serve(async (_req) => {
     // Which of our scooters Intellicar actually knows about — a scooter that
     // isn't on the account is recorded as such rather than burning two calls
     // on a guaranteed failure every 5 minutes.
-    let known: Set<string> | null = null;
+    //
+    // Intellicar names a scooter by its VIN / chassis number on this account
+    // (e.g. MD92N41SKDH639243) — NOT by its number plate. So each of our
+    // scooters is matched against the account's own list by VIN first and plate
+    // second, and the EXACT string Intellicar uses is what gets sent.
+    let known: Map<string, string> | null = null;
     try {
         const list = await post<unknown>("listvehicles", { token });
         const rows = Array.isArray(list.data) ? list.data : [];
         const names = rows
             .map((r) => (typeof r === "string" ? r : (r as { vehicleno?: string })?.vehicleno))
-            .filter((x): x is string => !!x)
-            .map((x) => x.replace(/[\s-]/g, "").toUpperCase());
-        if (names.length > 0) known = new Set(names);
+            .filter((x): x is string => !!x);
+        if (names.length > 0) {
+            known = new Map(names.map((x) => [x.replace(/[\s-]/g, "").toUpperCase(), x] as const));
+        }
     } catch (err) {
         console.error(`[${SOURCE}] listvehicles failed — syncing every vehicle`, err);
     }
@@ -132,7 +141,9 @@ Deno.serve(async (_req) => {
     let unknown = 0;
     let alerts = 0;
 
-    for (const v of (vehicles ?? []) as { id: string; registration_number: string; status: string; display_name: string | null }[]) {
+    const normKey = (x: string | null) => (x ?? "").replace(/[\s-]/g, "").toUpperCase();
+
+    for (const v of (vehicles ?? []) as { id: string; registration_number: string; vin: string | null; status: string; display_name: string | null }[]) {
         const row: Record<string, unknown> = {
             vehicle_id: v.id,
             registration_number: v.registration_number,
@@ -140,13 +151,17 @@ Deno.serve(async (_req) => {
             sync_error: null,
         };
 
-        const normalised = v.registration_number.replace(/[\s-]/g, "").toUpperCase();
-        if (known && !known.has(normalised)) {
+        // What to call this scooter at Intellicar. With no account list available
+        // (the list call failed), fall back to the VIN and let the calls decide.
+        const vehicleNo = known
+            ? (known.get(normKey(v.vin)) ?? known.get(normKey(v.registration_number)) ?? null)
+            : (v.vin ?? v.registration_number);
+        if (!vehicleNo) {
             row.sync_error = "Not found on the Intellicar account.";
             unknown++;
         } else {
             try {
-                const gps = await post<GpsData>("getlastgpsstatus", { token, vehicleno: v.registration_number });
+                const gps = await post<GpsData>("getlastgpsstatus", { token, vehicleno: vehicleNo });
                 await sleep(GAP_MS);
                 if (gps.status === "SUCCESS" && gps.data) {
                     const g = gps.data;
@@ -157,19 +172,22 @@ Deno.serve(async (_req) => {
                         // mobili: 0 = mobilised, 1 = immobilised
                         immobilised: g.mobili === undefined || g.mobili === null ? null : num(g.mobili) === 1,
                         device_battery_v: num(g.devbattery), vehicle_battery_v: num(g.vehbattery),
+                        // The tracker's own odometer — the bike's total kilometres.
+                        odometer_km: num(g.odometer),
                         gps_at: epochToIso(g.commtime),
                     });
                 } else {
                     row.sync_error = `GPS: ${gps.msg ?? "no data"}`;
                 }
 
-                const can = await post<CanData>("getlatestcan", { token, vehicleno: v.registration_number });
+                const can = await post<CanData>("getlatestcan", { token, vehicleno: vehicleNo });
                 await sleep(GAP_MS);
                 if (can.status === "SUCCESS" && can.data) {
                     const c = can.data;
                     Object.assign(row, {
                         soc_percent: num(c.soc?.value),
-                        battery_temp_c: num(c.battery_temp?.value),
+                        // This account\x27s feed has no `battery_temp`; the hottest cell is the figure that matters.
+                        battery_temp_c: num(c.battery_temp?.value ?? c.maximum_cell_temperature?.value),
                         battery_voltage: num(c.battery_voltage?.value),
                         battery_current_a: num(c.current?.value),
                         can_at: epochToIso(c.soc?.timestamp ?? c.battery_voltage?.timestamp),
@@ -184,7 +202,13 @@ Deno.serve(async (_req) => {
             }
         }
 
-        const { error: upsertError } = await admin.from("vehicle_telemetry").upsert(row, { onConflict: "vehicle_id" });
+        let { error: upsertError } = await admin.from("vehicle_telemetry").upsert(row, { onConflict: "vehicle_id" });
+        // The odometer column comes from a later migration. If this function is
+        // deployed before it is applied, save everything else rather than nothing.
+        if (upsertError && String(upsertError.message ?? "").includes("odometer_km")) {
+            delete row.odometer_km;
+            ({ error: upsertError } = await admin.from("vehicle_telemetry").upsert(row, { onConflict: "vehicle_id" }));
+        }
         if (upsertError) {
             console.error(`[${SOURCE}] could not save ${v.registration_number}`, upsertError);
             continue; // not saved — do not alert on, or re-alert for, a state we did not record

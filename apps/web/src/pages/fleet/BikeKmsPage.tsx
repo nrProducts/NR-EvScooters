@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { SearchBar } from "@/components/common/SearchBar";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { useBikeKms } from "@/hooks/useTelematics";
+import { useBikeKms, useFleetTelemetry } from "@/hooks/useTelematics";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { cn, formatFullDateTime } from "@/lib/utils";
 import type { BikeKms } from "@/services/api/telematics";
@@ -28,6 +28,9 @@ const km = (n: number) => `${n.toLocaleString("en-IN", { maximumFractionDigits: 
 export default function BikeKmsPage() {
   const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useBikeKms();
+  // Total odometer comes from the live readings, not the per-day table.
+  const { data: fleet } = useFleetTelemetry();
+  const odometerByVehicle = useMemo(() => new Map((fleet ?? []).map((t) => [t.vehicle_id, t.odometer_km])), [fleet]);
   const [range, setRange] = useState<Range>("km_7d");
   const [search, setSearch] = useState("");
 
@@ -71,6 +74,16 @@ export default function BikeKmsPage() {
       ),
     },
     { header: "Status", key: "status", hideOnMobile: true, render: (b) => <StatusBadge status={b.vehicle.status} /> },
+    {
+      header: "Odometer (total)",
+      key: "odometer",
+      render: (b) => {
+        const o = odometerByVehicle.get(b.vehicle.id);
+        return o === null || o === undefined
+          ? <span className="text-muted-foreground">—</span>
+          : <span className="tabular-nums">{km(o)}</span>;
+      },
+    },
     ...RANGES.map((r): DataTableColumn<Row> => ({
       header: r.label,
       key: r.key,
