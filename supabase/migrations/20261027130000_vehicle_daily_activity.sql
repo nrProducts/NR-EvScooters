@@ -17,7 +17,9 @@
 -- km figures for one day would only confuse.
 -- =========================================================================
 
-create table public.vehicle_daily_activity (
+-- Safe to run twice (IF NOT EXISTS): a release that stopped partway must not be
+-- blocked by objects its earlier attempt already created.
+create table if not exists public.vehicle_daily_activity (
     vehicle_id      uuid not null references public.vehicles (id) on delete cascade,
     day             date not null,
     ignition_hours  numeric(5,2) not null check (ignition_hours between 0 and 24),

@@ -17,7 +17,9 @@
 --     period ends.
 -- =========================================================================
 
-create table public.fleet_km_settings (
+-- Safe to run twice (IF NOT EXISTS, and the default row is only added when there is none):
+-- a release that stopped partway must not be blocked by what its earlier attempt created.
+create table if not exists public.fleet_km_settings (
     id              uuid primary key default gen_random_uuid(),
     period_start    date not null,
     period_end      date not null,
@@ -29,7 +31,7 @@ create table public.fleet_km_settings (
 );
 
 -- One row only: the fleet has a single current allowance.
-create unique index uq_fleet_km_settings_singleton on public.fleet_km_settings ((true));
+create unique index if not exists uq_fleet_km_settings_singleton on public.fleet_km_settings ((true));
 
 comment on table public.fleet_km_settings is
     'The fleet kilometre allowance: per-bike limit and the period (start/end dates) it applies to. Exactly one row; edited by an admin.';
@@ -37,13 +39,13 @@ comment on table public.fleet_km_settings is
 -- Default: the current calendar month at 2,120 km per bike. An admin can change
 -- the dates and the figure.
 insert into public.fleet_km_settings (period_start, period_end, km_per_vehicle)
-values (
+select
     date_trunc('month', public.business_today())::date,
     (date_trunc('month', public.business_today()) + interval '1 month' - interval '1 day')::date,
     2120
-);
+where not exists (select 1 from public.fleet_km_settings);
 
-create table public.fleet_km_baseline (
+create table if not exists public.fleet_km_baseline (
     vehicle_id   uuid not null references public.vehicles (id) on delete cascade,
     period_start date not null,
     start_odo    numeric(12,1) not null check (start_odo >= 0),
@@ -54,7 +56,7 @@ create table public.fleet_km_baseline (
 comment on table public.fleet_km_baseline is
     'A bike''s odometer at the start of an allowance period, captured once from Intellicar. Usage = current odometer minus this.';
 
-create table public.vehicle_odometer_daily (
+create table if not exists public.vehicle_odometer_daily (
     vehicle_id   uuid not null references public.vehicles (id) on delete cascade,
     day          date not null,
     odometer_km  numeric(12,1) not null check (odometer_km >= 0),
