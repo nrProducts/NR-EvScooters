@@ -12,6 +12,7 @@ import {
 } from "../../types";
 import { ListUsersFilters, UserDetail, UserListItem, UserProfile } from "./users.types";
 import { ACTIVE_BOOKING_STATUSES } from "../bookings/bookings.types";
+import { loadBookingContext } from "../bookings/bookings.service";
 import { normaliseEmail, normalisePhone } from "./users.validation";
 import { applyPermissionProfile } from "./staff-permissions.service";
 import {
@@ -342,7 +343,10 @@ export async function listUsers(
             current_plan: planInfo?.plan ?? null,
             payment_status: planInfo?.payment_status ?? null,
             plan_started_at: planInfo?.plan_started_at ?? null,
+            current_period_start: planInfo?.current_period_start ?? null,
             next_due_at: planInfo?.next_due_at ?? null,
+            cycle_time: planInfo?.cycle_time ?? null,
+            picked_up: planInfo?.picked_up ?? false,
             outstanding_amount: outstanding.get(row.id) ?? pendingLateFees.get(row.id) ?? 0,
             open_return: openReturns.get(row.id) ?? null,
         };
@@ -388,7 +392,10 @@ export async function getUserById(id: string, actor: AuthContext): Promise<UserD
         current_plan: planInfo?.plan ?? null,
         payment_status: planInfo?.payment_status ?? null,
         plan_started_at: planInfo?.plan_started_at ?? null,
+        current_period_start: planInfo?.current_period_start ?? null,
         next_due_at: planInfo?.next_due_at ?? null,
+        cycle_time: planInfo?.cycle_time ?? null,
+        picked_up: planInfo?.picked_up ?? false,
         outstanding_amount: outstanding.get(id) ?? pendingLateFee?.get(id) ?? 0,
         open_return: openReturns.get(id) ?? null,
         last_login_at: lastLoginAt,
@@ -1566,41 +1573,47 @@ async function currentPlanByUser(userIds: string[]): Promise<Map<string, {
     plan: { id: string; name: string; price: number; billing_cycle: string } | null;
     payment_status: UserListItem["payment_status"];
     plan_started_at: string | null;
+    current_period_start: string | null;
     next_due_at: string | null;
+    cycle_time: string | null;
+    picked_up: boolean;
 }>> {
     type Entry = {
         plan: { id: string; name: string; price: number; billing_cycle: string } | null;
         payment_status: UserListItem["payment_status"];
         plan_started_at: string | null;
+        current_period_start: string | null;
         next_due_at: string | null;
+        cycle_time: string | null;
+        picked_up: boolean;
     };
     const map = new Map<string, Entry>();
     if (userIds.length === 0) return map;
 
-    const [subsRes, periodsRes] = await Promise.all([
-        supabaseAdmin
-            .from("subscriptions")
-            .select("id, user_id, status, started_on, plan_price_snapshot, billing_period_snapshot, plans(id, name)")
-            .in("user_id", userIds)
-            .in("status", ["active", "paused", "past_due"])
-            .order("started_on", { ascending: false }),
-        supabaseAdmin
-            .from("v_subscription_current_period")
-            .select("user_id, subscription_id, due_on")
-            .in("user_id", userIds),
-    ]);
+    const subsRes = await supabaseAdmin
+        .from("subscriptions")
+        .select("id, user_id, status, started_on, booking_id, plan_price_snapshot, billing_period_snapshot, plans(id, name), bookings(status)")
+        .in("user_id", userIds)
+        .in("status", ["active", "paused", "past_due"])
+        .order("started_on", { ascending: false });
     if (subsRes.error) throw subsRes.error;
-    if (periodsRes.error) throw periodsRes.error;
 
-    const dueBySubscription = new Map<string, string | null>(
-        (periodsRes.data ?? [])
-            .filter((p) => p.subscription_id)
-            .map((p) => [p.subscription_id as string, p.due_on] as const),
+    // The current period comes from the SAME resolver Rental Operations uses,
+    // so the two screens can never show different dates. It reads
+    // subscription_periods live and shows a paid renewal as soon as the old
+    // period's cutover passes, rather than waiting for payment-overdue-sweep to
+    // flip it to 'current' (which v_subscription_current_period, used here
+    // before, did wait for). bookings.service also imports this module; the
+    // cycle is safe because loadBookingContext is only read at call time.
+    const contexts = await loadBookingContext(
+        (subsRes.data ?? []).map((row) => row.booking_id).filter((id): id is string => !!id),
     );
 
     for (const row of subsRes.data ?? []) {
         if (map.has(row.user_id)) continue; // newest first — first hit per user wins
         const plan = one<{ id: string; name: string }>(row.plans);
+        const ctx = row.booking_id ? contexts.get(row.booking_id) : undefined;
+        const bookingStatus = one<{ status: string }>(row.bookings)?.status;
         map.set(row.user_id, {
             plan: plan
                 ? {
@@ -1614,7 +1627,11 @@ async function currentPlanByUser(userIds: string[]): Promise<Map<string, {
                 : null,
             payment_status: row.status as Entry["payment_status"],
             plan_started_at: row.started_on,
-            next_due_at: dueBySubscription.get(row.id) ?? null,
+            current_period_start: ctx?.currentPeriodStart ?? null,
+            next_due_at: ctx?.nextDueAt ?? null,
+            cycle_time: ctx?.cycleTime ?? null,
+            // Same test as Rental Operations: the clock starts at pickup.
+            picked_up: bookingStatus === "fulfilled" || bookingStatus === "completed",
         });
     }
 
@@ -1644,7 +1661,10 @@ async function currentPlanByUser(userIds: string[]): Promise<Map<string, {
                 : null,
             payment_status: row.status as Entry["payment_status"],
             plan_started_at: null,
+            current_period_start: null,
             next_due_at: null,
+            cycle_time: null,
+            picked_up: false,
         });
     }
 

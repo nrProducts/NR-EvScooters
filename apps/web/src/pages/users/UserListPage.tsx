@@ -33,7 +33,7 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
-import { initials, formatDate, formatDateTime, timeAgo, formatPhoneLocal } from "@/lib/utils";
+import { initials, formatCycleTime, formatDate, formatDateTime, timeAgo, formatPhoneLocal } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 type DueBucket = "overdue" | "today" | "d1" | "d2" | "d3";
@@ -232,15 +232,33 @@ export default function UserListPage() {
       hideOnMobile: true,
     },
     {
-      header: "Plan Ends",
+      // The current billing period, from the same resolver as Rental
+      // Operations, so the two screens always agree. Both ends fall at the
+      // subscription's cycle time (the pickup time); before pickup there is
+      // no real time yet.
+      header: "Period Start",
+      key: "current_period_start",
+      render: (u) => (u.current_period_start ? (
+        u.picked_up ? (
+          <span className="whitespace-nowrap">
+            {formatDate(u.current_period_start)}, {formatCycleTime(u.cycle_time)}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Starts at pickup</span>
+        )
+      ) : "—"),
+      hideOnMobile: true,
+    },
+    {
+      header: "Period End",
       key: "next_due_at",
       // Muted during a return: the date is a RENEWAL date, and nothing is
       // going to renew on a scooter being handed back. Kept visible rather
       // than blanked — staff still need to know which period the rider is
       // being returned out of — but it must not read as an upcoming event.
-      render: (u) => (u.next_due_at ? (
-        <span className={u.open_return ? "text-muted-foreground line-through" : undefined}>
-          {formatDate(u.next_due_at)}
+      render: (u) => (u.next_due_at && u.picked_up ? (
+        <span className={u.open_return ? "whitespace-nowrap text-muted-foreground line-through" : "whitespace-nowrap"}>
+          {formatDate(u.next_due_at)}, {formatCycleTime(u.cycle_time)}
         </span>
       ) : "—"),
       hideOnMobile: true,

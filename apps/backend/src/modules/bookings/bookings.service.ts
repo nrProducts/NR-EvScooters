@@ -97,7 +97,7 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
 // Context assembly — everything that used to be a booking column
 // ---------------------------------------------------------------------------
 
-interface BookingContext {
+export interface BookingContext {
     subscriptionId: string | null;
     planStatus: BookingView["plan_status"];
     /** True when the subscription has ended — what the view reports as `completed`. */
@@ -189,7 +189,7 @@ function inclusiveDays(startsOn: string, endsOn: string): number {
  *
  * Six queries regardless of page size, rather than six per row.
  */
-async function loadBookingContext(bookingIds: string[]): Promise<Map<string, BookingContext>> {
+export async function loadBookingContext(bookingIds: string[]): Promise<Map<string, BookingContext>> {
     const contexts = new Map<string, BookingContext>();
     if (bookingIds.length === 0) return contexts;
 
