@@ -1,4 +1,4 @@
-<!-- SUPERSEDED. The live Terms are docs/legal/terms-operative.md (version 2026-09-04.2), published by supabase/migrations/20261027100000_terms_v2_official.sql. This file is kept for reference only; do not publish from it. -->
+<!-- SUPERSEDED. The live Terms are docs/legal/terms-operative.md (version 2026-09-04.2), published by supabase/migrations/20261027140000_terms_v2_official.sql. This file is kept for reference only; do not publish from it. -->
 
 <!--
 DRAFT — NEEDS REVIEW BY AN INDIAN LAWYER BEFORE IT IS PUBLISHED OR RELIED ON.
