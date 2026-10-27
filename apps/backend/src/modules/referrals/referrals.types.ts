@@ -125,3 +125,30 @@ export interface UpdateReferralProgramInput {
     max_rewards_per_referrer: number | null;
     min_renewal_amount: number;
 }
+
+/** One person on the other end of a referral, as staff see them (full name and phone, unlike the rider-facing views). */
+export interface ReferralPartyAdminView {
+    id: string;
+    full_name: string;
+    phone: string | null;
+    status: string;
+}
+
+/** One referral link, from the point of view of the user being looked at. */
+export interface UserReferralAdminRow {
+    id: string;
+    status: ReferralStatus;
+    code_used: string;
+    created_at: string;
+    qualified_at: string | null;
+    /** The OTHER person: the referrer on "referred by", the referee on each "referred" row. */
+    person: ReferralPartyAdminView;
+}
+
+/** A user's place in the referral graph: at most one referrer above them, any number of referees below. */
+export interface UserReferralsAdminView {
+    referred_by: UserReferralAdminRow | null;
+    referred: UserReferralAdminRow[];
+    referred_count: number;
+    qualified_count: number;
+}

@@ -18,7 +18,13 @@ const kmShort = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits
  * the per-bike detail in Vehicles → Bike KMs; admins can edit the limit and the
  * month's dates from here.
  */
-export function FleetAllowanceCard({ variant = "dashboard" }: { variant?: "dashboard" | "page" }) {
+export function FleetAllowanceCard({
+  variant = "dashboard", className,
+}: {
+  /** "compact" is the slim dashboard tile; "dashboard" and "page" are the full card. */
+  variant?: "dashboard" | "page" | "compact";
+  className?: string;
+}) {
   const { data, isLoading, isError } = useFleetAllowance();
   const isAdmin = useAuthStore((s) => s.user?.role === "admin");
   const [editOpen, setEditOpen] = useState(false);
@@ -35,8 +41,82 @@ export function FleetAllowanceCard({ variant = "dashboard" }: { variant?: "dashb
     : t.period_status === "ended" ? "Period ended"
       : `${t.days_left} day${t.days_left === 1 ? "" : "s"} left`;
 
+  // The slim tile for the dashboard: one headline figure, one bar, one line of detail.
+  // The full breakdown (warnings, pace, per-bike) is a click away in Vehicles → Bike KMs.
+  if (variant === "compact") {
+    const note = !t ? null
+      : t.awaiting_start > 0 ? `${t.awaiting_start} bike${t.awaiting_start === 1 ? "" : "s"} awaiting a starting reading — counts as 0 km for now`
+        : overBy > 0 ? `On pace to exceed the limit by ${km(overBy)}`
+          : t.period_status === "running" ? `On pace for ${km(t.projected_km)} (${t.projected_percent.toLocaleString("en-IN", { maximumFractionDigits: 0 })}%)`
+            : null;
+    return (
+      <Card className={cn("flex flex-col overflow-hidden", className)}>
+        <div className="flex items-start justify-between gap-2 px-4 pt-3.5">
+          <div className="min-w-0">
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+              <Gauge className="h-4 w-4 text-muted-foreground" /> Fleet km allowance
+            </h3>
+            {s ? <p className="mt-0.5 truncate text-[0.6875rem] text-muted-foreground">{periodLabel} · {periodNote}</p> : null}
+          </div>
+          <div className="flex shrink-0 items-center">
+            {isAdmin && data ? (
+              <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit limit & month" aria-label="Edit limit and month" onClick={() => setEditOpen(true)}>
+                <Settings2 className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" asChild>
+              <Link to="/vehicles?view=kms">Details <ArrowRight className="h-3 w-3" /></Link>
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-2 px-4 pb-3.5 pt-2.5">
+          {isLoading ? (
+            <Skeleton className="h-12 w-full" />
+          ) : isError || !t || !s ? (
+            <p className="text-xs text-muted-foreground">Not set up yet — needs the allowance database update.</p>
+          ) : (
+            <>
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="tabular-nums">
+                  <span className={cn("text-2xl font-semibold leading-none", tone === "bad" && "text-destructive", tone === "warn" && "text-warning")}>
+                    {kmShort(t.used_km)}
+                  </span>
+                  <span className="ml-1 text-sm text-muted-foreground">/ {kmShort(t.fleet_limit_km)} km</span>
+                </p>
+                <p className={cn("text-sm font-semibold tabular-nums", tone === "bad" && "text-destructive", tone === "warn" && "text-warning")}>
+                  {percent.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%
+                </p>
+              </div>
+              <div className="relative">
+                <div className="h-2 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${Math.round(percent)} percent of the fleet limit used`}>
+                  <div
+                    className={cn("h-full rounded-full transition-all", tone === "bad" ? "bg-destructive" : tone === "warn" ? "bg-warning" : "bg-primary")}
+                    style={{ width: `${Math.min(100, percent)}%` }}
+                  />
+                </div>
+                {paceMarker !== null ? (
+                  <span
+                    className="absolute -top-0.5 h-3 w-0.5 rounded bg-foreground/60"
+                    style={{ left: `${paceMarker}%` }}
+                    title={`Even pace for today: ${kmShort((t.fleet_limit_km * t.days_elapsed) / t.days_total)} km`}
+                  />
+                ) : null}
+              </div>
+              <p className={cn("truncate text-[0.6875rem]", overBy > 0 ? "text-destructive" : t.awaiting_start > 0 ? "text-warning" : "text-muted-foreground")}>
+                {t.vehicle_count} bikes × {km(s.km_per_vehicle)}{note ? ` · ${note}` : ""}
+              </p>
+            </>
+          )}
+        </div>
+
+        {isAdmin ? <FleetAllowanceDialog open={editOpen} onOpenChange={setEditOpen} summary={data} /> : null}
+      </Card>
+    );
+  }
+
   return (
-    <Card className="overflow-hidden">
+    <Card className={cn("overflow-hidden", className)}>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-3.5">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-sm font-semibold">

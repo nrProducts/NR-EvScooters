@@ -20,8 +20,8 @@ export function RiderOriginalsCard({ userId }: { userId: string }) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle className="flex items-center gap-2">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 p-4 pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm">
           <FileCheck2 className="h-4 w-4" /> Original documents
         </CardTitle>
         {data && data.length > 0 ? (
@@ -35,9 +35,9 @@ export function RiderOriginalsCard({ userId }: { userId: string }) {
           </span>
         ) : null}
       </CardHeader>
-      <CardContent className="space-y-3 text-sm">
+      <CardContent className="space-y-2 p-4 pt-1 text-sm">
         {isLoading ? (
-          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-10 w-full" />
         ) : isError ? (
           <p className="text-xs text-muted-foreground">Couldn&apos;t load the original documents.</p>
         ) : !data || data.length === 0 ? (
@@ -46,7 +46,7 @@ export function RiderOriginalsCard({ userId }: { userId: string }) {
           </p>
         ) : (
           data.map((r) => (
-            <div key={r.rental_id} className="rounded-lg border border-border p-3">
+            <div key={r.rental_id} className="rounded-lg border border-border p-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="flex items-center gap-1.5 text-xs font-medium">
                   {r.taken ? <FileCheck2 className="h-3.5 w-3.5 text-warning" /> : <FileX2 className="h-3.5 w-3.5 text-muted-foreground" />}

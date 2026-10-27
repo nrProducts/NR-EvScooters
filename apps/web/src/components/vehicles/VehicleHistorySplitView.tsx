@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Route, CircleDot, CalendarClock, Zap, Wrench, Recycle } from "lucide-react";
+import { Route, CircleDot, CalendarClock, Zap, Wrench, Recycle, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -30,6 +30,8 @@ const FILTERABLE_KINDS: { kind: VehicleEventKind; label: string }[] = [
  * vehicle's fixed lifecycle state diagram (center), and a detail panel for
  * whatever is selected (right) — replaces the old separate "Maintenance
  * history" / "Ride history" cards with one unified view.
+ *
+ * Collapsed until opened: it is a long reference view, not something checked on every visit.
  */
 export function VehicleHistorySplitView({ vehicle }: { vehicle: VehicleDetail }) {
   const events = useMemo(() => buildVehicleTimeline(vehicle), [vehicle]);
@@ -40,6 +42,7 @@ export function VehicleHistorySplitView({ vehicle }: { vehicle: VehicleDetail })
   );
   const [selectedStatus, setSelectedStatus] = useState<VehicleStatus | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
 
   const toggleKind = (kind: VehicleEventKind) => {
     setActiveKinds((prev) => {
@@ -66,12 +69,25 @@ export function VehicleHistorySplitView({ vehicle }: { vehicle: VehicleDetail })
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Route className="h-4 w-4" /> Lifecycle &amp; history
-        </CardTitle>
+      <CardHeader className="p-0">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="flex w-full items-center justify-between gap-3 rounded-xl p-6 text-left transition-smooth hover:bg-card-hover"
+        >
+          <CardTitle className="flex items-center gap-2">
+            <Route className="h-4 w-4" /> Lifecycle &amp; history
+            <span className="text-xs font-normal text-muted-foreground">{events.length} {events.length === 1 ? "event" : "events"}</span>
+          </CardTitle>
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {open ? "Hide" : "Show"}
+            <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
+          </span>
+        </button>
       </CardHeader>
-      <CardContent className="p-0">
+      {open && (
+      <CardContent className="border-t border-border p-0">
         <div className="grid divide-y divide-border lg:grid-cols-[260px_1fr_280px] lg:divide-x lg:divide-y-0">
           {/* Left: filters + event timeline */}
           <div className="max-h-[560px] overflow-y-auto p-4">
@@ -142,6 +158,7 @@ export function VehicleHistorySplitView({ vehicle }: { vehicle: VehicleDetail })
           </div>
         </div>
       </CardContent>
+      )}
     </Card>
   );
 }
