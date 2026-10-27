@@ -3,6 +3,8 @@ import {
   LayoutDashboard,
   BatteryCharging,
   Bike,
+  Radio,
+  Route as RouteIcon,
   Users,
   CalendarCheck,
   CreditCard,
@@ -131,6 +133,12 @@ export const NAV_ITEMS: NavItem[] = [
   // Previously hard admin-only ("every write route is requireAdmin, showing
   // this to staff would just be a wall of 403s") — now delegable like every
   // other module now that real per-action checks exist server-side.
+  {
+    label: "Live Map", path: "/live-map", icon: Radio, roles: ["admin", "staff"], moduleKey: "vehicles", group: "fleet",
+  },
+  {
+    label: "Bike KMs", path: "/bike-kms", icon: RouteIcon, roles: ["admin", "staff"], moduleKey: "vehicles", group: "fleet",
+  },
   {
     label: "Battery Stations",
     path: "/battery-stations",

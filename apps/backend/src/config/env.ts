@@ -122,6 +122,13 @@ export const env = {
     msg91OtpVar: process.env.MSG91_OTP_VAR ?? "otp",
     msg91BaseUrl: process.env.MSG91_BASE_URL ?? "https://control.msg91.com",
 
+    // --- Intellicar (vehicle tracking) --------------------------------
+    // Optional everywhere: without a login, tracking-backed screens say it is
+    // not connected rather than failing. Read-only use only.
+    intellicarBaseUrl: process.env.INTELLICAR_BASE_URL ?? "https://apiplatform.intellicar.in/api/standard",
+    intellicarUsername: process.env.INTELLICAR_USERNAME ?? "",
+    intellicarPassword: process.env.INTELLICAR_PASSWORD ?? "",
+
     // --- Razorpay (payment gateway) -----------------------------------
     // Optional in dev so the app still boots with no keys configured;
     // anything that needs them throws a clean 503 at call time — see

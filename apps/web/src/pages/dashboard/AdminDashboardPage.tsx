@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line,
@@ -12,10 +13,12 @@ import { StatCard } from "@/components/common/StatCard";
 import { SparkStatCard } from "@/components/common/SparkStatCard";
 import { ChartCard } from "@/components/common/ChartCard";
 import { MotionCard } from "@/components/motion/MotionCard";
+import { useBikeKms, useFleetTelemetry } from "@/hooks/useTelematics";
+import { FleetTrackingCard } from "@/components/dashboard/FleetTrackingCard";
 import { FleetStatusCard } from "@/components/dashboard/FleetStatusCard";
 import { RevenueOverview } from "@/components/revenue/RevenueOverview";
 import { HorizontalSummaryCard } from "@/components/dashboard/HorizontalSummaryCard";
-import { StationNetworkMap } from "@/components/dashboard/StationNetworkMap";
+import { FleetLiveMap } from "@/components/fleet/FleetLiveMap";
 import { StationStatusGauge } from "@/components/dashboard/StationStatusGauge";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -29,7 +32,7 @@ import { useInvoices } from "@/hooks/usePayments";
 import { useMaintenanceTickets } from "@/hooks/useMaintenance";
 import { useAuditLogs } from "@/hooks/useAudit";
 import { useNotificationLog } from "@/hooks/useNotifications";
-import { useAdminStations, useStationSummary } from "@/hooks/useBatteryStations";
+import { useStationSummary } from "@/hooks/useBatteryStations";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { cn, formatCurrency, formatDate, timeAgo } from "@/lib/utils";
 import type { PickupBooking } from "@/types";
@@ -65,7 +68,9 @@ export default function AdminDashboardPage() {
   const { data: recentMaintenance, isLoading: maintenanceLoading } = useMaintenanceTickets({ pageSize: 5 });
   const { data: recentActivity, isLoading: activityLoading } = useAuditLogs({ pageSize: 6 });
   const { data: recentAlerts, isLoading: alertsLoading } = useNotificationLog({ pageSize: 5 });
-  const { data: stations, isLoading: stationsLoading } = useAdminStations({ page: 1, pageSize: 100 });
+  const { data: fleetTelemetry } = useFleetTelemetry();
+  const { data: bikeKms } = useBikeKms();
+  const kmToday = useMemo(() => new Map((bikeKms ?? []).map((b) => [b.vehicle.id, b.km_today])), [bikeKms]);
   const { data: stationSummary, isLoading: stationSummaryLoading } = useStationSummary();
 
   usePageSubtitle("Fleet, rentals, revenue and staff — the whole operation at a glance.");
@@ -179,8 +184,18 @@ export default function AdminDashboardPage() {
 
       {/* Station Network (wide, left) + Fleet Status / Quick Actions / Battery Stations (compact, right) */}
       <div className="grid gap-3 lg:grid-cols-3">
-        <ChartCard title="Station Network" description="Battery swap stations, plotted by status" className="lg:col-span-2">
-          <StationNetworkMap stations={stations?.data ?? []} isLoading={stationsLoading} heightClassName="h-[27rem]" />
+        <ChartCard
+          title="Fleet Live Map"
+          description="Every bike, by status — green live, amber stale, grey offline, red low battery"
+          className="lg:col-span-2"
+          action={
+            <div className="flex gap-1">
+              <Button variant="ghost" size="sm" onClick={() => navigate("/bike-kms")}>Bike KMs</Button>
+              <Button variant="ghost" size="sm" onClick={() => navigate("/live-map")}>Open map</Button>
+            </div>
+          }
+        >
+          <FleetLiveMap items={fleetTelemetry ?? []} kmToday={kmToday} heightClassName="h-[27rem]" />
         </ChartCard>
 
         <div className="flex flex-col gap-3">
@@ -190,6 +205,8 @@ export default function AdminDashboardPage() {
             isLoading={summaryLoading}
             compact
           />
+
+          <FleetTrackingCard />
 
           <MotionCard>
             <CardHeader className="p-3 pb-1.5">

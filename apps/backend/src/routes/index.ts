@@ -1,5 +1,6 @@
 import { Router } from "express";
 import vehiclesRoutes from "../modules/vehicles/vehicles.routes";
+import telematicsRoutes from "../modules/telematics/telematics.routes";
 import vehicleCatalogRoutes from "../modules/vehicle-catalog/vehicle-catalog.routes";
 import usersRoutes from "../modules/users/users.routes";
 import authRoutes from "../modules/auth/auth.routes";
@@ -95,6 +96,7 @@ router.use("/privacy", adminPrivacyRouter);
 router.use("/support", adminSupportRouter);
 router.use("/notifications", adminNotificationsRouter);
 router.use("/vehicles", vehiclesRoutes);
+router.use("/telematics", telematicsRoutes);
 // Rider-facing browse/detail catalog — distinct from /vehicles (fleet
 // inventory). See vehicle-catalog.service.ts for the rationale.
 router.use("/vehicle-models", vehicleCatalogRoutes);

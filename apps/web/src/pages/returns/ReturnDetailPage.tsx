@@ -1,3 +1,4 @@
+import { RentalDistanceCard } from "@/components/returns/RentalDistanceCard";
 import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -341,6 +342,8 @@ export default function ReturnDetailPage() {
           </Card>
         )}
       </div>
+
+      {rentalId && <RentalDistanceCard rentalId={rentalId} />}
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
         {/* Left — Vehicle Inspection */}

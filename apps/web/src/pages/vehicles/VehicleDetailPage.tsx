@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
+import { VehicleLiveCard } from "@/components/vehicles/VehicleLiveCard";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistorySplitView } from "@/components/vehicles/VehicleHistorySplitView";
 import {
@@ -125,6 +126,10 @@ export default function VehicleDetailPage() {
             <Detail label="Purchase date" value={vehicle.purchase_date ? formatDate(vehicle.purchase_date) : "Not recorded"} />
           </CardContent>
         </Card>
+
+        <div className="lg:col-span-2">
+          <VehicleLiveCard vehicleId={vehicle.id} registrationNumber={vehicle.registration_number} />
+        </div>
 
         <div className="space-y-4">
           <Card>

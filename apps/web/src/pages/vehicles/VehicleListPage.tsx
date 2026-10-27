@@ -24,13 +24,15 @@ import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { BulkImportVehiclesDialog } from "@/components/vehicles/BulkImportVehiclesDialog";
 import { VehicleHistoryDialog } from "@/components/vehicles/VehicleHistoryDialog";
 import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
+import { useFleetTelemetry } from "@/hooks/useTelematics";
+import { isLowBattery } from "@/services/api/telematics";
 import { useVehicles, useCreateVehicle, useUpdateVehicle, useUnassignVehicle } from "@/hooks/useVehicles";
 import { useCreateMaintenanceTicket } from "@/hooks/useMaintenance";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
-import { formatDate } from "@/lib/utils";
+import { formatDate, timeAgo } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { Vehicle, VehicleStatus } from "@/types";
@@ -120,6 +122,10 @@ export default function VehicleListPage() {
     );
   };
 
+  // One call for the whole fleet; a scooter with no reading just shows dashes.
+  const { data: fleetTelemetry } = useFleetTelemetry();
+  const telemetryByVehicle = new Map((fleetTelemetry ?? []).map((t) => [t.vehicle_id, t]));
+
   const columns: DataTableColumn<Vehicle>[] = [
     {
       header: "",
@@ -163,6 +169,36 @@ export default function VehicleListPage() {
         ),
     },
     { header: "Status", key: "status", render: (v) => <StatusBadge status={v.status} /> },
+    {
+      header: "Battery",
+      key: "battery",
+      hideOnMobile: true,
+      render: (v) => {
+        const t = telemetryByVehicle.get(v.id);
+        if (!t || t.soc_percent === null) return <span className="text-muted-foreground">—</span>;
+        return (
+          <span className={isLowBattery(t) ? "font-medium text-destructive" : ""}>
+            {Math.round(t.soc_percent)}%
+          </span>
+        );
+      },
+    },
+    {
+      header: "Last seen",
+      key: "last_seen",
+      hideOnMobile: true,
+      render: (v) => {
+        const t = telemetryByVehicle.get(v.id);
+        if (!t?.gps_at) return <span className="text-muted-foreground">{t ? "Never" : "—"}</span>;
+        return (
+          <span className="flex items-center gap-1.5 text-xs">
+            <span className={`h-1.5 w-1.5 rounded-full ${t.freshness === "live" ? "bg-success" : t.freshness === "stale" ? "bg-warning" : "bg-muted-foreground"}`} />
+            {timeAgo(t.gps_at)}
+            {t.immobilised ? <span className="rounded bg-destructive/10 px-1 text-[0.625rem] text-destructive">Immobilised</span> : null}
+          </span>
+        );
+      },
+    },
     {
       header: "Payment",
       key: "payment_status",
