@@ -62,6 +62,8 @@ export async function completeRide(id: string, input: CompleteRideInput = {}): P
 
 export interface MoveToMaintenanceInput {
   description: string;
+  /** Were the rider's ORIGINAL documents handed back? Required when any are still held. */
+  originals_returned?: boolean;
   end_battery_pct?: number;
   /** Staff-customised late fee; omit to use the computed amount. */
   late_fee_override?: number;

@@ -2,6 +2,7 @@ import { Router } from "express";
 import vehiclesRoutes from "../modules/vehicles/vehicles.routes";
 import telematicsRoutes from "../modules/telematics/telematics.routes";
 import fleetAllowanceRoutes from "../modules/fleet-allowance/allowance.routes";
+import originalsRoutes from "../modules/originals/originals.routes";
 import vehicleCatalogRoutes from "../modules/vehicle-catalog/vehicle-catalog.routes";
 import usersRoutes from "../modules/users/users.routes";
 import authRoutes from "../modules/auth/auth.routes";
@@ -99,6 +100,7 @@ router.use("/notifications", adminNotificationsRouter);
 router.use("/vehicles", vehiclesRoutes);
 router.use("/telematics", telematicsRoutes);
 router.use("/fleet-allowance", fleetAllowanceRoutes);
+router.use("/originals", originalsRoutes);
 // Rider-facing browse/detail catalog — distinct from /vehicles (fleet
 // inventory). See vehicle-catalog.service.ts for the rationale.
 router.use("/vehicle-models", vehicleCatalogRoutes);

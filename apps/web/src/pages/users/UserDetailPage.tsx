@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { UserConsentCard } from "./UserConsentCard";
 import { AddChargeDialog } from "@/components/users/AddChargeDialog";
+import { RiderOriginalsCard } from "@/components/users/RiderOriginalsCard";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { useUser } from "@/hooks/useUsers";
@@ -69,6 +70,8 @@ export default function UserDetailPage() {
           onOpenChange={setChargeOpen}
         />
       )}
+
+      {user.role === "rider" && <RiderOriginalsCard userId={user.id} />}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

@@ -1,3 +1,5 @@
+import type { OriginalsInput } from "../originals/originals.types";
+
 /**
  * A booking is a RESERVATION now, and only that.
  *
@@ -228,6 +230,8 @@ export interface PickupBookingView extends BookingView {
 export interface ConfirmPickupInput {
     /** Manual override — omit to use the booking's already-held vehicle. */
     vehicle_id?: string;
+    /** Required for every pickup: which original documents were taken, or that none were. */
+    originals: OriginalsInput;
 }
 
 export interface AvailableVehicleView {

@@ -74,6 +74,9 @@ export function useApproveReturnSettlement() {
       qc.invalidateQueries({ queryKey: ["pickup-queue"] });
       qc.invalidateQueries({ queryKey: ["settlements"] });
       qc.invalidateQueries({ queryKey: ["refunds"] });
+      // the originals' status may just have changed to "returned"
+      qc.invalidateQueries({ queryKey: ["rental-originals"] });
+      qc.invalidateQueries({ queryKey: ["rider-originals"] });
     },
   });
 }

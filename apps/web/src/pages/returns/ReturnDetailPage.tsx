@@ -1,5 +1,7 @@
 import { RentalDistanceCard } from "@/components/returns/RentalDistanceCard";
 import { useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchRentalOriginals } from "@/services/api/originals";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, CheckCircle2, Plus, ShieldCheck, Wrench, XCircle, Clock, CreditCard, CircleCheck,
@@ -123,6 +125,16 @@ export default function ReturnDetailPage() {
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [outcome, setOutcome] = useState<"available" | "maintenance">("available");
   const [maintenanceNotes, setMaintenanceNotes] = useState("");
+  // Were the rider's ORIGINAL documents handed back? Asked in the Complete Return dialog
+  // only when some are still held for this rental; null = not answered yet.
+  const [originalsReturned, setOriginalsReturned] = useState<boolean | null>(null);
+  const rentalOriginals = useQuery({
+    queryKey: ["rental-originals", rentalId],
+    queryFn: () => fetchRentalOriginals(rentalId!),
+    enabled: !!rentalId,
+    staleTime: 30_000,
+  });
+  const heldOriginals = (rentalOriginals.data?.originals?.documents ?? []).filter((d) => d.status === "held");
   // A ref, not state: `isPending` below only reflects the mutation's status
   // as of the last render, so a second click landing before that render
   // flushes (a fast double-click/double-tap on the dialog's Complete Return
@@ -263,7 +275,13 @@ export default function ReturnDetailPage() {
         return;
       }
       moveToMaintenance.mutate(
-        { id: rentalId, input: { description: maintenanceNotes.trim(), inspected: true } },
+        {
+          id: rentalId,
+          input: {
+            description: maintenanceNotes.trim(), inspected: true,
+            ...(heldOriginals.length > 0 && originalsReturned !== null ? { originals_returned: originalsReturned } : {}),
+          },
+        },
         {
           onSuccess: () => { done(); toastSuccess("Return completed — vehicle sent to maintenance"); setCompleteDialogOpen(false); },
           onError: (err) => {
@@ -277,7 +295,10 @@ export default function ReturnDetailPage() {
     }
 
     approveSettlement.mutate(
-      { rentalId, input: {} },
+      {
+        rentalId,
+        input: heldOriginals.length > 0 && originalsReturned !== null ? { originalsReturned } : {},
+      },
       {
         onSuccess: () => { done(); toastSuccess("Return completed"); setCompleteDialogOpen(false); },
         onError: (err) => {
@@ -600,7 +621,13 @@ export default function ReturnDetailPage() {
                         ? "Payment has been verified. Return is ready to be completed."
                         : "No amount is due. Return is ready to be completed."}
                     </p>
-                    <Button className="w-full" onClick={() => setCompleteDialogOpen(true)}>
+                    <Button
+                      className="w-full"
+                      onClick={() => {
+                        setOriginalsReturned(null); // never pre-answered: staff must choose
+                        setCompleteDialogOpen(true);
+                      }}
+                    >
                       Complete Return
                     </Button>
                   </>
@@ -655,6 +682,36 @@ export default function ReturnDetailPage() {
                 <span className="text-[0.6875rem] font-normal text-muted-foreground">Needs work before rental.</span>
               </button>
             </div>
+            {/* Only when originals are still held for this rental */}
+            {heldOriginals.length > 0 && (
+              <div className="space-y-2 rounded-lg border border-border p-3">
+                <p className="text-sm font-medium">
+                  Original documents returned to the rider? <span className="text-destructive">*</span>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Held: {heldOriginals.map((d) => d.label).join(", ")}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {([[true, "Yes — returned"], [false, "No — still held"]] as const).map(([value, label]) => (
+                    <button
+                      key={String(value)}
+                      type="button"
+                      aria-pressed={originalsReturned === value}
+                      onClick={() => setOriginalsReturned(value)}
+                      className={cn(
+                        "rounded-lg border p-2.5 text-sm transition-smooth",
+                        originalsReturned === value
+                          ? "border-primary bg-primary/10 font-medium text-primary"
+                          : "border-border hover:bg-card-hover",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {outcome === "maintenance" && (
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Maintenance notes</Label>
@@ -669,7 +726,11 @@ export default function ReturnDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setCompleteDialogOpen(false)}>Cancel</Button>
             <Button
-              disabled={isPending || (outcome === "maintenance" && maintenanceNotes.trim().length < 3)}
+              disabled={
+                isPending
+                || (outcome === "maintenance" && maintenanceNotes.trim().length < 3)
+                || (heldOriginals.length > 0 && originalsReturned === null)
+              }
               onClick={handleCompleteReturn}
             >
               Complete Return
