@@ -23,6 +23,10 @@ export async function getVehicleHandler(req: AuthedRequest, res: Response) {
     res.json(vehicle);
 }
 
+export async function hubOptionsHandler(_req: AuthedRequest, res: Response) {
+    res.json(await importService.liveHubs());
+}
+
 export async function importTemplateHandler(_req: AuthedRequest, res: Response) {
     const body = await importService.buildImportTemplate();
     const filename = "swapngo-vehicle-import-template.xlsx";

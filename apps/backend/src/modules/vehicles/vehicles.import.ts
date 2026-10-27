@@ -291,7 +291,8 @@ async function liveModels(): Promise<Array<{ id: string; name: string }>> {
     return data ?? [];
 }
 
-async function liveHubs(): Promise<Array<{ id: string; code: string; name: string }>> {
+/** Active hubs — the template's dropdown, and the vehicle form's hub picker (GET /vehicles/hub-options). */
+export async function liveHubs(): Promise<Array<{ id: string; code: string; name: string }>> {
     const { data, error } = await supabaseAdmin
         .from("hubs")
         .select("id, code, name")

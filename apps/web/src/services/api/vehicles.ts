@@ -65,6 +65,7 @@ export interface VehicleUpdateInput {
   name?: string | null;
   registration_number?: string;
   vin?: string;
+  hub_id?: string | null;
   color?: string | null;
   qr_code?: string | null;
   imei?: string | null;
@@ -74,21 +75,37 @@ export interface VehicleUpdateInput {
 
 /**
  * The edit form's values → a PATCH body. Built field by field rather than by
- * spreading the form, so nothing the update endpoint rejects (the model, the
- * hub) can leak through. The form is pre-filled, so an optional field that
- * comes back empty was cleared by the admin and is sent as null.
+ * spreading the form, so nothing the update endpoint rejects (the model) can
+ * leak through. The form is pre-filled, so an optional field that comes back
+ * empty was cleared by the admin and is sent as null.
  */
 export function toVehicleUpdate(form: VehicleFormInput): VehicleUpdateInput {
   return {
     name: form.name || null,
     registration_number: form.registration_number,
     vin: form.vin,
+    hub_id: form.hub_id || null,
     color: form.color || null,
     qr_code: form.qr_code || null,
     imei: form.imei || null,
     purchase_date: form.purchase_date || null,
     batch_number: form.batch_number || null,
   };
+}
+
+export interface HubOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
+/**
+ * GET /vehicles/hub-options — active hubs for the vehicle form's picker. A
+ * vehicle is only bookable at its hub (availability is matched on model + hub),
+ * so a unit without one never reaches a rider.
+ */
+export async function fetchHubOptions(): Promise<HubOption[]> {
+  return apiClient.get<HubOption[]>("/vehicles/hub-options");
 }
 
 /** POST /vehicles — requireStaff. */
