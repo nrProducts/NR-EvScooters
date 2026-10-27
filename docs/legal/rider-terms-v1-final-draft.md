@@ -1,4 +1,4 @@
-<!-- SUPERSEDED. The live Terms are docs/legal/terms-operative.md (version 2026-09-04.2), published by supabase/migrations/20261027140000_terms_v2_official.sql. This file is kept for reference only; do not publish from it. -->
+<!-- SUPERSEDED. The live Terms are docs/legal/terms-operative.md (version 2026-09-04.3), published by supabase/migrations/20261028120000_terms_v3_swap_partner.sql. This file is kept for reference only; do not publish from it. -->
 
 # Swapngo Rider Agreement — Terms & Conditions for E-Scooter Rental
 

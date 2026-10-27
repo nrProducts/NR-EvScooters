@@ -1,6 +1,6 @@
 # Terms and Conditions of Rental
 
-**Swapngo Rider Agreement. Version 2026-09-04.2**
+**Swapngo Rider Agreement. Version 2026-09-04.3**
 
 This Rider Agreement (the "Agreement" or these "Terms") is made between Swapngo Fleet Hub, having its registered office at No. 5/61, Pillaiyar Kovil Street, Medavakkam, Chennai - 600100 ("Swapngo", the "Company", "we", "us" or "our"), and you, the individual who registers on the Swapngo app or website (the "Platform") and accepts these Terms (the "Rider", "you" or "your").
 
@@ -19,6 +19,7 @@ Please read Clauses 6, 8, 9, 10, 11 and 14 carefully. They set out what you pay 
 ## 2. Definitions
 
 - **Applicable Law**: every law, rule, regulation, notification and order in force in India, including the Motor Vehicles Act, 1988, the Central Motor Vehicles Rules, 1989, the Tamil Nadu Motor Vehicles Rules, 1989, and the directions of the Greater Chennai Traffic Police and every other traffic authority.
+- **Battery Swap Station**: a battery swapping station operated by Indofast Energy ("Indofast"), the Company's battery swap partner. Battery Swap Stations are not owned or operated by the Company.
 - **Government Penalty**: any traffic challan, fine, compounding fee, towing, storage or impound charge, or other penalty imposed by any authority.
 - **Incident**: any accident, collision, fall, fire, theft, loss, damage, injury, or police or traffic-authority action involving the Vehicle.
 - **Plan**: the rental plan you select in the app, with its rent, duration, Security Deposit and onboarding charge.
@@ -50,7 +51,7 @@ Please read Clauses 6, 8, 9, 10, 11 and 14 carefully. They set out what you pay 
 4.2 **Current Plan.** At the date of this version of the Terms, the Plan on offer is the **Weekly Unlimited** Plan:
 
 - Rent: **₹2,100 per week**, being one Plan Period of 7 days, payable in advance;
-- Unlimited battery swaps at our designated battery swap stations, subject to fair use under Clause 9.5;
+- Unlimited battery swaps at Battery Swap Stations, subject to fair use under Clause 9.5;
 - Also due with your first payment: **₹1,500**, made up of a **₹500 one-time onboarding charge (non-refundable)** and a **₹1,000 Security Deposit**, refundable under Clause 6.3 after you have completed **45 rental days**; and
 - A transaction fee, where applicable, and taxes as required by law, each shown at checkout.
 
@@ -124,7 +125,7 @@ The late fee is a genuine pre-estimate of the loss caused to the Company when a 
 - carry your driving licence and wear a BIS-certified helmet at all times while riding, and ensure that any pillion rider also wears one;
 - obey all traffic laws, speed limits, signals, lane discipline and parking rules;
 - carry no more than one pillion rider and never overload the Vehicle;
-- swap batteries only at our designated battery swap stations;
+- swap batteries only at Battery Swap Stations, and follow the rules and instructions of the station operator;
 - park lawfully and lock the Vehicle every time you leave it, taking the key with you; and
 - report any fault, loss, theft or accident to us immediately.
 
@@ -226,7 +227,7 @@ If the impoundment is caused by the Company's fault, such as an invalid registra
 
 13.2 If the Vehicle breaks down or shows a warning, stop riding and contact Support. Do not arrange your own repairs.
 
-13.3 We do not guarantee that every battery swap station will always have a charged battery available.
+13.3 Battery Swap Stations are owned and operated by our battery swap partner, Indofast, and not by the Company. We do not guarantee that any Battery Swap Station will be open, working or have a charged battery available, and the Company is not responsible for the operation of the stations or the acts of their staff. If you cannot swap, contact Support and we will help you find a working station.
 
 ## 14. Termination
 
@@ -277,7 +278,7 @@ We send one-time login codes, payment reminders, challan and charge notices, and
 
 18.3 **Why we use it:** to verify your identity and driving licence; to provide and manage your rental; to take payments and issue refunds; to assess damage and recover amounts owed; to handle Incidents, insurance claims and Government Penalties; to send you service messages; to check fair use and prevent fraud and misuse; to keep a record of your acceptance of these Terms; and to meet our legal obligations.
 
-18.4 **Who we share it with,** only as needed for those purposes: our payment, SMS, push-notification and hosting service providers; insurers and surveyors in connection with an Incident; and the police, courts, traffic and other authorities where required by law, or to identify the rider for a challan or Incident. We do not sell your personal data.
+18.4 **Who we share it with,** only as needed for those purposes: our payment, SMS, push-notification and hosting service providers; our battery swap partner, Indofast, to provide battery swapping and the related swap records; insurers and surveyors in connection with an Incident; and the police, courts, traffic and other authorities where required by law, or to identify the rider for a challan or Incident. We do not sell your personal data.
 
 18.5 **Your rights as a Data Principal:** to access a summary of your personal data; to request its correction, completion or erasure; to withdraw your consent; to nominate another person to exercise your rights; and to have your grievances redressed. Withdrawing consent does not affect processing already carried out. We may continue to retain data the law requires us to keep, such as tax records, or data needed to resolve an Incident, dispute or legal claim. If you withdraw consent that is required to provide the rental service, we can no longer rent you a Vehicle.
 

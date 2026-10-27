@@ -48,7 +48,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     question: "What if my scooter's battery runs low?",
     answer:
-      "Swapngo scooters use swappable batteries — head to any of our battery-swap stations across Chennai and swap in under 2 minutes instead of waiting to charge.",
+      "Swapngo scooters use swappable batteries — head to any battery-swap station of our battery swap partner Indofast across Chennai and swap in under 2 minutes instead of waiting to charge.",
   },
   {
     question: "How do I contact support?",
