@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Image } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   User, Camera, Mail, Phone, ShieldCheck, ChevronRight, LogOut, LifeBuoy, Lock, HelpCircle,
@@ -242,7 +242,6 @@ const GREEN_SOFT = 'rgba(33,196,93,0.10)';
  *
  *   identity card   green banner, the rider's photo overlapping it, name,
  *                   contact line, KYC status, "Change photo"
- *   scooter card    the assigned scooter, when there is one
  *   menu card       every destination as one list: KYC, language, support,
  *                   referrals, privacy, terms, how it works
  *   logout, app version
@@ -345,29 +344,6 @@ function FullProfileLayout({
           </TouchableOpacity>
         </View>
       </View>
-
-      {/* Assigned scooter */}
-      {profile.assigned_vehicle ? (
-        <View
-          className="flex-row items-center"
-          style={{ gap: 12, padding: 12, borderRadius: 18, backgroundColor: COLORS.card, borderWidth: 1, borderColor: CARD_BORDER }}
-        >
-          <Image
-            source={require('../../assets/images/blue-motovolt-scooter.png')}
-            accessibilityLabel={profile.assigned_vehicle.model}
-            style={{ width: 64, height: 52 }}
-            resizeMode="contain"
-          />
-          <View className="flex-1" style={{ minWidth: 0 }}>
-            <Text className="font-sans" style={{ color: COLORS.textSecondary, fontSize: 11, fontWeight: '500' }}>
-              {t('profile.assignedScooter')}
-            </Text>
-            <Text className="font-sans" style={{ color: COLORS.textPrimary, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
-              {profile.assigned_vehicle.model}
-            </Text>
-          </View>
-        </View>
-      ) : null}
 
       {/* Verification prompt, only while the rider cannot rent yet */}
       {!profile.can_rent ? (

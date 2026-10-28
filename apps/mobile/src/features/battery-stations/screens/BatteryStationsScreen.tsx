@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    View, Text, BackHandler, Linking, Platform, TouchableOpacity, type ScrollView,
+    View, Text, BackHandler, Linking, Platform, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-    BatteryCharging, Minus, Plus, RefreshCw, TriangleAlert,
+    ChevronDown, ChevronUp, MapPin, Minus, Plus, RefreshCw, TriangleAlert,
 } from 'lucide-react-native';
 import { COLORS } from '../../../constants/theme';
 import { TAB_BAR_FOOTPRINT } from '../../../lib/tabBar';
@@ -13,12 +13,9 @@ import { buildMapsUrl, buildWebMapsUrl } from '../../../lib/maps';
 import { copyToClipboard } from '../../../lib/clipboard';
 import { notifyError, notifySuccess } from '../../../lib/confirm';
 import { ErrorState } from '../../../components/ui/ErrorState';
-import { AppShell } from '../../../components/AppShell';
-import { PageScroll } from '../../../components/ui/PageScroll';
 import { Spinner } from '../../../components/Spinner';
 import { BatteryStationMap, type BatteryStationMapHandle } from '../components/BatteryStationMap';
 import { StationDetailsBottomSheet } from '../components/StationDetailsBottomSheet';
-import { StationStatusBadge } from '../components/StationStatusBadge';
 import { StationSearch } from '../components/StationSearch';
 import { LocationButton } from '../components/LocationButton';
 import { LocationConsentNotice } from '../components/LocationConsentNotice';
@@ -59,23 +56,21 @@ export default function BatteryStationsScreen() {
     const [search, setSearch] = useState('');
     const [selectedArea, setSelectedArea] = useState<AreaResult | null>(null);
     const [permissionNoticeDismissed, setPermissionNoticeDismissed] = useState(false);
-    // How many station cards the list shows; "Show more" adds ten.
-    const [listLimit, setListLimit] = useState(8);
-    const scrollRef = useRef<ScrollView>(null);
+    // Ranks 2-5 of nearbyStations below start collapsed — only the closest
+    // station shows until the rider taps the chevron to see the rest.
+    const [nearbyExpanded, setNearbyExpanded] = useState(false);
 
     const { stations, isInitialLoading, isRefreshing, isError, error, refetch } = useBatteryStations();
     const { coords, permission, isLocating, requestLocation } = useCurrentLocation();
 
     /**
-     * Every station for the list under the map: nearest first (WORKING ahead of
-     * MAINTENANCE/NOT_WORKING, same tie-break as the area-search recommendations)
-     * when the rider's position is known, otherwise A to Z.
+     * Top 5 stations by distance from the rider (WORKING ranked ahead of
+     * MAINTENANCE/NOT_WORKING, same tie-break as the area-search
+     * recommendations below) — replaces the old single "nearest station"
+     * banner with an expandable list.
      */
-    const listStations = useMemo(
-        () =>
-            coords
-                ? recommendStationsNear(stations, coords, Math.max(stations.length, 1))
-                : [...stations].sort((x, y) => formatStationName(x.name).localeCompare(formatStationName(y.name))),
+    const nearbyStations = useMemo(
+        () => (coords ? recommendStationsNear(stations, coords, 5) : []),
         [stations, coords],
     );
 
@@ -275,220 +270,244 @@ export default function BatteryStationsScreen() {
     // becomes the error state. A failed refetch keeps the stale markers.
     if (isError && stations.length === 0) {
         return (
-            <AppShell title={t('stations.listHeading')}>
-                <View className="flex-1 justify-center" style={{ backgroundColor: COLORS.background }}>
-                    <ErrorState
-                        message={error?.message ?? t('stations.error.load')}
-                        offline={error?.isOffline}
-                        onRetry={() => void refetch()}
-                    />
-                    <TouchableOpacity
-                        onPress={goBack}
-                        accessibilityRole="button"
-                        className="self-center mt-2 px-4 py-2"
-                    >
-                        <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold">{t('stations.goBack')}</Text>
-                    </TouchableOpacity>
-                </View>
-            </AppShell>
+            <View className="flex-1 justify-center" style={{ backgroundColor: COLORS.background, paddingTop: insets.top }}>
+                <ErrorState
+                    message={error?.message ?? t('stations.error.load')}
+                    offline={error?.isOffline}
+                    onRetry={() => void refetch()}
+                />
+                <TouchableOpacity
+                    onPress={goBack}
+                    accessibilityRole="button"
+                    className="self-center mt-2 px-4 py-2"
+                >
+                    <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold">{t('stations.goBack')}</Text>
+                </TouchableOpacity>
+            </View>
         );
     }
 
     return (
-        <AppShell title={t('stations.listHeading')}>
-            <PageScroll
-                ref={scrollRef}
-                contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
+        <View className="flex-1" style={{ backgroundColor: COLORS.background }}>
+            <BatteryStationMap
+                ref={mapRef}
+                stations={stations}
+                selectedStationId={selectedStationId}
+                onSelectStation={handleSelectStation}
+                onPressMap={() => setSelectedStationId(null)}
+                userCoords={coords}
+            />
+
+            {/* --- top overlay: search, notices --- */}
+            <View
+                className="absolute left-0 right-0 px-4"
+                style={{ top: insets.top + 8 }}
+                pointerEvents="box-none"
             >
-                <View style={{ gap: 14 }}>
-                    <StationSearch
-                        value={search}
-                        onChangeText={handleSearchChange}
-                        results={searchResults}
-                        onSelect={handleSearchSelect}
-                        distanceFor={distanceTo}
-                        areas={areas}
-                        isSearchingAreas={isSearchingAreas}
-                        onSelectArea={handleAreaSelect}
-                        selectedArea={selectedArea}
-                        onClearArea={clearAreaSelection}
-                        recommendations={recommendations}
-                    />
+                <StationSearch
+                    value={search}
+                    onChangeText={handleSearchChange}
+                    results={searchResults}
+                    onSelect={handleSearchSelect}
+                    distanceFor={distanceTo}
+                    areas={areas}
+                    isSearchingAreas={isSearchingAreas}
+                    onSelectArea={handleAreaSelect}
+                    selectedArea={selectedArea}
+                    onClearArea={clearAreaSelection}
+                    recommendations={recommendations}
+                />
 
-                    {showConsentNotice && !isSearchPanelOpen ? (
-                        <LocationConsentNotice onEnabled={() => void handleMyLocation()} />
-                    ) : null}
+                {showConsentNotice && !isSearchPanelOpen ? (
+                    <LocationConsentNotice onEnabled={() => void handleMyLocation()} />
+                ) : null}
 
-                    {showPermissionNotice && !isSearchPanelOpen ? (
-                        <TouchableOpacity
-                            onPress={() => setPermissionNoticeDismissed(true)}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('stations.dismissLocationNotice')}
-                            className="flex-row items-center px-3.5 py-3 rounded-2xl border"
-                            style={{ backgroundColor: COLORS.card, borderColor: COLORS.warning }}
-                        >
-                            <TriangleAlert size={14} color={COLORS.warning} />
-                            <Text style={{ color: COLORS.textPrimary }} className="text-xs font-medium ml-2 flex-1 leading-snug">
-                                {t('stations.locationOff')}
-                            </Text>
-                            <TouchableOpacity
-                                onPress={() => void Linking.openSettings()}
-                                accessibilityRole="button"
-                                className="ml-2 px-2.5 py-1 rounded-full"
-                                style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
-                            >
-                                <GradientFill />
-                                <Text style={{ color: '#FFFFFF' }} className="text-[11px] font-bold">
-                                    {t('stations.openSettings')}
-                                </Text>
-                            </TouchableOpacity>
-                        </TouchableOpacity>
-                    ) : null}
-
-                    {/* The map sits in its own rounded, bordered frame. */}
-                    <View
+                {showPermissionNotice && !isSearchPanelOpen ? (
+                    <TouchableOpacity
+                        onPress={() => setPermissionNoticeDismissed(true)}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('stations.dismissLocationNotice')}
+                        className="flex-row items-center mt-2 px-3.5 py-3 rounded-2xl border"
                         style={{
-                            height: 300, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border,
-                            backgroundColor: COLORS.gray[100],
-                            shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 6 },
+                            backgroundColor: COLORS.card,
+                            borderColor: COLORS.warning,
+                            shadowColor: COLORS.black,
+                            shadowOpacity: 0.12,
+                            shadowRadius: 10,
+                            shadowOffset: { width: 0, height: 3 },
+                            elevation: 5,
                         }}
                     >
-                        <BatteryStationMap
-                            ref={mapRef}
-                            stations={stations}
-                            selectedStationId={selectedStationId}
-                            onSelectStation={handleSelectStation}
-                            onPressMap={() => setSelectedStationId(null)}
-                            userCoords={coords}
-                        />
-
-                        <View className="absolute right-3 bottom-3" style={{ gap: 8 }} pointerEvents="box-none">
-                            <MapControlButton icon={Plus} label={t('stations.zoomIn')} onPress={() => mapRef.current?.zoomBy(1)} />
-                            <MapControlButton icon={Minus} label={t('stations.zoomOut')} onPress={() => mapRef.current?.zoomBy(-1)} />
-                            <FitStationsButton
-                                onPress={() => mapRef.current?.fitAll()}
-                                disabled={stations.length === 0}
-                            />
-                            <LocationButton permission={permission} isLocating={isLocating} onPress={() => void handleMyLocation()} />
-                        </View>
-
-                        {/* Initial load only: never covers the map on a refetch. Opaque, so
-                            exactly one spinner is ever visible (the map has its own while its
-                            lazy chunk resolves). */}
-                        {isInitialLoading ? (
-                            <View
-                                className="absolute inset-0 items-center justify-center"
-                                style={{ backgroundColor: COLORS.background }}
-                            >
-                                <Spinner size={32} color={COLORS.primary} />
-                                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold mt-3">
-                                    {t('stations.loading')}
-                                </Text>
-                            </View>
-                        ) : null}
-                    </View>
-
-                    {/* The list under the map: every station, nearest first when we know where the rider is. */}
-                    <View className="flex-row items-center justify-between">
-                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">
-                            {t('stations.listHeading')}
+                        <TriangleAlert size={14} color={COLORS.warning} />
+                        <Text style={{ color: COLORS.textPrimary }} className="text-xs font-semibold ml-2 flex-1 leading-snug">
+                            {t('stations.locationOff')}
                         </Text>
-                        <View className="flex-row items-center" style={{ gap: 10 }}>
-                            <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold">
-                                {t('stations.listCount', { count: listStations.length })}
-                            </Text>
-                            <TouchableOpacity
-                                onPress={() => void refetch()}
-                                disabled={isRefreshing}
-                                accessibilityRole="button"
-                                accessibilityLabel={t('stations.refresh')}
-                                className="w-9 h-9 rounded-full items-center justify-center border"
-                                style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
-                            >
-                                {isRefreshing ? (
-                                    <Spinner size={14} color={COLORS.primary} />
-                                ) : (
-                                    <RefreshCw size={15} color={COLORS.textPrimary} />
-                                )}
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-
-                    {!isInitialLoading && stations.length === 0 ? (
-                        <View className="px-4 py-5 rounded-2xl border" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-                            <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold text-center">
-                                {t('stations.empty.title')}
-                            </Text>
-                            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-1">
-                                {t('stations.empty.subtitle')}
-                            </Text>
-                        </View>
-                    ) : null}
-
-                    <View style={{ gap: 10 }}>
-                        {listStations.slice(0, listLimit).map((station) => {
-                            const distance = distanceTo(station);
-                            const working = station.status === 'WORKING';
-                            const selected = station.id === selectedStationId;
-                            const subtitle = [
-                                distance !== null ? t('stations.distanceAway', { distance: formatDistance(distance) }) : null,
-                                station.batteryCount > 0 ? t('stations.batteryCount', { count: station.batteryCount }) : null,
-                            ].filter(Boolean).join(' · ');
-                            return (
-                                <TouchableOpacity
-                                    key={station.id}
-                                    onPress={() => {
-                                        handleSelectStation(station.id);
-                                        // The map is at the top of the page; bring it into view.
-                                        scrollRef.current?.scrollTo({ y: 0, animated: true });
-                                    }}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={formatStationName(station.name)}
-                                    className="flex-row items-center p-3.5 rounded-[18px] border"
-                                    style={{
-                                        gap: 12, backgroundColor: COLORS.card,
-                                        borderColor: selected ? COLORS.primary : COLORS.border,
-                                        shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 },
-                                    }}
-                                >
-                                    <View
-                                        className="items-center justify-center"
-                                        style={{
-                                            width: 44, height: 44, borderRadius: 14, overflow: 'hidden',
-                                            backgroundColor: working ? COLORS.primary : COLORS.gray[100],
-                                        }}
-                                    >
-                                        {working ? <GradientFill /> : null}
-                                        <BatteryCharging size={20} color={working ? '#FFFFFF' : COLORS.textSecondary} />
-                                    </View>
-                                    <View className="flex-1" style={{ minWidth: 0 }}>
-                                        <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold" numberOfLines={1}>
-                                            {formatStationName(station.name)}
-                                        </Text>
-                                        {subtitle ? (
-                                            <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium mt-0.5" numberOfLines={1}>
-                                                {subtitle}
-                                            </Text>
-                                        ) : null}
-                                    </View>
-                                    <StationStatusBadge status={station.status} />
-                                </TouchableOpacity>
-                            );
-                        })}
-                    </View>
-
-                    {listStations.length > listLimit ? (
                         <TouchableOpacity
-                            onPress={() => setListLimit((n) => n + 10)}
+                            onPress={() => void Linking.openSettings()}
                             accessibilityRole="button"
-                            className="items-center justify-center py-3 rounded-2xl border"
-                            style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
+                            className="ml-2 px-2.5 py-1 rounded-full"
+                            style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
                         >
-                            <Text style={{ color: COLORS.primary }} className="text-sm font-bold">{t('stations.showMore')}</Text>
+                          <GradientFill />
+                            <Text style={{ color: '#FFFFFF' }} className="text-[11px] font-bold">
+                                {t('stations.openSettings')}
+                            </Text>
                         </TouchableOpacity>
-                    ) : null}
+                    </TouchableOpacity>
+                ) : null}
+
+                {nearbyStations.length > 0 && !selectedStation && !isSearchPanelOpen ? (
+                    <View
+                        className="mt-2 rounded-2xl overflow-hidden"
+                        style={{
+                            backgroundColor: COLORS.card,
+                            shadowColor: '#0F172A',
+                            shadowOpacity: 0.12,
+                            shadowRadius: 12,
+                            shadowOffset: { width: 0, height: 4 },
+                            elevation: 6,
+                        }}
+                    >
+                        <View className="flex-row items-center">
+                            <TouchableOpacity
+                                onPress={() => handleSearchSelect(nearbyStations[0])}
+                                accessibilityRole="button"
+                                accessibilityLabel={t('stations.nearest', {
+                                    name: formatStationName(nearbyStations[0].name),
+                                    distance: formatDistance(nearbyStations[0].distanceKm),
+                                })}
+                                className="flex-1 flex-row items-center px-3.5 py-2.5"
+                            >
+                                <MapPin size={14} color={COLORS.primary} />
+                                <View className="ml-2 flex-1">
+                                    <Text style={{ color: COLORS.textSecondary }} className="text-[9px] font-bold uppercase tracking-wider">
+                                        {t('stations.nearestHeader')}
+                                    </Text>
+                                    <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold mt-0.5" numberOfLines={1}>
+                                        {t('stations.nearestNameLine', {
+                                            name: formatStationName(nearbyStations[0].name),
+                                            distance: formatDistance(nearbyStations[0].distanceKm),
+                                        })}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+
+                            {nearbyStations.length > 1 ? (
+                                <TouchableOpacity
+                                    onPress={() => setNearbyExpanded((expanded) => !expanded)}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={t(
+                                        nearbyExpanded ? 'stations.nearbyToggle.collapse' : 'stations.nearbyToggle.expand',
+                                    )}
+                                    className="items-center justify-center pl-1 pr-3.5"
+                                    style={{ minHeight: 44, minWidth: 36 }}
+                                >
+                                    {nearbyExpanded ? (
+                                        <ChevronUp size={16} color={COLORS.textSecondary} />
+                                    ) : (
+                                        <ChevronDown size={16} color={COLORS.textSecondary} />
+                                    )}
+                                </TouchableOpacity>
+                            ) : null}
+                        </View>
+
+                        {/* Ranks 2-5 — collapsed by default so the overlay stays a
+                            single-line pill until the rider actually wants the list. */}
+                        {nearbyExpanded
+                            ? nearbyStations.slice(1).map((station) => (
+                                  <TouchableOpacity
+                                      key={station.id}
+                                      onPress={() => handleSearchSelect(station)}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={t('stations.nearest', {
+                                          name: formatStationName(station.name),
+                                          distance: formatDistance(station.distanceKm),
+                                      })}
+                                      className="flex-row items-center px-3.5 py-2.5"
+                                      style={{ borderTopWidth: 1, borderTopColor: COLORS.border }}
+                                  >
+                                      <MapPin size={12} color={COLORS.textSecondary} />
+                                      <Text
+                                          style={{ color: COLORS.textPrimary }}
+                                          className="text-[11px] font-semibold ml-2 flex-1"
+                                          numberOfLines={1}
+                                      >
+                                          {formatStationName(station.name)}
+                                      </Text>
+                                      <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold ml-2">
+                                          {formatDistance(station.distanceKm)}
+                                      </Text>
+                                  </TouchableOpacity>
+                              ))
+                            : null}
+                    </View>
+                ) : null}
+            </View>
+
+            {/* --- right-hand control stack --- */}
+            {/* This stack only renders with no station selected, which is
+                exactly when the floating pill tab bar is the thing sitting
+                behind it — insets.bottom alone cleared the OS safe area but
+                not the bar itself, so the lowest button (Fit Stations) sat
+                half under it. Same fix as StationDetailsBottomSheet's.
+                Also hidden while the search panel is open: its results list
+                can grow tall enough to reach down into this stack. */}
+            <View
+                className="absolute right-4"
+                style={{ bottom: (selectedStation ? 0 : insets.bottom + TAB_BAR_FOOTPRINT) + 24, gap: 10 }}
+                pointerEvents="box-none"
+            >
+                {!selectedStation && !isSearchPanelOpen && (
+                    <>
+                        <MapControlButton
+                            icon={RefreshCw}
+                            label={t('stations.refresh')}
+                            onPress={() => void refetch()}
+                            busy={isRefreshing}
+                        />
+                        <MapControlButton icon={Plus} label={t('stations.zoomIn')} onPress={() => mapRef.current?.zoomBy(1)} />
+                        <MapControlButton icon={Minus} label={t('stations.zoomOut')} onPress={() => mapRef.current?.zoomBy(-1)} />
+                        <FitStationsButton
+                            onPress={() => mapRef.current?.fitAll()}
+                            disabled={stations.length === 0}
+                        />
+                        <LocationButton permission={permission} isLocating={isLocating} onPress={() => void handleMyLocation()} />
+                    </>
+                )}
+            </View>
+
+            {/* --- empty state: the API answered, with nothing to show --- */}
+            {!isInitialLoading && stations.length === 0 && !isError ? (
+                <View className="absolute left-6 right-6 items-center" style={{ bottom: insets.bottom + 110 }}>
+                    <View className="px-4 py-3 rounded-2xl" style={{ backgroundColor: COLORS.card }}>
+                        <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold text-center">
+                            {t('stations.empty.title')}
+                        </Text>
+                        <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-1">
+                            {t('stations.empty.subtitle')}
+                        </Text>
+                    </View>
                 </View>
-            </PageScroll>
+            ) : null}
+
+            {/* --- initial load only: never covers the map on a refetch ---
+                Opaque, not translucent. The map renders its own spinner while
+                its lazy chunk resolves, and at 85% alpha that one showed
+                through this one — two large spinners, slightly offset because
+                this one sits higher to make room for the label. Solid means
+                exactly one is ever visible, while the map's still covers the
+                case where data arrives before the map engine does. */}
+            {isInitialLoading ? (
+                <View
+                    className="absolute inset-0 items-center justify-center"
+                    style={{ backgroundColor: COLORS.background }}
+                >
+                    <Spinner size={32} color={COLORS.primary} />
+                    <Text style={{ color: COLORS.textSecondary }} className="text-xs font-bold mt-3">
+                        {t('stations.loading')}
+                    </Text>
+                </View>
+            ) : null}
 
             <StationDetailsBottomSheet
                 station={selectedStation}
@@ -498,6 +517,6 @@ export default function BatteryStationsScreen() {
                 onCopyCoordinates={(station) => void handleCopyCoordinates(station)}
                 onViewDetails={(station) => router.push(`/battery-stations/${station.id}` as never)}
             />
-        </AppShell>
+        </View>
     );
 }

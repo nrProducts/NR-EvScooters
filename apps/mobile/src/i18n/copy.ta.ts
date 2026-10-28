@@ -794,11 +794,6 @@ export const ta: Copy = {
 
     // --- battery stations map --------------------------------------------
     'stations.goBack': 'திரும்பிச் செல்',
-    'stations.listHeading': 'அருகிலுள்ள நிலையங்கள்',
-    'stations.listCount': '{count} நிலையங்கள்',
-    'stations.distanceAway': '{distance} தொலைவில்',
-    'stations.batteryCount': '{count} பேட்டரிகள்',
-    'stations.showMore': 'மேலும் காட்டு',
     'stations.error.load': 'பேட்டரி நிலையங்களை ஏற்ற முடியவில்லை.',
     'stations.dismissLocationNotice': 'இருப்பிட அனுமதி அறிவிப்பை மூடு',
     'stations.locationOff':

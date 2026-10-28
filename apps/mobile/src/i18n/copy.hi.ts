@@ -789,11 +789,6 @@ export const hi: Copy = {
 
     // --- battery stations map --------------------------------------------
     'stations.goBack': 'वापस जाएं',
-    'stations.listHeading': 'आस-पास के स्टेशन',
-    'stations.listCount': '{count} स्टेशन',
-    'stations.distanceAway': '{distance} दूर',
-    'stations.batteryCount': '{count} बैटरी',
-    'stations.showMore': 'और दिखाएं',
     'stations.error.load': 'बैटरी स्टेशन लोड नहीं हो सके।',
     'stations.dismissLocationNotice': 'लोकेशन अनुमति सूचना बंद करें',
     'stations.locationOff':

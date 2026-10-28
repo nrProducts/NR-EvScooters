@@ -1346,11 +1346,6 @@ export const en = {
 
     // --- battery stations map --------------------------------------------
     'stations.goBack': 'Go back',
-    'stations.listHeading': 'Nearby stations',
-    'stations.listCount': '{count} stations',
-    'stations.distanceAway': '{distance} away',
-    'stations.batteryCount': '{count} batteries',
-    'stations.showMore': 'Show more',
     'stations.error.load': 'Could not load battery stations.',
     'stations.dismissLocationNotice': 'Dismiss location permission notice',
     'stations.locationOff':
