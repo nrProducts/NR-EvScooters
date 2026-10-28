@@ -789,6 +789,11 @@ export const hi: Copy = {
 
     // --- battery stations map --------------------------------------------
     'stations.goBack': 'वापस जाएं',
+    'stations.listHeading': 'आस-पास के स्टेशन',
+    'stations.listCount': '{count} स्टेशन',
+    'stations.distanceAway': '{distance} दूर',
+    'stations.batteryCount': '{count} बैटरी',
+    'stations.showMore': 'और दिखाएं',
     'stations.error.load': 'बैटरी स्टेशन लोड नहीं हो सके।',
     'stations.dismissLocationNotice': 'लोकेशन अनुमति सूचना बंद करें',
     'stations.locationOff':
@@ -1138,6 +1143,7 @@ export const hi: Copy = {
 
     // --- sign in ----------------------------------------------------------
     'auth.tagline': 'सवारी शुरू करने के लिए अपने मोबाइल नंबर से साइन इन करें।',
+    'auth.signIn': 'साइन इन',
     'auth.mobileNumber': 'मोबाइल नंबर',
     'auth.mobileNumberPlaceholder': 'मोबाइल नंबर',
     'auth.otpHint': 'हम आपको 6 अंकों का कोड भेजेंगे। भारतीय नंबर बिना +91 के भी डाले जा सकते हैं।',

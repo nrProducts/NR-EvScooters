@@ -1020,6 +1020,7 @@ export const en = {
 
     // --- sign in ----------------------------------------------------------
     'auth.tagline': 'Sign in with your mobile number to start riding.',
+    'auth.signIn': 'Sign in',
     'auth.mobileNumber': 'Mobile Number',
     'auth.mobileNumberPlaceholder': 'Mobile number',
     'auth.otpHint': "We'll text you a 6-digit code. Indian numbers can be typed without +91.",
@@ -1345,6 +1346,11 @@ export const en = {
 
     // --- battery stations map --------------------------------------------
     'stations.goBack': 'Go back',
+    'stations.listHeading': 'Nearby stations',
+    'stations.listCount': '{count} stations',
+    'stations.distanceAway': '{distance} away',
+    'stations.batteryCount': '{count} batteries',
+    'stations.showMore': 'Show more',
     'stations.error.load': 'Could not load battery stations.',
     'stations.dismissLocationNotice': 'Dismiss location permission notice',
     'stations.locationOff':

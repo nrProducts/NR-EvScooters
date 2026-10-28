@@ -794,6 +794,11 @@ export const ta: Copy = {
 
     // --- battery stations map --------------------------------------------
     'stations.goBack': 'திரும்பிச் செல்',
+    'stations.listHeading': 'அருகிலுள்ள நிலையங்கள்',
+    'stations.listCount': '{count} நிலையங்கள்',
+    'stations.distanceAway': '{distance} தொலைவில்',
+    'stations.batteryCount': '{count} பேட்டரிகள்',
+    'stations.showMore': 'மேலும் காட்டு',
     'stations.error.load': 'பேட்டரி நிலையங்களை ஏற்ற முடியவில்லை.',
     'stations.dismissLocationNotice': 'இருப்பிட அனுமதி அறிவிப்பை மூடு',
     'stations.locationOff':
@@ -1143,6 +1148,7 @@ export const ta: Copy = {
 
     // --- sign in ----------------------------------------------------------
     'auth.tagline': 'சவாரி தொடங்க உங்கள் மொபைல் எண்ணுடன் உள்நுழையவும்.',
+    'auth.signIn': 'உள்நுழை',
     'auth.mobileNumber': 'மொபைல் எண்',
     'auth.mobileNumberPlaceholder': 'மொபைல் எண்',
     'auth.otpHint': '6-இலக்க குறியீட்டை உங்களுக்கு அனுப்புவோம். இந்திய எண்களை +91 இல்லாமல் தட்டச்சு செய்யலாம்.',

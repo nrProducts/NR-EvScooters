@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   User, Camera, Mail, Phone, ShieldCheck, ChevronRight, LogOut, LifeBuoy, Lock, HelpCircle,
-  FileText, Languages, Gift, Bike, Zap, Settings, Smartphone,
+  FileText, Languages, Gift,
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
@@ -234,37 +234,25 @@ interface FullProfileLayoutProps {
   onLogout: () => void;
 }
 
-// Figma "Job Finder" detail frame (node 1:1290), reproduced value for value.
-// The only substitution is the colour: the file's one accent (the blue
-// "Read More" link) becomes Swapngo green; everything else keeps the file's own
-// neutrals — black text, 50% / 60% opacity labels, #f8f8f8 control, 6% borders.
-const GREEN = '#21C45D';
-const GREEN_DARK = '#178A44';
-const GREEN_SOFT = '#E8F8EE';
-const GREEN_EDGE = 'rgba(33,196,93,0.22)';
-const CHIP_BG = '#FFFFFF';
-const CHIP_TEXT = '#0F5E2D';
-const CONTROL_BG = '#E3F4EA';
-const STRIP_BG = '#FFFFFF';
-const CARD_BORDER = 'rgba(33,196,93,0.18)';
-const INK = '#14221A';
+const CARD_BORDER = COLORS.border;
+const GREEN_SOFT = 'rgba(33,196,93,0.10)';
 
 /**
- * The Profile tab laid out as the reference frame, top to bottom, 20 apart:
+ * The Profile tab: one calm page, top to bottom.
  *
- *   title + subtitle, three chips
- *   two-tab segmented control
- *   divider, then a three-up strip split by vertical rules
- *   section heading with a chevron, an explanatory line, a 2x2 card grid
+ *   identity card   green banner, the rider's photo overlapping it, name,
+ *                   contact line, KYC status, "Change photo"
+ *   scooter card    the assigned scooter, when there is one
+ *   menu card       every destination as one list: KYC, language, support,
+ *                   referrals, privacy, terms, how it works
+ *   logout, app version
  *
- * The second tab holds the account list, so every destination is still one tap
- * away. Presentation only — every handler and value comes in unchanged.
+ * Presentation only — every handler and value comes in unchanged.
  */
 function FullProfileLayout({
   profile, photo, uploadingPhoto, onChangePhoto, onGoTo, onLogout,
 }: FullProfileLayoutProps) {
   const { t, lang: language } = useT();
-  const [tab, setTab] = useState<'profile' | 'account'>('profile');
 
   const menu: Array<{ icon: LucideIcon; label: string; route: string; value?: string }> = [
     { icon: ShieldCheck, label: t('profile.menu.kyc'), route: '/kyc' },
@@ -279,286 +267,171 @@ function FullProfileLayout({
           route: '/language?settings=1',
         }]
       : []),
-    { icon: LifeBuoy, label: t('profile.menu.support'), route: '/support' },
     { icon: Gift, label: t('profile.menu.referrals'), route: '/referrals' },
+    { icon: HelpCircle, label: t('profile.menu.howItWorks'), route: '/onboarding?replay=1' },
+    { icon: LifeBuoy, label: t('profile.menu.support'), route: '/support' },
+    // The rental agreement accepted at signup. Read-only here.
+    { icon: FileText, label: t('profile.menu.terms'), route: '/terms' },
     // DPDPA: consent toggles, export, correction, erasure, nominee, the notice
     // and the grievance channel all live behind this one entry.
     { icon: Lock, label: t('profile.menu.privacy'), route: '/privacy' },
-    // The rental agreement accepted at signup. Read-only here.
-    { icon: FileText, label: t('profile.menu.terms'), route: '/terms' },
-    { icon: HelpCircle, label: t('profile.menu.howItWorks'), route: '/onboarding?replay=1' },
   ];
 
-  const none = t('common.none');
-  const chips = [
-    t('profile.rider'),
-    t(KYC_STATUS_LABEL_KEY[profile.kyc_status]),
-    profile.current_plan ? profile.current_plan.name : none,
-  ];
-
-  const strip: Array<{ key: string; icon: LucideIcon; value: string; label: string }> = [
-    { key: 'scooter', icon: Bike, value: profile.assigned_vehicle ? profile.assigned_vehicle.model : none, label: t('profile.assignedScooter') },
-    { key: 'plan', icon: Zap, value: profile.current_plan ? profile.current_plan.name : none, label: t('profile.currentPlan') },
-    { key: 'lang', icon: Languages, value: LANG_LABELS[language], label: t('settings.language') },
-  ];
-
-  const cards: Array<{ key: string; icon: LucideIcon; label: string; value: string; onPress?: () => void }> = [
-    { key: 'email', icon: Mail, label: t('profile.email'), value: profile.email ?? '—' },
-    { key: 'phone', icon: Phone, label: t('profile.phone'), value: profile.phone ? formatPhoneLocal(profile.phone) : '—' },
-    {
-      key: 'kyc', icon: ShieldCheck, label: t('profile.kycStatus'),
-      value: t(KYC_STATUS_LABEL_KEY[profile.kyc_status]), onPress: () => onGoTo('/kyc'),
-    },
-    { key: 'version', icon: Smartphone, label: t('profile.appVersionLabel'), value: appVersionLabel() },
-  ];
-
-  const tabs: Array<{ key: 'profile' | 'account'; label: string; icon: LucideIcon }> = [
-    { key: 'profile', label: t('profile.tab.profile'), icon: User },
-    { key: 'account', label: t('profile.tab.account'), icon: Settings },
-  ];
+  const contact = [profile.phone ? formatPhoneLocal(profile.phone) : null, profile.email].filter(Boolean).join(' · ');
 
   return (
-    <View style={{ gap: 20 }}>
-      {/* Hero — a solid brand-green header. The photo is the one thing the
-          frame has no slot for, and the rider's only way to change it. */}
+    <View style={{ gap: 14 }}>
+      {/* Identity card */}
       <View
-        className="items-center overflow-hidden"
         style={{
-          backgroundColor: GREEN, borderRadius: 28,
-          paddingTop: 26, paddingBottom: 24, paddingHorizontal: 16, gap: 16,
-          shadowColor: GREEN_DARK, shadowOpacity: 0.3, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 6,
+          borderRadius: 24, overflow: 'hidden', backgroundColor: COLORS.card, borderWidth: 1, borderColor: CARD_BORDER,
+          shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 20, shadowOffset: { width: 0, height: 6 }, elevation: 2,
         }}
       >
-        <GradientFill />
-        {/* depth: two soft discs behind the content, clipped by the card */}
-        <View pointerEvents="none" style={{ position: 'absolute', top: -60, right: -40, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,255,255,0.12)' }} />
-        <View pointerEvents="none" style={{ position: 'absolute', bottom: -70, left: -50, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.08)' }} />
-
-        <TouchableOpacity
-          onPress={onChangePhoto}
-          disabled={uploadingPhoto}
-          accessibilityRole="button"
-          accessibilityLabel={t('profile.changePhotoA11y')}
-        >
-          <View
-            className="items-center justify-center overflow-hidden"
-            style={{
-              width: 88, height: 88, borderRadius: 44, backgroundColor: '#FFFFFF',
-              borderWidth: 4, borderColor: 'rgba(255,255,255,0.9)',
-              shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 4,
-            }}
-          >
-            {photo ? (
-              <ExpoImage
-                source={{ uri: photo.uri, cacheKey: photo.cacheKey }}
-                cachePolicy="disk"
-                style={{ width: 80, height: 80, borderRadius: 40 }}
-                contentFit="cover"
-                transition={0}
-              />
-            ) : (
-              <User size={32} color={GREEN} />
-            )}
+        <View style={{ height: 76, backgroundColor: COLORS.primary, overflow: 'hidden' }}>
+          <GradientFill />
+        </View>
+        <View style={{ paddingHorizontal: 20, paddingBottom: 18, marginTop: -34 }}>
+          <View className="flex-row items-end justify-between">
+            <TouchableOpacity
+              onPress={onChangePhoto}
+              disabled={uploadingPhoto}
+              accessibilityRole="button"
+              accessibilityLabel={t('profile.changePhotoA11y')}
+            >
+              <View
+                className="items-center justify-center"
+                style={{
+                  width: 68, height: 68, borderRadius: 34, backgroundColor: '#FFFFFF', borderWidth: 4, borderColor: '#FFFFFF',
+                  shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 4,
+                }}
+              >
+                <View className="items-center justify-center overflow-hidden" style={{ width: '100%', height: '100%', borderRadius: 30, backgroundColor: GREEN_SOFT }}>
+                  {photo ? (
+                    <ExpoImage
+                      source={{ uri: photo.uri, cacheKey: photo.cacheKey }}
+                      cachePolicy="disk"
+                      style={{ width: 60, height: 60 }}
+                      contentFit="cover"
+                      transition={0}
+                    />
+                  ) : (
+                    <User size={26} color={COLORS.primary} />
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
+            <Badge label={t(KYC_STATUS_LABEL_KEY[profile.kyc_status])} tone={KYC_STATUS_TONE[profile.kyc_status]} />
           </View>
-          <View
-            className="absolute items-center justify-center"
-            style={{
-              right: -2, bottom: -2, width: 28, height: 28, borderRadius: 14,
-              backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3,
-            }}
-          >
-            {uploadingPhoto ? <Text className="font-sans" style={{ color: GREEN_DARK, fontSize: 11 }}>…</Text> : <Camera size={14} color={GREEN_DARK} />}
-          </View>
-        </TouchableOpacity>
 
-        <View className="w-full" style={{ gap: 6 }}>
-          <Text className="font-sans text-center font-semibold" style={{ color: '#FFFFFF', fontSize: 18 }} numberOfLines={1}>
+          <Text className="font-sans" style={{ color: COLORS.textPrimary, fontSize: 18, fontWeight: '700', marginTop: 10 }} numberOfLines={1}>
             {profile.full_name}
           </Text>
-          <Text className="font-sans text-center" style={{ color: 'rgba(255,255,255,0.88)', fontSize: 12, letterSpacing: -0.12 }} numberOfLines={1}>
-            {profile.email ?? (profile.phone ? formatPhoneLocal(profile.phone) : '—')}
+          <Text className="font-sans" style={{ color: COLORS.textSecondary, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+            {contact || '—'}
           </Text>
-        </View>
 
-        <View className="flex-row flex-wrap justify-center" style={{ gap: 10 }}>
-          {chips.map((chip, i) => (
-            <View
-              key={`${chip}-${i}`}
-              style={{
-                backgroundColor: i === 0 ? '#FFFFFF' : 'rgba(255,255,255,0.2)',
-                borderRadius: 20, borderWidth: 1, borderColor: i === 0 ? '#FFFFFF' : 'rgba(255,255,255,0.35)',
-                paddingLeft: 14, paddingRight: 13, paddingVertical: 8,
-              }}
-            >
-              <Text className="font-sans" style={{ color: i === 0 ? GREEN_DARK : '#FFFFFF', fontSize: 11, fontWeight: '600' }}>{chip}</Text>
-            </View>
-          ))}
+          <TouchableOpacity
+            onPress={onChangePhoto}
+            disabled={uploadingPhoto}
+            accessibilityRole="button"
+            className="flex-row items-center self-start"
+            style={{ gap: 6, marginTop: 12 }}
+          >
+            <Camera size={14} color={COLORS.primary} />
+            <Text className="font-sans" style={{ color: COLORS.primary, fontSize: 12, fontWeight: '600' }}>
+              {uploadingPhoto ? t('profile.uploading') : t('profile.changePhoto')}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* 1:1315 — segmented control, 47 high, 4 padding, fully rounded */}
+      {/* Assigned scooter */}
+      {profile.assigned_vehicle ? (
+        <View
+          className="flex-row items-center"
+          style={{ gap: 12, padding: 12, borderRadius: 18, backgroundColor: COLORS.card, borderWidth: 1, borderColor: CARD_BORDER }}
+        >
+          <Image
+            source={require('../../assets/images/blue-motovolt-scooter.png')}
+            accessibilityLabel={profile.assigned_vehicle.model}
+            style={{ width: 64, height: 52 }}
+            resizeMode="contain"
+          />
+          <View className="flex-1" style={{ minWidth: 0 }}>
+            <Text className="font-sans" style={{ color: COLORS.textSecondary, fontSize: 11, fontWeight: '500' }}>
+              {t('profile.assignedScooter')}
+            </Text>
+            <Text className="font-sans" style={{ color: COLORS.textPrimary, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+              {profile.assigned_vehicle.model}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {/* Verification prompt, only while the rider cannot rent yet */}
+      {!profile.can_rent ? (
+        <TouchableOpacity
+          onPress={() => onGoTo('/kyc')}
+          accessibilityRole="button"
+          className="flex-row items-center justify-between"
+          style={{ padding: 14, borderRadius: 18, backgroundColor: COLORS.warning + '14', gap: 8 }}
+        >
+          <Text className="font-sans flex-1" style={{ color: COLORS.warning, fontSize: 12, fontWeight: '600' }}>
+            {t('profile.verifyPrompt')}
+          </Text>
+          <ChevronRight size={16} color={COLORS.warning} />
+        </TouchableOpacity>
+      ) : null}
+
+      {/* Rider web app only — renders nothing on the native app. */}
+      <WebPushCard />
+
+      {/* Menu: one list in one card */}
       <View
-        className="flex-row"
-        style={{ height: 47, padding: 4, borderRadius: 100, backgroundColor: CONTROL_BG }}
-        accessibilityRole="tablist"
+        style={{
+          borderRadius: 18, overflow: 'hidden', backgroundColor: COLORS.card, borderWidth: 1, borderColor: CARD_BORDER,
+          shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 },
+        }}
       >
-        {tabs.map((item) => {
-          const active = tab === item.key;
+        {menu.map((item, i) => {
           const Icon = item.icon;
           return (
             <TouchableOpacity
-              key={item.key}
-              onPress={() => setTab(item.key)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: active }}
-              className="flex-1 flex-row items-center justify-center"
-              style={{
-                height: 39, borderRadius: 19.5, paddingHorizontal: 32, gap: 6,
-                backgroundColor: active ? '#FFFFFF' : 'transparent',
-                shadowColor: GREEN_DARK, shadowOpacity: active ? 0.14 : 0, shadowRadius: 4, shadowOffset: { width: 0, height: 4 },
-                elevation: active ? 2 : 0,
-              }}
+              key={item.route}
+              onPress={() => onGoTo(item.route)}
+              accessibilityRole="button"
+              className="flex-row items-center"
+              style={{ gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: CARD_BORDER }}
             >
-              <Icon size={16} color={active ? GREEN_DARK : '#4B6355'} />
-              <Text className="font-sans" style={{ color: active ? GREEN_DARK : '#4B6355', fontSize: 12, fontWeight: active ? '600' : '400' }}>{item.label}</Text>
+              <View className="items-center justify-center" style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: GREEN_SOFT }}>
+                <Icon size={17} color={COLORS.primaryPressed} />
+              </View>
+              <Text className="font-sans flex-1" style={{ color: COLORS.textPrimary, fontSize: 14, fontWeight: '500' }}>{item.label}</Text>
+              {item.value ? (
+                // lineHeight set explicitly: Devanagari and Tamil overflow the
+                // default box at this size.
+                <Text className="font-sans" style={{ color: COLORS.textSecondary, fontSize: 12, lineHeight: 18 }}>{item.value}</Text>
+              ) : null}
+              <ChevronRight size={16} color={COLORS.textSecondary} />
             </TouchableOpacity>
           );
         })}
       </View>
 
-      {tab === 'profile' ? (
-        <>
-          {/* 1:1332 — hairline, then the three-up strip, 16 apart */}
-          <View style={{ gap: 16 }}>
-            <View style={{ height: 1, backgroundColor: GREEN_EDGE }} />
-            <View
-              className="flex-row items-center justify-center"
-              style={{
-                backgroundColor: STRIP_BG, borderRadius: 16, paddingVertical: 20,
-                borderWidth: 1, borderColor: GREEN_EDGE,
-                shadowColor: GREEN_DARK, shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 4 },
-              }}
-            >
-              {strip.map((item, i) => {
-                const Icon = item.icon;
-                return (
-                  <React.Fragment key={item.key}>
-                    {i > 0 ? <View style={{ width: 1, alignSelf: 'stretch', backgroundColor: GREEN_EDGE }} /> : null}
-                    <View className="items-center" style={{ flex: 1, minWidth: 0, paddingHorizontal: 6, gap: 4 }}>
-                      <View className="flex-row items-center justify-center" style={{ gap: 5 }}>
-                        <Icon size={15} color={GREEN} />
-                        <Text className="font-sans" style={{ color: INK, fontSize: 12, fontWeight: '600', letterSpacing: -0.12 }} numberOfLines={1}>
-                          {item.value}
-                        </Text>
-                      </View>
-                      <Text className="font-sans text-center" style={{ color: '#5F7468', fontSize: 10, letterSpacing: -0.1 }} numberOfLines={1}>
-                        {item.label}
-                      </Text>
-                    </View>
-                  </React.Fragment>
-                );
-              })}
-            </View>
-          </View>
+      <TouchableOpacity
+        onPress={onLogout}
+        accessibilityRole="button"
+        className="flex-row items-center justify-center"
+        style={{ padding: 14, gap: 8, borderRadius: 18, backgroundColor: COLORS.danger + '12' }}
+      >
+        <LogOut size={16} color={COLORS.danger} />
+        <Text className="font-sans" style={{ color: COLORS.danger, fontSize: 13, fontWeight: '500' }}>{t('auth.logout')}</Text>
+      </TouchableOpacity>
 
-          {/* 1:1442 — details */}
-          <View style={{ gap: 16 }}>
-            <View style={{ gap: 12 }}>
-              <Text className="font-sans" style={{ color: INK, fontSize: 14, fontWeight: '600' }}>{t('profile.myDetails')}</Text>
-
-              {!profile.can_rent ? (
-                <Text className="font-sans" style={{ color: '#000', fontSize: 12, lineHeight: 18 }}>
-                  <Text className="font-sans" style={{ color: 'rgba(0,0,0,0.6)' }}>{t('profile.verifyPrompt')}</Text>
-                  {' '}
-                  <Text className="font-sans" onPress={() => onGoTo('/kyc')} accessibilityRole="link" style={{ color: GREEN }}>
-                    {t('profile.verifyNow')}
-                  </Text>
-                </Text>
-              ) : null}
-            </View>
-
-            <View className="flex-row flex-wrap" style={{ gap: 14 }}>
-                {cards.map((card) => {
-                  const Icon = card.icon;
-                  const body = (
-                    <View style={{ gap: 12 }}>
-                      <View
-                        className="items-center justify-center"
-                        style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: GREEN_SOFT }}
-                      >
-                        <Icon size={20} color={GREEN_DARK} />
-                      </View>
-                      <View style={{ gap: 4 }}>
-                        <Text className="font-sans" style={{ color: '#5F7468', fontSize: 11 }}>{card.label}</Text>
-                        <Text className="font-sans" style={{ color: INK, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{card.value}</Text>
-                      </View>
-                    </View>
-                  );
-                  const style = {
-                    width: '47.5%' as const, borderRadius: 14, padding: 16,
-                    backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: CARD_BORDER,
-                    shadowColor: GREEN_DARK, shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-                  };
-                  return card.onPress ? (
-                    <TouchableOpacity key={card.key} onPress={card.onPress} accessibilityRole="button" style={style}>
-                      {body}
-                    </TouchableOpacity>
-                  ) : (
-                    <View key={card.key} style={style}>{body}</View>
-                  );
-                })}
-            </View>
-          </View>
-        </>
-      ) : (
-        <View style={{ gap: 16 }}>
-          <View style={{ height: 1, backgroundColor: GREEN_EDGE }} />
-          <View style={{ gap: 12 }}>
-            {/* Rider web app only — renders nothing on the native app. */}
-            <WebPushCard />
-            {menu.map((item) => {
-              const Icon = item.icon;
-              return (
-                <TouchableOpacity
-                  key={item.route}
-                  onPress={() => onGoTo(item.route)}
-                  accessibilityRole="button"
-                  className="flex-row items-center"
-                  style={{
-                    padding: 12, gap: 10, borderRadius: 14, backgroundColor: '#FFFFFF',
-                    borderWidth: 1, borderColor: CARD_BORDER,
-                    shadowColor: GREEN_DARK, shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 3 },
-                  }}
-                >
-                  <View
-                    className="items-center justify-center"
-                    style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: GREEN_SOFT }}
-                  >
-                    <Icon size={20} color={GREEN_DARK} />
-                  </View>
-                  <Text style={{ color: INK, fontSize: 13, fontWeight: '500' }} className="font-sans flex-1 ml-1">{item.label}</Text>
-                  {item.value ? (
-                    // lineHeight set explicitly: Devanagari and Tamil overflow the
-                    // default box at this size.
-                    <Text className="font-sans" style={{ color: '#5F7468', fontSize: 12, lineHeight: 18 }}>{item.value}</Text>
-                  ) : null}
-                  <ChevronRight size={16} color={GREEN_DARK} />
-                </TouchableOpacity>
-              );
-            })}
-
-            <TouchableOpacity
-              onPress={onLogout}
-              accessibilityRole="button"
-              className="flex-row items-center justify-center"
-              style={{ padding: 16, gap: 8, borderRadius: 14, backgroundColor: COLORS.danger + '12' }}
-            >
-              <LogOut size={16} color={COLORS.danger} />
-              <Text className="font-sans" style={{ color: COLORS.danger, fontSize: 13 }}>{t('auth.logout')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+      <Text className="font-sans text-center" style={{ color: COLORS.textSecondary, fontSize: 11 }}>
+        {t('profile.appVersionLabel')} {appVersionLabel()}
+      </Text>
     </View>
   );
 }
