@@ -15,6 +15,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { api } from '../lib/api';
 import { ApiError } from '../lib/ApiError';
 import type { ApiLegalDocument, ConsentPurpose } from '../types/api';
+import { GradientFill } from '../components/ui/GradientFill';
 
 /**
  * Notice-and-consent capture (DPDPA ss.5-6), shown between profile setup and
@@ -355,11 +356,12 @@ export default function ConsentScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ disabled: saving || !declared || !agreedToTerms || !terms }}
                 style={{
-                    backgroundColor: COLORS.primary,
+                    backgroundColor: COLORS.primary, overflow: 'hidden',
                     opacity: saving || !declared || !agreedToTerms || !terms ? 0.5 : 1,
                 }}
                 className="w-full py-4 rounded-2xl flex-row justify-center items-center"
             >
+              <GradientFill />
                 {saving ? (
                     <Spinner size={18} color="#FFF" />
                 ) : (

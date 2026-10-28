@@ -33,6 +33,7 @@ export function DataTable<T extends { id: string }>({
   emptyTitle = "No records found",
   emptyDescription,
   onRowClick,
+  onRowDoubleClick,
   expandedRowId,
   renderExpandedRow,
   sort,
@@ -47,6 +48,13 @@ export function DataTable<T extends { id: string }>({
   emptyTitle?: string;
   emptyDescription?: string;
   onRowClick?: (row: T) => void;
+  /**
+   * Opens a row only on a double click, for tables where a stray single click
+   * (selecting text, reaching for a button) must not pop a dialog open. Text
+   * selection is switched off on those rows, since a double click would
+   * otherwise highlight a word in the cell.
+   */
+  onRowDoubleClick?: (row: T) => void;
   /** id of the row whose expanded panel (via renderExpandedRow) is open. */
   expandedRowId?: string | null;
   /** Renders inline below a row when its id matches expandedRowId. */
@@ -106,8 +114,13 @@ export function DataTable<T extends { id: string }>({
             {data.map((row) => (
               <Fragment key={row.id}>
                 <tr
-                  className={cn("transition-smooth hover:bg-card-hover", onRowClick && "cursor-pointer")}
+                  className={cn(
+                    "transition-smooth hover:bg-card-hover",
+                    (onRowClick || onRowDoubleClick) && "cursor-pointer",
+                    onRowDoubleClick && "select-none",
+                  )}
                   onClick={() => onRowClick?.(row)}
+                  onDoubleClick={() => onRowDoubleClick?.(row)}
                 >
                   {columns.map((col, i) => (
                     <td
@@ -138,10 +151,12 @@ export function DataTable<T extends { id: string }>({
             <div
               className={cn(
                 "space-y-2 px-4 py-4 transition-smooth",
-                onRowClick && "cursor-pointer active:bg-card-hover",
+                (onRowClick || onRowDoubleClick) && "cursor-pointer active:bg-card-hover",
+                onRowDoubleClick && "select-none",
                 rowClassName?.(row),
               )}
               onClick={() => onRowClick?.(row)}
+              onDoubleClick={() => onRowDoubleClick?.(row)}
             >
               {columns
                 .filter((c) => !c.hideOnMobile)

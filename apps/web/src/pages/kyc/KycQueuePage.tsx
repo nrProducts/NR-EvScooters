@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, XCircle, FileText, ExternalLink, AlertTriangle, RotateCcw, RotateCw, UserRound, ShieldAlert, Lock, Eye } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, ExternalLink, AlertTriangle, UserRound, Lock, Eye } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -23,11 +22,11 @@ import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { formatDate } from "@/lib/utils";
-import { PII_ACCESS_REASON_LABELS, hasPermission, type KycQueueItem, type KycStatus, type PiiAccessReason } from "@/types";
+import { PII_ACCESS_REASON_LABELS, hasPermission, type KycQueueItem, type KycStatus } from "@/types";
 
-/** Staff can never claim "rider_self" — the server sets that one. */
-type StaffAccessReason = Exclude<PiiAccessReason, "rider_self">;
 import { useAuthStore } from "@/store/authStore";
+import { AccessReasonDialog, type StaffAccessReason } from "@/components/kyc/AccessReasonDialog";
+import { DocumentPreviewDialog } from "@/components/kyc/DocumentPreviewDialog";
 
 const TABS: { value: KycStatus | "all"; label: string }[] = [
   { value: "incomplete", label: "Incomplete" },
@@ -220,18 +219,12 @@ export default function KycQueuePage() {
   );
 }
 
-/** Signed URLs keep the original file extension before the query string, so it's a reliable type hint. */
-function isPdfUrl(url: string): boolean {
-  return url.split("?")[0].toLowerCase().endsWith(".pdf");
-}
-
 function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onClose: () => void }) {
   const { data: detail, isLoading } = useKycDetail(target?.user_id);
   const openDocument = useOpenDocument();
   const openUserPhoto = useOpenUserPhoto();
   const [preview, setPreview] = useState<{ url: string; title: string } | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
-  const [rotation, setRotation] = useState(0);
 
   // Whether this staff member may see identity documents at all. The backend
   // enforces the same thing on every one of these routes — hiding the controls
@@ -269,7 +262,6 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
         { documentId, side, reason: access?.reason, contextRef: access?.contextRef || undefined },
         {
           onSuccess: (data) => {
-            setRotation(0);
             setPreview({ url: data.url, title: `${label} — ${side}` });
           },
           onError: (err) => setOpenError((err as Error)?.message ?? "Couldn't open that document."),
@@ -284,7 +276,6 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
       setOpenError(null);
       openUserPhoto.mutate(target.user_id, {
         onSuccess: (data) => {
-          setRotation(0);
           setPreview({ url: data.url, title: "Rider photo" });
         },
         onError: (err) => setOpenError((err as Error)?.message ?? "No profile photo has been uploaded yet."),
@@ -402,122 +393,7 @@ function KycDetailDialog({ target, onClose }: { target: KycQueueItem | null; onC
         }}
       />
 
-      <Dialog
-        open={!!preview}
-        onOpenChange={(o) => { if (!o) { setPreview(null); setRotation(0); } }}
-      >
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="capitalize">{preview?.title}</DialogTitle>
-          </DialogHeader>
-          {preview && (
-            <div className="space-y-2">
-              {isPdfUrl(preview.url) ? (
-                <iframe
-                  src={preview.url}
-                  title={preview.title}
-                  className="h-[75vh] w-full rounded-md border border-border bg-muted"
-                />
-              ) : (
-                <>
-                  <div className="flex justify-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setRotation((r) => r - 90)}>
-                      <RotateCcw className="h-3.5 w-3.5" /> Rotate left
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setRotation((r) => r + 90)}>
-                      <RotateCw className="h-3.5 w-3.5" /> Rotate right
-                    </Button>
-                  </div>
-                  <div className="flex h-[75vh] items-center justify-center overflow-auto rounded-md border border-border bg-muted">
-                    <img
-                      src={preview.url}
-                      alt={preview.title}
-                      className="max-h-full max-w-full object-contain transition-transform duration-200"
-                      style={{
-                        transform: `rotate(${rotation}deg)`,
-                        ...(rotation % 180 !== 0 ? { maxHeight: "75%", maxWidth: "75%" } : {}),
-                      }}
-                    />
-                  </div>
-                </>
-              )}
-              <div className="flex justify-end">
-                <a
-                  href={preview.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                >
-                  Open in new tab
-                </a>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <DocumentPreviewDialog preview={preview} onClose={() => setPreview(null)} />
     </>
-  );
-}
-
-/**
- * Captures WHY a staff member is about to open a rider's identity documents.
- *
- * A free-text reference is optional but strongly encouraged: "support ticket"
- * with no ticket number is only marginally better than nothing when someone
- * is later asked to justify the access.
- */
-function AccessReasonDialog({
-  open,
-  onCancel,
-  onConfirm,
-}: {
-  open: boolean;
-  onCancel: () => void;
-  onConfirm: (reason: StaffAccessReason, contextRef: string) => void;
-}) {
-  const [reason, setReason] = useState<StaffAccessReason>("kyc_review");
-  const [contextRef, setContextRef] = useState("");
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4" /> Why are you opening this?
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            You are about to view a rider's identity documents. This is recorded against your
-            name, and the rider can see it in their own privacy screen.
-          </p>
-          <div className="space-y-1.5">
-            <Label>Reason</Label>
-            <Select value={reason} onValueChange={(v) => setReason(v as StaffAccessReason)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {Object.entries(PII_ACCESS_REASON_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Ticket or case reference (optional)</Label>
-            <Input
-              value={contextRef}
-              onChange={(e) => setContextRef(e.target.value)}
-              placeholder="Ticket or case reference"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button onClick={() => onConfirm(reason, contextRef.trim())}>
-            Continue and record
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

@@ -89,6 +89,7 @@ export const en = {
     // --- my scooter / rental ----------------------------------------------
     'scooter.title': 'My Scooter',
     'scooter.registrationNumber': 'Registration Number',
+    'scooter.chassisNumber': 'Chassis Number',
     'scooter.plan': 'Plan',
     'scooter.onRentSince': 'On rent since',
     // "05 Sep 2026 · Day 12". The date comes from the device's regional
@@ -1020,6 +1021,7 @@ export const en = {
 
     // --- sign in ----------------------------------------------------------
     'auth.tagline': 'Sign in with your mobile number to start riding.',
+    'auth.signIn': 'Sign in',
     'auth.mobileNumber': 'Mobile Number',
     'auth.mobileNumberPlaceholder': 'Mobile number',
     'auth.otpHint': "We'll text you a 6-digit code. Indian numbers can be typed without +91.",
@@ -1289,7 +1291,6 @@ export const en = {
     'booking.unavailable': 'Unavailable',
     'booking.available': 'Available',
     'booking.startsNow.title': 'Your plan starts when you pick up your scooter',
-    'booking.startsNow.body': 'Collect your scooter today between 8 AM and 8 PM.',
     'booking.choosePlan': 'Choose a plan',
     'booking.noPlansHint': 'No plans are on sale for this scooter yet.',
     'booking.minutesIncluded': '{minutes} minutes included',

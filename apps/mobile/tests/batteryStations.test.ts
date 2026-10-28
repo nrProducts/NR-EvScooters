@@ -57,7 +57,7 @@ describe('GeoJSON conversion', () => {
             id: 'station-1',
             name: 'KAVYA AGENCIES',
             qisIds: 'WMQISXM1V1-00774, WMQISXM1V1-00776',
-            // status drives the icon-image match in BatteryStationMarker,
+            // status drives the circle-color match in BatteryStationMarker,
             // so the raw enum value must survive the projection verbatim.
             status: 'MAINTENANCE',
             batteryCount: 14,

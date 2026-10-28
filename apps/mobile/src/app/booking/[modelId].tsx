@@ -33,6 +33,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT, type CopyKey } from '../../i18n';
 import { requestForegroundLocation } from '../../lib/location';
 import { BILLING_CYCLE_LABEL_KEY } from '../../constants/status';
+import { GradientFill } from '../../components/ui/GradientFill';
 
 // Used only to pick a station when the rider's real position is unavailable
 // (permission denied, services off). The distance badge is hidden in that
@@ -308,7 +309,8 @@ export default function BookingScreen() {
                   scooter: model?.name ?? t('booking.confirmed.yourScooter'),
                 })}
           </Text>
-          <TouchableOpacity onPress={handleDone} className="mt-8 py-4 px-8 rounded-2xl items-center" style={{ backgroundColor: COLORS.primary }}>
+          <TouchableOpacity onPress={handleDone} className="mt-8 py-4 px-8 rounded-2xl items-center" style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}>
+            <GradientFill />
             <Text className="text-white text-sm font-bold">{t('booking.confirmed.done')}</Text>
           </TouchableOpacity>
         </View>
@@ -395,14 +397,9 @@ export default function BookingScreen() {
             </View>
 
             {/* Immediate-pickup note */}
-            <View className="rounded-2xl border p-3 flex-row items-start mb-4" style={{ backgroundColor: COLORS.warning + '12', borderColor: COLORS.warning + '33', gap: 8 }}>
+            <View className="rounded-2xl border p-3 flex-row items-center mb-4" style={{ backgroundColor: COLORS.warning + '12', borderColor: COLORS.warning + '33', gap: 8 }}>
               <AlertTriangle size={16} color={COLORS.warning} />
-              <View className="flex-1">
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{t('booking.startsNow.title')}</Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5 leading-relaxed">
-                  {t('booking.startsNow.body')}
-                </Text>
-              </View>
+              <Text style={{ color: COLORS.textPrimary }} className="flex-1 text-sm font-bold">{t('booking.startsNow.title')}</Text>
             </View>
 
             {/* Plan picker */}

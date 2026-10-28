@@ -140,9 +140,16 @@ export function resolveRootRedirect(state: RootRouteState): string | null {
   // /privacy and /terms are exempt so a rider can always re-read either
   // document — including from the consent screen's own links, which would
   // otherwise bounce straight back here.
+  //
+  // `next` is where the consent screen goes after "Agree". Only a rider who
+  // has not started KYC goes on to the KYC intro. Everyone else is here
+  // because a new notice or terms version was published, and goes home:
+  // kyc-intro is in RIDER_ROUTES, so nothing below would move a verified
+  // rider off it once they land there.
   if (!profile.consent_up_to_date || !profile.terms_up_to_date) {
+    const next = profile.kyc_status === "not_submitted" ? "/kyc-intro" : "/home";
     return current !== "consent" && current !== "privacy" && current !== "terms"
-      ? "/consent?next=/kyc-intro"
+      ? `/consent?next=${next}`
       : null;
   }
 

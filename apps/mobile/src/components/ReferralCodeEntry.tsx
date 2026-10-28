@@ -7,6 +7,7 @@ import { referralRepository } from '../services';
 import { ApiError } from '../lib/ApiError';
 import { useT } from '../i18n';
 import { COLORS } from '../constants/theme';
+import { GradientFill } from './ui/GradientFill';
 
 /**
  * The rider's own code (ALWAYS shown, so sharing it is never a hunt — Profile,
@@ -97,8 +98,9 @@ export const ReferralCodeEntry: React.FC = () => {
               disabled={applying || code.trim().length !== 6}
               accessibilityRole="button"
               className="rounded-xl px-4 items-center justify-center"
-              style={{ backgroundColor: COLORS.primary, height: 42, opacity: applying || code.trim().length !== 6 ? 0.5 : 1 }}
+              style={{ backgroundColor: COLORS.primary, overflow: 'hidden', height: 42, opacity: applying || code.trim().length !== 6 ? 0.5 : 1 }}
             >
+              <GradientFill />
               {applying ? <Spinner size={14} color="#FFF" /> : <Text className="text-white text-xs font-extrabold">{t('referrals.apply')}</Text>}
             </TouchableOpacity>
           </View>

@@ -8,6 +8,7 @@ import {
   BAR_HEIGHT, BAR_MARGIN, BAR_BOTTOM_GAP, ICON_SIZE, ACTIVE_DISC,
   DESKTOP_BREAKPOINT, DESKTOP_BAR_MAX_WIDTH,
 } from '../../lib/tabBar';
+import { GradientFill } from '../../components/ui/GradientFill';
 
 /**
  * Sized for a thumb, not for a cursor. At 45 tall with 18px glyphs the pill
@@ -24,8 +25,9 @@ function TabIcon({ focused, color, Icon }: { focused: boolean; color: string; Ic
   return (
     <View
       className="items-center justify-center rounded-full"
-      style={{ width: ACTIVE_DISC, height: ACTIVE_DISC, backgroundColor: COLORS.primary }}
+      style={{ width: ACTIVE_DISC, height: ACTIVE_DISC, backgroundColor: COLORS.primary, overflow: 'hidden' }}
     >
+      <GradientFill />
       <Icon size={ICON_SIZE} color="#FFF" />
     </View>
   );

@@ -7,6 +7,7 @@ import { notifyError, notifySuccess } from '../lib/confirm';
 import { ApiError } from '../lib/ApiError';
 import { disableWebPush, enableWebPush, getWebPushStatus, type WebPushStatus } from '../lib/webPush';
 import { Spinner } from './Spinner';
+import { GradientFill } from './ui/GradientFill';
 
 const GREEN = '#21C45D';
 const GREEN_DARK = '#178A44';
@@ -147,8 +148,9 @@ export function WebPushCard({ variant = 'settings' }: { variant?: 'settings' | '
           disabled={busy}
           accessibilityRole="button"
           className="flex-row items-center justify-center"
-          style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: GREEN, opacity: busy ? 0.7 : 1 }}
+          style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: GREEN, overflow: 'hidden', opacity: busy ? 0.7 : 1 }}
         >
+          <GradientFill />
           {busy ? <Spinner size={18} color="#FFFFFF" /> : (
             <Text className="font-sans" style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{t('webPush.enable')}</Text>
           )}

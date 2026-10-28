@@ -16,8 +16,10 @@ import {
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { CUSTOM_PROFILE } from "@/types";
 import type { ModuleKey, ModulePermission, PermissionProfileName } from "@/types";
+import { usePageOwnsTitle } from "@/hooks/usePageOwnsTitle";
 
 export default function PermissionMatrixPage() {
+  usePageOwnsTitle(); // this page draws its own heading; hide the header's
   const { userId } = useParams<{ userId: string }>();
   const navigate = useNavigate();
 

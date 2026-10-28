@@ -35,6 +35,7 @@ import {
   PLAN_STATUS_LABEL_KEY, REFUND_STATUS_LABEL_KEY, REFUND_STATUS_TONE,
 } from '../../constants/status';
 import { useT, type CopyKey, type TranslateFn } from '../../i18n';
+import { GradientFill } from '../../components/ui/GradientFill';
 
 /**
  * `PURPOSE_LABEL`, `invoiceLabel`, `dueLabel` and `invoiceLines` all take `t`
@@ -760,9 +761,6 @@ export default function BillingScreen() {
   const outstandingTotal = outstandingInvoices.reduce(
     (sum, inv) => sum + (inv.total_due ?? inv.balance_amount), 0,
   );
-  // A return in progress always outranks "past_due"/"expired" — see
-  // hasActiveReturn above.
-  const isDue = booking?.plan_status === 'past_due' && !hasActiveReturn;
   const renewalStatus = booking?.renewal_status ?? null;
   const renewalEligibility = getRenewalEligibility(
     booking?.plan_status ?? null, booking?.next_due_at ?? null, renewalStatus, undefined, booking?.cycle_time,
@@ -1058,8 +1056,9 @@ export default function BillingScreen() {
           disabled={busy}
           accessibilityRole="button"
           className="rounded-full px-4 py-1.5"
-          style={{ backgroundColor: COLORS.primary, opacity: busy ? 0.6 : 1 }}
+          style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: busy ? 0.6 : 1 }}
         >
+          <GradientFill />
           {busy ? (
             <Spinner size={12} color="#FFF" />
           ) : (
@@ -1076,7 +1075,9 @@ export default function BillingScreen() {
   // with no current rental — it still has to be payable).
   const renderOutstandingInvoices = () => (
     <>
-      <AttentionNote label={t('billing.paymentRequired')} tone={isDue ? 'danger' : 'warning'} />
+      {/* No "Payment required" label: each bill below states its own urgency
+          ("Overdue by N days" in red, or its due date), and the Pay bar is the
+          action. The label was a third way of saying the same thing. */}
       {outstandingInvoices.length > 1 ? (
         <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold mb-2">
           {t('billing.totalAcross', { total: outstandingTotal.toFixed(2), count: outstandingInvoices.length })}
@@ -1127,9 +1128,11 @@ export default function BillingScreen() {
                     />
                   ))
                   : null
-              ) : (
+              ) : inv.total_amount > 0 ? (
+                // Skipped at ₹0: a renewal that is only a late fee has no plan
+                // amount to list, and "₹0.00" above the real charge is noise.
                 <BillLine label={t('billing.rentalPlanAmount')} amount={inv.total_amount} />
-              )}
+              ) : null}
               {inv.allocated_amount > 0 ? (
                 <BillLine label={t('billing.alreadyPaid')} amount={inv.allocated_amount} negative />
               ) : null}
@@ -1160,8 +1163,9 @@ export default function BillingScreen() {
               accessibilityRole="button"
               accessibilityLabel={t('billing.pay', { amount: total.toFixed(2) })}
               className="flex-row items-center justify-between px-5 py-3.5"
-              style={{ borderRadius: 20, backgroundColor: COLORS.primary, opacity: paying ? 0.7 : 1 }}
+              style={{ borderRadius: 20, backgroundColor: COLORS.primary, overflow: 'hidden', opacity: paying ? 0.7 : 1 }}
             >
+              <GradientFill />
               <View>
                 <Text className="text-white text-lg font-extrabold">₹{total.toFixed(2)}</Text>
                 <Text className="text-white text-[10px] font-bold uppercase tracking-wider" style={{ opacity: 0.85 }}>
@@ -1325,8 +1329,9 @@ export default function BillingScreen() {
                       onPress={handleConfirmRecharge}
                       disabled={recharging}
                       className="flex-1 py-3.5 rounded-2xl items-center flex-row justify-center"
-                      style={{ backgroundColor: COLORS.primary, opacity: recharging ? 0.6 : 1 }}
+                      style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: recharging ? 0.6 : 1 }}
                     >
+                      <GradientFill />
                       {recharging ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                       <Text className="text-white text-xs font-bold ml-2">
                         {recharging ? t('billing.processing') : t('billing.confirmAndPay', { amount: rechargePreview.total.toFixed(2) })}
@@ -1339,8 +1344,9 @@ export default function BillingScreen() {
                   onPress={handleStartRecharge}
                   disabled={previewLoading}
                   className="py-3.5 rounded-2xl items-center flex-row justify-center"
-                  style={{ backgroundColor: COLORS.primary, opacity: previewLoading ? 0.6 : 1 }}
+                  style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: previewLoading ? 0.6 : 1 }}
                 >
+                  <GradientFill />
                   {previewLoading ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                   <Text className="text-white text-sm font-bold ml-2">
                     {previewLoading ? t('billing.loading') : t('billing.reviewAndRenew')}
@@ -1441,13 +1447,6 @@ export default function BillingScreen() {
           contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
-          {/* A refund from the PREVIOUS rental can still be in flight while
-              this rider is already on a new plan — the refund outlives the
-              rental that produced it, so it is not the else-branch of
-              anything below. */}
-          {renderRefundCard()}
-          {renderOpenRefundCards()}
-
           {/* Current plan — a quiet, sophisticated surface rather than a
               solid brand-color block: the price is the loud element, not
               the card itself. */}
@@ -1465,7 +1464,10 @@ export default function BillingScreen() {
                 hard-coded to the primary tint whatever the status inside it
                 was — the one word on this card that means "something is
                 wrong" was painted the colour that means "fine". */}
-            {booking?.plan_status ? (() => {
+            {/* Only when something is off. "ACTIVE" on a healthy plan said
+                nothing the rest of the card doesn't, and a plan that is past
+                due is already announced by the bill above. */}
+            {booking?.plan_status && booking.plan_status !== 'active' ? (() => {
               const tint = booking.plan_status === 'past_due' ? COLORS.overdue
                 : booking.plan_status === 'paused' ? COLORS.warning
                   : COLORS.primaryPressed;
@@ -1477,10 +1479,32 @@ export default function BillingScreen() {
                 </View>
               );
             })() : null}
-            <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold">{plan?.name ?? t('billing.rentalPlan')}</Text>
-            <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5 mb-4">
-              {plan ? t('billing.cycleRental', { cycle: t(BILLING_CYCLE_LABEL_KEY[plan.billing_cycle]) }) : ''}
-            </Text>
+            {/* The cycle is stated once, beside the price below — it used to be
+                repeated here as "Day rental" directly above "/ Day". */}
+            <View className="flex-row items-start justify-between mb-2" style={{ gap: 12 }}>
+              <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold flex-1" numberOfLines={2}>
+                {plan?.name ?? t('billing.rentalPlan')}
+              </Text>
+              {/* What is owed, at the card's right. The full bill and its Pay button stay in the Amount Due section below. */}
+              {(() => {
+                const owed = isPendingBookingPayment
+                  ? (bookingQuote?.amount ?? ((plan?.price ?? 0) + (plan?.deposit_amount ?? 0) + (plan?.onboarding_charge_amount ?? 0)))
+                  : outstandingTotal;
+                return (
+                  <View className="items-end">
+                    <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">
+                      {t('billing.amountDue')}
+                    </Text>
+                    <Text
+                      style={{ color: owed > 0 ? COLORS.overdue : COLORS.primaryPressed }}
+                      className="text-lg font-bold mt-0.5"
+                    >
+                      ₹{owed.toFixed(2)}
+                    </Text>
+                  </View>
+                );
+              })()}
+            </View>
             <Text style={{ color: COLORS.textPrimary }} className="text-4xl font-bold mb-4">
               ₹{(plan?.price ?? 0).toFixed(2)}{' '}
               {plan ? (
@@ -1532,13 +1556,6 @@ export default function BillingScreen() {
                   <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">
                     {t('billing.ends')}
                   </Text>
-                  {renewalIsLate ? (
-                    <View className="px-1.5 py-0.5 rounded-full" style={{ backgroundColor: COLORS.overdue + '1F' }}>
-                      <Text style={{ color: COLORS.overdue }} className="text-[9px] font-bold uppercase tracking-wider">
-                        {t('billing.expired')}
-                      </Text>
-                    </View>
-                  ) : null}
                 </View>
                 <Text
                   style={{ color: renewalIsLate ? COLORS.overdue : COLORS.textPrimary }}
@@ -1558,6 +1575,13 @@ export default function BillingScreen() {
               </View>
             </View>
           </View>
+
+          {/* A refund from the PREVIOUS rental can still be in flight while
+              this rider is already on a new plan — the refund outlives the
+              rental that produced it, so it is not the else-branch of
+              anything below. */}
+          {renderRefundCard()}
+          {renderOpenRefundCards()}
 
           {/* Amount Due — exactly one of these five states, never stacked.
               Same handlers/data as before; just one consistent section
@@ -1642,8 +1666,9 @@ export default function BillingScreen() {
                   onPress={() => void handleCompleteBookingPayment()}
                   disabled={completingBookingPayment || bookingQuoteLoading}
                   className="py-3.5 rounded-2xl items-center flex-row justify-center"
-                  style={{ backgroundColor: COLORS.primary, opacity: completingBookingPayment || bookingQuoteLoading ? 0.6 : 1 }}
+                  style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: completingBookingPayment || bookingQuoteLoading ? 0.6 : 1 }}
                 >
+                  <GradientFill />
                   {completingBookingPayment ? (
                     <Spinner size={16} color="#FFF" />
                   ) : (

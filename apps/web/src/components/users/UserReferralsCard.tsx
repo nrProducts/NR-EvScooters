@@ -4,7 +4,7 @@ import { Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchUserReferrals, type ReferralStatus, type UserReferralRow } from "@/services/api/referrals";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, formatPhoneLocal } from "@/lib/utils";
 
 const STATUS_STYLE: Record<ReferralStatus, string> = {
   qualified: "border-success/40 bg-success/10 text-success",
@@ -20,7 +20,7 @@ function ReferralPerson({ row }: { row: UserReferralRow }) {
         <Link to={`/users/${row.person.id}`} className="truncate text-sm font-medium hover:underline">
           {row.person.full_name}
         </Link>
-        <span className="shrink-0 text-xs text-muted-foreground">{row.person.phone ?? "No phone"} · {formatDate(row.created_at)}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{formatPhoneLocal(row.person.phone) ?? "No phone"} · {formatDate(row.created_at)}</span>
       </div>
       <span className={cn("shrink-0 rounded-full border px-2 py-px text-[0.6875rem] font-medium capitalize", STATUS_STYLE[row.status])}>
         {row.status}

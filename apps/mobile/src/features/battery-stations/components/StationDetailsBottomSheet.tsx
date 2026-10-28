@@ -8,6 +8,7 @@ import { StationStatusBadge } from './StationStatusBadge';
 import { formatDistance } from '../utils/distance';
 import { formatStationName, type BatteryStation } from '../types/batteryStation.types';
 import { useT } from '../../../i18n';
+import { GradientFill } from '../../../components/ui/GradientFill';
 
 /**
  * The station card. Not the shared ui/Sheet: that one is a Modal, which would
@@ -99,8 +100,9 @@ export const StationDetailsBottomSheet: React.FC<{
                         accessibilityRole="button"
                         accessibilityLabel={t('stationSheet.navigateTo', { station: formatStationName(station.name) })}
                         className="flex-1 flex-row items-center justify-center rounded-2xl"
-                        style={{ backgroundColor: COLORS.primary, minHeight: 48 }}
+                        style={{ backgroundColor: COLORS.primary, overflow: 'hidden', minHeight: 48 }}
                     >
+                      <GradientFill />
                         <Navigation size={16} color={COLORS.white} />
                         <Text className="text-white font-bold text-sm ml-2">{t('stationSheet.navigate')}</Text>
                     </TouchableOpacity>

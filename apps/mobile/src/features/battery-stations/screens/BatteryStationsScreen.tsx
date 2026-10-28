@@ -30,6 +30,7 @@ import { distanceOrNull, formatDistance, recommendStationsNear } from '../utils/
 import { formatStationName, type BatteryStation } from '../types/batteryStation.types';
 import type { AreaResult } from '../api/geocodeService';
 import { useT } from '../../../i18n';
+import { GradientFill } from '../../../components/ui/GradientFill';
 
 /**
  * Full-screen battery-station map.
@@ -345,8 +346,9 @@ export default function BatteryStationsScreen() {
                             onPress={() => void Linking.openSettings()}
                             accessibilityRole="button"
                             className="ml-2 px-2.5 py-1 rounded-full"
-                            style={{ backgroundColor: COLORS.primary }}
+                            style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
                         >
+                          <GradientFill />
                             <Text style={{ color: '#FFFFFF' }} className="text-[11px] font-bold">
                                 {t('stations.openSettings')}
                             </Text>

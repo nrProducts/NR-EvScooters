@@ -35,6 +35,7 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { rangeForPreset, compareRangeFor, autoGranularity, COMPARE_LABEL } from "@/lib/period";
 import { toastError } from "@/lib/toastHelpers";
 import { cn, formatCurrency, formatDateTime } from "@/lib/utils";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 const TXN_TYPE_LABEL: Record<RevenueTxnType, string> = {
   rental_payment: "Rental Payment",
@@ -61,6 +62,7 @@ function statusPill(r: RevenueTransactionRow) {
 }
 
 export default function RevenuePage() {
+  usePageTitle("Revenue Overview");
   usePageSubtitle("Track revenue, refunds, deposits, rental income and financial performance.");
 
   const [period, setPeriod] = useState<PeriodState>(() => ({
@@ -158,13 +160,8 @@ export default function RevenuePage() {
   return (
     <div className="animate-fade-in space-y-6">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Revenue Overview</h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Track revenue, refunds, deposits, rental income and financial performance.
-          </p>
-        </div>
+      {/* The title and subtitle are in the top header row (usePageTitle / usePageSubtitle above); only the filters are here. */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-end">
         <div className="flex flex-wrap items-center gap-2">
           <PeriodPicker value={period} onChange={setRange} showGranularity={false} />
           <Select value={txnType} onValueChange={(v) => { setTxnType(v); setPage(1); }}>

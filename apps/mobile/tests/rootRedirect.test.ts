@@ -62,7 +62,9 @@ describe('resolveRootRedirect', () => {
 
   it('walks a new rider through profile, consent and the KYC intro in order', () => {
     expect(resolveRootRedirect(state({ profile: { ...rider, profile_completed: false } }))).toBe('/profile-setup');
-    expect(resolveRootRedirect(state({ profile: { ...rider, terms_up_to_date: false } }))).toBe('/consent?next=/kyc-intro');
+    expect(
+      resolveRootRedirect(state({ profile: { ...rider, kyc_status: 'not_submitted', terms_up_to_date: false } })),
+    ).toBe('/consent?next=/kyc-intro');
     expect(
       resolveRootRedirect(state({ segments: ['privacy'], profile: { ...rider, consent_up_to_date: false } })),
     ).toBeNull();
@@ -70,6 +72,19 @@ describe('resolveRootRedirect', () => {
     expect(
       resolveRootRedirect(state({ profile: { ...rider, kyc_status: 'not_submitted' }, hasSeenKycIntro: true })),
     ).toBe('/home');
+  });
+
+  // A new terms or notice version re-prompts every rider. One who has already
+  // started or finished KYC must go home after agreeing, not to the KYC intro.
+  it('sends a rider re-accepting new terms home, not to the KYC intro, once KYC is started', () => {
+    for (const kyc_status of ['verified', 'pending', 'rejected'] as const) {
+      expect(
+        resolveRootRedirect(state({ profile: { ...rider, kyc_status, terms_up_to_date: false } })),
+      ).toBe('/consent?next=/home');
+    }
+    expect(
+      resolveRootRedirect(state({ profile: { ...rider, consent_up_to_date: false } })),
+    ).toBe('/consent?next=/home');
   });
 
   it('never redirects a staff account (the root layout blocks it instead)', () => {

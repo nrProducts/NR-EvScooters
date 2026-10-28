@@ -16,6 +16,7 @@ import { LifeBuoy, Mail, Phone, Send, CheckCircle2 } from 'lucide-react-native';
 import type { ApiSupportRequest } from '../types/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT, type CopyKey, type TranslateFn } from '../i18n';
+import { GradientFill } from '../components/ui/GradientFill';
 
 /**
  * `labelKey` rather than a label: this is module scope, so a resolved string
@@ -183,8 +184,9 @@ export default function SupportScreen() {
               onPress={handleSubmit}
               disabled={submitting}
               className="rounded-xl py-3.5 mt-1 flex-row items-center justify-center"
-              style={{ backgroundColor: COLORS.primary, opacity: submitting ? 0.6 : 1 }}
+              style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: submitting ? 0.6 : 1 }}
             >
+              <GradientFill />
               {submitting ? (
                 <Spinner size={16} color="#FFF" />
               ) : (

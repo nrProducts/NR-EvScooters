@@ -15,6 +15,7 @@ import { api } from '../../lib/api';
 import { ApiError } from '../../lib/ApiError';
 import { COLORS } from '../../constants/theme';
 import type { ApiNominee } from '../../types/api';
+import { GradientFill } from '../../components/ui/GradientFill';
 
 /**
  * Nomination (DPDPA s.14): someone who may exercise the rider's rights if
@@ -194,9 +195,10 @@ export default function NomineeScreen() {
                             disabled={!canSave || saving}
                             accessibilityRole="button"
                             accessibilityState={{ disabled: !canSave || saving }}
-                            style={{ backgroundColor: COLORS.primary, opacity: !canSave || saving ? 0.5 : 1 }}
+                            style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: !canSave || saving ? 0.5 : 1 }}
                             className="w-full py-4 rounded-2xl flex-row justify-center items-center"
                         >
+                          <GradientFill />
                             {saving ? (
                                 <Spinner size={18} color="#FFF" />
                             ) : (

@@ -29,6 +29,7 @@ const LIST_COLUMNS = `
     invoice_number, purpose, status, issued_on, due_on,
     subtotal_amount, total_amount, currency, created_at, updated_at,
     users(id, full_name, email),
+    subscriptions(cycle_time),
     invoice_items(id, item_type, subscription_adjustment_id, description, quantity, unit_amount, amount, created_at),
     payment_allocations(amount, allocated_at, payment_transactions(method, gateway_payment_id))
 ` as const;
@@ -40,7 +41,7 @@ const DETAIL_COLUMNS = `
     users(id, full_name, email),
     invoice_items(id, item_type, subscription_adjustment_id, description, quantity, unit_amount, amount, created_at),
     payment_allocations(amount, allocated_at, payment_transactions(method, gateway_payment_id)),
-    subscriptions(id, plans(id, name)),
+    subscriptions(id, cycle_time, plans(id, name)),
     rentals(id, rental_vehicle_assignments(vehicle_id, released_at, vehicles(id, display_name, registration_number)))
 ` as const;
 
@@ -83,12 +84,12 @@ interface RawInvoiceRow {
     created_at: string;
     updated_at: string | null;
     users: unknown;
+    subscriptions: unknown;
     invoice_items: RawInvoiceItem[] | null;
     payment_allocations: RawAllocation[] | null;
 }
 
 interface RawInvoiceDetailRow extends RawInvoiceRow {
-    subscriptions: unknown;
     rentals: { id: string; rental_vehicle_assignments: unknown } | null;
 }
 
@@ -143,6 +144,7 @@ function toInvoiceRow(row: RawInvoiceRow): InvoiceRow {
         status: row.status,
         issued_on: row.issued_on,
         due_on: row.due_on,
+        cycle_time: unwrap<{ cycle_time: string | null }>(row.subscriptions)?.cycle_time ?? null,
         subtotal_amount: Number(row.subtotal_amount),
         total_amount: total,
         currency: row.currency,

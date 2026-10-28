@@ -14,6 +14,21 @@ export function useUser(id: string | undefined) {
   });
 }
 
+/**
+ * A rider's photo as a short-lived signed URL, for avatars. The backend's links last 5 minutes, so
+ * the result is reused for 4 and then re-minted. Only asked for when the user has a photo on file.
+ */
+export function useUserPhotoUrl(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["user-photo", id],
+    queryFn: () => api.fetchUserPhotoUrl(id!),
+    enabled: enabled && !!id,
+    staleTime: 4 * 60_000,
+    gcTime: 4 * 60_000,
+    retry: false,
+  });
+}
+
 export function useOpenUserPhoto() {
   return useMutation({
     mutationFn: (id: string) => api.fetchUserPhotoUrl(id),

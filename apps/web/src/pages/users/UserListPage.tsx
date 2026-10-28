@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, UserMinus, KeyRound, UserCheck, Bike, XCircle,
+  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, UserMinus, KeyRound, UserCheck, Bike, XCircle, X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/users/UserAvatar";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,10 +30,11 @@ import {
   useApproveSignup, useRejectSignup,
 } from "@/hooks/useUsers";
 import { useTableSort } from "@/hooks/useTableSort";
+import { useSessionState } from "@/hooks/useSessionState";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
-import { initials, formatCycleTime, formatDate, formatDateTime, timeAgo, formatPhoneLocal } from "@/lib/utils";
+import { formatCycleTime, formatDate, formatDateTime, timeAgo, formatPhoneLocal } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 type DueBucket = "overdue" | "today" | "d1" | "d2" | "d3";
@@ -62,17 +63,20 @@ export default function UserListPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const role = useAuthStore((s) => s.user?.role);
-  const initialTab = ((): UserTab => {
-    const t = searchParams.get("tab");
-    return t === "pending" && role === "admin" ? "pending" : "rider";
-  })();
-  const [search, setSearch] = useState("");
-  const [kycStatus, setKycStatus] = useState<KycStatus | "all">("all");
-  const [activeRental, setActiveRental] = useState(false);
-  const [dueKey, setDueKey] = useState<string | null>(null);
+  // The list's filters, tab, page and sort are kept for the browser session, so
+  // opening a user and coming back leaves the grid as it was.
+  const [search, setSearch] = useSessionState("users.search", "");
+  const [kycStatus, setKycStatus] = useSessionState<KycStatus | "all">("users.kycStatus", "all");
+  const [activeRental, setActiveRental] = useSessionState("users.activeRental", false);
+  const [dueKey, setDueKey] = useSessionState<string | null>("users.dueKey", null);
   const due = DUE_CHOICES.find((c) => c.key === dueKey)?.buckets ?? [];
-  const [tab, setTab] = useState<UserTab>(initialTab);
-  const [page, setPage] = useState(1);
+  const [tab, setTab] = useSessionState<UserTab>("users.tab", "rider");
+  const [page, setPage] = useSessionState("users.page", 1);
+  // A link straight to ?tab=pending (e.g. from a notification) wins over the
+  // remembered tab. Runs once, on arrival: later tab changes are the admin's own.
+  useEffect(() => {
+    if (searchParams.get("tab") === "pending" && role === "admin") setTab("pending");
+  }, []);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
   const [rejectTarget, setRejectTarget] = useState<AppUser | null>(null);
   const isPendingTab = tab === "pending";
@@ -80,7 +84,7 @@ export default function UserListPage() {
   const [reason, setReason] = useState("");
   const [roleError, setRoleError] = useState<string | null>(null);
 
-  const { sort, onSortChange } = useTableSort("created_at", "desc");
+  const { sort, onSortChange } = useTableSort("created_at", "desc", "users.sort");
   const { data, isLoading, isError, refetch } = useUsers({
     search,
     kycStatus: isPendingTab ? "all" : kycStatus,
@@ -142,10 +146,7 @@ export default function UserListPage() {
       sortKey: "full_name",
       render: (u) => (
         <div className="flex items-center gap-3">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={u.profile_photo_url ?? undefined} alt={u.full_name} />
-            <AvatarFallback>{initials(u.full_name || "?")}</AvatarFallback>
-          </Avatar>
+          <UserAvatar user={u} className="h-10 w-10" />
           <div className="min-w-0">
             <p className="truncate font-medium">{u.full_name || "—"}</p>
             <p className="truncate text-xs text-muted-foreground">{formatPhoneLocal(u.phone) ?? "No phone on file"}</p>
@@ -387,6 +388,8 @@ export default function UserListPage() {
     },
   ];
 
+  const activeFilterCount = (activeRental ? 1 : 0) + (dueKey ? 1 : 0) + (kycStatus !== "all" ? 1 : 0);
+
   usePageSubtitle(
     isPendingTab
       ? `${data?.total ?? 0} account${(data?.total ?? 0) === 1 ? "" : "s"} awaiting approval`
@@ -441,7 +444,7 @@ export default function UserListPage() {
             Self-registered accounts awaiting review. Approve as staff or rider, or reject to remove the request.
           </div>
         ) : (
-          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
             <Select
               value={kycStatus}
               onValueChange={(v) => {
@@ -463,18 +466,27 @@ export default function UserListPage() {
 
             {tab === "rider" && (
               <>
-                <div className="flex items-center gap-2 sm:ml-2">
+                <span className="hidden h-6 w-px bg-border sm:block" aria-hidden />
+
+                {/* One pill that is the whole switch: click anywhere on it. */}
+                <label
+                  className={`flex h-10 cursor-pointer items-center gap-2.5 rounded-xl border px-3 text-sm font-medium shadow-sm transition-smooth ${
+                    activeRental ? "border-primary/40 bg-primary/10 text-primary" : "border-border bg-card text-foreground hover:bg-secondary"
+                  }`}
+                >
                   <Switch
                     checked={activeRental}
                     onCheckedChange={(v) => { setActiveRental(v); setPage(1); }}
                     aria-label="Active rental only"
                   />
-                  <span className="text-sm">Active rental</span>
-                </div>
+                  Active rental
+                </label>
 
-                <div className="flex flex-wrap items-center gap-2 sm:ml-2">
+                <span className="hidden h-6 w-px bg-border sm:block" aria-hidden />
+
+                <div className="flex flex-wrap items-center gap-2.5">
                   <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Due</span>
-                  <div className="inline-flex flex-wrap rounded-lg bg-secondary p-1">
+                  <div className="inline-flex flex-wrap gap-1 rounded-xl border border-border bg-background p-1">
                     {DUE_CHOICES.map((c) => {
                       const on = dueKey === c.key;
                       return (
@@ -484,10 +496,10 @@ export default function UserListPage() {
                           aria-pressed={on}
                           // click the active one again to go back to "any"
                           onClick={() => { setDueKey(on ? null : c.key); setPage(1); }}
-                          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-smooth ${
+                          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-smooth ${
                             on
                               ? c.key === "overdue" ? "bg-destructive text-destructive-foreground shadow-soft" : "bg-card text-primary shadow-soft"
-                              : "text-muted-foreground hover:text-foreground"
+                              : "text-muted-foreground hover:bg-card/60 hover:text-foreground"
                           }`}
                         >
                           {c.label}
@@ -497,14 +509,20 @@ export default function UserListPage() {
                   </div>
                 </div>
 
-                {(activeRental || dueKey || kycStatus !== "all") && (
-                  <button
+                {activeFilterCount > 0 && (
+                  <Button
                     type="button"
-                    className="text-xs text-muted-foreground underline"
+                    variant="outline"
+                    size="sm"
+                    className="h-10 gap-1.5 rounded-xl text-muted-foreground hover:text-foreground sm:ml-auto"
                     onClick={() => { setActiveRental(false); setDueKey(null); setKycStatus("all"); setPage(1); }}
                   >
-                    Clear filters
-                  </button>
+                    <X className="h-3.5 w-3.5" />
+                    Clear
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[0.6875rem] font-semibold text-primary-foreground">
+                      {activeFilterCount}
+                    </span>
+                  </Button>
                 )}
               </>
             )}

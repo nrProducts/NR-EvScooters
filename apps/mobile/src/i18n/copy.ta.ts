@@ -89,6 +89,7 @@ export const ta: Copy = {
     // --- my scooter / rental ----------------------------------------------
     'scooter.title': 'என் ஸ்கூட்டர்',
     'scooter.registrationNumber': 'பதிவு எண்',
+    'scooter.chassisNumber': 'சேசிஸ் எண்',
     'scooter.plan': 'திட்டம்',
     'scooter.onRentSince': 'வாடகை தொடங்கியது',
     'scooter.sinceValue': '{date} · நாள் {day}',
@@ -741,7 +742,6 @@ export const ta: Copy = {
     'booking.unavailable': 'கிடைக்கவில்லை',
     'booking.available': 'கிடைக்கிறது',
     'booking.startsNow.title': 'ஸ்கூட்டரைப் பெற்றதும் உங்கள் திட்டம் தொடங்குகிறது',
-    'booking.startsNow.body': 'இன்று காலை 8 – இரவு 8 மணிக்குள் உங்கள் ஸ்கூட்டரைப் பெறுங்கள்.',
     'booking.choosePlan': 'ஒரு திட்டத்தைத் தேர்ந்தெடுக்கவும்',
     'booking.noPlansHint': 'இந்த ஸ்கூட்டருக்கு இன்னும் திட்டங்கள் விற்பனையில் இல்லை.',
     'booking.minutesIncluded': '{minutes} நிமிடங்கள் சேர்க்கப்பட்டுள்ளன',
@@ -1144,6 +1144,7 @@ export const ta: Copy = {
 
     // --- sign in ----------------------------------------------------------
     'auth.tagline': 'சவாரி தொடங்க உங்கள் மொபைல் எண்ணுடன் உள்நுழையவும்.',
+    'auth.signIn': 'உள்நுழை',
     'auth.mobileNumber': 'மொபைல் எண்',
     'auth.mobileNumberPlaceholder': 'மொபைல் எண்',
     'auth.otpHint': '6-இலக்க குறியீட்டை உங்களுக்கு அனுப்புவோம். இந்திய எண்களை +91 இல்லாமல் தட்டச்சு செய்யலாம்.',

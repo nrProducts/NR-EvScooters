@@ -5,7 +5,6 @@ import { GlobalSearch } from "@/components/common/GlobalSearch";
 import { NotificationBell } from "@/components/common/NotificationBell";
 import { PendingApprovalsBell } from "@/components/common/PendingApprovalsBell";
 import { HeaderAttendanceControl } from "@/components/common/HeaderAttendanceControl";
-import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -22,7 +21,14 @@ import { cn, initials, formatDate } from "@/lib/utils";
 import { useNavigate, useLocation } from "react-router-dom";
 import { matchPath } from "@/routes/roleConfig";
 import { usePageHeaderStore } from "@/store/pageHeaderStore";
+import { HEADER_ICON, HEADER_ROUND_BUTTON } from "@/lib/headerStyles";
 
+/**
+ * The top of every screen. It sits directly on the grey canvas (no bar, no
+ * border): the page's title on the left, search and the round action buttons on
+ * the right. The logo lives only in the sidebar. The dashboard greets the person
+ * by first name; every other page shows its own title with its subtitle beneath.
+ */
 export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const { theme, toggleTheme } = useUiStore();
   const { user, signOut } = useAuth();
@@ -30,6 +36,13 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const location = useLocation();
   const pageTitle = matchPath(location.pathname)?.label ?? "";
   const pageSubtitle = usePageHeaderStore((s) => s.subtitle);
+  // A page that draws its own heading (a user's name, "Revenue Overview") hides ours.
+  const ownsTitle = usePageHeaderStore((s) => s.ownsTitle);
+
+  const isDashboard = location.pathname === "/dashboard";
+  const firstName = user?.name?.trim().split(/\s+/)[0];
+  const pageGivenTitle = usePageHeaderStore((s) => s.title);
+  const title = pageGivenTitle ?? (isDashboard && firstName ? `Hello, ${firstName}!` : pageTitle);
 
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -45,56 +58,57 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur-md sm:px-6">
-      <IconButton
-        variant="ghost"
-        label="Open navigation menu"
-        tooltipSide="bottom"
-        className="md:hidden"
-        onClick={onOpenMobileNav}
-      >
-        <Menu className="h-5 w-5" />
-      </IconButton>
-
-      <div className="flex flex-1 min-w-0 items-baseline gap-2">
-        {/*
-          shrink-0 is the fix: without it, flexbox shrinks the title and the
-          subtitle proportionally whenever they don't both fit, so even a
-          short title like "Privacy Requests" was getting clipped to "Privacy
-          Req...". The title now always renders at its full natural width —
-          the (less important) subtitle gives up space first, down to
-          nothing on narrow screens. max-w/truncate/title stay only as a
-          last-resort safety net for a hypothetically very long future label;
-          none of today's labels are anywhere near wide enough to hit it.
-        */}
-        <h1
-          className="max-w-[60%] shrink-0 truncate text-base font-semibold text-foreground sm:max-w-[50%] sm:text-lg"
-          title={pageTitle}
+    <header className="z-30 flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 px-1 pb-4 pt-1 sm:px-2">
+      {/* flex-1 with a 16rem basis: the title block takes the room the controls leave and cuts a long
+          subtitle short; the controls only drop to a second line once less than 16rem is left. */}
+      <div className="flex min-w-0 flex-1 basis-64 items-center gap-3 sm:gap-4">
+        <IconButton
+          variant="ghost"
+          label="Open navigation menu"
+          tooltipSide="bottom"
+          className="md:hidden"
+          onClick={onOpenMobileNav}
         >
-          {pageTitle}
-        </h1>
-        {pageSubtitle && (
-          <span className="hidden min-w-0 flex-1 items-baseline gap-2 text-xs font-medium text-muted-foreground sm:inline-flex sm:text-sm">
-            <span aria-hidden="true" className="shrink-0">-</span>
-            <span className="truncate" title={typeof pageSubtitle === "string" ? pageSubtitle : undefined}>
-              {pageSubtitle}
-            </span>
-          </span>
+          <Menu className="h-5 w-5" />
+        </IconButton>
+
+        {/*
+          shrink-0 on the title: without it, flexbox shrinks the title and the
+          subtitle proportionally whenever they don't both fit, so even a short
+          title like "Privacy Requests" got clipped. The title keeps its full
+          width and the (less important) subtitle gives up space first.
+        */}
+        {!ownsTitle && (
+          <div className="min-w-0">
+            <h1
+              className="truncate text-lg font-semibold leading-tight tracking-tight text-foreground sm:text-xl"
+              title={title}
+            >
+              {title}
+            </h1>
+            {pageSubtitle && (
+              <p
+                className="mt-0.5 hidden truncate text-xs text-muted-foreground sm:block"
+                title={typeof pageSubtitle === "string" ? pageSubtitle : undefined}
+              >
+                {pageSubtitle}
+              </p>
+            )}
+          </div>
         )}
       </div>
 
-      <div className="flex items-center gap-1.5 sm:gap-3">
+      <div className="flex shrink-0 items-center gap-2">
         <GlobalSearch />
         {user?.role && (
-          <div className="hidden items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 lg:flex">
+          <div className="hidden h-9 items-center gap-1.5 rounded-full bg-card px-3 shadow-card xl:flex">
             <span
               className={cn("h-1.5 w-1.5 shrink-0 rounded-full", user.role === "admin" ? "bg-primary" : "bg-info")}
             />
             <span className="text-xs font-semibold capitalize text-foreground">{user.role}</span>
+            <span className="text-xs text-muted-foreground">· {formatDate(new Date())}</span>
           </div>
         )}
-        <span className="hidden h-4 w-px bg-border lg:inline" />
-        <span className="hidden text-xs text-muted-foreground lg:inline">{formatDate(new Date())}</span>
 
         <IconButton
           variant="ghost"
@@ -102,9 +116,9 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
           disabled={refreshing}
           label="Refresh this page"
           tooltipSide="bottom"
-          className="bg-primary/10 text-primary hover:bg-primary/20"
+          className={cn(HEADER_ROUND_BUTTON, "text-primary hover:text-primary")}
         >
-          <RotateCw className={cn("h-[1.125rem] w-[1.125rem]", refreshing && "animate-spin")} />
+          <RotateCw className={cn(HEADER_ICON, refreshing && "animate-spin")} />
         </IconButton>
 
         <IconButton
@@ -112,8 +126,9 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
           onClick={toggleTheme}
           label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
           tooltipSide="bottom"
+          className={HEADER_ROUND_BUTTON}
         >
-          {theme === "light" ? <Moon className="h-[1.125rem] w-[1.125rem]" /> : <Sun className="h-[1.125rem] w-[1.125rem]" />}
+          {theme === "light" ? <Moon className={HEADER_ICON} /> : <Sun className={HEADER_ICON} />}
         </IconButton>
 
         <HeaderAttendanceControl role={user?.role} />
@@ -124,8 +139,8 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 rounded-full pl-1 pr-1 outline-none">
-              <Avatar className="h-8 w-8 ring-1 ring-border">
+            <button className="flex items-center gap-2 rounded-full outline-none">
+              <Avatar className="h-9 w-9 text-xs shadow-card ring-2 ring-card">
                 <AvatarImage src={user?.avatarUrl} alt={user?.name} />
                 <AvatarFallback>{user ? initials(user.name) : "?"}</AvatarFallback>
               </Avatar>

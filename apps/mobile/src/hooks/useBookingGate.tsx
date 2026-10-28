@@ -6,6 +6,7 @@ import { confirmAction } from '../lib/confirm';
 import { useCanRent, useHasActiveBooking, useHasActiveRental } from '../store/useAuthStore';
 import { COLORS } from '../constants/theme';
 import { useT } from '../i18n';
+import { GradientFill } from '../components/ui/GradientFill';
 
 /**
  * The restrictions that stand between tapping a scooter and the booking flow:
@@ -70,8 +71,9 @@ export function useBookingGate() {
           onPress={() => { setKycPrompt(null); router.push('/kyc'); }}
           accessibilityRole="button"
           className="py-4 rounded-2xl items-center"
-          style={{ backgroundColor: COLORS.primary }}
+          style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
         >
+          <GradientFill />
           <Text className="text-white text-sm font-bold">{t('bookingGate.completeKyc')}</Text>
         </TouchableOpacity>
       </View>

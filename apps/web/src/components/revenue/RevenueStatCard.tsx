@@ -48,16 +48,17 @@ export function RevenueStatCard({
 }) {
   const fmt = (n: number) => (currency ? formatCurrency(n) : String(n));
   const dir = deltaPct == null ? null : deltaPct >= 0;
+  // The emphasised card (Net Revenue) is the same light-to-dark green as the dashboard's Net revenue card.
   return (
-    <MotionCard className={cn("bg-card", emphasis && "border-primary/40 bg-primary/[0.03]")}>
+    <MotionCard className={cn("bg-card", emphasis && "border-0 bg-gradient-to-br from-[#3CCB73] to-[#17924A] text-white shadow-[0_10px_28px_rgba(23,146,74,0.28)]")}>
       <CardContent className="flex items-start justify-between gap-2 p-3">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="flex items-center gap-1 text-[0.6875rem] font-medium text-muted-foreground">
+          <span className={cn("flex items-center gap-1 text-[0.6875rem] font-medium", emphasis ? "text-white/85" : "text-muted-foreground")}>
             <span className="truncate">{label}</span>
             {tooltip && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button type="button" className="shrink-0 text-muted-foreground/60 hover:text-foreground">
+                  <button type="button" className={cn("shrink-0", emphasis ? "text-white/70 hover:text-white" : "text-muted-foreground/60 hover:text-foreground")}>
                     <Info className="h-3 w-3" />
                   </button>
                 </TooltipTrigger>
@@ -72,20 +73,20 @@ export function RevenueStatCard({
             <span
               className={cn(
                 "flex items-center gap-0.5 text-[0.6875rem] font-medium",
-                deltaPct != null ? (dir ? "text-success" : "text-destructive") : "text-muted-foreground",
+                emphasis ? "text-white" : deltaPct != null ? (dir ? "text-success" : "text-destructive") : "text-muted-foreground",
               )}
             >
               {deltaPct != null && (dir ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />)}
               {deltaPct != null ? `${Math.abs(deltaPct)}%` : ""}
-              {subtext && <span className={cn(deltaPct != null && "ml-1 font-normal text-muted-foreground")}>{subtext}</span>}
+              {subtext && <span className={cn(deltaPct != null && "ml-1 font-normal", deltaPct != null && (emphasis ? "text-white/80" : "text-muted-foreground"))}>{subtext}</span>}
               {deltaPct != null && previous != null && !subtext && (
-                <span className="ml-1 font-normal text-muted-foreground">vs {fmt(previous)}</span>
+                <span className={cn("ml-1 font-normal", emphasis ? "text-white/80" : "text-muted-foreground")}>vs {fmt(previous)}</span>
               )}
             </span>
           )}
         </div>
         {Icon && (
-          <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]", TONE[tone])}>
+          <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]", emphasis ? "bg-white/20 text-white" : TONE[tone])}>
             <Icon className="h-4 w-4" strokeWidth={1.75} />
           </div>
         )}

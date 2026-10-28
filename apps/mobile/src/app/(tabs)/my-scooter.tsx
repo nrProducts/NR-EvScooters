@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Spinner } from '../../components/Spinner';
 import { useRouter, useFocusEffect } from 'expo-router';
 import {
-  Bike, Calendar, CalendarClock, CreditCard, Hash, LifeBuoy, MapPin, PackageCheck, RefreshCw, Wrench,
+  Bike, Calendar, ChevronRight, CreditCard, Hash, LifeBuoy, MapPin, PackageCheck, Wrench,
 } from 'lucide-react-native';
 import { AppShell } from '../../components/AppShell';
 import { Badge } from '../../components/ui/Badge';
@@ -21,8 +21,7 @@ import {
   BILLING_CYCLE_LABEL_KEY, RENTAL_STATUS_LABEL_KEY, RENTAL_STATUS_TONE, VEHICLE_STATUS_LABEL_KEY,
   VEHICLE_STATUS_TONE, formatDate,
 } from '../../constants/status';
-import { describeExpiry, rentalDayNumber } from '../../lib/rentalTiming';
-import { canReturnYet, formatCycleTime, getRenewalEligibility } from '../../lib/returnPolicy';
+import { canReturnYet, formatCycleTime } from '../../lib/returnPolicy';
 import { isReturnLocked } from '../../lib/returnLock';
 import { useReturnLock } from '../../components/ReturnLockSheet';
 import { useCurrentRideOrBooking } from '../../hooks/useCurrentRideOrBooking';
@@ -37,10 +36,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '../../i18n';
 
 /**
- * Everything about the scooter the rider currently has: identity, plan,
- * timeline, the return flow, and its maintenance history. Home's
- * ActiveRentalCard is the summary of this screen — anything the rider might
- * want beyond that summary belongs here rather than on Home.
+ * Everything about the scooter the rider currently has: identity, where and
+ * when it was picked up, its documents, the return flow, and its maintenance
+ * history. Home's ActiveRentalCard is the summary of this screen — anything the
+ * rider might want beyond that summary belongs here rather than on Home.
+ *
+ * Plan facts (name, price, period dates, renewal) are NOT repeated here: they
+ * live on Billing, and this screen links there. Showing them on every tab made
+ * the same period read three times over.
  *
  * Maintenance used to live in a tab on Booking History, which had nothing to
  * do with bookings.
@@ -109,28 +112,26 @@ export default function MyScooterScreen() {
   }, [loadFeatured]);
   const imageUrl = featured?.image_url ?? null;
 
+  // The chassis number (the vehicle's VIN) rides on the profile's assigned vehicle, not on the
+  // rental or booking payload. Only trusted when it is the same vehicle the screen is showing.
+  const assignedVehicle = useAuthStore((s) => s.profile?.assigned_vehicle ?? null);
+  const chassisFor = (vehicleId: string | undefined): string | null =>
+    vehicleId && assignedVehicle?.id === vehicleId && assignedVehicle.vin ? assignedVehicle.vin : null;
+
   // Riders can't back out mid-period — only once their current committed
   // week is up (bookings.next_due_at). The server re-enforces this
   // regardless; disabling here just avoids letting a rider into the return
   // form only to be rejected at submit.
   const canReturn = state.kind === 'rental' ? canReturnYet(state.rental.next_due_at) : true;
-  // Renewal is offered any time before or after next_due_at (no more
-  // "day before" window) — offered here too so a rider whose plan is ending
-  // isn't forced to the Billing tab just to see that renewing is an option.
-  const canRenew = state.kind === 'rental'
-    ? getRenewalEligibility(
-        state.rental.plan_status, state.rental.next_due_at, state.rental.renewal_status, undefined, state.rental.cycle_time,
-      ).canRenew
-    : false;
 
-  // ONE decision, read by the plan row, the documents card and the support
-  // button below — see lib/returnLock.ts. The Renew/Return buttons were
-  // already replaced by ReturnStatusCard; everything else on this screen had
-  // carried on as if the rider still held an ordinary rental.
+  // ONE decision, read by the documents card and the support button below —
+  // see lib/returnLock.ts. The Return button was already replaced by
+  // ReturnStatusCard; everything else on this screen had carried on as if the
+  // rider still held an ordinary rental.
   const returnLocked = state.kind === 'rental' && isReturnLocked(state.rental);
   const lock = useReturnLock(returnLocked);
 
-  const renderHero = (title: string, badge: React.ReactNode) => (
+  const renderHero = (title: string, badge: React.ReactNode, subtitle?: string | null) => (
     <View
       className="rounded-3xl mb-5 overflow-hidden"
       style={{
@@ -149,18 +150,31 @@ export default function MyScooterScreen() {
         // scaled past the stage's edges and got clipped there, cutting into
         // the scooter itself rather than trimming empty margin.
         <VehicleStage imageUrl={imageUrl} height={160} compact zoom={1} accessibilityLabel={title} />
-      ) : null}
-      <View className="p-5 items-center">
-        {imageUrl ? null : (
+      ) : (
+        <View className="items-center pt-5">
           <View
-            className="w-16 h-16 rounded-3xl items-center justify-center mb-3"
+            className="w-16 h-16 rounded-3xl items-center justify-center"
             style={{ backgroundColor: COLORS.primary + '14' }}
           >
             <Bike size={30} color={COLORS.primary} />
           </View>
-        )}
-        <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold">{title}</Text>
-        <View className="mt-2">{badge}</View>
+        </View>
+      )}
+      {/* minWidth: 0 on the text column — see ActiveRentalCard: flexbox on web
+          will not shrink it below its content otherwise. */}
+      <View className="flex-row items-center justify-between p-5">
+        <View className="flex-1 mr-3" style={{ minWidth: 0 }}>
+          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-extrabold" numberOfLines={1}>{title}</Text>
+          {subtitle ? (
+            <View className="flex-row items-center mt-1">
+              <Hash size={12} color={COLORS.textSecondary} />
+              <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-1" numberOfLines={1}>
+                {subtitle}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        {badge}
       </View>
     </View>
   );
@@ -186,6 +200,7 @@ export default function MyScooterScreen() {
                   label={t(RENTAL_STATUS_LABEL_KEY[state.rental.status])}
                   tone={RENTAL_STATUS_TONE[state.rental.status]}
                 />,
+                state.rental.vehicle.registration_number,
               )}
 
               {/* ONLY the amount-due variant, and only here.
@@ -203,64 +218,33 @@ export default function MyScooterScreen() {
                 <SettlementCard settlement={settlement!} onPaid={loadSettlement} />
               ) : null}
 
+              {/* The vehicle's own facts only. The registration number is in the
+                  hero above; the plan, its dates and renewal are on Billing. */}
               <View
-                className="rounded-2xl border overflow-hidden mb-5"
+                className="rounded-2xl border overflow-hidden mb-4"
                 style={{
                   backgroundColor: COLORS.card, borderColor: COLORS.border,
                   shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1,
                 }}
               >
-                <DetailRow
-                  icon={Hash}
-                  label={t('scooter.registrationNumber')}
-                  value={state.rental.vehicle.registration_number}
-                  first
-                />
-                {state.rental.plan ? (
+                {chassisFor(state.rental.vehicle.id) ? (
                   <DetailRow
-                    icon={CreditCard}
-                    label={t('scooter.plan')}
-                    value={`${state.rental.plan.name} · ₹${state.rental.plan.price.toFixed(2)}/${t(BILLING_CYCLE_LABEL_KEY[state.rental.plan.billing_cycle])}`}
+                    icon={Hash}
+                    label={t('scooter.chassisNumber')}
+                    value={chassisFor(state.rental.vehicle.id)!}
+                    highlightLast={5}
+                    first
                   />
                 ) : null}
                 <DetailRow
                   icon={Calendar}
                   label={t('scooter.onRentSince')}
-                  value={t('scooter.sinceValue', {
-                    date: formatDate(state.rental.started_at),
-                    day: rentalDayNumber(state.rental.started_at),
-                  })}
+                  value={formatDate(state.rental.started_at)}
+                  first={!chassisFor(state.rental.vehicle.id)}
                 />
-                {(() => {
-                  // Nothing renews on a scooter being handed back. This row
-                  // was still reading "Renews on — Expired 3 days ago" in red
-                  // beside a "Return requested" card, which states a deadline
-                  // the rider has already answered and cannot act on anyway
-                  // (renewing is refused server-side mid-return).
-                  if (returnLocked) {
-                    return (
-                      <DetailRow
-                        icon={CalendarClock}
-                        label={t('scooter.planEnded')}
-                        value={formatDate(state.rental.expires_at)}
-                        suffix={formatCycleTime(state.rental.cycle_time)}
-                      />
-                    );
-                  }
-                  const expiry = describeExpiry(state.rental.expires_at);
-                  if (!expiry) return null;
-                  return (
-                    <DetailRow
-                      icon={CalendarClock}
-                      label={t('scooter.renewsOn')}
-                      value={expiry.text}
-                      valueColor={
-                        expiry.tone === 'neutral' ? undefined
-                          : expiry.tone === 'danger' ? COLORS.overdue : COLORS.warning
-                      }
-                    />
-                  );
-                })()}
+                {state.rental.station ? (
+                  <DetailRow icon={MapPin} label={t('scooter.pickedUpAt')} value={state.rental.station.name} />
+                ) : null}
                 {/* Fleet ops set this; null until they do, so the row is
                     dropped rather than showing a placeholder date. */}
                 {state.rental.vehicle.next_service_due_date ? (
@@ -270,36 +254,44 @@ export default function MyScooterScreen() {
                     value={formatDate(state.rental.vehicle.next_service_due_date)}
                   />
                 ) : null}
-                {state.rental.station ? (
-                  <DetailRow icon={MapPin} label={t('scooter.pickedUpAt')} value={state.rental.station.name} />
-                ) : null}
               </View>
+
+              {/* Paperwork for a scooter the rider is handing back is not
+                  theirs to manage any more — the documents follow whichever
+                  vehicle is currently assigned. */}
+              {returnLocked ? null : <VehicleDocumentsCard />}
+
+              <TouchableOpacity
+                onPress={() => router.push('/billing')}
+                accessibilityRole="button"
+                activeOpacity={0.85}
+                className="flex-row items-center rounded-2xl border px-4 py-3 mb-4"
+                style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
+              >
+                <CreditCard size={15} color={COLORS.primary} />
+                <Text style={{ color: COLORS.textPrimary }} className="flex-1 text-xs font-bold ml-2.5">
+                  {t('rental.viewPlanDetails')}
+                </Text>
+                <ChevronRight size={15} color={COLORS.gray[400]} />
+              </TouchableOpacity>
 
               {/* Once a return is requested the button is REPLACED, not
                   disabled — the rental stays active and the only way out is
-                  staff confirming the handover. */}
-              {state.rental.return_requested_at ? (
-                <ReturnStatusCard rental={state.rental} />
-              ) : (
-                <>
-                  {canRenew && (
-                    <TouchableOpacity
-                      onPress={() => router.push('/billing')}
-                      accessibilityRole="button"
-                      className="flex-row items-center justify-center rounded-2xl py-3 mt-3"
-                      style={{ backgroundColor: COLORS.primary }}
-                    >
-                      <RefreshCw size={15} color="#FFF" />
-                      <Text className="text-white text-xs font-bold ml-2">
-                        {t('scooter.renewPlan')}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                  staff confirming the handover. Renewing is not offered here at
+                  all: it is Home's and Billing's job. */}
+              {state.rental.return_requested_at ? <ReturnStatusCard rental={state.rental} /> : null}
+
+              {/* Support stays reachable through a return — the handover itself
+                  is the likeliest thing a rider needs help with — but it warns
+                  first. See lib/returnLock.ts for why this one is 'warn', not
+                  'blocked'. */}
+              <View className="flex-row mt-1" style={{ gap: 10 }}>
+                {state.rental.return_requested_at ? null : (
                   <TouchableOpacity
                     onPress={() => setShowReturn(true)}
                     disabled={!canReturn}
                     accessibilityRole="button"
-                    className="flex-row items-center justify-center rounded-2xl py-3 mt-3"
+                    className="flex-1 flex-row items-center justify-center rounded-2xl py-3"
                     style={{ backgroundColor: COLORS.primary + '14', opacity: canReturn ? 1 : 0.5 }}
                   >
                     <PackageCheck size={15} color={COLORS.primaryPressed} />
@@ -307,29 +299,24 @@ export default function MyScooterScreen() {
                       {t('scooter.returnScooter')}
                     </Text>
                   </TouchableOpacity>
-                  {!canReturn && state.rental.next_due_at ? (
-                    <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-2">
-                      {t('scooter.returnAfter', { date: `${formatDate(state.rental.next_due_at)}, ${formatCycleTime(state.rental.cycle_time)}` })}
-                    </Text>
-                  ) : null}
-                </>
-              )}
-
-              {/* Kept reachable through a return — the handover itself is the
-                  likeliest thing a rider needs help with — but it warns first.
-                  See lib/returnLock.ts for why this one is 'warn', not
-                  'blocked'. */}
-              <TouchableOpacity
-                onPress={() => lock.run(() => router.push('/support'), 'warn')}
-                accessibilityRole="button"
-                className="flex-row items-center justify-center rounded-2xl py-3 mt-2 border"
-                style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
-              >
-                <LifeBuoy size={14} color={COLORS.textSecondary} />
-                <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2">
-                  {t('scooter.reportProblem')}
+                )}
+                <TouchableOpacity
+                  onPress={() => lock.run(() => router.push('/support'), 'warn')}
+                  accessibilityRole="button"
+                  className="flex-1 flex-row items-center justify-center rounded-2xl py-3 border"
+                  style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
+                >
+                  <LifeBuoy size={14} color={COLORS.textSecondary} />
+                  <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2">
+                    {t('scooter.reportProblem')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {!state.rental.return_requested_at && !canReturn && state.rental.next_due_at ? (
+                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium text-center mt-2">
+                  {t('scooter.returnAfter', { date: `${formatDate(state.rental.next_due_at)}, ${formatCycleTime(state.rental.cycle_time)}` })}
                 </Text>
-              </TouchableOpacity>
+              ) : null}
 
               <ReturnGate
                 visible={showReturn}
@@ -337,11 +324,6 @@ export default function MyScooterScreen() {
                 onClose={() => setShowReturn(false)}
                 onSubmitted={() => void reload()}
               />
-
-              {/* Paperwork for a scooter the rider is handing back is not
-                  theirs to manage any more — the documents follow whichever
-                  vehicle is currently assigned. */}
-              {returnLocked ? null : <VehicleDocumentsCard />}
 
               {lock.sheet}
             </>
@@ -379,6 +361,14 @@ export default function MyScooterScreen() {
                       label={t('scooter.registrationNumber')}
                       value={state.booking.vehicle.registration_number}
                       first
+                    />
+                  ) : null}
+                  {chassisFor(state.booking.vehicle?.id) ? (
+                    <DetailRow
+                      icon={Hash}
+                      label={t('scooter.chassisNumber')}
+                      value={chassisFor(state.booking.vehicle?.id)!}
+                      highlightLast={5}
                     />
                   ) : null}
                   {state.booking.plan ? (

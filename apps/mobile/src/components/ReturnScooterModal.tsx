@@ -17,6 +17,7 @@ import {
 import { useRequestReturn } from '../hooks/useRequestReturn';
 import type { ApiRental } from '../types/api';
 import { useT } from '../i18n';
+import { GradientFill } from './ui/GradientFill';
 
 interface ReturnScooterModalProps {
   visible: boolean;
@@ -211,8 +212,9 @@ export const ReturnScooterModal: React.FC<ReturnScooterModalProps> = ({
               disabled={submitting}
               accessibilityRole="button"
               className="w-full py-4 rounded-2xl flex-row justify-center items-center"
-              style={{ backgroundColor: COLORS.primary, opacity: submitting ? 0.6 : 1 }}
+              style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: submitting ? 0.6 : 1 }}
             >
+              <GradientFill />
               {submitting ? (
                 <Spinner size={18} color="#FFF" />
               ) : (

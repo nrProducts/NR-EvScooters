@@ -90,6 +90,12 @@ export interface InvoiceRow {
     issued_on: string | null;
     /** Was `due_date`. A date — an IST calendar day. */
     due_on: string | null;
+    /**
+     * The plan's `subscriptions.cycle_time` (`HH:MM:SS`, IST): the clock time
+     * a period invoice's `due_on` falls at. `due_on` is only a date, so this is
+     * what lets the console say WHEN on that day. Null for older rows.
+     */
+    cycle_time: string | null;
     subtotal_amount: number;
     /** Was `amount_due`. */
     total_amount: number;

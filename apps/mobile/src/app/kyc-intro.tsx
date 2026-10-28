@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { confirmAction } from '../lib/confirm';
 import { COLORS } from '../constants/theme';
 import { useT } from '../i18n';
+import { GradientFill } from '../components/ui/GradientFill';
 
 /**
  * Shown once per session after the profile step, before the KYC document
@@ -69,9 +70,10 @@ export default function KycIntroScreen() {
         <TouchableOpacity
           onPress={() => router.push('/kyc?onboarding=1')}
           accessibilityRole="button"
-          style={{ backgroundColor: COLORS.primary }}
+          style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
           className="w-full py-4 rounded-2xl flex-row justify-center items-center shadow-sm mb-3"
         >
+          <GradientFill />
           <Text className="text-white font-bold text-base mr-2">{t('common.continue')}</Text>
           <ArrowRight size={18} color="#FFF" />
         </TouchableOpacity>

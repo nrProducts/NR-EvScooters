@@ -16,6 +16,7 @@ import { INDIAN_STATES } from '../constants/indianStates';
 import { User, Mail, Phone, ArrowRight } from 'lucide-react-native';
 import type { Gender } from '../types/api';
 import { useT, type CopyKey } from '../i18n';
+import { GradientFill } from '../components/ui/GradientFill';
 
 /** Keys, not labels — resolved with t() inside the component below. */
 const GENDER_OPTION_KEYS: { key: Gender; labelKey: CopyKey }[] = [
@@ -321,9 +322,10 @@ export default function ProfileSetupScreen() {
           onPress={() => void save()}
           disabled={saving}
           accessibilityRole="button"
-          style={{ backgroundColor: COLORS.primary, opacity: saving ? 0.7 : 1 }}
+          style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: saving ? 0.7 : 1 }}
           className="w-full py-4 rounded-2xl flex-row justify-center items-center shadow-sm mt-2"
         >
+          <GradientFill />
           {saving ? (
             <Spinner size={18} color="#FFF" />
           ) : (

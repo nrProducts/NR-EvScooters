@@ -10,6 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useMyNotifications, useUnreadCount, useMarkNotificationRead, useMarkAllNotificationsRead } from "@/hooks/useMyNotifications";
 import { subscribeNotificationBell, unsubscribeNotificationBell } from "@/lib/notificationRealtime";
 import { timeAgo, cn } from "@/lib/utils";
+import { HEADER_BADGE, HEADER_ICON, HEADER_ROUND_BUTTON } from "@/lib/headerStyles";
 import { notificationLink } from "@/lib/notificationLink";
 import type { MyNotification } from "@/types";
 
@@ -42,10 +43,10 @@ export function NotificationBell() {
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
-              <Bell className="h-[1.125rem] w-[1.125rem]" />
+            <Button variant="ghost" size="icon" className={cn(HEADER_ROUND_BUTTON, "relative")} aria-label="Notifications">
+              <Bell className={HEADER_ICON} />
               {count > 0 && (
-                <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold leading-none text-destructive-foreground">
+                <span className={cn(HEADER_BADGE, "bg-destructive text-destructive-foreground")}>
                   {count > 9 ? "9+" : count}
                 </span>
               )}
