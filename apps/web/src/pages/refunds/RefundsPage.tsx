@@ -248,7 +248,7 @@ export default function RefundsPage() {
   );
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Tabs value={tab} onValueChange={(v) => setTab(v as RefundsTab)}>
           <TabsList>
@@ -262,7 +262,7 @@ export default function RefundsPage() {
       </div>
 
       {tab === "journeys" ? <JourneysTab /> : (
-      <Card>
+      <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
           <Select
             value={refundType}
@@ -296,7 +296,7 @@ export default function RefundsPage() {
           </Select>
         </div>
 
-        <DataTable
+        <DataTable fill
           columns={columns}
           data={data?.data ?? []}
           isLoading={isLoading}

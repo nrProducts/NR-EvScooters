@@ -78,8 +78,8 @@ export default function AdminLeavePage() {
   ];
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      <Card>
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
+      <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
           <Select
             value={status}
@@ -104,7 +104,7 @@ export default function AdminLeavePage() {
           </p>
         )}
 
-        <DataTable
+        <DataTable fill
           columns={columns}
           data={data?.data ?? []}
           isLoading={isLoading}

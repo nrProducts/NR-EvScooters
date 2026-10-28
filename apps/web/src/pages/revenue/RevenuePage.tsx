@@ -368,6 +368,7 @@ export default function RevenuePage() {
         />
         <div className="border-t border-border">
           <DataTable
+            noInnerScroll
             columns={txnColumns}
             data={txnsQ.data?.data ?? []}
             isLoading={txnsQ.isLoading}

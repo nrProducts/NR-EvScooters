@@ -39,6 +39,8 @@ export function DataTable<T extends { id: string }>({
   sort,
   onSortChange,
   rowClassName,
+  fill,
+  noInnerScroll,
 }: {
   columns: DataTableColumn<T>[];
   data: T[];
@@ -65,23 +67,55 @@ export function DataTable<T extends { id: string }>({
   onSortChange?: (sortKey: string) => void;
   /** Optional per-row conditional classes (e.g. highlighting), applied to both the desktop row and the mobile stacked card. */
   rowClassName?: (row: T) => string | undefined;
+  /**
+   * Fill the height the parent gives it instead of the default viewport-based cap.
+   * The parent must be a flex column with a bounded height (e.g.
+   * `flex min-h-0 flex-1 flex-col`) so a footer such as <Pagination /> stays put
+   * below the scrolling rows. Rows scroll inside the grid either way, header pinned.
+   */
+  fill?: boolean;
+  /**
+   * For a table that is one section of a longer page (e.g. a dashboard): every row is
+   * shown and the page itself scrolls, so the pager follows the last row with no
+   * inner scroll box or pinned header.
+   */
+  noInnerScroll?: boolean;
 }) {
   if (isLoading) return <LoadingSkeletonRows cols={columns.length} />;
   if (isError) return <ErrorState onRetry={onRetry} />;
   if (data.length === 0) return <EmptyState title={emptyTitle} description={emptyDescription} />;
 
+  // Rows always scroll inside the grid, never the whole page: `fill` takes the height its
+  // parent gives it; otherwise the grid is capped to what is left of the viewport (with a
+  // floor, so a short window scrolls the page instead of squashing the grid).
   return (
-    <>
+    <div
+      className={cn(
+        // noInnerScroll still scrolls sideways when the columns are wider than the card
+        noInnerScroll ? "overflow-x-auto" : "overflow-auto",
+        "scrollbar-thin",
+        !noInnerScroll && (fill ? "min-h-0 flex-1" : "max-h-[max(20rem,calc(100vh-24rem))]"),
+      )}
+    >
       {/* Desktop / tablet table */}
-      <div className="hidden overflow-x-auto scrollbar-thin sm:block">
+      <div className="hidden sm:block">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
-            <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <tr className="text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {columns.map((col) => {
                 const sortable = col.sortKey && onSortChange;
                 const active = sortable && sort?.by === col.sortKey;
                 return (
-                  <th key={col.key} className={cn("px-4 py-3 font-medium", col.className)}>
+                  <th
+                    key={col.key}
+                    className={cn(
+                      "bg-card px-4 py-3 font-medium",
+                      // a border on the <tr> would scroll away from a sticky cell, so draw the line as an inset shadow
+                      "shadow-[inset_0_-1px_0_hsl(var(--border))]",
+                      !noInnerScroll && "sticky top-0 z-10",
+                      col.className,
+                    )}
+                  >
                     {sortable ? (
                       <button
                         type="button"
@@ -175,6 +209,6 @@ export function DataTable<T extends { id: string }>({
           </div>
         ))}
       </div>
-    </>
+    </div>
   );
 }

@@ -95,8 +95,8 @@ export default function DepositsPage() {
   );
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      <Card>
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
+      <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
         <FilterBar
           filters={
             <Select
@@ -115,6 +115,7 @@ export default function DepositsPage() {
           }
         />
         <DataTable
+          fill
           columns={columns}
           data={data?.data ?? []}
           isLoading={isLoading}
@@ -124,16 +125,15 @@ export default function DepositsPage() {
           emptyTitle="No deposits"
           emptyDescription="Nothing matches this filter."
         />
+        {data && (
+          <Pagination
+            page={data.page}
+            pageSize={data.pageSize}
+            total={data.total}
+            onPageChange={setPage}
+          />
+        )}
       </Card>
-
-      {data && (
-        <Pagination
-          page={data.page}
-          pageSize={data.pageSize}
-          total={data.total}
-          onPageChange={setPage}
-        />
-      )}
 
       <DepositDrawer deposit={selected} onClose={() => setSelected(null)} />
     </div>

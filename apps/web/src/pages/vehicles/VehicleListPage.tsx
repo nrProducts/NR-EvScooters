@@ -283,7 +283,7 @@ export default function VehicleListPage() {
   usePageSubtitle(`${data?.total ?? 0} vehicles in the fleet`);
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Tabs value={view} onValueChange={(v) => setView(v as "list" | "kms")}>
           <TabsList>
@@ -305,7 +305,7 @@ export default function VehicleListPage() {
       </div>
 
       {view === "kms" ? <BikeKmsView /> : (
-      <Card>
+      <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
           <SearchBar
             value={search}
@@ -336,7 +336,7 @@ export default function VehicleListPage() {
           </Select>
         </div>
 
-        <DataTable
+        <DataTable fill
           columns={columns}
           data={data?.data ?? []}
           isLoading={isLoading}

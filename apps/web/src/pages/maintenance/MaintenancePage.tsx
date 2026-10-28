@@ -157,7 +157,7 @@ export default function MaintenancePage() {
   usePageSubtitle(`${data?.total ?? 0} tickets · service requests, inspections and repairs`);
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
       {hasAction(user, "maintenance", "create") && (
         <div className="flex justify-end">
           <Button onClick={() => setCreateOpen(true)}>
@@ -166,7 +166,7 @@ export default function MaintenancePage() {
         </div>
       )}
 
-      <Card>
+      <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
           <Select
             value={status}
@@ -192,7 +192,7 @@ export default function MaintenancePage() {
           <p className="mx-4 mt-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{updateError}</p>
         )}
 
-        <DataTable
+        <DataTable fill
           columns={columns}
           data={data?.data ?? []}
           isLoading={isLoading}

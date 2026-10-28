@@ -139,7 +139,7 @@ export default function SupportTicketsPage() {
   usePageSubtitle("Rider issues awaiting a response");
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
       <Tabs value={tab} onValueChange={(v) => { setTab(v as SupportStatus | "all"); setPage(1); }}>
         <TabsList className="flex-wrap">
           {TABS.map((t) => (
@@ -148,12 +148,12 @@ export default function SupportTicketsPage() {
         </TabsList>
       </Tabs>
 
-      <Card>
+      <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
         {actionError && (
           <p className="mx-4 mt-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{actionError}</p>
         )}
         <CardContent className="p-0">
-          <DataTable
+          <DataTable fill
             columns={columns}
             data={data?.data ?? []}
             isLoading={isLoading}

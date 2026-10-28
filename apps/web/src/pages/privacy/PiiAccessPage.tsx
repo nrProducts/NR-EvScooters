@@ -102,8 +102,8 @@ export default function PiiAccessPage() {
   );
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      <Card>
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
+      <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
         <FilterBar
           filters={
             <>
@@ -129,8 +129,9 @@ export default function PiiAccessPage() {
             </>
           }
         />
-        <CardContent className="p-0">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-0">
           <DataTable
+            fill
             data={data?.data ?? []}
             columns={columns}
             isLoading={isLoading}
@@ -140,16 +141,15 @@ export default function PiiAccessPage() {
             emptyDescription="Nobody has opened a rider's personal data under these filters."
           />
         </CardContent>
+        {data && (
+          <Pagination
+            page={data.page}
+            pageSize={data.pageSize}
+            total={data.total}
+            onPageChange={setPage}
+          />
+        )}
       </Card>
-
-      {data && (
-        <Pagination
-          page={data.page}
-          pageSize={data.pageSize}
-          total={data.total}
-          onPageChange={setPage}
-        />
-      )}
     </div>
   );
 }

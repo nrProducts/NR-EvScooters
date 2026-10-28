@@ -397,14 +397,15 @@ export default function UserListPage() {
   );
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    // Fills the shell: the grid scrolls inside its card and the pagination stays pinned below it.
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
       {roleError && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="shrink-0 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {roleError}
         </div>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs
           value={tab}
           onValueChange={(v) => {
@@ -438,13 +439,13 @@ export default function UserListPage() {
         />
       </div>
 
-      <Card>
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {isPendingTab ? (
-          <div className="border-b border-border p-4 text-sm text-muted-foreground">
+          <div className="shrink-0 border-b border-border p-4 text-sm text-muted-foreground">
             Self-registered accounts awaiting review. Approve as staff or rider, or reject to remove the request.
           </div>
         ) : (
-          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
+          <div className="flex shrink-0 flex-col gap-3 border-b border-border p-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
             <Select
               value={kycStatus}
               onValueChange={(v) => {
@@ -539,7 +540,8 @@ export default function UserListPage() {
           emptyTitle={isPendingTab ? "No accounts awaiting approval" : "No users match your filters"}
           sort={sort}
           onSortChange={onSortChange}
-          rowClassName={(u) => (isDueOrOverdue(u) ? "border-l-4 border-l-destructive" : undefined)}
+          fill
+          rowClassName={(u) => (isDueOrOverdue(u) ? "shadow-[inset_4px_0_0_0_hsl(var(--destructive))]" : undefined)}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
