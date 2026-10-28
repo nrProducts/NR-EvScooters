@@ -149,6 +149,7 @@ export default function VehicleListPage() {
             e.stopPropagation();
             setExpandedRowId((cur) => (cur === v.id ? null : v.id));
           }}
+          onDoubleClick={(e) => e.stopPropagation()}
           className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-smooth hover:bg-card-hover hover:text-foreground"
           aria-label={expandedRowId === v.id ? "Collapse plan details" : "Expand plan details"}
         >
@@ -234,8 +235,16 @@ export default function VehicleListPage() {
       key: "actions",
       render: (v) => (
         <DropdownMenu>
-          <RowActionsButton label="Vehicle actions" onClick={(e) => e.stopPropagation()} />
-          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+          <RowActionsButton
+            label="Vehicle actions"
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+          />
+          <DropdownMenuContent
+            align="end"
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
             <DropdownMenuItem onClick={() => navigate(`/vehicles/${v.id}`)}>
               <Eye className="mr-2 h-4 w-4" /> View details
             </DropdownMenuItem>
@@ -333,7 +342,7 @@ export default function VehicleListPage() {
           isLoading={isLoading}
           isError={isError}
           onRetry={() => refetch()}
-          onRowClick={(v) => setHistoryTarget(v.id)}
+          onRowDoubleClick={(v) => setHistoryTarget(v.id)}
           emptyTitle="No vehicles match your filters"
           sort={sort}
           onSortChange={onSortChange}

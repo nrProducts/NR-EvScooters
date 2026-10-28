@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Eye, ShieldCheck, Ban, CheckCircle2, Trash2, UserMinus, KeyRound, UserCheck, Bike, XCircle,
@@ -30,6 +30,7 @@ import {
   useApproveSignup, useRejectSignup,
 } from "@/hooks/useUsers";
 import { useTableSort } from "@/hooks/useTableSort";
+import { useSessionState } from "@/hooks/useSessionState";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
@@ -62,17 +63,20 @@ export default function UserListPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const role = useAuthStore((s) => s.user?.role);
-  const initialTab = ((): UserTab => {
-    const t = searchParams.get("tab");
-    return t === "pending" && role === "admin" ? "pending" : "rider";
-  })();
-  const [search, setSearch] = useState("");
-  const [kycStatus, setKycStatus] = useState<KycStatus | "all">("all");
-  const [activeRental, setActiveRental] = useState(false);
-  const [dueKey, setDueKey] = useState<string | null>(null);
+  // The list's filters, tab, page and sort are kept for the browser session, so
+  // opening a user and coming back leaves the grid as it was.
+  const [search, setSearch] = useSessionState("users.search", "");
+  const [kycStatus, setKycStatus] = useSessionState<KycStatus | "all">("users.kycStatus", "all");
+  const [activeRental, setActiveRental] = useSessionState("users.activeRental", false);
+  const [dueKey, setDueKey] = useSessionState<string | null>("users.dueKey", null);
   const due = DUE_CHOICES.find((c) => c.key === dueKey)?.buckets ?? [];
-  const [tab, setTab] = useState<UserTab>(initialTab);
-  const [page, setPage] = useState(1);
+  const [tab, setTab] = useSessionState<UserTab>("users.tab", "rider");
+  const [page, setPage] = useSessionState("users.page", 1);
+  // A link straight to ?tab=pending (e.g. from a notification) wins over the
+  // remembered tab. Runs once, on arrival: later tab changes are the admin's own.
+  useEffect(() => {
+    if (searchParams.get("tab") === "pending" && role === "admin") setTab("pending");
+  }, []);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
   const [rejectTarget, setRejectTarget] = useState<AppUser | null>(null);
   const isPendingTab = tab === "pending";
@@ -80,7 +84,7 @@ export default function UserListPage() {
   const [reason, setReason] = useState("");
   const [roleError, setRoleError] = useState<string | null>(null);
 
-  const { sort, onSortChange } = useTableSort("created_at", "desc");
+  const { sort, onSortChange } = useTableSort("created_at", "desc", "users.sort");
   const { data, isLoading, isError, refetch } = useUsers({
     search,
     kycStatus: isPendingTab ? "all" : kycStatus,

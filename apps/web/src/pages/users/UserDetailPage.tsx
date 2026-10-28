@@ -14,7 +14,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { useUser } from "@/hooks/useUsers";
 import { useAuthStore } from "@/store/authStore";
 import { hasAction } from "@/lib/permissions";
-import { initials, formatDate, formatCurrency } from "@/lib/utils";
+import { initials, formatDate, formatCurrency, formatPhoneLocal } from "@/lib/utils";
 
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -38,7 +38,7 @@ export default function UserDetailPage() {
     .join(", ");
   const emergency =
     user.emergency_contact_name || user.emergency_contact_phone
-      ? `${user.emergency_contact_name ?? ""} ${user.emergency_contact_phone ?? ""}`.trim()
+      ? `${user.emergency_contact_name ?? ""} ${formatPhoneLocal(user.emergency_contact_phone) ?? ""}`.trim()
       : "Not provided";
   const isRider = user.role === "rider";
 
@@ -83,7 +83,7 @@ export default function UserDetailPage() {
             <CardTitle className="flex items-center gap-2 text-sm"><UserRound className="h-4 w-4" /> Profile</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-x-6 gap-y-3 p-4 pt-1 sm:grid-cols-2">
-            <Detail icon={Phone} label="Phone" value={user.phone ?? "Not provided"} />
+            <Detail icon={Phone} label="Phone" value={formatPhoneLocal(user.phone) ?? "Not provided"} />
             <Detail icon={Mail} label="Email" value={user.email ?? "Not provided"} />
             <Detail icon={MapPin} label="Address" value={address || "Not provided"} />
             <Detail icon={Phone} label="Emergency contact" value={emergency} />
