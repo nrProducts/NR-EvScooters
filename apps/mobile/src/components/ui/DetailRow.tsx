@@ -13,6 +13,8 @@ interface DetailRowProps {
   valueColor?: string;
   /** Small trailing text after the value, e.g. a deadline's clock time. */
   suffix?: string;
+  /** Sets the last N characters of the value apart (bold, green, tinted) — e.g. the tail of a chassis number. */
+  highlightLast?: number;
 }
 
 /**
@@ -20,13 +22,23 @@ interface DetailRowProps {
  * of each other and draw their own top divider, so the parent only needs
  * `rounded-2xl border overflow-hidden`.
  */
-export const DetailRow: React.FC<DetailRowProps> = ({ icon: Icon, label, value, first, valueColor, suffix }) => (
-  <View className="flex-row items-center px-4 py-3.5" style={{ borderTopWidth: first ? 0 : 1, borderColor: COLORS.border }}>
-    <Icon size={15} color={COLORS.textSecondary} />
-    <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-2.5 flex-1">{label}</Text>
-    <Text style={{ color: valueColor ?? COLORS.textPrimary }} className="text-xs font-extrabold">
-      {value}
-      {suffix ? <Text className="text-[10px] font-medium">{` · ${suffix}`}</Text> : null}
-    </Text>
-  </View>
-);
+export const DetailRow: React.FC<DetailRowProps> = ({
+  icon: Icon, label, value, first, valueColor, suffix, highlightLast,
+}) => {
+  const split = highlightLast && value.length > highlightLast ? value.length - highlightLast : null;
+  return (
+    <View className="flex-row items-center px-4 py-3.5" style={{ borderTopWidth: first ? 0 : 1, borderColor: COLORS.border }}>
+      <Icon size={15} color={COLORS.textSecondary} />
+      <Text style={{ color: COLORS.textSecondary }} className="text-xs font-semibold ml-2.5 flex-1">{label}</Text>
+      <Text style={{ color: valueColor ?? COLORS.textPrimary }} className="text-xs font-extrabold">
+        {split === null ? value : value.slice(0, split)}
+        {split !== null ? (
+          <Text style={{ color: COLORS.primaryPressed, backgroundColor: COLORS.primary + '24' }} className="text-sm font-black">
+            {` ${value.slice(split)} `}
+          </Text>
+        ) : null}
+        {suffix ? <Text className="text-[10px] font-medium">{` · ${suffix}`}</Text> : null}
+      </Text>
+    </View>
+  );
+};

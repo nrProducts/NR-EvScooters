@@ -93,6 +93,7 @@ export const hi: Copy = {
     // --- my scooter / rental ----------------------------------------------
     'scooter.title': 'मेरा स्कूटर',
     'scooter.registrationNumber': 'पंजीकरण नंबर',
+    'scooter.chassisNumber': 'चेसिस नंबर',
     'scooter.plan': 'प्लान',
     'scooter.onRentSince': 'किराए पर लिया गया',
     'scooter.sinceValue': '{date} · दिन {day}',

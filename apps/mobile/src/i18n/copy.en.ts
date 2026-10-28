@@ -89,6 +89,7 @@ export const en = {
     // --- my scooter / rental ----------------------------------------------
     'scooter.title': 'My Scooter',
     'scooter.registrationNumber': 'Registration Number',
+    'scooter.chassisNumber': 'Chassis Number',
     'scooter.plan': 'Plan',
     'scooter.onRentSince': 'On rent since',
     // "05 Sep 2026 · Day 12". The date comes from the device's regional

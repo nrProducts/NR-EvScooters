@@ -112,6 +112,12 @@ export default function MyScooterScreen() {
   }, [loadFeatured]);
   const imageUrl = featured?.image_url ?? null;
 
+  // The chassis number (the vehicle's VIN) rides on the profile's assigned vehicle, not on the
+  // rental or booking payload. Only trusted when it is the same vehicle the screen is showing.
+  const assignedVehicle = useAuthStore((s) => s.profile?.assigned_vehicle ?? null);
+  const chassisFor = (vehicleId: string | undefined): string | null =>
+    vehicleId && assignedVehicle?.id === vehicleId && assignedVehicle.vin ? assignedVehicle.vin : null;
+
   // Riders can't back out mid-period — only once their current committed
   // week is up (bookings.next_due_at). The server re-enforces this
   // regardless; disabling here just avoids letting a rider into the return
@@ -221,11 +227,20 @@ export default function MyScooterScreen() {
                   shadowColor: COLORS.black, shadowOpacity: 0.04, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 1,
                 }}
               >
+                {chassisFor(state.rental.vehicle.id) ? (
+                  <DetailRow
+                    icon={Hash}
+                    label={t('scooter.chassisNumber')}
+                    value={chassisFor(state.rental.vehicle.id)!}
+                    highlightLast={5}
+                    first
+                  />
+                ) : null}
                 <DetailRow
                   icon={Calendar}
                   label={t('scooter.onRentSince')}
                   value={formatDate(state.rental.started_at)}
-                  first
+                  first={!chassisFor(state.rental.vehicle.id)}
                 />
                 {state.rental.station ? (
                   <DetailRow icon={MapPin} label={t('scooter.pickedUpAt')} value={state.rental.station.name} />
@@ -346,6 +361,14 @@ export default function MyScooterScreen() {
                       label={t('scooter.registrationNumber')}
                       value={state.booking.vehicle.registration_number}
                       first
+                    />
+                  ) : null}
+                  {chassisFor(state.booking.vehicle?.id) ? (
+                    <DetailRow
+                      icon={Hash}
+                      label={t('scooter.chassisNumber')}
+                      value={chassisFor(state.booking.vehicle?.id)!}
+                      highlightLast={5}
                     />
                   ) : null}
                   {state.booking.plan ? (

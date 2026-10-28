@@ -89,6 +89,7 @@ export const ta: Copy = {
     // --- my scooter / rental ----------------------------------------------
     'scooter.title': 'என் ஸ்கூட்டர்',
     'scooter.registrationNumber': 'பதிவு எண்',
+    'scooter.chassisNumber': 'சேசிஸ் எண்',
     'scooter.plan': 'திட்டம்',
     'scooter.onRentSince': 'வாடகை தொடங்கியது',
     'scooter.sinceValue': '{date} · நாள் {day}',
