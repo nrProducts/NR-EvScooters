@@ -1289,7 +1289,6 @@ export const en = {
     'booking.unavailable': 'Unavailable',
     'booking.available': 'Available',
     'booking.startsNow.title': 'Your plan starts when you pick up your scooter',
-    'booking.startsNow.body': 'Collect your scooter today between 8 AM and 8 PM.',
     'booking.choosePlan': 'Choose a plan',
     'booking.noPlansHint': 'No plans are on sale for this scooter yet.',
     'booking.minutesIncluded': '{minutes} minutes included',

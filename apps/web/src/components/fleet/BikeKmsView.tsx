@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Bike, CalendarDays, CalendarRange, Route } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
@@ -147,27 +148,41 @@ export function BikeKmsView() {
 
   return (
     <div className="space-y-4">
-      <FleetAllowanceCard variant="page" />
-
-      <TrackingStatusPanel />
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* Four headline numbers, each with its own icon. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          { label: "Fleet today", value: km(totals.today) },
-          { label: "Fleet · 7 days", value: km(totals.d7) },
-          { label: "Fleet · 30 days", value: km(totals.d30) },
-          { label: "Bikes moved today", value: `${totals.moved} of ${totals.bikes}` },
-        ].map((t) => (
-          <Card key={t.label} className="p-3.5">
-            <p className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground">{t.label}</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums">{isLoading ? "—" : t.value}</p>
+          { label: "Fleet today", value: km(totals.today), icon: Route },
+          { label: "Last 7 days", value: km(totals.d7), icon: CalendarRange },
+          { label: "Last 30 days", value: km(totals.d30), icon: CalendarDays },
+          { label: "Bikes moved today", value: `${totals.moved} of ${totals.bikes}`, icon: Bike, bar: totals.bikes > 0 ? (totals.moved / totals.bikes) * 100 : 0 },
+        ].map((tile) => (
+          <Card key={tile.label} className="flex items-center gap-3 p-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <tile.icon className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-muted-foreground">{tile.label}</p>
+              <p className="truncate text-xl font-bold tabular-nums">{isLoading ? "—" : tile.value}</p>
+              {"bar" in tile ? (
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${tile.bar}%` }} />
+                </div>
+              ) : null}
+            </div>
           </Card>
         ))}
       </div>
 
+      {/* This month's allowance (wide) beside how fresh the data is (narrow). */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <FleetAllowanceCard variant="panel" className="lg:col-span-2" />
+        <TrackingStatusPanel variant="stacked" />
+      </div>
+
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <h3 className="text-sm font-semibold">Distance by bike <span className="font-normal text-muted-foreground">· {allRows.length}</span></h3>
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rank by</span>
             <div className="inline-flex rounded-lg bg-secondary p-1">
               {RANGES.map((r) => (

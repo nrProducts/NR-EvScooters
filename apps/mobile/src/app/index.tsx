@@ -80,16 +80,25 @@ export default function LoginScreen() {
           style={{ backgroundColor: COLORS.primary, borderBottomLeftRadius: 40, borderBottomRightRadius: 40, overflow: 'hidden' }}
         >
           <GradientFill />
-          <Image
-            source={require('../../assets/images/logo-icon.png')}
-            accessibilityLabel="Swapngo"
-            // Explicit style, not className — sizing an <Image> via NativeWind
-            // className doesn't reliably constrain it on web (the static export
-            // renders it at the asset's intrinsic pixel size instead).
-            style={{ height: 88, width: 88, marginBottom: 14 }}
-            resizeMode="contain"
-          />
-          <Text className="text-2xl font-extrabold text-white">Swapngo</Text>
+          {/* The icon is green itself, so it sits on a white tile: green on the green band disappeared. */}
+          <View
+            style={{
+              height: 104, width: 104, marginBottom: 16, borderRadius: 30, backgroundColor: '#FFFFFF',
+              alignItems: 'center', justifyContent: 'center',
+              shadowColor: '#0B4D26', shadowOpacity: 0.25, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 8,
+            }}
+          >
+            <Image
+              source={require('../../assets/images/logo-icon.png')}
+              accessibilityLabel="Swapngo"
+              // Explicit style, not className — sizing an <Image> via NativeWind
+              // className doesn't reliably constrain it on web (the static export
+              // renders it at the asset's intrinsic pixel size instead).
+              style={{ height: 84, width: 84 }}
+              resizeMode="contain"
+            />
+          </View>
+          <Text className="text-2xl font-bold text-white">Swapngo</Text>
           <Text style={{ color: 'rgba(255,255,255,0.9)' }} className="text-sm font-medium mt-1.5 text-center px-4">
             {t('auth.tagline')}
           </Text>

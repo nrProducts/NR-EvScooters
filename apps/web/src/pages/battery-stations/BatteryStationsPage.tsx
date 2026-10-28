@@ -89,16 +89,15 @@ export default function BatteryStationsPage() {
     <div className="space-y-4 animate-fade-in">
       <StationSummaryCards summary={summary.data} isLoading={summary.isLoading} />
 
-      {canCreate && (
-        <div className="flex justify-end">
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add station
-          </Button>
-        </div>
-      )}
-
       <Card>
         <FilterBar
+          trailing={
+            canCreate ? (
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Add station
+              </Button>
+            ) : undefined
+          }
           search={
             <SearchBar
               value={search}

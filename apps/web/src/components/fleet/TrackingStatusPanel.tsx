@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Clock, RefreshCw } from "lucide-react";
+import { Clock, Gauge, Radio, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/common/Spinner";
 import { useRefreshTracking, useTrackingStatus } from "@/hooks/useTelematics";
 import { toastError, toastSuccess } from "@/lib/toastHelpers";
 import { useAuthStore } from "@/store/authStore";
-import { formatFullDateTime, timeAgo } from "@/lib/utils";
+import { cn, formatFullDateTime, timeAgo } from "@/lib/utils";
 import type { TrackingFeedStatus } from "@/services/api/telematics";
 
 type Kind = "live" | "distance";
@@ -36,7 +36,7 @@ const hhmm = (d: Date) => d.toLocaleTimeString("en-IN", { hour: "2-digit", minut
  * minute — so after pressing, the panel polls quickly until "last updated"
  * moves, then reloads the screen's data.
  */
-export function TrackingStatusPanel() {
+export function TrackingStatusPanel({ variant = "full" }: { variant?: "full" | "compact" | "stacked" } = {}) {
   const isAdmin = useAuthStore((s) => s.user?.role === "admin");
   const qc = useQueryClient();
   const [watching, setWatching] = useState<{ kind: Kind; baseline: string | null; until: number } | null>(null);
@@ -120,6 +120,52 @@ export function TrackingStatusPanel() {
       </div>
     );
   };
+
+  // The slim version (Live Map): the same two feeds and the same Refresh buttons, one short row each,
+  // side by side. The full version below is still what Bike KMs shows.
+  if (variant === "compact" || variant === "stacked") {
+    const item = (kind: Kind, title: string, every: string, feed: TrackingFeedStatus | undefined, Icon: typeof Radio, extra?: string) => {
+      const busy = watching?.kind === kind || (refresh.isPending && refresh.variables === kind);
+      const blockedReason = feed && !feed.can_refresh ? feed.reason : null;
+      return (
+        <div className="flex items-center gap-3 px-4 py-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="h-4 w-4" /></span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{title} <span className="font-normal text-muted-foreground">· {every}</span></p>
+            <p className="truncate text-xs text-muted-foreground">
+              {feed?.last_updated_at ? `Updated ${timeAgo(feed.last_updated_at)}` : status.isLoading ? "…" : "No data stored yet"}
+              {extra ? ` · ${extra}` : ""}
+            </p>
+          </div>
+          {isAdmin ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              disabled={!feed || !feed.can_refresh || busy}
+              title={blockedReason ?? "Refresh now"}
+              onClick={() => press(kind)}
+            >
+              {busy ? <Spinner className="h-3.5 w-3.5" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              {busy ? "Refreshing…" : "Refresh"}
+            </Button>
+          ) : null}
+        </div>
+      );
+    };
+    return (
+      <Card className={cn("overflow-hidden", variant === "stacked" ? "flex flex-col" : "grid sm:grid-cols-2 sm:divide-x sm:divide-border")}>
+        {variant === "stacked" ? (
+          <div className="border-b border-border px-4 py-3">
+            <p className="text-sm font-semibold">Tracking data refresh</p>
+            <p className="text-xs text-muted-foreground">From the bikes&apos; trackers via Intellicar</p>
+          </div>
+        ) : null}
+        {item("live", "Live data", "every 5 min", s?.live, Radio)}
+        {item("distance", "Daily kilometres", "every 2 h", s?.distance, Gauge, s ? `${s.distance.manual_runs_today} of ${s.distance.manual_cap} manual refreshes today` : undefined)}
+      </Card>
+    );
+  }
 
   return (
     <Card className="overflow-hidden">

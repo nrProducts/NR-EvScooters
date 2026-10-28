@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import logoIcon from "@/assets/logo-icon.png";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { PageFade } from "@/components/motion/PageFade";
 import { useUiStore } from "@/store/uiStore";
@@ -10,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * The admin shell: a soft grey canvas, the full labelled sidebar as a tall white
- * panel on the left (it collapses to icons with the button at its foot), and the
+ * panel on the left (the logo above it sits on the grey, not on the white) (it collapses to icons with the button at its foot), and the
  * page header plus the page's own white cards to its right. Phones get the same
  * sidebar in a slide-over sheet, opened from the header.
  */
@@ -27,12 +28,13 @@ export function DashboardLayout() {
       {/* Desktop / tablet sidebar — a floating panel, not a flush edge-to-edge bar */}
       <aside
         className={cn(
-          "hidden shrink-0 overflow-hidden rounded-[1.75rem] bg-sidebar shadow-card transition-all duration-200 md:block",
+          "hidden shrink-0 transition-all duration-200 md:block",
           sidebarCollapsed ? "w-[4.5rem]" : "w-64",
         )}
       >
         <Sidebar
           user={user}
+          split
           collapsed={sidebarCollapsed}
           onToggleCollapsed={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
@@ -53,9 +55,16 @@ export function DashboardLayout() {
               <Outlet />
             </PageFade>
           </div>
-          <footer className="flex flex-wrap items-center justify-between gap-1 px-1 pb-1 pt-6 text-[0.6875rem] text-muted-foreground">
-            <span>© {new Date().getFullYear()} Swapngo. All rights reserved.</span>
-            <span>EV Fleet Admin · v1.0.0</span>
+          <footer className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl bg-card px-4 py-3 shadow-card">
+            <div className="flex items-center gap-2.5">
+              <img src={logoIcon} alt="" className="h-7 w-7 rounded-lg" />
+              <span className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">Swapngo</span> · © {new Date().getFullYear()} All rights reserved.
+              </span>
+            </div>
+            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[0.6875rem] font-semibold text-primary">
+              EV Fleet Admin · v1.0.0
+            </span>
           </footer>
         </main>
       </div>

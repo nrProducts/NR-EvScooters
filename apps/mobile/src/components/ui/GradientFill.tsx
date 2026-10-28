@@ -19,7 +19,10 @@ export const GRADIENT_GREEN = { from: '#3CCB73', to: '#17924A' } as const;
 
 export const GradientFill: React.FC = () => (
   <Svg
-    style={StyleSheet.absoluteFill}
+    // zIndex -1: on the web build a positioned element paints over un-positioned siblings whatever
+    // the order, and an SVG icon (lucide) is not positioned — so the gradient covered the active
+    // tab's icon and the arrow on buttons. Behind its parent's stacking context it can't.
+    style={[StyleSheet.absoluteFill, { zIndex: -1 }]}
     width="100%"
     height="100%"
     preserveAspectRatio="none"

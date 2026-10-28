@@ -130,11 +130,14 @@ function AccountCard({ collapsed }: { collapsed?: boolean }) {
 export function Sidebar({
   user,
   collapsed,
+  split,
   onToggleCollapsed,
   onNavigate,
 }: {
   user: Pick<StaffUser, "role" | "permissions">;
   collapsed?: boolean;
+  /** Desktop: the logo floats on the page background and only the navigation sits in the white panel. */
+  split?: boolean;
   onToggleCollapsed?: () => void;
   onNavigate?: () => void;
 }) {
@@ -210,17 +213,32 @@ export function Sidebar({
     setManualOpenGroup(opened);
   }
 
-  return (
-    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className={cn("flex h-[4.5rem] shrink-0 items-center justify-center px-4", collapsed && "px-2")}>
-        {collapsed ? (
-          <img src={logoIcon} alt="Swapngo" className="h-9 w-9 shrink-0" />
-        ) : (
-          <img src={logoWordmarkGreen} alt="Swapngo" className="h-7 w-auto" />
-        )}
-      </div>
+  const logo = (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-center px-4",
+        // On desktop the logo is its own white card, separate from the navigation panel below it.
+        split ? "h-[3.75rem] rounded-[1.75rem] bg-sidebar shadow-card" : "h-[4.5rem]",
+        collapsed && "px-2",
+      )}
+    >
+      {collapsed ? (
+        <img src={logoIcon} alt="Swapngo" className="h-9 w-9 shrink-0" />
+      ) : (
+        <img src={logoWordmarkGreen} alt="Swapngo" className="h-7 w-auto" />
+      )}
+    </div>
+  );
 
-      <nav className="flex-1 space-y-1 overflow-y-auto scrollbar-nav px-3 pb-3">
+  return (
+    <div className={cn("flex h-full flex-col text-sidebar-foreground", split ? "gap-2" : "bg-sidebar")}>
+      {split ? logo : null}
+      {/* The panel: the whole sidebar on a phone; on desktop just the navigation, below the logo's own card. */}
+      <div className={cn("flex min-h-0 flex-1 flex-col", split && "overflow-hidden rounded-[1.75rem] bg-sidebar shadow-card")}>
+      {split ? null : logo}
+
+      {/* In the split layout the panel starts at its first entry (the logo is a separate card), so it needs its own breathing room at the top. */}
+      <nav className={cn("flex-1 space-y-1 overflow-y-auto scrollbar-nav px-3 pb-3", split && "pt-4")}>
         {collapsed ? (
           // Icon rail — group labels have nowhere to go at this width, so
           // every item (grouped or not) renders flat, same as before groups existed.
@@ -286,6 +304,7 @@ export function Sidebar({
             {!collapsed && "Collapse"}
           </button>
         )}
+      </div>
       </div>
     </div>
   );

@@ -736,7 +736,6 @@ export const hi: Copy = {
     'booking.unavailable': 'उपलब्ध नहीं',
     'booking.available': 'उपलब्ध',
     'booking.startsNow.title': 'स्कूटर लेते ही आपका प्लान शुरू हो जाता है',
-    'booking.startsNow.body': 'आज सुबह 8 बजे से रात 8 बजे के बीच अपना स्कूटर ले लें।',
     'booking.choosePlan': 'एक प्लान चुनें',
     'booking.noPlansHint': 'इस स्कूटर के लिए अभी कोई प्लान उपलब्ध नहीं है।',
     'booking.minutesIncluded': '{minutes} मिनट शामिल हैं',

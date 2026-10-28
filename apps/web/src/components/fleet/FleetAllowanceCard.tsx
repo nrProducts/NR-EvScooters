@@ -22,7 +22,7 @@ export function FleetAllowanceCard({
   variant = "dashboard", className,
 }: {
   /** "gauge" is the dashboard's half-circle card; "compact" the slim tile; "dashboard" and "page" the full card. */
-  variant?: "dashboard" | "page" | "compact" | "gauge";
+  variant?: "dashboard" | "page" | "compact" | "gauge" | "panel";
   className?: string;
 }) {
   const { data, isLoading, isError } = useFleetAllowance();
@@ -47,6 +47,117 @@ export function FleetAllowanceCard({
       : overBy > 0 ? `On pace to exceed the limit by ${km(overBy)}`
         : t.period_status === "running" ? `On pace for ${km(t.projected_km)} (${t.projected_percent.toLocaleString("en-IN", { maximumFractionDigits: 0 })}%)`
           : null;
+
+  // The Bike KMs page's wide card: the gauge, four facts as tiles and a pace bar, so the month reads at a glance.
+  if (variant === "panel") {
+    const arc = tone === "bad" ? "hsl(var(--destructive))" : tone === "warn" ? "hsl(var(--warning))" : "url(#kmPanelGreen)";
+    const remaining = t ? Math.max(0, t.fleet_limit_km - t.used_km) : 0;
+    const facts: { label: string; value: string; hint?: string; bad?: boolean }[] = t && s
+      ? [
+        { label: "Bikes", value: String(t.vehicle_count) },
+        { label: "Limit per bike", value: km(s.km_per_vehicle) },
+        { label: "Remaining", value: km(remaining) },
+        {
+          label: "On pace for", value: km(t.projected_km), bad: overBy > 0,
+          hint: `${t.projected_percent.toLocaleString("en-IN", { maximumFractionDigits: 0 })}% of the limit`,
+        },
+      ]
+      : [];
+    return (
+      <Card className={cn("flex flex-col p-5", className)}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="flex items-center gap-2 text-base font-semibold">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><Gauge className="h-4 w-4" /></span>
+              Fleet kilometre allowance
+            </h3>
+            {s ? <p className="mt-1 text-xs text-muted-foreground">{periodLabel} · {periodNote}</p> : null}
+          </div>
+          {isAdmin && data ? (
+            <Button variant="outline" size="sm" className="shrink-0" onClick={() => setEditOpen(true)}>
+              <Settings2 className="h-3.5 w-3.5" /> Edit limit &amp; month
+            </Button>
+          ) : null}
+        </div>
+
+        {isLoading ? (
+          <Skeleton className="mt-4 h-40 w-full" />
+        ) : isError || !t || !s ? (
+          <p className="mt-4 text-sm text-muted-foreground">Not set up yet — needs the allowance database update.</p>
+        ) : (
+          <>
+            <div className="mt-4 grid gap-6 sm:grid-cols-[auto_1fr] sm:items-center">
+              <svg viewBox="0 0 200 112" className="mx-auto w-48" role="img" aria-label={`${Math.round(percent)} percent of the fleet limit used`}>
+                <defs>
+                  <linearGradient id="kmPanelGreen" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#3CCB73" />
+                    <stop offset="100%" stopColor="#17924A" />
+                  </linearGradient>
+                </defs>
+                <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="hsl(var(--primary) / 0.14)" strokeWidth="18" strokeLinecap="round" />
+                <path
+                  d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke={arc} strokeWidth="18" strokeLinecap="round"
+                  pathLength={100} strokeDasharray={`${Math.min(100, percent)} 100`}
+                />
+                <text x="100" y="92" textAnchor="middle" fontSize="30" fontWeight="700" className="fill-foreground tabular-nums">
+                  {percent.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%
+                </text>
+                <text x="100" y="108" textAnchor="middle" fontSize="10" className="fill-muted-foreground">used</text>
+              </svg>
+
+              <div className="min-w-0 space-y-4">
+                <div className="grid grid-cols-2 gap-2.5">
+                  {facts.map((f2) => (
+                    <div key={f2.label} className="rounded-xl bg-muted/60 px-3 py-2.5">
+                      <p className="text-[0.6875rem] text-muted-foreground">{f2.label}</p>
+                      <p className={cn("mt-0.5 text-base font-semibold tabular-nums", f2.bad && "text-destructive")}>{f2.value}</p>
+                      {f2.hint ? <p className="text-[0.6875rem] text-muted-foreground">{f2.hint}</p> : null}
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  <div className="mb-1.5 flex items-baseline justify-between text-xs">
+                    <span className="font-semibold tabular-nums">{km(t.used_km)} <span className="font-normal text-muted-foreground">used</span></span>
+                    <span className="tabular-nums text-muted-foreground">of {km(t.fleet_limit_km)}</span>
+                  </div>
+                  <div className="relative">
+                    <div className="h-2.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${Math.round(percent)} percent of the fleet limit used`}>
+                      <div
+                        className={cn("h-full rounded-full transition-all", tone === "bad" ? "bg-destructive" : tone === "warn" ? "bg-warning" : "bg-primary")}
+                        style={{ width: `${Math.min(100, percent)}%` }}
+                      />
+                    </div>
+                    {paceMarker !== null ? (
+                      <span
+                        className="absolute -top-1 h-4.5 w-0.5 rounded bg-foreground/60"
+                        style={{ left: `${paceMarker}%`, height: "1.125rem" }}
+                        title={`Even pace for today: ${kmShort((t.fleet_limit_km * t.days_elapsed) / t.days_total)} km`}
+                      />
+                    ) : null}
+                  </div>
+                  <p className="mt-1.5 text-[0.6875rem] text-muted-foreground">The marker is where an even pace would be today.</p>
+                </div>
+              </div>
+            </div>
+
+            {note ? (
+              <p
+                className={cn(
+                  "mt-4 rounded-xl px-3 py-2 text-xs",
+                  overBy > 0 ? "bg-destructive/10 text-destructive" : t.awaiting_start > 0 ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground",
+                )}
+              >
+                {note}
+              </p>
+            ) : null}
+          </>
+        )}
+
+        {isAdmin ? <FleetAllowanceDialog open={editOpen} onOpenChange={setEditOpen} summary={data} /> : null}
+      </Card>
+    );
+  }
 
   // The dashboard's half-circle gauge: the share of the fleet limit used, with the
   // figures beneath. Same data and the same tone rules as the bar versions.

@@ -206,7 +206,8 @@
  * Mirrored in the mobile app (components/ui/GradientFill) — keep the two stops in sync.
  */
 .bg-primary,
-.data-\[state\=checked\]\:bg-primary[data-state="checked"] {
+.data-\[state\=checked\]\:bg-primary[data-state="checked"],
+.data-\[state\=active\]\:bg-primary[data-state="active"] {
   background-image: linear-gradient(135deg, #3ccb73 0%, #17924a 100%);
 }
 /* A button's hover used to darken its flat colour; the gradient sits on top of that, so darken the gradient too. */

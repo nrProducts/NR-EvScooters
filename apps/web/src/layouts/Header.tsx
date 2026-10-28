@@ -41,7 +41,8 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
 
   const isDashboard = location.pathname === "/dashboard";
   const firstName = user?.name?.trim().split(/\s+/)[0];
-  const title = isDashboard && firstName ? `Hello, ${firstName}!` : pageTitle;
+  const pageGivenTitle = usePageHeaderStore((s) => s.title);
+  const title = pageGivenTitle ?? (isDashboard && firstName ? `Hello, ${firstName}!` : pageTitle);
 
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -58,7 +59,9 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
 
   return (
     <header className="z-30 flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 px-1 pb-4 pt-1 sm:px-2">
-      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+      {/* flex-1 with a 16rem basis: the title block takes the room the controls leave and cuts a long
+          subtitle short; the controls only drop to a second line once less than 16rem is left. */}
+      <div className="flex min-w-0 flex-1 basis-64 items-center gap-3 sm:gap-4">
         <IconButton
           variant="ghost"
           label="Open navigation menu"
@@ -95,7 +98,7 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <GlobalSearch />
         {user?.role && (
           <div className="hidden h-9 items-center gap-1.5 rounded-full bg-card px-3 shadow-card xl:flex">
