@@ -838,6 +838,8 @@ export interface Invoice {
   issued_on: string | null;
   /** Was `due_date`. A date — an IST calendar day. */
   due_on: string | null;
+  /** The plan's cycle time (`HH:MM:SS`, IST) — the clock time `due_on` falls at. Null on older rows. */
+  cycle_time: string | null;
   subtotal_amount: number;
   /** Was `amount_due`. */
   total_amount: number;

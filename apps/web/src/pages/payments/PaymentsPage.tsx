@@ -20,7 +20,7 @@ import { useInvoices, useInvoice, useRefundInvoice, useRecordInvoicePayment } fr
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatCycleTime, formatDate, formatFullDateTime, formatTime } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { useAuthStore } from "@/store/authStore";
@@ -118,10 +118,33 @@ export default function PaymentsPage() {
       header: "Due",
       key: "due_on",
       sortKey: "due_on",
-      render: (inv) => (inv.due_on ? formatDate(inv.due_on) : "—"),
+      render: (inv) => {
+        if (!inv.due_on) return "—";
+        // A period invoice falls due at its plan's cycle time. An ad-hoc charge
+        // or a settlement has no cycle: its due date is just the day it was
+        // raised, so there is no honest time to print beside it.
+        const hasCycle = inv.purpose === "initial" || inv.purpose === "subscription_period";
+        return (
+          <span>
+            {formatDate(inv.due_on)}
+            {hasCycle ? <span className="block text-xs text-muted-foreground">{formatCycleTime(inv.cycle_time)}</span> : null}
+          </span>
+        );
+      },
       hideOnMobile: true,
     },
-    { header: "Created", key: "created_at", sortKey: "created_at", render: (inv) => formatDate(inv.created_at), hideOnMobile: true },
+    {
+      header: "Created",
+      key: "created_at",
+      sortKey: "created_at",
+      render: (inv) => (
+        <span>
+          {formatDate(inv.created_at)}
+          <span className="block text-xs text-muted-foreground">{formatTime(inv.created_at)}</span>
+        </span>
+      ),
+      hideOnMobile: true,
+    },
     {
       header: "Actions",
       key: "actions",
@@ -340,8 +363,20 @@ function InvoiceDetailDialog({
             <Row label="Outstanding" value={formatCurrency(invoice.balance_amount)} />
             <Row label="Payment Type" value={paymentMethodLabel(invoice.payment_method)} />
             <Row label="Gateway reference" value={invoice.gateway_ref ?? "—"} />
-            <Row label="Due date" value={invoice.due_on ? formatDate(invoice.due_on) : "—"} />
-            <Row label="Paid at" value={invoice.paid_at ? formatDate(invoice.paid_at) : "—"} />
+            <Row
+              label="Due date"
+              value={
+                invoice.due_on
+                  ? `${formatDate(invoice.due_on)}${
+                    invoice.purpose === "initial" || invoice.purpose === "subscription_period"
+                      ? `, ${formatCycleTime(invoice.cycle_time)}`
+                      : ""
+                  }`
+                  : "—"
+              }
+            />
+            <Row label="Created" value={formatFullDateTime(invoice.created_at)} />
+            <Row label="Paid at" value={invoice.paid_at ? formatFullDateTime(invoice.paid_at) : "—"} />
             <Row label="Plan" value={invoice.plan?.name ?? "—"} />
             <Row
               label="Vehicle"

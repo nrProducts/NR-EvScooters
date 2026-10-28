@@ -2,17 +2,14 @@ import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { ArrowRight, Hash, LifeBuoy, RefreshCw } from 'lucide-react-native';
+import { ArrowRight, Clock, Hash, RefreshCw } from 'lucide-react-native';
 import { Badge } from './ui/Badge';
 import { SCOOTER_HERO } from '../lib/scooterImage';
 import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
 import { COLORS } from '../constants/theme';
-import { RENTAL_STATUS_LABEL_KEY, RENTAL_STATUS_TONE, formatDate } from '../constants/status';
 import { getRenewalEligibility } from '../lib/returnPolicy';
-import { CycleTime } from './ui/CycleTime';
 import { isReturnLocked } from '../lib/returnLock';
-import { useReturnLock } from './ReturnLockSheet';
-import { describeExpiry, rentalDayNumber } from '../lib/rentalTiming';
+import { describeExpiry } from '../lib/rentalTiming';
 import type { ApiRental } from '../types/api';
 import { useT } from '../i18n';
 
@@ -24,26 +21,28 @@ interface ActiveRentalCardProps {
 }
 
 /**
- * Home's "My Plan" card once the rider's pickup is confirmed — the plan they
- * are on, how far through it they are, and the scooter assigned to them. Takes
- * FeaturedScooterCard's slot; showing a scooter they can't book there is worse
- * than useless.
+ * Home's scooter card once the rider's pickup is confirmed: the scooter
+ * assigned to them and ONE line about where their plan stands.
  *
- * Deliberately NOT the whole of /my-scooter — battery and pickup station stay
- * there. Return / renewal messaging lives in ScooterStatusCard directly above.
+ * Deliberately NOT a plan summary. The plan's name, price and dates live on
+ * Billing, and the vehicle's own details on My Scooter — they used to be
+ * repeated here as well, so the same period showed up on all three screens.
+ * This card answers "which scooter, and is my plan fine?" and links on to
+ * Billing for the rest. Return / renewal messaging lives in ScooterStatusCard
+ * directly above.
  *
  * The primary action here is RENEW, never return. Handing a rider whose plan
  * has just lapsed a full-width green "Return Scooter" button makes ending the
  * rental the path of least resistance at the exact moment the business wants
  * them to continue it — and it is the wrong shape for the state too, since an
  * overdue rider cannot return without first paying the late fee anyway.
- * Returning is a deliberate act and lives on the My Scooter tab, where it has
- * always also been, as a secondary tinted button beneath Renew.
+ * Returning is a deliberate act and lives on the My Scooter tab. Support is the
+ * Need help card at the foot of Home.
  */
 export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRenew }) => {
   const router = useRouter();
   const { t } = useT();
-  const { vehicle, plan } = rental;
+  const { vehicle } = rental;
 
   // The rental payload carries no photo of its own (ApiRental.vehicle has no
   // image_url) — same workaround my-scooter.tsx already uses: the catalog's
@@ -56,32 +55,26 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
   }, [loadFeatured]);
   const heroImage = featured?.image_url ?? SCOOTER_HERO;
 
-  const periodStart = rental.current_period_start ?? rental.started_at;
   const dueDate = rental.next_due_at ?? rental.expires_at;
   const expiry = describeExpiry(dueDate);
-  const daysLeft = expiry ? Math.max(0, expiry.daysLeft) : null;
-  const totalDays =
-    rental.plan_duration_days ??
-    (daysLeft != null ? rentalDayNumber(periodStart) + daysLeft : null);
-  // The day number shown here used to be re-derived from totalDays - daysLeft
-  // — a second formula for the same fact rentalDayNumber(periodStart) already
-  // computes (and which the header badge and My Scooter both use directly).
-  // The two formulas agree only on day 1; every day after that this one came
-  // out a day short (e.g. showing "Day 2" on what was actually Day 3
-  // everywhere else), because daysLeft counts the days FROM now TO the due
-  // date exclusive of today, not inclusive of it the way totalDays does.
-  const dayNumber = totalDays != null ? Math.max(1, Math.min(totalDays, rentalDayNumber(periodStart))) : null;
-  const progress =
-    totalDays && dayNumber != null ? Math.max(0.04, Math.min(1, dayNumber / totalDays)) : null;
 
   const returnRequested = isReturnLocked(rental);
-  const lock = useReturnLock(returnRequested);
   // Same gate the My Scooter tab and Billing use — offered from the plan's
   // last day onward, and never while a paid renewal is already queued.
   const renewal = getRenewalEligibility(
     rental.plan_status, rental.next_due_at, rental.renewal_status, undefined, rental.cycle_time,
   );
-  const isActive = rental.status === 'active';
+  const showRenew = !returnRequested && renewal.canRenew;
+
+  // Late renewals read in the soft overdue red everywhere (Billing, the banner
+  // above); otherwise the expiry's own tone decides.
+  const statusColor = renewal.isLate
+    ? COLORS.overdue
+    : !expiry || expiry.tone === 'neutral'
+      ? COLORS.textSecondary
+      : expiry.tone === 'danger'
+        ? COLORS.overdue
+        : COLORS.warning;
 
   return (
     <View
@@ -96,117 +89,79 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
         elevation: 3,
       }}
     >
-      <View className="p-5">
-        {/* --- My Plan ------------------------------------------------------ */}
-        <View className="flex-row items-center justify-between mb-3">
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-extrabold">{t('rental.myPlan')}</Text>
-          <Badge
-            label={isActive ? t('rental.activePlan') : t(RENTAL_STATUS_LABEL_KEY[rental.status])}
-            tone={isActive ? 'primary' : RENTAL_STATUS_TONE[rental.status]}
-          />
-        </View>
+      <View
+        className="items-center justify-center"
+        style={{ height: 150, backgroundColor: COLORS.gray[100] }}
+      >
+        <Image
+          source={heroImage}
+          accessibilityLabel={vehicle?.name ?? t('home.yourScooter')}
+          contentFit="contain"
+          style={{ width: '70%', height: 132 }}
+        />
+      </View>
 
-        <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black">
-          {plan?.name ?? t('rental.yourPlan')}
-        </Text>
-        <Text style={{ color: COLORS.primaryPressed }} className="text-xs font-bold mt-0.5">
-          {t('rental.unlimitedKms')}
-        </Text>
-
-        {dueDate ? (
-          <Text
-            style={{ color: renewal.isLate ? COLORS.overdue : COLORS.textSecondary }}
-            className="text-xs font-bold mt-2"
-          >
-            {formatDate(periodStart)}
-            <CycleTime cycleTime={rental.cycle_time} />
-            {'  —  '}
-            {formatDate(dueDate)}
-            <CycleTime cycleTime={rental.cycle_time} />
+      {/* minWidth: 0 is the load-bearing part on web: react-native-web maps
+          flex-1 to real CSS flexbox, whose items default to min-width:auto
+          (shrink-to-content, not below it) — the badge beside it never
+          budges, so a long name/reg-number pushed the row wider than the card
+          and it clipped. Native's Yoga engine has no such default, which is
+          why this only ever broke on the web build. */}
+      <View className="flex-row items-center justify-between px-5 pt-4 pb-3.5">
+        <View className="flex-1 mr-3" style={{ minWidth: 0 }}>
+          <Text style={{ color: COLORS.textPrimary }} className="text-lg font-extrabold" numberOfLines={1}>
+            {vehicle?.name ?? t('home.yourScooter')}
           </Text>
-        ) : null}
-
-        {progress != null && daysLeft != null ? (
-          <View className="mt-3">
-            <View className="flex-row items-center justify-between mb-1.5">
-              <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-semibold">
-                {daysLeft === 0
-                  ? t('rental.lastDay')
-                  : daysLeft === 1
-                    ? t('rental.daysRemaining.one')
-                    : t('rental.daysRemaining.other', { count: daysLeft })}
+          {vehicle ? (
+            <View className="flex-row items-center mt-1">
+              <Hash size={12} color={COLORS.textSecondary} />
+              <Text
+                style={{ color: COLORS.textSecondary }}
+                className="text-xs font-semibold ml-1"
+                numberOfLines={1}
+              >
+                {vehicle.registration_number}
               </Text>
-              {totalDays && dayNumber != null ? (
-                <Text style={{ color: COLORS.textSecondary }} className="text-[11px] font-medium">
-                  {t('rental.dayOf', { day: dayNumber, total: totalDays })}
-                </Text>
-              ) : null}
             </View>
-            <View className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.primary + '1F' }}>
-              <View className="h-full rounded-full" style={{ width: `${progress * 100}%`, backgroundColor: COLORS.primary }} />
-            </View>
-          </View>
-        ) : null}
-
-        <TouchableOpacity
-          onPress={() => router.push('/billing')}
-          accessibilityRole="button"
-          activeOpacity={0.85}
-          className="flex-row items-center mt-3"
-        >
-          <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">{t('rental.viewPlanDetails')}</Text>
-          <ArrowRight size={13} color={COLORS.primary} />
-        </TouchableOpacity>
-
-        {/* --- Assigned scooter ------------------------------------------- */}
-        <View
-          className="rounded-2xl border mt-4 p-3 flex-row items-center"
-          style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
-        >
-          <Image
-            source={heroImage}
-            accessibilityLabel={vehicle?.name ?? t('home.yourScooter')}
-            contentFit="contain"
-            style={{ width: 64, height: 52, marginRight: 12, flexShrink: 0 }}
-          />
-          {/* minWidth: 0 is the load-bearing part on web: react-native-web maps
-              flex-1 to real CSS flexbox, whose items default to min-width:auto
-              (shrink-to-content, not below it) — the image + badge on either
-              side never budge, so a long name/reg-number pushed the row wider
-              than the card and it clipped. Native's Yoga engine has no such
-              default, which is why this only ever broke on the web build. */}
-          <View className="flex-1" style={{ minWidth: 0 }}>
-            <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold" numberOfLines={1}>
-              {vehicle?.name ?? t('home.yourScooter')}
-            </Text>
-            {vehicle ? (
-              <View className="flex-row items-center mt-1">
-                <Hash size={11} color={COLORS.textSecondary} />
-                <Text
-                  style={{ color: COLORS.textSecondary }}
-                  className="text-[11px] font-semibold ml-1"
-                  numberOfLines={1}
-                >
-                  {vehicle.registration_number}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-          <View style={{ flexShrink: 0, marginLeft: 8 }}>
-            <Badge label={t('rental.assigned')} tone="success" />
-          </View>
+          ) : null}
         </View>
+        <Badge label={t('rental.assigned')} tone="success" />
+      </View>
 
-        {/* Once a return is requested there's nothing left to tap here —
-            ScooterStatusCard above covers what happens next. Mid-period there
-            is nothing to do either: no button beats a button that does
-            nothing useful. */}
-        {!returnRequested && renewal.canRenew ? (
+      {expiry ? (
+        <View
+          className="flex-row items-center justify-between px-5 py-3"
+          style={{ borderTopWidth: 1, borderColor: COLORS.border }}
+        >
+          <View className="flex-row items-center flex-1 mr-3" style={{ minWidth: 0 }}>
+            <Clock size={14} color={statusColor} />
+            <Text style={{ color: statusColor }} className="text-xs font-bold ml-1.5" numberOfLines={1}>
+              {expiry.headline}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push('/billing')}
+            accessibilityRole="button"
+            activeOpacity={0.85}
+            className="flex-row items-center"
+          >
+            <Text style={{ color: COLORS.primary }} className="text-xs font-bold mr-1">{t('rental.viewPlanDetails')}</Text>
+            <ArrowRight size={13} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {/* Once a return is requested there's nothing left to tap here —
+          ScooterStatusCard above covers what happens next. Mid-period there
+          is nothing to do either: no button beats a button that does
+          nothing useful. */}
+      {showRenew ? (
+        <View className="px-5 pb-5 pt-1">
           <TouchableOpacity
             onPress={onRenew}
             accessibilityRole="button"
             activeOpacity={0.85}
-            className="flex-row items-center justify-center rounded-2xl py-3.5 mt-3"
+            className="flex-row items-center justify-center rounded-2xl py-3.5"
             style={{ backgroundColor: renewal.isLate ? COLORS.overdue : COLORS.primary }}
           >
             <RefreshCw size={16} color={COLORS.white} />
@@ -214,23 +169,8 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
               {renewal.isLate ? t('rental.renewPlanNow') : t('scooter.renewPlan')}
             </Text>
           </TouchableOpacity>
-        ) : null}
-
-        {/* Support stays reachable during a return — the likeliest reason a
-            rider needs it IS the handover — but it warns first, so tapping it
-            never reads as "the plan is still editable". See lib/returnLock.ts. */}
-        <TouchableOpacity
-          onPress={() => lock.run(() => router.push('/support'), 'warn')}
-          accessibilityRole="button"
-          activeOpacity={0.85}
-          className="flex-row items-center justify-center rounded-2xl py-3 mt-3 border"
-          style={{ backgroundColor: COLORS.background, borderColor: COLORS.border }}
-        >
-          <LifeBuoy size={14} color={COLORS.textSecondary} />
-          <Text style={{ color: COLORS.textPrimary }} className="text-xs font-bold ml-2">{t('support.getSupport')}</Text>
-        </TouchableOpacity>
-      </View>
-      {lock.sheet}
+        </View>
+      ) : null}
     </View>
   );
 };
