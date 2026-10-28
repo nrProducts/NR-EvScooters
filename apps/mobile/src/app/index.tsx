@@ -9,6 +9,7 @@ import { COLORS } from '../constants/theme';
 import { isValidPhone, sanitizePhoneInput, toE164 } from '../lib/authValidation';
 import { Phone, ArrowRight } from 'lucide-react-native';
 import { useT } from '../i18n';
+import { GradientFill } from '../components/ui/GradientFill';
 
 /**
  * Rider login = phone + OTP. Google is offered as a secondary / recovery
@@ -71,25 +72,30 @@ export default function LoginScreen() {
       style={{ flex: 1, backgroundColor: COLORS.background }}
       keyboardShouldPersistTaps="handled"
     >
-      <View className="flex-1 px-6 justify-center py-16 items-center">
-        <View className="items-center mb-10">
+      <View className="flex-1">
+        {/* A gradient band with the app icon on top, then the form. The wordmark's
+            dark lettering does not read on green, so the name is set in white text. */}
+        <View
+          className="items-center justify-center px-6 pt-20 pb-12"
+          style={{ backgroundColor: COLORS.primary, borderBottomLeftRadius: 40, borderBottomRightRadius: 40, overflow: 'hidden' }}
+        >
+          <GradientFill />
           <Image
-            source={require('../../assets/images/logo-wordmark.png')}
+            source={require('../../assets/images/logo-icon.png')}
             accessibilityLabel="Swapngo"
-            // Explicit style, not className — sizing this via NativeWind
-            // className doesn't reliably constrain <Image> on web (the
-            // static export renders it at the asset's intrinsic pixel size
-            // instead), which is why this was showing huge and cropped on
-            // the rider web build. AppShell.tsx's header logo uses the same
-            // pattern for the identical asset and has never had this problem.
-            style={{ height: 40, width: 192, marginBottom: 16 }}
+            // Explicit style, not className — sizing an <Image> via NativeWind
+            // className doesn't reliably constrain it on web (the static export
+            // renders it at the asset's intrinsic pixel size instead).
+            style={{ height: 88, width: 88, marginBottom: 14 }}
             resizeMode="contain"
           />
-          <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium mt-1.5 text-center px-4">
+          <Text className="text-2xl font-extrabold text-white">Swapngo</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.9)' }} className="text-sm font-medium mt-1.5 text-center px-4">
             {t('auth.tagline')}
           </Text>
         </View>
 
+        <View className="flex-1 px-6 pt-8 pb-10 items-center">
         <View className="w-full max-w-[420px]">
           {busy === 'google' ? (
             <View className="items-center py-10">
@@ -139,9 +145,10 @@ export default function LoginScreen() {
                 onPress={() => void sendCode()}
                 disabled={busy === 'otp'}
                 accessibilityRole="button"
-                style={{ backgroundColor: COLORS.primary, opacity: busy === 'otp' ? 0.7 : 1 }}
+                style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: busy === 'otp' ? 0.7 : 1 }}
                 className="w-full py-4 rounded-2xl flex-row justify-center items-center shadow-sm"
               >
+                <GradientFill />
                 {busy === 'otp' ? (
                   <Spinner size={18} color="#FFF" />
                 ) : (
@@ -190,6 +197,7 @@ export default function LoginScreen() {
               </View>
             </>
           )}
+        </View>
         </View>
       </View>
     </KeyboardAwareScrollView>

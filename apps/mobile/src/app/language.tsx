@@ -7,6 +7,7 @@ import { COLORS } from '../constants/theme';
 import { LanguageOptionList } from '../i18n/LanguageOptionList';
 import { useLangStore, useT } from '../i18n';
 import type { Lang } from '../i18n';
+import { GradientFill } from '../components/ui/GradientFill';
 
 /**
  * One screen, two entry points.
@@ -143,9 +144,10 @@ export default function LanguageScreen() {
                 <TouchableOpacity
                     onPress={finish}
                     accessibilityRole="button"
-                    style={{ backgroundColor: COLORS.primary }}
+                    style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
                     className="w-full py-4 rounded-2xl flex-row justify-center items-center shadow-sm"
                 >
+                  <GradientFill />
                     <Text className="text-white font-bold text-base mr-2">
                         {t(isSettings ? 'language.done' : 'language.continue')}
                     </Text>

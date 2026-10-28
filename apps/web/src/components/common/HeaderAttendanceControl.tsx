@@ -73,7 +73,7 @@ export function HeaderAttendanceControl({ role }: { role: Role | undefined }) {
   return (
     <Button
       size="sm"
-      className="h-8 gap-1.5 rounded-full px-2.5 text-xs sm:px-3"
+      className="h-9 gap-1.5 rounded-full px-3 text-xs"
       disabled={checkIn.isPending}
       title="Check in for today"
       onClick={() =>

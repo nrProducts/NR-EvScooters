@@ -53,6 +53,7 @@ import { ScooterStatusCard } from "../../components/ScooterStatusCard";
 import { ReturnTrackerCard } from "../../components/ReturnTrackerCard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useT } from "../../i18n";
+import { GradientFill } from "../../components/ui/GradientFill";
 
 function formatDay(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -443,8 +444,9 @@ export default function HomeScreen() {
                   onPress={() => router.push("/billing" as any)}
                   accessibilityRole="button"
                   className="flex-row items-center justify-center rounded-2xl py-3 mt-3"
-                  style={{ backgroundColor: COLORS.primary }}
+                  style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
                 >
+                  <GradientFill />
                   <CreditCard size={14} color="#FFF" />
                   <Text className="text-white text-xs font-bold ml-2">
                     {t("home.completePayment")}

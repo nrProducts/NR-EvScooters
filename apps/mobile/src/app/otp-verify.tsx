@@ -1,15 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, Keyboard, useWindowDimensions,
+  View, Text, TextInput, TouchableOpacity, Keyboard, useWindowDimensions, Image, Vibration,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
 import { ApiError } from '../lib/ApiError';
 import { COLORS } from '../constants/theme';
 import { formatPhoneLocal, isValidOtp, sanitizeOtpInput } from '../lib/authValidation';
-import { ArrowLeft, ShieldCheck } from 'lucide-react-native';
-import { Spinner } from '../components/Spinner';
+import { ArrowLeft } from 'lucide-react-native';
 import { useT } from '../i18n';
+import { VerifyButton, type VerifyStatus } from '../components/ui/VerifyButton';
 
 const RESEND_SECONDS = 30;
 
@@ -29,6 +29,8 @@ export default function OtpVerifyScreen() {
 
   const [code, setCode] = useState('');
   const [verifying, setVerifying] = useState(false);
+  // What the Verify button shows: idle, checking, verified, or a wrong code.
+  const [status, setStatus] = useState<VerifyStatus>('idle');
   const [error, setError] = useState('');
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
   const inputRef = useRef<TextInput>(null);
@@ -68,23 +70,43 @@ export default function OtpVerifyScreen() {
     }, []),
   );
 
+  // A short buzz on the result. Vibration is part of React Native itself (no extra
+  // package); on devices without a vibrator it simply does nothing.
+  const buzz = (pattern: number | number[]) => {
+    try { Vibration.vibrate(pattern); } catch { /* no vibrator — nothing to do */ }
+  };
+
+  // The button shakes red for a moment, then goes back to "Verify" so the rider can retry.
+  const flashError = () => {
+    setStatus('error');
+    buzz([0, 60, 50, 60]);
+    setTimeout(() => setStatus((s) => (s === 'error' ? 'idle' : s)), 1100);
+  };
+
   const submit = async (value: string = code) => {
     if (verifying) return;
     if (!isValidOtp(value)) {
       setError(t('otp.error.invalid'));
+      flashError();
       return;
     }
     setError('');
     setVerifying(true);
+    setStatus('verifying');
     // The number pad covers the Verify button, so its spinner was hidden and
     // an auto-submitted code looked like a frozen screen. Lower it while the
     // code is checked; a wrong code raises it again below.
     Keyboard.dismiss();
     try {
       await verifyOtp(phone, value);
-      // Root layout redirects from here.
+      // The button shows the tick while the root layout redirects away from here.
+      setStatus('success');
+      buzz(40);
+      // If we are somehow still on this screen a few seconds later, put the button back.
+      setTimeout(() => setStatus((s) => (s === 'success' ? 'idle' : s)), 3000);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('otp.error.verifyFailed'));
+      flashError();
       setCode('');
       inputRef.current?.focus();
     } finally {
@@ -117,17 +139,17 @@ export default function OtpVerifyScreen() {
         <ArrowLeft size={20} color={COLORS.textPrimary} />
       </TouchableOpacity>
 
-      <View
-        className="w-14 h-14 rounded-3xl items-center justify-center mb-5"
-        style={{ backgroundColor: COLORS.primary + '18' }}
-      >
-        <ShieldCheck size={26} color={COLORS.primary} />
-      </View>
+      {/* The app icon, centred above the title. */}
+      <Image
+        source={require('../../assets/images/logo-icon.png')}
+        accessibilityLabel="Swapngo"
+        style={{ width: 72, height: 72, alignSelf: 'center', marginBottom: 20 }}
+      />
 
-      <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black mb-2">
+      <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black mb-2 text-center">
         {t('otp.title')}
       </Text>
-      <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium mb-8">
+      <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium mb-8 text-center">
         {t('otp.sentTo', { phone: phone ? formatPhoneLocal(phone) : t('otp.yourNumber') })}
       </Text>
 
@@ -151,6 +173,10 @@ export default function OtpVerifyScreen() {
                   backgroundColor: COLORS.card,
                   borderColor: error ? COLORS.danger : active ? COLORS.primary : COLORS.border,
                   borderWidth: active ? 2 : 1,
+                  // The box being typed into glows softly in the brand green.
+                  ...(active && !error
+                    ? { shadowColor: COLORS.primary, shadowOpacity: 0.28, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } }
+                    : null),
                 }}
               >
                 <Text style={{ color: COLORS.textPrimary }} className="text-2xl font-black">
@@ -197,19 +223,7 @@ export default function OtpVerifyScreen() {
         </Text>
       ) : null}
 
-      <TouchableOpacity
-        onPress={() => void submit()}
-        disabled={verifying}
-        accessibilityRole="button"
-        style={{ backgroundColor: COLORS.primary, opacity: verifying ? 0.7 : 1 }}
-        className="w-full py-4 rounded-2xl flex-row justify-center items-center shadow-sm"
-      >
-        {verifying ? (
-          <Spinner size={18} color="#FFF" />
-        ) : (
-          <Text className="text-white font-bold text-base">{t('otp.verify')}</Text>
-        )}
-      </TouchableOpacity>
+      <VerifyButton label={t('otp.verify')} status={status} onPress={() => void submit()} />
 
       <View className="flex-row justify-center mt-6">
         {secondsLeft > 0 ? (

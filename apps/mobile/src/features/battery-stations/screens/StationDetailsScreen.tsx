@@ -14,6 +14,7 @@ import { StationStatusBadge } from '../components/StationStatusBadge';
 import { useBatteryStation } from '../hooks/useBatteryStations';
 import { formatStationName, type BatteryStation } from '../types/batteryStation.types';
 import { useT } from '../../../i18n';
+import { GradientFill } from '../../../components/ui/GradientFill';
 
 /** The optional full-details screen reached from the map's bottom sheet. */
 export default function StationDetailsScreen() {
@@ -135,8 +136,9 @@ export default function StationDetailsScreen() {
                         accessibilityRole="button"
                         accessibilityLabel={t('stationDetail.navigateTo', { station: formatStationName(station.name) })}
                         className="flex-row items-center justify-center rounded-2xl mt-2"
-                        style={{ backgroundColor: COLORS.primary, minHeight: 52 }}
+                        style={{ backgroundColor: COLORS.primary, overflow: 'hidden', minHeight: 52 }}
                     >
+                      <GradientFill />
                         <Navigation size={17} color={COLORS.white} />
                         <Text className="text-white font-bold text-sm ml-2">{t('stationDetail.navigate')}</Text>
                     </TouchableOpacity>

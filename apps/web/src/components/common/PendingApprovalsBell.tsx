@@ -7,6 +7,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { usePendingApprovals } from "@/hooks/useReports";
 import type { PendingApprovalsSummary } from "@/types";
+import { cn } from "@/lib/utils";
+import { HEADER_BADGE, HEADER_ICON, HEADER_ROUND_BUTTON } from "@/lib/headerStyles";
 
 interface PendingItem {
   key: keyof PendingApprovalsSummary;
@@ -48,10 +50,10 @@ export function PendingApprovalsBell() {
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative" aria-label="Pending approvals">
-              <ClipboardCheck className="h-[1.125rem] w-[1.125rem]" />
+            <Button variant="ghost" size="icon" className={cn(HEADER_ROUND_BUTTON, "relative")} aria-label="Pending approvals">
+              <ClipboardCheck className={HEADER_ICON} />
               {total > 0 && (
-                <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[0.625rem] font-semibold leading-none text-warning-foreground">
+                <span className={cn(HEADER_BADGE, "bg-warning text-warning-foreground")}>
                   {total > 99 ? "99+" : total}
                 </span>
               )}

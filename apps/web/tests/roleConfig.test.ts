@@ -75,7 +75,8 @@ describe("navForUser", () => {
   it("gives staff exactly the modules they've been granted, plus Dashboard", () => {
     const items = navForUser({ role: "staff", permissions: grants("vehicles", "bookings") });
     expect(items.map((i) => i.label).sort())
-      .toEqual(staffBaseline("Rental Operations", "Vehicles"));
+      // Live Map sits under the same `vehicles` module as the fleet list.
+      .toEqual(staffBaseline("Rental Operations", "Vehicles", "Live Map"));
   });
 
   it("ignores a module grant that carries no actions", () => {

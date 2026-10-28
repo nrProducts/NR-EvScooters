@@ -33,8 +33,10 @@ import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import type { VehicleDocument, VehicleDocumentType } from "@/types";
+import { usePageOwnsTitle } from "@/hooks/usePageOwnsTitle";
 
 export default function VehicleDetailPage() {
+  usePageOwnsTitle(); // this page draws its own heading; hide the header's
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);

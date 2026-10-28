@@ -8,6 +8,7 @@ import {
   RETURN_LOCK_TITLE_KEY,
 } from '../lib/returnLock';
 import { useT } from '../i18n';
+import { GradientFill } from './ui/GradientFill';
 
 /** 'blocked' has no way through; 'warn' explains, then lets the rider continue. */
 export type ReturnLockIntent = 'blocked' | 'warn';
@@ -105,8 +106,9 @@ export const ReturnLockSheet: React.FC<ReturnLockSheetProps> = ({
             onPress={onContinue}
             accessibilityRole="button"
             className="flex-1 py-3.5 rounded-2xl items-center"
-            style={{ backgroundColor: COLORS.primary }}
+            style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
           >
+            <GradientFill />
             <Text className="text-white text-xs font-bold">{t('returnLock.continueToSupport')}</Text>
           </TouchableOpacity>
         </View>
@@ -115,8 +117,9 @@ export const ReturnLockSheet: React.FC<ReturnLockSheetProps> = ({
           onPress={onClose}
           accessibilityRole="button"
           className="py-3.5 rounded-2xl items-center"
-          style={{ backgroundColor: COLORS.primary }}
+          style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
         >
+          <GradientFill />
           <Text className="text-white text-xs font-bold">{t('common.gotIt')}</Text>
         </TouchableOpacity>
       )}

@@ -35,6 +35,7 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { rangeForPreset, compareRangeFor, autoGranularity, COMPARE_LABEL } from "@/lib/period";
 import { toastError } from "@/lib/toastHelpers";
 import { cn, formatCurrency, formatDateTime } from "@/lib/utils";
+import { usePageOwnsTitle } from "@/hooks/usePageOwnsTitle";
 
 const TXN_TYPE_LABEL: Record<RevenueTxnType, string> = {
   rental_payment: "Rental Payment",
@@ -61,6 +62,7 @@ function statusPill(r: RevenueTransactionRow) {
 }
 
 export default function RevenuePage() {
+  usePageOwnsTitle(); // this page draws its own heading; hide the header's
   usePageSubtitle("Track revenue, refunds, deposits, rental income and financial performance.");
 
   const [period, setPeriod] = useState<PeriodState>(() => ({

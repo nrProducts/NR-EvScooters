@@ -21,8 +21,8 @@ const kmShort = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits
 export function FleetAllowanceCard({
   variant = "dashboard", className,
 }: {
-  /** "compact" is the slim dashboard tile; "dashboard" and "page" are the full card. */
-  variant?: "dashboard" | "page" | "compact";
+  /** "gauge" is the dashboard's half-circle card; "compact" the slim tile; "dashboard" and "page" the full card. */
+  variant?: "dashboard" | "page" | "compact" | "gauge";
   className?: string;
 }) {
   const { data, isLoading, isError } = useFleetAllowance();
@@ -41,14 +41,97 @@ export function FleetAllowanceCard({
     : t.period_status === "ended" ? "Period ended"
       : `${t.days_left} day${t.days_left === 1 ? "" : "s"} left`;
 
+  // One line on how the month is going, shared by the compact tile and the gauge.
+  const note = !t ? null
+    : t.awaiting_start > 0 ? `${t.awaiting_start} bike${t.awaiting_start === 1 ? "" : "s"} awaiting a starting reading — counts as 0 km for now`
+      : overBy > 0 ? `On pace to exceed the limit by ${km(overBy)}`
+        : t.period_status === "running" ? `On pace for ${km(t.projected_km)} (${t.projected_percent.toLocaleString("en-IN", { maximumFractionDigits: 0 })}%)`
+          : null;
+
+  // The dashboard's half-circle gauge: the share of the fleet limit used, with the
+  // figures beneath. Same data and the same tone rules as the bar versions.
+  if (variant === "gauge") {
+    const arc = tone === "bad" ? "hsl(var(--destructive))" : tone === "warn" ? "hsl(var(--warning))" : "url(#kmGaugeGreen)";
+    const remaining = t ? Math.max(0, t.fleet_limit_km - t.used_km) : 0;
+    const facts: { label: string; value: string }[] = t
+      ? [
+        { label: "Used", value: `${kmShort(t.used_km)} km` },
+        { label: "Limit", value: `${kmShort(t.fleet_limit_km)} km` },
+        { label: "Remaining", value: `${kmShort(remaining)} km` },
+        { label: "Bikes", value: String(t.vehicle_count) },
+      ]
+      : [];
+    return (
+      <Card className={cn("flex flex-col p-4", className)}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold">Fleet km allowance</h3>
+            {s ? <p className="mt-0.5 truncate text-[0.6875rem] text-muted-foreground">{periodLabel} · {periodNote}</p> : null}
+          </div>
+          <div className="flex shrink-0 items-center">
+            {isAdmin && data ? (
+              <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit limit & month" aria-label="Edit limit and month" onClick={() => setEditOpen(true)}>
+                <Settings2 className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" asChild>
+              <Link to="/vehicles?view=kms">Details <ArrowRight className="h-3 w-3" /></Link>
+            </Button>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <Skeleton className="mt-3 w-full flex-1" />
+        ) : isError || !t || !s ? (
+          <p className="mt-3 text-xs text-muted-foreground">Not set up yet — needs the allowance database update.</p>
+        ) : (
+          <>
+            {/* The gauge on the left, four plain facts on the right: it fills the card instead of floating in it. */}
+            <div className="flex flex-1 items-center gap-4 py-1.5">
+              <svg viewBox="0 0 200 112" className="w-32 shrink-0" role="img" aria-label={`${Math.round(percent)} percent of the fleet limit used`}>
+                <defs>
+                  <linearGradient id="kmGaugeGreen" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#3CCB73" />
+                    <stop offset="100%" stopColor="#17924A" />
+                  </linearGradient>
+                </defs>
+                <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="hsl(var(--primary) / 0.14)" strokeWidth="18" strokeLinecap="round" />
+                <path
+                  d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke={arc} strokeWidth="18" strokeLinecap="round"
+                  pathLength={100} strokeDasharray={`${Math.min(100, percent)} 100`}
+                />
+                <text x="100" y="94" textAnchor="middle" fontSize="30" fontWeight="700" className="fill-foreground tabular-nums">
+                  {percent.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%
+                </text>
+              </svg>
+              <dl className="min-w-0 flex-1 space-y-1.5">
+                {facts.map((fact) => (
+                  <div key={fact.label} className="flex items-baseline justify-between gap-2 border-b border-border/60 pb-1 last:border-0 last:pb-0">
+                    <dt className="text-[0.6875rem] text-muted-foreground">{fact.label}</dt>
+                    <dd className="text-[0.8125rem] font-semibold tabular-nums">{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+            {note ? (
+              <p
+                className={cn("truncate text-[0.6875rem]", overBy > 0 ? "text-destructive" : t.awaiting_start > 0 ? "text-warning" : "text-muted-foreground")}
+                title={note}
+              >
+                {note}
+              </p>
+            ) : null}
+          </>
+        )}
+
+        {isAdmin ? <FleetAllowanceDialog open={editOpen} onOpenChange={setEditOpen} summary={data} /> : null}
+      </Card>
+    );
+  }
+
   // The slim tile for the dashboard: one headline figure, one bar, one line of detail.
   // The full breakdown (warnings, pace, per-bike) is a click away in Vehicles → Bike KMs.
   if (variant === "compact") {
-    const note = !t ? null
-      : t.awaiting_start > 0 ? `${t.awaiting_start} bike${t.awaiting_start === 1 ? "" : "s"} awaiting a starting reading — counts as 0 km for now`
-        : overBy > 0 ? `On pace to exceed the limit by ${km(overBy)}`
-          : t.period_status === "running" ? `On pace for ${km(t.projected_km)} (${t.projected_percent.toLocaleString("en-IN", { maximumFractionDigits: 0 })}%)`
-            : null;
     return (
       <Card className={cn("flex flex-col overflow-hidden", className)}>
         <div className="flex items-start justify-between gap-2 px-4 pt-3.5">

@@ -20,6 +20,7 @@ import { useProfilePhoto } from '../hooks/useProfilePhoto';
 import { WebPushCard } from './WebPushCard';
 import { appVersion } from '../lib/appVersion';
 import { useT, LANG_LABELS, LANGUAGE_SELECTION_ENABLED } from '../i18n';
+import { GradientFill } from './ui/GradientFill';
 
 /**
  * The rider's own profile — avatar/photo upload, contact details,
@@ -109,8 +110,9 @@ export function ProfileContent(
           </View>
           <View
             className="absolute bottom-0 right-0 w-6 h-6 rounded-full items-center justify-center border-2"
-            style={{ backgroundColor: COLORS.primary, borderColor: COLORS.card }}
+            style={{ backgroundColor: COLORS.primary, overflow: 'hidden', borderColor: COLORS.card }}
           >
+            <GradientFill />
             <Camera size={11} color="#FFF" />
           </View>
         </TouchableOpacity>
@@ -327,6 +329,7 @@ function FullProfileLayout({
           shadowColor: GREEN_DARK, shadowOpacity: 0.3, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 6,
         }}
       >
+        <GradientFill />
         {/* depth: two soft discs behind the content, clipped by the card */}
         <View pointerEvents="none" style={{ position: 'absolute', top: -60, right: -40, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,255,255,0.12)' }} />
         <View pointerEvents="none" style={{ position: 'absolute', bottom: -70, left: -50, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.08)' }} />

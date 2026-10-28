@@ -15,6 +15,7 @@ import {
 } from './mapContract';
 import type { Coordinates } from '../utils/distance';
 import { useT } from '../../../i18n';
+import { GradientFill } from '../../../components/ui/GradientFill';
 
 /**
  * The web map, built on react-map-gl + maplibre-gl rather than
@@ -195,8 +196,9 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
                         />
                         <View
                             className="w-6 h-6 rounded-full items-center justify-center border-2"
-                            style={{ backgroundColor: COLORS.primary, borderColor: COLORS.white }}
+                            style={{ backgroundColor: COLORS.primary, overflow: 'hidden', borderColor: COLORS.white }}
                         >
+                          <GradientFill />
                             <Navigation size={12} color={COLORS.white} fill={COLORS.white} />
                         </View>
                     </View>

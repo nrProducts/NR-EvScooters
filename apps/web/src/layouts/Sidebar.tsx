@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation, useMatch, useNavigate } from "react-router-dom";
-import { ChevronsLeft, ChevronsRight } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { ChevronsLeft, ChevronsRight, LogOut } from "lucide-react";
+import { cn, initials } from "@/lib/utils";
 import { buildNavTree, navForUser, type NavItem } from "@/routes/roleConfig";
 import type { StaffUser } from "@/types";
+import { useAuth } from "@/hooks/useAuth";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import logoMark from "@/assets/logo-mark.svg";
+import logoIcon from "@/assets/logo-icon.png";
 import logoWordmarkGreen from "@/assets/logo-wordmark-green.svg";
 
 /**
@@ -18,16 +20,19 @@ import logoWordmarkGreen from "@/assets/logo-wordmark-green.svg";
 function NavItemLink({
   item,
   collapsed,
+  child,
   onNavigate,
 }: {
   item: NavItem;
   collapsed?: boolean;
+  /** A page listed inside an open section: a little tighter than a top-level entry. */
+  child?: boolean;
   onNavigate?: () => void;
 }) {
   // Hook must run unconditionally; only the collapsed branch below uses it.
   const isActive = !!useMatch({ path: item.path, end: false });
 
-  // --- Expanded sidebar: original token-based styling, untouched ---
+  // --- Expanded sidebar: the current page is a solid green pill ---
   if (!collapsed) {
     return (
       <NavLink
@@ -35,40 +40,90 @@ function NavItemLink({
         onClick={onNavigate}
         className={({ isActive }) =>
           cn(
-            "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-smooth",
+            "flex items-center gap-3 rounded-xl font-medium transition-smooth",
+            child ? "gap-2.5 px-3 py-2 text-[0.8125rem]" : "px-3 py-2.5 text-sm",
             isActive
-              ? "bg-primary text-primary-foreground shadow-[0_6px_16px_-4px_hsl(var(--primary)/0.5)]"
+              ? "bg-primary font-semibold text-primary-foreground shadow-[0_6px_16px_-6px_hsl(var(--primary)/0.65)]"
               : "text-sidebar-foreground/70 hover:bg-primary/10 hover:text-primary",
           )
         }
       >
-        <item.icon className="h-[1.125rem] w-[1.125rem] shrink-0" strokeWidth={1.75} />
+        <item.icon className={cn("shrink-0", child ? "h-4 w-4" : "h-[1.125rem] w-[1.125rem]")} strokeWidth={1.75} />
         <span className="truncate">{item.label}</span>
       </NavLink>
     );
   }
 
   // --- Collapsed icon rail: inline styles so nothing in the cascade can hide
-  // the icon or the active-state green. Module name moves to a hover tooltip. ---
-  const fg = isActive ? "#ffffff" : "#64748B";
-
+  // the icon or the active-state green. Module name moves to a hover tooltip.
+  // Colours come from the theme tokens (muted / primary), NOT fixed hex values:
+  // a hard-coded light grey stayed light in dark mode. ---
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <NavLink
           to={item.path}
           onClick={onNavigate}
-          className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl transition-smooth"
-          style={{
-            backgroundColor: isActive ? "#21C45D" : "#F1F5F9",
-            boxShadow: isActive ? "0 6px 16px -4px rgba(33,196,93,0.5)" : undefined,
-          }}
+          className={cn(
+            "mx-auto flex h-10 w-10 items-center justify-center rounded-xl transition-smooth",
+            isActive
+              ? "bg-primary text-primary-foreground shadow-[0_6px_16px_-4px_hsl(var(--primary)/0.5)]"
+              : "bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary",
+          )}
         >
-          <item.icon className="h-[1rem] w-[1rem] shrink-0" strokeWidth={1.75} style={{ color: fg }} />
+          <item.icon className="h-[1rem] w-[1rem] shrink-0" strokeWidth={1.75} />
         </NavLink>
       </TooltipTrigger>
       <TooltipContent side="right">{item.label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+/**
+ * The foot of the sidebar: who is signed in, with Sign out. Collapsed, it is
+ * just the sign-out button.
+ */
+function AccountCard({ collapsed }: { collapsed?: boolean }) {
+  const { user, signOut } = useAuth();
+
+  if (collapsed) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={signOut}
+            aria-label="Sign out"
+            className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-smooth hover:bg-destructive/10 hover:text-destructive"
+          >
+            <LogOut className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">Sign out</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2.5 rounded-2xl bg-muted/60 p-2">
+      <Avatar className="h-9 w-9">
+        <AvatarImage src={user?.avatarUrl} alt={user?.name} />
+        <AvatarFallback>{user ? initials(user.name) : "?"}</AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[0.8125rem] font-semibold leading-tight">{user?.name}</p>
+        <p className="truncate text-[0.6875rem] capitalize text-muted-foreground">{user?.role}</p>
+      </div>
+      <button
+        type="button"
+        onClick={signOut}
+        aria-label="Sign out"
+        title="Sign out"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-smooth hover:bg-destructive/10 hover:text-destructive"
+      >
+        <LogOut className="h-4 w-4" strokeWidth={1.75} />
+      </button>
+    </div>
   );
 }
 
@@ -83,7 +138,10 @@ export function Sidebar({
   onToggleCollapsed?: () => void;
   onNavigate?: () => void;
 }) {
-  const items = navForUser(user);
+  const allItems = navForUser(user);
+  // Settings is pinned to the foot of the sidebar, below the sections, not listed among them.
+  const settings = allItems.find((item) => item.path === "/settings");
+  const items = allItems.filter((item) => item.path !== "/settings");
   const tree = buildNavTree(items);
   const location = useLocation();
   const navigateTo = useNavigate();
@@ -95,7 +153,7 @@ export function Sidebar({
   const [manualOpenGroup, setManualOpenGroup] = useState<string | undefined>(undefined);
 
   // Longest-prefix match, mirroring NavLink's own isActive semantics.
-  const activeItem = [...items]
+  const activeItem = [...allItems]
     .filter((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
     .sort((a, b) => b.path.length - a.path.length)[0];
 
@@ -154,15 +212,15 @@ export function Sidebar({
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className={cn("flex h-16 items-center justify-center border-b border-border px-4", collapsed && "px-2")}>
+      <div className={cn("flex h-[4.5rem] shrink-0 items-center justify-center px-4", collapsed && "px-2")}>
         {collapsed ? (
-          <img src={logoMark} alt="Swapngo" className="h-8 w-8 shrink-0" />
+          <img src={logoIcon} alt="Swapngo" className="h-9 w-9 shrink-0" />
         ) : (
-          <img src={logoWordmarkGreen} alt="Swapngo" className="h-6 w-auto" />
+          <img src={logoWordmarkGreen} alt="Swapngo" className="h-7 w-auto" />
         )}
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto scrollbar-nav px-2 py-4">
+      <nav className="flex-1 space-y-1 overflow-y-auto scrollbar-nav px-3 pb-3">
         {collapsed ? (
           // Icon rail — group labels have nowhere to go at this width, so
           // every item (grouped or not) renders flat, same as before groups existed.
@@ -172,31 +230,41 @@ export function Sidebar({
             ))}
           </div>
         ) : (
-          <Accordion type="single" collapsible value={openGroup ?? ""} onValueChange={handleGroupToggle} className="space-y-1">
+          <Accordion type="single" collapsible value={openGroup ?? ""} onValueChange={handleGroupToggle} className="space-y-0.5">
             {tree.map((entry) =>
               entry.type === "item" ? (
                 <NavItemLink key={entry.item.path} item={entry.item} collapsed={collapsed} onNavigate={onNavigate} />
               ) : (
-                <AccordionItem key={entry.key} value={entry.key} className="border-0">
+                <AccordionItem
+                  key={entry.key}
+                  value={entry.key}
+                  // The open section is a tinted block, so which section you are in reads at a glance.
+                  className={cn("rounded-[1.125rem] border-0 px-1 transition-colors", entry.key === openGroup && "my-1 bg-primary/[0.07]")}
+                >
                   <AccordionTrigger
                     className={cn(
-                      "rounded-xl px-3 py-2.5 text-sm font-medium transition-smooth hover:bg-primary/10 hover:text-primary hover:no-underline",
-                      // The active leaf already gets its own highlighted background —
-                      // this is just enough to show its parent section at a glance too.
-                      entry.key === activeItem?.group
-                        ? "text-sidebar-foreground"
-                        : "text-sidebar-foreground/70",
+                      "rounded-xl px-2 py-2 text-sm font-medium hover:no-underline",
+                      entry.key === openGroup ? "font-semibold text-foreground hover:text-foreground" : "text-sidebar-foreground/70 hover:bg-primary/10",
                     )}
                   >
                     <span className="flex items-center gap-3">
-                      <entry.icon className="h-[1.125rem] w-[1.125rem] shrink-0" strokeWidth={1.75} />
+                      <span
+                        className={cn(
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.625rem] transition-smooth",
+                          entry.key === openGroup ? "bg-primary text-primary-foreground shadow-[0_6px_14px_-6px_hsl(var(--primary)/0.7)]" : "",
+                        )}
+                      >
+                        <entry.icon className="h-[1.0625rem] w-[1.0625rem]" strokeWidth={1.75} />
+                      </span>
                       {entry.label}
                     </span>
                   </AccordionTrigger>
-                  <AccordionContent className="space-y-1 pb-0 pl-4">
-                    {entry.items.map((item) => (
-                      <NavItemLink key={item.path} item={item} collapsed={collapsed} onNavigate={onNavigate} />
-                    ))}
+                  <AccordionContent className="pb-1.5">
+                    <div className="ml-6 space-y-0.5 border-l-2 border-border pl-3">
+                      {entry.items.map((item) => (
+                        <NavItemLink key={item.path} item={item} child onNavigate={onNavigate} />
+                      ))}
+                    </div>
                   </AccordionContent>
                 </AccordionItem>
               ),
@@ -205,15 +273,20 @@ export function Sidebar({
         )}
       </nav>
 
-      {onToggleCollapsed && (
-        <button
-          onClick={onToggleCollapsed}
-          className="hidden items-center justify-center gap-2 border-t border-border py-3 text-xs text-sidebar-foreground/60 transition-smooth hover:bg-sidebar-foreground/5 md:flex"
-        >
-          {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
-          {!collapsed && "Collapse"}
-        </button>
-      )}
+      {/* Settings, who is signed in, and the collapse button: always the last thing in the panel. */}
+      <div className={cn("shrink-0 space-y-1.5 border-t border-border px-3 pb-2 pt-3", collapsed && "px-2")}>
+        {settings ? <NavItemLink item={settings} collapsed={collapsed} onNavigate={onNavigate} /> : null}
+        <AccountCard collapsed={collapsed} />
+        {onToggleCollapsed && (
+          <button
+            onClick={onToggleCollapsed}
+            className="hidden w-full items-center justify-center gap-2 rounded-xl py-2 text-xs text-sidebar-foreground/60 transition-smooth hover:bg-sidebar-foreground/5 md:flex"
+          >
+            {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+            {!collapsed && "Collapse"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

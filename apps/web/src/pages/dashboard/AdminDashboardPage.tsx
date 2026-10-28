@@ -4,10 +4,10 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line,
 } from "recharts";
 import {
-  Users, ShieldCheck, PackageCheck, Bike, Navigation,
+  Users, ShieldCheck, PackageCheck, Navigation,
   CreditCard, Wallet, Plus, Bell, ClipboardList,
 } from "lucide-react";
-import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/common/StatCard";
 import { SparkStatCard } from "@/components/common/SparkStatCard";
@@ -15,6 +15,11 @@ import { ChartCard } from "@/components/common/ChartCard";
 import { MotionCard } from "@/components/motion/MotionCard";
 import { useBikeKms, useFleetTelemetry } from "@/hooks/useTelematics";
 import { FleetTrackingCard } from "@/components/dashboard/FleetTrackingCard";
+import { DashboardKpiRow } from "@/components/dashboard/DashboardKpiRow";
+import { RevenueChartCard } from "@/components/dashboard/RevenueChartCard";
+import { NeedsAttentionCard } from "@/components/dashboard/NeedsAttentionCard";
+import { UpcomingDuesCard } from "@/components/dashboard/UpcomingDuesCard";
+import { summariseFleet } from "@/services/api/telematics";
 import { FleetAllowanceCard } from "@/components/fleet/FleetAllowanceCard";
 import { FleetStatusCard } from "@/components/dashboard/FleetStatusCard";
 import { RevenueOverview } from "@/components/revenue/RevenueOverview";
@@ -73,6 +78,7 @@ export default function AdminDashboardPage() {
   const { data: bikeKms } = useBikeKms();
   const kmToday = useMemo(() => new Map((bikeKms ?? []).map((b) => [b.vehicle.id, b.km_today])), [bikeKms]);
   const { data: stationSummary, isLoading: stationSummaryLoading } = useStationSummary();
+  const fleetStats = useMemo(() => summariseFleet(fleetTelemetry ?? []), [fleetTelemetry]);
 
   usePageSubtitle("Fleet, rentals, revenue and staff — the whole operation at a glance.");
 
@@ -115,50 +121,27 @@ export default function AdminDashboardPage() {
           while its query is in flight, so the dashboard fills in progressively
           instead of being blocked behind one overlay. */}
 
-      <RevenueOverview part="revenue" />
+      {/* Headline money row, then the three rows of the layout: revenue / allowance / tracking,
+          the live map beside what needs attention and the quick actions, and fleet status beside
+          the battery network. */}
+      <DashboardKpiRow />
 
-      {/* At-a-glance — Fleet Overview beside the slim kilometre-allowance tile. Stretched (the grid
-          default), so both sit on the same bottom edge. Staff Attendance and Leave Management sit
-          below the Fleet Live Map. */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <HorizontalSummaryCard
-          icon={Bike}
-          iconTone="success"
-          title="Fleet Overview"
-          isLoading={isLoading || !summary}
-          metrics={[
-            { label: "Available", value: summary?.vehicles.by_status.available ?? 0, tone: "success" },
-            { label: "Pending KYC", value: pendingKyc?.total ?? 0, tone: "warning" },
-            { label: "Pending Maintenance", value: pendingMaintenance, tone: "destructive" },
-          ]}
-          linkLabel="View Fleet"
-          onLinkClick={() => navigate("/vehicles")}
-          footer={
-            summary && summary.vehicles.total > 0 ? (
-              <div className="mt-2.5 space-y-1">
-                <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full bg-success"
-                    style={{ width: `${(summary.vehicles.by_status.available / summary.vehicles.total) * 100}%` }}
-                  />
-                  <div
-                    className="h-full bg-info"
-                    style={{ width: `${(summary.vehicles.by_status.assigned / summary.vehicles.total) * 100}%` }}
-                  />
-                </div>
-                <p className="text-center text-[0.6875rem] text-muted-foreground">Available / Assigned</p>
-              </div>
-            ) : undefined
-          }
-        />
+      {/* The grid: every row's cards share one height and one top and bottom edge, and only the
+          live map is large. */}
 
-
-        {/* This month's kilometre allowance — a slim tile beside Fleet Overview; the full breakdown is in Vehicles → Bike KMs. */}
-        <FleetAllowanceCard variant="compact" className="lg:col-span-2" />
+      {/* Row 2 — revenue chart (2 columns), then a column of two short fleet cards, then the riders who are due. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <RevenueChartCard className="sm:col-span-2" />
+        {/* Two equal halves: both cards get the same height. */}
+        <div className="grid grid-rows-2 gap-4">
+          <FleetAllowanceCard variant="gauge" />
+          <FleetTrackingCard />
+        </div>
+        <UpcomingDuesCard rows={6} />
       </div>
 
-      {/* Fleet live map (wide, left) + Fleet Status / Quick Actions / Battery Stations (compact, right) */}
-      <div className="grid gap-3 lg:grid-cols-3">
+      {/* Row 3 — the big map (2 of 3 columns) beside three small cards stacked to its height. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <ChartCard
           title="Fleet Live Map"
           description="Every bike, by status — green live, amber stale, grey offline, red low battery"
@@ -172,53 +155,56 @@ export default function AdminDashboardPage() {
             </div>
           }
         >
-          <FleetLiveMap items={fleetTelemetry ?? []} kmToday={kmToday} heightClassName="min-h-[27rem] flex-1" />
+          <FleetLiveMap items={fleetTelemetry ?? []} kmToday={kmToday} heightClassName="min-h-[22rem] flex-1" />
         </ChartCard>
 
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
+          <NeedsAttentionCard
+            pendingKyc={pendingKyc?.total ?? 0}
+            lowBattery={fleetStats.lowBattery}
+            pendingMaintenance={pendingMaintenance}
+            isLoading={isLoading || !summary}
+          />
+
+          {/* Three tiles in a row rather than three stacked buttons. */}
+          <Card className="p-4">
+            <h3 className="mb-3 text-sm font-semibold">Quick Actions</h3>
+            <div className="grid grid-cols-3 gap-2">
+              <Button className="h-auto flex-col gap-1.5 rounded-xl px-1 py-3 text-[0.6875rem]" onClick={() => navigate("/vehicles?new=1")}>
+                <Plus className="h-4 w-4" /> Add Vehicle
+              </Button>
+              <Button variant="outline" className="h-auto flex-col gap-1.5 rounded-xl px-1 py-3 text-[0.6875rem]" onClick={() => navigate("/bookings")}>
+                <PackageCheck className="h-4 w-4 text-primary" /> Assign
+              </Button>
+              <Button variant="outline" className="h-auto flex-col gap-1.5 rounded-xl px-1 py-3 text-[0.6875rem]" onClick={() => navigate("/kyc")}>
+                <ShieldCheck className="h-4 w-4 text-primary" /> Approve KYC
+              </Button>
+            </div>
+          </Card>
+
           <FleetStatusCard
             byStatus={summary?.vehicles.by_status}
             total={summary?.vehicles.total ?? 0}
             isLoading={summaryLoading}
             compact
           />
-
-          <FleetTrackingCard />
-
-          <MotionCard>
-            <CardHeader className="p-3 pb-1.5">
-              <CardTitle className="text-xs">Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-1.5 p-3 pt-1">
-              <Button size="sm" className="justify-start gap-2" onClick={() => navigate("/vehicles?new=1")}>
-                <Plus className="h-4 w-4" /> Add Vehicle
-              </Button>
-              <Button size="sm" variant="outline" className="justify-start gap-2" onClick={() => navigate("/bookings")}>
-                <PackageCheck className="h-4 w-4" /> Assign Vehicle
-              </Button>
-              <Button size="sm" variant="outline" className="justify-start gap-2" onClick={() => navigate("/kyc")}>
-                <ShieldCheck className="h-4 w-4" /> Approve KYC
-              </Button>
-            </CardContent>
-          </MotionCard>
-
-          <ChartCard
-            title="Battery Stations"
-            description="Network health at a glance"
-            className="flex-1"
-            action={
-              <Button variant="ghost" size="sm" onClick={() => navigate("/battery-stations")}>
-                View all
-              </Button>
-            }
-          >
-            <StationStatusGauge summary={stationSummary} isLoading={stationSummaryLoading} compact />
-          </ChartCard>
         </div>
       </div>
 
-      {/* Staff — below the fleet map */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      {/* Row 4 — three small cards, equal width and height: the battery network and the staff. */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <ChartCard
+          title="Battery Stations"
+          description="Network health at a glance"
+          action={
+            <Button variant="ghost" size="sm" onClick={() => navigate("/battery-stations")}>
+              View all
+            </Button>
+          }
+        >
+          <StationStatusGauge summary={stationSummary} isLoading={stationSummaryLoading} compact />
+        </ChartCard>
+
         <HorizontalSummaryCard
           icon={Users}
           title="Staff Attendance"

@@ -6,6 +6,7 @@ import { useBookingGate } from '../hooks/useBookingGate';
 import { SCOOTER_HERO } from '../lib/scooterImage';
 import { COLORS } from '../constants/theme';
 import type { ApiVehicleModelDetail, VehicleCategory } from '../types/api';
+import { GradientFill } from './ui/GradientFill';
 
 interface FeaturedScooterCardProps {
   model: ApiVehicleModelDetail;
@@ -122,8 +123,9 @@ export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model 
         accessibilityRole="button"
         activeOpacity={0.9}
         className="flex-row items-center justify-between rounded-2xl pl-5 pr-2 py-2.5 mt-3"
-        style={{ backgroundColor: COLORS.primary, opacity: disabled ? 0.5 : 1 }}
+        style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: disabled ? 0.5 : 1 }}
       >
+        <GradientFill />
         <View>
           <Text className="text-white text-[13px] font-bold">{ctaLabel}</Text>
           <Text style={{ color: '#FFFFFFB3' }} className="text-[10px] font-medium mt-0.5">

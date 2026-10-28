@@ -15,6 +15,7 @@ import { copyToClipboard } from '../../lib/clipboard';
 import { notifyError } from '../../lib/confirm';
 import type { ApiReferralStatus, ApiRewardCardStatus } from '../../types/api';
 import { formatDate } from '../../constants/status';
+import { GradientFill } from '../../components/ui/GradientFill';
 
 const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
@@ -77,8 +78,9 @@ export default function ReferralsScreen() {
             {/* --- my code ------------------------------------------------ */}
             <View
               className="rounded-2xl p-4 mb-4"
-              style={{ backgroundColor: COLORS.primary }}
+              style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
             >
+              <GradientFill />
               <View className="flex-row items-center mb-2">
                 <Gift size={18} color="#FFF" />
                 <Text className="text-white text-sm font-extrabold ml-2">{t('referrals.inviteHeading')}</Text>

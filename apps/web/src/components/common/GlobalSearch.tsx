@@ -39,8 +39,11 @@ export function GlobalSearch() {
   const showPanel = open && value.trim().length > 0;
 
   return (
-    <div ref={containerRef} className="relative hidden w-56 md:w-64 sm:block">
-      <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+    <div ref={containerRef} className="relative hidden w-52 sm:block md:w-60 xl:w-72">
+      {/* The reference's dark round search button, sitting inside the pill's right end. */}
+      <span className="pointer-events-none absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground">
+        <Search className="h-3.5 w-3.5" />
+      </span>
       <Input
         value={value}
         onChange={(e) => setValue(e.target.value)}
@@ -49,7 +52,7 @@ export function GlobalSearch() {
         placeholder="Search riders & vehicles…"
         title="Search riders and vehicles — type a name, email, phone number or vehicle registration"
         aria-label="Search riders and vehicles"
-        className="h-10 rounded-full border-border/60 bg-card-hover/60 pl-10 focus-visible:bg-background"
+        className="h-9 rounded-full border-0 bg-card pl-4 pr-11 text-[0.8125rem] shadow-card"
       />
 
       {showPanel && (

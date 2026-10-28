@@ -11,6 +11,7 @@ import {
 import { COLORS } from '../constants/theme';
 import { useOnboardingStore } from '../store/useOnboardingStore';
 import { useT, type CopyKey } from '../i18n';
+import { GradientFill } from '../components/ui/GradientFill';
 
 /**
  * The slides hold translation KEYS, not text.
@@ -195,9 +196,10 @@ export default function OnboardingScreen() {
         <TouchableOpacity
           onPress={() => (isLast ? void complete() : goToSlide(activeIndex + 1))}
           accessibilityRole="button"
-          style={{ backgroundColor: COLORS.primary }}
+          style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
           className="w-full py-4 rounded-2xl flex-row justify-center items-center shadow-sm"
         >
+          <GradientFill />
           <Text className="text-white font-bold text-base mr-2">{isLast ? t('onboarding.getStarted') : t('common.next')}</Text>
           <ArrowRight size={18} color="#FFF" />
         </TouchableOpacity>

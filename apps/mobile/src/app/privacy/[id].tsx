@@ -14,6 +14,7 @@ import { COLORS } from '../../constants/theme';
 import { formatDate } from '../../constants/status';
 import { statusColour } from './requests';
 import type { ApiPrivacyRequest } from '../../types/api';
+import { GradientFill } from '../../components/ui/GradientFill';
 
 /**
  * One rights request: where it is, what we promised, and what we decided.
@@ -157,9 +158,10 @@ export default function PrivacyRequestDetailScreen() {
                             <TouchableOpacity
                                 onPress={() => router.push('/privacy/summary' as never)}
                                 accessibilityRole="button"
-                                style={{ backgroundColor: COLORS.primary }}
+                                style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
                                 className="w-full py-3.5 rounded-2xl flex-row justify-center items-center mt-2"
                             >
+                              <GradientFill />
                                 <Text className="text-white font-bold text-sm">
                                     {t('privacy.summary')}
                                 </Text>

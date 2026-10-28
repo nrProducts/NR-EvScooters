@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { AlertTriangle, RefreshCw, WifiOff } from 'lucide-react-native';
 import { COLORS } from '../../constants/theme';
 import { useT } from '../../i18n';
+import { GradientFill } from './GradientFill';
 
 interface ErrorStateProps {
   message: string;
@@ -35,8 +36,9 @@ export const ErrorState: React.FC<ErrorStateProps> = ({ message, onRetry, offlin
           onPress={onRetry}
           accessibilityRole="button"
           className="flex-row items-center px-4 py-2.5 rounded-xl mt-4"
-          style={{ backgroundColor: COLORS.primary }}
+          style={{ backgroundColor: COLORS.primary, overflow: 'hidden' }}
         >
+          <GradientFill />
           <RefreshCw size={14} color="#FFF" />
           <Text className="text-white font-bold text-xs ml-2">{t('common.tryAgain')}</Text>
         </TouchableOpacity>

@@ -50,16 +50,17 @@ export function RevenueKpiCard({
   const good = deltaPct == null ? null : (invertDelta ? !up : up);
   const cmp = compareLabel?.replace(/^vs\s+/, "") ?? "prev. period";
 
+  // The emphasised card (Net Revenue) is the same light-to-dark green as the dashboard's Net revenue card.
   return (
-    <MotionCard className={cn(emphasis && "border-primary/40 bg-primary/[0.03]")}>
+    <MotionCard className={cn(emphasis && "border-0 bg-gradient-to-br from-[#3CCB73] to-[#17924A] text-white shadow-[0_10px_28px_rgba(23,146,74,0.28)]")}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-2">
-          <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+          <span className={cn("flex items-center gap-1 text-xs font-medium", emphasis ? "text-white/85" : "text-muted-foreground")}>
             <span className="truncate">{label}</span>
             {tooltip && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button type="button" className="shrink-0 text-muted-foreground/60 hover:text-foreground">
+                  <button type="button" className={cn("shrink-0", emphasis ? "text-white/70 hover:text-white" : "text-muted-foreground/60 hover:text-foreground")}>
                     <Info className="h-3 w-3" />
                   </button>
                 </TooltipTrigger>
@@ -68,7 +69,7 @@ export function RevenueKpiCard({
             )}
           </span>
           {Icon && (
-            <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]", ICON_TONE[tone])}>
+            <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]", emphasis ? "bg-white/20 text-white" : ICON_TONE[tone])}>
               <Icon className="h-4 w-4" strokeWidth={1.75} />
             </div>
           )}
@@ -80,17 +81,17 @@ export function RevenueKpiCard({
 
         <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[0.6875rem]">
           {deltaPct != null && (
-            <span className={cn("flex items-center font-semibold", good ? "text-primary" : "text-destructive")}>
+            <span className={cn("flex items-center font-semibold", emphasis ? "text-white" : good ? "text-primary" : "text-destructive")}>
               {up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
               {Math.abs(deltaPct)}%
             </span>
           )}
           {previous != null ? (
-            <span className="text-muted-foreground">
-              vs <span className="font-medium text-foreground/80">{formatCurrency(previous)}</span> {cmp}
+            <span className={emphasis ? "text-white/80" : "text-muted-foreground"}>
+              vs <span className={cn("font-medium", emphasis ? "text-white" : "text-foreground/80")}>{formatCurrency(previous)}</span> {cmp}
             </span>
           ) : (
-            <span className="text-muted-foreground">{compareLabel}</span>
+            <span className={emphasis ? "text-white/80" : "text-muted-foreground"}>{compareLabel}</span>
           )}
         </div>
       </CardContent>

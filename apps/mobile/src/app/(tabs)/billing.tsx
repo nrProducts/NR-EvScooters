@@ -35,6 +35,7 @@ import {
   PLAN_STATUS_LABEL_KEY, REFUND_STATUS_LABEL_KEY, REFUND_STATUS_TONE,
 } from '../../constants/status';
 import { useT, type CopyKey, type TranslateFn } from '../../i18n';
+import { GradientFill } from '../../components/ui/GradientFill';
 
 /**
  * `PURPOSE_LABEL`, `invoiceLabel`, `dueLabel` and `invoiceLines` all take `t`
@@ -1055,8 +1056,9 @@ export default function BillingScreen() {
           disabled={busy}
           accessibilityRole="button"
           className="rounded-full px-4 py-1.5"
-          style={{ backgroundColor: COLORS.primary, opacity: busy ? 0.6 : 1 }}
+          style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: busy ? 0.6 : 1 }}
         >
+          <GradientFill />
           {busy ? (
             <Spinner size={12} color="#FFF" />
           ) : (
@@ -1161,8 +1163,9 @@ export default function BillingScreen() {
               accessibilityRole="button"
               accessibilityLabel={t('billing.pay', { amount: total.toFixed(2) })}
               className="flex-row items-center justify-between px-5 py-3.5"
-              style={{ borderRadius: 20, backgroundColor: COLORS.primary, opacity: paying ? 0.7 : 1 }}
+              style={{ borderRadius: 20, backgroundColor: COLORS.primary, overflow: 'hidden', opacity: paying ? 0.7 : 1 }}
             >
+              <GradientFill />
               <View>
                 <Text className="text-white text-lg font-extrabold">₹{total.toFixed(2)}</Text>
                 <Text className="text-white text-[10px] font-bold uppercase tracking-wider" style={{ opacity: 0.85 }}>
@@ -1326,8 +1329,9 @@ export default function BillingScreen() {
                       onPress={handleConfirmRecharge}
                       disabled={recharging}
                       className="flex-1 py-3.5 rounded-2xl items-center flex-row justify-center"
-                      style={{ backgroundColor: COLORS.primary, opacity: recharging ? 0.6 : 1 }}
+                      style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: recharging ? 0.6 : 1 }}
                     >
+                      <GradientFill />
                       {recharging ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                       <Text className="text-white text-xs font-bold ml-2">
                         {recharging ? t('billing.processing') : t('billing.confirmAndPay', { amount: rechargePreview.total.toFixed(2) })}
@@ -1340,8 +1344,9 @@ export default function BillingScreen() {
                   onPress={handleStartRecharge}
                   disabled={previewLoading}
                   className="py-3.5 rounded-2xl items-center flex-row justify-center"
-                  style={{ backgroundColor: COLORS.primary, opacity: previewLoading ? 0.6 : 1 }}
+                  style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: previewLoading ? 0.6 : 1 }}
                 >
+                  <GradientFill />
                   {previewLoading ? <Spinner size={16} color="#FFF" /> : <CreditCard size={14} color="#FFF" />}
                   <Text className="text-white text-sm font-bold ml-2">
                     {previewLoading ? t('billing.loading') : t('billing.reviewAndRenew')}
@@ -1532,8 +1537,9 @@ export default function BillingScreen() {
                   onPress={() => void handleCompleteBookingPayment()}
                   disabled={completingBookingPayment || bookingQuoteLoading}
                   className="py-3.5 rounded-2xl items-center flex-row justify-center"
-                  style={{ backgroundColor: COLORS.primary, opacity: completingBookingPayment || bookingQuoteLoading ? 0.6 : 1 }}
+                  style={{ backgroundColor: COLORS.primary, overflow: 'hidden', opacity: completingBookingPayment || bookingQuoteLoading ? 0.6 : 1 }}
                 >
+                  <GradientFill />
                   {completingBookingPayment ? (
                     <Spinner size={16} color="#FFF" />
                   ) : (

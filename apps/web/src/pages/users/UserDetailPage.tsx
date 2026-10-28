@@ -15,8 +15,10 @@ import { useUser } from "@/hooks/useUsers";
 import { useAuthStore } from "@/store/authStore";
 import { hasAction } from "@/lib/permissions";
 import { initials, formatDate, formatCurrency, formatPhoneLocal } from "@/lib/utils";
+import { usePageOwnsTitle } from "@/hooks/usePageOwnsTitle";
 
 export default function UserDetailPage() {
+  usePageOwnsTitle(); // this page draws its own heading; hide the header's
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: user, isLoading, isError, refetch } = useUser(id);

@@ -30,6 +30,7 @@ import { ReturnStageStepper } from "./ReturnStageStepper";
 import { DamageChargeCard } from "./DamageChargeCard";
 import { AddDamageChargeModal, type DamageDraft } from "./AddDamageChargeModal";
 import { paymentMethodLabel, type DamageCategory, type Deposit, type ReturnStageStatus } from "@/types";
+import { usePageOwnsTitle } from "@/hooks/usePageOwnsTitle";
 
 interface OtherChargeForm {
   label: string;
@@ -102,6 +103,7 @@ function StagedDamageCard({ draft, onRemove }: { draft: DamageDraft; onRemove: (
  * visible before a click is wasted on it.
  */
 export default function ReturnDetailPage() {
+  usePageOwnsTitle(); // this page draws its own heading; hide the header's
   const { rentalId } = useParams<{ rentalId: string }>();
   const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useReturnDetail(rentalId);
