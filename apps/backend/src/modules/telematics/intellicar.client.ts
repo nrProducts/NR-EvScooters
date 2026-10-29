@@ -203,8 +203,19 @@ export async function sendLockCommand(
         Object.entries(res.data ?? {}).some(
             ([key, value]) => suffix.test(key) && Array.isArray(value) && value.includes(vehicleNo),
         );
-    if (res.status !== "SUCCESS" || listed(/Failure$/i) || !listed(/Success$/i)) {
+    if (res.status !== "SUCCESS") {
         throw new Error(res.msg ? `Tracking platform: ${res.msg}` : "Tracking platform did not accept the lock command.");
+    }
+    if (listed(/Failure$/i)) {
+        throw new Error(`Tracking platform could not send the ${action} command to this scooter (it is in the platform's failure list).`);
+    }
+    if (!listed(/Success$/i)) {
+        // The call worked but the scooter is in neither list we know the names
+        // of. Say what came back instead of guessing, and keep it in the logs.
+        console.error(`[intellicar] ${action} for ${vehicleNo}: unrecognised response`, JSON.stringify(res));
+        throw new Error(
+            `Tracking platform did not confirm the ${action} command. It answered: ${JSON.stringify(res.data ?? res.msg ?? null).slice(0, 300)}`,
+        );
     }
     return { cmdId: null };
 }
