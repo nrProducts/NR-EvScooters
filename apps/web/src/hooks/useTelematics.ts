@@ -43,6 +43,15 @@ export function useControlCommands(vehicleId: string | undefined, enabled: boole
   });
 }
 
+/** The last lock / unlock sent for a scooter (the platform has no read-back). */
+export function useLockState(vehicleId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["vehicle-lock-state", vehicleId],
+    queryFn: () => api.fetchLockState(vehicleId!),
+    enabled: !!vehicleId && enabled,
+  });
+}
+
 export function useControlVehicle() {
   const qc = useQueryClient();
   return useMutation({
@@ -50,6 +59,7 @@ export function useControlVehicle() {
       api.controlVehicle(vehicleId, action, input),
     onSuccess: (_r, v) => {
       qc.invalidateQueries({ queryKey: ["vehicle-control-commands", v.vehicleId] });
+      qc.invalidateQueries({ queryKey: ["vehicle-lock-state", v.vehicleId] });
       qc.invalidateQueries({ queryKey: ["vehicle-telemetry", v.vehicleId] });
     },
   });

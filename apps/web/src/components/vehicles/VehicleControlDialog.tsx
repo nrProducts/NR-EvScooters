@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Lock, LockOpen } from "lucide-react";
+import { AlertTriangle, Lock, LockKeyhole, LockKeyholeOpen, LockOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,8 +15,48 @@ const MOVING_KMPH = 5;
 
 const norm = (s: string) => s.replace(/[\s-]/g, "").toUpperCase();
 
+/** Everything that differs between the four commands, in one place. */
+const COPY: Record<ControlAction, {
+  title: string; description: string; placeholder: string; button: string; toast: string; disabling: boolean;
+}> = {
+  immobilise: {
+    title: "Immobilise",
+    description: "This cuts the scooter's drive. The rider will not be able to ride it until you mobilise it again.",
+    placeholder: "e.g. Payment overdue 5 days, rider not responding",
+    button: "Immobilise scooter",
+    toast: "Immobilise command sent — the scooter confirms within about 5 minutes",
+    disabling: true,
+  },
+  mobilise: {
+    title: "Mobilise",
+    description: "This lets the scooter be ridden again.",
+    placeholder: "e.g. Payment received",
+    button: "Mobilise scooter",
+    toast: "Mobilise command sent — the scooter confirms within about 5 minutes",
+    disabling: false,
+  },
+  lock: {
+    title: "Lock",
+    description:
+      "This sends the platform's lock command to the scooter. The platform does not say exactly what it locks, "
+      + "and it cannot confirm the result — this page will show the last command you sent, not a reading from the scooter.",
+    placeholder: "e.g. Scooter parked at the station, securing it",
+    button: "Lock scooter",
+    toast: "Lock command sent — the scooter does not report back, so check it in person if it matters",
+    disabling: true,
+  },
+  unlock: {
+    title: "Unlock",
+    description: "This sends the platform's unlock command to the scooter. It cannot confirm the result.",
+    placeholder: "e.g. Handing over to the rider",
+    button: "Unlock scooter",
+    toast: "Unlock command sent — the scooter does not report back, so check it in person if it matters",
+    disabling: false,
+  },
+};
+
 /**
- * Immobilise / mobilise a scooter — ADMIN ONLY (the server enforces it; the
+ * Immobilise / mobilise / lock / unlock a scooter — ADMIN ONLY (the server enforces it; the
  * caller only shows the button to admins).
  *
  * Deliberately heavy: a written reason, the registration number typed back,
@@ -45,8 +85,8 @@ export function VehicleControlDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const immobilise = action === "immobilise";
-  const moving = immobilise && speedKmph !== null && speedKmph >= MOVING_KMPH;
+  const copy = COPY[action];
+  const moving = copy.disabling && speedKmph !== null && speedKmph >= MOVING_KMPH;
   const canSubmit =
     reason.trim().length >= 5 && norm(typed) === norm(registrationNumber) && (!moving || ackMoving) && !control.isPending;
 
@@ -58,7 +98,7 @@ export function VehicleControlDialog({
       },
       {
         onSuccess: () => {
-          toastSuccess(`${immobilise ? "Immobilise" : "Mobilise"} command sent — the scooter confirms within about 5 minutes`);
+          toastSuccess(copy.toast);
           onOpenChange(false);
         },
         onError: (err) => toastError(err, "Could not send the command"),
@@ -71,14 +111,13 @@ export function VehicleControlDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {immobilise ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
-            {immobilise ? "Immobilise" : "Mobilise"} {registrationNumber}
+            {action === "immobilise" ? <Lock className="h-4 w-4" />
+              : action === "mobilise" ? <LockOpen className="h-4 w-4" />
+              : action === "lock" ? <LockKeyhole className="h-4 w-4" />
+              : <LockKeyholeOpen className="h-4 w-4" />}
+            {copy.title} {registrationNumber}
           </DialogTitle>
-          <DialogDescription>
-            {immobilise
-              ? "This cuts the scooter's drive. The rider will not be able to ride it until you mobilise it again."
-              : "This lets the scooter be ridden again."}
-          </DialogDescription>
+          <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -88,7 +127,7 @@ export function VehicleControlDialog({
                 <AlertTriangle className="h-4 w-4" /> This scooter is moving at {Math.round(speedKmph as number)} km/h
               </p>
               <p className="text-xs text-muted-foreground">
-                Cutting power while it is moving can cause a crash. Prefer to wait until it has stopped.
+                {action === "lock" ? "Locking" : "Cutting power"} while it is moving can cause a crash. Prefer to wait until it has stopped.
               </p>
               <label className="flex cursor-pointer items-start gap-2 text-xs">
                 <input
@@ -108,7 +147,7 @@ export function VehicleControlDialog({
               rows={3}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder={immobilise ? "e.g. Payment overdue 5 days, rider not responding" : "e.g. Payment received"}
+              placeholder={copy.placeholder}
             />
           </div>
 
@@ -128,9 +167,9 @@ export function VehicleControlDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant={immobilise ? "destructive" : "default"} disabled={!canSubmit} onClick={submit}>
+          <Button variant={copy.disabling ? "destructive" : "default"} disabled={!canSubmit} onClick={submit}>
             {control.isPending && <Spinner className="h-4 w-4" />}
-            {immobilise ? "Immobilise scooter" : "Mobilise scooter"}
+            {copy.button}
           </Button>
         </DialogFooter>
       </DialogContent>

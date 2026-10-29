@@ -4,11 +4,11 @@ import { supabaseAdmin } from "../../config/supabase";
 import { businessRule, conflict, notFound, serviceUnavailable } from "../../common/AppError";
 import { writeAudit } from "../../common/audit";
 import { AuthContext } from "../../types";
-import { ControlMode, intellicarConfigured, resolveVehicleNo, sendControlCommand } from "./intellicar.client";
+import { ControlMode, intellicarConfigured, resolveVehicleNo, sendControlCommand, sendLockCommand } from "./intellicar.client";
 import { getVehicleTelemetry } from "./telematics.service";
 
 /**
- * Remote immobilise / mobilise of a scooter.
+ * Remote immobilise / mobilise / lock / unlock of a scooter.
  *
  * This is the one place the backend ACTS on a vehicle, so every guard lives
  * here rather than being left to the caller:
@@ -31,10 +31,17 @@ const db = supabaseAdmin as unknown as SupabaseClient;
 /** At or above this a live scooter counts as moving. */
 export const MOVING_KMPH = 5;
 
+export type ControlActionName = "immobilise" | "mobilise" | "lock" | "unlock";
+
+/** The two actions that take a scooter out of use, so the moving-scooter guard applies. */
+const isDisabling = (action: ControlActionName): boolean => action === "immobilise" || action === "lock";
+const isLockAction = (action: ControlActionName): boolean => action === "lock" || action === "unlock";
+
 export interface ControlInput {
     vehicleId: string;
-    action: "immobilise" | "mobilise";
-    mode: ControlMode;
+    action: ControlActionName;
+    /** Immobilise / mobilise only — lock and unlock have no mode. */
+    mode?: ControlMode;
     reason: string;
     confirmRegistration: string;
     acknowledgeMoving: boolean;
@@ -42,12 +49,19 @@ export interface ControlInput {
 
 const norm = (s: string) => s.replace(/[\s-]/g, "").toUpperCase();
 
+const AUDIT_ACTION = {
+    immobilise: "vehicle.immobilised",
+    mobilise: "vehicle.mobilised",
+    lock: "vehicle.locked",
+    unlock: "vehicle.unlocked",
+} as const;
+
 export async function controlVehicle(
     input: ControlInput,
     actor: AuthContext,
     req?: Request,
 ): Promise<{ command_id: string; provider_cmd_id: string | null; status: "sent" }> {
-    if (actor.role !== "admin") throw businessRule("Only an administrator can immobilise or mobilise a vehicle.");
+    if (actor.role !== "admin") throw businessRule("Only an administrator can immobilise, mobilise, lock or unlock a vehicle.");
     if (!intellicarConfigured()) throw serviceUnavailable("Vehicle tracking is not connected, so the command cannot be sent.");
 
     const { data: vehicle, error } = await supabaseAdmin
@@ -67,9 +81,9 @@ export async function controlVehicle(
     const telemetry = await getVehicleTelemetry(vehicle.id);
     const speed = telemetry?.freshness === "live" ? telemetry.speed_kmph : null;
     const moving = speed !== null && speed >= MOVING_KMPH;
-    if (input.action === "immobilise" && moving && !input.acknowledgeMoving) {
+    if (isDisabling(input.action) && moving && !input.acknowledgeMoving) {
         throw conflict(
-            `This scooter is moving at ${Math.round(speed)} km/h. Cutting power while it is moving can cause a crash — ` +
+            `This scooter is moving at ${Math.round(speed)} km/h. ${input.action === "lock" ? "Locking" : "Cutting power"} while it is moving can cause a crash — ` +
             "confirm that you understand the risk, or wait until it has stopped.",
         );
     }
@@ -78,7 +92,7 @@ export async function controlVehicle(
         vehicle_id: vehicle.id,
         registration_number: vehicle.registration_number,
         action: input.action,
-        mode: input.mode,
+        mode: isLockAction(input.action) ? "n/a" : (input.mode ?? "ignition"),
         reason: input.reason.trim(),
         requested_by: actor.id,
         speed_kmph_at_request: speed,
@@ -89,7 +103,9 @@ export async function controlVehicle(
     try {
         const vehicleNo = await resolveVehicleNo(vehicle.vin, vehicle.registration_number);
         if (!vehicleNo) throw new Error("This vehicle is not on the tracking account, so it cannot be controlled remotely.");
-        providerCmdId = (await sendControlCommand(input.action, vehicleNo, input.mode)).cmdId;
+        providerCmdId = input.action === "lock" || input.action === "unlock"
+            ? (await sendLockCommand(input.action, vehicleNo)).cmdId
+            : (await sendControlCommand(input.action, vehicleNo, input.mode ?? "ignition")).cmdId;
     } catch (err) {
         failure = err instanceof Error ? err.message : "The command could not be sent.";
     }
@@ -104,12 +120,12 @@ export async function controlVehicle(
     await writeAudit({
         actorId: actor.id,
         targetUserId: null,
-        action: input.action === "immobilise" ? "vehicle.immobilised" : "vehicle.mobilised",
+        action: AUDIT_ACTION[input.action],
         entityType: "vehicle",
         entityId: vehicle.id,
         after: {
             registration_number: vehicle.registration_number,
-            mode: input.mode,
+            mode: base.mode,
             reason: base.reason,
             outcome: failure ? "failed" : "sent",
             error: failure,
@@ -126,7 +142,7 @@ export async function controlVehicle(
 
 export interface ControlCommandRow {
     id: string;
-    action: "immobilise" | "mobilise";
+    action: ControlActionName;
     mode: string;
     reason: string;
     status: "sent" | "failed";
@@ -160,4 +176,44 @@ export async function listControlCommands(vehicleId: string, limit = 10): Promis
         speed_kmph_at_request: r.speed_kmph_at_request === null ? null : Number(r.speed_kmph_at_request),
         requested_by: r.requested_by ? { id: r.requested_by, full_name: names.get(r.requested_by) ?? "Admin" } : null,
     }));
+}
+
+export interface LockState {
+    /** `unknown` until a lock or unlock has been sent for this scooter. */
+    state: "locked" | "unlocked" | "unknown";
+    /** When the last accepted lock / unlock command was sent. */
+    at: string | null;
+    by: string | null;
+}
+
+/**
+ * Whether the scooter is locked, as far as this system can know.
+ *
+ * Intellicar offers no way to read the lock back, so this is the LAST ACCEPTED
+ * lock / unlock command — what we told the scooter to do, not proof that it
+ * obeyed. A failed attempt does not count. Anything done outside this console
+ * (a key, the platform's own dashboard) is invisible here.
+ */
+export async function getLockState(vehicleId: string): Promise<LockState> {
+    const { data, error } = await db
+        .from("vehicle_control_commands")
+        .select("action, created_at, requested_by")
+        .eq("vehicle_id", vehicleId)
+        .eq("status", "sent")
+        .in("action", ["lock", "unlock"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) return { state: "unknown", at: null, by: null };
+
+    const row = data as { action: "lock" | "unlock"; created_at: string; requested_by: string | null };
+    let by: string | null = null;
+    if (row.requested_by) {
+        const { data: user, error: userError } = await supabaseAdmin
+            .from("users").select("full_name").eq("id", row.requested_by).maybeSingle();
+        if (userError) throw userError;
+        by = (user?.full_name as string | undefined) ?? null;
+    }
+    return { state: row.action === "lock" ? "locked" : "unlocked", at: row.created_at, by };
 }

@@ -18,7 +18,7 @@ let cached: { token: string; expiresAt: number } | null = null;
 /** The platform's token lasts ~15 days; renew well before that. */
 const TOKEN_TTL_MS = 10 * 24 * 3_600_000;
 
-async function post<T>(path: string, body: Record<string, unknown>, timeoutMs = 15_000): Promise<Envelope<T>> {
+async function post<T>(path: string, body: Record<string, unknown>, timeoutMs = 15_000, retried = false): Promise<Envelope<T>> {
     const res = await fetch(`${env.intellicarBaseUrl.replace(/\/$/, "")}/${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -27,8 +27,22 @@ async function post<T>(path: string, body: Record<string, unknown>, timeoutMs = 
     });
     if (res.status === 429) throw new Error("Tracking platform rate limit reached — try again later.");
     if (res.status === 401) {
-        cached = null;
-        throw new Error("Tracking platform rejected the login.");
+        // Intellicar uses 401 for two different things: a dead token ("Failed to
+        // authenticate the token") and an account that may not act on that
+        // vehicle / endpoint ("Permission failure"). Only the first is cured by
+        // logging in again, so say which one it was.
+        const msg = ((await res.json().catch(() => ({}))) as Envelope<unknown>).msg ?? "";
+        if (/authenticate the token/i.test(msg)) {
+            cached = null;
+            // The edge sync jobs log in on the same account, so a cached token
+            // can go stale. A 401 means nothing was executed, so retrying once
+            // with a fresh token is safe even for mobilise / immobilise.
+            if (!retried && "token" in body) {
+                return post<T>(path, { ...body, token: await token() }, timeoutMs, true);
+            }
+            throw new Error("Tracking platform rejected the login.");
+        }
+        throw new Error(msg ? `Tracking platform: ${msg}` : "Tracking platform rejected the request.");
     }
     if (!res.ok && res.status !== 400) throw new Error(`Tracking platform returned HTTP ${res.status}.`);
     return (await res.json()) as Envelope<T>;
@@ -164,4 +178,33 @@ export async function sendControlCommand(
     }
     const id = res.data?.cmdId;
     return { cmdId: id === undefined || id === null ? null : String(id) };
+}
+
+/**
+ * Lock or unlock a vehicle through the platform's bulk endpoint, sent for ONE
+ * vehicle. Unlike immobilise there is no mode, and the platform does not say
+ * what the lock physically does — treat it with the same care as
+ * sendControlCommand and call it only from control.service.ts.
+ *
+ * The answer lists vehicles under `LockCmndSentSuccess` / `LockCmndSentFailure`
+ * (`Unlock…` for unlock). The overall `status` can read SUCCESS while the one
+ * vehicle sits in the failure list, so the lists decide, not `status`. The
+ * docs' own example mixes the two names, hence matching on the key's suffix.
+ */
+export async function sendLockCommand(
+    action: "lock" | "unlock",
+    vehicleNo: string,
+): Promise<{ cmdId: string | null }> {
+    const res = await post<Record<string, unknown>>(action, {
+        token: await token(),
+        vehicleno: [vehicleNo],
+    });
+    const listed = (suffix: RegExp): boolean =>
+        Object.entries(res.data ?? {}).some(
+            ([key, value]) => suffix.test(key) && Array.isArray(value) && value.includes(vehicleNo),
+        );
+    if (res.status !== "SUCCESS" || listed(/Failure$/i) || !listed(/Success$/i)) {
+        throw new Error(res.msg ? `Tracking platform: ${res.msg}` : "Tracking platform did not accept the lock command.");
+    }
+    return { cmdId: null };
 }
