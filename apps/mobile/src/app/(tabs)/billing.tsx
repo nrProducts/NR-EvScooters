@@ -269,9 +269,15 @@ function periodProgress(startDate: string, endDate: string): number {
  * the "₹-2000" a bare `amount.toFixed(2)` on a negative number would
  * print. */
 function BillLine({
-  label, amount, attention, negative, bold,
-}: { label: string; amount: number; attention?: boolean; negative?: boolean; bold?: boolean }) {
-  const color = attention ? COLORS.overdue : negative ? COLORS.danger : COLORS.textPrimary;
+  label, amount, attention, negative, saving, bold,
+}: {
+  label: string; amount: number; attention?: boolean; negative?: boolean;
+  /** A discount (a referral reward): shown as -₹x in green, not the red of a deduction. */
+  saving?: boolean;
+  bold?: boolean;
+}) {
+  const color = attention ? COLORS.overdue : saving ? COLORS.success : negative ? COLORS.danger : COLORS.textPrimary;
+  negative = negative || saving;
   return (
     <View className="flex-row items-center justify-between py-1.5">
       <Text
@@ -430,7 +436,7 @@ export default function BillingScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useT();
   const { bookingId, booking, invoices, deposit, loading, error, reload, patchInvoices, reloadInvoices } = useMyBilling();
-  const { refreshing, onRefresh } = useRefresh(() => reload(true));
+  const { refreshing, onRefresh } = useRefresh(() => Promise.all([reload(true), reloadReferralSummary()]));
   const profile = useAuthStore((s) => s.profile);
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const refreshProfileIfStale = useAuthStore((s) => s.refreshProfileIfStale);
@@ -659,6 +665,16 @@ export default function BillingScreen() {
     useCallback(() => {
       reloadRef.current();
     }, []),
+  );
+
+  // The reward cards too. Billing is a tab, so it stays mounted: loading them
+  // only on first mount meant a rider who earned a card later (or whose first
+  // load failed) came back from Home to a Billing with no "add reward card"
+  // option at all until the app restarted.
+  useFocusEffect(
+    useCallback(() => {
+      void reloadReferralSummary();
+    }, [reloadReferralSummary]),
   );
 
   // has_active_rental/has_active_booking (which useMyBilling's own
@@ -1087,6 +1103,12 @@ export default function BillingScreen() {
       {outstandingInvoices.map((inv) => {
         const perDay = inv.late_fee && inv.days_late ? inv.late_fee / inv.days_late : 0;
         const total = inv.total_due ?? inv.balance_amount;
+        // A reward card on this invoice. The server has already taken it off
+        // total_amount, so the plan line and the total are shown at their
+        // pre-reward amounts struck through, with the reward as its own line:
+        // the rider sees ₹4 become ₹3, not just a smaller number.
+        const reward = referralSummary?.reserved_redemptions.find((r) => r.invoice_id === inv.id)?.discount_amount ?? 0;
+        const planBeforeReward = inv.total_amount + reward;
         const paying = payingInvoiceId === inv.id;
         const due = dueLabel(inv, t);
         return (
@@ -1128,10 +1150,15 @@ export default function BillingScreen() {
                     />
                   ))
                   : null
-              ) : inv.total_amount > 0 ? (
+              ) : planBeforeReward > 0 ? (
                 // Skipped at ₹0: a renewal that is only a late fee has no plan
                 // amount to list, and "₹0.00" above the real charge is noise.
-                <BillLine label={t('billing.rentalPlanAmount')} amount={inv.total_amount} />
+                // A reward that brings the plan to ₹0 still lists it, so the
+                // discount has something to come off.
+                <BillLine label={t('billing.rentalPlanAmount')} amount={planBeforeReward} />
+              ) : null}
+              {reward > 0 ? (
+                <BillLine label={t('billing.referralCard.discountLine')} amount={reward} saving />
               ) : null}
               {inv.allocated_amount > 0 ? (
                 <BillLine label={t('billing.alreadyPaid')} amount={inv.allocated_amount} negative />
@@ -1150,7 +1177,17 @@ export default function BillingScreen() {
               <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
               <View className="flex-row items-center justify-between pt-1">
                 <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{t('billing.total')}</Text>
-                <Text style={{ color: COLORS.textPrimary }} className="text-xl font-bold">₹{total.toFixed(2)}</Text>
+                <View className="flex-row items-baseline">
+                  {reward > 0 ? (
+                    <Text
+                      style={{ color: COLORS.textSecondary, textDecorationLine: 'line-through' }}
+                      className="text-sm font-semibold mr-2"
+                    >
+                      ₹{(total + reward).toFixed(2)}
+                    </Text>
+                  ) : null}
+                  <Text style={{ color: COLORS.textPrimary }} className="text-xl font-bold">₹{total.toFixed(2)}</Text>
+                </View>
               </View>
             </View>
 
@@ -1167,7 +1204,17 @@ export default function BillingScreen() {
             >
               <GradientFill />
               <View>
-                <Text className="text-white text-lg font-extrabold">₹{total.toFixed(2)}</Text>
+                <View className="flex-row items-baseline">
+                  <Text className="text-white text-lg font-extrabold">₹{total.toFixed(2)}</Text>
+                  {reward > 0 ? (
+                    <Text
+                      className="text-white text-xs font-bold ml-2"
+                      style={{ opacity: 0.75, textDecorationLine: 'line-through' }}
+                    >
+                      ₹{(total + reward).toFixed(2)}
+                    </Text>
+                  ) : null}
+                </View>
                 <Text className="text-white text-[10px] font-bold uppercase tracking-wider" style={{ opacity: 0.85 }}>
                   {t('billing.total')}
                 </Text>

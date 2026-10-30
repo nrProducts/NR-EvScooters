@@ -121,6 +121,8 @@ module.exports = {
         },
       ],
       './plugins/withUpiIntentQueries',
+      // Dark-mode launcher icon on Android (the headlight-on night icon).
+      './plugins/withNightLauncherIcon',
       ...(sentryUploadConfigured
         ? [[
             '@sentry/react-native/expo',
@@ -161,6 +163,7 @@ module.exports = {
       EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
       EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
       EXPO_PUBLIC_MAP_STYLE_URL: process.env.EXPO_PUBLIC_MAP_STYLE_URL,
+      EXPO_PUBLIC_MAP_STYLE_URL_DARK: process.env.EXPO_PUBLIC_MAP_STYLE_URL_DARK,
       EXPO_PUBLIC_GEOCODE_URL: process.env.EXPO_PUBLIC_GEOCODE_URL,
       // A DSN only allows SENDING events to the project, so it is public by
       // design — Sentry's own docs ship it in the client.

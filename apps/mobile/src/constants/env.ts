@@ -1,4 +1,7 @@
 import Constants from 'expo-constants';
+import { isDarkScheme } from './theme';
+
+const CARTO_DARK_MATTER = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
 /**
  * Only EXPO_PUBLIC_* variables are inlined into the bundle, and everything in
@@ -33,6 +36,7 @@ const INLINED: Record<string, string | undefined> = {
     EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
     EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
     EXPO_PUBLIC_MAP_STYLE_URL: process.env.EXPO_PUBLIC_MAP_STYLE_URL,
+    EXPO_PUBLIC_MAP_STYLE_URL_DARK: process.env.EXPO_PUBLIC_MAP_STYLE_URL_DARK,
     EXPO_PUBLIC_GEOCODE_URL: process.env.EXPO_PUBLIC_GEOCODE_URL,
     EXPO_PUBLIC_SENTRY_DSN: process.env.EXPO_PUBLIC_SENTRY_DSN,
 };
@@ -89,6 +93,18 @@ export const ENV = {
      */
     get mapStyleUrl(): string {
         return read('EXPO_PUBLIC_MAP_STYLE_URL') ?? '';
+    },
+    /**
+     * The map style for the phone's current theme. Dark mode uses
+     * EXPO_PUBLIC_MAP_STYLE_URL_DARK, else CARTO's "dark matter" — key-less
+     * and MapLibre-compatible, the same dark basemap the admin console uses
+     * (apps/web/src/lib/mapConfig.ts). Empty when no light style is set, so
+     * the "map not configured" notice still shows instead of a dark-only map.
+     */
+    get themedMapStyleUrl(): string {
+        const light = this.mapStyleUrl;
+        if (!light || !isDarkScheme()) return light;
+        return read('EXPO_PUBLIC_MAP_STYLE_URL_DARK') ?? CARTO_DARK_MATTER;
     },
     /**
      * Photon-compatible geocoding endpoint, used to turn an area name typed

@@ -16,6 +16,11 @@
  *   apps/web/public/favicon.svg               the browser-tab icon; switches by
  *                                             itself with the OS theme via
  *                                             prefers-color-scheme
+ *   apps/mobile/assets/images/android-icon-{background,foreground}-dark.png
+ *                                             Android launcher icon in dark mode
+ *                                             (plugins/withNightLauncherIcon.js)
+ *   apps/mobile/assets/images/logo-icon-dark.png  512 rounded — the app icon shown
+ *                                             inside the rider app (sign-in screens)
  *   apps/mobile/assets/images/logo-wordmark-dark.png, logo-lockup-dark.png
  *                                             rider app header / home hero
  *                                             logos when the phone is in dark mode
@@ -29,8 +34,9 @@
  * The PNGs ARE committed — this script is here to regenerate them, not run at
  * build. It renders through a locally installed Chrome or Edge (headless), as
  * the artwork needs gradients and blur that a hand-rolled rasteriser (see
- * generate-station-icons.mjs) can't do. Android has no dark-icon slot, so the
- * launcher icon there stays the green one.
+ * generate-station-icons.mjs) can't do. Android has no official dark-icon
+ * slot; its night layers are installed as a "night" resource variant, which
+ * launchers that honour it switch to (see plugins/withNightLauncherIcon.js).
  *
  * The mark's outline is read from apps/web/src/assets/logo-mark.svg, the same
  * vector the light icons were drawn from, so both versions match exactly.
@@ -150,6 +156,34 @@ function nightIcon(radius, markColor) {
 </svg>`;
 }
 
+/*
+ * Android's adaptive icon is two layers the launcher masks into its own shape.
+ * The light foreground (assets/images/android-icon-foreground.png) holds the
+ * mark at 0.7406 of its size on icon.png, offset by (132.6, 132.4) — measured
+ * from the two images' mark bounding boxes — so the night layers reuse the
+ * icon-space artwork through that transform and line up with the day icon.
+ */
+const ADAPTIVE_TRANSFORM = 'translate(132.6 132.4) scale(0.7406)';
+
+/** Night adaptive-icon background: the black tile, full bleed. */
+function nightAdaptiveBackground() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>${defs()}</defs>
+  <rect width="1024" height="1024" fill="url(#night)" />
+</svg>`;
+}
+
+/** Night adaptive-icon foreground: the lit scooter and its beam on transparent. */
+function nightAdaptiveForeground(markColor) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>${defs()}</defs>
+  <g transform="${ADAPTIVE_TRANSFORM}">
+    ${beam()}
+    ${litMark(markColor)}
+  </g>
+</svg>`;
+}
+
 /**
  * The browser-tab icon. Light: unchanged — the white disc with the green mark,
  * framed exactly as before (mark at its own coordinates, disc r 420). Dark (OS
@@ -245,6 +279,13 @@ try {
   render(nightIcon(0, BRAND_GREEN), 1024, join(APPS, 'mobile/assets/images/icon-dark.png'), browser, work);
   // Same corner rounding as the light logo-icon.png (~27% of the width).
   render(nightIcon(280, CONSOLE_GREEN), 192, join(APPS, 'web/src/assets/logo-icon-dark.png'), browser, work);
+  // The rider app's in-app copy (sign-in code screen). Its dark theme uses the
+  // same emerald as the console (theme.ts DARK.primary === CONSOLE_GREEN).
+  render(nightIcon(280, CONSOLE_GREEN), 512, join(APPS, 'mobile/assets/images/logo-icon-dark.png'), browser, work);
+  // Android's night launcher icon (plugins/withNightLauncherIcon.js). 432px is
+  // a 108dp adaptive layer at xxxhdpi; the brand green, like the iOS icon.
+  render(nightAdaptiveBackground(), 432, join(APPS, 'mobile/assets/images/android-icon-background-dark.png'), browser, work);
+  render(nightAdaptiveForeground(BRAND_GREEN), 432, join(APPS, 'mobile/assets/images/android-icon-foreground-dark.png'), browser, work);
   writeFileSync(join(APPS, 'web/public/favicon.svg'), favicon());
   console.log('wrote', join(APPS, 'web/public/favicon.svg'));
 

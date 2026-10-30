@@ -96,7 +96,7 @@ const BatteryStationMapView = forwardRef<BatteryStationMapHandle, BatteryStation
     return (
         <Map
             style={{ flex: 1 }}
-            mapStyle={ENV.mapStyleUrl}
+            mapStyle={ENV.themedMapStyleUrl}
             onPress={onPressMap}
             onRegionDidChange={(event) => {
                 zoomRef.current = event.nativeEvent.zoom;

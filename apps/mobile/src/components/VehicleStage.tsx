@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, View, type DimensionValue } from 'react-native';
 import { Image } from 'expo-image';
 import Svg, { Defs, Ellipse, RadialGradient, Rect, Stop } from 'react-native-svg';
-import { COLORS } from '../constants/theme';
+import { COLORS, isDarkScheme } from '../constants/theme';
 
 /**
  * Showroom presentation for a vehicle model's catalog artwork: a lit backdrop,
@@ -38,7 +38,8 @@ import { COLORS } from '../constants/theme';
  * ---------------------------------------------------------------------------
  */
 interface VehicleStageProps {
-  imageUrl: string | null;
+  /** A remote URL, or a bundled image (require(...)) such as SCOOTER_HERO. */
+  imageUrl: string | number | null;
   /** Stage height in px. Always binding — the stage never resizes itself. */
   height: number;
   /** Vehicle width as a share of the stage. */
@@ -83,6 +84,14 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
   const contactId = `contact-${uid}`;
   const poolId = `pool-${uid}`;
 
+  // The studio's lighting. Light: a white sweep with a bright floor pool.
+  // Dark: a dim showroom, only slightly lighter than the card at the centre,
+  // a faint pool and a deeper contact shadow. A white centre on the dark card
+  // read as a glaring spotlight and washed out the scooter's black parts.
+  const stage = isDarkScheme()
+    ? { lit: '#2C332F', mid: COLORS.gray[100], edge: COLORS.gray[50], pool: 0.07, shadow: '#000000' }
+    : { lit: COLORS.white, mid: COLORS.gray[100], edge: COLORS.gray[200], pool: 0.9, shadow: '#0F172A' };
+
   const resolvedZoom = zoom ?? (compact ? 1.12 : 1.2);
   const resolvedShadow = shadow ?? {
     bottom: Math.round(height * (compact ? 0.1 : 0.13)),
@@ -110,9 +119,9 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
       <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
         <Defs>
           <RadialGradient id={backdropId} cx="50%" cy="28%" rx="78%" ry="78%">
-            <Stop offset="0%" stopColor={COLORS.white} />
-            <Stop offset="55%" stopColor={COLORS.gray[100]} />
-            <Stop offset="100%" stopColor={COLORS.gray[200]} />
+            <Stop offset="0%" stopColor={stage.lit} />
+            <Stop offset="55%" stopColor={stage.mid} />
+            <Stop offset="100%" stopColor={stage.edge} />
           </RadialGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${backdropId})`} />
@@ -134,8 +143,8 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
         <Svg width="100%" height="100%">
           <Defs>
             <RadialGradient id={poolId} cx="50%" cy="50%" rx="50%" ry="50%">
-              <Stop offset="0%" stopColor={COLORS.white} stopOpacity={0.9} />
-              <Stop offset="100%" stopColor={COLORS.white} stopOpacity={0} />
+              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={stage.pool} />
+              <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
             </RadialGradient>
           </Defs>
           <Ellipse cx="50%" cy="50%" rx="50%" ry="50%" fill={`url(#${poolId})`} />
@@ -160,9 +169,9 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
         <Svg width="100%" height="100%">
           <Defs>
             <RadialGradient id={contactId} cx="50%" cy="50%" rx="50%" ry="50%">
-              <Stop offset="0%" stopColor="#0F172A" stopOpacity={0.55} />
-              <Stop offset="65%" stopColor="#0F172A" stopOpacity={0.12} />
-              <Stop offset="100%" stopColor="#0F172A" stopOpacity={0} />
+              <Stop offset="0%" stopColor={stage.shadow} stopOpacity={0.55} />
+              <Stop offset="65%" stopColor={stage.shadow} stopOpacity={0.12} />
+              <Stop offset="100%" stopColor={stage.shadow} stopOpacity={0} />
             </RadialGradient>
           </Defs>
           <Ellipse cx="50%" cy="50%" rx="50%" ry="50%" fill={`url(#${contactId})`} />
