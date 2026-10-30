@@ -17,6 +17,7 @@ import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { CUSTOM_PROFILE } from "@/types";
 import type { ModuleKey, ModulePermission, PermissionProfileName } from "@/types";
 import { usePageOwnsTitle } from "@/hooks/usePageOwnsTitle";
+import { useBreadcrumbLabel, useGoBack } from "@/hooks/useNavTrail";
 
 export default function PermissionMatrixPage() {
   usePageOwnsTitle(); // this page draws its own heading; hide the header's
@@ -29,6 +30,8 @@ export default function PermissionMatrixPage() {
   // hard-coded tables this screen used to render from are gone.
   const { data: catalog, isLoading: catalogLoading, isError: catalogError } = usePermissionCatalog();
   const updatePermissions = useUpdateUserPermissions();
+  const goBack = useGoBack();
+  useBreadcrumbLabel(user ? `${user.full_name} · Permissions` : null);
 
   const [pending, setPending] = useState<ModulePermission[] | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -87,7 +90,7 @@ export default function PermissionMatrixPage() {
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+        <Button variant="ghost" size="icon" onClick={goBack} aria-label="Go back">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="min-w-0">

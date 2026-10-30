@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Menu, Sun, Moon, LogOut, RotateCw, Settings as SettingsIcon } from "lucide-react";
 import { GlobalSearch } from "@/components/common/GlobalSearch";
+import { Breadcrumbs } from "@/components/common/Breadcrumbs";
+import { useNavTrail } from "@/hooks/useNavTrail";
 import { NotificationBell } from "@/components/common/NotificationBell";
 import { PendingApprovalsBell } from "@/components/common/PendingApprovalsBell";
 import { HeaderAttendanceControl } from "@/components/common/HeaderAttendanceControl";
@@ -43,6 +45,8 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const firstName = user?.name?.trim().split(/\s+/)[0];
   const pageGivenTitle = usePageHeaderStore((s) => s.title);
   const title = pageGivenTitle ?? (isDashboard && firstName ? `Hello, ${firstName}!` : pageTitle);
+  // On a detail page the title slot shows how the admin got there instead.
+  const trail = useNavTrail();
 
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -78,7 +82,14 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
           title like "Privacy Requests" got clipped. The title keeps its full
           width and the (less important) subtitle gives up space first.
         */}
-        {!ownsTitle && (
+        {trail.length > 1 ? (
+          <div className="min-w-0">
+            <Breadcrumbs trail={trail} />
+            {!ownsTitle && pageSubtitle && (
+              <p className="mt-0.5 hidden truncate text-xs text-muted-foreground sm:block">{pageSubtitle}</p>
+            )}
+          </div>
+        ) : !ownsTitle && (
           <div className="min-w-0">
             <h1
               className="truncate text-lg font-semibold leading-tight tracking-tight text-foreground sm:text-xl"

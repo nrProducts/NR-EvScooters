@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Platform, useColorScheme } from "react-native";
+import { DarkTheme, DefaultTheme, ThemeProvider, type Theme } from "@react-navigation/native";
 import { Spinner } from "../components/Spinner";
 import { Stack, useNavigationContainerRef, useRootNavigationState, useRouter, useSegments } from "expo-router";
 import * as Sentry from "@sentry/react-native";
@@ -22,7 +23,7 @@ import { onServiceWorkerMessage, syncWebPush } from "../lib/webPush";
 import { resolveNotificationRoute } from "../lib/notificationRoute";
 import { resolveRootRedirect } from "../lib/rootRedirect";
 import { missingEnvVars } from "../constants/env";
-import { COLORS } from "../constants/theme";
+import { COLORS, applyColorScheme } from "../constants/theme";
 import { SplashAnimation } from "../components/SplashAnimation";
 import { initSentry, navigationIntegration, setSentryUser } from "../lib/sentry";
 import "../../global.css";
@@ -59,7 +60,7 @@ const queryClient = new QueryClient({
 function MisconfiguredScreen({ missing }: { missing: string[] }) {
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" backgroundColor={COLORS.background} />
+      <StatusBar style="auto" backgroundColor={COLORS.background} />
       <View className="flex-1 items-center justify-center px-8" style={{ backgroundColor: COLORS.background }}>
         <Text style={{ color: COLORS.textPrimary }} className="text-lg font-black text-center">
           App not configured
@@ -81,6 +82,15 @@ function MisconfiguredScreen({ missing }: { missing: string[] }) {
 }
 
 function RootLayout() {
+  // This component is never remounted on a theme change (the screens below it
+  // are), so it must not keep compiler-cached elements built from the old
+  // palette.
+  "use no memo";
+  // Follow the phone's light/dark setting. COLORS is pointed at the matching
+  // palette here, before any screen renders, and the screens are remounted
+  // (keyed on the scheme, below) so every one of them re-reads COLORS.
+  const colorScheme = useColorScheme() === "dark" ? "dark" : "light";
+  applyColorScheme(colorScheme);
   const { t } = useT();
   const missing = missingEnvVars();
   const bootstrap = useAuthStore((s) => s.bootstrap);
@@ -398,21 +408,49 @@ function RootLayout() {
             edge-to-edge from SDK 54, so the window no longer resizes for the
             keyboard and plain KeyboardAvoidingView can't see it. */}
         <KeyboardProvider>
-          <StatusBar style="dark" backgroundColor="#F8FAFC" />
-          {/* Not mounted until the stored session has been read, so no screen
-              starts fetching before the app knows who is signed in. */}
-          {booting ? null : <Stack screenOptions={{ headerShown: false }} />}
-          {cover ? <View style={StyleSheet.absoluteFill}>{cover}</View> : null}
-          {/* Payment in progress, for every payment flow — see PaymentProgressOverlay.tsx. */}
-          <PaymentProgressOverlay />
-          {/* Every confirmAction/notify call in the app surfaces here. */}
-          <DialogHost />
-          {/* Foreground push popup — see NotificationToastHost.tsx. */}
-          <NotificationToastHost />
+          <StatusBar style={colorScheme === "dark" ? "light" : "dark"} backgroundColor={COLORS.background} />
+          {/* Keyed on the scheme: switching the phone between light and dark
+              remounts everything below, so every screen redraws in the new
+              palette. The cost is that an app left open across the switch
+              returns to its start screen. */}
+          <ThemeProvider value={navigationTheme(colorScheme)}>
+            <Fragment key={colorScheme}>
+              {/* Not mounted until the stored session has been read, so no screen
+                  starts fetching before the app knows who is signed in. */}
+              {booting ? null : <Stack screenOptions={{ headerShown: false }} />}
+              {cover ? <View style={StyleSheet.absoluteFill}>{cover}</View> : null}
+              {/* Payment in progress, for every payment flow — see PaymentProgressOverlay.tsx. */}
+              <PaymentProgressOverlay />
+              {/* Every confirmAction/notify call in the app surfaces here. */}
+              <DialogHost />
+              {/* Foreground push popup — see NotificationToastHost.tsx. */}
+              <NotificationToastHost />
+            </Fragment>
+          </ThemeProvider>
         </KeyboardProvider>
       </SafeAreaProvider>
     </QueryClientProvider>
   );
+}
+
+/**
+ * React Navigation's own colours (the ground behind screens during a
+ * transition, the tab bar's defaults) taken from the active palette, so no
+ * white flashes between screens in dark mode.
+ */
+function navigationTheme(scheme: "light" | "dark"): Theme {
+  const base = scheme === "dark" ? DarkTheme : DefaultTheme;
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: COLORS.primary,
+      background: COLORS.background,
+      card: COLORS.card,
+      text: COLORS.textPrimary,
+      border: COLORS.border,
+    },
+  };
 }
 
 /** Full-screen spinner, with an optional line saying what is happening. */

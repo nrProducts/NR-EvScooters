@@ -67,8 +67,8 @@ export function RevenueChartCard({ className }: { className?: string }) {
             <AreaChart data={points} margin={{ top: 6, right: 4, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="revLine" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#3CCB73" />
-                  <stop offset="100%" stopColor="#17924A" />
+                  <stop offset="0%" style={{ stopColor: "var(--brand-from)" }} />
+                  <stop offset="100%" style={{ stopColor: "var(--brand-to)" }} />
                 </linearGradient>
                 <linearGradient id="revArea" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.22} />

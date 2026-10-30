@@ -34,6 +34,7 @@ import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
+import { CopyButton } from "@/components/common/CopyButton";
 import { formatDate, timeAgo } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
@@ -164,9 +165,12 @@ export default function VehicleListPage() {
       render: (v) => (
         <div className="min-w-0">
           <p className="truncate font-medium">{v.name}</p>
-          <p className="truncate text-xs text-muted-foreground">
-            {v.model} · {v.registration_number}
-          </p>
+          <div className="flex min-w-0 items-center gap-0.5">
+            <p className="truncate text-xs text-muted-foreground">
+              {v.model} · {v.registration_number}
+            </p>
+            {v.registration_number && <CopyButton value={v.registration_number} label="registration number" className="h-5 w-5" />}
+          </div>
         </div>
       ),
     },
@@ -226,7 +230,17 @@ export default function VehicleListPage() {
       header: "VIN",
       key: "vin",
       sortKey: "registration_number",
-      render: (v) => v.vin,
+      // Rows aren't text-selectable (they open on double-click), so the VIN
+      // gets its own copy button.
+      render: (v) =>
+        v.vin ? (
+          <div className="flex items-center gap-1">
+            <span>{v.vin}</span>
+            <CopyButton value={v.vin} label="VIN" />
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
       hideOnMobile: true,
     },
     { header: "Added", key: "created_at", sortKey: "created_at", render: (v) => formatDate(v.created_at), hideOnMobile: true },
@@ -342,7 +356,9 @@ export default function VehicleListPage() {
           isLoading={isLoading}
           isError={isError}
           onRetry={() => refetch()}
-          onRowDoubleClick={(v) => setHistoryTarget(v.id)}
+          // Double-click opens the vehicle's page; its history is still one
+          // click away in the row's ⋯ menu.
+          onRowDoubleClick={(v) => navigate(`/vehicles/${v.id}`)}
           emptyTitle="No vehicles match your filters"
           sort={sort}
           onSortChange={onSortChange}

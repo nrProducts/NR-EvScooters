@@ -41,6 +41,13 @@
     --primary-hover: 142 72% 37%; /* #1AA34D — darkened brand green */
     --primary-pressed: 142 72% 37%;
     --primary-foreground: 0 0% 100%;
+    /* The light-to-dark mix every solid green fill is painted with (see
+       .bg-primary below and .bg-brand-gradient). Plain colours, not HSL
+       channels: they only ever go into gradients. Dark mode redefines them. */
+    --brand-from: #3ccb73;
+    --brand-to: #17924a;
+    --brand-from-hover: #34b867;
+    --brand-to-hover: #137d3f;
 
     --secondary: 142 40% 90%;
     --secondary-foreground: 142 39% 22%;
@@ -82,27 +89,38 @@
   }
 
   .dark {
-    --background: 222 47% 11%; /* #0F172A */
+    /* Dark grey with a faint brand-green tint (hue 150), not navy: the
+       console's night look matches the black-and-green night app icon. */
+    --background: 150 8% 7%; /* #101312 */
     --foreground: 0 0% 100%;
 
-    --card: 217 33% 17%; /* #1E293B */
+    --card: 150 7% 11%; /* #1A1E1C */
     --card-foreground: 0 0% 100%;
-    --card-hover: 215 30% 21%; /* #273549 */
+    --card-hover: 150 7% 14%; /* #212624 */
 
-    --popover: 217 33% 17%;
+    --popover: 150 7% 11%;
     --popover-foreground: 0 0% 100%;
 
-    /* Brand green #21C45D */
-    --primary: 142 71% 45%;
-    --primary-hover: 142 72% 37%; /* #1AA34D — darkened brand green */
-    --primary-pressed: 142 72% 37%;
+    /* "Deep emerald": solid green fills (buttons, the open nav item, the Net
+       revenue card) use a darker, calmer gradient than light mode's, which
+       keeps white text on them readable (~5:1; the light-mode gradient gave
+       ~2.8:1 on this dark canvas) and cuts the glare. Links, chart lines and
+       badges use the flat --primary, a brighter emerald that stays visible on
+       the near-black. */
+    --primary: 145 59% 50%; /* #34C973 */
+    --primary-hover: 145 66% 36%; /* #1F9A54 */
+    --primary-pressed: 145 66% 36%;
     --primary-foreground: 0 0% 100%;
+    --brand-from: #1e9a52;
+    --brand-to: #0b5a2d;
+    --brand-from-hover: #188a48;
+    --brand-to-hover: #084a25;
 
     --secondary: 142 25% 22%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 217 25% 22%;
-    --muted-foreground: 215 20% 65%; /* #94A3B8 */
+    --muted: 150 6% 16%; /* #262A28 */
+    --muted-foreground: 150 6% 64%; /* #9DA8A3 */
 
     --accent: 142 25% 20%;
     --accent-foreground: 142 45% 85%;
@@ -121,15 +139,15 @@
     --info: 215 100% 54%;
     --info-foreground: 0 0% 100%;
 
-    /* Flattened equivalent of rgba(255,255,255,.08) over #0F172A — the
+    /* Flattened equivalent of rgba(255,255,255,.08) over --background — the
        hsl(var(--border)) token architecture has no alpha channel, so this is
        the visual match rather than a wider alpha-aware token rewrite. */
-    --border: 224 24% 18%;
-    --input: 224 24% 18%;
-    --ring: 142 71% 45%;
+    --border: 150 7% 18%; /* #2B302E */
+    --input: 150 7% 18%;
+    --ring: 145 59% 50%;
 
     /* Matches --card (table/panel background) */
-    --sidebar: 217 33% 17%; /* #1E293B */
+    --sidebar: 150 7% 11%; /* #1A1E1C */
     --sidebar-foreground: 0 0% 100%;
 
     --shadow-card: 0 1px 2px rgb(0 0 0 / 0.24), 0 6px 16px rgb(0 0 0 / 0.28);
@@ -203,16 +221,19 @@
  * anything that still needs the plain token (tints such as bg-primary/10, text,
  * borders) is untouched, and the flat colour remains the fallback.
  *
- * Mirrored in the mobile app (components/ui/GradientFill) — keep the two stops in sync.
+ * The stops are the --brand-* variables, so dark mode's emerald gradient comes
+ * from the theme alone. Mirrored in the mobile app (components/ui/GradientFill)
+ * — keep the light stops in sync.
  */
 .bg-primary,
+.bg-brand-gradient,
 .data-\[state\=checked\]\:bg-primary[data-state="checked"],
 .data-\[state\=active\]\:bg-primary[data-state="active"] {
-  background-image: linear-gradient(135deg, #3ccb73 0%, #17924a 100%);
+  background-image: linear-gradient(135deg, var(--brand-from) 0%, var(--brand-to) 100%);
 }
 /* A button's hover used to darken its flat colour; the gradient sits on top of that, so darken the gradient too. */
 button.bg-primary:hover:not(:disabled),
 a.bg-primary:hover,
 [role="button"].bg-primary:hover {
-  background-image: linear-gradient(135deg, #34b867 0%, #137d3f 100%);
+  background-image: linear-gradient(135deg, var(--brand-from-hover) 0%, var(--brand-to-hover) 100%);
 }

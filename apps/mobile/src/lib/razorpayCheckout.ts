@@ -2,7 +2,6 @@ import { Platform } from 'react-native';
 import RazorpayCheckout, { RazorpayCheckoutOptions, RazorpaySuccessResponse } from 'react-native-razorpay';
 import type { VerifyPaymentPayload } from '../types/api';
 import { BRAND_LOGO_DATA_URI } from './brandLogo';
-import { COLORS } from '../constants/theme';
 import { api } from './api';
 
 export class PaymentCancelledError extends Error {
@@ -77,9 +76,10 @@ class UpiIntentUnavailableError extends Error {
  * it and puts white text on top, so it must be dark enough to read: the
  * bright brand green (#21C45D) gives white text ~2.3:1 contrast, which is
  * what made the sheet's header look washed out. The dark brand green is
- * ~4.4:1 and still reads as Swapngo.
+ * ~4.4:1 and still reads as Swapngo. A literal, not COLORS.primaryDark:
+ * Checkout's sheet is always light, whatever the app's own theme is.
  */
-const CHECKOUT_THEME_COLOR = COLORS.primaryDark;
+const CHECKOUT_THEME_COLOR = '#178A44';
 
 /**
  * The rider's phone as Razorpay wants it, or undefined.

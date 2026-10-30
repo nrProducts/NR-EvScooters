@@ -29,7 +29,14 @@ module.exports = {
     scheme: 'nrevscooters',
     userInterfaceStyle: 'automatic',
     ios: {
-      icon: './assets/images/icon.png',
+      // iOS 18+ swaps to `dark` when the phone is in dark mode: the same SNG
+      // scooter at night with its headlight on. Regenerate it with
+      // scripts/generate-dark-icons.mjs. Android launchers have no dark-icon
+      // slot, so the adaptive icon below stays the green one in both themes.
+      icon: {
+        light: './assets/images/icon.png',
+        dark: './assets/images/icon-dark.png',
+      },
     },
     android: {
       // MUST match the Play Console app listing exactly — that package name

@@ -341,7 +341,8 @@ function describeDaysLeft(nextDueAt: string, t: TranslateFn): string | null {
 }
 
 const TONE_COLOR: Record<'danger' | 'overdue' | 'warning' | 'success' | 'primary', string> = {
-  danger: COLORS.danger, overdue: COLORS.overdue, warning: COLORS.warning, success: COLORS.success, primary: COLORS.primary,
+  get danger() { return COLORS.danger; }, get overdue() { return COLORS.overdue; }, get warning() { return COLORS.warning; },
+  get success() { return COLORS.success; }, get primary() { return COLORS.primary; },
 };
 
 /**

@@ -1456,7 +1456,7 @@ export default function BillingScreen() {
             style={{
               // Opaque on purpose: a translucent fill lets Android's elevation
               // shadow bleed through as a grey frame on some devices.
-              backgroundColor: '#F1FAF5',
+              backgroundColor: COLORS.greenSurface,
               borderColor: COLORS.primary + '26',
             }}
           >

@@ -2,7 +2,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
-import logoIcon from "@/assets/logo-icon.png";
+import { useBrandLogos } from "@/hooks/useBrandLogos";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { PageFade } from "@/components/motion/PageFade";
 import { useUiStore } from "@/store/uiStore";
@@ -20,6 +20,7 @@ export function DashboardLayout() {
   const { sidebarCollapsed, setSidebarCollapsed } = useUiStore();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const location = useLocation();
+  const { icon: logoIcon } = useBrandLogos();
 
   if (!user) return null;
 

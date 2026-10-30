@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { ArrowLeft, Mail } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { useNotificationSettings, useUpdateNotificationSetting } from "@/hooks/useNotificationSettings";
 import { useUsers } from "@/hooks/useUsers";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
+import { useGoBack } from "@/hooks/useNavTrail";
 import { cn } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import type { NotificationSetting } from "@/types";
@@ -39,7 +40,7 @@ function isDirty(a: PendingState, b: PendingState): boolean {
 }
 
 export default function NotificationManagerPage() {
-  const navigate = useNavigate();
+  const goBack = useGoBack();
   const { data: settings, isLoading, isError, refetch } = useNotificationSettings();
   const { data: admins, isLoading: adminsLoading } = useUsers({ role: "admin", pageSize: 100 });
   const { data: staff, isLoading: staffLoading } = useUsers({ role: "staff", pageSize: 100 });
@@ -66,7 +67,7 @@ export default function NotificationManagerPage() {
   return (
     <div className="space-y-3 animate-fade-in">
       <div className="flex items-center justify-between gap-2">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goBack} aria-label="Go back">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <Button variant="outline" size="sm" asChild>

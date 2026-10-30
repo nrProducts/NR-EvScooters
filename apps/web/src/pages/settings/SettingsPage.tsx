@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Copy, Plus, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,7 +49,22 @@ export default function SettingsPage() {
   const visibleSections = SECTIONS.filter(
     (s) => role === "admin" || !ADMIN_ONLY_SECTIONS.includes(s.value as (typeof ADMIN_ONLY_SECTIONS)[number]),
   );
-  const [tab, setTab] = useState<(typeof SECTIONS)[number]["value"]>(visibleSections[0]?.value ?? "company");
+  // The tab lives in the URL so that coming back from a staff member's
+  // permissions page (or a breadcrumb pointing at ?tab=staff-access) lands on
+  // the tab the admin left, not the first one. Replaced, not pushed, so
+  // flicking between tabs doesn't fill the back button's history.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get("tab");
+  const tab = visibleSections.find((s) => s.value === rawTab)?.value ?? visibleSections[0]?.value ?? "company";
+  const setTab = (next: (typeof SECTIONS)[number]["value"]) =>
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.set("tab", next);
+        return params;
+      },
+      { replace: true },
+    );
   const { theme, toggleTheme } = useUiStore();
   const { data: admins, isLoading: loadingAdmins } = useUsers({ page: 1, pageSize: 50, role: "admin" });
   const { data: staff, isLoading: loadingStaff } = useUsers({ page: 1, pageSize: 50, role: "staff" });
@@ -90,7 +104,7 @@ export default function SettingsPage() {
                 </CardDescription>
               </div>
               <Button variant="outline" size="sm" asChild>
-                <Link to="/settings" state={{ tab: "staff-access" }}>
+                <Link to="/settings?tab=staff-access" replace>
                   Staff Access <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Link>
               </Button>

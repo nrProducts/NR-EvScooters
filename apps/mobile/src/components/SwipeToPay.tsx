@@ -102,7 +102,7 @@ export const SwipeToPay: React.FC<SwipeToPayProps> = ({
         pointerEvents="none"
         style={[styles.fill, { width: fillWidth, backgroundColor: COLORS.primary }]}
       />
-      <Text style={styles.label} numberOfLines={1}>
+      <Text style={[styles.label, { color: COLORS.textPrimary }]} numberOfLines={1}>
         {busy ? processingLabel : label}
       </Text>
       <Animated.View
@@ -140,7 +140,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 15,
     fontWeight: '800',
-    color: COLORS.textPrimary,
   },
   thumb: {
     position: 'absolute',

@@ -12,11 +12,13 @@ import { AddChargeDialog } from "@/components/users/AddChargeDialog";
 import { RiderOriginalsCard } from "@/components/users/RiderOriginalsCard";
 import { UserReferralsCard } from "@/components/users/UserReferralsCard";
 import { ErrorState } from "@/components/common/ErrorState";
+import { CopyButton } from "@/components/common/CopyButton";
 import { useUser } from "@/hooks/useUsers";
 import { useAuthStore } from "@/store/authStore";
 import { hasAction } from "@/lib/permissions";
 import { formatDate, formatCurrency, formatPhoneLocal } from "@/lib/utils";
 import { usePageOwnsTitle } from "@/hooks/usePageOwnsTitle";
+import { useBreadcrumbLabel, useGoBack } from "@/hooks/useNavTrail";
 
 export default function UserDetailPage() {
   usePageOwnsTitle(); // this page draws its own heading; hide the header's
@@ -25,6 +27,10 @@ export default function UserDetailPage() {
   const { data: user, isLoading, isError, refetch } = useUser(id);
   const viewer = useAuthStore((s) => s.user);
   const [chargeOpen, setChargeOpen] = useState(false);
+  // Back returns to wherever this record was opened from (Rental Operations,
+  // KYC, a vehicle, search), not always the Users list.
+  const goBack = useGoBack();
+  useBreadcrumbLabel(user ? user.full_name || "Unnamed user" : null);
 
   if (isLoading) {
     return (
@@ -48,7 +54,7 @@ export default function UserDetailPage() {
   return (
     <div className="space-y-3 animate-fade-in">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate("/users")}>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goBack} aria-label="Go back">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <UserAvatar user={user} className="h-12 w-12" fallbackClassName="text-sm" />
@@ -83,7 +89,20 @@ export default function UserDetailPage() {
             <CardTitle className="flex items-center gap-2 text-sm"><UserRound className="h-4 w-4" /> Profile</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-x-6 gap-y-3 p-4 pt-1 sm:grid-cols-2">
-            <Detail icon={Phone} label="Phone" value={formatPhoneLocal(user.phone) ?? "Not provided"} />
+            <Detail
+              icon={Phone}
+              label="Phone"
+              value={
+                user.phone ? (
+                  <span className="flex items-center gap-1">
+                    {formatPhoneLocal(user.phone)}
+                    <CopyButton value={formatPhoneLocal(user.phone)!} label="phone number" />
+                  </span>
+                ) : (
+                  "Not provided"
+                )
+              }
+            />
             <Detail icon={Mail} label="Email" value={user.email ?? "Not provided"} />
             <Detail icon={MapPin} label="Address" value={address || "Not provided"} />
             <Detail icon={Phone} label="Emergency contact" value={emergency} />
@@ -159,13 +178,13 @@ export default function UserDetailPage() {
   );
 }
 
-function Detail({ icon: Icon, label, value }: { icon: typeof Phone; label: string; value: string }) {
+function Detail({ icon: Icon, label, value }: { icon: typeof Phone; label: string; value: ReactNode }) {
   return (
     <div className="flex min-w-0 items-start gap-2">
       <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       <div className="min-w-0">
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="break-words text-sm font-medium">{value}</p>
+        <div className="break-words text-sm font-medium">{value}</div>
       </div>
     </div>
   );
