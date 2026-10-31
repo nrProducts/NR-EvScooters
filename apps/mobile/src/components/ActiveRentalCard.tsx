@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { Image } from 'expo-image';
+import { VehicleStage } from './VehicleStage';
 import { useRouter } from 'expo-router';
 import { ArrowRight, Clock, Hash, RefreshCw } from 'lucide-react-native';
 import { Badge } from './ui/Badge';
@@ -89,17 +89,16 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
         elevation: 3,
       }}
     >
-      <View
-        className="items-center justify-center"
-        style={{ height: 150, backgroundColor: COLORS.gray[100] }}
-      >
-        <Image
-          source={heroImage}
-          accessibilityLabel={vehicle?.name ?? t('home.yourScooter')}
-          contentFit="contain"
-          style={{ width: '70%', height: 132 }}
-        />
-      </View>
+      {/* The same lit stage as My Scooter, so the scooter is grounded by a
+          floor shadow instead of floating on a flat block, in either theme. */}
+      <VehicleStage
+        imageUrl={heroImage}
+        height={150}
+        imageWidth="70%"
+        compact
+        zoom={1}
+        accessibilityLabel={vehicle?.name ?? t('home.yourScooter')}
+      />
 
       {/* minWidth: 0 is the load-bearing part on web: react-native-web maps
           flex-1 to real CSS flexbox, whose items default to min-width:auto

@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthLayout } from "@/layouts/AuthLayout";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
+import { useNavTrailTracker } from "@/hooks/useNavTrail";
 
 import LoginPage from "@/pages/auth/LoginPage";
 import SignUpPage from "@/pages/auth/SignUpPage";
@@ -45,6 +46,9 @@ import NotFoundPage from "@/pages/errors/NotFoundPage";
 import ForbiddenPage from "@/pages/errors/ForbiddenPage";
 
 export function AppRoutes() {
+  // Breadcrumbs follow real history, so every page is recorded, including
+  // ones outside the console. See lib/navTrail.ts.
+  useNavTrailTracker();
   return (
     <Routes>
       <Route element={<AuthLayout />}>

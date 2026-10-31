@@ -6,7 +6,7 @@ import {
 } from 'lucide-react-native';
 import { Spinner } from './Spinner';
 import { InfoHint } from './ui/InfoHint';
-import { COLORS } from '../constants/theme';
+import { COLORS, isDarkScheme } from '../constants/theme';
 import {
   LATE_FEE_POLICY_TITLE_KEY, lateFeePolicyExample, lateFeePolicySections,
 } from '../constants/lateFeePolicy';
@@ -341,23 +341,27 @@ function describeDaysLeft(nextDueAt: string, t: TranslateFn): string | null {
 }
 
 const TONE_COLOR: Record<'danger' | 'overdue' | 'warning' | 'success' | 'primary', string> = {
-  danger: COLORS.danger, overdue: COLORS.overdue, warning: COLORS.warning, success: COLORS.success, primary: COLORS.primary,
+  get danger() { return COLORS.danger; }, get overdue() { return COLORS.overdue; }, get warning() { return COLORS.warning; },
+  get success() { return COLORS.success; }, get primary() { return COLORS.primary; },
 };
 
 /**
- * `hex` at `alpha` laid over white, as an OPAQUE colour — the same shade a
- * translucent tint shows on the white page, without the translucency.
+ * `hex` at `alpha` laid over the card colour, as an OPAQUE colour — the same
+ * shade a translucent tint shows on the card, without the translucency. The
+ * card colour, not white: in dark mode a tint mixed into white came out as a
+ * pale banner on the dark page.
  *
  * The card used to be `tint + '0A'` (4% alpha) with `elevation`. Android
  * draws an elevation shadow under the WHOLE view, and a translucent
  * background lets it show through, so on many phones the banner rendered as
  * a grey box with the content inset inside it. An opaque fill hides it.
  */
-function tintOnWhite(hex: string, alpha: number): string {
+function tintOnCard(hex: string, alpha: number): string {
   const n = Number.parseInt(hex.slice(1, 7), 16);
-  const mix = (channel: number) => Math.round(channel * alpha + 255 * (1 - alpha))
+  const base = Number.parseInt(COLORS.card.slice(1, 7), 16);
+  const mix = (shift: number) => Math.round(((n >> shift) & 0xff) * alpha + ((base >> shift) & 0xff) * (1 - alpha))
     .toString(16).padStart(2, '0');
-  return `#${mix((n >> 16) & 0xff)}${mix((n >> 8) & 0xff)}${mix(n & 0xff)}`;
+  return `#${mix(16)}${mix(8)}${mix(0)}`;
 }
 
 function StatusShell({
@@ -388,7 +392,9 @@ function StatusShell({
       className="rounded-2xl p-4 mb-5"
       style={{
         // 0x0A/0x26 of 0xFF — the alphas this card has always used, now pre-blended.
-        backgroundColor: tintOnWhite(tint, 0x0a / 0xff), borderWidth: 1, borderColor: tintOnWhite(tint, 0x26 / 0xff),
+        // A stronger tint on the dark card, where 4% would be invisible.
+        backgroundColor: tintOnCard(tint, isDarkScheme() ? 0.14 : 0x0a / 0xff), borderWidth: 1,
+        borderColor: tintOnCard(tint, isDarkScheme() ? 0.35 : 0x26 / 0xff),
         shadowColor: COLORS.black, shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 }, elevation: 1,
       }}
     >

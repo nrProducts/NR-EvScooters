@@ -6,12 +6,13 @@ import { useAuthStore } from '../store/useAuthStore';
 import { Image as ExpoImage } from 'expo-image';
 import { useProfilePhoto } from '../hooks/useProfilePhoto';
 import { useNotificationBadgeStore } from '../store/useNotificationBadgeStore';
-import { COLORS } from '../constants/theme';
+import { COLORS, isDarkScheme } from '../constants/theme';
 import { userRepository, rentalRepository } from '../services';
 import { rentalDayNumber } from '../lib/rentalTiming';
 import { ProfileContent } from './ProfileContent';
-import { X, User, Bell, ChevronLeft } from 'lucide-react-native';
+import { X, User, Bell, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useT } from '../i18n';
+import { ancestorsFor } from '../lib/screenTrail';
 
 interface AppShellProps {
   title: string;
@@ -42,7 +43,18 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
   // redirect or a `router.navigate('/home')` from elsewhere left an entry).
   // Only pushed screens (booking-history, browse-vehicles, …) show the arrow.
   const segments = useSegments();
-  const canGoBack = segments[0] !== '(tabs)' && router.canGoBack();
+  const isTabRoot = segments[0] === '(tabs)';
+  // A pushed screen's place in the app (Profile › Privacy & data › …). Also
+  // what Back falls back to when the screen was opened cold — a notification
+  // tap, a deep link, a refreshed web tab — and there is no history to pop.
+  const ancestors = isTabRoot ? [] : ancestorsFor(segments);
+  const parent = ancestors[ancestors.length - 1];
+  const hasHistory = !isTabRoot && router.canGoBack();
+  const canGoBack = hasHistory || parent != null;
+  const goBack = () => {
+    if (hasHistory) router.back();
+    else if (parent) router.replace(parent.href as never);
+  };
 
   // Polling fallback for the unread badge — the primary path is the foreground
   // push listener in _layout.tsx; this closes the gap for a push that never
@@ -95,7 +107,7 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
         <View className="flex-row items-center">
           {canGoBack ? (
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={goBack}
               accessibilityRole="button"
               accessibilityLabel={t('appShell.goBack')}
               className="w-9 h-9 rounded-xl items-center justify-center mr-2"
@@ -106,7 +118,11 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
           ) : null}
           {/* Brand mark, left-aligned. */}
           <Image
-            source={require('../../assets/images/logo-wordmark.png')}
+            source={
+              isDarkScheme()
+                ? require('../../assets/images/logo-wordmark-dark.png')
+                : require('../../assets/images/logo-wordmark.png')
+            }
             accessibilityLabel="Swapngo"
             style={{ height: 16, width: 76 }}
             resizeMode="contain"
@@ -172,6 +188,46 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
         </TouchableOpacity>
         </View>
       </View>
+
+      {/* BREADCRUMBS — pushed screens only; a tab root is its own top level.
+          Each ancestor jumps straight back to that screen: dismissTo pops the
+          stack down to it when it is already there (keeping its state) and
+          replaces this screen with it when it is not. */}
+      {ancestors.length > 0 ? (
+        <View
+          className="border-b"
+          style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8 }}
+          >
+            {ancestors.map((crumb) => (
+              <View key={crumb.href} className="flex-row items-center">
+                <TouchableOpacity
+                  onPress={() => router.dismissTo(crumb.href as never)}
+                  accessibilityRole="link"
+                  hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                >
+                  <Text style={{ color: COLORS.primary }} className="text-xs font-semibold">
+                    {t(crumb.labelKey)}
+                  </Text>
+                </TouchableOpacity>
+                <ChevronRight size={12} color={COLORS.textSecondary} style={{ marginHorizontal: 4 }} />
+              </View>
+            ))}
+            <Text
+              style={{ color: COLORS.textPrimary }}
+              className="text-xs font-bold"
+              numberOfLines={1}
+              accessibilityRole="header"
+            >
+              {title}
+            </Text>
+          </ScrollView>
+        </View>
+      ) : null}
 
       {/* SCREEN CONTENT */}
       <View style={{ flex: 1 }}>{children}</View>

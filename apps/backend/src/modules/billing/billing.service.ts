@@ -711,6 +711,10 @@ async function resolveInvoiceablePeriod(subscriptionId: string, currentPeriodId:
         .from("invoices")
         .select("id")
         .eq("subscription_period_id", currentPeriodId)
+        // LIVE invoices only, matching generate_period_invoice(): a period
+        // re-billed after a void (e.g. a referral-discount correction) has
+        // two rows, and maybeSingle() would fail on both.
+        .neq("status", "void")
         .maybeSingle();
     if (invoiceError) throw invoiceError;
     if (!existingInvoice) return currentPeriodId; // Never invoiced yet — bill it as-is.

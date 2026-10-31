@@ -234,7 +234,6 @@ interface FullProfileLayoutProps {
   onLogout: () => void;
 }
 
-const CARD_BORDER = COLORS.border;
 const GREEN_SOFT = 'rgba(33,196,93,0.10)';
 
 /**
@@ -283,7 +282,7 @@ function FullProfileLayout({
       {/* Identity card */}
       <View
         style={{
-          borderRadius: 24, overflow: 'hidden', backgroundColor: COLORS.card, borderWidth: 1, borderColor: CARD_BORDER,
+          borderRadius: 24, overflow: 'hidden', backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
           shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 20, shadowOffset: { width: 0, height: 6 }, elevation: 2,
         }}
       >
@@ -366,7 +365,7 @@ function FullProfileLayout({
       {/* Menu: one list in one card */}
       <View
         style={{
-          borderRadius: 18, overflow: 'hidden', backgroundColor: COLORS.card, borderWidth: 1, borderColor: CARD_BORDER,
+          borderRadius: 18, overflow: 'hidden', backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
           shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 12, shadowOffset: { width: 0, height: 3 },
         }}
       >
@@ -378,7 +377,7 @@ function FullProfileLayout({
               onPress={() => onGoTo(item.route)}
               accessibilityRole="button"
               className="flex-row items-center"
-              style={{ gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: CARD_BORDER }}
+              style={{ gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: COLORS.border }}
             >
               <View className="items-center justify-center" style={{ width: 34, height: 34, borderRadius: 12, backgroundColor: GREEN_SOFT }}>
                 <Icon size={17} color={COLORS.primaryPressed} />

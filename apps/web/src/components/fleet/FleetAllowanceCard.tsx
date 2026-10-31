@@ -90,8 +90,8 @@ export function FleetAllowanceCard({
               <svg viewBox="0 0 200 112" className="mx-auto w-48" role="img" aria-label={`${Math.round(percent)} percent of the fleet limit used`}>
                 <defs>
                   <linearGradient id="kmPanelGreen" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#3CCB73" />
-                    <stop offset="100%" stopColor="#17924A" />
+                    <stop offset="0%" style={{ stopColor: "var(--brand-from)" }} />
+                    <stop offset="100%" style={{ stopColor: "var(--brand-to)" }} />
                   </linearGradient>
                 </defs>
                 <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="hsl(var(--primary) / 0.14)" strokeWidth="18" strokeLinecap="round" />
@@ -202,8 +202,8 @@ export function FleetAllowanceCard({
               <svg viewBox="0 0 200 112" className="w-32 shrink-0" role="img" aria-label={`${Math.round(percent)} percent of the fleet limit used`}>
                 <defs>
                   <linearGradient id="kmGaugeGreen" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#3CCB73" />
-                    <stop offset="100%" stopColor="#17924A" />
+                    <stop offset="0%" style={{ stopColor: "var(--brand-from)" }} />
+                    <stop offset="100%" style={{ stopColor: "var(--brand-to)" }} />
                   </linearGradient>
                 </defs>
                 <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="hsl(var(--primary) / 0.14)" strokeWidth="18" strokeLinecap="round" />

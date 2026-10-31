@@ -6,9 +6,9 @@ import { COLORS } from '../../constants/theme';
 import type { DialogRequest, DialogResult, DialogTone } from '../../store/useDialogStore';
 
 const TONE_COLOR: Record<DialogTone, string> = {
-  default: COLORS.primary,
-  danger: COLORS.danger,
-  success: COLORS.success,
+  get default() { return COLORS.primary; },
+  get danger() { return COLORS.danger; },
+  get success() { return COLORS.success; },
 };
 
 const TONE_ICON = {

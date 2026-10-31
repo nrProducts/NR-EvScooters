@@ -8,8 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import logoIcon from "@/assets/logo-icon.png";
-import logoWordmarkGreen from "@/assets/logo-wordmark-green.svg";
+import { useBrandLogos } from "@/hooks/useBrandLogos";
 
 /**
  * Hoisted to module scope deliberately — a component defined INSIDE Sidebar's
@@ -41,14 +40,23 @@ function NavItemLink({
         className={({ isActive }) =>
           cn(
             "flex items-center gap-3 rounded-xl font-medium transition-smooth",
-            child ? "gap-2.5 px-3 py-2 text-[0.8125rem]" : "px-3 py-2.5 text-sm",
+            child ? "gap-2.5 px-3 py-2 text-[0.8125rem]" : "px-3 py-2 text-sm",
             isActive
               ? "bg-primary font-semibold text-primary-foreground shadow-[0_6px_16px_-6px_hsl(var(--primary)/0.65)]"
               : "text-sidebar-foreground/70 hover:bg-primary/10 hover:text-primary",
           )
         }
       >
-        <item.icon className={cn("shrink-0", child ? "h-4 w-4" : "h-[1.125rem] w-[1.125rem]")} strokeWidth={1.75} />
+        {child ? (
+          <item.icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+        ) : (
+          // Same 32px icon box as the section headers (Fleet Operations, People…),
+          // so Dashboard and Settings line up with them: icon over icon, label
+          // over label, same row height. A bare icon sat ~7px left of theirs.
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+            <item.icon className="h-[1.0625rem] w-[1.0625rem]" strokeWidth={1.75} />
+          </span>
+        )}
         <span className="truncate">{item.label}</span>
       </NavLink>
     );
@@ -146,6 +154,7 @@ export function Sidebar({
   const settings = allItems.find((item) => item.path === "/settings");
   const items = allItems.filter((item) => item.path !== "/settings");
   const tree = buildNavTree(items);
+  const { icon: logoIcon, wordmark: logoWordmark } = useBrandLogos();
   const location = useLocation();
   const navigateTo = useNavigate();
   // Only ever holds a group the user opened by hand while browsing an
@@ -225,7 +234,7 @@ export function Sidebar({
       {collapsed ? (
         <img src={logoIcon} alt="Swapngo" className="h-9 w-9 shrink-0" />
       ) : (
-        <img src={logoWordmarkGreen} alt="Swapngo" className="h-7 w-auto" />
+        <img src={logoWordmark} alt="Swapngo" className="h-7 w-auto" />
       )}
     </div>
   );

@@ -34,6 +34,7 @@ import { useSessionState } from "@/hooks/useSessionState";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
+import { CopyButton } from "@/components/common/CopyButton";
 import { formatCycleTime, formatDate, formatDateTime, timeAgo, formatPhoneLocal } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
@@ -149,7 +150,10 @@ export default function UserListPage() {
           <UserAvatar user={u} className="h-10 w-10" />
           <div className="min-w-0">
             <p className="truncate font-medium">{u.full_name || "—"}</p>
-            <p className="truncate text-xs text-muted-foreground">{formatPhoneLocal(u.phone) ?? "No phone on file"}</p>
+            <div className="flex min-w-0 items-center gap-0.5">
+              <p className="truncate text-xs text-muted-foreground">{formatPhoneLocal(u.phone) ?? "No phone on file"}</p>
+              {u.phone && <CopyButton value={formatPhoneLocal(u.phone)!} label="phone number" className="h-5 w-5" />}
+            </div>
           </div>
         </div>
       ),

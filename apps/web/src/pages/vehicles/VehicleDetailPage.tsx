@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Pencil, FileText, Recycle, Plus, Trash2, ExternalLink, UserX } from "lucide-react";
 import { Spinner } from "@/components/common/Spinner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,8 +32,10 @@ import { formatDate, formatCurrency } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { CopyButton } from "@/components/common/CopyButton";
 import type { VehicleDocument, VehicleDocumentType } from "@/types";
 import { usePageOwnsTitle } from "@/hooks/usePageOwnsTitle";
+import { useBreadcrumbLabel, useGoBack } from "@/hooks/useNavTrail";
 
 export default function VehicleDetailPage() {
   usePageOwnsTitle(); // this page draws its own heading; hide the header's
@@ -54,6 +56,10 @@ export default function VehicleDetailPage() {
   const [editDoc, setEditDoc] = useState<VehicleDocument | null>(null);
   const [deleteDoc, setDeleteDoc] = useState<VehicleDocument | null>(null);
   const [openingDocId, setOpeningDocId] = useState<string | null>(null);
+  // Back returns to wherever this vehicle was opened from (a rider's record,
+  // Bike KMs, the live map), not always the Vehicles list.
+  const goBack = useGoBack();
+  useBreadcrumbLabel(vehicle ? vehicle.registration_number || vehicle.name : null);
 
   const canEdit = hasAction(user, "vehicles", "edit");
 
@@ -82,14 +88,17 @@ export default function VehicleDetailPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/vehicles")}>
+        <Button variant="ghost" size="icon" onClick={goBack} aria-label="Go back">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-semibold tracking-tight">{vehicle.name}</h1>
-          <p className="text-sm text-muted-foreground">
-            {vehicle.model} · {vehicle.registration_number}
-          </p>
+          <div className="flex items-center gap-1">
+            <p className="text-sm text-muted-foreground">
+              {vehicle.model} · {vehicle.registration_number}
+            </p>
+            {vehicle.registration_number && <CopyButton value={vehicle.registration_number} label="registration number" />}
+          </div>
         </div>
         <StatusBadge status={vehicle.status} />
         {vehicle.current_rider && hasAction(user, "vehicles", "assign") && (
@@ -122,8 +131,34 @@ export default function VehicleDetailPage() {
               documents beside it — both were separately-stored copies of
               something already recorded elsewhere.
             */}
-            <Detail label="VIN" value={vehicle.vin} />
-            <Detail label="Current rider" value={vehicle.current_rider?.full_name ?? "Unassigned"} />
+            <Detail
+              label="VIN"
+              value={
+                vehicle.vin ? (
+                  <span className="flex items-center gap-1">
+                    <span className="break-all">{vehicle.vin}</span>
+                    <CopyButton value={vehicle.vin} label="VIN" />
+                  </span>
+                ) : (
+                  "Not recorded"
+                )
+              }
+            />
+            <Detail
+              label="Current rider"
+              value={
+                vehicle.current_rider ? (
+                  <Link
+                    to={`/users/${vehicle.current_rider.id}`}
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    {vehicle.current_rider.full_name}
+                  </Link>
+                ) : (
+                  "Unassigned"
+                )
+              }
+            />
             <Detail label="Color" value={vehicle.color ?? "Not recorded"} />
             <Detail label="Batch number" value={vehicle.batch_number ?? "Not recorded"} />
             <Detail label="Purchase date" value={vehicle.purchase_date ? formatDate(vehicle.purchase_date) : "Not recorded"} />
@@ -665,7 +700,7 @@ function Detail({
   hint,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   icon?: typeof FileText;
   hint?: string;
 }) {

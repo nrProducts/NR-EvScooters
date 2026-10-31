@@ -5,11 +5,11 @@ import { COLORS } from '../../constants/theme';
 type Tone = 'success' | 'warning' | 'danger' | 'neutral' | 'primary';
 
 const TONE_COLORS: Record<Tone, string> = {
-  success: COLORS.success,
-  warning: COLORS.warning,
-  danger: COLORS.danger,
-  neutral: COLORS.textSecondary,
-  primary: COLORS.primary,
+  get success() { return COLORS.success; },
+  get warning() { return COLORS.warning; },
+  get danger() { return COLORS.danger; },
+  get neutral() { return COLORS.textSecondary; },
+  get primary() { return COLORS.primary; },
 };
 
 interface BadgeProps {

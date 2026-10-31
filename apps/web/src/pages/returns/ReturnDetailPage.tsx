@@ -2,7 +2,7 @@ import { RentalDistanceCard } from "@/components/returns/RentalDistanceCard";
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchRentalOriginals } from "@/services/api/originals";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, CheckCircle2, Plus, ShieldCheck, Wrench, XCircle, Clock, CreditCard, CircleCheck,
   AlertTriangle, Image as ImageIcon,
@@ -31,6 +31,7 @@ import { DamageChargeCard } from "./DamageChargeCard";
 import { AddDamageChargeModal, type DamageDraft } from "./AddDamageChargeModal";
 import { paymentMethodLabel, type DamageCategory, type Deposit, type ReturnStageStatus } from "@/types";
 import { usePageOwnsTitle } from "@/hooks/usePageOwnsTitle";
+import { useBreadcrumbLabel, useGoBack } from "@/hooks/useNavTrail";
 
 interface OtherChargeForm {
   label: string;
@@ -146,6 +147,8 @@ export default function ReturnDetailPage() {
 
   const { rental, deposit, stage, damages } = data ?? {};
   const settlement = data?.settlement;
+  const goBack = useGoBack();
+  useBreadcrumbLabel(rental ? `Return · ${rental.vehicle?.registration_number ?? rental.rider?.full_name ?? "Rental"}` : null);
   const alreadySettled = rental?.status === "completed";
   const stageStatus: ReturnStageStatus = alreadySettled
     ? "return_completed"
@@ -336,18 +339,29 @@ export default function ReturnDetailPage() {
       <div className="space-y-3">
         <div className="flex items-center gap-3">
           <Button
-            variant="ghost" size="icon"
-            // Browser back, not a hardcoded path — Returns no longer has its
-            // own page; this could have been opened from any of Rental
-            // Operations' Return Requests/Recovery/Settled tabs, which keep
-            // their tab in the URL precisely so going back restores it.
-            onClick={() => navigate(-1)}
+            variant="ghost" size="icon" aria-label="Go back"
+            // Back to wherever this return was opened from: any of Rental
+            // Operations' tabs (kept in the URL, so going back restores the
+            // tab), a vehicle's history, the dashboard. Opened cold from a
+            // notification link, it goes to Rental Operations instead of
+            // leaving the console.
+            onClick={goBack}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-2xl font-semibold tracking-tight">
-              {rental.rider?.full_name ?? "Rider"} — {rental.vehicle?.registration_number ?? "Vehicle"}
+              {rental.rider ? (
+                <Link to={`/users/${rental.rider.id}`} className="underline-offset-4 hover:text-primary hover:underline">
+                  {rental.rider.full_name}
+                </Link>
+              ) : "Rider"}
+              {" — "}
+              {rental.vehicle ? (
+                <Link to={`/vehicles/${rental.vehicle.id}`} className="underline-offset-4 hover:text-primary hover:underline">
+                  {rental.vehicle.registration_number}
+                </Link>
+              ) : "Vehicle"}
             </h1>
             <p className="text-sm text-muted-foreground">
               Rental started {formatDateTime(rental.started_at)}

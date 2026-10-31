@@ -46,12 +46,12 @@ const STATUS_STYLE: Record<
   ApiReturnSettlement['status'],
   { color: string; icon: React.ComponentType<{ size?: number; color?: string }> }
 > = {
-  pending_refund: { color: COLORS.warning, icon: Clock },
-  refund_processing: { color: COLORS.primary, icon: RefreshCw },
-  refund_completed: { color: COLORS.success, icon: CheckCircle2 },
-  no_refund_required: { color: COLORS.textSecondary, icon: CheckCircle2 },
-  amount_due: { color: COLORS.danger, icon: CreditCard },
-  settlement_completed: { color: COLORS.textSecondary, icon: CheckCircle2 },
+  pending_refund: { get color() { return COLORS.warning; }, icon: Clock },
+  refund_processing: { get color() { return COLORS.primary; }, icon: RefreshCw },
+  refund_completed: { get color() { return COLORS.success; }, icon: CheckCircle2 },
+  no_refund_required: { get color() { return COLORS.textSecondary; }, icon: CheckCircle2 },
+  amount_due: { get color() { return COLORS.danger; }, icon: CreditCard },
+  settlement_completed: { get color() { return COLORS.textSecondary; }, icon: CheckCircle2 },
 };
 
 /**

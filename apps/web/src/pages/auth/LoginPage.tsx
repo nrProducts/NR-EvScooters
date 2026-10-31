@@ -132,7 +132,7 @@ export default function LoginPage() {
 
           <Button
             type="submit"
-            className="group h-12 w-full rounded-[0.7rem] border border-primary/40 bg-transparent text-[0.9rem] font-semibold text-primary shadow-none transition-colors hover:border-primary hover:bg-primary hover:text-white focus-visible:ring-primary dark:text-primary"
+            className="group h-12 w-full rounded-[0.7rem] border border-primary/40 bg-transparent text-[0.9rem] font-semibold text-primary shadow-none transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground focus-visible:ring-primary dark:text-primary dark:hover:text-primary-foreground"
             disabled={login.isPending}
           >
             {login.isPending ? (

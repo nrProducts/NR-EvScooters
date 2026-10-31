@@ -25,11 +25,11 @@ const STATUS_LABEL_KEY: Record<RefundStatus, CopyKey> = {
 };
 
 const STATUS_STYLE: Record<RefundStatus, { color: string; icon: React.ComponentType<{ size?: number; color?: string }> }> = {
-    pending: { color: COLORS.warning, icon: Clock },
-    processing: { color: COLORS.primary, icon: RefreshCw },
-    succeeded: { color: COLORS.success, icon: CheckCircle2 },
-    failed: { color: COLORS.danger, icon: XCircle },
-    rejected: { color: COLORS.danger, icon: XCircle },
+    pending: { get color() { return COLORS.warning; }, icon: Clock },
+    processing: { get color() { return COLORS.primary; }, icon: RefreshCw },
+    succeeded: { get color() { return COLORS.success; }, icon: CheckCircle2 },
+    failed: { get color() { return COLORS.danger; }, icon: XCircle },
+    rejected: { get color() { return COLORS.danger; }, icon: XCircle },
 };
 
 const REASON_LABEL_KEY: Record<RefundType, CopyKey> = {
