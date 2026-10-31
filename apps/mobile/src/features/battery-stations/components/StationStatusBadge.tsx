@@ -7,9 +7,9 @@ import { useT } from '../../../i18n';
 
 /** Colour AND icon AND word — never colour on its own. */
 const STATUS_STYLE: Record<StationStatus, { color: string; Icon: typeof CircleCheck }> = {
-    WORKING: { color: COLORS.success, Icon: CircleCheck },
-    MAINTENANCE: { color: COLORS.warning, Icon: Wrench },
-    NOT_WORKING: { color: COLORS.danger, Icon: CircleX },
+    WORKING: { get color() { return COLORS.success; }, Icon: CircleCheck },
+    MAINTENANCE: { get color() { return COLORS.warning; }, Icon: Wrench },
+    NOT_WORKING: { get color() { return COLORS.danger; }, Icon: CircleX },
 };
 
 /** The marker layers use the same colours — see markerLayerStyles.ts. */

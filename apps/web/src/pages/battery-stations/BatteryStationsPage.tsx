@@ -86,19 +86,18 @@ export default function BatteryStationsPage() {
   usePageSubtitle("Add, edit and control which battery swap stations riders see on the mobile map.");
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
       <StationSummaryCards summary={summary.data} isLoading={summary.isLoading} />
 
-      {canCreate && (
-        <div className="flex justify-end">
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add station
-          </Button>
-        </div>
-      )}
-
-      <Card>
+      <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
         <FilterBar
+          trailing={
+            canCreate ? (
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Add station
+              </Button>
+            ) : undefined
+          }
           search={
             <SearchBar
               value={search}

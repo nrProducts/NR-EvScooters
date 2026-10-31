@@ -4,11 +4,13 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { ArrowRight, ShieldCheck } from 'lucide-react-native';
 import { useBookingGate } from '../../hooks/useBookingGate';
-import { COLORS } from '../../constants/theme';
+import { COLORS, isDarkScheme } from '../../constants/theme';
 import type { RiderPhase } from '../../hooks/useRiderJourney';
 import { useT, type CopyKey } from '../../i18n';
 
 const SNG_LOGO = require('../../../assets/images/logo-lockup.png') as number;
+// Light lettering for the dark theme — see scripts/generate-dark-icons.mjs.
+const SNG_LOGO_DARK = require('../../../assets/images/logo-lockup-dark.png') as number;
 
 interface HomeHeroCardProps {
   phase: RiderPhase;
@@ -76,7 +78,7 @@ export const HomeHeroCard: React.FC<HomeHeroCardProps> = ({ phase, featured }) =
         </View>
 
         <Image
-          source={SNG_LOGO}
+          source={isDarkScheme() ? SNG_LOGO_DARK : SNG_LOGO}
           accessibilityLabel="SwapNgo"
           contentFit="contain"
           style={{ width: 104, height: 104, marginRight: 12 }}

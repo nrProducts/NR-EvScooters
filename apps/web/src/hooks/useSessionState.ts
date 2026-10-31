@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
  * `useState` that survives the component unmounting, for list screens whose
  * filters should still be there when the admin opens a record and comes back.
  *
- * Kept in sessionStorage rather than the URL: the detail pages' own back arrow
- * is a fresh navigation to the list, so URL params would be lost exactly when
- * they are needed. Session storage is per browser tab and is cleared when the
+ * Kept in sessionStorage rather than the URL: a detail page opened cold (a
+ * pasted link, a new tab) falls back to a fresh navigation to its list, where
+ * URL params would be lost. Session storage is per browser tab and is cleared when the
  * tab closes, so a filter never lingers into the next day's work.
  *
  * With no `key` it is plain `useState` — that lets a shared hook (useTableSort)

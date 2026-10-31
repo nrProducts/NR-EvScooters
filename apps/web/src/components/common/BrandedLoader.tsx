@@ -1,4 +1,4 @@
-import logoMark from "@/assets/logo-mark.svg";
+import { useBrandLogos } from "@/hooks/useBrandLogos";
 
 /**
  * Loading overlay — a translucent light-gray wash over whatever is already
@@ -12,6 +12,7 @@ import logoMark from "@/assets/logo-mark.svg";
  * asset (already used in the sidebar), not a redrawn approximation of it.
  */
 export function BrandedLoader({ label = "Loading…", subtitle }: { label?: string; subtitle?: string }) {
+  const { mark: logoMark } = useBrandLogos();
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-muted/40 backdrop-blur-[2px]">
       <div className="relative flex h-28 w-28 items-center justify-center">

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { Pagination } from "@/components/common/Pagination";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -84,7 +85,7 @@ export default function NotificationsPage() {
   usePageSubtitle("What you've sent to riders, and what riders' activity has sent to you.");
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="admin">Sent by Admin</TabsTrigger>
@@ -117,6 +118,7 @@ function AdminBroadcastTab() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [result, setResult] = useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
   const [audience, setAudience] = useState<BroadcastAudience>("all");
   const [selectedRiders, setSelectedRiders] = useState<{ id: string; name: string }[]>([]);
   const [riderSearch, setRiderSearch] = useState("");
@@ -163,12 +165,14 @@ function AdminBroadcastTab() {
   const audienceHelp = AUDIENCE_OPTIONS.find((a) => a.value === audience)?.help ?? "";
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <div className="space-y-4 p-4">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Send className="h-4 w-4" /> Compose a broadcast
-          </div>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <Dialog open={composeOpen} onOpenChange={setComposeOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto scrollbar-thin sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Compose a broadcast</DialogTitle>
+            <DialogDescription>Push a notification to riders' phones.</DialogDescription>
+          </DialogHeader>
+        <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Title</Label>
@@ -301,6 +305,7 @@ function AdminBroadcastTab() {
                     setBody("");
                     setSelectedRiders([]);
                     setRiderSearch("");
+                    setComposeOpen(false);
                   },
                   onError: (err) => toastError(err, "Could not send broadcast"),
                 },
@@ -311,32 +316,40 @@ function AdminBroadcastTab() {
             <Bell className="h-4 w-4" /> Send broadcast
           </Button>
         </div>
-      </Card>
+        </DialogContent>
+      </Dialog>
 
-      <Card>
-        <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+      <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
+        <div className="flex shrink-0 flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm font-medium">{data?.total ?? 0} broadcasts logged</p>
-          <Select
-            value={status}
-            onValueChange={(v) => {
-              setStatus(v as NotificationDeliveryStatus | "all");
-              setPage(1);
-            }}
-          >
-            <SelectTrigger className="sm:w-52">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((s) => (
-                <SelectItem key={s} value={s} className="capitalize">
-                  {s === "all" ? "All statuses" : s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Select
+              value={status}
+              onValueChange={(v) => {
+                setStatus(v as NotificationDeliveryStatus | "all");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="sm:w-52">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((s) => (
+                  <SelectItem key={s} value={s} className="capitalize">
+                    {s === "all" ? "All statuses" : s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {canSendBroadcast && (
+              <Button onClick={() => setComposeOpen(true)}>
+                <Send className="h-4 w-4" /> Compose broadcast
+              </Button>
+            )}
+          </div>
         </div>
 
-        <DataTable
+        <DataTable fill
           columns={columns}
           data={data?.data ?? []}
           isLoading={isLoading}
@@ -398,7 +411,7 @@ function RiderNotificationLogTab() {
   ];
 
   return (
-    <Card>
+    <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm font-medium">{data?.total ?? 0} notifications sent to riders</p>
         <div className="flex gap-2">
@@ -434,7 +447,7 @@ function RiderNotificationLogTab() {
         </div>
       </div>
 
-      <DataTable
+      <DataTable fill
         columns={columns}
         data={data?.data ?? []}
         isLoading={isLoading}
@@ -497,7 +510,7 @@ function RiderActivityTab() {
   ];
 
   return (
-    <Card>
+    <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm font-medium">{data?.total ?? 0} notifications from rider activity</p>
         <Button
@@ -515,7 +528,7 @@ function RiderActivityTab() {
         </Button>
       </div>
 
-      <DataTable
+      <DataTable fill
         columns={columns}
         data={data?.data ?? []}
         isLoading={isLoading}
@@ -597,7 +610,7 @@ function EmailDeliveryLogTab() {
   ];
 
   return (
-    <Card>
+    <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm font-medium">{data?.total ?? 0} emails sent to admins/staff</p>
         <div className="flex gap-2">
@@ -627,7 +640,7 @@ function EmailDeliveryLogTab() {
         </div>
       </div>
 
-      <DataTable
+      <DataTable fill
         columns={columns}
         data={data?.data ?? []}
         isLoading={isLoading}

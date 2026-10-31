@@ -12,6 +12,12 @@ interface PageHeaderState {
    */
   ownsTitle: boolean;
   setOwnsTitle: (ownsTitle: boolean) => void;
+  /**
+   * A title the mounted page gives the header to show in place of the route's label
+   * (e.g. "Revenue Overview" on the Revenue route). Set by usePageTitle().
+   */
+  title: string | null;
+  setTitle: (title: string | null) => void;
 }
 
 export const usePageHeaderStore = create<PageHeaderState>((set) => ({
@@ -19,4 +25,6 @@ export const usePageHeaderStore = create<PageHeaderState>((set) => ({
   setSubtitle: (subtitle) => set({ subtitle }),
   ownsTitle: false,
   setOwnsTitle: (ownsTitle) => set({ ownsTitle }),
+  title: null,
+  setTitle: (title) => set({ title }),
 }));

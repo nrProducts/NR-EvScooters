@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapLibreMap, Marker as MapLibreMarker } from "maplibre-gl";
-import { ChevronDown, ExternalLink, KeyRound, Lock, LockOpen, MapPinOff, Radio } from "lucide-react";
+import { ChevronDown, ExternalLink, KeyRound, Lock, LockKeyhole, LockKeyholeOpen, LockOpen, MapPinOff, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/common/Spinner";
 import { VehicleControlDialog } from "@/components/vehicles/VehicleControlDialog";
-import { useControlCommands, useVehicleTelemetry } from "@/hooks/useTelematics";
+import { useControlCommands, useLockState, useVehicleTelemetry } from "@/hooks/useTelematics";
 import { isMapConfigured, mapStyleForTheme, tuneDarkMapLabels } from "@/lib/mapConfig";
 import { useAuthStore } from "@/store/authStore";
 import { useUiStore } from "@/store/uiStore";
 import { cn, formatFullDateTime, timeAgo } from "@/lib/utils";
-import type { VehicleTelemetry } from "@/services/api/telematics";
+import type { ControlAction, VehicleTelemetry } from "@/services/api/telematics";
 
 const FRESH_STYLE: Record<VehicleTelemetry["freshness"], { label: string; dot: string; chip: string }> = {
   live: { label: "Live", dot: "bg-success", chip: "border-success/40 bg-success/10 text-success" },
@@ -181,9 +181,10 @@ export function VehicleLiveCard({ vehicleId, registrationNumber }: { vehicleId: 
   const t = data?.telemetry ?? null;
   // Remote control is admin-only — the server enforces it; this just hides the buttons.
   const isAdmin = useAuthStore((s) => s.user?.role === "admin");
-  const [controlAction, setControlAction] = useState<"immobilise" | "mobilise" | null>(null);
+  const [controlAction, setControlAction] = useState<ControlAction | null>(null);
   const commands = useControlCommands(vehicleId, isAdmin);
   const history = commands.data ?? [];
+  const lock = useLockState(vehicleId, isAdmin).data;
 
   return (
     <Card className="overflow-hidden">
@@ -309,13 +310,40 @@ export function VehicleLiveCard({ vehicleId, registrationNumber }: { vehicleId: 
                       Admin only. Immobilising cuts the scooter&apos;s drive until you mobilise it again.
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" onClick={() => setControlAction("immobilise")} disabled={t.immobilised === true}>
                       <Lock className="h-3.5 w-3.5" /> Immobilise
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => setControlAction("mobilise")} disabled={t.immobilised === false}>
                       <LockOpen className="h-3.5 w-3.5" /> Mobilise
                     </Button>
+                    <Button size="sm" variant="outline" onClick={() => setControlAction("lock")} disabled={lock?.state === "locked"}>
+                      <LockKeyhole className="h-3.5 w-3.5" /> Lock
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setControlAction("unlock")} disabled={lock?.state === "unlocked"}>
+                      <LockKeyholeOpen className="h-3.5 w-3.5" /> Unlock
+                    </Button>
+                  </div>
+                </div>
+
+                {/* The platform cannot read the lock back, so this is the last command we sent. */}
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-destructive/15 pt-3">
+                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <LockKeyhole className="h-4 w-4" /> Lock
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!lock || lock.state === "unknown" ? (
+                      <Chip tone="muted">Unknown — no lock command sent yet</Chip>
+                    ) : lock.state === "locked" ? (
+                      <Chip tone="bad"><LockKeyhole className="h-3 w-3" /> Locked</Chip>
+                    ) : (
+                      <Chip tone="good"><LockKeyholeOpen className="h-3 w-3" /> Unlocked</Chip>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {lock?.at
+                        ? `Last command ${timeAgo(lock.at)}${lock.by ? ` by ${lock.by}` : ""} · not confirmed by the scooter`
+                        : "The scooter does not report its lock"}
+                    </span>
                   </div>
                 </div>
 

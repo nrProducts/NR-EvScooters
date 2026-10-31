@@ -269,9 +269,15 @@ function periodProgress(startDate: string, endDate: string): number {
  * the "₹-2000" a bare `amount.toFixed(2)` on a negative number would
  * print. */
 function BillLine({
-  label, amount, attention, negative, bold,
-}: { label: string; amount: number; attention?: boolean; negative?: boolean; bold?: boolean }) {
-  const color = attention ? COLORS.overdue : negative ? COLORS.danger : COLORS.textPrimary;
+  label, amount, attention, negative, saving, bold,
+}: {
+  label: string; amount: number; attention?: boolean; negative?: boolean;
+  /** A discount (a referral reward): shown as -₹x in green, not the red of a deduction. */
+  saving?: boolean;
+  bold?: boolean;
+}) {
+  const color = attention ? COLORS.overdue : saving ? COLORS.success : negative ? COLORS.danger : COLORS.textPrimary;
+  negative = negative || saving;
   return (
     <View className="flex-row items-center justify-between py-1.5">
       <Text
@@ -430,7 +436,7 @@ export default function BillingScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useT();
   const { bookingId, booking, invoices, deposit, loading, error, reload, patchInvoices, reloadInvoices } = useMyBilling();
-  const { refreshing, onRefresh } = useRefresh(() => reload(true));
+  const { refreshing, onRefresh } = useRefresh(() => Promise.all([reload(true), reloadReferralSummary()]));
   const profile = useAuthStore((s) => s.profile);
   const refreshProfile = useAuthStore((s) => s.refreshProfile);
   const refreshProfileIfStale = useAuthStore((s) => s.refreshProfileIfStale);
@@ -659,6 +665,16 @@ export default function BillingScreen() {
     useCallback(() => {
       reloadRef.current();
     }, []),
+  );
+
+  // The reward cards too. Billing is a tab, so it stays mounted: loading them
+  // only on first mount meant a rider who earned a card later (or whose first
+  // load failed) came back from Home to a Billing with no "add reward card"
+  // option at all until the app restarted.
+  useFocusEffect(
+    useCallback(() => {
+      void reloadReferralSummary();
+    }, [reloadReferralSummary]),
   );
 
   // has_active_rental/has_active_booking (which useMyBilling's own
@@ -1087,6 +1103,12 @@ export default function BillingScreen() {
       {outstandingInvoices.map((inv) => {
         const perDay = inv.late_fee && inv.days_late ? inv.late_fee / inv.days_late : 0;
         const total = inv.total_due ?? inv.balance_amount;
+        // A reward card on this invoice. The server has already taken it off
+        // total_amount, so the plan line and the total are shown at their
+        // pre-reward amounts struck through, with the reward as its own line:
+        // the rider sees ₹4 become ₹3, not just a smaller number.
+        const reward = referralSummary?.reserved_redemptions.find((r) => r.invoice_id === inv.id)?.discount_amount ?? 0;
+        const planBeforeReward = inv.total_amount + reward;
         const paying = payingInvoiceId === inv.id;
         const due = dueLabel(inv, t);
         return (
@@ -1128,10 +1150,15 @@ export default function BillingScreen() {
                     />
                   ))
                   : null
-              ) : inv.total_amount > 0 ? (
+              ) : planBeforeReward > 0 ? (
                 // Skipped at ₹0: a renewal that is only a late fee has no plan
                 // amount to list, and "₹0.00" above the real charge is noise.
-                <BillLine label={t('billing.rentalPlanAmount')} amount={inv.total_amount} />
+                // A reward that brings the plan to ₹0 still lists it, so the
+                // discount has something to come off.
+                <BillLine label={t('billing.rentalPlanAmount')} amount={planBeforeReward} />
+              ) : null}
+              {reward > 0 ? (
+                <BillLine label={t('billing.referralCard.discountLine')} amount={reward} saving />
               ) : null}
               {inv.allocated_amount > 0 ? (
                 <BillLine label={t('billing.alreadyPaid')} amount={inv.allocated_amount} negative />
@@ -1150,7 +1177,17 @@ export default function BillingScreen() {
               <View className="h-px my-2" style={{ backgroundColor: COLORS.border }} />
               <View className="flex-row items-center justify-between pt-1">
                 <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{t('billing.total')}</Text>
-                <Text style={{ color: COLORS.textPrimary }} className="text-xl font-bold">₹{total.toFixed(2)}</Text>
+                <View className="flex-row items-baseline">
+                  {reward > 0 ? (
+                    <Text
+                      style={{ color: COLORS.textSecondary, textDecorationLine: 'line-through' }}
+                      className="text-sm font-semibold mr-2"
+                    >
+                      ₹{(total + reward).toFixed(2)}
+                    </Text>
+                  ) : null}
+                  <Text style={{ color: COLORS.textPrimary }} className="text-xl font-bold">₹{total.toFixed(2)}</Text>
+                </View>
               </View>
             </View>
 
@@ -1167,7 +1204,17 @@ export default function BillingScreen() {
             >
               <GradientFill />
               <View>
-                <Text className="text-white text-lg font-extrabold">₹{total.toFixed(2)}</Text>
+                <View className="flex-row items-baseline">
+                  <Text className="text-white text-lg font-extrabold">₹{total.toFixed(2)}</Text>
+                  {reward > 0 ? (
+                    <Text
+                      className="text-white text-xs font-bold ml-2"
+                      style={{ opacity: 0.75, textDecorationLine: 'line-through' }}
+                    >
+                      ₹{(total + reward).toFixed(2)}
+                    </Text>
+                  ) : null}
+                </View>
                 <Text className="text-white text-[10px] font-bold uppercase tracking-wider" style={{ opacity: 0.85 }}>
                   {t('billing.total')}
                 </Text>
@@ -1447,6 +1494,135 @@ export default function BillingScreen() {
           contentContainerStyle={{ paddingBottom: insets.bottom + TAB_BAR_FOOTPRINT + 28 }}
           refreshControl={pullToRefresh(refreshing, onRefresh)}
         >
+          {/* Current plan — a quiet, sophisticated surface rather than a
+              solid brand-color block: the price is the loud element, not
+              the card itself. */}
+          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">{t('billing.currentPlan')}</Text>
+          <View
+            className="rounded-3xl p-5 mb-7 border"
+            style={{
+              // Opaque on purpose: a translucent fill lets Android's elevation
+              // shadow bleed through as a grey frame on some devices.
+              backgroundColor: COLORS.greenSurface,
+              borderColor: COLORS.primary + '26',
+            }}
+          >
+            {/* The badge said "PAST DUE" in brand green, because the pill was
+                hard-coded to the primary tint whatever the status inside it
+                was — the one word on this card that means "something is
+                wrong" was painted the colour that means "fine". */}
+            {/* Only when something is off. "ACTIVE" on a healthy plan said
+                nothing the rest of the card doesn't, and a plan that is past
+                due is already announced by the bill above. */}
+            {booking?.plan_status && booking.plan_status !== 'active' ? (() => {
+              const tint = booking.plan_status === 'past_due' ? COLORS.overdue
+                : booking.plan_status === 'paused' ? COLORS.warning
+                  : COLORS.primaryPressed;
+              return (
+                <View className="self-start px-2.5 py-1 rounded-full mb-3" style={{ backgroundColor: tint + '1A' }}>
+                  <Text style={{ color: tint }} className="text-[10px] font-bold uppercase tracking-wider">
+                    {t(PLAN_STATUS_LABEL_KEY[booking.plan_status])}
+                  </Text>
+                </View>
+              );
+            })() : null}
+            {/* The cycle is stated once, beside the price below — it used to be
+                repeated here as "Day rental" directly above "/ Day". */}
+            <View className="flex-row items-start justify-between mb-2" style={{ gap: 12 }}>
+              <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold flex-1" numberOfLines={2}>
+                {plan?.name ?? t('billing.rentalPlan')}
+              </Text>
+              {/* What is owed, at the card's right. The full bill and its Pay button stay in the Amount Due section below. */}
+              {(() => {
+                const owed = isPendingBookingPayment
+                  ? (bookingQuote?.amount ?? ((plan?.price ?? 0) + (plan?.deposit_amount ?? 0) + (plan?.onboarding_charge_amount ?? 0)))
+                  : outstandingTotal;
+                return (
+                  <View className="items-end">
+                    <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">
+                      {t('billing.amountDue')}
+                    </Text>
+                    <Text
+                      style={{ color: owed > 0 ? COLORS.overdue : COLORS.primaryPressed }}
+                      className="text-lg font-bold mt-0.5"
+                    >
+                      ₹{owed.toFixed(2)}
+                    </Text>
+                  </View>
+                );
+              })()}
+            </View>
+            <Text style={{ color: COLORS.textPrimary }} className="text-4xl font-bold mb-4">
+              ₹{(plan?.price ?? 0).toFixed(2)}{' '}
+              {plan ? (
+                <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium">
+                  / {t(BILLING_CYCLE_LABEL_KEY[plan.billing_cycle])}
+                </Text>
+              ) : null}
+            </Text>
+
+            {/* Period progress — how far through the current rental period. */}
+            {booking?.current_period_start && booking?.next_due_at ? (
+              <View className="h-1.5 rounded-full mb-4 overflow-hidden" style={{ backgroundColor: COLORS.primary + '14' }}>
+                <View
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${periodProgress(booking.current_period_start, booking.next_due_at)}%`,
+                    backgroundColor: COLORS.primary,
+                  }}
+                />
+              </View>
+            ) : null}
+
+            {/* Started | Ends — two equal columns, label over date over time.
+                This was one line per side (date · time · expired) with no
+                width limit, so on a narrow phone the two sides ran into each
+                other ("12:00 PM13 Oct 2026"). */}
+            <View
+              className="flex-row pt-4"
+              style={{ borderTopWidth: 1, borderColor: COLORS.primary + '1F' }}
+            >
+              <View className="flex-1 pr-4">
+                <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">
+                  {t('billing.started')}
+                </Text>
+                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold mt-1.5" numberOfLines={1}>
+                  {formatDate(booking?.current_period_start ?? null)}
+                </Text>
+                {booking?.current_period_start ? (
+                  <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5">
+                    {formatCycleTime(booking.cycle_time)}
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={{ width: 1, backgroundColor: COLORS.primary + '1F' }} />
+
+              <View className="flex-1 pl-4">
+                <View className="flex-row items-center" style={{ gap: 6 }}>
+                  <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">
+                    {t('billing.ends')}
+                  </Text>
+                </View>
+                <Text
+                  style={{ color: renewalIsLate ? COLORS.overdue : COLORS.textPrimary }}
+                  className="text-sm font-bold mt-1.5"
+                  numberOfLines={1}
+                >
+                  {formatDate(booking?.next_due_at ?? null)}
+                </Text>
+                {booking?.next_due_at ? (
+                  <Text
+                    style={{ color: renewalIsLate ? COLORS.overdue : COLORS.textSecondary }}
+                    className="text-xs font-medium mt-0.5"
+                  >
+                    {formatCycleTime(booking.cycle_time)}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          </View>
+
           {/* A refund from the PREVIOUS rental can still be in flight while
               this rider is already on a new plan — the refund outlives the
               rental that produced it, so it is not the else-branch of
@@ -1572,112 +1748,6 @@ export default function BillingScreen() {
             renderPlanState()
           )}
 
-
-          {/* Current plan — a quiet, sophisticated surface rather than a
-              solid brand-color block: the price is the loud element, not
-              the card itself. */}
-          <Text style={{ color: COLORS.textPrimary }} className="text-sm font-semibold mb-3">{t('billing.currentPlan')}</Text>
-          <View
-            className="rounded-3xl p-5 mb-7 border"
-            style={{
-              // Opaque on purpose: a translucent fill lets Android's elevation
-              // shadow bleed through as a grey frame on some devices.
-              backgroundColor: '#F1FAF5',
-              borderColor: COLORS.primary + '26',
-            }}
-          >
-            {/* The badge said "PAST DUE" in brand green, because the pill was
-                hard-coded to the primary tint whatever the status inside it
-                was — the one word on this card that means "something is
-                wrong" was painted the colour that means "fine". */}
-            {/* Only when something is off. "ACTIVE" on a healthy plan said
-                nothing the rest of the card doesn't, and a plan that is past
-                due is already announced by the bill above. */}
-            {booking?.plan_status && booking.plan_status !== 'active' ? (() => {
-              const tint = booking.plan_status === 'past_due' ? COLORS.overdue
-                : booking.plan_status === 'paused' ? COLORS.warning
-                  : COLORS.primaryPressed;
-              return (
-                <View className="self-start px-2.5 py-1 rounded-full mb-3" style={{ backgroundColor: tint + '1A' }}>
-                  <Text style={{ color: tint }} className="text-[10px] font-bold uppercase tracking-wider">
-                    {t(PLAN_STATUS_LABEL_KEY[booking.plan_status])}
-                  </Text>
-                </View>
-              );
-            })() : null}
-            {/* The cycle is stated once, beside the price below — it used to be
-                repeated here as "Day rental" directly above "/ Day". */}
-            <Text style={{ color: COLORS.textPrimary }} className="text-lg font-bold mb-2">{plan?.name ?? t('billing.rentalPlan')}</Text>
-            <Text style={{ color: COLORS.textPrimary }} className="text-4xl font-bold mb-4">
-              ₹{(plan?.price ?? 0).toFixed(2)}{' '}
-              {plan ? (
-                <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium">
-                  / {t(BILLING_CYCLE_LABEL_KEY[plan.billing_cycle])}
-                </Text>
-              ) : null}
-            </Text>
-
-            {/* Period progress — how far through the current rental period. */}
-            {booking?.current_period_start && booking?.next_due_at ? (
-              <View className="h-1.5 rounded-full mb-4 overflow-hidden" style={{ backgroundColor: COLORS.primary + '14' }}>
-                <View
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${periodProgress(booking.current_period_start, booking.next_due_at)}%`,
-                    backgroundColor: COLORS.primary,
-                  }}
-                />
-              </View>
-            ) : null}
-
-            {/* Started | Ends — two equal columns, label over date over time.
-                This was one line per side (date · time · expired) with no
-                width limit, so on a narrow phone the two sides ran into each
-                other ("12:00 PM13 Oct 2026"). */}
-            <View
-              className="flex-row pt-4"
-              style={{ borderTopWidth: 1, borderColor: COLORS.primary + '1F' }}
-            >
-              <View className="flex-1 pr-4">
-                <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">
-                  {t('billing.started')}
-                </Text>
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold mt-1.5" numberOfLines={1}>
-                  {formatDate(booking?.current_period_start ?? null)}
-                </Text>
-                {booking?.current_period_start ? (
-                  <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5">
-                    {formatCycleTime(booking.cycle_time)}
-                  </Text>
-                ) : null}
-              </View>
-
-              <View style={{ width: 1, backgroundColor: COLORS.primary + '1F' }} />
-
-              <View className="flex-1 pl-4">
-                <View className="flex-row items-center" style={{ gap: 6 }}>
-                  <Text style={{ color: COLORS.textSecondary }} className="text-[10px] font-bold uppercase tracking-wider">
-                    {t('billing.ends')}
-                  </Text>
-                </View>
-                <Text
-                  style={{ color: renewalIsLate ? COLORS.overdue : COLORS.textPrimary }}
-                  className="text-sm font-bold mt-1.5"
-                  numberOfLines={1}
-                >
-                  {formatDate(booking?.next_due_at ?? null)}
-                </Text>
-                {booking?.next_due_at ? (
-                  <Text
-                    style={{ color: renewalIsLate ? COLORS.overdue : COLORS.textSecondary }}
-                    className="text-xs font-medium mt-0.5"
-                  >
-                    {formatCycleTime(booking.cycle_time)}
-                  </Text>
-                ) : null}
-              </View>
-            </View>
-          </View>
 
           {/* Payment History — one merged list of every invoice AND every
               past return settlement this rider has ever had, independent of

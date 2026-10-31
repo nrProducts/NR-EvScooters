@@ -56,14 +56,14 @@ function Tile({
     <Card
       className={cn(
         "flex min-h-[5.5rem] items-center justify-between gap-3 px-5 py-4",
-        highlight && "border-0 bg-gradient-to-br from-[#3CCB73] to-[#17924A] text-white shadow-[0_10px_28px_rgba(23,146,74,0.28)]",
+        highlight && "border-0 bg-brand-gradient text-primary-foreground shadow-[0_10px_28px_rgba(23,146,74,0.28)]",
         to && "transition-transform hover:-translate-y-0.5",
       )}
     >
       <div className="flex min-w-0 items-center gap-3.5">
         {lead}
         <div className="min-w-0">
-          <p className={cn("truncate text-[0.8125rem] font-medium", highlight ? "text-white/85" : "text-muted-foreground")}>{label}</p>
+          <p className={cn("truncate text-[0.8125rem] font-medium", highlight ? "text-primary-foreground/85" : "text-muted-foreground")}>{label}</p>
           <p className="mt-0.5 truncate text-2xl font-bold tabular-nums tracking-tight">{value}</p>
         </div>
       </div>
@@ -110,7 +110,7 @@ export function DashboardKpiRow() {
         to="/deposits"
         lead={<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><PiggyBank className="h-5 w-5" /></span>}
       />
-      <Tile label="Net revenue" value={formatCurrency(data.net)} to="/revenue" highlight trail={<Spark points={daily} className="text-white/90" />} />
+      <Tile label="Net revenue" value={formatCurrency(data.net)} to="/revenue" highlight trail={<Spark points={daily} className="text-primary-foreground/90" />} />
     </div>
   );
 }

@@ -93,6 +93,7 @@ export const hi: Copy = {
     // --- my scooter / rental ----------------------------------------------
     'scooter.title': 'मेरा स्कूटर',
     'scooter.registrationNumber': 'पंजीकरण नंबर',
+    'scooter.chassisNumber': 'चेसिस नंबर',
     'scooter.plan': 'प्लान',
     'scooter.onRentSince': 'किराए पर लिया गया',
     'scooter.sinceValue': '{date} · दिन {day}',
@@ -736,7 +737,6 @@ export const hi: Copy = {
     'booking.unavailable': 'उपलब्ध नहीं',
     'booking.available': 'उपलब्ध',
     'booking.startsNow.title': 'स्कूटर लेते ही आपका प्लान शुरू हो जाता है',
-    'booking.startsNow.body': 'आज सुबह 8 बजे से रात 8 बजे के बीच अपना स्कूटर ले लें।',
     'booking.choosePlan': 'एक प्लान चुनें',
     'booking.noPlansHint': 'इस स्कूटर के लिए अभी कोई प्लान उपलब्ध नहीं है।',
     'booking.minutesIncluded': '{minutes} मिनट शामिल हैं',
@@ -944,8 +944,9 @@ export const hi: Copy = {
     'billing.referralCard.availableOne': '1 रिवॉर्ड कार्ड उपलब्ध',
     'billing.referralCard.availableOther': '{count} रिवॉर्ड कार्ड उपलब्ध',
     'billing.referralCard.addBtn': 'जोड़ें',
-    'billing.referralCard.appliedShort': 'रिवॉर्ड कार्ड लगाया गया',
+    'billing.referralCard.appliedShort': 'रेफ़रल लागू',
     'billing.referralCard.offSmall': '₹{amount} की छूट',
+    'billing.referralCard.discountLine': 'रेफ़रल रिवॉर्ड लागू',
     'billing.payShort': 'भुगतान करें',
     'billing.paymentDue': 'बकाया भुगतान',
     'billing.dueHeroSubtitle': 'स्कूटर चालू रखने के लिए अभी भुगतान करें।',
@@ -1139,6 +1140,7 @@ export const hi: Copy = {
 
     // --- sign in ----------------------------------------------------------
     'auth.tagline': 'सवारी शुरू करने के लिए अपने मोबाइल नंबर से साइन इन करें।',
+    'auth.signIn': 'साइन इन',
     'auth.mobileNumber': 'मोबाइल नंबर',
     'auth.mobileNumberPlaceholder': 'मोबाइल नंबर',
     'auth.otpHint': 'हम आपको 6 अंकों का कोड भेजेंगे। भारतीय नंबर बिना +91 के भी डाले जा सकते हैं।',

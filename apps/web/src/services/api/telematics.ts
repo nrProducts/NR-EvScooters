@@ -84,7 +84,7 @@ export async function fetchRentalDistance(rentalId: string): Promise<RentalDista
   return apiClient.get<RentalDistance>(`/telematics/rentals/${rentalId}/distance`);
 }
 
-export type ControlAction = "immobilise" | "mobilise";
+export type ControlAction = "immobilise" | "mobilise" | "lock" | "unlock";
 
 export interface ControlInput {
   reason: string;
@@ -93,7 +93,7 @@ export interface ControlInput {
   mode?: "ignition" | "crank" | "movement" | "can" | "charge" | "discharge" | "chargendischarge";
 }
 
-/** POST /telematics/vehicles/:id/(immobilise|mobilise) — ADMIN ONLY. `sent` = accepted by the platform, not yet confirmed by the scooter. */
+/** POST /telematics/vehicles/:id/(immobilise|mobilise|lock|unlock) — ADMIN ONLY. `sent` = accepted by the platform, not yet confirmed by the scooter. */
 export async function controlVehicle(
   vehicleId: string, action: ControlAction, input: ControlInput,
 ): Promise<{ command_id: string; provider_cmd_id: string | null; status: "sent" }> {
@@ -116,6 +116,22 @@ export interface ControlCommand {
 /** GET /telematics/vehicles/:id/commands — admin only. */
 export async function fetchControlCommands(vehicleId: string): Promise<ControlCommand[]> {
   return apiClient.get<ControlCommand[]>(`/telematics/vehicles/${vehicleId}/commands`);
+}
+
+/**
+ * The platform cannot report whether a scooter is locked, so this is the last
+ * lock / unlock command we sent — what we asked for, not what the scooter
+ * confirmed. `unknown` until one has been sent.
+ */
+export interface LockState {
+  state: "locked" | "unlocked" | "unknown";
+  at: string | null;
+  by: string | null;
+}
+
+/** GET /telematics/vehicles/:id/lock-state — admin only. */
+export async function fetchLockState(vehicleId: string): Promise<LockState> {
+  return apiClient.get<LockState>(`/telematics/vehicles/${vehicleId}/lock-state`);
 }
 
 /** One bike's kilometres, from GET /telematics/distance. "7 days" = today and the 6 before. */

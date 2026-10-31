@@ -110,7 +110,8 @@ const controlBody = z.object({
     acknowledgeMoving: z.boolean().default(false),
 });
 
-for (const action of ["immobilise", "mobilise"] as const) {
+// Lock / unlock take no mode; the field is simply ignored for them.
+for (const action of ["immobilise", "mobilise", "lock", "unlock"] as const) {
     router.post(
         `/vehicles/:vehicleId/${action}`,
         requireAdmin,
@@ -125,6 +126,16 @@ for (const action of ["immobilise", "mobilise"] as const) {
         }),
     );
 }
+
+// The platform cannot report the lock, so this is the last lock / unlock we sent.
+router.get(
+    "/vehicles/:vehicleId/lock-state",
+    requireAdmin,
+    validate({ params: vehicleIdParam }),
+    asyncHandler(async (req, res) => {
+        res.json(await control.getLockState(req.params.vehicleId as string));
+    }),
+);
 
 router.get(
     "/vehicles/:vehicleId/commands",

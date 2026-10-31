@@ -5,7 +5,7 @@ import {
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../store/useAuthStore';
 import { ApiError } from '../lib/ApiError';
-import { COLORS } from '../constants/theme';
+import { COLORS, isDarkScheme } from '../constants/theme';
 import { formatPhoneLocal, isValidOtp, sanitizeOtpInput } from '../lib/authValidation';
 import { ArrowLeft } from 'lucide-react-native';
 import { useT } from '../i18n';
@@ -139,9 +139,14 @@ export default function OtpVerifyScreen() {
         <ArrowLeft size={20} color={COLORS.textPrimary} />
       </TouchableOpacity>
 
-      {/* The app icon, centred above the title. */}
+      {/* The app icon, centred above the title. In dark mode, the night
+          version with the headlight on (scripts/generate-dark-icons.mjs). */}
       <Image
-        source={require('../../assets/images/logo-icon.png')}
+        source={
+          isDarkScheme()
+            ? require('../../assets/images/logo-icon-dark.png')
+            : require('../../assets/images/logo-icon.png')
+        }
         accessibilityLabel="Swapngo"
         style={{ width: 72, height: 72, alignSelf: 'center', marginBottom: 20 }}
       />

@@ -17,7 +17,8 @@ export function Pagination({
   const end = Math.min(page * pageSize, total);
 
   return (
-    <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-4 py-3 sm:flex-row">
+    // The grid above scrolls inside itself (see DataTable), so the pager just sits directly under it.
+    <div className="flex shrink-0 flex-col items-center justify-between gap-3 rounded-b-lg border-t border-border bg-card px-4 py-3 sm:flex-row">
       <p className="text-xs text-muted-foreground">
         Showing <span className="font-medium text-foreground">{start}-{end}</span> of{" "}
         <span className="font-medium text-foreground">{total}</span>

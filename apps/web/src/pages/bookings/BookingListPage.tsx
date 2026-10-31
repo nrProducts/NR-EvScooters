@@ -635,7 +635,7 @@ export default function BookingListPage() {
   usePageSubtitle("Manage the full rental lifecycle, from booking to return.");
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
       <RentalOperationsSummaryCards />
 
       <Tabs value={view} onValueChange={(v) => { setView(v as RentalOpsView); setPage(1); }}>
@@ -654,7 +654,7 @@ export default function BookingListPage() {
       </Tabs>
 
       {view === "pre_bookings" ? (
-        <Card>
+        <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
           <div className="flex flex-col gap-1 border-b border-border p-4">
             <p className="text-sm font-medium">Interest submitted before the fleet went live</p>
             <p className="text-xs text-muted-foreground">
@@ -663,7 +663,7 @@ export default function BookingListPage() {
             </p>
           </div>
 
-          <DataTable
+          <DataTable fill
             columns={preBookingColumns}
             data={preBookings.data?.data ?? []}
             isLoading={preBookings.isLoading}
@@ -676,7 +676,7 @@ export default function BookingListPage() {
           )}
         </Card>
       ) : (
-        <Card>
+        <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
           <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
             <SearchBar
               value={search}
@@ -690,7 +690,7 @@ export default function BookingListPage() {
             <RecoveryPolicyNote />
           </div>
 
-          <DataTable
+          <DataTable fill
             columns={columns}
             data={data?.data ?? []}
             isLoading={isLoading}

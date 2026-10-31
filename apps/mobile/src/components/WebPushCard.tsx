@@ -8,13 +8,12 @@ import { ApiError } from '../lib/ApiError';
 import { disableWebPush, enableWebPush, getWebPushStatus, type WebPushStatus } from '../lib/webPush';
 import { Spinner } from './Spinner';
 import { GradientFill } from './ui/GradientFill';
+import { COLORS, isDarkScheme } from '../constants/theme';
 
 const GREEN = '#21C45D';
 const GREEN_DARK = '#178A44';
 const GREEN_SOFT = '#E8F8EE';
 const CARD_BORDER = 'rgba(33,196,93,0.18)';
-const INK = '#14221A';
-const MUTED = '#5F7468';
 
 /** The explanation shown under the title for each state that has no button. */
 const STATUS_COPY: Partial<Record<WebPushStatus, CopyKey>> = {
@@ -94,11 +93,14 @@ export function WebPushCard({ variant = 'settings' }: { variant?: 'settings' | '
   const canEnable = status === 'default';
   const Icon = enabled ? BellRing : canEnable ? Bell : BellOff;
   const note = STATUS_COPY[status];
+  // The card's own greens, swapped for readable ones on the dark theme.
+  const accent = isDarkScheme() ? COLORS.primary : GREEN_DARK;
+  const soft = isDarkScheme() ? COLORS.greenSurface : GREEN_SOFT;
 
   return (
     <View
       style={{
-        padding: 14, gap: 10, borderRadius: 14, backgroundColor: '#FFFFFF',
+        padding: 14, gap: 10, borderRadius: 14, backgroundColor: COLORS.card,
         borderWidth: 1, borderColor: CARD_BORDER,
         shadowColor: GREEN_DARK, shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 3 },
       }}
@@ -106,14 +108,14 @@ export function WebPushCard({ variant = 'settings' }: { variant?: 'settings' | '
       <View className="flex-row items-center" style={{ gap: 10 }}>
         <View
           className="items-center justify-center"
-          style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: GREEN_SOFT }}
+          style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: soft }}
         >
-          <Icon size={20} color={GREEN_DARK} />
+          <Icon size={20} color={accent} />
         </View>
         <View className="flex-1 ml-1" style={{ gap: 2 }}>
-          <Text className="font-sans" style={{ color: INK, fontSize: 13, fontWeight: '500' }}>{t('webPush.title')}</Text>
+          <Text className="font-sans" style={{ color: COLORS.textPrimary, fontSize: 13, fontWeight: '500' }}>{t('webPush.title')}</Text>
           {enabled ? (
-            <Text className="font-sans" style={{ color: GREEN_DARK, fontSize: 12, lineHeight: 18 }}>
+            <Text className="font-sans" style={{ color: accent, fontSize: 12, lineHeight: 18 }}>
               {t('webPush.status.enabled')}
             </Text>
           ) : null}
@@ -123,23 +125,23 @@ export function WebPushCard({ variant = 'settings' }: { variant?: 'settings' | '
             onPress={disable}
             disabled={busy}
             accessibilityRole="button"
-            style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: GREEN_SOFT }}
+            style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: soft }}
           >
             {busy ? <Spinner size={16} /> : (
-              <Text className="font-sans" style={{ color: GREEN_DARK, fontSize: 12, fontWeight: '600' }}>{t('webPush.disable')}</Text>
+              <Text className="font-sans" style={{ color: accent, fontSize: 12, fontWeight: '600' }}>{t('webPush.disable')}</Text>
             )}
           </TouchableOpacity>
         ) : null}
       </View>
 
       {!enabled ? (
-        <Text className="font-sans" style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
+        <Text className="font-sans" style={{ color: COLORS.textSecondary, fontSize: 12, lineHeight: 18 }}>
           {note ? t(note) : t('webPush.explainer')}
         </Text>
       ) : null}
 
       {canEnable && dismissed ? (
-        <Text className="font-sans" style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>{t('webPush.status.dismissed')}</Text>
+        <Text className="font-sans" style={{ color: COLORS.textSecondary, fontSize: 12, lineHeight: 18 }}>{t('webPush.status.dismissed')}</Text>
       ) : null}
 
       {canEnable ? (

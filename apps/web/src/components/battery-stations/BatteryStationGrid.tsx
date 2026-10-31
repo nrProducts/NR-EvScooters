@@ -171,6 +171,7 @@ export function BatteryStationGrid({
 
   return (
     <DataTable
+      fill
       columns={columns}
       data={stations}
       isLoading={isLoading}

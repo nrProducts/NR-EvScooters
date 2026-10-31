@@ -84,7 +84,7 @@ export default function HolidaysPage() {
   const rows: HolidayRow[] = (data?.data ?? []).map((h) => ({ ...h }));
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
       {canManage && (
         <div className="flex justify-end">
           <Button onClick={openCreate}>
@@ -93,7 +93,7 @@ export default function HolidaysPage() {
         </div>
       )}
 
-      <Card>
+      <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
         <FilterBar
           filters={
             <Select value={scope} onValueChange={(v) => { setScope(v as "upcoming" | "all"); setPage(1); }}>
@@ -107,7 +107,7 @@ export default function HolidaysPage() {
             </Select>
           }
         />
-        <DataTable
+        <DataTable fill
           columns={columns}
           data={rows}
           isLoading={isLoading}

@@ -204,7 +204,7 @@ export default function PaymentsPage() {
   );
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
       <div className="flex justify-end gap-2">
         <Button variant="outline" size="sm" asChild>
           <Link to="/damages">Damages</Link>
@@ -217,7 +217,7 @@ export default function PaymentsPage() {
         </Button>
       </div>
 
-      <Card>
+      <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
           <Select
             value={purpose}
@@ -275,7 +275,7 @@ export default function PaymentsPage() {
           </Select>
         </div>
 
-        <DataTable
+        <DataTable fill
           columns={columns}
           data={data?.data ?? []}
           isLoading={isLoading}

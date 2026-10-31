@@ -397,14 +397,9 @@ export default function BookingScreen() {
             </View>
 
             {/* Immediate-pickup note */}
-            <View className="rounded-2xl border p-3 flex-row items-start mb-4" style={{ backgroundColor: COLORS.warning + '12', borderColor: COLORS.warning + '33', gap: 8 }}>
+            <View className="rounded-2xl border p-3 flex-row items-center mb-4" style={{ backgroundColor: COLORS.warning + '12', borderColor: COLORS.warning + '33', gap: 8 }}>
               <AlertTriangle size={16} color={COLORS.warning} />
-              <View className="flex-1">
-                <Text style={{ color: COLORS.textPrimary }} className="text-sm font-bold">{t('booking.startsNow.title')}</Text>
-                <Text style={{ color: COLORS.textSecondary }} className="text-xs font-medium mt-0.5 leading-relaxed">
-                  {t('booking.startsNow.body')}
-                </Text>
-              </View>
+              <Text style={{ color: COLORS.textPrimary }} className="flex-1 text-sm font-bold">{t('booking.startsNow.title')}</Text>
             </View>
 
             {/* Plan picker */}

@@ -65,7 +65,7 @@ export default function MyLeavePage() {
   ];
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
       {balance && balance.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {balance.map((b) => (
@@ -80,8 +80,8 @@ export default function MyLeavePage() {
         </Button>
       </div>
 
-      <Card>
-        <DataTable
+      <Card className="flex min-h-[20rem] flex-1 flex-col overflow-hidden">
+        <DataTable fill
           columns={columns}
           data={data?.data ?? []}
           isLoading={isLoading}

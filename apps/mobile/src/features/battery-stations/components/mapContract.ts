@@ -1,5 +1,24 @@
 import type { Coordinates } from '../utils/distance';
 import type { BatteryStation } from '../types/batteryStation.types';
+import { COLORS } from '../../../constants/theme';
+
+/**
+ * A station is a small dot, not a pin: coloured by status (the same colours as
+ * StationStatusBadge) with a white ring, growing a little as the map zooms in.
+ * Both map views draw it as a plain circle layer from these two expressions, so
+ * there are no image files to register and nothing for a static export to
+ * mis-resolve. The grey fallback is for a status the app does not know.
+ */
+export const STATION_DOT_COLOR = [
+    'match',
+    ['get', 'status'],
+    'WORKING', COLORS.primary,
+    'MAINTENANCE', COLORS.warning,
+    'NOT_WORKING', COLORS.danger,
+    '#9CA3AF',
+] as const;
+
+export const STATION_DOT_RADIUS = ['interpolate', ['linear'], ['zoom'], 9, 4.5, 13, 7, 17, 9.5] as const;
 
 /**
  * The map's public shape, kept free of any maplibre import.

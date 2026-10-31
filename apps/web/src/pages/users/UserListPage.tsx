@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, UserMinus, KeyRound, UserCheck, Bike, XCircle,
+  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, UserMinus, KeyRound, UserCheck, Bike, XCircle, X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/users/UserAvatar";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -34,7 +34,8 @@ import { useSessionState } from "@/hooks/useSessionState";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
-import { initials, formatCycleTime, formatDate, formatDateTime, timeAgo, formatPhoneLocal } from "@/lib/utils";
+import { CopyButton } from "@/components/common/CopyButton";
+import { formatCycleTime, formatDate, formatDateTime, timeAgo, formatPhoneLocal } from "@/lib/utils";
 import type { AppUser, BackendRoleName, KycStatus } from "@/types";
 
 type DueBucket = "overdue" | "today" | "d1" | "d2" | "d3";
@@ -146,13 +147,13 @@ export default function UserListPage() {
       sortKey: "full_name",
       render: (u) => (
         <div className="flex items-center gap-3">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={u.profile_photo_url ?? undefined} alt={u.full_name} />
-            <AvatarFallback>{initials(u.full_name || "?")}</AvatarFallback>
-          </Avatar>
+          <UserAvatar user={u} className="h-10 w-10" />
           <div className="min-w-0">
             <p className="truncate font-medium">{u.full_name || "—"}</p>
-            <p className="truncate text-xs text-muted-foreground">{formatPhoneLocal(u.phone) ?? "No phone on file"}</p>
+            <div className="flex min-w-0 items-center gap-0.5">
+              <p className="truncate text-xs text-muted-foreground">{formatPhoneLocal(u.phone) ?? "No phone on file"}</p>
+              {u.phone && <CopyButton value={formatPhoneLocal(u.phone)!} label="phone number" className="h-5 w-5" />}
+            </div>
           </div>
         </div>
       ),
@@ -391,6 +392,8 @@ export default function UserListPage() {
     },
   ];
 
+  const activeFilterCount = (activeRental ? 1 : 0) + (dueKey ? 1 : 0) + (kycStatus !== "all" ? 1 : 0);
+
   usePageSubtitle(
     isPendingTab
       ? `${data?.total ?? 0} account${(data?.total ?? 0) === 1 ? "" : "s"} awaiting approval`
@@ -398,14 +401,15 @@ export default function UserListPage() {
   );
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    // Fills the shell: the grid scrolls inside its card and the pagination stays pinned below it.
+    <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
       {roleError && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="shrink-0 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {roleError}
         </div>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Tabs
           value={tab}
           onValueChange={(v) => {
@@ -439,13 +443,13 @@ export default function UserListPage() {
         />
       </div>
 
-      <Card>
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {isPendingTab ? (
-          <div className="border-b border-border p-4 text-sm text-muted-foreground">
+          <div className="shrink-0 border-b border-border p-4 text-sm text-muted-foreground">
             Self-registered accounts awaiting review. Approve as staff or rider, or reject to remove the request.
           </div>
         ) : (
-          <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex shrink-0 flex-col gap-3 border-b border-border p-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
             <Select
               value={kycStatus}
               onValueChange={(v) => {
@@ -467,18 +471,27 @@ export default function UserListPage() {
 
             {tab === "rider" && (
               <>
-                <div className="flex items-center gap-2 sm:ml-2">
+                <span className="hidden h-6 w-px bg-border sm:block" aria-hidden />
+
+                {/* One pill that is the whole switch: click anywhere on it. */}
+                <label
+                  className={`flex h-10 cursor-pointer items-center gap-2.5 rounded-xl border px-3 text-sm font-medium shadow-sm transition-smooth ${
+                    activeRental ? "border-primary/40 bg-primary/10 text-primary" : "border-border bg-card text-foreground hover:bg-secondary"
+                  }`}
+                >
                   <Switch
                     checked={activeRental}
                     onCheckedChange={(v) => { setActiveRental(v); setPage(1); }}
                     aria-label="Active rental only"
                   />
-                  <span className="text-sm">Active rental</span>
-                </div>
+                  Active rental
+                </label>
 
-                <div className="flex flex-wrap items-center gap-2 sm:ml-2">
+                <span className="hidden h-6 w-px bg-border sm:block" aria-hidden />
+
+                <div className="flex flex-wrap items-center gap-2.5">
                   <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Due</span>
-                  <div className="inline-flex flex-wrap rounded-lg bg-secondary p-1">
+                  <div className="inline-flex flex-wrap gap-1 rounded-xl border border-border bg-background p-1">
                     {DUE_CHOICES.map((c) => {
                       const on = dueKey === c.key;
                       return (
@@ -488,10 +501,10 @@ export default function UserListPage() {
                           aria-pressed={on}
                           // click the active one again to go back to "any"
                           onClick={() => { setDueKey(on ? null : c.key); setPage(1); }}
-                          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-smooth ${
+                          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-smooth ${
                             on
                               ? c.key === "overdue" ? "bg-destructive text-destructive-foreground shadow-soft" : "bg-card text-primary shadow-soft"
-                              : "text-muted-foreground hover:text-foreground"
+                              : "text-muted-foreground hover:bg-card/60 hover:text-foreground"
                           }`}
                         >
                           {c.label}
@@ -501,14 +514,20 @@ export default function UserListPage() {
                   </div>
                 </div>
 
-                {(activeRental || dueKey || kycStatus !== "all") && (
-                  <button
+                {activeFilterCount > 0 && (
+                  <Button
                     type="button"
-                    className="text-xs text-muted-foreground underline"
+                    variant="outline"
+                    size="sm"
+                    className="h-10 gap-1.5 rounded-xl text-muted-foreground hover:text-foreground sm:ml-auto"
                     onClick={() => { setActiveRental(false); setDueKey(null); setKycStatus("all"); setPage(1); }}
                   >
-                    Clear filters
-                  </button>
+                    <X className="h-3.5 w-3.5" />
+                    Clear
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[0.6875rem] font-semibold text-primary-foreground">
+                      {activeFilterCount}
+                    </span>
+                  </Button>
                 )}
               </>
             )}
@@ -525,7 +544,8 @@ export default function UserListPage() {
           emptyTitle={isPendingTab ? "No accounts awaiting approval" : "No users match your filters"}
           sort={sort}
           onSortChange={onSortChange}
-          rowClassName={(u) => (isDueOrOverdue(u) ? "border-l-4 border-l-destructive" : undefined)}
+          fill
+          rowClassName={(u) => (isDueOrOverdue(u) ? "shadow-[inset_4px_0_0_0_hsl(var(--destructive))]" : undefined)}
         />
 
         {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}

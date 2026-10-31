@@ -1,21 +1,24 @@
 import { useState, type ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, Mail, MapPin, FileText, PlusCircle, UserRound } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, PlusCircle, UserRound } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/users/UserAvatar";
+import { UserDocumentsCard } from "@/components/users/UserDocumentsCard";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { UserConsentCard } from "./UserConsentCard";
 import { AddChargeDialog } from "@/components/users/AddChargeDialog";
 import { RiderOriginalsCard } from "@/components/users/RiderOriginalsCard";
 import { UserReferralsCard } from "@/components/users/UserReferralsCard";
 import { ErrorState } from "@/components/common/ErrorState";
+import { CopyButton } from "@/components/common/CopyButton";
 import { useUser } from "@/hooks/useUsers";
 import { useAuthStore } from "@/store/authStore";
 import { hasAction } from "@/lib/permissions";
-import { initials, formatDate, formatCurrency, formatPhoneLocal } from "@/lib/utils";
+import { formatDate, formatCurrency, formatPhoneLocal } from "@/lib/utils";
 import { usePageOwnsTitle } from "@/hooks/usePageOwnsTitle";
+import { useBreadcrumbLabel, useGoBack } from "@/hooks/useNavTrail";
 
 export default function UserDetailPage() {
   usePageOwnsTitle(); // this page draws its own heading; hide the header's
@@ -24,6 +27,10 @@ export default function UserDetailPage() {
   const { data: user, isLoading, isError, refetch } = useUser(id);
   const viewer = useAuthStore((s) => s.user);
   const [chargeOpen, setChargeOpen] = useState(false);
+  // Back returns to wherever this record was opened from (Rental Operations,
+  // KYC, a vehicle, search), not always the Users list.
+  const goBack = useGoBack();
+  useBreadcrumbLabel(user ? user.full_name || "Unnamed user" : null);
 
   if (isLoading) {
     return (
@@ -47,13 +54,10 @@ export default function UserDetailPage() {
   return (
     <div className="space-y-3 animate-fade-in">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate("/users")}>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goBack} aria-label="Go back">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <Avatar className="h-9 w-9">
-          <AvatarImage src={user.profile_photo_url ?? undefined} alt={user.full_name} />
-          <AvatarFallback>{initials(user.full_name || "?")}</AvatarFallback>
-        </Avatar>
+        <UserAvatar user={user} className="h-12 w-12" fallbackClassName="text-sm" />
         <div className="flex items-baseline gap-2">
           <h1 className="text-xl font-semibold leading-tight tracking-tight">{user.full_name || "Unnamed user"}</h1>
           <span className="text-xs text-muted-foreground">Joined {formatDate(user.created_at)}</span>
@@ -85,7 +89,20 @@ export default function UserDetailPage() {
             <CardTitle className="flex items-center gap-2 text-sm"><UserRound className="h-4 w-4" /> Profile</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-x-6 gap-y-3 p-4 pt-1 sm:grid-cols-2">
-            <Detail icon={Phone} label="Phone" value={formatPhoneLocal(user.phone) ?? "Not provided"} />
+            <Detail
+              icon={Phone}
+              label="Phone"
+              value={
+                user.phone ? (
+                  <span className="flex items-center gap-1">
+                    {formatPhoneLocal(user.phone)}
+                    <CopyButton value={formatPhoneLocal(user.phone)!} label="phone number" />
+                  </span>
+                ) : (
+                  "Not provided"
+                )
+              }
+            />
             <Detail icon={Mail} label="Email" value={user.email ?? "Not provided"} />
             <Detail icon={MapPin} label="Address" value={address || "Not provided"} />
             <Detail icon={Phone} label="Emergency contact" value={emergency} />
@@ -149,47 +166,25 @@ export default function UserDetailPage() {
 
       {/* Row 3: KYC documents and consent, side by side. */}
       <div className="grid gap-3 md:grid-cols-2">
-        <Card>
-          <CardHeader className="p-4 pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <FileText className="h-4 w-4" /> KYC documents
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-1">
-            {user.documents.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No documents uploaded. This user hasn&apos;t submitted any KYC documents yet.</p>
-            ) : (
-              <div className="divide-y divide-border">
-                {user.documents.map((doc) => (
-                  <div key={doc.id} className="flex items-center justify-between gap-2 py-1.5 text-sm">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium capitalize">{doc.doc_type.replace(/_/g, " ")}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {doc.doc_number_masked ?? "—"}
-                        {doc.expires_on ? ` · expires ${formatDate(doc.expires_on)}` : ""}
-                      </p>
-                    </div>
-                    <StatusBadge status={doc.verification_status} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
+        <UserDocumentsCard
+          userId={user.id}
+          fullName={user.full_name}
+          hasPhoto={!!user.profile_photo_url}
+          documents={user.documents}
+        />
         <UserConsentCard userId={user.id} />
       </div>
     </div>
   );
 }
 
-function Detail({ icon: Icon, label, value }: { icon: typeof Phone; label: string; value: string }) {
+function Detail({ icon: Icon, label, value }: { icon: typeof Phone; label: string; value: ReactNode }) {
   return (
     <div className="flex min-w-0 items-start gap-2">
       <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       <div className="min-w-0">
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="break-words text-sm font-medium">{value}</p>
+        <div className="break-words text-sm font-medium">{value}</div>
       </div>
     </div>
   );

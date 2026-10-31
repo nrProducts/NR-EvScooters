@@ -76,7 +76,9 @@ export default function PrivacyRequestDetailScreen() {
         : false;
 
     return (
-        <AppShell title={t('privacy.requests.heading')}>
+        // The request's reference, not "Your requests" — that is already the
+        // parent crumb in AppShell's breadcrumb strip.
+        <AppShell title={request ? request.reference : t('privacy.requests.heading')}>
             <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 32 }}>
                 {error ? (
                     <ErrorState message={error} onRetry={load} />

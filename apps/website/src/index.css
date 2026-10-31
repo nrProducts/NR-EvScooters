@@ -200,3 +200,21 @@
     box-shadow: none;
   }
 }
+
+/*
+ * The brand green is a light-to-dark MIX, never a flat fill: every solid
+ * `bg-primary` (buttons, badges, dots, the scroll-to-top button) gets the same
+ * diagonal gradient as the admin console and the rider app. It is painted as a
+ * background-image over the flat colour, so tints such as `bg-primary/20`
+ * (different classes), text and borders are untouched and the flat colour stays
+ * as the fallback. Keep the two stops in sync with apps/web/src/index.css and
+ * apps/mobile/src/components/ui/GradientFill.tsx.
+ */
+.bg-primary {
+  background-image: linear-gradient(135deg, #3ccb73 0%, #17924a 100%);
+}
+/* Hover used to swap to the darker flat green; darken the gradient the same way. */
+a.bg-primary:hover,
+button.bg-primary:hover {
+  background-image: linear-gradient(135deg, #34b867 0%, #137d3f 100%);
+}

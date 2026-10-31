@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { useBrandLogos } from "@/hooks/useBrandLogos";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { PageFade } from "@/components/motion/PageFade";
 import { useUiStore } from "@/store/uiStore";
@@ -10,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * The admin shell: a soft grey canvas, the full labelled sidebar as a tall white
- * panel on the left (it collapses to icons with the button at its foot), and the
+ * panel on the left (the logo above it sits on the grey, not on the white) (it collapses to icons with the button at its foot), and the
  * page header plus the page's own white cards to its right. Phones get the same
  * sidebar in a slide-over sheet, opened from the header.
  */
@@ -19,6 +20,7 @@ export function DashboardLayout() {
   const { sidebarCollapsed, setSidebarCollapsed } = useUiStore();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const location = useLocation();
+  const { icon: logoIcon } = useBrandLogos();
 
   if (!user) return null;
 
@@ -27,12 +29,13 @@ export function DashboardLayout() {
       {/* Desktop / tablet sidebar — a floating panel, not a flush edge-to-edge bar */}
       <aside
         className={cn(
-          "hidden shrink-0 overflow-hidden rounded-[1.75rem] bg-sidebar shadow-card transition-all duration-200 md:block",
+          "hidden shrink-0 transition-all duration-200 md:block",
           sidebarCollapsed ? "w-[4.5rem]" : "w-64",
         )}
       >
         <Sidebar
           user={user}
+          split
           collapsed={sidebarCollapsed}
           onToggleCollapsed={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
@@ -47,17 +50,26 @@ export function DashboardLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header onOpenMobileNav={() => setMobileNavOpen(true)} />
-        <main className="flex-1 overflow-y-auto scrollbar-thin pb-16 sm:pb-2">
-          <div className="mx-auto max-w-[1600px]">
+        {/* Only the page body scrolls; the footer below stays pinned to the bottom of the shell */}
+        <main className="min-h-0 flex-1 overflow-y-auto scrollbar-thin pb-4">
+          {/* h-full lets a page opt in to filling the viewport (grid scrolls inside, pagination pinned) */}
+          <div className="mx-auto h-full max-w-[1600px]">
             <PageFade key={location.pathname}>
               <Outlet />
             </PageFade>
           </div>
-          <footer className="flex flex-wrap items-center justify-between gap-1 px-1 pb-1 pt-6 text-[0.6875rem] text-muted-foreground">
-            <span>© {new Date().getFullYear()} Swapngo. All rights reserved.</span>
-            <span>EV Fleet Admin · v1.0.0</span>
-          </footer>
         </main>
+        <footer className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl bg-card px-4 py-3 shadow-card">
+          <div className="flex items-center gap-2.5">
+            <img src={logoIcon} alt="" className="h-7 w-7 rounded-lg" />
+            <span className="text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Swapngo</span> · © {new Date().getFullYear()} All rights reserved.
+            </span>
+          </div>
+          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[0.6875rem] font-semibold text-primary">
+            EV Fleet Admin · v1.0.0
+          </span>
+        </footer>
       </div>
     </div>
   );
