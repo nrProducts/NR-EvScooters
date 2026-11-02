@@ -82,6 +82,8 @@ export interface BookingView {
      */
     plan: {
         id: string; name: string; billing_cycle: string; price: number;
+        /** Live `plans.price_amount` — what the next renewal bills. Display only. */
+        current_price: number;
         duration_days: number; deposit_amount: number;
         /** `bookings.onboarding_charge_snapshot` — non-refundable, 0 before the split. */
         onboarding_charge_amount: number;

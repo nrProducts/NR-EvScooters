@@ -398,6 +398,8 @@ export interface ApiBooking {
     station: { id: string; name: string; code: string; lat: number; lng: number } | null;
     plan: {
         id: string; name: string; billing_cycle: BillingCycle; price: number;
+        /** Live plan price — what the next renewal bills. Optional: older backends omit it. */
+        current_price?: number;
         duration_days: number; deposit_amount: number;
         /** Non-refundable, snapshotted at booking. 0 for bookings taken before the split. */
         onboarding_charge_amount: number;
