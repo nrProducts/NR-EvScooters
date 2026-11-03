@@ -14,6 +14,16 @@ import { isDarkScheme } from '../../constants/theme';
  * the parent's rounded corners; the parent keeps its flat `backgroundColor` as the
  * fallback. react-native-svg is already in the app, so this needs no native module.
  *
+ * The geometry is a unit square stretched by `viewBox="0 0 1 1"` +
+ * `preserveAspectRatio="none"`, NOT `width="100%"` on the Rect. On Android,
+ * react-native-svg resolves a child's percentage size once, caches the path, and
+ * does not drop that cache when the Svg view is resized (SvgView.onSizeChanged
+ * only rebuilds the bitmap). A button that grows after its first paint (styles,
+ * fonts or content settling) then kept the gradient at the old size, painting a
+ * smaller gradient box with a hard edge over the flat fallback. The viewBox
+ * transform is recomputed from the current size on every draw, so the
+ * unit-square path never goes stale.
+ *
  * Mirrored on the web in index.css (`.bg-primary`, and `.dark` --brand-from /
  * --brand-to for the dark theme) — keep the stops in sync.
  */
@@ -32,6 +42,7 @@ export const GradientFill: React.FC = () => {
       style={[StyleSheet.absoluteFill, { zIndex: -1 }]}
       width="100%"
       height="100%"
+      viewBox="0 0 1 1"
       preserveAspectRatio="none"
       pointerEvents="none"
     >
@@ -41,7 +52,7 @@ export const GradientFill: React.FC = () => {
           <Stop offset="1" stopColor={stops.to} />
         </LinearGradient>
       </Defs>
-      <Rect x="0" y="0" width="100%" height="100%" fill="url(#sngGreen)" />
+      <Rect x="0" y="0" width="1" height="1" fill="url(#sngGreen)" />
     </Svg>
   );
 };
