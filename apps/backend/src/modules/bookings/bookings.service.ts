@@ -64,7 +64,7 @@ const BOOKING_COLUMNS = `
     onboarding_charge_snapshot,
     vehicle_models:plans(vehicle_models(id, name)),
     hubs(id, name, code, latitude, longitude),
-    plans(id, name, billing_period),
+    plans(id, name, billing_period, price_amount),
     vehicles:held_vehicle_id(id, display_name, registration_number, status, vehicle_models(name))
 `;
 
@@ -461,7 +461,7 @@ function toReturnLateFeePreview(ctx: BookingContext): BookingView["return_late_f
 }
 
 export function toBookingView(row: RawBookingRow, ctx: BookingContext = EMPTY_CONTEXT): BookingView {
-    const plan = unwrap<{ id: string; name: string; billing_period: string }>(row.plans);
+    const plan = unwrap<{ id: string; name: string; billing_period: string; price_amount?: number | string | null }>(row.plans);
     const hub = unwrap<{
         id: string; name: string; code: string; latitude: number | null; longitude: number | null;
     }>(row.hubs);
@@ -498,6 +498,11 @@ export function toBookingView(row: RawBookingRow, ctx: BookingContext = EMPTY_CO
                 billing_cycle: plan.billing_period,
                 // Snapshots, not the live plan row.
                 price: Number(row.plan_price_snapshot),
+                // The LIVE plan price, for the rider's "Current Plan" card only:
+                // renewals bill at the live price (advanceToNextPeriod), so a
+                // repriced plan must not keep showing the old figure there.
+                // Checkout and cancellation maths keep using `price` above.
+                current_price: plan.price_amount != null ? Number(plan.price_amount) : Number(row.plan_price_snapshot),
                 duration_days: row.duration_days_snapshot,
                 deposit_amount: Number(row.deposit_amount_snapshot),
                 onboarding_charge_amount: Number(row.onboarding_charge_snapshot ?? 0),

@@ -1553,7 +1553,9 @@ export default function BillingScreen() {
               })()}
             </View>
             <Text style={{ color: COLORS.textPrimary }} className="text-4xl font-bold mb-4">
-              ₹{(plan?.price ?? 0).toFixed(2)}{' '}
+              {/* Once riding, the live price: renewals bill at it. Before that the
+                  booking's own snapshot is what is (or was) charged. */}
+              ₹{((booking?.status === 'fulfilled' ? plan?.current_price : undefined) ?? plan?.price ?? 0).toFixed(2)}{' '}
               {plan ? (
                 <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium">
                   / {t(BILLING_CYCLE_LABEL_KEY[plan.billing_cycle])}
