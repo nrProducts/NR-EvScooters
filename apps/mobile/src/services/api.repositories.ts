@@ -5,7 +5,7 @@ import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRefund,
-    ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
+    ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiTaxDocument, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload, ListVehicleModelsParams,
     MaintenanceHistoryParams, Paginated, ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload,
 } from '../types/api';
@@ -198,6 +198,12 @@ export class ApiBillingRepository implements BillingRepository {
     }
     myRefunds(params: HistoryParams & { bookingId?: string }): Promise<Paginated<ApiRefund>> {
         return api.myRefunds(params);
+    }
+    myTaxDocuments(params: HistoryParams): Promise<Paginated<ApiTaxDocument>> {
+        return api.myTaxDocuments(params);
+    }
+    myTaxDocumentUrl(id: string): Promise<string> {
+        return api.myTaxDocumentUrl(id);
     }
 }
 

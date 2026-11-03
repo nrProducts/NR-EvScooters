@@ -33,6 +33,10 @@ import {
   CalendarClock,
   CalendarOff,
   Bug,
+  ReceiptIndianRupee,
+  ShoppingCart,
+  FileCheck,
+  BookOpen,
 } from "lucide-react";
 import type { ModuleKey, Role, StaffUser } from "@/types";
 import { hasModule } from "@/lib/permissions";
@@ -201,6 +205,45 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Scale,
     roles: ["admin", "staff"],
     moduleKey: "reconciliation",
+    group: "finance",
+  },
+  // GST register — tax invoices and credit notes the database issues as money
+  // moves, plus the GST profile they are issued under. `gst.view` opens it;
+  // `gst.configure` schedules a profile change and runs the catch-up.
+  {
+    label: "Tax Invoices",
+    path: "/tax-invoices",
+    icon: ReceiptIndianRupee,
+    roles: ["admin", "staff"],
+    moduleKey: "gst",
+    group: "finance",
+  },
+  // Vendor bills, input tax credit, GSTR-2B and the fleet's asset register.
+  {
+    label: "Purchases & ITC",
+    path: "/purchases",
+    icon: ShoppingCart,
+    roles: ["admin", "staff"],
+    moduleKey: "purchases",
+    group: "finance",
+  },
+  // Monthly GSTR-1 / GSTR-3B worksheets and the filing pack. The filing
+  // reminder notification links here.
+  {
+    label: "GST Returns",
+    path: "/gst-returns",
+    icon: FileCheck,
+    roles: ["admin", "staff"],
+    moduleKey: "gst",
+    group: "finance",
+  },
+  // Trial balance, P&L, deposit and receivable registers, Tally export.
+  {
+    label: "Books",
+    path: "/books",
+    icon: BookOpen,
+    roles: ["admin", "staff"],
+    moduleKey: "books",
     group: "finance",
   },
 

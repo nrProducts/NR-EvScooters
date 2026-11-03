@@ -1162,7 +1162,30 @@ export async function syncOrderPayment(
 ): Promise<{ status: "paid" | "pending" | "none" }> {
     const order = await findOrderByGatewayOrderId(gatewayOrderId);
     if (!order || order.user_id !== actor.id) throw notFound("Payment order not found.");
+    return applyCapturedOrderPayment(order, gatewayOrderId, actor);
+}
 
+/**
+ * Staff-side recovery of the same thing, for any rider's order — what the
+ * Reconciliation exceptions queue runs when Razorpay settled a payment our
+ * records never applied (exception E1). Identical gateway checks; the only
+ * difference is that ownership is not required, because the route is gated
+ * by `reconciliation.resolve` instead.
+ */
+export async function recoverOrderPaymentAsStaff(
+    gatewayOrderId: string,
+    actor: AuthContext,
+): Promise<{ status: "paid" | "pending" | "none" }> {
+    const order = await findOrderByGatewayOrderId(gatewayOrderId);
+    if (!order) throw notFound("Payment order not found.");
+    return applyCapturedOrderPayment(order, gatewayOrderId, actor);
+}
+
+async function applyCapturedOrderPayment(
+    order: NonNullable<Awaited<ReturnType<typeof findOrderByGatewayOrderId>>>,
+    gatewayOrderId: string,
+    actor: AuthContext,
+): Promise<{ status: "paid" | "pending" | "none" }> {
     const payments = await fetchGatewayOrderPayments(gatewayOrderId);
     const captured = payments.find(
         (p) => p.status === "captured" && p.captured && p.order_id === gatewayOrderId,
@@ -1189,9 +1212,12 @@ export async function syncOrderPayment(
     });
 
     await writeAudit({
-        actorId: actor.id, targetUserId: actor.id, action: "payment.verified",
+        actorId: actor.id, targetUserId: order.user_id, action: "payment.verified",
         entityType: "payment_order", entityId: order.id,
-        after: { gateway_payment_id: captured.id, method: captured.method, amount: captured.amount / 100, via: "order_sync" },
+        after: {
+            gateway_payment_id: captured.id, method: captured.method, amount: captured.amount / 100,
+            via: actor.id === order.user_id ? "order_sync" : "staff_recovery",
+        },
     });
 
     return { status: "paid" };
@@ -1233,6 +1259,70 @@ async function recordFailedAttempt(
         raw_payload: payment as never,
     });
     if (error && (error as { code?: string }).code !== "23505") throw error;
+}
+
+/**
+ * Late UPI success: the pay_id is already on file as a DECLINED attempt and
+ * has now been captured. Upgrades that row failed → succeeded in place and
+ * returns it, so the caller allocates, materialises and notifies exactly as
+ * for a fresh insert. Returns null when there is nothing to do — the row is
+ * already `succeeded` (a redelivery), or another request upgraded it first.
+ *
+ * The UPDATE is the one transition trg_payment_transactions_guard permits;
+ * the `.eq("status", "failed")` filter makes a concurrent second upgrade a
+ * zero-row no-op rather than a double application.
+ */
+async function upgradeFailedAttemptToSuccess(
+    orderId: string,
+    userId: string,
+    input: ApplyPaymentSuccessInput,
+): Promise<{ id: string } | null> {
+    const { data: existing, error: existingError } = await supabaseAdmin
+        .from("payment_transactions")
+        .select("id, status, payment_order_id, failure_code, failure_reason, created_at")
+        .eq("gateway_payment_id", input.gatewayPaymentId)
+        .maybeSingle();
+    if (existingError) throw existingError;
+    if (!existing || existing.status !== "failed") return null;
+    // A pay_id belongs to exactly one gateway order. A mismatch would mean
+    // our own records disagree about whose payment this is — never guess.
+    if (existing.payment_order_id !== orderId) return null;
+
+    const { data: upgraded, error: upgradeError } = await supabaseAdmin
+        .from("payment_transactions")
+        .update({
+            status: "succeeded",
+            amount: input.amount,
+            method: input.trustedMethod ?? mapGatewayMethod(input.method),
+            gateway_signature: input.gatewaySignature,
+            captured_at: new Date().toISOString(),
+            failure_code: null,
+            failure_reason: null,
+            raw_payload: input.rawPayload as never,
+        })
+        .eq("id", existing.id)
+        .eq("status", "failed")
+        .select("id")
+        .maybeSingle();
+    if (upgradeError) throw upgradeError;
+    if (!upgraded) return null;
+
+    await writeAudit({
+        actorId: null, targetUserId: userId, action: "payment.failed_txn_upgraded",
+        entityType: "payment_transaction", entityId: upgraded.id,
+        before: {
+            status: existing.status,
+            failure_code: existing.failure_code,
+            failure_reason: existing.failure_reason,
+            created_at: existing.created_at,
+        },
+        after: {
+            status: "succeeded",
+            amount: input.amount,
+            reason: "late UPI success: same pay_id declined then captured",
+        },
+    });
+    return upgraded;
 }
 
 // ---------------------------------------------------------------------------
@@ -1581,7 +1671,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
         subscription_period_id: string | null; total_amount: number | string;
     }>(order.invoices);
 
-    const { data: txn, error: txnError } = await supabaseAdmin
+    const { data: inserted, error: txnError } = await supabaseAdmin
         .from("payment_transactions")
         .insert({
             payment_order_id: order.id,
@@ -1594,9 +1684,18 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
         })
         .select("id")
         .maybeSingle();
+    let txn = inserted;
     if (txnError) {
-        if ((txnError as { code?: string }).code === "23505") return; // Already applied.
-        throw txnError;
+        if ((txnError as { code?: string }).code !== "23505") throw txnError;
+        // The pay_id is already recorded. Usually that is a redelivery of
+        // this same success — nothing to do. But a UPI payment can be
+        // declined and then captured under the SAME pay_id, and the decline
+        // got here first (recordFailedAttempt). Returning would drop real,
+        // captured money on the floor: no allocation, no booking, no tax
+        // invoice. That row is upgraded in place instead — the one UPDATE
+        // the payment_transactions guard trigger permits.
+        txn = await upgradeFailedAttemptToSuccess(order.id, order.user_id, input);
+        if (!txn) return; // Already applied.
     }
 
     // `neq("status", "paid")` rather than a whitelist of open statuses.
