@@ -47,6 +47,9 @@ export type AuditAction =
     // is the forged-webhook trail.
     | "payment.order_superseded" | "payment.webhook_signature_invalid"
     | "payment.unallocated_surplus" | "payment.partial"
+    // A payment first reported failed, then captured (late UPI success) —
+    // its failed row upgraded to succeeded. Same action fix_payment.sql writes.
+    | "payment.failed_txn_upgraded"
     // A booking-intent payment captured but the rider already held an active
     // booking/rental by then — money in, no booking; needs a manual refund.
     | "payment.booking_unfulfillable"
