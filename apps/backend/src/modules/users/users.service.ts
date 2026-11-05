@@ -22,6 +22,7 @@ import {
 import type { UploadedFile } from "../kyc/kyc.storage";
 import { businessToday } from "../../common/dates";
 import { previewOverdueLateFee } from "../rentals/overdueLateFee";
+import { paidPeriodIds } from "../payments/renewalPeriod";
 import { scrubAuthIdentity } from "../privacy/privacy.erasure";
 
 /**
@@ -193,12 +194,30 @@ async function riderStateUserIds(
         const subIds = (periods ?? []).map((p) => p.subscription_id).filter((x): x is string => !!x);
         if (subIds.length === 0) narrow([]);
         else {
-            const { data: live, error: liveError } = await supabaseAdmin
+            const { data: liveRows, error: liveError } = await supabaseAdmin
                 .from("subscriptions")
                 .select("id, user_id")
                 .in("id", subIds)
                 .in("status", ["active", "paused", "past_due"]);
             if (liveError) throw liveError;
+
+            // A rider who has already paid for the NEXT period is not due: the
+            // paid-ahead period sits as `scheduled` until the cutover promotes it,
+            // so without this they stayed in "Upcoming dues" until that time passed.
+            // Only a PAID scheduled row counts — an abandoned renewal preview
+            // creates the row too (see paidPeriodIds).
+            const { data: scheduled, error: scheduledError } = await supabaseAdmin
+                .from("subscription_periods")
+                .select("id, subscription_id")
+                .in("subscription_id", (liveRows ?? []).map((s) => s.id as string))
+                .eq("status", "scheduled");
+            if (scheduledError) throw scheduledError;
+            const paid = await paidPeriodIds((scheduled ?? []).map((p) => p.id as string));
+            const paidAhead = new Set(
+                (scheduled ?? []).filter((p) => paid.has(p.id as string)).map((p) => p.subscription_id as string),
+            );
+            const live = (liveRows ?? []).filter((s) => !paidAhead.has(s.id as string));
+
             const liveIds = new Set((live ?? []).map((s) => s.id as string));
             for (const p of periods ?? []) {
                 if (p.subscription_id && p.due_on && liveIds.has(p.subscription_id)) {

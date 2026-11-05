@@ -561,6 +561,9 @@ export type Database = {
           refund_eligible_on: string | null
           released_at: string | null
           status: Database["public"]["Enums"]["deposit_status"]
+          short_rental_forfeit_waived: boolean
+          short_rental_forfeit_waived_at: string | null
+          short_rental_forfeit_waived_by_user_id: string | null
           subscription_id: string
           updated_at: string | null
         }
@@ -576,6 +579,9 @@ export type Database = {
           refund_eligible_on?: string | null
           released_at?: string | null
           status?: Database["public"]["Enums"]["deposit_status"]
+          short_rental_forfeit_waived?: boolean
+          short_rental_forfeit_waived_at?: string | null
+          short_rental_forfeit_waived_by_user_id?: string | null
           subscription_id: string
           updated_at?: string | null
         }
@@ -591,6 +597,9 @@ export type Database = {
           refund_eligible_on?: string | null
           released_at?: string | null
           status?: Database["public"]["Enums"]["deposit_status"]
+          short_rental_forfeit_waived?: boolean
+          short_rental_forfeit_waived_at?: string | null
+          short_rental_forfeit_waived_by_user_id?: string | null
           subscription_id?: string
           updated_at?: string | null
         }

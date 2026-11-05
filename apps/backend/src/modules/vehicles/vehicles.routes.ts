@@ -29,6 +29,8 @@ router.post(
 // Active hubs for the add/edit form's picker. Declared before "/:id" so
 // "hub-options" is never parsed as a vehicle id.
 router.get("/hub-options", requireAction("vehicles", "view"), asyncHandler(c.hubOptionsHandler));
+// Declared before "/:id" so "status-counts" is never parsed as a vehicle id.
+router.get("/status-counts", requireAction("vehicles", "view"), asyncHandler(c.statusCountsHandler));
 
 // --- bulk import (template → preview → commit) ---------------------------
 // Declared before "/:id" so "import" is never parsed as a vehicle id. Same

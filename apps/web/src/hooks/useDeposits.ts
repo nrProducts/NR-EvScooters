@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@/lib/useQuery";
 import * as api from "@/services/api/deposits";
 
 export function useDeposits(filters: api.DepositFilters) {

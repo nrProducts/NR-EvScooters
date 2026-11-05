@@ -943,6 +943,8 @@ export interface Deposit {
   min_rental_days_required: number;
   /** Whether this deposit is ever refundable at all, frozen from the plan when the rider paid. False = forfeited outright on return. */
   is_refundable: boolean;
+  /** Staff removed the short-rental forfeit on the Return Review (refunded less charges). */
+  short_rental_forfeit_waived?: boolean;
   /** The rider's completed rental days, across their whole history. */
   rental_days_completed: number;
   refund_eligibility: DepositRefundEligibility;
@@ -1134,6 +1136,10 @@ export interface ReturnStage {
   depositForfeited: boolean;
   minRentalDaysRequired: number;
   rentalDaysCompleted: number;
+  /** Rider is short of the plan's minimum rental days on a refundable deposit — staff can Apply/Remove the forfeit. */
+  shortRentalForfeit?: boolean;
+  /** Staff removed that forfeit. */
+  shortRentalForfeitWaived?: boolean;
 }
 
 export interface PaymentReviewView {

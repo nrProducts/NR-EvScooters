@@ -59,6 +59,11 @@ export async function fetchPaymentReview(rentalId: string): Promise<PaymentRevie
   return apiClient.get<PaymentReviewView>(`/returns/${rentalId}/payment`);
 }
 
+/** POST /returns/:rentalId/deposit-forfeit — Apply (true) / Remove (false) the short-rental deposit forfeit. */
+export async function setShortRentalForfeit(rentalId: string, apply: boolean): Promise<ReturnDetail> {
+  return apiClient.post<ReturnDetail>(`/returns/${rentalId}/deposit-forfeit`, { apply });
+}
+
 /** POST /returns/:rentalId/verify-payment — the explicit admin confirmation that unlocks Approve Return. */
 export async function verifyReturnPayment(rentalId: string): Promise<ReturnDetail> {
   return apiClient.post<ReturnDetail>(`/returns/${rentalId}/verify-payment`, {});

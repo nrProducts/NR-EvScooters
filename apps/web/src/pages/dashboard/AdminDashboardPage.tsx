@@ -140,12 +140,13 @@ export default function AdminDashboardPage() {
         <UpcomingDuesCard rows={6} />
       </div>
 
-      {/* Row 3 — the big map (2 of 3 columns) beside three small cards stacked to its height. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {/* Row 3 — the big map beside three small cards stacked to its height. On wide screens it
+          uses the same 4-column grid as the rows above (map 3, cards 1) so the column edges line up. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 xl:grid-cols-4">
         <ChartCard
           title="Fleet Live Map"
           description="Every bike, by status — green live, amber stale, grey offline, red low battery"
-          className="lg:col-span-2"
+          className="lg:col-span-2 xl:col-span-3"
           fill
           still
           action={

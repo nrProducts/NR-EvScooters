@@ -11,6 +11,11 @@ export interface VehicleFilters {
   sortDir?: "asc" | "desc";
 }
 
+/** GET /vehicles/status-counts — how many vehicles are in each status, plus the total. */
+export async function fetchVehicleStatusCounts(): Promise<{ total: number; by_status: Record<VehicleStatus, number> }> {
+  return apiClient.get("/vehicles/status-counts");
+}
+
 /** GET /vehicles — requireStaff. See apps/backend/src/modules/vehicles/vehicles.routes.ts */
 export async function fetchVehicles(filters: VehicleFilters = {}): Promise<PaginatedResult<Vehicle>> {
   const { search, status, page = 1, pageSize = 8, sortBy, sortDir } = filters;

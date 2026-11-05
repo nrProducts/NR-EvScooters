@@ -1,8 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@/lib/useQuery";
 import * as api from "@/services/api/vehicles";
 
 export function useVehicles(filters: api.VehicleFilters) {
   return useQuery({ queryKey: ["vehicles", filters], queryFn: () => api.fetchVehicles(filters) });
+}
+
+/** Keyed under "vehicles" so every existing vehicle mutation refreshes the counts too. */
+export function useVehicleStatusCounts() {
+  return useQuery({ queryKey: ["vehicles", "status-counts"], queryFn: api.fetchVehicleStatusCounts });
 }
 
 export function useVehicle(id: string | undefined) {

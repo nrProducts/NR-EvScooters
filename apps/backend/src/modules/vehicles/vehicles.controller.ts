@@ -23,6 +23,10 @@ export async function getVehicleHandler(req: AuthedRequest, res: Response) {
     res.json(vehicle);
 }
 
+export async function statusCountsHandler(_req: AuthedRequest, res: Response) {
+    res.json(await service.vehicleStatusCounts());
+}
+
 export async function hubOptionsHandler(_req: AuthedRequest, res: Response) {
     res.json(await importService.liveHubs());
 }

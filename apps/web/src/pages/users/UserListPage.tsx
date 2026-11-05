@@ -31,6 +31,7 @@ import {
 } from "@/hooks/useUsers";
 import { useTableSort } from "@/hooks/useTableSort";
 import { useSessionState } from "@/hooks/useSessionState";
+import { usePageSize } from "@/hooks/usePageSize";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
@@ -73,6 +74,7 @@ export default function UserListPage() {
   const due = DUE_CHOICES.find((c) => c.key === dueKey)?.buckets ?? [];
   const [tab, setTab] = useSessionState<UserTab>("users.tab", "rider");
   const [page, setPage] = useSessionState("users.page", 1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   // A link straight to ?tab=pending (e.g. from a notification) wins over the
   // remembered tab. Runs once, on arrival: later tab changes are the admin's own.
   useEffect(() => {
@@ -93,7 +95,7 @@ export default function UserListPage() {
     due: !isPendingTab && tab === "rider" ? due : [],
     role: isPendingTab ? "all" : tab,
     pendingApproval: isPendingTab,
-    page, pageSize: 8,
+    page, pageSize,
     sortBy: sort.by as "full_name" | "created_at" | "kyc_status", sortDir: sort.dir,
   });
   const deleteUser = useDeleteUser();
@@ -548,7 +550,7 @@ export default function UserListPage() {
           rowClassName={(u) => (isDueOrOverdue(u) ? "shadow-[inset_4px_0_0_0_hsl(var(--destructive))]" : undefined)}
         />
 
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
 
       <ConfirmDialog

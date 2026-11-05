@@ -28,6 +28,9 @@ export const approveReturnSettlementBody = z.object({
 });
 export type ApproveReturnSettlementBody = z.infer<typeof approveReturnSettlementBody>;
 
+/** Apply (true) or Remove (false) the short-rental deposit forfeit. */
+export const shortRentalForfeitBody = z.object({ apply: z.boolean() });
+
 export const listSettlementsQuery = z.object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(50).default(8),

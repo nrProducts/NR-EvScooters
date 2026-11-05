@@ -981,7 +981,7 @@ async function reopenDeadOrder(
  * recordable. `applyPaymentSuccess` therefore accepts payments against
  * expired orders, and the allocation cap keeps the invoice from over-paying.
  */
-async function supersedeOpenOrders(invoiceId: string, keepAmount: number): Promise<void> {
+export async function supersedeOpenOrders(invoiceId: string, keepAmount: number): Promise<void> {
     const { data, error } = await supabaseAdmin
         .from("payment_orders")
         .update({ status: "expired" })

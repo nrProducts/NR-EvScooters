@@ -32,6 +32,8 @@ export type AuditAction =
     | "maintenance.created" | "maintenance.updated" | "maintenance.outcome_set"
     | "notification.broadcast" | "notification_setting.updated" | "fleet_km_settings.updated"
     | "invoice.refunded" | "invoice.adjusted" | "invoice.charge_added"
+    // Admin edits from the Payments screen, on invoices nothing has been paid against.
+    | "invoice.amount_changed" | "invoice.deleted"
     // The late fee, at the moment it becomes a line on the bill rather than
     // an unattributed surplus. is_financial_audit_action() matches it on
     // "invoice", so it inherits the financial retention period.
@@ -54,6 +56,8 @@ export type AuditAction =
     // booking/rental by then — money in, no booking; needs a manual refund.
     | "payment.booking_unfulfillable"
     | "deposit.held" | "deposit.refund_initiated" | "deposit.refunded" | "deposit.forfeited"
+    // Staff Apply/Remove of the short-rental deposit forfeit on the Return Review.
+    | "deposit.short_rental_forfeit_removed" | "deposit.short_rental_forfeit_applied"
     | "damage.created" | "damage.disputed" | "damage.resolved" | "damage.waived"
     | "refund.initiated" | "refund.submitted" | "refund.processed" | "refund.failed"
     | "refund.reviewed" | "refund.rejected"

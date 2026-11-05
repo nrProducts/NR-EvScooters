@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@/lib/useQuery";
 import * as api from "@/services/api/payments";
 
 export function useInvoices(filters: api.InvoiceFilters) {
@@ -35,6 +36,30 @@ export function useRecordInvoicePayment() {
       qc.invalidateQueries({ queryKey: ["pickup-queue"] });
       qc.invalidateQueries({ queryKey: ["users"] });
     },
+  });
+}
+
+function invalidateBilling(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["invoices"] });
+  qc.invalidateQueries({ queryKey: ["invoice"] });
+  qc.invalidateQueries({ queryKey: ["users"] });
+  qc.invalidateQueries({ queryKey: ["user"] });
+}
+
+export function useChangeInvoiceAmount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount, reason }: { id: string; amount: number; reason?: string }) =>
+      api.changeInvoiceAmount(id, amount, reason),
+    onSuccess: () => invalidateBilling(qc),
+  });
+}
+
+export function useDeleteInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => api.deleteInvoice(id, reason),
+    onSuccess: () => invalidateBilling(qc),
   });
 }
 

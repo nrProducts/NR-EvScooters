@@ -27,6 +27,7 @@ import type { ReferralQualifyingEvent } from "@/services/api/referrals";
 import { useReturnRecoverySettings, useUpdateReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { useVehicles } from "@/hooks/useVehicles";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
+import { usePageSize } from "@/hooks/usePageSize";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
@@ -257,6 +258,7 @@ function ChargeRulesTab() {
   const [scope, setScope] = useState<ChargeRuleScope | "all">("all");
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [editTarget, setEditTarget] = useState<ChargeRule | null>(null);
   const [toggleTarget, setToggleTarget] = useState<ChargeRule | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ChargeRule | null>(null);
@@ -266,7 +268,7 @@ function ChargeRulesTab() {
     scope: scope === "all" ? undefined : scope,
     active: status === "all" ? undefined : status === "active",
     page,
-    pageSize: 8,
+    pageSize,
   });
   const toggleActive = useUpdateChargeRule();
   const deleteRule = useDeleteChargeRule();
@@ -393,7 +395,7 @@ function ChargeRulesTab() {
           emptyTitle="No charge rules yet — create one to get started"
         />
 
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
 
       <ChargeRuleDialog
@@ -773,9 +775,10 @@ function ChargeRuleDialog({
 function RiderChargesTab() {
   const [status, setStatus] = useState<RiderChargeStatus | "all">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [waiveTarget, setWaiveTarget] = useState<RiderCharge | null>(null);
 
-  const { data, isLoading, isError, refetch } = useRiderCharges({ status, page, pageSize: 8 });
+  const { data, isLoading, isError, refetch } = useRiderCharges({ status, page, pageSize });
 
   const columns: DataTableColumn<RiderCharge>[] = [
     {
@@ -840,7 +843,7 @@ function RiderChargesTab() {
           emptyTitle="No rider charges yet"
         />
 
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
 
       <WaiveChargeDialog charge={waiveTarget} onOpenChange={(o) => !o && setWaiveTarget(null)} />
@@ -945,6 +948,7 @@ function DiscountRulesTab() {
   const [scope, setScope] = useState<ChargeRuleScope | "all">("all");
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [editTarget, setEditTarget] = useState<DiscountRule | null>(null);
   const [toggleTarget, setToggleTarget] = useState<DiscountRule | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DiscountRule | null>(null);
@@ -954,7 +958,7 @@ function DiscountRulesTab() {
     scope: scope === "all" ? undefined : scope,
     active: status === "all" ? undefined : status === "active",
     page,
-    pageSize: 8,
+    pageSize,
   });
   const toggleActive = useUpdateDiscountRule();
   const deleteRule = useDeleteDiscountRule();
@@ -1080,7 +1084,7 @@ function DiscountRulesTab() {
           emptyTitle="No discount rules yet — create one to get started"
         />
 
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
 
       <DiscountRuleDialog
@@ -1425,9 +1429,10 @@ function DiscountRuleDialog({
 function DiscountsTab() {
   const [status, setStatus] = useState<RiderDiscountStatus | "all">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [cancelTarget, setCancelTarget] = useState<RiderDiscount | null>(null);
 
-  const { data, isLoading, isError, refetch } = useRiderDiscounts({ status, page, pageSize: 8 });
+  const { data, isLoading, isError, refetch } = useRiderDiscounts({ status, page, pageSize });
 
   const columns: DataTableColumn<RiderDiscount>[] = [
     {
@@ -1492,7 +1497,7 @@ function DiscountsTab() {
           emptyTitle="No discounts applied yet"
         />
 
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
 
       <CancelDiscountDialog discount={cancelTarget} onOpenChange={(o) => !o && setCancelTarget(null)} />
