@@ -7,6 +7,7 @@ import { useBookingGate } from '../../hooks/useBookingGate';
 import { COLORS, isDarkScheme } from '../../constants/theme';
 import type { RiderPhase } from '../../hooks/useRiderJourney';
 import { useT, type CopyKey } from '../../i18n';
+import { GradientFill } from '../ui/GradientFill';
 
 const SNG_LOGO = require('../../../assets/images/logo-lockup.png') as number;
 // Light lettering for the dark theme — see scripts/generate-dark-icons.mjs.
@@ -65,8 +66,9 @@ export const HomeHeroCard: React.FC<HomeHeroCardProps> = ({ phase, featured }) =
             accessibilityRole="button"
             activeOpacity={0.85}
             className="self-start flex-row items-center rounded-2xl px-4 py-2.5 mt-4"
-            style={{ backgroundColor: disabled ? COLORS.primary + '66' : COLORS.primary }}
+            style={{ backgroundColor: disabled ? COLORS.primary + '66' : COLORS.primary, overflow: 'hidden' }}
           >
+            {!disabled ? <GradientFill /> : null}
             {phase === 'kyc_required' || phase === 'kyc_in_review' ? (
               <ShieldCheck size={14} color="#FFF" />
             ) : null}
