@@ -1949,6 +1949,21 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
         riderId: order.user_id,
     });
 
+    // A paid renewal (period #2 onward) — emailed to admins. Keyed on the
+    // period, so a repeated webhook for the same payment reuses the event
+    // and sends nothing twice.
+    if (invoice?.subscription_period_id && periodSequence !== null && periodSequence > 1) {
+        await notify({
+            notificationType: "plan_renewal_paid",
+            referenceType: "subscription_period",
+            referenceId: invoice.subscription_period_id,
+            title: "Plan Renewed",
+            bodyFallback: `{rider} renewed their plan (period ${periodSequence}) and paid ₹${round2(input.amount)}.`,
+            screen: "/payments",
+            riderId: order.user_id,
+        });
+    }
+
     if (invoice?.purpose === "initial") {
         const { data: subscription } = await supabaseAdmin
             .from("subscriptions")

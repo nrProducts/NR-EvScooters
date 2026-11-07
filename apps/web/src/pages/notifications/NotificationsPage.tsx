@@ -68,6 +68,7 @@ const RIDER_NOTIFICATION_TYPE_LABEL: Record<string, string> = {
   maintenance_quick_fix: "Maintenance — Quick Fix",
   maintenance_temp_vehicle: "Maintenance — Temp Vehicle",
   maintenance_vehicle_returned: "Maintenance — Vehicle Returned",
+  vehicle_low_battery: "Battery Low",
 };
 
 function riderNotificationTypeLabel(template: string): string {
