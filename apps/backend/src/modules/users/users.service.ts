@@ -164,11 +164,12 @@ function businessDatePlus(n: number): string {
  */
 async function riderStateUserIds(
     filters: ListUsersFilters,
-): Promise<{ ids: string[]; dueOn: Map<string, string> } | null> {
+): Promise<{ ids: string[]; dueOn: Map<string, string>; lateFees: Map<string, number> | null } | null> {
     const due = filters.due ?? [];
     if (!filters.activeRental && !filters.amountPending && due.length === 0) return null;
 
     const dueOn = new Map<string, string>();
+    let lateFees: Map<string, number> | null = null;
     let ids: Set<string> | null = null;
     const narrow = (next: Iterable<string>) => {
         const n = new Set(next);
@@ -181,7 +182,11 @@ async function riderStateUserIds(
         narrow((data ?? []).map((r) => r.user_id as string));
     }
 
-    if (filters.amountPending) narrow(await usersWithAmountPending());
+    if (filters.amountPending) {
+        const pending = await usersWithAmountPending();
+        lateFees = pending.lateFees;
+        narrow(pending.ids);
+    }
 
     if (due.length > 0) {
         const today = businessToday();
@@ -231,7 +236,7 @@ async function riderStateUserIds(
             narrow((live ?? []).map((s) => s.user_id as string));
         }
     }
-    return { ids: [...(ids ?? [])], dueOn };
+    return { ids: [...(ids ?? [])], dueOn, lateFees };
 }
 
 export async function listUsers(
@@ -355,7 +360,10 @@ export async function listUsers(
         openReturnByUser(userIds),
         commentSummaryByUser(userIds),
     ]);
-    const pendingLateFees = await pendingLateFeeByUser(userIds.filter((id) => !outstanding.get(id)));
+    // With "Amount pending" on, the filter has already previewed every late fee
+    // that can be on this page — reuse it rather than previewing again.
+    const pendingLateFees = restrictTo?.lateFees
+        ?? await pendingLateFeeByUser(userIds.filter((id) => !outstanding.get(id)));
 
     const items: UserListItem[] = rows.map((row) => {
         const planInfo = plans.get(row.id);
@@ -1762,30 +1770,36 @@ async function outstandingByUser(userIds: string[]): Promise<Map<string, number>
  * two sources as the grid's `outstanding_amount`: an unpaid, non-void invoice
  * balance, or (with no invoice yet) a past-due plan whose late fee is already
  * running. So the filter and the red row marker always agree.
+ *
+ * Also returns the late fees it previewed, so listUsers can reuse them for the
+ * page's rows instead of previewing the same subscriptions a second time.
  */
-async function usersWithAmountPending(): Promise<string[]> {
-    const { data, error } = await supabaseAdmin
-        .from("v_invoice_balances")
-        .select("user_id, balance_amount, is_paid, status")
-        .eq("is_paid", false)
-        .gt("balance_amount", 0);
-    if (error) throw error;
+async function usersWithAmountPending(): Promise<{ ids: string[]; lateFees: Map<string, number> }> {
+    const [balances, pastDue] = await Promise.all([
+        supabaseAdmin
+            .from("v_invoice_balances")
+            .select("user_id, status")
+            .eq("is_paid", false)
+            .gt("balance_amount", 0),
+        supabaseAdmin
+            .from("subscriptions")
+            .select("user_id")
+            .eq("status", "past_due"),
+    ]);
+    if (balances.error) throw balances.error;
+    if (pastDue.error) throw pastDue.error;
+
     const ids = new Set(
-        (data ?? [])
+        (balances.data ?? [])
             .filter((r) => r.user_id && r.status !== "void")
             .map((r) => r.user_id as string),
     );
-
-    const { data: pastDue, error: pastDueError } = await supabaseAdmin
-        .from("subscriptions")
-        .select("user_id")
-        .eq("status", "past_due");
-    if (pastDueError) throw pastDueError;
-    const candidates = [...new Set((pastDue ?? []).map((s) => s.user_id as string))].filter((id) => !ids.has(id));
+    // Only riders with no unpaid invoice need the (slower) live late-fee preview.
+    const candidates = [...new Set((pastDue.data ?? []).map((s) => s.user_id as string))].filter((id) => !ids.has(id));
     const lateFees = await pendingLateFeeByUser(candidates);
     for (const id of lateFees.keys()) ids.add(id);
 
-    return [...ids];
+    return { ids: [...ids], lateFees };
 }
 
 /**
@@ -1812,11 +1826,19 @@ async function pendingLateFeeByUser(userIds: string[]): Promise<Map<string, numb
     if (error) throw error;
     if (!data || data.length === 0) return map;
 
-    for (const row of data) {
-        const preview = await previewOverdueLateFee(row.id);
-        if (preview.isLate && preview.lateFee > 0) {
-            map.set(row.user_id, Math.round(((map.get(row.user_id) ?? 0) + preview.lateFee) * 100) / 100);
-        }
+    // Each preview is several sequential queries (~1 s from the server), so the
+    // subscriptions are previewed in parallel, a batch at a time. One after
+    // another, 30 past-due plans made the "Amount pending" filter take 30 s+.
+    const BATCH = 25;
+    for (let i = 0; i < data.length; i += BATCH) {
+        const batch = data.slice(i, i + BATCH);
+        const previews = await Promise.all(batch.map((row) => previewOverdueLateFee(row.id)));
+        batch.forEach((row, j) => {
+            const preview = previews[j];
+            if (preview.isLate && preview.lateFee > 0) {
+                map.set(row.user_id, Math.round(((map.get(row.user_id) ?? 0) + preview.lateFee) * 100) / 100);
+            }
+        });
     }
     return map;
 }

@@ -197,8 +197,12 @@ export function FleetAllowanceCard({
           <p className="mt-3 text-xs text-muted-foreground">Not set up yet — needs the allowance database update.</p>
         ) : (
           <>
-            {/* The gauge on the left, four plain facts on the right: it fills the card instead of floating in it. */}
-            <div className="flex flex-1 items-center gap-4 py-1.5">
+            {/*
+              The gauge on the left, four plain facts on the right: it fills the card
+              instead of floating in it. In a narrow column the facts wrap below the
+              gauge rather than being cut off.
+            */}
+            <div className="flex flex-1 flex-wrap items-center justify-center gap-x-4 gap-y-2 py-1.5">
               <svg viewBox="0 0 200 112" className="w-32 shrink-0" role="img" aria-label={`${Math.round(percent)} percent of the fleet limit used`}>
                 <defs>
                   <linearGradient id="kmGaugeGreen" x1="0" y1="0" x2="1" y2="1">
@@ -215,7 +219,7 @@ export function FleetAllowanceCard({
                   {percent.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%
                 </text>
               </svg>
-              <dl className="min-w-0 flex-1 space-y-1.5">
+              <dl className="min-w-[9rem] flex-1 space-y-1.5">
                 {facts.map((fact) => (
                   <div key={fact.label} className="flex items-baseline justify-between gap-2 border-b border-border/60 pb-1 last:border-0 last:pb-0">
                     <dt className="text-[0.6875rem] text-muted-foreground">{fact.label}</dt>

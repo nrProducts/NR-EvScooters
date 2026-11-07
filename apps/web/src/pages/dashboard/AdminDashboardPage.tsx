@@ -130,14 +130,21 @@ export default function AdminDashboardPage() {
           live map is large. */}
 
       {/* Row 2 — revenue chart (2 columns), then a column of two short fleet cards, then the riders who are due. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <RevenueChartCard className="sm:col-span-2" />
+      {/*
+        Four columns only from xl up; below that the chart takes a full row and
+        the two right-hand columns sit side by side under it. `min-w-0` on every
+        column: a grid item won't shrink below its content by default, so a
+        column whose content was wider than its quarter spilled into the next
+        one and Upcoming dues painted over it (laptop screens at 100% zoom).
+      */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <RevenueChartCard className="min-w-0 sm:col-span-2" />
         {/* Two equal halves: both cards get the same height. */}
-        <div className="grid grid-rows-2 gap-4">
-          <FleetAllowanceCard variant="gauge" />
-          <FleetTrackingCard />
+        <div className="grid min-w-0 grid-rows-2 gap-4">
+          <FleetAllowanceCard variant="gauge" className="min-w-0" />
+          <FleetTrackingCard className="min-w-0" />
         </div>
-        <UpcomingDuesCard rows={6} />
+        <UpcomingDuesCard rows={6} className="min-w-0" />
       </div>
 
       {/* Row 3 — the big map beside three small cards stacked to its height. On wide screens it
