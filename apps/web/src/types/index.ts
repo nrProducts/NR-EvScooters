@@ -222,6 +222,14 @@ export interface AppUser {
    */
   outstanding_amount: number;
   /**
+   * Staff comments on this user — how many, and the newest. Only on the user
+   * LIST; the details page loads the full thread from /users/:id/comments.
+   */
+  comments?: {
+    count: number;
+    latest: { body: string; created_at: string; author_name: string | null } | null;
+  };
+  /**
    * The rider's OPEN return, if staff have not finished the handover.
    *
    * `payment_status` cannot answer this: requestReturn leaves the rental and

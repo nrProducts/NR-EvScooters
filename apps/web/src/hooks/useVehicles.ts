@@ -110,3 +110,28 @@ export function useCommitVehicleImport() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicles"] }),
   });
 }
+
+export function useVehicleDamageNotes(vehicleId: string | undefined) {
+  return useQuery({
+    queryKey: ["vehicle-damage-notes", vehicleId],
+    queryFn: () => api.fetchVehicleDamageNotes(vehicleId!),
+    enabled: !!vehicleId,
+  });
+}
+
+export function useAddVehicleDamageNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ vehicleId, description }: { vehicleId: string; description: string }) =>
+      api.addVehicleDamageNote(vehicleId, description),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle-damage-notes"] }),
+  });
+}
+
+export function useDeleteVehicleDamageNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (noteId: string) => api.deleteVehicleDamageNote(noteId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicle-damage-notes"] }),
+  });
+}

@@ -106,6 +106,14 @@ export const VEHICLE_DOCUMENT_TYPES = ["registration", "insurance", "puc", "fitn
 
 export const documentIdParam = z.object({ documentId: z.string().uuid("A valid document id is required.") });
 
+export const damageNoteIdParam = z.object({ noteId: z.string().uuid("A valid damage note id is required.") });
+
+export const createDamageNoteBody = z.object({
+    description: z.string().trim()
+        .min(3, "Describe the damage (at least 3 characters).")
+        .max(500, "Keep it under 500 characters."),
+});
+
 /**
  * multipart/form-data — the file arrives via multer, not in this body, same
  * split as kyc.validation.ts's uploadDocumentBody.

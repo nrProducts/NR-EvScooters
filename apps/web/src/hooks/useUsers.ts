@@ -153,3 +153,34 @@ export function useUpdateUserPermissions() {
     },
   });
 }
+
+export function useUserComments(userId: string | undefined) {
+  return useQuery({
+    queryKey: ["user-comments", userId],
+    queryFn: () => api.fetchUserComments(userId!),
+    enabled: !!userId,
+  });
+}
+
+/** Also refreshes the user list, whose rows show each user's comment count. */
+export function useAddUserComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, body }: { userId: string; body: string }) => api.addUserComment(userId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["user-comments"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+}
+
+export function useDeleteUserComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (commentId: string) => api.deleteUserComment(commentId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["user-comments"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+}

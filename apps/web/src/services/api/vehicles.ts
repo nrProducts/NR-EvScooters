@@ -290,3 +290,32 @@ export async function commitVehicleImport(rows: VehicleImportRow[]): Promise<Veh
     })),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Known damage — condition notes on a scooter, so the next rider isn't
+// charged for damage it already has. Deleting a note = the damage is repaired.
+// See apps/backend/src/modules/vehicles/vehicles.damageNotes.ts
+// ---------------------------------------------------------------------------
+
+export interface VehicleDamageNote {
+  id: string;
+  vehicle_id: string;
+  description: string;
+  noted_by: { id: string; full_name: string } | null;
+  created_at: string;
+}
+
+/** GET /vehicles/:id/damage-notes — newest first. */
+export async function fetchVehicleDamageNotes(vehicleId: string): Promise<VehicleDamageNote[]> {
+  return apiClient.get<VehicleDamageNote[]>(`/vehicles/${vehicleId}/damage-notes`);
+}
+
+/** POST /vehicles/:id/damage-notes */
+export async function addVehicleDamageNote(vehicleId: string, description: string): Promise<VehicleDamageNote> {
+  return apiClient.post<VehicleDamageNote>(`/vehicles/${vehicleId}/damage-notes`, { description });
+}
+
+/** DELETE /vehicles/damage-notes/:noteId — the damage is repaired. */
+export async function deleteVehicleDamageNote(noteId: string): Promise<void> {
+  await apiClient.delete(`/vehicles/damage-notes/${noteId}`);
+}

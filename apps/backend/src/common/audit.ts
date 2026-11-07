@@ -17,7 +17,7 @@ export type AuditAction =
     | "user.created" | "user.self_signed_up" | "user.updated" | "user.soft_deleted" | "user.restored"
     | "user.activated" | "user.deactivated" | "user.suspended"
     | "user.roles_changed" | "user.permissions_changed"
-    | "user.photo_uploaded"
+    | "user.photo_uploaded" | "user.comment_added" | "user.comment_deleted"
     | "kyc.document_uploaded" | "kyc.document_updated" | "kyc.document_deleted"
     | "kyc.submitted"
     | "kyc.document_verified" | "kyc.document_rejected"
@@ -29,6 +29,7 @@ export type AuditAction =
     | "booking.cancelled" | "booking.payment_completed"
     | "vehicle.immobilised" | "vehicle.mobilised" | "vehicle.locked" | "vehicle.unlocked" | "vehicle.created" | "vehicle.bulk_imported" | "vehicle.updated" | "vehicle.scrapped" | "vehicle.assigned"
     | "vehicle.document_uploaded" | "vehicle.document_updated" | "vehicle.document_deleted"
+    | "vehicle.damage_noted" | "vehicle.damage_resolved"
     | "maintenance.created" | "maintenance.updated" | "maintenance.outcome_set"
     | "notification.broadcast" | "notification_setting.updated" | "fleet_km_settings.updated"
     | "invoice.refunded" | "invoice.adjusted" | "invoice.charge_added"
@@ -112,10 +113,10 @@ export interface AuditEntry {
      * that. `user_capability` is simply gone — capabilities are permissions.
      */
     entityType:
-        | "user" | "user_role" | "user_permission" | "kyc_document"
+        | "user" | "user_comment" | "user_role" | "user_permission" | "kyc_document"
         | "booking" | "booking_cancellation"
         | "subscription" | "subscription_period" | "subscription_adjustment"
-        | "vehicle" | "vehicle_document" | "vehicle_disposal" | "maintenance_ticket"
+        | "vehicle" | "vehicle_document" | "vehicle_damage_note" | "vehicle_disposal" | "maintenance_ticket"
         | "hub" | "battery_station"
         | "rental" | "rental_return" | "rental_settlement" | "settlement"
         | "invoice" | "payment_order" | "payment_transaction" | "payment_allocation"

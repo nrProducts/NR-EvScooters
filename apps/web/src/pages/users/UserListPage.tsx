@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, UserMinus, KeyRound, UserCheck, Bike, XCircle, X,
+  Eye, ShieldCheck, Ban, CheckCircle2, Trash2, UserMinus, KeyRound, UserCheck, Bike, XCircle, X, MessageSquare,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/users/UserAvatar";
+import { UserCommentsThread } from "@/components/users/UserCommentsThread";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -70,6 +71,7 @@ export default function UserListPage() {
   const [search, setSearch] = useSessionState("users.search", "");
   const [kycStatus, setKycStatus] = useSessionState<KycStatus | "all">("users.kycStatus", "all");
   const [activeRental, setActiveRental] = useSessionState("users.activeRental", false);
+  const [amountPending, setAmountPending] = useSessionState("users.amountPending", false);
   const [dueKey, setDueKey] = useSessionState<string | null>("users.dueKey", null);
   const due = DUE_CHOICES.find((c) => c.key === dueKey)?.buckets ?? [];
   const [tab, setTab] = useSessionState<UserTab>("users.tab", "rider");
@@ -84,6 +86,7 @@ export default function UserListPage() {
   const [rejectTarget, setRejectTarget] = useState<AppUser | null>(null);
   const isPendingTab = tab === "pending";
   const [suspendTarget, setSuspendTarget] = useState<AppUser | null>(null);
+  const [commentTarget, setCommentTarget] = useState<AppUser | null>(null);
   const [reason, setReason] = useState("");
   const [roleError, setRoleError] = useState<string | null>(null);
 
@@ -92,6 +95,7 @@ export default function UserListPage() {
     search,
     kycStatus: isPendingTab ? "all" : kycStatus,
     activeRental: !isPendingTab && tab === "rider" && activeRental,
+    amountPending: !isPendingTab && tab === "rider" && amountPending,
     due: !isPendingTab && tab === "rider" ? due : [],
     role: isPendingTab ? "all" : tab,
     pendingApproval: isPendingTab,
@@ -233,6 +237,37 @@ export default function UserListPage() {
       hideOnMobile: true,
     },
     {
+      header: "Comments",
+      key: "comments",
+      render: (u) => {
+        const c = u.comments;
+        return (
+          <button
+            type="button"
+            className="flex max-w-[16rem] items-start gap-1.5 text-left"
+            title={c?.latest ? `${c.latest.body}${c.latest.author_name ? ` — ${c.latest.author_name}` : ""}` : "Add a comment"}
+            onClick={(e) => {
+              e.stopPropagation();
+              setCommentTarget(u);
+            }}
+          >
+            <MessageSquare className={`mt-0.5 h-4 w-4 shrink-0 ${c?.count ? "text-primary" : "text-muted-foreground/50"}`} />
+            {c?.latest ? (
+              <span className="min-w-0">
+                <span className="line-clamp-2 text-sm">{c.latest.body}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {timeAgo(c.latest.created_at)}{c.count > 1 ? ` · ${c.count} comments` : ""}
+                </span>
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground hover:text-foreground">Add</span>
+            )}
+          </button>
+        );
+      },
+      hideOnMobile: true,
+    },
+    {
       header: "Plan Started",
       key: "plan_started_at",
       render: (u) => (u.plan_started_at ? formatDate(u.plan_started_at) : "—"),
@@ -322,6 +357,9 @@ export default function UserListPage() {
             <DropdownMenuItem onClick={() => navigate(`/users/${u.id}`)}>
               <Eye className="mr-2 h-4 w-4" /> View profile
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setCommentTarget(u)}>
+              <MessageSquare className="mr-2 h-4 w-4" /> Comments{u.comments?.count ? ` (${u.comments.count})` : ""}
+            </DropdownMenuItem>
             {u.kyc_status === "pending" && (
               <DropdownMenuItem onClick={() => navigate("/kyc")}>
                 <ShieldCheck className="mr-2 h-4 w-4" /> Review KYC
@@ -394,7 +432,7 @@ export default function UserListPage() {
     },
   ];
 
-  const activeFilterCount = (activeRental ? 1 : 0) + (dueKey ? 1 : 0) + (kycStatus !== "all" ? 1 : 0);
+  const activeFilterCount = (activeRental ? 1 : 0) + (amountPending ? 1 : 0) + (dueKey ? 1 : 0) + (kycStatus !== "all" ? 1 : 0);
 
   usePageSubtitle(
     isPendingTab
@@ -489,6 +527,20 @@ export default function UserListPage() {
                   Active rental
                 </label>
 
+                {/* Riders who owe money right now — the same riders the red row edge marks. */}
+                <label
+                  className={`flex h-10 cursor-pointer items-center gap-2.5 rounded-xl border px-3 text-sm font-medium shadow-sm transition-smooth ${
+                    amountPending ? "border-destructive/40 bg-destructive/10 text-destructive" : "border-border bg-card text-foreground hover:bg-secondary"
+                  }`}
+                >
+                  <Switch
+                    checked={amountPending}
+                    onCheckedChange={(v) => { setAmountPending(v); setPage(1); }}
+                    aria-label="Amount pending only"
+                  />
+                  Amount pending
+                </label>
+
                 <span className="hidden h-6 w-px bg-border sm:block" aria-hidden />
 
                 <div className="flex flex-wrap items-center gap-2.5">
@@ -522,7 +574,7 @@ export default function UserListPage() {
                     variant="outline"
                     size="sm"
                     className="h-10 gap-1.5 rounded-xl text-muted-foreground hover:text-foreground sm:ml-auto"
-                    onClick={() => { setActiveRental(false); setDueKey(null); setKycStatus("all"); setPage(1); }}
+                    onClick={() => { setActiveRental(false); setAmountPending(false); setDueKey(null); setKycStatus("all"); setPage(1); }}
                   >
                     <X className="h-3.5 w-3.5" />
                     Clear
@@ -594,6 +646,16 @@ export default function UserListPage() {
           }
         }}
       />
+
+      <Dialog open={!!commentTarget} onOpenChange={(o) => !o && setCommentTarget(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Comments · {commentTarget?.full_name || "User"}</DialogTitle>
+            <DialogDescription>Internal notes about this user. Riders never see them.</DialogDescription>
+          </DialogHeader>
+          {commentTarget && <UserCommentsThread userId={commentTarget.id} />}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!suspendTarget} onOpenChange={(o) => !o && setSuspendTarget(null)}>
         <DialogContent>

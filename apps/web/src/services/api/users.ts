@@ -15,6 +15,8 @@ export interface UserFilters {
   bookable?: boolean;
   /** Riders with a rental running right now. */
   activeRental?: boolean;
+  /** Only riders who owe money right now. */
+  amountPending?: boolean;
   /** Plan-due buckets, OR-ed: overdue, due today, or exactly 1/2/3 days from today. */
   due?: ("overdue" | "today" | "d1" | "d2" | "d3")[];
   /** Only self-registered accounts awaiting an admin's approve/reject. Overrides `role`. */
@@ -27,7 +29,7 @@ export interface UserFilters {
 
 /** GET /users — requireStaff. See apps/backend/src/modules/users/users.routes.ts */
 export async function fetchUsers(filters: UserFilters = {}): Promise<PaginatedResult<AppUser>> {
-  const { search, kycStatus, accountStatus, role, staffOnly, bookable, pendingApproval, activeRental, due, page = 1, pageSize = 8, sortBy, sortDir } = filters;
+  const { search, kycStatus, accountStatus, role, staffOnly, bookable, pendingApproval, activeRental, amountPending, due, page = 1, pageSize = 8, sortBy, sortDir } = filters;
   const res = await apiClient.get<BackendPaginated<AppUser>>("/users", {
     page,
     pageSize,
@@ -38,6 +40,7 @@ export async function fetchUsers(filters: UserFilters = {}): Promise<PaginatedRe
     staffOnly: staffOnly ? "true" : undefined,
     bookable: bookable ? "true" : undefined,
     activeRental: activeRental ? "true" : undefined,
+    amountPending: amountPending ? "true" : undefined,
     due: due && due.length ? due.join(",") : undefined,
     pendingApproval: pendingApproval ? "true" : undefined,
     sortBy,
@@ -162,4 +165,32 @@ export interface CreateStaffInput {
  */
 export async function createStaffUser(input: CreateStaffInput): Promise<AppUser & { temporary_password?: string }> {
   return apiClient.post<AppUser & { temporary_password?: string }>("/users", input);
+}
+
+// ---------------------------------------------------------------------------
+// Staff comments on a user — internal notes; riders never see them.
+// See apps/backend/src/modules/users/users.comments.ts
+// ---------------------------------------------------------------------------
+
+export interface UserComment {
+  id: string;
+  user_id: string;
+  body: string;
+  author: { id: string; full_name: string } | null;
+  created_at: string;
+}
+
+/** GET /users/:id/comments — newest first. */
+export async function fetchUserComments(userId: string): Promise<UserComment[]> {
+  return apiClient.get<UserComment[]>(`/users/${userId}/comments`);
+}
+
+/** POST /users/:id/comments */
+export async function addUserComment(userId: string, body: string): Promise<UserComment> {
+  return apiClient.post<UserComment>(`/users/${userId}/comments`, { body });
+}
+
+/** DELETE /users/comments/:commentId — the author or an admin. */
+export async function deleteUserComment(commentId: string): Promise<void> {
+  await apiClient.delete(`/users/comments/${commentId}`);
 }

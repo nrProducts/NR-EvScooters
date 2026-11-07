@@ -24,6 +24,7 @@ import { businessToday } from "../../common/dates";
 import { previewOverdueLateFee } from "../rentals/overdueLateFee";
 import { paidPeriodIds } from "../payments/renewalPeriod";
 import { scrubAuthIdentity } from "../privacy/privacy.erasure";
+import { commentSummaryByUser } from "./users.comments";
 
 /**
  * A user is five tables now.
@@ -165,7 +166,7 @@ async function riderStateUserIds(
     filters: ListUsersFilters,
 ): Promise<{ ids: string[]; dueOn: Map<string, string> } | null> {
     const due = filters.due ?? [];
-    if (!filters.activeRental && due.length === 0) return null;
+    if (!filters.activeRental && !filters.amountPending && due.length === 0) return null;
 
     const dueOn = new Map<string, string>();
     let ids: Set<string> | null = null;
@@ -179,6 +180,8 @@ async function riderStateUserIds(
         if (error) throw error;
         narrow((data ?? []).map((r) => r.user_id as string));
     }
+
+    if (filters.amountPending) narrow(await usersWithAmountPending());
 
     if (due.length > 0) {
         const today = businessToday();
@@ -345,11 +348,12 @@ export async function listUsers(
     }
 
     const userIds = rows.map((r) => r.id);
-    const [vehicles, plans, outstanding, openReturns] = await Promise.all([
+    const [vehicles, plans, outstanding, openReturns, comments] = await Promise.all([
         activeVehicleByUser(userIds),
         currentPlanByUser(userIds),
         outstandingByUser(userIds),
         openReturnByUser(userIds),
+        commentSummaryByUser(userIds),
     ]);
     const pendingLateFees = await pendingLateFeeByUser(userIds.filter((id) => !outstanding.get(id)));
 
@@ -367,6 +371,7 @@ export async function listUsers(
             cycle_time: planInfo?.cycle_time ?? null,
             picked_up: planInfo?.picked_up ?? false,
             outstanding_amount: outstanding.get(row.id) ?? pendingLateFees.get(row.id) ?? 0,
+            comments: comments.get(row.id) ?? { count: 0, latest: null },
             open_return: openReturns.get(row.id) ?? null,
         };
     });
@@ -1750,6 +1755,37 @@ async function outstandingByUser(userIds: string[]): Promise<Map<string, number>
         map.set(row.user_id, Math.round(((map.get(row.user_id) ?? 0) + balance) * 100) / 100);
     }
     return map;
+}
+
+/**
+ * Every rider who owes money right now — the "Amount pending" filter. Same
+ * two sources as the grid's `outstanding_amount`: an unpaid, non-void invoice
+ * balance, or (with no invoice yet) a past-due plan whose late fee is already
+ * running. So the filter and the red row marker always agree.
+ */
+async function usersWithAmountPending(): Promise<string[]> {
+    const { data, error } = await supabaseAdmin
+        .from("v_invoice_balances")
+        .select("user_id, balance_amount, is_paid, status")
+        .eq("is_paid", false)
+        .gt("balance_amount", 0);
+    if (error) throw error;
+    const ids = new Set(
+        (data ?? [])
+            .filter((r) => r.user_id && r.status !== "void")
+            .map((r) => r.user_id as string),
+    );
+
+    const { data: pastDue, error: pastDueError } = await supabaseAdmin
+        .from("subscriptions")
+        .select("user_id")
+        .eq("status", "past_due");
+    if (pastDueError) throw pastDueError;
+    const candidates = [...new Set((pastDue ?? []).map((s) => s.user_id as string))].filter((id) => !ids.has(id));
+    const lateFees = await pendingLateFeeByUser(candidates);
+    for (const id of lateFees.keys()) ids.add(id);
+
+    return [...ids];
 }
 
 /**

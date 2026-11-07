@@ -132,4 +132,30 @@ router.get(
     asyncHandler(c.vehicleDocumentUrlHandler),
 );
 
+// --- known damage (condition notes) -------------------------------------
+// Damage the scooter already has, noted so the next rider isn't charged for
+// it. Deleting a note = the damage is repaired. Same "edit" grant as the
+// vehicle record.
+
+router.get(
+    "/:id/damage-notes",
+    requireAction("vehicles", "view"),
+    validate({ params: v.uuidParam }),
+    asyncHandler(c.listDamageNotesHandler),
+);
+
+router.post(
+    "/:id/damage-notes",
+    requireAction("vehicles", "edit"),
+    validate({ params: v.uuidParam, body: v.createDamageNoteBody }),
+    asyncHandler(c.addDamageNoteHandler),
+);
+
+router.delete(
+    "/damage-notes/:noteId",
+    requireAction("vehicles", "edit"),
+    validate({ params: v.damageNoteIdParam }),
+    asyncHandler(c.deleteDamageNoteHandler),
+);
+
 export default router;
