@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@/lib/useQuery";
 import { fetchVehicleModelOptions } from "@/services/api/vehicleModels";
 
 export function useVehicleModelOptions() {

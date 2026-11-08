@@ -69,6 +69,12 @@ export interface DepositRow {
      * need it.
      */
     rental_days_completed: number;
+    /**
+     * Staff removed the short-rental forfeit on the Return Review: the deposit
+     * is refunded (less charges) even though `rental_days_completed` is short
+     * of `min_rental_days_required`. Has no effect when `is_refundable` is false.
+     */
+    short_rental_forfeit_waived: boolean;
     refund_eligibility: DepositRefundEligibility;
     /**
      * Who this deposit belongs to. A `subscription_id` is not something staff

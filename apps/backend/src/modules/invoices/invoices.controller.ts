@@ -96,6 +96,19 @@ export async function recordInvoicePaymentHandler(req: AuthedRequest, res: Respo
     res.json(await service.getInvoiceById(req.params.id as string));
 }
 
+/** Changes the amount of an invoice nothing has been paid against. */
+export async function changeInvoiceAmountHandler(req: AuthedRequest, res: Response) {
+    const { amount, reason } = req.body as { amount: number; reason?: string };
+    res.json(await service.changeInvoiceAmount(req.params.id as string, amount, reason, req.user!));
+}
+
+/** Permanently deletes an invoice nothing has been paid against. */
+export async function deleteInvoiceHandler(req: AuthedRequest, res: Response) {
+    const { reason } = (req.body ?? {}) as { reason?: string };
+    await service.deleteInvoice(req.params.id as string, reason, req.user!);
+    res.status(204).end();
+}
+
 /** Raises a one-off charge against a rider (lost key, cleaning fee, fine, …). */
 export async function adhocChargeHandler(req: AuthedRequest, res: Response) {
     const body = req.body as AdhocChargeBody;

@@ -222,6 +222,14 @@ export interface AppUser {
    */
   outstanding_amount: number;
   /**
+   * Staff comments on this user — how many, and the newest. Only on the user
+   * LIST; the details page loads the full thread from /users/:id/comments.
+   */
+  comments?: {
+    count: number;
+    latest: { body: string; created_at: string; author_name: string | null } | null;
+  };
+  /**
    * The rider's OPEN return, if staff have not finished the handover.
    *
    * `payment_status` cannot answer this: requestReturn leaves the rental and
@@ -943,6 +951,8 @@ export interface Deposit {
   min_rental_days_required: number;
   /** Whether this deposit is ever refundable at all, frozen from the plan when the rider paid. False = forfeited outright on return. */
   is_refundable: boolean;
+  /** Staff removed the short-rental forfeit on the Return Review (refunded less charges). */
+  short_rental_forfeit_waived?: boolean;
   /** The rider's completed rental days, across their whole history. */
   rental_days_completed: number;
   refund_eligibility: DepositRefundEligibility;
@@ -1134,6 +1144,10 @@ export interface ReturnStage {
   depositForfeited: boolean;
   minRentalDaysRequired: number;
   rentalDaysCompleted: number;
+  /** Rider is short of the plan's minimum rental days on a refundable deposit — staff can Apply/Remove the forfeit. */
+  shortRentalForfeit?: boolean;
+  /** Staff removed that forfeit. */
+  shortRentalForfeitWaived?: boolean;
 }
 
 export interface PaymentReviewView {

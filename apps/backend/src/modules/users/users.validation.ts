@@ -4,6 +4,12 @@ import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "../../common/pagination";
 
 export const uuidParam = z.object({ id: z.string().uuid("A valid user id is required.") });
 
+export const commentIdParam = z.object({ commentId: z.string().uuid("A valid comment id is required.") });
+
+export const createCommentBody = z.object({
+    body: z.string().trim().min(1, "Write a comment.").max(1000, "Keep it under 1000 characters."),
+});
+
 export const registerPushTokenBody = z.object({
     token: z.string().trim().min(10, "A valid push token is required."),
     platform: z.enum(["ios", "android"]).optional(),
@@ -91,6 +97,11 @@ export const listUsersQuery = z.object({
         .transform((v) => v === "true"),
     // Riders with a rental running right now.
     activeRental: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
+    // Riders who owe money right now (unpaid invoice balance or a pending late fee).
+    amountPending: z
       .enum(["true", "false"])
       .default("false")
       .transform((v) => v === "true"),

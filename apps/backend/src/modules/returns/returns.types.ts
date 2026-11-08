@@ -124,6 +124,13 @@ export interface ReturnStage {
     minRentalDaysRequired: number;
     /** As of "now" (or the return's own reference point once completed). */
     rentalDaysCompleted: number;
+    /**
+     * The rider is short of `minRentalDaysRequired` on a refundable deposit,
+     * so the short-rental forfeit is in play — staff can Apply/Remove it.
+     */
+    shortRentalForfeit: boolean;
+    /** Staff removed that forfeit: the deposit is refunded less charges. */
+    shortRentalForfeitWaived: boolean;
 }
 
 /** Everything the admin Return Detail page needs in one call. */

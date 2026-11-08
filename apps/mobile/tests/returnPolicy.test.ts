@@ -34,3 +34,25 @@ describe('getRenewalEligibility — isLate', () => {
     expect(r.isLate).toBe(true);
   });
 });
+
+describe('getRenewalEligibility — canRenew window', () => {
+  it('opens one day before the due date', () => {
+    const now = new Date('2026-10-10T06:30:00.000Z'); // noon IST, the day before
+    expect(getRenewalEligibility('active', '2026-10-11', 'none', now).canRenew).toBe(true);
+  });
+
+  it('is still closed two days before the due date', () => {
+    const now = new Date('2026-10-09T06:30:00.000Z');
+    expect(getRenewalEligibility('active', '2026-10-11', 'none', now).canRenew).toBe(false);
+  });
+
+  it('opens the day before across a month end', () => {
+    const now = new Date('2026-10-31T06:30:00.000Z');
+    expect(getRenewalEligibility('active', '2026-11-01', 'none', now).canRenew).toBe(true);
+  });
+
+  it('stays closed once a paid renewal is already scheduled', () => {
+    const now = new Date('2026-10-10T06:30:00.000Z');
+    expect(getRenewalEligibility('active', '2026-10-11', 'scheduled', now).canRenew).toBe(false);
+  });
+});

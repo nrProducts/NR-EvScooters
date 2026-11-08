@@ -60,6 +60,9 @@ declare
     -- and silently did nothing. true = upgrade that one failed row to
     -- succeeded (append-only trigger lifted for this one UPDATE, inside this
     -- transaction). Only set when verify_payment.sql says LATE UPI SUCCESS and Razorpay shows Captured.
+    -- Since migration 20261104100000 + the matching backend release the app
+    -- does this upgrade itself; this flag is only for payments that got
+    -- stuck BEFORE that release reached the environment.
     p_upgrade_failed_txn boolean     := false;
     p_dry_run            boolean     := true;    -- true = check everything, save nothing
     -- ====================================================================

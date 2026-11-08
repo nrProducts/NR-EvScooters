@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@/lib/useQuery";
 import { fetchPermissionCatalog } from "@/services/api/permissions";
 import { CUSTOM_PROFILE, permissionKey } from "@/types";
 import type {

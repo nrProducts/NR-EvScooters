@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@/lib/useQuery";
 import { Bell, Search, Send, Users, X } from "lucide-react";
 import { Spinner } from "@/components/common/Spinner";
 import { Card } from "@/components/ui/card";
@@ -20,6 +20,7 @@ import { useMyNotifications, useMarkNotificationRead, useMarkAllNotificationsRea
 import { useEmailDeliveryLog, useNotificationSettings, useNotificationTypeSummaries } from "@/hooks/useNotificationSettings";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
+import { usePageSize } from "@/hooks/usePageSize";
 import { ApiError } from "@/services/api/httpClient";
 import * as usersApi from "@/services/api/users";
 import type { BroadcastAudience } from "@/services/api/notifications";
@@ -67,6 +68,7 @@ const RIDER_NOTIFICATION_TYPE_LABEL: Record<string, string> = {
   maintenance_quick_fix: "Maintenance — Quick Fix",
   maintenance_temp_vehicle: "Maintenance — Temp Vehicle",
   maintenance_vehicle_returned: "Maintenance — Vehicle Returned",
+  vehicle_low_battery: "Battery Low",
 };
 
 function riderNotificationTypeLabel(template: string): string {
@@ -115,6 +117,7 @@ function AdminBroadcastTab() {
   const canSendBroadcast = hasAction(user, "notifications", "send");
   const [status, setStatus] = useState<NotificationDeliveryStatus | "all">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [result, setResult] = useState<string | null>(null);
@@ -139,7 +142,7 @@ function AdminBroadcastTab() {
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useNotificationLog({
-    status, notificationType: "admin_broadcast", page, pageSize: 8, sortBy: "created_at", sortDir: sort.dir,
+    status, notificationType: "admin_broadcast", page, pageSize, sortBy: "created_at", sortDir: sort.dir,
   });
   const broadcast = useBroadcastNotification();
 
@@ -360,7 +363,7 @@ function AdminBroadcastTab() {
           onSortChange={onSortChange}
         />
 
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
     </div>
   );
@@ -380,12 +383,13 @@ function RiderNotificationLogTab() {
   const [status, setStatus] = useState<NotificationDeliveryStatus | "all">("all");
   const [notificationType, setNotificationType] = useState<string | "all">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useNotificationLog({
     status,
     notificationType: notificationType === "all" ? undefined : notificationType,
-    page, pageSize: 8, sortBy: "created_at", sortDir: sort.dir,
+    page, pageSize, sortBy: "created_at", sortDir: sort.dir,
   });
 
   const columns: DataTableColumn<NotificationLogEntry>[] = [
@@ -458,7 +462,7 @@ function RiderNotificationLogTab() {
         onSortChange={onSortChange}
       />
 
-      {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+      {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
     </Card>
   );
 }
@@ -473,7 +477,8 @@ function RiderNotificationLogTab() {
 function RiderActivityTab() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
-  const { data, isLoading, isError, refetch } = useMyNotifications({ page, pageSize: 10 });
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
+  const { data, isLoading, isError, refetch } = useMyNotifications({ page, pageSize });
   const { data: typeSummaries } = useNotificationTypeSummaries();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
@@ -538,7 +543,7 @@ function RiderActivityTab() {
         onRowClick={handleSelect}
       />
 
-      {data && <Pagination page={page} pageSize={10} total={data.total} onPageChange={setPage} />}
+      {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
     </Card>
   );
 }
@@ -556,7 +561,7 @@ function EmailDeliveryLogTab() {
   const [status, setStatus] = useState<EmailDeliveryLogEntry["status"] | "all">("all");
   const [notificationType, setNotificationType] = useState<string>("all");
   const [page, setPage] = useState(1);
-  const pageSize = 8;
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
 
   const { data: settings } = useNotificationSettings();
   const { data, isLoading, isError, refetch } = useEmailDeliveryLog({
@@ -650,7 +655,7 @@ function EmailDeliveryLogTab() {
         emptyDescription="Once a notification with 'Send email' enabled fires (Settings → Notification Manager), it shows up here."
       />
 
-      {data && <Pagination page={page} pageSize={pageSize} total={data.total} onPageChange={setPage} />}
+      {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
     </Card>
   );
 }

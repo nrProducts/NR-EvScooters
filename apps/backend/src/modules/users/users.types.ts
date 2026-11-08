@@ -1,3 +1,4 @@
+import type { UserCommentSummary } from "./users.comments";
 import { KycStatus, UserRole, UserStatus } from "../../types";
 
 /**
@@ -130,6 +131,8 @@ export interface UserListItem extends UserProfile {
      * paid, even while a completed rental's records still exist.
      */
     outstanding_amount: number;
+    /** Staff comments on this user: how many, and the newest one. */
+    comments: UserCommentSummary;
     /**
      * The rider's OPEN return, if they have asked to hand the scooter back and
      * staff have not finished it.
@@ -160,7 +163,9 @@ export interface UserListItem extends UserProfile {
     } | null;
 }
 
-export interface UserDetail extends UserListItem {
+// No `comments`: staff notes are internal, and this shape also answers a rider's own
+// GET /users/me. The details page loads them from /users/:id/comments (staff only).
+export interface UserDetail extends Omit<UserListItem, "comments"> {
     /**
      * Last successful sign-in, read from Supabase Auth rather than a column.
      * This is LOGIN only — distinct from `last_seen_at` on UserProfile, which
@@ -197,6 +202,8 @@ export interface ListUsersFilters {
     bookable?: boolean;
     /** Only riders with a rental running right now. */
     activeRental?: boolean;
+    /** Only riders who owe money right now (same figure as `outstanding_amount`). */
+    amountPending?: boolean;
     /** Plan-due buckets, OR-ed: a rider matches if their current period is due in ANY of them. */
     due?: UserDueBucket[];
     /** Only self-registered accounts still awaiting an admin's approve/reject. */

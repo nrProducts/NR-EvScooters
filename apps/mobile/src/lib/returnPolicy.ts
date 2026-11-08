@@ -96,9 +96,12 @@ export interface RenewalEligibility {
   alreadyScheduled: boolean;
 }
 
+/** How many days before the plan's last day "Renew Plan" opens. */
+export const RENEW_OPENS_DAYS_BEFORE = 1;
+
 /**
- * Whether "Renew Plan" should be offered — only from the plan's last day
- * onward (today >= next_due_at), never earlier. The backend's
+ * Whether "Renew Plan" should be offered — from one day before the plan's
+ * last day onward (today >= next_due_at − RENEW_OPENS_DAYS_BEFORE). The backend's
  * requestEarlyRecharge gate in apps/backend/src/modules/bookings/bookings
  * .service.ts still accepts a renewal at any point (plan_status 'active' or
  * 'past_due', nothing scheduled yet) — this is a display-only restriction so
@@ -121,7 +124,10 @@ export function getRenewalEligibility(
   const canRenew = !alreadyScheduled
     && (planStatus === 'active' || planStatus === 'past_due')
     && !!nextDueAt
-    && dateStr(now) >= nextDueAt;
+    // Shift today forward rather than parsing nextDueAt, so the comparison stays
+    // a plain local-calendar-date string compare like before (setDate handles
+    // month ends and DST).
+    && dateStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() + RENEW_OPENS_DAYS_BEFORE)) >= nextDueAt;
   const isLate = !!nextDueAt && hasPassedCutover(nextDueAt, now, cycleTime);
   return { canRenew, isLate, alreadyScheduled };
 }

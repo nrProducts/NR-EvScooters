@@ -4,18 +4,21 @@ import { Image } from 'expo-image';
 import { ArrowRight, BatteryFull, Gauge, Route } from 'lucide-react-native';
 import { useBookingGate } from '../hooks/useBookingGate';
 import { SCOOTER_HERO } from '../lib/scooterImage';
-import { COLORS } from '../constants/theme';
+import { COLORS, isDarkScheme } from '../constants/theme';
 import type { ApiVehicleModelDetail, VehicleCategory } from '../types/api';
 import { GradientFill } from './ui/GradientFill';
+import { VehicleStage } from './VehicleStage';
 
 interface FeaturedScooterCardProps {
   model: ApiVehicleModelDetail;
 }
 
-// One soft ground for the whole card — nothing on it is boxed off in a
+// Light: one soft ground for the whole card — nothing on it is boxed off in a
 // different colour; the tiles and spec strip are just barely-there white.
 const CARD_BG = '#E8F5EC';
 const PANEL = '#FFFFFFCC';
+// Scooter panel height in light (150 image + py-3); the dark stage matches it.
+const STAGE_HEIGHT = 174;
 
 const CLASS_LABEL: Record<VehicleCategory, string> = {
   scooter: 'Electric Scooter',
@@ -48,11 +51,17 @@ export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model 
         : null,
   ].filter((s): s is { icon: typeof Route; label: string; value: string } => s !== null);
 
+  // Dark: the My Scooter hero's treatment — card surface with a hairline
+  // border and the scooter on VehicleStage's dim showroom. The light pale-green
+  // ground and white panels read as glaring white blocks on the dark page.
+  const dark = isDarkScheme();
+
   return (
     <View
       className="rounded-3xl mb-6 p-5"
       style={{
-        backgroundColor: CARD_BG,
+        backgroundColor: dark ? COLORS.card : CARD_BG,
+        ...(dark ? { borderWidth: 1, borderColor: COLORS.border } : null),
         shadowColor: COLORS.black,
         shadowOpacity: 0.07,
         shadowRadius: 22,
@@ -76,29 +85,43 @@ export const FeaturedScooterCard: React.FC<FeaturedScooterCardProps> = ({ model 
         {subtitle}
       </Text>
 
-      {/* Scooter — on its own white panel, split from the rest of the card */}
-      <View
-        className="rounded-2xl items-center justify-center my-4 py-3"
-        style={{ backgroundColor: COLORS.card }}
-      >
-        <Image
-          // The real fleet photo for this model, same source as the Browse
-          // Vehicles list and My Scooter tab — SCOOTER_HERO is only the
-          // fallback for a model with no catalog photo uploaded yet.
-          source={model.image_url ?? SCOOTER_HERO}
-          style={{ width: '100%', height: 150 }}
-          contentFit="contain"
-          cachePolicy="memory-disk"
-          transition={250}
-          accessibilityLabel={model.name}
-        />
-      </View>
+      {/* Scooter — on its own white panel, split from the rest of the card
+          (dark: the same showroom stage as My Scooter, zoom=1 for the same
+          reason — the catalog photo is already cropped tight). */}
+      {dark ? (
+        <View className="rounded-2xl overflow-hidden my-4">
+          <VehicleStage
+            imageUrl={model.image_url ?? SCOOTER_HERO}
+            height={STAGE_HEIGHT}
+            compact
+            zoom={1}
+            accessibilityLabel={model.name}
+          />
+        </View>
+      ) : (
+        <View
+          className="rounded-2xl items-center justify-center my-4 py-3"
+          style={{ backgroundColor: COLORS.card }}
+        >
+          <Image
+            // The real fleet photo for this model, same source as the Browse
+            // Vehicles list and My Scooter tab — SCOOTER_HERO is only the
+            // fallback for a model with no catalog photo uploaded yet.
+            source={model.image_url ?? SCOOTER_HERO}
+            style={{ width: '100%', height: 150 }}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            transition={250}
+            accessibilityLabel={model.name}
+          />
+        </View>
+      )}
 
       {/* Spec strip */}
       {specs.length > 0 ? (
         <View
           className="flex-row items-center rounded-2xl px-4 py-3 mt-3"
-          style={{ backgroundColor: PANEL }}
+          style={{ backgroundColor: dark ? COLORS.gray[100] : PANEL }}
         >
           {specs.map((s) => (
             <View key={s.label} className="flex-row items-center flex-1">

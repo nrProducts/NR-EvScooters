@@ -326,21 +326,24 @@ export async function computeReturnStage(rentalId: string, subscriptionId: strin
     const minRentalDaysRequired = deposit?.min_rental_days_required ?? 0;
     const rentalDaysCompleted = deposit?.rental_days_completed ?? 0;
     const isRefundable = deposit?.is_refundable ?? true;
-    const depositForfeited = !isRefundable
-        || (minRentalDaysRequired > 0 && rentalDaysCompleted < minRentalDaysRequired);
+    // The short-rental rule is in play (staff can Apply/Remove it on the
+    // Return Review); `shortRentalForfeitWaived` is whether they removed it.
+    const shortRentalForfeit = isRefundable && minRentalDaysRequired > 0 && rentalDaysCompleted < minRentalDaysRequired;
+    const shortRentalForfeitWaived = deposit?.short_rental_forfeit_waived ?? false;
+    const depositForfeited = !isRefundable || (shortRentalForfeit && !shortRentalForfeitWaived);
 
     if (row.status === "rejected") {
         return {
             status: "rejected", depositAmount, damageAmount: 0, otherChargesAmount: 0,
             totalCharges: 0, additionalDue: 0, refundDue: 0, additionalDueInvoiceId: null, paymentVerifiedAt: null,
-            depositForfeited, minRentalDaysRequired, rentalDaysCompleted,
+            depositForfeited, minRentalDaysRequired, rentalDaysCompleted, shortRentalForfeit, shortRentalForfeitWaived,
         };
     }
     if (row.status === "approved") {
         return {
             status: "return_completed", depositAmount, damageAmount: 0, otherChargesAmount: 0,
             totalCharges: 0, additionalDue: 0, refundDue: 0, additionalDueInvoiceId: null, paymentVerifiedAt: null,
-            depositForfeited, minRentalDaysRequired, rentalDaysCompleted,
+            depositForfeited, minRentalDaysRequired, rentalDaysCompleted, shortRentalForfeit, shortRentalForfeitWaived,
         };
     }
     // Damage can now be recorded incrementally, ahead of the final "Save
@@ -363,7 +366,7 @@ export async function computeReturnStage(rentalId: string, subscriptionId: strin
             status: "return_requested", depositAmount, damageAmount, otherChargesAmount, totalCharges,
             additionalDue: 0, refundDue: depositForfeited ? 0 : depositAmount,
             additionalDueInvoiceId: null, paymentVerifiedAt: null,
-            depositForfeited, minRentalDaysRequired, rentalDaysCompleted,
+            depositForfeited, minRentalDaysRequired, rentalDaysCompleted, shortRentalForfeit, shortRentalForfeitWaived,
         };
     }
 
@@ -411,7 +414,7 @@ export async function computeReturnStage(rentalId: string, subscriptionId: strin
         status, depositAmount, damageAmount, otherChargesAmount, totalCharges,
         additionalDue, refundDue,
         additionalDueInvoiceId: row.additional_due_invoice_id, paymentVerifiedAt,
-        depositForfeited, minRentalDaysRequired, rentalDaysCompleted,
+        depositForfeited, minRentalDaysRequired, rentalDaysCompleted, shortRentalForfeit, shortRentalForfeitWaived,
     };
 }
 
@@ -580,6 +583,72 @@ export async function getPaymentReview(rentalId: string): Promise<PaymentReviewV
  * invoice genuinely isn't paid yet, so this can never be used to wave
  * through an unpaid return.
  */
+/**
+ * Apply / Remove the short-rental deposit forfeit for this return.
+ *
+ * A rider returning before the plan's minimum rental days forfeits the whole
+ * deposit — applied by default. Staff can remove it here (the deposit is then
+ * refunded less any charges, like a normal return) and apply it again, any
+ * time until the return is approved. Stored on the deposit, so the preview,
+ * the settlement (settlementDepositAmount), the deposit's own settlement
+ * (settleDepositOnReturn) and the rider's messages all read the same flag.
+ */
+export async function setShortRentalForfeit(
+    rentalId: string,
+    apply: boolean,
+    actor: AuthContext,
+): Promise<ReturnDetailView> {
+    const { data: rental, error } = await supabaseAdmin
+        .from("rentals")
+        .select("id, user_id, subscription_id, rental_returns(status)")
+        .eq("id", rentalId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!rental) throw notFound("Rental not found.");
+
+    const ret = unwrap<{ status: string }>(rental.rental_returns);
+    if (!ret || ret.status === "approved" || ret.status === "rejected") {
+        throw businessRule("The deposit adjustment can only be changed while the return is under review.");
+    }
+
+    const deposit = await getDepositForSubscriptionOrNull(rental.subscription_id);
+    if (!deposit || deposit.status !== "held") throw businessRule("There is no held deposit on this return.");
+    if (!deposit.is_refundable) throw businessRule("This plan's deposit is non-refundable, so there is nothing to remove.");
+    if (!(deposit.min_rental_days_required > 0 && deposit.rental_days_completed < deposit.min_rental_days_required)) {
+        throw businessRule("The rider has completed the plan's minimum rental days — no deposit adjustment applies.");
+    }
+
+    const waived = !apply;
+    if (deposit.short_rental_forfeit_waived !== waived) {
+        const { error: updateError } = await supabaseAdmin
+            .from("deposits")
+            .update({
+                short_rental_forfeit_waived: waived,
+                short_rental_forfeit_waived_at: waived ? new Date().toISOString() : null,
+                short_rental_forfeit_waived_by_user_id: waived ? actor.id : null,
+            })
+            .eq("id", deposit.id)
+            .eq("status", "held");
+        if (updateError) throw updateError;
+
+        await writeAudit({
+            actorId: actor.id,
+            targetUserId: rental.user_id,
+            action: waived ? "deposit.short_rental_forfeit_removed" : "deposit.short_rental_forfeit_applied",
+            entityType: "deposit",
+            entityId: deposit.id,
+            after: {
+                rental_id: rentalId,
+                amount: deposit.amount,
+                rental_days_completed: deposit.rental_days_completed,
+                min_rental_days_required: deposit.min_rental_days_required,
+            },
+        });
+    }
+
+    return getReturnDetail(rentalId);
+}
+
 export async function verifyReturnPayment(rentalId: string, actor: AuthContext): Promise<ReturnDetailView> {
     const { data: ret, error } = await supabaseAdmin
         .from("rental_returns")

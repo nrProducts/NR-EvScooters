@@ -1,4 +1,4 @@
-import { useBrandLogos } from "@/hooks/useBrandLogos";
+import { LoaderRing } from "./LoaderRing";
 
 /**
  * Loading overlay — a translucent light-gray wash over whatever is already
@@ -12,22 +12,9 @@ import { useBrandLogos } from "@/hooks/useBrandLogos";
  * asset (already used in the sidebar), not a redrawn approximation of it.
  */
 export function BrandedLoader({ label = "Loading…", subtitle }: { label?: string; subtitle?: string }) {
-  const { mark: logoMark } = useBrandLogos();
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-muted/40 backdrop-blur-[2px]">
-      <div className="relative flex h-28 w-28 items-center justify-center">
-        <svg viewBox="0 0 100 100" fill="none" className="absolute inset-0 h-full w-full animate-[spin_1.6s_linear_infinite]">
-          <circle cx="50" cy="50" r="44" stroke="hsl(var(--primary))" strokeOpacity="0.12" strokeWidth="5" />
-          <path
-            d="M50 6a44 44 0 0 1 44 44"
-            stroke="hsl(var(--primary))"
-            strokeWidth="5"
-            strokeLinecap="round"
-          />
-          <circle cx="94" cy="50" r="4.5" fill="hsl(var(--primary))" />
-        </svg>
-        <img src={logoMark} alt="" className="h-11 w-11 animate-pulse" style={{ animationDuration: "2s" }} />
-      </div>
+      <LoaderRing />
 
       <div className="flex flex-col items-center gap-1 text-center">
         <p className="text-sm font-semibold text-foreground">{label}</p>

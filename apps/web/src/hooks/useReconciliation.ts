@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@/lib/useQuery";
 import { fetchReconciliation } from "@/services/api/reconciliation";
 
 export function useReconciliation(from: string, to: string) {
