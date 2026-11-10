@@ -50,10 +50,6 @@ export type AuditAction =
     // A booking-intent payment captured but the rider already held an active
     // booking/rental by then — money in, no booking; needs a manual refund.
     | "payment.booking_unfulfillable"
-    // A declined attempt whose SAME pay_id was later captured (late UPI
-    // success), upgraded failed → succeeded in place. Same name the manual
-    // recovery script (supabase/scripts/payment-recovery) already writes.
-    | "payment.failed_txn_upgraded"
     // GST Stage 1. A new dated GST profile, and an admin running the
     // tax-document catch-up sweep by hand. Both match the financial pattern in
     // is_financial_audit_action(), so they keep the financial retention period.

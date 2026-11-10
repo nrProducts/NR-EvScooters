@@ -9,7 +9,7 @@
 -- sheet's header row: the columns are in the sheet's order.
 --
 -- Same rules as gst_monthly_totals.sql (and so as migration
--- 20261103110000_gst_tax_documents.sql), one row per bill line instead of
+-- 20261110100000_gst_tax_documents.sql), one row per bill line instead of
 -- one total per month. The two must agree: the sheet's totals should equal
 -- that script's October row.
 --

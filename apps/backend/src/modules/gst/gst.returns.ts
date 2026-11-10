@@ -12,7 +12,7 @@ import { addReturnPdfsToZip, buildReturnRegisterXlsx, documentsForReturn, getPen
 import type { TaxDocumentRow } from "./gst.types";
 
 /**
- * GST Stage 5 — the monthly filing pack (supabase/migrations/20261103140000_gst_filing.sql).
+ * GST Stage 5 — the monthly filing pack (supabase/migrations/20261110130000_gst_filing.sql).
  *
  * Every figure is computed from stored records: output tax from the tax
  * documents REPORTED in the month (return_period), credit from confirmed

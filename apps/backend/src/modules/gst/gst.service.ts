@@ -17,7 +17,7 @@ import type {
 /**
  * GST Stage 1 — the tax-document register, its PDFs and exports, and the GST
  * profile. The documents themselves are issued by the database (see
- * supabase/migrations/20261103110000_gst_tax_documents.sql); nothing here
+ * supabase/migrations/20261110100000_gst_tax_documents.sql); nothing here
  * creates one except by asking the database to run its own sweep.
  *
  * gst_settings and tax_documents are not in the generated types yet, hence

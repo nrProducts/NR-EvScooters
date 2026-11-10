@@ -11,7 +11,7 @@ import type {
 
 /**
  * Stage 2 — Razorpay settlements, stored line by line and matched to our own
- * payments and refunds (supabase/migrations/20261103120000_external_statements.sql).
+ * payments and refunds (supabase/migrations/20261110110000_external_statements.sql).
  * The razorpay-settlement-sync edge function writes the statements; this is
  * where they are read, summarised, exported and where exceptions get resolved.
  *

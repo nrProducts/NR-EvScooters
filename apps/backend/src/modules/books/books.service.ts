@@ -5,7 +5,7 @@ import { businessToday } from "../../common/dates";
 import type { AuthContext } from "../../types";
 
 /**
- * GST Stage 6 — the books (supabase/migrations/20261103150000_ledger_view.sql).
+ * GST Stage 6 — the books (supabase/migrations/20261110140000_ledger_view.sql).
  *
  * v_ledger_postings derives double-entry postings from the stored money
  * events; this module only reads it: trial balance, profit and loss, the

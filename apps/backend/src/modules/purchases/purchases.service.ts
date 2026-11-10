@@ -12,7 +12,7 @@ import { categoryOf, reverseChargeIgst, splitPurchaseTax, type ItcStatus } from 
 
 /**
  * Stage 4 — purchases and input tax credit
- * (supabase/migrations/20261103130000_purchases_itc.sql).
+ * (supabase/migrations/20261110120000_purchases_itc.sql).
  *
  * A bill is entered as a draft with its lines and its file, confirmed once
  * checked, and from then on changed only by cancelling it. ITC is claimed

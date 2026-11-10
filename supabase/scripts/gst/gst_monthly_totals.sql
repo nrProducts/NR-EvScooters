@@ -5,7 +5,7 @@
 --
 -- Gives Taxkey the GSTR-1 Table 7 (B2C, intra-state) and GSTR-3B 3.1(a)
 -- figures per month from the registration date (2 Sep 2026), using exactly
--- the rules migration 20261103110000_gst_tax_documents.sql applies:
+-- the rules migration 20261110100000_gst_tax_documents.sql applies:
 --
 --   + a bill fully paid in the month      every non-deposit line, GST-inclusive
 --   + a return settled in the month       deposit kept = deposit − max(0, net refund)
