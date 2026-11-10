@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, useLocation, useMatch, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useMatch } from "react-router-dom";
 import { ChevronsLeft, ChevronsRight, LogOut } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { buildNavTree, navForUser, type NavItem } from "@/routes/roleConfig";
@@ -156,70 +156,37 @@ export function Sidebar({
   const tree = buildNavTree(items);
   const { icon: logoIcon, wordmark: logoWordmark } = useBrandLogos();
   const location = useLocation();
-  const navigateTo = useNavigate();
-  // Only ever holds a group the user opened by hand while browsing an
-  // UNGROUPED page (Dashboard/Settings) — see `openGroup` below. It never
-  // needs to record the active route's own group, because that's derived,
-  // not stored, which is what keeps this whole thing from drifting out of
-  // sync with the real active page.
-  const [manualOpenGroup, setManualOpenGroup] = useState<string | undefined>(undefined);
-
   // Longest-prefix match, mirroring NavLink's own isActive semantics.
   const activeItem = [...allItems]
     .filter((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
     .sort((a, b) => b.path.length - a.path.length)[0];
 
-  // Landing on an ungrouped page (Dashboard/Settings) closes any section the
-  // user had opened by hand — the sidebar shouldn't keep an unrelated group
-  // expanded once you've navigated away from it.
-  useEffect(() => {
-    if (activeItem && !activeItem.group) setManualOpenGroup(undefined);
-  }, [activeItem?.path, activeItem?.group]); // eslint-disable-line react-hooks/exhaustive-deps
-
   /**
-   * The single source of truth for which section is expanded. The active
-   * route's own group ALWAYS wins — a page can never end up with its own
-   * parent section collapsed, on first load, mid-session, after a refresh,
-   * or via browser back/forward, because this is recomputed from `location`
-   * on every render rather than synced into state that could fall behind it.
-   * `manualOpenGroup` only ever matters while browsing an ungrouped page
-   * (Dashboard, Settings), where there's no active group to defer to.
-   */
-  const openGroup = activeItem?.group ?? manualOpenGroup;
-
-  /**
-   * A group has no route of its own (NAV_GROUPS carries no `path`) — it's a
-   * pure container. "First item in NAV_ITEMS order that both belongs to this
-   * group AND survived permission filtering" is the one deterministic,
-   * always-authorized choice.
-   */
-  function firstItemInGroup(groupKey: string): NavItem | undefined {
-    return items.find((item) => item.group === groupKey);
-  }
-
-  /**
-   * Fired only by a real user click/keypress on a trigger. `nextValue` is
-   * Radix's single-select value: the newly-opened group's key, or `""` when
-   * collapsing (this accordion is `collapsible`).
+   * Which sections are expanded.
    *
-   * Opening a DIFFERENT group than the one the active route already lives in
-   * navigates to that group's first item, so expanding a section always
-   * lands you somewhere inside it. Opening the active route's own group (or
-   * closing it) never navigates — and per `openGroup` above, an attempt to
-   * close the active group doesn't actually collapse it, since that value
-   * only feeds `manualOpenGroup`, which is never consulted while a group is
-   * active.
+   *  - The current page's section is ALWAYS open and can't be closed — it is
+   *    derived from the route on every render, never stored, so clicking its
+   *    header does nothing.
+   *  - Every other section is a plain toggle: clicking it only opens or closes
+   *    it, alongside the current one, and never navigates — the page changes
+   *    only when a page inside it is picked.
+   *  - Moving to a page in another section (a click, back/forward, global
+   *    search) folds the hand-opened sections away, so the menu doesn't pile up.
    */
-  function handleGroupToggle(nextValue: string) {
-    const opened = nextValue || undefined;
-    if (opened && opened !== activeItem?.group) {
-      const firstItem = firstItemInGroup(opened);
-      if (firstItem) {
-        navigateTo(firstItem.path);
-        onNavigate?.();
-      }
-    }
-    setManualOpenGroup(opened);
+  const activeGroup = activeItem?.group;
+  const [extraOpen, setExtraOpen] = useState<string[]>([]);
+
+  useEffect(() => {
+    setExtraOpen([]);
+  }, [activeGroup]);
+
+  const openGroups = activeGroup ? [activeGroup, ...extraOpen.filter((g) => g !== activeGroup)] : extraOpen;
+  const isOpen = (key: string) => openGroups.includes(key);
+
+  function handleGroupToggle(next: string[]) {
+    // Radix multiple-select value: every section that should now be open. The
+    // active section is re-added by `openGroups`, so a click on it is a no-op.
+    setExtraOpen(next.filter((g) => g !== activeGroup));
   }
 
   const logo = (
@@ -257,7 +224,7 @@ export function Sidebar({
             ))}
           </div>
         ) : (
-          <Accordion type="single" collapsible value={openGroup ?? ""} onValueChange={handleGroupToggle} className="space-y-0.5">
+          <Accordion type="multiple" value={openGroups} onValueChange={handleGroupToggle} className="space-y-0.5">
             {tree.map((entry) =>
               entry.type === "item" ? (
                 <NavItemLink key={entry.item.path} item={entry.item} collapsed={collapsed} onNavigate={onNavigate} />
@@ -266,19 +233,24 @@ export function Sidebar({
                   key={entry.key}
                   value={entry.key}
                   // The open section is a tinted block, so which section you are in reads at a glance.
-                  className={cn("rounded-[1.125rem] border-0 px-1 transition-colors", entry.key === openGroup && "my-1 bg-primary/[0.07]")}
+                  className={cn("rounded-[1.125rem] border-0 px-1 transition-colors", isOpen(entry.key) && "my-1 bg-primary/[0.07]")}
                 >
                   <AccordionTrigger
                     className={cn(
                       "rounded-xl px-2 py-2 text-sm font-medium hover:no-underline",
-                      entry.key === openGroup ? "font-semibold text-foreground hover:text-foreground" : "text-sidebar-foreground/70 hover:bg-primary/10",
+                      entry.key === activeGroup
+                        // The current page's section can't be closed, so its header doesn't look clickable.
+                        ? "cursor-default font-semibold text-foreground hover:text-foreground [&>svg]:opacity-0"
+                        : isOpen(entry.key)
+                          ? "font-semibold text-foreground hover:bg-primary/10"
+                          : "text-sidebar-foreground/70 hover:bg-primary/10",
                     )}
                   >
                     <span className="flex items-center gap-3">
                       <span
                         className={cn(
                           "flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.625rem] transition-smooth",
-                          entry.key === openGroup ? "bg-primary text-primary-foreground shadow-[0_6px_14px_-6px_hsl(var(--primary)/0.7)]" : "",
+                          entry.key === activeGroup ? "bg-primary text-primary-foreground shadow-[0_6px_14px_-6px_hsl(var(--primary)/0.7)]" : "",
                         )}
                       >
                         <entry.icon className="h-[1.0625rem] w-[1.0625rem]" strokeWidth={1.75} />

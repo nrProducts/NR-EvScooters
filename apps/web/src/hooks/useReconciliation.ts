@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@/lib/useQuery";
 import * as api from "@/services/api/reconciliation";
 import { fetchReconciliation } from "@/services/api/reconciliation";
 import { useToastStore } from "@/store/toastStore";

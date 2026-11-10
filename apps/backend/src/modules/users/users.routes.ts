@@ -146,4 +146,28 @@ router.post(
 // granted and read through /:id/permissions above, with no second endpoint,
 // no second table and no second middleware. See src/types/index.ts.
 
+// --- staff comments on a user (internal; riders never see them) --------
+// Anyone who can view users can read and add. Deleting is checked in the
+// service: the comment's author, or an admin.
+router.get(
+    "/:id/comments",
+    requireAction("users", "view"),
+    validate({ params: v.uuidParam }),
+    asyncHandler(c.listCommentsHandler),
+);
+
+router.post(
+    "/:id/comments",
+    requireAction("users", "view"),
+    validate({ params: v.uuidParam, body: v.createCommentBody }),
+    asyncHandler(c.addCommentHandler),
+);
+
+router.delete(
+    "/comments/:commentId",
+    requireAction("users", "view"),
+    validate({ params: v.commentIdParam }),
+    asyncHandler(c.deleteCommentHandler),
+);
+
 export default router;

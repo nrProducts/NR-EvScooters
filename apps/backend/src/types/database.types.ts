@@ -561,6 +561,9 @@ export type Database = {
           refund_eligible_on: string | null
           released_at: string | null
           status: Database["public"]["Enums"]["deposit_status"]
+          short_rental_forfeit_waived: boolean
+          short_rental_forfeit_waived_at: string | null
+          short_rental_forfeit_waived_by_user_id: string | null
           subscription_id: string
           updated_at: string | null
         }
@@ -576,6 +579,9 @@ export type Database = {
           refund_eligible_on?: string | null
           released_at?: string | null
           status?: Database["public"]["Enums"]["deposit_status"]
+          short_rental_forfeit_waived?: boolean
+          short_rental_forfeit_waived_at?: string | null
+          short_rental_forfeit_waived_by_user_id?: string | null
           subscription_id: string
           updated_at?: string | null
         }
@@ -591,6 +597,9 @@ export type Database = {
           refund_eligible_on?: string | null
           released_at?: string | null
           status?: Database["public"]["Enums"]["deposit_status"]
+          short_rental_forfeit_waived?: boolean
+          short_rental_forfeit_waived_at?: string | null
+          short_rental_forfeit_waived_by_user_id?: string | null
           subscription_id?: string
           updated_at?: string | null
         }
@@ -3838,6 +3847,84 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      user_comments: {
+        Row: {
+          author_user_id: string | null
+          body: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          author_user_id?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          author_user_id?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_comments_author_user_id_fkey"
+            columns: ["author_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_comments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vehicle_damage_notes: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          noted_by_user_id: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: string
+          noted_by_user_id?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          noted_by_user_id?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_damage_notes_noted_by_user_id_fkey"
+            columns: ["noted_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_damage_notes_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       vehicle_disposals: {
         Row: {

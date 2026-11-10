@@ -28,13 +28,14 @@ export function UpcomingDuesCard({ className, rows: maxRows = 4 }: { className?:
     role: "rider",
     due: ["overdue", "today", "d1", "d2", "d3"],
     page: 1,
-    pageSize: Math.max(12, maxRows * 2),
+    // Every due rider, not just the first few — the list scrolls inside the card.
+    pageSize: 100,
   });
   const shown = (data?.data ?? [])
     .filter((u) => u.next_due_at && u.picked_up)
-    .sort((a, b) => Date.parse(a.next_due_at!) - Date.parse(b.next_due_at!))
-    .slice(0, maxRows);
-  const total = data?.total ?? 0;
+    .sort((a, b) => Date.parse(a.next_due_at!) - Date.parse(b.next_due_at!));
+  // Count what is listed, so the header number and the rows always agree.
+  const total = shown.length;
 
   return (
     <Card className={cn("flex flex-col p-4", className)}>
@@ -55,7 +56,10 @@ export function UpcomingDuesCard({ className, rows: maxRows = 4 }: { className?:
       ) : shown.length === 0 ? (
         <p className="py-6 text-center text-xs text-muted-foreground">No riders are due in the next 3 days.</p>
       ) : (
-        <ul className="divide-y divide-border">
+        // Wide screens: `h-0 grow` keeps the list from stretching the dashboard row,
+        // so the card takes its siblings' height and the list scrolls inside it.
+        // Narrow screens (card alone in its row): a capped height that scrolls.
+        <ul className="max-h-80 divide-y divide-border overflow-y-auto pr-1 scrollbar-thin lg:h-0 lg:max-h-none lg:grow">
           {shown.map((u) => {
             const chip = dueChip(daysUntil(u.next_due_at!));
             return (

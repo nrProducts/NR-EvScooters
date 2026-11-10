@@ -1,6 +1,7 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import { LoadingSkeletonRows } from "./LoadingSkeletonRows";
+import { LoaderRing } from "./LoaderRing";
+import { isPlaceholderRows } from "@/lib/placeholderRows";
 import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./ErrorState";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,31 @@ export interface DataTableColumn<T> {
 export interface DataTableSort {
   by: string;
   dir: "asc" | "desc";
+}
+
+/**
+ * Keeps a busy flag up for at least `ms` once it turns on, so a fast response
+ * still shows the loader clearly instead of a one-frame flicker. Turning on is
+ * immediate; only turning off is held back (via a timer, never a setState
+ * during commit).
+ */
+function useMinVisible(busy: boolean, ms: number): boolean {
+  const [held, setHeld] = useState(false);
+  const since = useRef(0);
+
+  useEffect(() => {
+    if (busy) {
+      since.current = Date.now();
+      setHeld(true);
+      return;
+    }
+    const left = ms - (Date.now() - since.current);
+    if (left <= 0) { setHeld(false); return; }
+    const t = setTimeout(() => setHeld(false), left);
+    return () => clearTimeout(t);
+  }, [busy, ms]);
+
+  return busy || held;
 }
 
 /**
@@ -81,7 +107,18 @@ export function DataTable<T extends { id: string }>({
    */
   noInnerScroll?: boolean;
 }) {
-  if (isLoading) return <LoadingSkeletonRows cols={columns.length} />;
+  // The previous result, kept on screen while a new filter/page/sort loads —
+  // see lib/placeholderRows. Shown dimmed under the loader, not replaced.
+  const refreshing = useMinVisible(isPlaceholderRows(data), 450);
+
+  // First load (nothing to show yet), or a refresh that has no old rows to keep.
+  if (isLoading || (refreshing && data.length === 0)) {
+    return (
+      <div className={cn("flex items-center justify-center py-16", fill && "min-h-0 flex-1")}>
+        <LoaderRing size="sm" />
+      </div>
+    );
+  }
   if (isError) return <ErrorState onRetry={onRetry} />;
   if (data.length === 0) return <EmptyState title={emptyTitle} description={emptyDescription} />;
 
@@ -89,8 +126,17 @@ export function DataTable<T extends { id: string }>({
   // parent gives it; otherwise the grid is capped to what is left of the viewport (with a
   // floor, so a short window scrolls the page instead of squashing the grid).
   return (
+    // `relative` wrapper so the refresh overlay covers the visible grid rather
+    // than scrolling away with the rows inside it.
+    <div className={cn("relative", fill && !noInnerScroll && "flex min-h-0 flex-1 flex-col")} aria-busy={refreshing}>
+    {refreshing && (
+      <div className="absolute inset-0 z-20 flex items-center justify-center bg-muted/40 backdrop-blur-[1px] animate-fade-in">
+        <LoaderRing size="sm" />
+      </div>
+    )}
     <div
       className={cn(
+        refreshing && "pointer-events-none opacity-60 transition-opacity",
         // noInnerScroll still scrolls sideways when the columns are wider than the card
         noInnerScroll ? "overflow-x-auto" : "overflow-auto",
         "scrollbar-thin",
@@ -209,6 +255,7 @@ export function DataTable<T extends { id: string }>({
           </div>
         ))}
       </div>
+    </div>
     </div>
   );
 }

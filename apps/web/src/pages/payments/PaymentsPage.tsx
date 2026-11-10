@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Eye, Undo2, Banknote } from "lucide-react";
+import { Eye, Undo2, Banknote, Pencil, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,9 +17,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { Link, useSearchParams } from "react-router-dom";
-import { useInvoices, useInvoice, useRefundInvoice, useRecordInvoicePayment } from "@/hooks/usePayments";
+import {
+  useInvoices, useInvoice, useRefundInvoice, useRecordInvoicePayment, useChangeInvoiceAmount, useDeleteInvoice,
+} from "@/hooks/usePayments";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
+import { usePageSize } from "@/hooks/usePageSize";
 import { ApiError } from "@/services/api/httpClient";
 import { formatCurrency, formatCycleTime, formatDate, formatFullDateTime, formatTime } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
@@ -50,6 +54,13 @@ const PURPOSE_LABELS: Record<InvoicePurpose, string> = {
   adhoc: "Ad hoc",
 };
 
+/**
+ * Edit amount / Delete are "before paid" corrections: not void, and nothing
+ * allocated yet. The backend re-checks (and also refuses a gateway attempt or
+ * the auto-priced overdue late fee), so this only decides what to offer.
+ */
+const isEditable = (inv: Invoice) => inv.status !== "void" && inv.allocated_amount === 0;
+
 export default function PaymentsPage() {
   const user = useAuthStore((s) => s.user);
   const canRefund = hasAction(user, "payments", "refund");
@@ -59,13 +70,16 @@ export default function PaymentsPage() {
   const [paymentState, setPaymentState] = useState<InvoicePaymentState | "all">("all");
   const [purpose, setPurpose] = useState<InvoicePurpose | "all">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [refundTarget, setRefundTarget] = useState<Invoice | null>(null);
   const [recordTarget, setRecordTarget] = useState<Invoice | null>(null);
+  const [amountTarget, setAmountTarget] = useState<Invoice | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useInvoices({
-    status, paymentState, purpose, bookingId, page, pageSize: 8,
+    status, paymentState, purpose, bookingId, page, pageSize,
     sortBy: sort.by as "created_at" | "total_amount" | "due_on", sortDir: sort.dir,
   });
 
@@ -163,6 +177,16 @@ export default function PaymentsPage() {
             {inv.status !== "void" && inv.payment_state !== "paid" && canRefund && (
               <DropdownMenuItem onClick={() => setRecordTarget(inv)}>
                 <Banknote className="mr-2 h-4 w-4" /> Record payment
+              </DropdownMenuItem>
+            )}
+            {isEditable(inv) && canRefund && (
+              <DropdownMenuItem onClick={() => setAmountTarget(inv)}>
+                <Pencil className="mr-2 h-4 w-4" /> Change amount
+              </DropdownMenuItem>
+            )}
+            {isEditable(inv) && canRefund && (
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteTarget(inv)}>
+                <Trash2 className="mr-2 h-4 w-4" /> Delete invoice
               </DropdownMenuItem>
             )}
             {/*
@@ -287,7 +311,7 @@ export default function PaymentsPage() {
           onSortChange={onSortChange}
         />
 
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
 
       <InvoiceDetailDialog
@@ -302,6 +326,8 @@ export default function PaymentsPage() {
 
       <RefundDialog invoice={refundTarget} onOpenChange={(o) => !o && setRefundTarget(null)} />
       <RecordPaymentDialog invoice={recordTarget} onOpenChange={(o) => !o && setRecordTarget(null)} />
+      <ChangeAmountDialog invoice={amountTarget} onOpenChange={(o) => !o && setAmountTarget(null)} />
+      <DeleteInvoiceDialog invoice={deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)} />
     </div>
   );
 }
@@ -518,6 +544,141 @@ function RecordPaymentDialog({ invoice, onOpenChange }: { invoice: Invoice | nul
             }}
           >
             {record.isPending ? "Recording…" : "Record Payment"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ChangeAmountDialog({ invoice, onOpenChange }: { invoice: Invoice | null; onOpenChange: (open: boolean) => void }) {
+  const change = useChangeInvoiceAmount();
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    if (invoice) { setAmount(String(invoice.total_amount)); setReason(""); change.reset(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoice]);
+
+  const amt = Number(amount);
+  const valid = Number.isFinite(amt) && amt > 0 && (!reason.trim() || reason.trim().length >= 3);
+  const multiLine = (invoice?.items.length ?? 0) > 1;
+
+  return (
+    <Dialog open={!!invoice} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Change amount</DialogTitle>
+          <DialogDescription>
+            {invoice?.invoice_number} · {invoice?.rider?.full_name ?? "—"} · currently{" "}
+            {invoice ? formatCurrency(invoice.total_amount) : ""}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 text-sm">
+          <div className="space-y-1.5">
+            <Label className="text-xs">New amount (₹)</Label>
+            <Input type="number" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} />
+            {multiLine && (
+              <p className="text-[0.6875rem] text-muted-foreground">
+                This invoice has several lines, so the difference is added as an "Admin adjustment" line.
+              </p>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Reason (optional)</Label>
+            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
+          </div>
+
+          {change.isError && (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {change.error instanceof ApiError ? change.error.message : "Something went wrong."}
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            disabled={!valid || change.isPending}
+            onClick={() => {
+              if (!invoice) return;
+              change.mutate(
+                { id: invoice.id, amount: amt, reason: reason.trim() || undefined },
+                {
+                  onSuccess: () => { toastSuccess("Invoice amount updated"); onOpenChange(false); },
+                  onError: (err) => toastError(err, "Could not change the amount"),
+                },
+              );
+            }}
+          >
+            {change.isPending ? "Saving…" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteInvoiceDialog({ invoice, onOpenChange }: { invoice: Invoice | null; onOpenChange: (open: boolean) => void }) {
+  const del = useDeleteInvoice();
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    if (invoice) { setReason(""); del.reset(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoice]);
+
+  const valid = !reason.trim() || reason.trim().length >= 3;
+
+  return (
+    <Dialog open={!!invoice} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete invoice {invoice?.invoice_number}?</DialogTitle>
+          <DialogDescription>
+            {invoice ? formatCurrency(invoice.total_amount) : ""} for {invoice?.rider?.full_name ?? "—"} will be
+            permanently removed from their bill and Outstanding balance. This can't be undone, and the invoice
+            number will be skipped in the series.
+            {invoice && (invoice.purpose === "initial" || invoice.purpose === "subscription_period") &&
+              " A plan invoice is raised again the next time this period is billed."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-1.5 text-sm">
+          <Label className="text-xs">Reason (optional)</Label>
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            placeholder="e.g. Challan paid directly to the government"
+          />
+        </div>
+
+        {del.isError && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {del.error instanceof ApiError ? del.error.message : "Something went wrong."}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            variant="destructive"
+            disabled={!valid || del.isPending}
+            onClick={() => {
+              if (!invoice) return;
+              del.mutate(
+                { id: invoice.id, reason: reason.trim() || undefined },
+                {
+                  onSuccess: () => { toastSuccess("Invoice deleted"); onOpenChange(false); },
+                  onError: (err) => toastError(err, "Could not delete the invoice"),
+                },
+              );
+            }}
+          >
+            {del.isPending ? "Deleting…" : "Delete"}
           </Button>
         </DialogFooter>
       </DialogContent>

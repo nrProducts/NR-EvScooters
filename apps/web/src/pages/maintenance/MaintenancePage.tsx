@@ -21,6 +21,7 @@ import { useMaintenanceTickets, useCreateMaintenanceTicket, useUpdateMaintenance
 import { useTableSort } from "@/hooks/useTableSort";
 import { useVehicles } from "@/hooks/useVehicles";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
+import { usePageSize } from "@/hooks/usePageSize";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
@@ -34,11 +35,12 @@ export default function MaintenancePage() {
   const user = useAuthStore((s) => s.user);
   const [status, setStatus] = useState<MaintenanceStatus | "all">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [createOpen, setCreateOpen] = useState(false);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useMaintenanceTickets({
-    status, page, pageSize: 8, sortBy: "created_at", sortDir: sort.dir,
+    status, page, pageSize, sortBy: "created_at", sortDir: sort.dir,
   });
   const updateTicket = useUpdateMaintenanceTicket();
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -204,7 +206,7 @@ export default function MaintenancePage() {
           onSortChange={onSortChange}
         />
 
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
 
       <CreateTicketDialog open={createOpen} onOpenChange={setCreateOpen} />

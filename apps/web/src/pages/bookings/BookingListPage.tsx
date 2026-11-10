@@ -27,6 +27,7 @@ import { usePreBookings } from "@/hooks/usePreBookings";
 import { useReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
+import { usePageSize } from "@/hooks/usePageSize";
 import type { PickupQueueFilters } from "@/services/api/bookings";
 import { formatCycleTime, formatDate, formatDateTime, formatCurrency, formatPhoneLocal } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
@@ -214,6 +215,7 @@ export default function BookingListPage() {
   };
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   // True once staff choose to swap the already-reserved scooter for a
@@ -234,14 +236,14 @@ export default function BookingListPage() {
     ...filtersForView(view),
     search: search || undefined,
     page,
-    pageSize: 8,
+    pageSize,
     sortBy: sort.by as PickupQueueFilters["sortBy"],
     sortDir: sort.dir,
   });
   const { data: availableVehicles, isLoading: vehiclesLoading } = useAvailableVehicles(
     pickupTarget && (!pickupTarget.vehicle || overrideVehicle) ? pickupTarget.id : undefined,
   );
-  const preBookings = usePreBookings({ page, pageSize: 8 });
+  const preBookings = usePreBookings({ page, pageSize });
   // Case/space-insensitive so "22ab0005" or "TN 22 AB 0005" still matches
   // "TN22AB0005" — a staff member reading a plate aloud won't type it back
   // exactly as stored.
@@ -672,7 +674,7 @@ export default function BookingListPage() {
             emptyTitle="No pre-booking requests yet"
           />
           {preBookings.data && (
-            <Pagination page={page} pageSize={8} total={preBookings.data.total} onPageChange={setPage} />
+            <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={preBookings.data.total} onPageChange={setPage} />
           )}
         </Card>
       ) : (
@@ -700,7 +702,7 @@ export default function BookingListPage() {
             sort={sort}
             onSortChange={onSortChange}
           />
-          {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+          {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
         </Card>
       )}
 

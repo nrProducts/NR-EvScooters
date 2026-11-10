@@ -17,7 +17,7 @@ export type AuditAction =
     | "user.created" | "user.self_signed_up" | "user.updated" | "user.soft_deleted" | "user.restored"
     | "user.activated" | "user.deactivated" | "user.suspended"
     | "user.roles_changed" | "user.permissions_changed"
-    | "user.photo_uploaded"
+    | "user.photo_uploaded" | "user.comment_added" | "user.comment_deleted"
     | "kyc.document_uploaded" | "kyc.document_updated" | "kyc.document_deleted"
     | "kyc.submitted"
     | "kyc.document_verified" | "kyc.document_rejected"
@@ -29,9 +29,12 @@ export type AuditAction =
     | "booking.cancelled" | "booking.payment_completed"
     | "vehicle.immobilised" | "vehicle.mobilised" | "vehicle.locked" | "vehicle.unlocked" | "vehicle.created" | "vehicle.bulk_imported" | "vehicle.updated" | "vehicle.scrapped" | "vehicle.assigned"
     | "vehicle.document_uploaded" | "vehicle.document_updated" | "vehicle.document_deleted"
+    | "vehicle.damage_noted" | "vehicle.damage_resolved"
     | "maintenance.created" | "maintenance.updated" | "maintenance.outcome_set"
     | "notification.broadcast" | "notification_setting.updated" | "fleet_km_settings.updated"
     | "invoice.refunded" | "invoice.adjusted" | "invoice.charge_added"
+    // Admin edits from the Payments screen, on invoices nothing has been paid against.
+    | "invoice.amount_changed" | "invoice.deleted"
     // The late fee, at the moment it becomes a line on the bill rather than
     // an unattributed surplus. is_financial_audit_action() matches it on
     // "invoice", so it inherits the financial retention period.
@@ -47,6 +50,9 @@ export type AuditAction =
     // is the forged-webhook trail.
     | "payment.order_superseded" | "payment.webhook_signature_invalid"
     | "payment.unallocated_surplus" | "payment.partial"
+    // A payment first reported failed, then captured (late UPI success) —
+    // its failed row upgraded to succeeded. Same action fix_payment.sql writes.
+    | "payment.failed_txn_upgraded"
     // A booking-intent payment captured but the rider already held an active
     // booking/rental by then — money in, no booking; needs a manual refund.
     | "payment.booking_unfulfillable"
@@ -68,6 +74,8 @@ export type AuditAction =
     | "purchase.bill_cancelled" | "purchase.bill_file_uploaded" | "purchase.bill_payment_linked"
     | "purchase.bill_payment_unlinked" | "purchase.gstr2b_imported" | "purchase.asset_cost_set"
     | "deposit.held" | "deposit.refund_initiated" | "deposit.refunded" | "deposit.forfeited"
+    // Staff Apply/Remove of the short-rental deposit forfeit on the Return Review.
+    | "deposit.short_rental_forfeit_removed" | "deposit.short_rental_forfeit_applied"
     | "damage.created" | "damage.disputed" | "damage.resolved" | "damage.waived"
     | "refund.initiated" | "refund.submitted" | "refund.processed" | "refund.failed"
     | "refund.reviewed" | "refund.rejected"
@@ -122,10 +130,10 @@ export interface AuditEntry {
      * that. `user_capability` is simply gone — capabilities are permissions.
      */
     entityType:
-        | "user" | "user_role" | "user_permission" | "kyc_document"
+        | "user" | "user_comment" | "user_role" | "user_permission" | "kyc_document"
         | "booking" | "booking_cancellation"
         | "subscription" | "subscription_period" | "subscription_adjustment"
-        | "vehicle" | "vehicle_document" | "vehicle_disposal" | "maintenance_ticket"
+        | "vehicle" | "vehicle_document" | "vehicle_damage_note" | "vehicle_disposal" | "maintenance_ticket"
         | "hub" | "battery_station"
         | "rental" | "rental_return" | "rental_settlement" | "settlement"
         | "invoice" | "payment_order" | "payment_transaction" | "payment_allocation"

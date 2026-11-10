@@ -3,6 +3,7 @@ import { AuthedRequest } from "../../middleware/auth.middleware";
 import { validatedQuery } from "../../middleware/validate.middleware";
 import * as service from "./vehicles.service";
 import * as importService from "./vehicles.import";
+import * as damageNotes from "./vehicles.damageNotes";
 import { badRequest } from "../../common/AppError";
 import {
     CreateVehicleDocumentInput, CreateVehicleInput, ListVehiclesFilters, ScrapVehicleInput,
@@ -21,6 +22,10 @@ export async function listVehiclesHandler(req: AuthedRequest, res: Response) {
 export async function getVehicleHandler(req: AuthedRequest, res: Response) {
     const vehicle = await service.getVehicleById(req.params.id as string);
     res.json(vehicle);
+}
+
+export async function statusCountsHandler(_req: AuthedRequest, res: Response) {
+    res.json(await service.vehicleStatusCounts());
 }
 
 export async function hubOptionsHandler(_req: AuthedRequest, res: Response) {
@@ -123,6 +128,22 @@ export async function updateVehicleDocumentHandler(req: AuthedRequest, res: Resp
 
 export async function deleteVehicleDocumentHandler(req: AuthedRequest, res: Response) {
     await service.deleteVehicleDocument(req.params.documentId as string, req.user!);
+    res.status(204).send();
+}
+
+// --- known damage (condition notes) -------------------------------------
+
+export async function listDamageNotesHandler(req: AuthedRequest, res: Response) {
+    res.json(await damageNotes.listVehicleDamageNotes(req.params.id as string));
+}
+
+export async function addDamageNoteHandler(req: AuthedRequest, res: Response) {
+    const { description } = req.body as { description: string };
+    res.status(201).json(await damageNotes.addVehicleDamageNote(req.params.id as string, description, req.user!));
+}
+
+export async function deleteDamageNoteHandler(req: AuthedRequest, res: Response) {
+    await damageNotes.deleteVehicleDamageNote(req.params.noteId as string, req.user!);
     res.status(204).send();
 }
 

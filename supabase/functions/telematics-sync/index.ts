@@ -18,6 +18,7 @@
 
 import { adminClient, isConfigured, json, notConfigured } from "../_shared/client.ts";
 import { notifyStaff } from "../_shared/notifyStaff.ts";
+import { notifyUser } from "../_shared/notify.ts";
 
 const SOURCE = "telematics-sync";
 const BASE = (Deno.env.get("INTELLICAR_BASE_URL") ?? "https://apiplatform.intellicar.in/api/standard").replace(/\/$/, "");
@@ -245,7 +246,7 @@ type Prev = {
 
 /**
  * Compares this sync with the last one and alerts staff on a CHANGE:
- *   low battery   — charge crossed below 15%
+ *   low battery   — charge crossed below 15% (to the rider holding it, not staff)
  *   offline       — a scooter that was reporting has been silent for > 6 h
  *   movement      — a scooter nobody holds started moving with ignition on
  * A scooter that is simply still low / still offline / still moving stays
@@ -270,9 +271,11 @@ async function raiseAlerts(
         if (r.notified > 0) raised++;
     };
 
+    // Low battery is the RIDER's alert — the one holding the scooter is the one
+    // who can swap it. Admins are not pushed; the Live Map shows it.
     const soc = row.soc_percent as number | null | undefined;
     if (typeof soc === "number" && soc < LOW_BATTERY_PERCENT && (prev.soc_percent === null || prev.soc_percent >= LOW_BATTERY_PERCENT)) {
-        await alert("vehicle_low_battery", "Scooter battery low", `${label} is at ${Math.round(soc)}%.`);
+        if (await notifyRiderLowBattery(admin, v, soc)) raised++;
     }
 
     const gpsAt = (row.gps_at as string | null | undefined) ?? prev.gps_at;
@@ -294,4 +297,42 @@ async function raiseAlerts(
         await alert("vehicle_unexpected_movement", "Scooter moving without a rider", `${label} is moving at ${Math.round(speed as number)} km/h and is not assigned to any rider.`);
     }
     return raised;
+}
+
+/**
+ * Pushes a low-battery alert to the rider whose ACTIVE rental currently holds
+ * this scooter (its open rental_vehicle_assignments row). A scooter nobody
+ * holds alerts no one. Returns whether a rider was notified.
+ */
+async function notifyRiderLowBattery(
+    admin: ReturnType<typeof adminClient>,
+    v: { id: string; registration_number: string; display_name: string | null },
+    soc: number,
+): Promise<boolean> {
+    const { data, error } = await admin
+        .from("rental_vehicle_assignments")
+        .select("rental_id, rentals!inner(user_id, status)")
+        .eq("vehicle_id", v.id)
+        .is("released_at", null)
+        .eq("rentals.status", "active")
+        .limit(1)
+        .maybeSingle();
+    if (error) {
+        console.error(`[${SOURCE}] could not find the rider of ${v.registration_number}`, error.message);
+        return false;
+    }
+    const rental = Array.isArray(data?.rentals) ? data?.rentals[0] : data?.rentals;
+    const userId = (rental as { user_id?: string } | null | undefined)?.user_id;
+    if (!data || !userId) return false;
+
+    const r = await notifyUser(admin, userId, {
+        typeCode: "vehicle_low_battery",
+        subjectType: "vehicle",
+        subjectId: v.id,
+        title: "Battery low",
+        body: `Your scooter (${v.registration_number}) is at ${Math.round(soc)}%. Swap the battery at a nearby station before it runs out.`,
+        screen: "my-scooter",
+        payload: { vehicle_id: v.id, rental_id: data.rental_id, soc_percent: Math.round(soc) },
+    });
+    return r.logged;
 }

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Phone, Mail, MapPin, PlusCircle, UserRound } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, PlusCircle, UserRound, MessageSquare } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,6 +11,7 @@ import { UserConsentCard } from "./UserConsentCard";
 import { AddChargeDialog } from "@/components/users/AddChargeDialog";
 import { RiderOriginalsCard } from "@/components/users/RiderOriginalsCard";
 import { UserReferralsCard } from "@/components/users/UserReferralsCard";
+import { UserCommentsThread } from "@/components/users/UserCommentsThread";
 import { ErrorState } from "@/components/common/ErrorState";
 import { CopyButton } from "@/components/common/CopyButton";
 import { useUser } from "@/hooks/useUsers";
@@ -174,6 +175,16 @@ export default function UserDetailPage() {
         />
         <UserConsentCard userId={user.id} />
       </div>
+
+      {/* Staff comments — internal notes, never shown to the rider. */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm"><MessageSquare className="h-4 w-4" /> Comments</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-1">
+          <UserCommentsThread userId={user.id} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

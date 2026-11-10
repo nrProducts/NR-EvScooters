@@ -229,6 +229,19 @@ async function paymentStatusesForVehicles(
 // List
 // ---------------------------------------------------------------------------
 
+/**
+ * How many vehicles are in each status, plus the total — the count chips above
+ * the Vehicles list. The same rows the list pages through (no status/search
+ * filter), so "All" here equals the list's unfiltered total.
+ */
+export async function vehicleStatusCounts(): Promise<{ total: number; by_status: Record<string, number> }> {
+    const { data, error } = await supabaseAdmin.from("vehicles").select("status");
+    if (error) throw error;
+    const byStatus: Record<string, number> = { available: 0, reserved: 0, assigned: 0, maintenance: 0, retired: 0 };
+    for (const row of data ?? []) byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
+    return { total: (data ?? []).length, by_status: byStatus };
+}
+
 export async function listVehicles(filters: ListVehiclesFilters): Promise<Paginated<VehicleRow>> {
     let query = supabaseAdmin.from("vehicles").select(VEHICLE_COLUMNS, { count: "exact" });
 

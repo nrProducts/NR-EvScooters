@@ -981,7 +981,7 @@ async function reopenDeadOrder(
  * recordable. `applyPaymentSuccess` therefore accepts payments against
  * expired orders, and the allocation cap keeps the invoice from over-paying.
  */
-async function supersedeOpenOrders(invoiceId: string, keepAmount: number): Promise<void> {
+export async function supersedeOpenOrders(invoiceId: string, keepAmount: number): Promise<void> {
     const { data, error } = await supabaseAdmin
         .from("payment_orders")
         .update({ status: "expired" })
@@ -1541,6 +1541,24 @@ async function applyPaymentFailure(gatewayOrderId: string, reason: string): Prom
         .eq("id", order.id)
         .in("status", ["created", "attempted"]);
 
+    // Webhooks are not delivered in order. A `payment.failed` for a late UPI
+    // success can be processed AFTER its capture — e.g. the first delivery hit
+    // a cold start and Razorpay retried it later. The update above already
+    // leaves a paid order alone; telling the rider (and admins) the payment
+    // failed when it was actually collected would be wrong, so stop here.
+    const { data: current, error: currentError } = await supabaseAdmin
+        .from("payment_orders")
+        .select("status")
+        .eq("id", order.id)
+        .maybeSingle();
+    if (currentError) throw currentError;
+    if (current?.status === "paid") {
+        console.info("[payments] ignoring payment.failed for an order that is already paid", {
+            orderId: order.id, reason,
+        });
+        return;
+    }
+
     await writeAudit({
         actorId: null, targetUserId: order.user_id, action: "payment.failed",
         entityType: "payment_order", entityId: order.id, after: { reason },
@@ -1586,6 +1604,104 @@ interface ApplyPaymentSuccessInput {
 }
 
 /**
+ * Late UPI success: the SAME Razorpay payment was first reported failed and
+ * then captured.
+ *
+ * UPI confirms asynchronously. When the rider's UPI app times out waiting for
+ * the bank, Razorpay reports the payment `failed` ("delay in response from the
+ * UPI app") and recordFailedAttempt stores a `failed` row for that pay_id.
+ * Seconds or minutes later the bank confirms and Razorpay captures the very
+ * same pay_id. The success insert then hits the UNIQUE gateway_payment_id —
+ * and treating that as "already applied" silently dropped real money (prod,
+ * 2026-10-22 and 2026-11-04: captured, nothing recorded, rider still billed).
+ *
+ * So on a conflict the existing row decides:
+ *   - `succeeded` (or nothing found): a genuine duplicate — return null.
+ *   - `failed`: upgrade it in place to `succeeded` and return its id, so the
+ *     caller carries on exactly as for a fresh capture (order paid,
+ *     allocation, booking/renewal, rider notified).
+ *
+ * The UPDATE is conditional on `status = 'failed'`: when verify, sync and the
+ * webhook race on one late success, exactly one of them matches the row and
+ * applies it; the others match nothing and return null — the same
+ * one-winner guarantee the unique insert gives a normal capture. The database
+ * (trg_payment_transactions_append_only) permits only this transition, for
+ * the same order and amount, and trg_transaction_within_order still caps the
+ * order's captured total.
+ */
+async function upgradeFailedTransaction(
+    orderId: string,
+    userId: string,
+    input: ApplyPaymentSuccessInput,
+): Promise<string | null> {
+    const { data: existing, error } = await supabaseAdmin
+        .from("payment_transactions")
+        .select("id, payment_order_id, status, amount, method, failure_code, failure_reason, raw_payload, created_at")
+        .eq("gateway_payment_id", input.gatewayPaymentId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!existing || existing.status !== "failed") return null;
+
+    // A pay_id belongs to exactly one Razorpay order, and every caller has
+    // already resolved the order from it — a mismatch here is not a late
+    // success, it is something to look at. Thrown, not swallowed: the webhook
+    // records processing_error and Razorpay redelivers, instead of the money
+    // disappearing quietly the way it used to.
+    if (existing.payment_order_id !== orderId) {
+        throw new Error(
+            `Payment ${input.gatewayPaymentId} is recorded as failed against order ${existing.payment_order_id}, not ${orderId}.`,
+        );
+    }
+    if (round2(Number(existing.amount)) !== round2(input.amount)) {
+        throw new Error(
+            `Late success for ${input.gatewayPaymentId}: captured ${input.amount} but the failed attempt recorded ${existing.amount}.`,
+        );
+    }
+
+    const { data: upgraded, error: updateError } = await supabaseAdmin
+        .from("payment_transactions")
+        .update({
+            status: "succeeded",
+            captured_at: new Date().toISOString(),
+            gateway_signature: input.gatewaySignature,
+            method: input.trustedMethod ?? mapGatewayMethod(input.method) ?? existing.method,
+            failure_code: null,
+            failure_reason: null,
+            raw_payload: {
+                late_success: true,
+                payment: input.rawPayload,
+                previous_failed_payload: existing.raw_payload,
+            } as never,
+        })
+        .eq("id", existing.id)
+        .eq("status", "failed")
+        .select("id")
+        .maybeSingle();
+    if (updateError) throw updateError;
+    // Another caller upgraded it first and is applying it.
+    if (!upgraded) return null;
+
+    await writeAudit({
+        actorId: null, targetUserId: userId, action: "payment.failed_txn_upgraded",
+        entityType: "payment_transaction", entityId: existing.id,
+        before: {
+            status: "failed",
+            failure_code: existing.failure_code,
+            failure_reason: existing.failure_reason,
+            created_at: existing.created_at,
+        },
+        after: {
+            status: "succeeded",
+            gateway_payment_id: input.gatewayPaymentId,
+            amount: round2(input.amount),
+            reason: "late success: same payment reported failed, then captured",
+        },
+    });
+
+    return existing.id;
+}
+
+/**
  * `gateway_payment_id`'s unique constraint is what makes "a redelivered
  * webhook must not double-apply" true however many times this is called.
  *
@@ -1620,9 +1736,20 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
         })
         .select("id")
         .maybeSingle();
+
+    // 23505 on gateway_payment_id means a row for this payment already exists.
+    // It used to be read as "already applied" unconditionally — but the row
+    // can be the FAILED attempt of this very payment (late UPI success, see
+    // upgradeFailedTransaction). Only a row that is already `succeeded` is a
+    // genuine duplicate.
+    let txnId: string;
     if (txnError) {
-        if ((txnError as { code?: string }).code === "23505") return; // Already applied.
-        throw txnError;
+        if ((txnError as { code?: string }).code !== "23505") throw txnError;
+        const upgradedId = await upgradeFailedTransaction(order.id, order.user_id, input);
+        if (!upgradedId) return; // Already applied.
+        txnId = upgradedId;
+    } else {
+        txnId = txn!.id;
     }
 
     // `neq("status", "paid")` rather than a whitelist of open statuses.
@@ -1648,7 +1775,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     if (order.purpose === "booking") {
         await materializeBookingFromOrder(
             { id: order.id, user_id: order.user_id },
-            txn!.id,
+            txnId,
             input.amount,
         );
         return;
@@ -1710,7 +1837,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     // leaves the transaction recorded and the invoice correctly paid.
     if (allocated > 0) {
         const { error: allocationError } = await supabaseAdmin.from("payment_allocations").insert({
-            payment_transaction_id: txn!.id,
+            payment_transaction_id: txnId,
             invoice_id: invoiceId,
             amount: allocated,
         });
@@ -1727,7 +1854,7 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
     if (allocated < round2(input.amount)) {
         await writeAudit({
             actorId: null, targetUserId: order.user_id, action: "payment.unallocated_surplus",
-            entityType: "payment_transaction", entityId: txn!.id,
+            entityType: "payment_transaction", entityId: txnId,
             after: {
                 invoice_id: invoiceId,
                 captured: round2(input.amount),
@@ -1847,6 +1974,21 @@ export async function applyPaymentSuccess(input: ApplyPaymentSuccessInput): Prom
         screen: "/payments",
         riderId: order.user_id,
     });
+
+    // A paid renewal (period #2 onward) — emailed to admins. Keyed on the
+    // period, so a repeated webhook for the same payment reuses the event
+    // and sends nothing twice.
+    if (invoice?.subscription_period_id && periodSequence !== null && periodSequence > 1) {
+        await notify({
+            notificationType: "plan_renewal_paid",
+            referenceType: "subscription_period",
+            referenceId: invoice.subscription_period_id,
+            title: "Plan Renewed",
+            bodyFallback: `{rider} renewed their plan (period ${periodSequence}) and paid ₹${round2(input.amount)}.`,
+            screen: "/payments",
+            riderId: order.user_id,
+        });
+    }
 
     if (invoice?.purpose === "initial") {
         const { data: subscription } = await supabaseAdmin

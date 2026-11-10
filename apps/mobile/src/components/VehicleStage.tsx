@@ -115,8 +115,10 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
     >
       {/* Backdrop: radial vignette, lighter at top-centre, so the stage reads
           as a lit studio sweep rather than a flat grey panel. RN has no CSS
-          radial-gradient, hence an SVG rect. */}
-      <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
+          radial-gradient, hence an SVG rect. Shapes are drawn in a unit
+          viewBox stretched to the view (see GradientFill) — percentage sizes
+          go stale on Android when the view resizes after its first paint. */}
+      <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
         <Defs>
           <RadialGradient id={backdropId} cx="50%" cy="28%" rx="78%" ry="78%">
             <Stop offset="0%" stopColor={stage.lit} />
@@ -124,7 +126,7 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
             <Stop offset="100%" stopColor={stage.edge} />
           </RadialGradient>
         </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${backdropId})`} />
+        <Rect x="0" y="0" width="1" height="1" fill={`url(#${backdropId})`} />
       </Svg>
 
       {/* Light pool on the floor, directly beneath the vehicle. Sits between
@@ -140,14 +142,14 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
           opacity: 0.7,
         }}
       >
-        <Svg width="100%" height="100%">
+        <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
           <Defs>
             <RadialGradient id={poolId} cx="50%" cy="50%" rx="50%" ry="50%">
               <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={stage.pool} />
               <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
             </RadialGradient>
           </Defs>
-          <Ellipse cx="50%" cy="50%" rx="50%" ry="50%" fill={`url(#${poolId})`} />
+          <Ellipse cx="0.5" cy="0.5" rx="0.5" ry="0.5" fill={`url(#${poolId})`} />
         </Svg>
       </View>
 
@@ -166,7 +168,7 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
           opacity: compact ? 0.26 : 0.34,
         }}
       >
-        <Svg width="100%" height="100%">
+        <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
           <Defs>
             <RadialGradient id={contactId} cx="50%" cy="50%" rx="50%" ry="50%">
               <Stop offset="0%" stopColor={stage.shadow} stopOpacity={0.55} />
@@ -174,7 +176,7 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
               <Stop offset="100%" stopColor={stage.shadow} stopOpacity={0} />
             </RadialGradient>
           </Defs>
-          <Ellipse cx="50%" cy="50%" rx="50%" ry="50%" fill={`url(#${contactId})`} />
+          <Ellipse cx="0.5" cy="0.5" rx="0.5" ry="0.5" fill={`url(#${contactId})`} />
         </Svg>
       </View>
 
