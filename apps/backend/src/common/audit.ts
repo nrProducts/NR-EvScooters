@@ -56,6 +56,23 @@ export type AuditAction =
     // A booking-intent payment captured but the rider already held an active
     // booking/rental by then — money in, no booking; needs a manual refund.
     | "payment.booking_unfulfillable"
+    // GST Stage 1. A new dated GST profile, and an admin running the
+    // tax-document catch-up sweep by hand. Both match the financial pattern in
+    // is_financial_audit_action(), so they keep the financial retention period.
+    | "gst.profile_added" | "tax_document.sweep_run"
+    // GST Stage 5: a return marked ready/sent/filed, and the monthly pack downloaded.
+    | "gst.return_status_changed" | "gst.pack_downloaded"
+    // GST Stage 6: the books exported (Tally XML or the workbook) for the CA.
+    | "gst.books_exported"
+    // GST Stages 2–3: outside statements. Matching the financial pattern on
+    // "settlement", so they keep the financial retention period too.
+    | "settlement.sync_run" | "settlement.exception_resolved"
+    | "settlement.bank_statement_imported" | "settlement.bank_line_categorised"
+    | "refund.recorded_offline"
+    // GST Stage 4: purchases. All match "purchase" in is_financial_audit_action().
+    | "purchase.vendor_saved" | "purchase.bill_created" | "purchase.bill_updated" | "purchase.bill_confirmed"
+    | "purchase.bill_cancelled" | "purchase.bill_file_uploaded" | "purchase.bill_payment_linked"
+    | "purchase.bill_payment_unlinked" | "purchase.bill_payment_recorded" | "purchase.expense_recorded" | "purchase.gstr2b_imported" | "purchase.asset_cost_set"
     | "deposit.held" | "deposit.refund_initiated" | "deposit.refunded" | "deposit.forfeited"
     // Staff Apply/Remove of the short-rental deposit forfeit on the Return Review.
     | "deposit.short_rental_forfeit_removed" | "deposit.short_rental_forfeit_applied"
@@ -127,7 +144,10 @@ export interface AuditEntry {
         | "consent_record" | "consent_notice" | "privacy_request" | "retention_run"
         | "legal_document" | "legal_acceptance"
         | "referral" | "referral_program"
-        | "attendance_record" | "leave_request" | "holiday";
+        | "attendance_record" | "leave_request" | "holiday"
+        | "gst_settings" | "tax_documents"
+        | "external_statement" | "external_statement_line"
+        | "vendor" | "purchase_bill" | "finance_period";
     entityId: string;
     before?: Record<string, unknown> | null;
     after?: Record<string, unknown> | null;

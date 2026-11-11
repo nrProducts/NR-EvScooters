@@ -1,0 +1,12 @@
+{
+    "extends": "./_shared.json",
+    "include": [
+        "../src/modules/purchases",
+        "../src/modules/gst",
+        "../src/modules/kyc/kyc.storage.ts",
+        "../src/common",
+        "../src/config",
+        "../src/middleware",
+        "../src/types"
+    ]
+}

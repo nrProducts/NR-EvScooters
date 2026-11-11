@@ -640,6 +640,26 @@ export interface ApiInvoiceItem {
     created_at: string;
 }
 
+/**
+ * A GST tax invoice or credit note — GET /gst/me/documents. Issued by the
+ * backend when a bill is paid (or a deposit is kept, or a refund is paid out);
+ * distinct from ApiInvoice, which is the bill itself.
+ */
+export interface ApiTaxDocument {
+    id: string;
+    docType: 'tax_invoice' | 'credit_note';
+    docNumber: string;
+    /** IST calendar date the document was issued. */
+    issuedOn: string;
+    supplyDate: string;
+    billNumber: string | null;
+    originalDocNumber: string | null;
+    taxableAmount: number;
+    cgstAmount: number;
+    sgstAmount: number;
+    totalAmount: number;
+}
+
 export interface ApiInvoice {
     id: string;
     /** Gap-free, allocated by the database. */

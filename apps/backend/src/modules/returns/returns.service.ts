@@ -209,6 +209,8 @@ async function activeInvoiceSeriesCode(): Promise<string> {
         .from("invoice_series")
         .select("code")
         .eq("is_active", true)
+        .eq("document_type", "bill")
+        .order("created_at")
         .limit(1)
         .maybeSingle();
     if (error) throw error;

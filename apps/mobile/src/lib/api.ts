@@ -16,7 +16,7 @@ import type {
     DpRequestType, GeocodeArea,
     ApiOverdueLateFee, ApiOverdueLateFeeInvoice, ApiReturnStage, ApiVehicleDocument,
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRefund, ApiRental, ApiReturnSettlement, ApiSignedUrl, ApiStation, ApiSupportRequest,
-    ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload,
+    ApiTaxDocument, ApiUserDetail, ApiVehicleModel, ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload,
     KycDocType, ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated,
     ReturnRequestPayload, UpdateUserPayload, VerifyPaymentPayload, WebPushSubscriptionJson,
 } from '../types/api';
@@ -555,6 +555,25 @@ export const api = {
 
     disputeDamage: (damageId: string, reason: string) =>
         request<ApiDamage>(`/damages/${damageId}/dispute`, { method: 'POST', body: { reason } }),
+
+    // --- GST tax invoices ----------------------------------------------------
+    myTaxDocuments: (params: { page?: number; pageSize?: number } = {}) =>
+        request<Paginated<ApiTaxDocument>>('/gst/me/documents', {
+            query: params as Record<string, string | number | boolean | undefined>,
+        }),
+
+    /**
+     * A short-lived signed link to one document's PDF, as an absolute URL the
+     * system browser can open — it cannot send our bearer token, so the
+     * backend signs the link instead (gst.service.ts createMyDocumentLink).
+     */
+    async myTaxDocumentUrl(id: string): Promise<string> {
+        const { path } = await request<{ path: string; expiresAt: string }>(
+            `/gst/me/documents/${encodeURIComponent(id)}/link`,
+            { method: 'POST' },
+        );
+        return ENV.apiUrl.replace(/\/$/, '') + path;
+    },
 
     // --- referrals ---------------------------------------------------------
     myReferralSummary: () => request<ApiReferralSummary>('/referrals/me'),
