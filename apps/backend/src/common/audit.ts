@@ -72,7 +72,7 @@ export type AuditAction =
     // GST Stage 4: purchases. All match "purchase" in is_financial_audit_action().
     | "purchase.vendor_saved" | "purchase.bill_created" | "purchase.bill_updated" | "purchase.bill_confirmed"
     | "purchase.bill_cancelled" | "purchase.bill_file_uploaded" | "purchase.bill_payment_linked"
-    | "purchase.bill_payment_unlinked" | "purchase.gstr2b_imported" | "purchase.asset_cost_set"
+    | "purchase.bill_payment_unlinked" | "purchase.bill_payment_recorded" | "purchase.expense_recorded" | "purchase.gstr2b_imported" | "purchase.asset_cost_set"
     | "deposit.held" | "deposit.refund_initiated" | "deposit.refunded" | "deposit.forfeited"
     // Staff Apply/Remove of the short-rental deposit forfeit on the Return Review.
     | "deposit.short_rental_forfeit_removed" | "deposit.short_rental_forfeit_applied"

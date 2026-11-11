@@ -30,7 +30,7 @@ import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { toastError } from "@/lib/toastHelpers";
 import { ApiError } from "@/services/api/httpClient";
 import * as api from "@/services/api/purchases";
-import type { Asset, Bill, BillInput, BillLineInput, ItcStatus, Payable, Vendor, VendorInput } from "@/services/api/purchases";
+import type { Asset, Bill, BillInput, BillLineInput, ExpenseInput, ItcStatus, PaidVia, Payable, Vendor, VendorInput } from "@/services/api/purchases";
 
 const FIRST_MONTH = "2026-09";
 const SWAPNGO_STATE = "33";
@@ -67,6 +67,17 @@ function monthRange(month: string) {
 }
 const monthLabel = (month: string) =>
   new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric" }).format(new Date(`${month}-01T00:00:00`));
+const todayIst = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+
+const PAID_VIA_LABEL: Record<PaidVia, string> = { bank: "HDFC bank", cash: "Cash", partner: "Partner personally" };
+
+/** "Paid in cash" / "Paid by <partner>" / "Paid from HDFC" — how a bill was settled, for lists and the drawer. */
+function paidViaText(b: Pick<Bill, "paidVia" | "paidBy">): string | null {
+  if (b.paidVia === "cash") return "Paid in cash";
+  if (b.paidVia === "partner") return `Paid by ${b.paidBy}`;
+  if (b.paidVia === "bank") return "Paid from HDFC";
+  return null;
+}
 
 /** Same rule as the backend's splitPurchaseTax — a preview only; the server computes what is saved. */
 function previewTax(taxable: number, rate: number, supplierState: string | null, reverseCharge: boolean) {
@@ -80,19 +91,23 @@ function previewTax(taxable: number, rate: number, supplierState: string | null,
 /**
  * Purchases & input tax credit (GST Stage 4).
  *
- * Every vendor bill is entered once, with its photo or PDF, as lines tagged
- * claimable, blocked or "review"; matched against GSTR-2B; and linked to the
- * bank payment that paid it. ITC is claimed only from confirmed bills, only
- * for claimable lines, and only once the supplier's 2B shows them.
+ * Every expense is recorded here. "Add expense" is the everyday one-step
+ * entry — who was paid, for what, how much and how (HDFC, cash or a partner
+ * personally) — saved straight as a confirmed bill. "New vendor bill" is the
+ * detailed form for multi-line GST bills: lines tagged claimable, blocked or
+ * "review", matched against GSTR-2B, and linked to the bank payment that
+ * paid them. ITC is claimed only from confirmed bills, only for claimable
+ * lines, and only once the supplier's 2B shows them.
  */
 export default function PurchasesPage() {
-  usePageSubtitle("Vendor bills, input tax credit, GSTR-2B and the fleet's asset register.");
+  usePageSubtitle("Expenses and vendor bills, input tax credit, GSTR-2B and the fleet's asset register.");
   const user = useAuthStore((s) => s.user);
   const can = { create: hasAction(user, "purchases", "create"), edit: hasAction(user, "purchases", "edit") };
 
   const months = useMemo(() => monthsSince(FIRST_MONTH), []);
   const [month, setMonth] = useState(months[0]);
   const [billDialog, setBillDialog] = useState<{ open: boolean; editId: string | null }>({ open: false, editId: null });
+  const [expenseOpen, setExpenseOpen] = useState(false);
   const [openBill, setOpenBill] = useState<string | null>(null);
 
   const drafts = usePurchaseMutation(
@@ -108,7 +123,7 @@ export default function PurchasesPage() {
       <Tabs defaultValue="bills">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <TabsList className="flex-wrap">
-            <TabsTrigger value="bills">Bills</TabsTrigger>
+            <TabsTrigger value="bills">Expenses &amp; bills</TabsTrigger>
             <TabsTrigger value="payables">Payables</TabsTrigger>
             <TabsTrigger value="itc">ITC &amp; GSTR-2B</TabsTrigger>
             <TabsTrigger value="vendors">Vendors</TabsTrigger>
@@ -124,7 +139,8 @@ export default function PurchasesPage() {
                 <Button size="sm" variant="outline" disabled={drafts.isPending} onClick={() => drafts.mutate(month)}>
                   {drafts.isPending ? <Spinner className="h-3.5 w-3.5" /> : <Wand2 className="h-3.5 w-3.5" />} Draft Razorpay &amp; HDFC bills
                 </Button>
-                <Button size="sm" onClick={() => setBillDialog({ open: true, editId: null })}><Plus className="h-3.5 w-3.5" /> New bill</Button>
+                <Button size="sm" variant="outline" onClick={() => setBillDialog({ open: true, editId: null })}><FileText className="h-3.5 w-3.5" /> New vendor bill</Button>
+                <Button size="sm" onClick={() => setExpenseOpen(true)}><Plus className="h-3.5 w-3.5" /> Add expense</Button>
               </>
             )}
           </div>
@@ -149,6 +165,7 @@ export default function PurchasesPage() {
         onOpenChange={(o) => setBillDialog((s) => ({ ...s, open: o }))}
         onSaved={(id) => setOpenBill(id)}
       />
+      <ExpenseDialog open={expenseOpen} onOpenChange={setExpenseOpen} />
     </div>
   );
 }
@@ -183,8 +200,9 @@ function BillsTab({ month, onOpen }: { month: string; onOpen: (id: string) => vo
     {
       header: "Paid", key: "paid", hideOnMobile: true,
       render: (b) => b.status !== "confirmed" ? <span className="text-muted-foreground">—</span>
-        : b.paidAmount >= b.totalAmount - 0.009 ? <Badge variant="success">Paid</Badge>
-          : <Badge variant="outline">{formatCurrency(b.totalAmount - b.paidAmount)} due</Badge>,
+        : b.paidAmount >= b.totalAmount - 0.009
+          ? <div className="min-w-0"><Badge variant="success">Paid</Badge>{(b.paidVia === "cash" || b.paidVia === "partner") && <p className="mt-0.5 truncate text-xs text-muted-foreground">{paidViaText(b)}</p>}</div>
+          : <div className="min-w-0"><Badge variant="outline">{formatCurrency(b.totalAmount - b.paidAmount)} due</Badge>{b.paidVia === "bank" && <p className="mt-0.5 truncate text-xs text-muted-foreground">HDFC · link the bank line</p>}</div>,
     },
   ];
 
@@ -206,7 +224,7 @@ function BillsTab({ month, onOpen }: { month: string; onOpen: (id: string) => vo
       />
       <DataTable
         fill columns={columns} data={data?.data ?? []} isLoading={isLoading} isError={isError} onRetry={() => refetch()}
-        onRowClick={(b) => onOpen(b.id)} emptyTitle="No bills" emptyDescription="No vendor bills dated in this month."
+        onRowClick={(b) => onOpen(b.id)} emptyTitle="No expenses" emptyDescription="No expenses or vendor bills dated in this month. Use Add expense to record one."
       />
       {data && <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPageChange={setPage} />}
     </Card>
@@ -227,6 +245,7 @@ function BillDrawer({ id, can, onClose, onEdit }: {
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
   const [linking, setLinking] = useState(false);
+  const [payingOtherwise, setPayingOtherwise] = useState(false);
   const candidates = usePaymentCandidates(linking ? id : null);
 
   const confirm = usePurchaseMutation((billId: string) => api.confirmBill(billId), () => ({ title: "Bill confirmed", message: "Its ITC now counts in the month set on it." }));
@@ -235,7 +254,7 @@ function BillDrawer({ id, can, onClose, onEdit }: {
   const link = usePurchaseMutation(({ billId, lineId }: { billId: string; lineId: string }) => api.linkPayment(billId, lineId), () => ({ title: "Payment linked", message: "The bank payment now counts against this bill." }));
   const unlink = usePurchaseMutation(({ billId, lineId }: { billId: string; lineId: string }) => api.unlinkPayment(billId, lineId), () => ({ title: "Payment unlinked", message: "The bank line is free to link elsewhere." }));
 
-  useEffect(() => { setCancelling(false); setReason(""); setLinking(false); }, [id]);
+  useEffect(() => { setCancelling(false); setReason(""); setLinking(false); setPayingOtherwise(false); }, [id]);
   if (!id) return null;
 
   return (
@@ -300,13 +319,41 @@ function BillDrawer({ id, can, onClose, onEdit }: {
             </div>
           </div>
 
-          {bill.status === "confirmed" && (
+          {bill.status === "confirmed" && bill.source !== "manual" && (
+            <div className="space-y-1">
+              <h4 className="text-sm font-semibold">Payment</h4>
+              <p className="text-xs text-muted-foreground">
+                Paid at source: {bill.source === "razorpay_fees" ? "Razorpay keeps its fee from each settlement." : "HDFC debits its charges from the account."}
+              </p>
+            </div>
+          )}
+          {bill.status === "confirmed" && bill.source === "manual" && (bill.paidVia === "cash" || bill.paidVia === "partner") && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold">Payments · {formatCurrency(bill.paidAmount)} of {formatCurrency(bill.totalAmount)}</h4>
-                {can.edit && <Button size="sm" variant="ghost" onClick={() => setLinking((v) => !v)}><Link2 className="h-3.5 w-3.5" /> Link bank payment</Button>}
+                <h4 className="text-sm font-semibold">Payment</h4>
+                {can.edit && !payingOtherwise && <Button size="sm" variant="ghost" onClick={() => setPayingOtherwise(true)}>Change</Button>}
               </div>
-              {bill.payments.length === 0 && !linking && <p className="text-xs text-muted-foreground">No bank payment linked yet.</p>}
+              <p className="rounded-md border border-border px-3 py-2 text-xs">
+                {paidViaText(bill)}{bill.paidOn && ` on ${formatDate(bill.paidOn)}`} · {formatCurrency(bill.totalAmount)}
+              </p>
+            </div>
+          )}
+          {bill.status === "confirmed" && bill.source === "manual" && bill.paidVia !== "cash" && bill.paidVia !== "partner" && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-sm font-semibold">Payments · {formatCurrency(bill.paidAmount)} of {formatCurrency(bill.totalAmount)}</h4>
+                {can.edit && (
+                  <div className="flex flex-wrap justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => setLinking((v) => !v)}><Link2 className="h-3.5 w-3.5" /> Link bank payment</Button>
+                    {bill.payments.length === 0 && !payingOtherwise && <Button size="sm" variant="ghost" onClick={() => setPayingOtherwise(true)}>Paid in cash or by a partner</Button>}
+                  </div>
+                )}
+              </div>
+              {bill.payments.length === 0 && !linking && (
+                <p className="text-xs text-muted-foreground">
+                  {bill.paidVia === "bank" ? "Paid from HDFC. Link its line from the imported bank statement to settle it, so it is not counted twice." : "No payment recorded yet."}
+                </p>
+              )}
               {bill.payments.map((p) => (
                 <div key={p.lineId} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-xs">
                   <span className="min-w-0 truncate">{p.date && formatDate(p.date)} · {p.description}</span>
@@ -327,6 +374,9 @@ function BillDrawer({ id, can, onClose, onEdit }: {
                     ))
               )}
             </div>
+          )}
+          {payingOtherwise && bill.status === "confirmed" && bill.source === "manual" && (
+            <PaymentMethodForm bill={bill} onDone={() => setPayingOtherwise(false)} />
           )}
 
           {bill.status === "cancelled" && bill.cancelReason && <p className="rounded-md bg-muted/40 px-3 py-2 text-xs">Cancelled: {bill.cancelReason}</p>}
@@ -354,6 +404,207 @@ function BillDrawer({ id, can, onClose, onEdit }: {
         </div>
       )}
     </SideDrawer>
+  );
+}
+
+/** Records how a confirmed bill was paid when it was not from HDFC — or puts it back to "from HDFC". */
+function PaymentMethodForm({ bill, onDone }: { bill: Bill; onDone: () => void }) {
+  const [paidVia, setPaidVia] = useState<PaidVia>(bill.paidVia === "partner" ? "partner" : "cash");
+  const [paidBy, setPaidBy] = useState(bill.paidBy ?? "");
+  const [paidOn, setPaidOn] = useState(bill.paidOn ?? bill.billDate);
+  const save = usePurchaseMutation(
+    () => api.setPaymentMethod(bill.id, { paidVia, paidOn: paidVia === "bank" ? null : paidOn, paidBy: paidVia === "partner" ? paidBy.trim() : null }),
+    () => ({ title: "Payment recorded", message: paidVia === "bank" ? "Link the HDFC line to settle it." : "The bill is settled." }),
+  );
+  const canSave = paidVia !== "partner" || paidBy.trim().length >= 2;
+  return (
+    <div className="space-y-3 rounded-md border border-border p-3">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Paid via">
+          <Select value={paidVia} onValueChange={(v) => setPaidVia(v as PaidVia)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>{(Object.keys(PAID_VIA_LABEL) as PaidVia[]).map((k) => <SelectItem key={k} value={k}>{PAID_VIA_LABEL[k]}</SelectItem>)}</SelectContent>
+          </Select>
+        </Field>
+        {paidVia === "partner" && <Field label="Partner who paid"><Input value={paidBy} onChange={(e) => setPaidBy(e.target.value)} placeholder="e.g. Rukeshkumar K" /></Field>}
+        {paidVia !== "bank" && <Field label="Paid on"><Input type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} /></Field>}
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={onDone}>Cancel</Button>
+        <Button size="sm" disabled={!canSave || save.isPending} onClick={() => save.mutate(undefined, { onSuccess: onDone })}>
+          {save.isPending && <Spinner className="h-3.5 w-3.5" />} Save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Same split as the backend's splitExpenseAmount — a preview only; the server computes what is saved. */
+function previewExpense(total: number, rate: number, supplierState: string | null) {
+  if (!rate || !(total > 0)) return { taxable: total || 0, gst: 0, igst: false };
+  const taxable = Math.round((total * 100 / (100 + rate)) * 100) / 100;
+  return { taxable, gst: Math.round((total - taxable) * 100) / 100, igst: !!supplierState && supplierState !== SWAPNGO_STATE };
+}
+
+/**
+ * Add expense — the everyday entry. Who was paid (a new name becomes a
+ * vendor), what for, the amount actually paid, whether the bill shows GST,
+ * and how it was paid. Saved straight as a confirmed bill; the bill photo,
+ * if chosen, is attached right after.
+ */
+function ExpenseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const vendors = useVendors();
+  const categories = usePurchaseCategories();
+  const blank = () => ({
+    date: todayIst(), payee: "", category: "", description: "", amount: "", hasGst: false, gstRate: "18",
+    gstin: "", billNumber: "", paidVia: "bank" as PaidVia, paidBy: "", notes: "",
+  });
+  const [form, setForm] = useState(blank);
+  const [file, setFile] = useState<File | null>(null);
+  const set = <K extends keyof ReturnType<typeof blank>>(k: K, v: ReturnType<typeof blank>[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  const save = usePurchaseMutation(
+    async (input: ExpenseInput) => {
+      const bill = await api.createExpense(input);
+      // The expense is saved either way; a failed upload is reported and can be retried from the bill.
+      if (file) await api.uploadBillFile(bill.id, file).catch((e) => toastError(e, "Expense saved, but the file did not upload"));
+      return bill;
+    },
+    (b) => ({ title: "Expense recorded", message: `${b.vendorName} · ${formatCurrency(b.totalAmount)}` }),
+    { inlineErrors: true },
+  );
+
+  useEffect(() => { if (open) { setForm(blank()); setFile(null); save.reset(); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const known = vendors.data?.find((v) => v.name.toLowerCase() === form.payee.trim().toLowerCase()) ?? null;
+  // Picking a known payee fills in its usual category and GSTIN.
+  useEffect(() => {
+    if (!known) return;
+    setForm((f) => ({ ...f, category: f.category || known.defaultCategory || "", gstin: f.gstin || known.gstin || "" }));
+  }, [known?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fields = save.error instanceof ApiError ? save.error.fields ?? {} : {};
+  const amount = Number(form.amount) || 0;
+  const gstin = form.gstin.trim().toUpperCase();
+  const preview = previewExpense(amount, form.hasGst ? Number(form.gstRate) : 0, gstin ? gstin.slice(0, 2) : known?.stateCode ?? null);
+  const canSave = !!form.date && form.payee.trim().length >= 2 && !!form.category && amount > 0
+    && (form.paidVia !== "partner" || form.paidBy.trim().length >= 2);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader><DialogTitle>Add expense</DialogTitle></DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Date" error={fields.date}><Input type="date" value={form.date} max={todayIst()} onChange={(e) => set("date", e.target.value)} /></Field>
+            <Field label="Paid to" error={fields.payee}>
+              <Input list="expense-payees" value={form.payee} onChange={(e) => set("payee", e.target.value)} placeholder="Shop, vendor or person" />
+              <datalist id="expense-payees">{(vendors.data ?? []).map((v) => <option key={v.id} value={v.name} />)}</datalist>
+            </Field>
+            <Field label="Category" error={fields.category}>
+              <Select value={form.category} onValueChange={(v) => set("category", v)}>
+                <SelectTrigger><SelectValue placeholder="Choose a category" /></SelectTrigger>
+                <SelectContent>{(categories.data ?? []).map((c) => <SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field label="Amount paid (₹, incl. GST)" error={fields.amount}>
+              <Input type="number" min={0} step="0.01" inputMode="decimal" value={form.amount} onChange={(e) => set("amount", e.target.value)} />
+            </Field>
+          </div>
+          <Field label="What was it for? (optional)" error={fields.description}>
+            <Input value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="e.g. Battery subscription for November" />
+          </Field>
+
+          <div className="space-y-3 rounded-xl border border-border px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">The bill shows GST</p>
+                <p className="text-xs text-muted-foreground">With the supplier's GSTIN, the GST can be claimed back in the GST return.</p>
+              </div>
+              <Switch checked={form.hasGst} onCheckedChange={(v) => set("hasGst", v)} aria-label="The bill shows GST" />
+            </div>
+            {form.hasGst && (
+              <>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Field label="GST rate" error={fields.gstRate}>
+                    <Select value={form.gstRate} onValueChange={(v) => set("gstRate", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{["5", "12", "18", "28", "40"].map((r) => <SelectItem key={r} value={r}>{r}%</SelectItem>)}</SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Supplier GSTIN" error={fields.gstin}>
+                    <Input value={form.gstin} maxLength={15} className="font-mono uppercase" onChange={(e) => set("gstin", e.target.value.toUpperCase())} />
+                  </Field>
+                  <Field label="Bill number" error={fields.billNumber}>
+                    <Input value={form.billNumber} maxLength={40} onChange={(e) => set("billNumber", e.target.value)} />
+                  </Field>
+                </div>
+                {amount > 0 && (
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    Taxable {formatCurrency(preview.taxable)} + {preview.igst ? "IGST" : "CGST + SGST"} {formatCurrency(preview.gst)}
+                  </p>
+                )}
+                {!gstin && (
+                  <p className="flex items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Without the supplier's GSTIN the GST cannot be claimed; it counts as part of the cost.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Paid via" error={fields.paidVia}>
+              <Select value={form.paidVia} onValueChange={(v) => set("paidVia", v as PaidVia)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{(Object.keys(PAID_VIA_LABEL) as PaidVia[]).map((k) => <SelectItem key={k} value={k}>{PAID_VIA_LABEL[k]}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            {form.paidVia === "partner" && (
+              <Field label="Partner who paid" error={fields.paidBy}>
+                <Input value={form.paidBy} onChange={(e) => set("paidBy", e.target.value)} placeholder="e.g. Rukeshkumar K" />
+              </Field>
+            )}
+          </div>
+          {form.paidVia === "bank" && (
+            <p className="text-xs text-muted-foreground">After the HDFC statement is imported, open this expense and link its bank line, so the payment is not counted twice.</p>
+          )}
+          {form.paidVia === "partner" && (
+            <p className="text-xs text-muted-foreground">The firm then owes this amount to the partner; it shows in the books under their name.</p>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Bill photo or PDF (optional)">
+              <Input type="file" accept="application/pdf,image/jpeg,image/png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            </Field>
+            {!form.hasGst && (
+              <Field label="Bill number (optional)" error={fields.billNumber}>
+                <Input value={form.billNumber} maxLength={40} onChange={(e) => set("billNumber", e.target.value)} />
+              </Field>
+            )}
+          </div>
+          <Field label="Notes (optional)"><Textarea rows={2} value={form.notes} onChange={(e) => set("notes", e.target.value)} /></Field>
+
+          {save.error && !Object.keys(fields).length && (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{save.error instanceof ApiError ? save.error.message : "Something went wrong."}</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            disabled={!canSave || save.isPending}
+            onClick={() => save.mutate({
+              date: form.date, payee: form.payee.trim(), category: form.category, description: form.description.trim() || null,
+              amount, hasGst: form.hasGst, gstRate: form.hasGst ? Number(form.gstRate) : null, gstin: form.hasGst ? gstin || null : null,
+              billNumber: form.billNumber.trim() || null, paidVia: form.paidVia, paidBy: form.paidVia === "partner" ? form.paidBy.trim() : null,
+              notes: form.notes.trim() || null,
+            }, { onSuccess: () => onOpenChange(false) })}
+          >
+            {save.isPending && <Spinner className="h-4 w-4" />} Save expense
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -525,7 +776,11 @@ function PayablesTab({ onOpen }: { onOpen: (id: string) => void }) {
     { header: "Bill date", key: "billDate", render: (p) => formatDate(p.billDate) },
     { header: "Age", key: "ageDays", render: (p) => <span className={cn(p.ageDays >= 150 && "font-medium text-destructive")}>{p.ageDays} days</span> },
     { header: "Outstanding", key: "outstanding", className: "text-right", render: (p) => <span className="tabular-nums font-medium">{formatCurrency(p.outstanding)}</span> },
-    { header: "", key: "warn", render: (p) => p.rule37Warning ? <Badge variant="destructive">Pay before 180 days</Badge> : null },
+    {
+      header: "", key: "warn",
+      render: (p) => p.rule37Warning ? <Badge variant="destructive">Pay before 180 days</Badge>
+        : p.paidVia === "bank" ? <span className="text-xs text-muted-foreground">Paid from HDFC · link the bank line</span> : null,
+    },
   ];
   return (
     <div className="space-y-3">
@@ -534,10 +789,10 @@ function PayablesTab({ onOpen }: { onOpen: (id: string) => void }) {
         <StatCard label="Outstanding" value={formatCurrency(total)} tone="warning" />
         <StatCard label="Near the 180-day limit" value={warnings} tone={warnings ? "destructive" : "success"} icon={AlertTriangle} />
       </div>
-      <p className="text-xs text-muted-foreground">A bill whose ITC was claimed must be paid within 180 days of its date, or the ITC is reversed (Rule 37). Link the bank payment on the bill to clear it here.</p>
+      <p className="text-xs text-muted-foreground">A bill whose ITC was claimed must be paid within 180 days of its date, or the ITC is reversed (Rule 37). Open the bill and link its bank payment, or record that it was paid in cash or by a partner, to clear it here.</p>
       <Card className="flex min-h-[14rem] flex-col overflow-hidden">
         <DataTable fill columns={columns} data={data ?? []} isLoading={isLoading} isError={isError} onRetry={() => refetch()}
-          onRowClick={(p) => onOpen(p.id)} emptyTitle="Nothing outstanding" emptyDescription="Every confirmed bill has its bank payment linked." />
+          onRowClick={(p) => onOpen(p.id)} emptyTitle="Nothing outstanding" emptyDescription="Every confirmed bill is paid." />
       </Card>
     </div>
   );

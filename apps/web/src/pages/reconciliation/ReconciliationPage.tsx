@@ -467,7 +467,7 @@ function CashBookCard({ month }: { month: string }) {
       <div className="flex flex-col gap-2 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-sm font-semibold">Cash book</h3>
-          <p className="text-xs text-muted-foreground">Cash recorded at hubs against cash deposits found in the bank.</p>
+          <p className="text-xs text-muted-foreground">Cash collected at hubs, cash spent on expenses, and cash deposits found in the bank.</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">In hand {formatCurrency(data.inHand)}</span>
@@ -475,19 +475,19 @@ function CashBookCard({ month }: { month: string }) {
         </div>
       </div>
       {data.days.length === 0 ? (
-        <EmptyState title="No cash this month" description="No cash payments recorded and no cash deposits imported." />
+        <EmptyState title="No cash this month" description="No cash payments, cash expenses or cash deposits this month." />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/40">
-              <tr>{["Date", "Collected", "Deposited", "In hand"].map((h, i) => (
+              <tr>{["Date", "Collected", "Spent", "Deposited", "In hand"].map((h, i) => (
                 <th key={h} className={cn("px-4 py-2 font-medium text-muted-foreground", i ? "text-right" : "text-left")}>{h}</th>
               ))}</tr>
             </thead>
             <tbody>
               {data.openingInHand !== 0 && (
                 <tr className="border-t border-border text-muted-foreground">
-                  <td className="px-4 py-2">Brought forward</td><td /><td />
+                  <td className="px-4 py-2">Brought forward</td><td /><td /><td />
                   <td className="px-4 py-2 text-right tabular-nums">{formatCurrency(data.openingInHand)}</td>
                 </tr>
               )}
@@ -495,6 +495,7 @@ function CashBookCard({ month }: { month: string }) {
                 <tr key={d.date} className="border-t border-border">
                   <td className="px-4 py-2">{formatDate(d.date)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{d.collected ? formatCurrency(d.collected) : <Dash />}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{d.spent ? formatCurrency(d.spent) : <Dash />}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{d.deposited ? formatCurrency(d.deposited) : <Dash />}</td>
                   <td className="px-4 py-2 text-right tabular-nums font-medium">{formatCurrency(d.inHand)}</td>
                 </tr>

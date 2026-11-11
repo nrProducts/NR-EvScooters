@@ -146,8 +146,12 @@ export interface BillRow {
     taxableAmount: number; cgstAmount: number; sgstAmount: number; igstAmount: number; totalAmount: number;
     itcMonth: string | null; status: "draft" | "confirmed" | "cancelled"; source: string;
     gstr2bStatus: string; hasFile: boolean; notes: string | null;
+    /** How it was paid: bank (settled by the linked HDFC line), cash, or a partner personally. */
+    paidVia: PaidVia | null; paidOn: string | null; paidBy: string | null;
     paidAmount: number; createdAt: string;
 }
+
+export type PaidVia = "bank" | "cash" | "partner";
 
 export interface BillDetail extends BillRow {
     lines: BillLineRow[];
@@ -157,7 +161,7 @@ export interface BillDetail extends BillRow {
 
 const BILL_COLUMNS = `id, vendor_id, bill_number, bill_date, place_of_supply, is_reverse_charge, taxable_amount,
     cgst_amount, sgst_amount, igst_amount, total_amount, itc_month, status, source, gstr2b_status, file_path,
-    notes, cancel_reason, created_at, vendors(name, gstin)`;
+    notes, cancel_reason, created_at, paid_via, paid_on, paid_by, vendors(name, gstin)`;
 
 interface RawBill {
     id: string; vendor_id: string; bill_number: string; bill_date: string; place_of_supply: string;
@@ -165,7 +169,18 @@ interface RawBill {
     sgst_amount: number | string; igst_amount: number | string; total_amount: number | string;
     itc_month: string | null; status: BillRow["status"]; source: string; gstr2b_status: string;
     file_path: string | null; notes: string | null; cancel_reason: string | null; created_at: string;
+    paid_via: PaidVia | null; paid_on: string | null; paid_by: string | null;
     vendors: unknown;
+}
+
+/**
+ * Paid without a bank line: in cash or by a partner (recorded on the bill),
+ * or settled at source — Razorpay keeps its fee from the settlement and HDFC
+ * debits its charges itself, so their drafted bills never get a bank line.
+ * Pure — exported for tests.
+ */
+export function settledWithoutBankLine(b: { paid_via: PaidVia | null; source: string }): boolean {
+    return b.paid_via === "cash" || b.paid_via === "partner" || b.source === "razorpay_fees" || b.source === "bank_charges";
 }
 
 function toBillRow(b: RawBill, paid: number): BillRow {
@@ -176,7 +191,9 @@ function toBillRow(b: RawBill, paid: number): BillRow {
         isReverseCharge: b.is_reverse_charge, taxableAmount: Number(b.taxable_amount),
         cgstAmount: Number(b.cgst_amount), sgstAmount: Number(b.sgst_amount), igstAmount: Number(b.igst_amount),
         totalAmount: Number(b.total_amount), itcMonth: b.itc_month, status: b.status, source: b.source,
-        gstr2bStatus: b.gstr2b_status, hasFile: !!b.file_path, notes: b.notes, paidAmount: round2(paid),
+        gstr2bStatus: b.gstr2b_status, hasFile: !!b.file_path, notes: b.notes,
+        paidVia: b.paid_via, paidOn: b.paid_on, paidBy: b.paid_by,
+        paidAmount: settledWithoutBankLine(b) ? Number(b.total_amount) : round2(paid),
         createdAt: b.created_at,
     };
 }
@@ -405,6 +422,10 @@ export async function billFileUrl(id: string): Promise<{ url: string }> {
 export async function linkPayment(billId: string, bankLineId: string, actor: AuthContext): Promise<BillDetail> {
     const bill = await getBill(billId);
     if (bill.status !== "confirmed") throw businessRule("Confirm the bill before linking its payment.");
+    // Both would post the payment, and the expense would be paid twice in the books.
+    if (bill.paidVia === "cash" || bill.paidVia === "partner") {
+        throw businessRule(`This bill is recorded as paid ${bill.paidVia === "cash" ? "in cash" : `by ${bill.paidBy}`}. Change how it was paid first.`);
+    }
     const { data: line, error } = await db.from("external_statement_lines").select("id, source, kind, amount, purchase_bill_id")
         .eq("id", bankLineId).maybeSingle();
     if (error) throw error;
@@ -423,6 +444,178 @@ export async function unlinkPayment(billId: string, bankLineId: string, actor: A
     if (error) throw error;
     await writeAudit({ actorId: actor.id, targetUserId: null, action: "purchase.bill_payment_unlinked", entityType: "purchase_bill", entityId: billId, after: { bank_line_id: bankLineId } });
     return getBill(billId);
+}
+
+export interface PaymentMethodInput { paidVia: PaidVia; paidOn?: string | null; paidBy?: string | null }
+
+/**
+ * How a bill was paid. Cash and partner payments settle the bill here and are
+ * posted to the books from it; a bank payment is still settled only by
+ * linking its HDFC line, so the statement remains the proof.
+ */
+export async function setBillPaymentMethod(billId: string, input: PaymentMethodInput, actor: AuthContext): Promise<BillDetail> {
+    const bill = await getBill(billId);
+    if (bill.status === "cancelled") throw businessRule("This bill is cancelled.");
+    if (bill.source !== "manual") throw businessRule("Razorpay's fees and HDFC's charges are paid at source; there is nothing to record.");
+    const paidBy = input.paidVia === "partner" ? input.paidBy?.trim() ?? "" : null;
+    if (input.paidVia === "partner" && paidBy!.length < 2) throw badRequest("Enter the partner who paid.", { paidBy: "Enter the partner who paid." });
+    if (input.paidVia !== "bank" && bill.payments.length > 0) {
+        throw conflict("A bank payment is linked to this bill. Unlink it first if the bill was not paid from HDFC.");
+    }
+    const { error } = await db.from("purchase_bills").update({
+        paid_via: input.paidVia,
+        paid_on: input.paidOn ?? (input.paidVia === "bank" ? null : bill.billDate),
+        paid_by: paidBy,
+    }).eq("id", billId);
+    if (error) throw error;
+    await writeAudit({
+        actorId: actor.id, targetUserId: null, action: "purchase.bill_payment_recorded", entityType: "purchase_bill", entityId: billId,
+        before: { paid_via: bill.paidVia, paid_on: bill.paidOn, paid_by: bill.paidBy },
+        after: { paid_via: input.paidVia, paid_on: input.paidOn ?? null, paid_by: paidBy },
+    });
+    return getBill(billId);
+}
+
+// ---------------------------------------------------------------------------
+// Simple expenses — one step, for anything bought, however it was paid
+// ---------------------------------------------------------------------------
+
+export interface ExpenseInput {
+    date: string;
+    payee: string;
+    category: string;
+    description?: string | null;
+    /** What was paid, GST included. */
+    amount: number;
+    hasGst: boolean;
+    gstRate?: number | null;
+    gstin?: string | null;
+    billNumber?: string | null;
+    paidVia: PaidVia;
+    paidBy?: string | null;
+    notes?: string | null;
+}
+
+/**
+ * The amount paid, split into taxable value and GST heads. Prices on a bill
+ * are GST-inclusive here: the user knows what they paid, not the base. IGST
+ * when the supplier's GSTIN is from another state, else CGST + SGST (CGST
+ * truncated, the paisa goes to SGST — the same rule as the tax invoices).
+ * Pure — exported for tests.
+ */
+export function splitExpenseAmount(total: number, rate: number, supplierState: string | null): { taxable: number; cgst: number; sgst: number; igst: number } {
+    if (!(rate > 0)) return { taxable: round2(total), cgst: 0, sgst: 0, igst: 0 };
+    const taxable = round2((total * 100) / (100 + rate));
+    const tax = round2(total - taxable);
+    if (supplierState && supplierState !== "33") return { taxable, cgst: 0, sgst: 0, igst: tax };
+    const cgst = Math.trunc((tax / 2) * 100) / 100;
+    return { taxable, cgst, sgst: round2(tax - cgst), igst: 0 };
+}
+
+const likeExact = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+/** The payee as a vendor: the existing one by name (any case), else a new one. */
+async function payeeVendor(name: string, gstin: string | null, category: string, actor: AuthContext): Promise<RawVendor> {
+    const { data, error } = await db.from("vendors").select(VENDOR_COLUMNS).ilike("name", likeExact(name)).limit(1);
+    if (error) throw error;
+    const found = ((data ?? []) as RawVendor[])[0];
+    if (found) {
+        if (gstin && found.gstin && found.gstin !== gstin) {
+            throw badRequest(`${found.name} is saved with GSTIN ${found.gstin}.`, { gstin: `${found.name} is saved with GSTIN ${found.gstin}. Check the bill, or correct the vendor on the Vendors tab.` });
+        }
+        if (gstin && !found.gstin) {
+            const { data: updated, error: updateError } = await db.from("vendors")
+                .update({ gstin, state_code: gstin.slice(0, 2), pan: found.pan ?? gstin.slice(2, 12) })
+                .eq("id", found.id).select(VENDOR_COLUMNS).single();
+            if (updateError) throw updateError;
+            await writeAudit({ actorId: actor.id, targetUserId: null, action: "purchase.vendor_saved", entityType: "vendor", entityId: found.id, after: { gstin } });
+            return updated as RawVendor;
+        }
+        return found;
+    }
+    const { data: created, error: createError } = await db.from("vendors").insert({
+        name, kind: "other", gstin, state_code: gstin?.slice(0, 2) ?? null, pan: gstin?.slice(2, 12) ?? null, default_category: category,
+    }).select(VENDOR_COLUMNS).single();
+    if (createError) throw createError;
+    await writeAudit({ actorId: actor.id, targetUserId: null, action: "purchase.vendor_saved", entityType: "vendor", entityId: (created as RawVendor).id, after: { name, gstin, via: "expense" } });
+    return created as RawVendor;
+}
+
+/** ITC month: the bill's own month, unless its GSTR-3B is already filed — then the current one. */
+async function openItcMonth(billDate: string): Promise<string> {
+    const month = monthStart(billDate);
+    const { data, error } = await db.from("finance_periods").select("gstr3b_status").eq("period", month).maybeSingle();
+    if (error) throw error;
+    return (data as { gstr3b_status: string } | null)?.gstr3b_status === "filed" ? monthStart(businessToday()) : month;
+}
+
+const autoExpenseNumber = (date: string) => `EXP-${date.replace(/-/g, "")}-${randomUUID().slice(0, 4).toUpperCase()}`;
+
+/**
+ * Records an expense in one step: the payee (created if new), one line, and
+ * how it was paid — saved straight as a confirmed bill, so it is in the
+ * expense list, the books and (if it carries GST with a GSTIN) the ITC
+ * summary at once. A bill photo is attached afterwards with uploadBillFile.
+ */
+export async function createExpense(input: ExpenseInput, actor: AuthContext): Promise<BillDetail> {
+    const category = categoryOf(input.category);
+    if (!category) throw badRequest("Choose a category.", { category: "Choose a category." });
+    const gstin = input.hasGst ? input.gstin?.trim().toUpperCase() || null : null;
+    if (gstin && !isValidGstinChecksum(gstin)) {
+        throw badRequest("This GSTIN fails its check digit.", { gstin: "Check the GSTIN on the bill — the last character does not match." });
+    }
+    const paidBy = input.paidVia === "partner" ? input.paidBy?.trim() ?? "" : null;
+    if (input.paidVia === "partner" && paidBy!.length < 2) throw badRequest("Enter the partner who paid.", { paidBy: "Enter the partner who paid." });
+    if (input.hasGst && !(Number(input.gstRate) > 0)) throw badRequest("Choose the GST rate on the bill.", { gstRate: "Choose the GST rate on the bill." });
+
+    const vendor = await payeeVendor(input.payee.trim(), gstin, category.code, actor);
+    const rate = input.hasGst ? Number(input.gstRate) : 0;
+    const split = splitExpenseAmount(input.amount, rate, vendor.state_code);
+    // Without the supplier's GSTIN the GST can never appear in GSTR-2B, so it
+    // cannot be claimed: it is part of the cost.
+    const noGstin = input.hasGst && !vendor.gstin && category.itc === "eligible";
+    const line: BillLineInput = {
+        description: input.description?.trim() || category.label,
+        category: category.code,
+        taxableAmount: split.taxable,
+        gstRate: rate,
+        cgstAmount: split.cgst, sgstAmount: split.sgst, igstAmount: split.igst,
+        ...(noGstin ? { itcStatus: "ineligible" as const, itcReason: "No supplier GSTIN on the bill, so its GST cannot be claimed." } : {}),
+    };
+
+    const itcMonth = await openItcMonth(input.date);
+    const given = input.billNumber?.trim() || null;
+    let bill: BillDetail | null = null;
+    for (let attempt = 0; attempt < 3 && !bill; attempt++) {
+        try {
+            bill = await createBill({
+                vendorId: vendor.id, billNumber: given ?? autoExpenseNumber(input.date), billDate: input.date,
+                itcMonth, isReverseCharge: false, notes: input.notes?.trim() || null, lines: [line],
+            }, actor);
+        } catch (err) {
+            // A clash on our own random number is retried; on the user's number it is theirs to fix.
+            if (given || !(err instanceof Error) || !/already entered/.test(err.message)) throw err;
+        }
+    }
+    if (!bill) throw conflict("Could not number this expense. Please try again.");
+
+    const { error } = await db.from("purchase_bills").update({
+        status: "confirmed",
+        confirmed_at: new Date().toISOString(),
+        paid_via: input.paidVia,
+        paid_on: input.paidVia === "bank" ? null : input.date,
+        paid_by: paidBy,
+        gstr2b_status: input.hasGst && vendor.gstin ? "not_checked" : "not_applicable",
+    }).eq("id", bill.id).eq("status", "draft");
+    if (error) {
+        await db.from("purchase_bills").delete().eq("id", bill.id).eq("status", "draft");
+        throw error;
+    }
+    await writeAudit({
+        actorId: actor.id, targetUserId: null, action: "purchase.expense_recorded", entityType: "purchase_bill", entityId: bill.id,
+        after: { payee: vendor.name, category: category.code, amount: input.amount, gst_rate: rate, paid_via: input.paidVia, paid_by: paidBy, itc_month: itcMonth },
+    });
+    return getBill(bill.id);
 }
 
 /** Bank debits not yet linked to a bill, near the bill's amount, for the "link payment" picker. */

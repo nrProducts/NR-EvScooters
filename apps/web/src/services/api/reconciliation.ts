@@ -162,7 +162,7 @@ export interface BankImportPreview {
 export interface CashBook {
   month: string;
   openingInHand: number;
-  days: { date: string; collected: number; deposited: number; inHand: number }[];
+  days: { date: string; collected: number; spent: number; deposited: number; inHand: number }[];
   inHand: number;
   oldestUndepositedDays: number;
 }

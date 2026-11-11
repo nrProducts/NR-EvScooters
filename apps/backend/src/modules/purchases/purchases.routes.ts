@@ -38,6 +38,9 @@ router.get("/vendors", requireAction("purchases", "view"), validate({ query: v.v
 router.post("/vendors", requireAction("purchases", "create"), validate({ body: v.vendorBody }), asyncHandler(c.createVendorHandler));
 router.patch("/vendors/:id", requireAction("purchases", "create"), validate({ params: v.idParam, body: v.vendorBody }), asyncHandler(c.updateVendorHandler));
 
+// One-step expense: payee, category, amount paid and how — saved confirmed.
+router.post("/expenses", requireAction("purchases", "create"), validate({ body: v.expenseBody }), asyncHandler(c.createExpenseHandler));
+
 router.get("/bills", requireAction("purchases", "view"), validate({ query: v.listBillsQuery }), asyncHandler(c.listBillsHandler));
 router.post("/bills", requireAction("purchases", "create"), validate({ body: v.billBody }), asyncHandler(c.createBillHandler));
 router.post("/bills/draft-from-statements", requireAction("purchases", "create"), validate({ body: v.optionalMonthBody }), asyncHandler(c.draftFromStatementsHandler));
@@ -49,6 +52,7 @@ router.post("/bills/:id/file", requireAction("purchases", "create"), billFileUpl
 router.get("/bills/:id/file", requireAction("purchases", "view"), validate({ params: v.idParam }), asyncHandler(c.billFileUrlHandler));
 router.get("/bills/:id/payment-candidates", requireAction("purchases", "edit"), validate({ params: v.idParam }), asyncHandler(c.paymentCandidatesHandler));
 router.post("/bills/:id/payments", requireAction("purchases", "edit"), validate({ params: v.idParam, body: v.linkPaymentBody }), asyncHandler(c.linkPaymentHandler));
+router.post("/bills/:id/payment-method", requireAction("purchases", "edit"), validate({ params: v.idParam, body: v.paymentMethodBody }), asyncHandler(c.paymentMethodHandler));
 router.delete("/bills/:id/payments/:lineId", requireAction("purchases", "edit"), validate({ params: v.billLineParams }), asyncHandler(c.unlinkPaymentHandler));
 
 router.get("/payables", requireAction("purchases", "view"), asyncHandler(c.payablesHandler));

@@ -33,7 +33,19 @@ export interface Bill {
   billNumber: string; billDate: string; placeOfSupply: string; isReverseCharge: boolean;
   taxableAmount: number; cgstAmount: number; sgstAmount: number; igstAmount: number; totalAmount: number;
   itcMonth: string | null; status: "draft" | "confirmed" | "cancelled"; source: string;
-  gstr2bStatus: string; hasFile: boolean; notes: string | null; paidAmount: number; createdAt: string;
+  gstr2bStatus: string; hasFile: boolean; notes: string | null;
+  /** How it was paid: bank (settled by linking its HDFC line), cash, or a partner personally. */
+  paidVia: PaidVia | null; paidOn: string | null; paidBy: string | null;
+  paidAmount: number; createdAt: string;
+}
+
+export type PaidVia = "bank" | "cash" | "partner";
+
+/** POST /purchases/expenses — one step: who was paid, for what, how much (GST included) and how. */
+export interface ExpenseInput {
+  date: string; payee: string; category: string; description?: string | null;
+  amount: number; hasGst: boolean; gstRate?: number | null; gstin?: string | null; billNumber?: string | null;
+  paidVia: PaidVia; paidBy?: string | null; notes?: string | null;
 }
 
 export interface BillLine {
@@ -97,6 +109,9 @@ export function uploadBillFile(id: string, file: File): Promise<BillDetail> {
 }
 export const paymentCandidates = (id: string) =>
   apiClient.get<{ id: string; date: string | null; amount: number; description: string | null; counterparty: string | null }[]>(`/purchases/bills/${id}/payment-candidates`);
+export const createExpense = (input: ExpenseInput) => apiClient.post<BillDetail>("/purchases/expenses", input);
+export const setPaymentMethod = (id: string, input: { paidVia: PaidVia; paidOn?: string | null; paidBy?: string | null }) =>
+  apiClient.post<BillDetail>(`/purchases/bills/${id}/payment-method`, input);
 export const linkPayment = (id: string, bankLineId: string) => apiClient.post<BillDetail>(`/purchases/bills/${id}/payments`, { bankLineId });
 export const unlinkPayment = (id: string, lineId: string) => apiClient.delete<BillDetail>(`/purchases/bills/${id}/payments/${lineId}`);
 export const draftFromStatements = (month: string) => apiClient.post<{ created: string[] }>("/purchases/bills/draft-from-statements", { month });

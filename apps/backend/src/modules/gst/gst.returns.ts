@@ -439,7 +439,7 @@ export async function buildWorksheetXlsx(month: string): Promise<{ filename: str
 
 async function purchaseRegisterXlsx(month: string): Promise<Buffer> {
     const { data, error } = await db.from("purchase_bills")
-        .select("bill_number, bill_date, is_reverse_charge, gstr2b_status, status, vendors(name, gstin), purchase_bill_lines(description, category, taxable_amount, gst_rate, cgst_amount, sgst_amount, igst_amount, total_amount, itc_status)")
+        .select("bill_number, bill_date, is_reverse_charge, gstr2b_status, status, paid_via, paid_by, vendors(name, gstin), purchase_bill_lines(description, category, taxable_amount, gst_rate, cgst_amount, sgst_amount, igst_amount, total_amount, itc_status)")
         .eq("itc_month", `${month}-01`).neq("status", "cancelled").order("bill_date");
     if (error) throw error;
     const ExcelJSMod = await import("exceljs");
@@ -450,7 +450,7 @@ async function purchaseRegisterXlsx(month: string): Promise<Buffer> {
         { header: "Bill date", width: 12 }, { header: "Vendor", width: 26 }, { header: "GSTIN", width: 18 }, { header: "Bill no.", width: 18 },
         { header: "Line", width: 36 }, { header: "Category", width: 20 }, { header: "Taxable", width: 13 }, { header: "Rate %", width: 8 },
         { header: "CGST", width: 11 }, { header: "SGST", width: 11 }, { header: "IGST", width: 11 }, { header: "Total", width: 13 },
-        { header: "ITC", width: 10 }, { header: "Reverse charge", width: 10 }, { header: "GSTR-2B", width: 12 }, { header: "Status", width: 10 },
+        { header: "ITC", width: 10 }, { header: "Reverse charge", width: 10 }, { header: "GSTR-2B", width: 12 }, { header: "Status", width: 10 }, { header: "Paid via", width: 22 },
     ];
     ws.getRow(1).font = { bold: true };
     const one = <T,>(raw: T | T[] | null | undefined): T | null => (Array.isArray(raw) ? raw[0] : raw) ?? null;
@@ -459,7 +459,8 @@ async function purchaseRegisterXlsx(month: string): Promise<Buffer> {
         for (const l of (b.purchase_bill_lines as Record<string, unknown>[]) ?? []) {
             ws.addRow([b.bill_date, v?.name ?? "", v?.gstin ?? "", b.bill_number, l.description, l.category,
                 Number(l.taxable_amount), Number(l.gst_rate), Number(l.cgst_amount), Number(l.sgst_amount), Number(l.igst_amount),
-                Number(l.total_amount), l.itc_status, b.is_reverse_charge ? "Yes" : "No", b.gstr2b_status, b.status]);
+                Number(l.total_amount), l.itc_status, b.is_reverse_charge ? "Yes" : "No", b.gstr2b_status, b.status,
+                b.paid_via === "partner" ? `Partner: ${b.paid_by}` : b.paid_via === "cash" ? "Cash" : b.paid_via === "bank" ? "HDFC" : ""]);
         }
     }
     for (const c of [7, 9, 10, 11, 12]) ws.getColumn(c).numFmt = "#,##0.00";

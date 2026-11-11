@@ -70,3 +70,34 @@ export const vehicleCostBody = z.object({
     cost: money,
     purchasedOn: isoDate.nullish(),
 });
+
+const paidVia = z.enum(["bank", "cash", "partner"]);
+
+/** One-step expense: what was paid, GST included, and how. */
+export const expenseBody = z
+    .object({
+        date: isoDate,
+        payee: z.string().trim().min(2, "Enter who was paid.").max(160),
+        category: z.string().min(2, "Choose a category.").max(40),
+        description: z.string().trim().max(300).nullish(),
+        amount: z.coerce.number().positive("Enter the amount paid.").max(100_000_000),
+        hasGst: z.boolean().default(false),
+        gstRate: z.coerce.number().refine((r) => [5, 12, 18, 28, 40].includes(r), "Choose the GST rate on the bill.").nullish(),
+        gstin: z.string().trim().max(15).nullish(),
+        billNumber: z.string().trim().max(40).nullish(),
+        paidVia,
+        paidBy: z.string().trim().max(120).nullish(),
+        notes: z.string().trim().max(1000).nullish(),
+    })
+    .superRefine((v, ctx) => {
+        if (v.hasGst && !v.gstRate) ctx.addIssue({ code: "custom", path: ["gstRate"], message: "Choose the GST rate on the bill." });
+        if (v.paidVia === "partner" && (v.paidBy ?? "").length < 2) ctx.addIssue({ code: "custom", path: ["paidBy"], message: "Enter the partner who paid." });
+    });
+export type ExpenseBody = z.infer<typeof expenseBody>;
+
+export const paymentMethodBody = z
+    .object({ paidVia, paidOn: isoDate.nullish(), paidBy: z.string().trim().max(120).nullish() })
+    .superRefine((v, ctx) => {
+        if (v.paidVia === "partner" && (v.paidBy ?? "").length < 2) ctx.addIssue({ code: "custom", path: ["paidBy"], message: "Enter the partner who paid." });
+    });
+export type PaymentMethodBody = z.infer<typeof paymentMethodBody>;

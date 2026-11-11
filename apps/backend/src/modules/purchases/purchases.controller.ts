@@ -4,7 +4,7 @@ import { validatedQuery } from "../../middleware/validate.middleware";
 import { badRequest } from "../../common/AppError";
 import * as service from "./purchases.service";
 import { PURCHASE_CATEGORIES } from "./purchases.itc";
-import type { BillBody, ListBillsQuery, VendorBody } from "./purchases.validation";
+import type { BillBody, ExpenseBody, ListBillsQuery, PaymentMethodBody, VendorBody } from "./purchases.validation";
 
 const file = (req: AuthedRequest) => {
     const f = req.file as Express.Multer.File | undefined;
@@ -57,6 +57,12 @@ export async function linkPaymentHandler(req: AuthedRequest, res: Response) {
 }
 export async function unlinkPaymentHandler(req: AuthedRequest, res: Response) {
     res.json(await service.unlinkPayment(req.params.id as string, req.params.lineId as string, req.user!));
+}
+export async function paymentMethodHandler(req: AuthedRequest, res: Response) {
+    res.json(await service.setBillPaymentMethod(req.params.id as string, req.body as PaymentMethodBody, req.user!));
+}
+export async function createExpenseHandler(req: AuthedRequest, res: Response) {
+    res.status(201).json(await service.createExpense(req.body as ExpenseBody, req.user!));
 }
 export async function payablesHandler(_req: AuthedRequest, res: Response) {
     res.json(await service.listPayables());

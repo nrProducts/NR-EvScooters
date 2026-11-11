@@ -29,10 +29,12 @@ export const PURCHASE_CATEGORIES: PurchaseCategory[] = [
     { code: "rent", label: "Hub and office rent", itc: "eligible", basis: "s. 16" },
     { code: "professional_fees", label: "CA, advocate and professional fees", itc: "eligible", basis: "s. 16" },
     { code: "utilities", label: "Electricity, internet, phone", itc: "eligible", basis: "s. 16" },
+    { code: "office_expenses", label: "Office and shop expenses (stationery, cleaning, small items)", itc: "eligible", basis: "s. 16" },
     { code: "office_equipment", label: "Laptops, furniture, tools", itc: "eligible", basis: "s. 16 — capital goods", capital: true },
     { code: "civil_works", label: "Hub civil works and construction", itc: "blocked", basis: "s. 17(5)(c)/(d)" },
     { code: "food_staff_welfare", label: "Food, staff welfare, gifts", itc: "blocked", basis: "s. 17(5)(b) and (h)" },
-    { code: "no_gst", label: "No GST charged (salaries, exempt supplies)", itc: "ineligible", basis: "Nothing to claim" },
+    { code: "salaries", label: "Salaries and staff payments", itc: "ineligible", basis: "No GST on salaries" },
+    { code: "no_gst", label: "No GST charged (exempt supplies)", itc: "ineligible", basis: "Nothing to claim" },
     { code: "other", label: "Other", itc: "review", basis: "Decide before claiming" },
 ];
 

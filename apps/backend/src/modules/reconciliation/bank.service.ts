@@ -496,26 +496,31 @@ export async function listBankLines(f: {
 }
 
 // ---------------------------------------------------------------------------
-// Cash book — hub cash collected vs cash deposited in the bank
+// Cash book — hub cash collected, spent on expenses, and deposited in the bank
 // ---------------------------------------------------------------------------
 
-export interface CashBookDay { date: string; collected: number; deposited: number; inHand: number }
+export interface CashBookDay { date: string; collected: number; spent: number; deposited: number; inHand: number }
 
 export async function getCashBook(month: string): Promise<{ month: string; openingInHand: number; days: CashBookDay[]; inHand: number; oldestUndepositedDays: number }> {
     const { from, to } = monthBounds(month);
-    const [cashIn, deposits] = await Promise.all([
+    const [cashIn, deposits, spentCash] = await Promise.all([
         db.from("payment_transactions").select("amount, captured_at")
             .eq("status", "succeeded").eq("method", "cash").like("gateway_payment_id", "manual_%")
             .lt("captured_at", `${dayShift(to, 1)}T00:00:00+05:30`),
         db.from("external_statement_lines").select("amount, value_date")
             .eq("source", "hdfc").eq("category", "cash_deposit").lte("value_date", to),
+        // Expenses paid from cash in hand (purchases.service createExpense / setBillPaymentMethod).
+        db.from("purchase_bills").select("total_amount, paid_on, bill_date")
+            .eq("status", "confirmed").eq("paid_via", "cash").lte("bill_date", to),
     ]);
     if (cashIn.error) throw cashIn.error;
     if (deposits.error) throw deposits.error;
+    if (spentCash.error) throw spentCash.error;
 
     const istDay = (ts: string) => new Date(new Date(ts).getTime() + 5.5 * 3600_000).toISOString().slice(0, 10);
     const collectedBy = new Map<string, number>();
     const depositedBy = new Map<string, number>();
+    const spentBy = new Map<string, number>();
     let opening = 0;
     for (const r of (cashIn.data ?? []) as { amount: number | string; captured_at: string }[]) {
         const d = istDay(r.captured_at);
@@ -527,17 +532,25 @@ export async function getCashBook(month: string): Promise<{ month: string; openi
         else depositedBy.set(r.value_date, (depositedBy.get(r.value_date) ?? 0) + Number(r.amount));
     }
 
+    for (const r of (spentCash.data ?? []) as { total_amount: number | string; paid_on: string | null; bill_date: string }[]) {
+        const d = r.paid_on ?? r.bill_date;
+        if (d > to) continue;
+        if (d < from) opening -= Number(r.total_amount);
+        else spentBy.set(d, (spentBy.get(d) ?? 0) + Number(r.total_amount));
+    }
+
     const days: CashBookDay[] = [];
     let inHand = round2(opening);
     let undepositedSince: string | null = inHand > 0.009 ? from : null;
     for (let d = from; d <= to; d = dayShift(d, 1)) {
         const collected = round2(collectedBy.get(d) ?? 0);
         const deposited = round2(depositedBy.get(d) ?? 0);
-        if (collected === 0 && deposited === 0) continue;
-        inHand = round2(inHand + collected - deposited);
+        const spent = round2(spentBy.get(d) ?? 0);
+        if (collected === 0 && deposited === 0 && spent === 0) continue;
+        inHand = round2(inHand + collected - spent - deposited);
         if (inHand <= 0.009) undepositedSince = null;
         else if (!undepositedSince) undepositedSince = d;
-        days.push({ date: d, collected, deposited, inHand });
+        days.push({ date: d, collected, spent, deposited, inHand });
     }
     const end = to < new Date().toISOString().slice(0, 10) ? to : new Date().toISOString().slice(0, 10);
     const oldest = undepositedSince

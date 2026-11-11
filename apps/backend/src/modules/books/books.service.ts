@@ -26,6 +26,8 @@ export type LedgerGroup =
  */
 export function groupOf(ledger: string): LedgerGroup {
     if (ledger.startsWith("Creditor: ")) return "Sundry Creditors";
+    // A partner who paid a business expense personally: the firm owes them.
+    if (ledger.startsWith("Partner: ")) return "Capital Account";
     if (ledger.startsWith("Fixed Assets")) return "Fixed Assets";
     switch (ledger) {
         case "HDFC Bank": return "Bank Accounts";
