@@ -29,8 +29,12 @@ const DOC_COLUMNS = `id, doc_type, source, series_code, doc_number, supply_date,
     invoice_id, rental_id, refund_id, original_document_id, gst_settings_id, recipient_name,
     place_of_supply, sac_code, gst_rate, taxable_amount, cgst_amount, sgst_amount, igst_amount,
     total_amount, lines, status, created_at, return_period,
-    invoices(invoice_number),
-    original:tax_documents!tax_documents_original_document_id_fkey(doc_number)`;
+    invoices(invoice_number)`;
+// The original document a credit note reduces is NOT embedded: PostgREST does
+// not resolve the self-referencing tax_documents_original_document_id_fkey by
+// its constraint name (PGRST200, so every query failed on UAT), and a column
+// hint on a self-reference is ambiguous about its direction. withOriginals()
+// reads the numbers in a second, plain query instead.
 
 interface RawDocRow {
     id: string; doc_type: TaxDocumentRow["docType"]; source: TaxDocumentRow["source"];
@@ -42,7 +46,24 @@ interface RawDocRow {
     igst_amount: number | string; total_amount: number | string;
     lines: TaxDocumentLine[]; status: TaxDocumentRow["status"]; created_at: string; return_period: string;
     invoices: { invoice_number: string } | { invoice_number: string }[] | null;
-    original: { doc_number: string } | { doc_number: string }[] | null;
+    /** Filled in by withOriginals(), not by the select. */
+    original?: { doc_number: string } | null;
+}
+
+/** Adds each credit note's original document number — one extra query per batch. */
+async function withOriginals(rows: RawDocRow[]): Promise<RawDocRow[]> {
+    const ids = [...new Set(rows.map((r) => r.original_document_id).filter((x): x is string => !!x))];
+    const numbers = new Map<string, string>();
+    for (let i = 0; i < ids.length; i += 200) {
+        const { data, error } = await db.from("tax_documents").select("id, doc_number").in("id", ids.slice(i, i + 200));
+        if (error) throw error;
+        for (const d of (data ?? []) as { id: string; doc_number: string }[]) numbers.set(d.id, d.doc_number);
+    }
+    for (const r of rows) {
+        const n = r.original_document_id ? numbers.get(r.original_document_id) : undefined;
+        r.original = n ? { doc_number: n } : null;
+    }
+    return rows;
 }
 
 const one = <T,>(raw: T | T[] | null | undefined): T | null => (Array.isArray(raw) ? raw[0] : raw) ?? null;
@@ -63,7 +84,7 @@ function toDocRow(r: RawDocRow): TaxDocumentRow & { gstSettingsId: string } {
         rentalId: r.rental_id,
         refundId: r.refund_id,
         originalDocumentId: r.original_document_id,
-        originalDocNumber: one(r.original)?.doc_number ?? null,
+        originalDocNumber: r.original?.doc_number ?? null,
         placeOfSupply: r.place_of_supply,
         sacCode: r.sac_code,
         gstRate: Number(r.gst_rate),
@@ -235,7 +256,7 @@ export async function listTaxDocuments(f: ListTaxDocumentsFilters): Promise<Pagi
         .order("doc_number", { ascending: false })
         .range(from, to);
     if (error) throw error;
-    return paginate(((data ?? []) as unknown as RawDocRow[]).map(toDocRow), count ?? 0, f);
+    return paginate((await withOriginals((data ?? []) as unknown as RawDocRow[])).map(toDocRow), count ?? 0, f);
 }
 
 async function allDocumentsInRange(from: string, to: string): Promise<(TaxDocumentRow & { gstSettingsId: string })[]> {
@@ -255,7 +276,7 @@ async function allDocumentsInRange(from: string, to: string): Promise<(TaxDocume
         rows.push(...batch);
         if (batch.length < PAGE) break;
     }
-    return rows.map(toDocRow);
+    return (await withOriginals(rows)).map(toDocRow);
 }
 
 function totalsOf(docs: TaxDocumentRow[]): TaxDocumentTotals {
@@ -296,7 +317,8 @@ async function getDocument(id: string): Promise<TaxDocumentRow & { gstSettingsId
     const { data, error } = await db.from("tax_documents").select(DOC_COLUMNS).eq("id", id).maybeSingle();
     if (error) throw error;
     if (!data) throw notFound("Tax document not found.");
-    return toDocRow(data as unknown as RawDocRow);
+    const [row] = await withOriginals([data as unknown as RawDocRow]);
+    return toDocRow(row);
 }
 
 export async function getTaxDocument(id: string): Promise<TaxDocumentRow> {
@@ -465,7 +487,7 @@ export async function documentsForReturn(month: string): Promise<TaxDocumentRow[
         rows.push(...((data ?? []) as unknown as RawDocRow[]));
         if ((data ?? []).length < 1000) break;
     }
-    return rows.map(toDocRow);
+    return (await withOriginals(rows)).map(toDocRow);
 }
 
 /** Adds the PDFs of every document reported in a month to an existing ZIP, under `prefix`. */
@@ -551,7 +573,7 @@ export async function listMyTaxDocuments(
         .order("doc_number", { ascending: false })
         .range(from, to);
     if (error) throw error;
-    return paginate(((data ?? []) as unknown as RawDocRow[]).map((r) => {
+    return paginate((await withOriginals((data ?? []) as unknown as RawDocRow[])).map((r) => {
         const { gstSettingsId: _s, ...row } = toDocRow(r);
         return row;
     }), count ?? 0, page);
