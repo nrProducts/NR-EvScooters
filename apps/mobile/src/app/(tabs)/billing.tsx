@@ -23,6 +23,7 @@ import { CycleTime } from '../../components/ui/CycleTime';
 import { SettlementCard } from '../../components/SettlementCard';
 import { DepositStatusCard } from '../../components/DepositStatusCard';
 import { RefundStatusCard } from '../../components/RefundStatusCard';
+import { TaxInvoicesCard } from '../../components/TaxInvoicesCard';
 import { shouldShowRefundInBilling } from '../../lib/settlementDisplay';
 import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
 import { ApiError } from '../../lib/ApiError';
@@ -1482,6 +1483,7 @@ export default function BillingScreen() {
             </>
           ) : null}
           {paymentHistoryItems.length > 0 ? renderPaymentHistory() : null}
+          <TaxInvoicesCard />
         </PageScroll>
       ) : !bookingId ? (
         <EmptyState
@@ -1763,6 +1765,7 @@ export default function BillingScreen() {
           {renderDepositCard()}
 
           {renderPaymentHistory()}
+          <TaxInvoicesCard />
         </PageScroll>
       )}
     </AppShell>

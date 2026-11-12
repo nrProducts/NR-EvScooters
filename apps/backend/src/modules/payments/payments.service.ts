@@ -1162,7 +1162,30 @@ export async function syncOrderPayment(
 ): Promise<{ status: "paid" | "pending" | "none" }> {
     const order = await findOrderByGatewayOrderId(gatewayOrderId);
     if (!order || order.user_id !== actor.id) throw notFound("Payment order not found.");
+    return applyCapturedOrderPayment(order, gatewayOrderId, actor);
+}
 
+/**
+ * Staff-side recovery of the same thing, for any rider's order — what the
+ * Reconciliation exceptions queue runs when Razorpay settled a payment our
+ * records never applied (exception E1). Identical gateway checks; the only
+ * difference is that ownership is not required, because the route is gated
+ * by `reconciliation.resolve` instead.
+ */
+export async function recoverOrderPaymentAsStaff(
+    gatewayOrderId: string,
+    actor: AuthContext,
+): Promise<{ status: "paid" | "pending" | "none" }> {
+    const order = await findOrderByGatewayOrderId(gatewayOrderId);
+    if (!order) throw notFound("Payment order not found.");
+    return applyCapturedOrderPayment(order, gatewayOrderId, actor);
+}
+
+async function applyCapturedOrderPayment(
+    order: NonNullable<Awaited<ReturnType<typeof findOrderByGatewayOrderId>>>,
+    gatewayOrderId: string,
+    actor: AuthContext,
+): Promise<{ status: "paid" | "pending" | "none" }> {
     const payments = await fetchGatewayOrderPayments(gatewayOrderId);
     const captured = payments.find(
         (p) => p.status === "captured" && p.captured && p.order_id === gatewayOrderId,
@@ -1189,9 +1212,12 @@ export async function syncOrderPayment(
     });
 
     await writeAudit({
-        actorId: actor.id, targetUserId: actor.id, action: "payment.verified",
+        actorId: actor.id, targetUserId: order.user_id, action: "payment.verified",
         entityType: "payment_order", entityId: order.id,
-        after: { gateway_payment_id: captured.id, method: captured.method, amount: captured.amount / 100, via: "order_sync" },
+        after: {
+            gateway_payment_id: captured.id, method: captured.method, amount: captured.amount / 100,
+            via: actor.id === order.user_id ? "order_sync" : "staff_recovery",
+        },
     });
 
     return { status: "paid" };

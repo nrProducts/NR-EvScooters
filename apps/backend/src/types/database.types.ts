@@ -830,6 +830,7 @@ export type Database = {
         Row: {
           code: string
           created_at: string
+          document_type: string
           financial_year: string
           is_active: boolean
           last_number: number
@@ -839,6 +840,7 @@ export type Database = {
         Insert: {
           code: string
           created_at?: string
+          document_type?: string
           financial_year: string
           is_active?: boolean
           last_number?: number
@@ -848,6 +850,7 @@ export type Database = {
         Update: {
           code?: string
           created_at?: string
+          document_type?: string
           financial_year?: string
           is_active?: boolean
           last_number?: number
@@ -2151,6 +2154,7 @@ export type Database = {
           id: string
           initiated_at: string
           last_attempted_at: string | null
+          paid_by: string
           payment_transaction_id: string
           reason: Database["public"]["Enums"]["refund_reason"]
           rejected_at: string | null
@@ -2177,6 +2181,7 @@ export type Database = {
           id?: string
           initiated_at?: string
           last_attempted_at?: string | null
+          paid_by?: string
           payment_transaction_id: string
           reason: Database["public"]["Enums"]["refund_reason"]
           rejected_at?: string | null
@@ -2203,6 +2208,7 @@ export type Database = {
           id?: string
           initiated_at?: string
           last_attempted_at?: string | null
+          paid_by?: string
           payment_transaction_id?: string
           reason?: Database["public"]["Enums"]["refund_reason"]
           rejected_at?: string | null

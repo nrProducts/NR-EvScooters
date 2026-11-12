@@ -2,7 +2,7 @@ import type {
     ApiAvailability, ApiBooking, ApiDamage, ApiDeposit, ApiDocument, ApiEarlyRecharge, ApiInvoice, ApiKycSummary,
     ApiMaintenanceNotice, ApiMaintenanceRecord, ApiMe, ApiNotification, ApiOverdueLateFee, ApiOverdueLateFeeInvoice,
     ApiPaymentOrder, ApiPlanQuote, ApiReferralSummary, ApiRedeemReferralResult, ApiRedemption, ApiRefund,
-    ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
+    ApiRental, ApiReturnSettlement, ApiReturnStage, ApiSignedUrl, ApiStation, ApiSupportRequest, ApiTaxDocument, ApiUserDetail, ApiVehicleDocument, ApiVehicleModel,
     ApiVehicleModelDetail, CreateBookingOrderPayload, CreateSupportRequestPayload, KycDocType,
     ListVehicleModelsParams, LocalFile, MaintenanceHistoryParams, Paginated, ReturnRequestPayload,
     UpdateUserPayload, VerifyPaymentPayload,
@@ -139,6 +139,10 @@ export interface BillingRepository {
     disputeDamage(damageId: string, reason: string): Promise<ApiDamage>;
     /** The rider's own refunds — booking cancellations, deposit releases, goodwill. Powers the Billing refund-status card. */
     myRefunds(params: HistoryParams & { bookingId?: string }): Promise<Paginated<ApiRefund>>;
+    /** The rider's GST tax invoices and credit notes, newest first. */
+    myTaxDocuments(params: HistoryParams): Promise<Paginated<ApiTaxDocument>>;
+    /** An absolute, short-lived URL to one document's PDF, for the system browser. */
+    myTaxDocumentUrl(id: string): Promise<string>;
 }
 
 export interface RentalRepository {

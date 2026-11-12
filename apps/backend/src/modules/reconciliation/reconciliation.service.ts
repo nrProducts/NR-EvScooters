@@ -75,7 +75,16 @@ export async function getReconciliationReport(filters: ReconciliationFilters): P
     }
 
     const razorpay = getRazorpay();
-    const gatewayResult = await razorpay.payments.all({ from: fromUnix, to: toUnix, count: 100 });
+    // Razorpay returns at most 100 payments per call. Reading only the first
+    // page reported every payment after the 100th as "missing internally" —
+    // a full month was a wall of false alarms. Page through all of them.
+    const gatewayItems: { id: string; status: string; amount: number | string; created_at: number }[] = [];
+    for (let skip = 0; ; skip += 100) {
+        const page = await razorpay.payments.all({ from: fromUnix, to: toUnix, count: 100, skip });
+        gatewayItems.push(...page.items);
+        if (page.items.length < 100) break;
+    }
+    const gatewayResult = { items: gatewayItems };
 
     const gatewayIds = new Set(gatewayResult.items.map((p) => p.id));
     const internalIds = new Set((internalRows ?? []).map((r) => r.gateway_payment_id));
