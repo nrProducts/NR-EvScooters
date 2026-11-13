@@ -51,8 +51,9 @@ const dataUri = (file) => `data:image/png;base64,${readFileSync(join(IMAGES, fil
 const BRAND_GREEN = '#21C45D';
 // The light icon's own tile gradient (icon.png / android-icon-background.png).
 const TILE = { from: '#3CCB73', to: '#17924A' };
-// Option B: a warm-white lamp, quiet against the white scooter.
-const LAMP = { main: '#FFF6DC', deep: '#FFE7A8', core: '#FFFFFF', soft: '#FFF6DC', lens: '#FFFFFF' };
+// A warm amber lamp with a small glow, not white: it reads as a real bulb and
+// stands out against the white scooter instead of blending into it.
+const LAMP = { main: '#FFC24D', deep: '#FF9A1F', core: '#FFE29A', soft: '#FFB43A', lens: '#FFE9B0' };
 // Mirrors the console's dark theme in apps/web/src/index.css — keep in sync.
 const CONSOLE_GREEN = '#34C973'; // .dark --primary
 // The wordmark's gradient: from --primary to --brand-from, the lighter half of
@@ -68,18 +69,25 @@ const CONSOLE_WORDMARK_GRADIENT = ['#34C973', '#1E9A52'];
 const ICON_LENS = { cx: 747, cy: 423.5, rx: 9.5, ry: 23 };
 const MARK_LENS = { cx: 676, cy: 156, rx: 11, ry: 23 };
 
-/** The beam: a wide soft cone plus a brighter core, dipping slightly like a real dipped beam. */
+/**
+ * The light, "Bloom and rays" (option E of the headlight-glow review): a small
+ * soft amber halo around the lamp plus three short warm streaks ahead of it,
+ * all ending around x 862, well inside the tile. A glow, not a beam.
+ */
 function beam() {
   return `
-    <path d="M760 398 L1060 352 L1060 612 L760 442 Z" fill="url(#beam)" filter="url(#soft)" />
-    <path d="M760 412 L1060 418 L1060 530 L760 430 Z" fill="url(#beamCore)" filter="url(#soft)" />`;
+    <circle cx="${ICON_LENS.cx + 4}" cy="${ICON_LENS.cy}" r="56" fill="url(#halo)" />
+    <g stroke="url(#rays)" stroke-linecap="round" fill="none">
+      <path d="M776 404 L852 388" stroke-width="8" />
+      <path d="M778 424 L862 424" stroke-width="9" />
+      <path d="M776 444 L852 460" stroke-width="8" />
+    </g>`;
 }
 
-/** The lens filled in, with a soft halo. */
+/** The lens filled in warm, drawn over the halo. */
 function lamp() {
   return `
-    <ellipse cx="${ICON_LENS.cx}" cy="${ICON_LENS.cy}" rx="${ICON_LENS.rx + 2}" ry="${ICON_LENS.ry + 2}" fill="${LAMP.lens}" />
-    <circle cx="${ICON_LENS.cx + 4}" cy="${ICON_LENS.cy}" r="60" fill="${LAMP.main}" opacity="0.45" filter="url(#soft)" />`;
+    <ellipse cx="${ICON_LENS.cx}" cy="${ICON_LENS.cy}" rx="${ICON_LENS.rx + 2}" ry="${ICON_LENS.ry + 2}" fill="${LAMP.lens}" />`;
 }
 
 function defs() {
@@ -88,14 +96,13 @@ function defs() {
       <stop offset="0" stop-color="${TILE.from}" />
       <stop offset="1" stop-color="${TILE.to}" />
     </linearGradient>
-    <linearGradient id="beam" gradientUnits="userSpaceOnUse" x1="760" y1="0" x2="1024" y2="0">
-      <stop offset="0" stop-color="${LAMP.main}" stop-opacity="0.95" />
-      <stop offset="0.55" stop-color="${LAMP.main}" stop-opacity="0.45" />
+    <radialGradient id="halo">
+      <stop offset="0" stop-color="${LAMP.main}" stop-opacity="0.85" />
+      <stop offset="0.45" stop-color="${LAMP.soft}" stop-opacity="0.35" />
       <stop offset="1" stop-color="${LAMP.deep}" stop-opacity="0" />
-    </linearGradient>
-    <linearGradient id="beamCore" gradientUnits="userSpaceOnUse" x1="760" y1="0" x2="1024" y2="0">
-      <stop offset="0" stop-color="${LAMP.core}" stop-opacity="1" />
-      <stop offset="0.6" stop-color="${LAMP.soft}" stop-opacity="0.4" />
+    </radialGradient>
+    <linearGradient id="rays" gradientUnits="userSpaceOnUse" x1="772" y1="0" x2="860" y2="0">
+      <stop offset="0" stop-color="${LAMP.main}" stop-opacity="0.95" />
       <stop offset="1" stop-color="${LAMP.soft}" stop-opacity="0" />
     </linearGradient>
     <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
@@ -171,9 +178,7 @@ function favicon() {
   <circle class="night" cx="408" cy="260" r="420" fill="url(#tileGreen)" />
   <g class="lit" clip-path="url(#disc)"><g transform="${toMarkSpace}">${beam()}</g></g>
   <path class="mark" d="${MARK_D}" fill="${BRAND_GREEN}" fill-rule="evenodd" />
-  <ellipse class="lit" cx="${MARK_LENS.cx}" cy="${MARK_LENS.cy}" rx="${MARK_LENS.rx}" ry="${MARK_LENS.ry}" fill="${LAMP.lens}" />
-  <g class="lit"><g transform="${toMarkSpace}"><circle cx="751" cy="423.5" r="60" fill="${LAMP.main}" opacity="0.45" filter="url(#soft)" /></g></g>
-</svg>
+  <ellipse class="lit" cx="${MARK_LENS.cx}" cy="${MARK_LENS.cy}" rx="${MARK_LENS.rx}" ry="${MARK_LENS.ry}" fill="${LAMP.lens}" /></svg>
 `;
 }
 
