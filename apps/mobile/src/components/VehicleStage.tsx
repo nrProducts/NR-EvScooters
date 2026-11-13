@@ -85,12 +85,13 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
   const poolId = `pool-${uid}`;
 
   // The studio's lighting. Light: a white sweep with a bright floor pool.
-  // Dark: a dim showroom, only slightly lighter than the card at the centre,
-  // a faint pool and a deeper contact shadow. A white centre on the dark card
-  // read as a glaring spotlight and washed out the scooter's black parts.
+  // Dark: "steel grey" (picked from the dark-mode stage review): a cool
+  // blue-grey studio, lighter behind the scooter. It sits beside the scooter's
+  // cyan panels without fighting them, and keeps the black tyres and seat
+  // visible, where a near-black stage swallowed them and a white centre glared.
   const stage = isDarkScheme()
-    ? { lit: '#2C332F', mid: COLORS.gray[100], edge: COLORS.gray[50], pool: 0.07, shadow: '#000000' }
-    : { lit: COLORS.white, mid: COLORS.gray[100], edge: COLORS.gray[200], pool: 0.9, shadow: '#0F172A' };
+    ? { lit: '#4A5662', mid: '#2C353E', edge: '#181D22', poolColor: '#D2E1F0', pool: 0.16, shadow: '#000000' }
+    : { lit: COLORS.white, mid: COLORS.gray[100], edge: COLORS.gray[200], poolColor: '#FFFFFF', pool: 0.9, shadow: '#0F172A' };
 
   const resolvedZoom = zoom ?? (compact ? 1.12 : 1.2);
   const resolvedShadow = shadow ?? {
@@ -110,7 +111,7 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
         // this only guarantees that no measurement quirk in react-native-svg's
         // percentage sizing can ever expose bare card-white behind the stage —
         // the exact failure this component shipped with.
-        backgroundColor: COLORS.gray[100],
+        backgroundColor: stage.mid,
       }}
     >
       {/* Backdrop: radial vignette, lighter at top-centre, so the stage reads
@@ -143,8 +144,8 @@ export const VehicleStage: React.FC<VehicleStageProps> = ({
         <Svg width="100%" height="100%">
           <Defs>
             <RadialGradient id={poolId} cx="50%" cy="50%" rx="50%" ry="50%">
-              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={stage.pool} />
-              <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+              <Stop offset="0%" stopColor={stage.poolColor} stopOpacity={stage.pool} />
+              <Stop offset="100%" stopColor={stage.poolColor} stopOpacity={0} />
             </RadialGradient>
           </Defs>
           <Ellipse cx="50%" cy="50%" rx="50%" ry="50%" fill={`url(#${poolId})`} />

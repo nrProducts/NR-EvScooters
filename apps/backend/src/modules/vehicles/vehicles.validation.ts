@@ -91,6 +91,17 @@ export const scrapVehicleBody = z.object({
     scrapped_on: dateSchema.optional(),
 });
 
+/** POST /vehicles/:id/status — see vehicleStatus.service.ts. */
+export const changeVehicleStatusBody = z.discriminatedUnion("status", [
+    z.object({ status: z.literal("available") }),
+    z.object({
+        status: z.literal("maintenance"),
+        description: z.string().trim().min(3, "Describe the issue.").max(1000),
+        rider_action: z.enum(["temp_vehicle", "pause", "end_plan"]).optional(),
+        temp_vehicle_id: z.string().uuid("Pick the scooter to give the rider.").optional(),
+    }),
+]);
+
 export const unassignVehicleBody = z.object({
     reason: z.string().trim().min(3, "Give a reason of at least 3 characters.").max(500),
 });

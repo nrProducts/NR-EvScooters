@@ -38,6 +38,9 @@ export type AuditAction =
     | "invoice.late_fee_charged"
     | "rental.originals_returned" | "rental.originals_not_returned"
     | "rental.completed" | "rental.moved_to_maintenance" | "rental.return_requested" | "rental.return_rejected"
+    // Staff ended the plan on the spot (adminEndPlanNow): scooter set to
+    // Available, or sent to maintenance with "end plan".
+    | "rental.force_ended"
     | "return.inspected" | "return.payment_verified"
     | "referral.redeemed" | "referral.qualified"
     | "payment.order_created" | "payment.verified" | "payment.failed" | "payment.webhook_received"

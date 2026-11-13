@@ -393,7 +393,7 @@ export const ta: Copy = {
     'maintenance.beingRepaired': 'உங்கள் ஸ்கூட்டர் பழுதுபார்க்கப்படுகிறது',
     'maintenance.expectedReady': '{time} அளவில் தயாராகும்.',
     'maintenance.inMaintenance': 'உங்கள் ஸ்கூட்டர் பராமரிப்பில் உள்ளது',
-    'maintenance.useTempVehicle': 'தயாராகும் வரை இந்த தற்காலிக வாகனத்தைப் பயன்படுத்தவும்.',
+    'maintenance.useTempVehicle': 'உங்களுக்கு வேறு ஸ்கூட்டர் வழங்கப்பட்டுள்ளது. உங்கள் திட்டம் முடியும் வரை இது உங்களுடையது.',
 
     // --- Home hero card ---------------------------------------------------
     'hero.kycRequired.heading': 'உங்கள் முதல் சவாரிக்கு ஒரு படி',

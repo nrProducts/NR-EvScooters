@@ -79,6 +79,17 @@ router.post(
     asyncHandler(c.unassignVehicleHandler),
 );
 
+// "Change status" on the Vehicles list: Available (ends the current rider's
+// plan, closes open maintenance) or Maintenance (temp scooter / pause / end
+// plan for the rider). See vehicleStatus.service.ts. vehicles.edit, the same
+// grant that moves a rental to maintenance.
+router.post(
+    "/:id/status",
+    requireAction("vehicles", "edit"),
+    validate({ params: v.uuidParam, body: v.changeVehicleStatusBody }),
+    asyncHandler(c.changeVehicleStatusHandler),
+);
+
 router.post(
     "/:id/assign-to-user",
     requireAction("vehicles", "assign"),

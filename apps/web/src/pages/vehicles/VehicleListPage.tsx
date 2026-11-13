@@ -28,8 +28,8 @@ import { VehicleHistoryDialog } from "@/components/vehicles/VehicleHistoryDialog
 import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
 import { useFleetTelemetry } from "@/hooks/useTelematics";
 import { isLowBattery } from "@/services/api/telematics";
-import { useVehicles, useCreateVehicle, useUpdateVehicle, useUnassignVehicle } from "@/hooks/useVehicles";
-import { useCreateMaintenanceTicket } from "@/hooks/useMaintenance";
+import { useVehicles, useCreateVehicle, useUnassignVehicle } from "@/hooks/useVehicles";
+import { ChangeVehicleStatusDialog } from "@/components/vehicles/ChangeVehicleStatusDialog";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { ApiError } from "@/services/api/httpClient";
@@ -51,8 +51,7 @@ export default function VehicleListPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [historyTarget, setHistoryTarget] = useState<string | null>(null);
-  const [maintenanceTarget, setMaintenanceTarget] = useState<Vehicle | null>(null);
-  const [issueDescription, setIssueDescription] = useState("");
+  const [statusTarget, setStatusTarget] = useState<Vehicle | null>(null);
   const [assignTarget, setAssignTarget] = useState<Vehicle | null>(null);
   const [unassignTarget, setUnassignTarget] = useState<Vehicle | null>(null);
   const [unassignReason, setUnassignReason] = useState("");
@@ -85,14 +84,7 @@ export default function VehicleListPage() {
     sortBy: sort.by as "created_at" | "display_name" | "registration_number", sortDir: sort.dir,
   });
   const createVehicle = useCreateVehicle();
-  const updateVehicle = useUpdateVehicle();
-  const createMaintenanceTicket = useCreateMaintenanceTicket();
   const unassignVehicle = useUnassignVehicle();
-
-  const closeMaintenanceDialog = () => {
-    setMaintenanceTarget(null);
-    setIssueDescription("");
-  };
 
   const closeUnassignDialog = () => {
     setUnassignTarget(null);
@@ -110,26 +102,6 @@ export default function VehicleListPage() {
           navigate(`/bookings/returns/${rentalId}`);
         },
         onError: (err) => toastError(err, "Could not unassign vehicle"),
-      },
-    );
-  };
-
-  // Opening the ticket IS putting the scooter into maintenance.
-  //
-  // This used to open a ticket and then PATCH the vehicle's status, which was
-  // two writes that could disagree — and the second one no longer does
-  // anything: `recompute_vehicle_status()` derives the status from the open
-  // ticket, and a trigger applies it in the same transaction as the insert.
-  const confirmMaintenance = () => {
-    if (!maintenanceTarget) return;
-    createMaintenanceTicket.mutate(
-      { vehicle_id: maintenanceTarget.id, description: issueDescription.trim() },
-      {
-        onSuccess: () => {
-          toastSuccess("Vehicle marked in maintenance");
-          closeMaintenanceDialog();
-        },
-        onError: (err) => toastError(err, "Could not open maintenance ticket"),
       },
     );
   };
@@ -275,19 +247,14 @@ export default function VehicleListPage() {
                 <UserX className="mr-2 h-4 w-4" /> Unassign
               </DropdownMenuItem>
             )}
-            {v.status !== "maintenance" && v.status !== "retired" && v.status !== "assigned" &&
-              hasAction(user, "maintenance", "create") && (
-              <DropdownMenuItem onClick={() => setMaintenanceTarget(v)}>
-                <Wrench className="mr-2 h-4 w-4" /> Mark in maintenance
+            {/* Available / Maintenance. Not a field edit (the status is
+                derived): the dialog runs the actions that produce it. */}
+            {(v.status === "available" || v.status === "assigned" || v.status === "maintenance") &&
+              hasAction(user, "vehicles", "edit") && (
+              <DropdownMenuItem onClick={() => setStatusTarget(v)}>
+                <Wrench className="mr-2 h-4 w-4" /> Change status
               </DropdownMenuItem>
             )}
-            {/*
-              "Mark available" is gone. `vehicles.status` is derived, so the
-              way back to available is resolving the maintenance ticket that
-              made it unavailable — which is what the Maintenance page does.
-              A button here would have written a value the next recompute
-              immediately overwrote.
-            */}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -407,49 +374,7 @@ export default function VehicleListPage() {
         }
       />
 
-      <Dialog open={!!maintenanceTarget} onOpenChange={(o) => !o && closeMaintenanceDialog()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Mark {maintenanceTarget?.name} in maintenance</DialogTitle>
-            <DialogDescription>
-              Describe the current issue. This opens a maintenance ticket and sets the vehicle status to
-              "maintenance" until it's marked available again.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            <Label>Issue (at least 3 characters)</Label>
-            <Textarea
-              value={issueDescription}
-              onChange={(e) => setIssueDescription(e.target.value)}
-              placeholder="Issue"
-              rows={3}
-            />
-          </div>
-          {(createMaintenanceTicket.isError || updateVehicle.isError) && (
-            <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              {createMaintenanceTicket.error instanceof ApiError
-                ? createMaintenanceTicket.error.message
-                : updateVehicle.error instanceof ApiError
-                  ? updateVehicle.error.message
-                  : "Something went wrong. Please try again."}
-            </p>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={closeMaintenanceDialog}>
-              Cancel
-            </Button>
-            <Button
-              disabled={issueDescription.trim().length < 3 || createMaintenanceTicket.isPending || updateVehicle.isPending}
-              onClick={confirmMaintenance}
-            >
-              {(createMaintenanceTicket.isPending || updateVehicle.isPending) && (
-                <Spinner className="h-4 w-4" />
-              )}
-              Mark in maintenance
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ChangeVehicleStatusDialog vehicle={statusTarget} onOpenChange={(o) => !o && setStatusTarget(null)} />
 
       <Dialog open={!!unassignTarget} onOpenChange={(o) => !o && closeUnassignDialog()}>
         <DialogContent>

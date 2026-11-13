@@ -56,13 +56,19 @@ export interface UserReferralRow {
   qualified_at: string | null;
   /** The referrer on "referred by"; the referee on each "referred" row. */
   person: ReferralParty;
+  /** The reward card this referral earned (on "referred" rows); null when none was issued. */
+  reward?: { status: RewardCardStatus; amount: number } | null;
 }
+
+export type RewardCardStatus = "available" | "reserved" | "redeemed" | "expired" | "revoked";
 
 export interface UserReferrals {
   referred_by: UserReferralRow | null;
   referred: UserReferralRow[];
   referred_count: number;
   qualified_count: number;
+  /** How many of the rewards those referrals earned have been spent. */
+  rewards_used_count?: number;
 }
 
 /** GET /referrals/admin/users/:userId — who referred this user, and who they referred. */

@@ -409,7 +409,7 @@ export const en = {
     'maintenance.beingRepaired': 'Your Scooter Is Being Repaired',
     'maintenance.expectedReady': 'Expected ready by {time}.',
     'maintenance.inMaintenance': 'Your Scooter Is In Maintenance',
-    'maintenance.useTempVehicle': "Use this temporary vehicle until it's ready.",
+    'maintenance.useTempVehicle': "You've been moved to another scooter. It's yours for the rest of your plan.",
 
     // --- Home hero card ---------------------------------------------------
     'hero.kycRequired.heading': 'One step to your first ride',

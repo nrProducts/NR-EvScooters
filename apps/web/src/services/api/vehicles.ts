@@ -150,6 +150,23 @@ export async function unassignVehicle(id: string, reason: string): Promise<{ ren
   return apiClient.post<{ rentalId: string }>(`/vehicles/${id}/unassign`, { reason });
 }
 
+/** What happens to the rider when their scooter is sent to maintenance. */
+export type RiderAction = "temp_vehicle" | "pause" | "end_plan";
+
+export type ChangeVehicleStatusInput =
+  | { status: "available" }
+  | { status: "maintenance"; description: string; rider_action?: RiderAction; temp_vehicle_id?: string };
+
+/**
+ * POST /vehicles/:id/status — "Change status" on the Vehicles list.
+ * Available: closes open maintenance and ends the current rider's plan now
+ * (deposit refund queued for review). Maintenance: opens a ticket, after
+ * giving the rider a temp scooter, pausing their plan, or ending it.
+ */
+export async function changeVehicleStatus(id: string, input: ChangeVehicleStatusInput): Promise<VehicleDetail> {
+  return apiClient.post<VehicleDetail>(`/vehicles/${id}/status`, input);
+}
+
 /**
  * POST /vehicles/:id/assign-to-user — requireStaff. Direct handover, no booking involved.
  * If the rider already holds a different vehicle, the backend 409s (ApiError.fields carries

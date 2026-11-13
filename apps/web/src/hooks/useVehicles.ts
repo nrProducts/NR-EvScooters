@@ -55,6 +55,19 @@ export function useUnassignVehicle() {
   });
 }
 
+export function useChangeVehicleStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: api.ChangeVehicleStatusInput }) => api.changeVehicleStatus(id, input),
+    // A status change can close tickets, end a plan and queue a refund.
+    onSuccess: () => {
+      for (const key of ["vehicles", "vehicle", "maintenance", "bookings", "refunds", "users"]) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
+    },
+  });
+}
+
 export function useAssignVehicleToUser() {
   const qc = useQueryClient();
   return useMutation({

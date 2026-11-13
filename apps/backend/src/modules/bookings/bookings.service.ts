@@ -7,7 +7,7 @@ import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { hasActiveRentalForUser } from "../users/users.service";
-import { computeLateReturnPenalty } from "../rentals/rentals.service";
+import { computeLateReturnPenalty, releaseStaleAssignment } from "../rentals/rentals.service";
 import { hasOpenReturn, hasOpenReturnForUser } from "../rentals/abandonedRenewal";
 import { returnStageSummaryFor } from "../returns/returns.service";
 import { qualifyReferralIfApplicable } from "../referrals/referrals.service";
@@ -1852,10 +1852,27 @@ export async function confirmPickup(
 
     if (vehicleError) throw vehicleError;
     if (!vehicle) throw notFound("Vehicle not found.");
+
+    // 'assigned' with no rider: a leftover open assignment from a rental that
+    // already ended. Close it and re-read, rather than blocking the handover
+    // on a scooter nobody is riding.
+    if (vehicle.status === "assigned" && (await releaseStaleAssignment(vehicle.id))) {
+        const { data: fresh, error: freshError } = await supabaseAdmin
+            .from("vehicles").select("status").eq("id", vehicle.id).maybeSingle();
+        if (freshError) throw freshError;
+        if (fresh) vehicle.status = fresh.status;
+    }
+
     // 'reserved' is the normal path (already held by this booking);
     // 'available' covers a manual override onto a unit never auto-allocated.
     if (vehicle.status !== "reserved" && vehicle.status !== "available") {
-        throw businessRule("This vehicle is not available for pickup.");
+        throw businessRule(
+            vehicle.status === "maintenance"
+                ? "This scooter is in maintenance. Resolve its maintenance ticket first, or pick another scooter."
+                : vehicle.status === "assigned"
+                    ? "This scooter is still assigned to another rider. Pick another scooter."
+                    : "This scooter has been scrapped. Pick another scooter.",
+        );
     }
     if (vehicle.hub_id !== booking.hub_id) {
         throw businessRule("This vehicle is not at the booking's pickup station.");

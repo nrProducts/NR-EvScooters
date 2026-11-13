@@ -5,7 +5,8 @@ import { writeAudit } from "../../common/audit";
 import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { getDepositForSubscriptionOrNull, settleDepositOnReturn } from "../deposits/deposits.service";
-import { paymentForRefund, processRefund } from "../refunds/refunds.service";
+import { initiateStaffEndedDepositRefund, paymentForRefund, processRefund } from "../refunds/refunds.service";
+import { cancelSubscriptionForBooking } from "../subscriptions/subscriptions.service";
 import { AuthContext, Paginated } from "../../types";
 import {
     AdminRentalRow, AdminUnassignVehicleInput, CompleteRideInput, ListRentalsFilters, MoveToMaintenanceInput,
@@ -870,6 +871,146 @@ export async function adminUnassignVehicle(
     });
 
     return { rentalId: rental.id };
+}
+
+/**
+ * Closes a vehicle's open assignment when the rental it belongs to has already
+ * ended. Such a leftover keeps the scooter 'assigned' with no rider, which
+ * blocks every later handover (e.g. a temp-vehicle hand-back that landed on
+ * a rental that had since ended). Returns true if one was closed; the
+ * assignment trigger recomputes the vehicle's status.
+ */
+export async function releaseStaleAssignment(vehicleId: string): Promise<boolean> {
+    const { data, error } = await supabaseAdmin
+        .from("rental_vehicle_assignments")
+        .select("rental_id, rentals!inner(status)")
+        .eq("vehicle_id", vehicleId)
+        .is("released_at", null)
+        .maybeSingle();
+    if (error) throw error;
+    const rental = unwrap<{ status: string }>(data?.rentals);
+    if (!data || !rental || rental.status === "active") return false;
+    await releaseAssignment(data.rental_id, new Date());
+    return true;
+}
+
+/**
+ * Ends the plan of whoever is riding this vehicle, immediately — the staff
+ * action behind setting a scooter to Available, or sending it to maintenance
+ * with "end plan" (vehicleStatus.service.ts).
+ *
+ * Unlike adminUnassignVehicle, which opens a return and leaves the scooter
+ * with the rider until inspection and settlement finish, this frees the
+ * scooter now:
+ *
+ *   - the rental is force-ended and its vehicle assignment released (the
+ *     assignment trigger recomputes the scooter's status);
+ *   - the subscription is cancelled, so renewals and late fees stop;
+ *   - a renewal invoice a "Review & Renew" preview left behind is voided;
+ *   - the held deposit becomes a PENDING refund for admin review
+ *     (initiateStaffEndedDepositRefund). Nothing is paid out here.
+ *
+ * Unpaid invoices that already exist stay as they are; the debt is real and
+ * can be pursued separately. Returns null when the vehicle has no active
+ * rider, so callers can run it unconditionally.
+ */
+export async function adminEndPlanNow(
+    vehicleId: string,
+    reason: string,
+    actor: AuthContext,
+): Promise<{ rentalId: string; riderId: string; refundId: string | null } | null> {
+    const { data: assignment, error: assignmentError } = await supabaseAdmin
+        .from("rental_vehicle_assignments")
+        .select(`
+            rental_id,
+            rentals!inner(
+                id, user_id, status,
+                rental_returns(status),
+                subscriptions(id, booking_id)
+            )
+        `)
+        .eq("vehicle_id", vehicleId)
+        .is("released_at", null)
+        .maybeSingle();
+    if (assignmentError) throw assignmentError;
+    if (!assignment) return null;
+
+    const rental = unwrap<{
+        id: string; user_id: string; status: string;
+        rental_returns: unknown;
+        subscriptions: unknown;
+    }>(assignment.rentals);
+    if (!rental) return null;
+    if (rental.status !== "active") {
+        // A leftover: the rental ended but its assignment was never closed, so
+        // the scooter is stuck 'assigned' with no rider. Nobody is riding it,
+        // so closing it is the whole fix (the trigger recomputes the status).
+        await releaseAssignment(rental.id, new Date());
+        return null;
+    }
+
+    // A return already under way owns this rental's ending (inspection,
+    // settlement); finishing it there is the only way the money stays right.
+    if (openReturn(rental.rental_returns)) {
+        throw conflict("A return is already in progress for this scooter — finish it in Rental Operations first.");
+    }
+
+    const endedAt = new Date();
+    const { data: ended, error: rentalError } = await supabaseAdmin
+        .from("rentals")
+        .update({ status: "force_ended", returned_at: endedAt.toISOString(), end_reason: reason })
+        .eq("id", rental.id)
+        .eq("status", "active")
+        .select("id")
+        .maybeSingle();
+    if (rentalError) throw rentalError;
+    if (!ended) return null; // Ended by a concurrent action.
+
+    await releaseAssignment(rental.id, endedAt);
+
+    const subscription = unwrap<{ id: string; booking_id: string | null }>(rental.subscriptions);
+    let refundId: string | null = null;
+    if (subscription) {
+        if (subscription.booking_id) {
+            await cancelSubscriptionForBooking(subscription.booking_id, reason, actor);
+        }
+        // Best-effort from here: the plan is already over, and a failure in
+        // either step is recoverable by hand (Billing / Deposits pages).
+        try {
+            await voidAbandonedRenewalInvoice(subscription.id);
+        } catch (voidError) {
+            console.error("[rentals] end plan: failed to void renewal invoice", {
+                rentalId: rental.id, error: voidError instanceof Error ? voidError.message : String(voidError),
+            });
+        }
+        try {
+            refundId = await initiateStaffEndedDepositRefund(subscription.id, actor);
+        } catch (refundError) {
+            console.error("[rentals] end plan: failed to queue deposit refund", {
+                rentalId: rental.id, error: refundError instanceof Error ? refundError.message : String(refundError),
+            });
+        }
+    }
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: rental.user_id,
+        action: "rental.force_ended",
+        entityType: "rental",
+        entityId: rental.id,
+        after: { initiated_by: "staff", reason, vehicle_id: vehicleId, deposit_refund_id: refundId },
+    });
+
+    await notifyUser(rental.user_id, {
+        template: "rental_completed",
+        title: "Your plan has ended",
+        body: refundId
+            ? "Our team has ended your plan on this scooter. Your deposit refund is being reviewed."
+            : "Our team has ended your plan on this scooter. Contact support if you have questions.",
+        screen: "my-scooter",
+    });
+
+    return { rentalId: rental.id, riderId: rental.user_id, refundId };
 }
 
 /** All of the rider's own rentals, most recent first. */
