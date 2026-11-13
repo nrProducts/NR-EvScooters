@@ -1,6 +1,6 @@
 import { RentalDistanceCard } from "@/components/returns/RentalDistanceCard";
 import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@/lib/useQuery";
 import { fetchRentalOriginals } from "@/services/api/originals";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/common/ErrorState";
 import {
   useReturnDetail, useSaveInspection, usePaymentReview, useVerifyReturnPayment, useApproveReturnSettlement,
+  useSetShortRentalForfeit,
   useAddDamageCharge,
 } from "@/hooks/useReturns";
 import { useMoveRideToMaintenance, useRejectReturn } from "@/hooks/useRentals";
@@ -31,6 +32,8 @@ import { DamageChargeCard } from "./DamageChargeCard";
 import { AddDamageChargeModal, type DamageDraft } from "./AddDamageChargeModal";
 import { paymentMethodLabel, type DamageCategory, type Deposit, type ReturnStageStatus } from "@/types";
 import { usePageOwnsTitle } from "@/hooks/usePageOwnsTitle";
+import { useAuthStore } from "@/store/authStore";
+import { hasAction } from "@/lib/permissions";
 import { useBreadcrumbLabel, useGoBack } from "@/hooks/useNavTrail";
 
 interface OtherChargeForm {
@@ -114,6 +117,8 @@ export default function ReturnDetailPage() {
   const moveToMaintenance = useMoveRideToMaintenance();
   const rejectReturn = useRejectReturn();
   const verifyPayment = useVerifyReturnPayment();
+  const setForfeit = useSetShortRentalForfeit();
+  const canApproveReturns = hasAction(useAuthStore((st) => st.user), "returns", "approve");
 
   const [confirmNoDamage, setConfirmNoDamage] = useState(false);
   const [otherCharges, setOtherCharges] = useState<OtherChargeForm[]>([]);
@@ -188,7 +193,8 @@ export default function ReturnDetailPage() {
   const depositForfeitedAmount = deposit && (
     deposit.status === "forfeited"
     || !deposit.is_refundable
-    || (deposit.min_rental_days_required > 0 && deposit.rental_days_completed < deposit.min_rental_days_required)
+    || (!deposit.short_rental_forfeit_waived
+      && deposit.min_rental_days_required > 0 && deposit.rental_days_completed < deposit.min_rental_days_required)
   ) ? deposit.amount : 0;
   const previewOtherCharges = otherCharges.filter(otherChargeValid).reduce((sum, c) => sum + Number(c.amount), 0);
   const stagedDamagesAmount = stagedDamages.reduce((sum, d) => sum + d.amount, 0);
@@ -573,7 +579,21 @@ export default function ReturnDetailPage() {
                   renewalLateFee={rental.overdue_late_fee}
                 />
               )}
-              <DepositTermsNotice deposit={deposit ?? null} />
+              <DepositTermsNotice
+                deposit={deposit ?? null}
+                // Apply/Remove the short-rental forfeit — only while the return is
+                // still under review, and only for staff who can approve returns.
+                forfeitToggle={!alreadySettled && canApproveReturns && rentalId ? {
+                  pending: setForfeit.isPending,
+                  onChange: (apply) => setForfeit.mutate(
+                    { rentalId, apply },
+                    {
+                      onSuccess: () => toastSuccess(apply ? "Deposit adjustment applied" : "Deposit adjustment removed — deposit will be refunded"),
+                      onError: (err) => toastError(err, "Could not change the deposit adjustment"),
+                    },
+                  ),
+                } : undefined}
+              />
             </CardContent>
           </Card>
 
@@ -828,19 +848,30 @@ function PaymentStatusPanel({
  * finished short of their plan's minimum rental days has forfeited the
  * deposit outright.
  */
-function DepositTermsNotice({ deposit }: { deposit: Deposit | null }) {
+function DepositTermsNotice({
+  deposit,
+  forfeitToggle,
+}: {
+  deposit: Deposit | null;
+  /** When given, shows Apply / Remove for the short-rental forfeit. */
+  forfeitToggle?: { pending: boolean; onChange: (apply: boolean) => void };
+}) {
   if (!deposit) return null;
 
   const hasThreshold = deposit.min_rental_days_required > 0;
   const shortOfThreshold = hasThreshold
     && deposit.rental_days_completed < deposit.min_rental_days_required;
+  // Staff removed the forfeit: the deposit is refunded less charges after all.
+  const waived = shortOfThreshold && !!deposit.short_rental_forfeit_waived;
+  const forfeited = shortOfThreshold && !waived;
+  const canToggle = !!forfeitToggle && deposit.is_refundable && shortOfThreshold && deposit.status === "held";
   if (!hasThreshold && deposit.onboarding_charge_amount <= 0 && deposit.is_refundable) return null;
 
   return (
     <div
       className={cn(
         "mt-3 space-y-1 rounded-lg border p-3 text-[0.6875rem]",
-        shortOfThreshold || !deposit.is_refundable || deposit.status === "forfeited"
+        forfeited || !deposit.is_refundable || deposit.status === "forfeited"
           ? "border-destructive/40 bg-destructive/5"
           : "border-border bg-muted/40",
       )}
@@ -862,12 +893,19 @@ function DepositTermsNotice({ deposit }: { deposit: Deposit | null }) {
         </p>
       )}
       {deposit.is_refundable && hasThreshold && (
-        <p className={shortOfThreshold ? "font-medium text-destructive" : "text-muted-foreground"}>
-          {shortOfThreshold ? (
+        <p className={forfeited ? "font-medium text-destructive" : "text-muted-foreground"}>
+          {forfeited ? (
             <>
               Rider has completed {deposit.rental_days_completed} of the{" "}
               {deposit.min_rental_days_required} rental days this plan requires — the{" "}
               {formatCurrency(deposit.amount)} security deposit is forfeited, not refunded.
+            </>
+          ) : waived ? (
+            <>
+              Rider has completed {deposit.rental_days_completed} of the{" "}
+              {deposit.min_rental_days_required} rental days this plan requires, but the deposit
+              adjustment has been <span className="font-semibold text-foreground">removed</span> — the{" "}
+              {formatCurrency(deposit.amount)} security deposit is refunded, less any charges above.
             </>
           ) : (
             <>
@@ -877,6 +915,35 @@ function DepositTermsNotice({ deposit }: { deposit: Deposit | null }) {
             </>
           )}
         </p>
+      )}
+      {canToggle && (
+        <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-2">
+          <span className="text-muted-foreground">
+            Deposit adjustment (short of {deposit.min_rental_days_required} days)
+          </span>
+          <div className="inline-flex shrink-0 rounded-lg border border-border bg-card p-0.5" role="group" aria-label="Deposit adjustment">
+            {([["Apply", true], ["Remove", false]] as const).map(([label, apply]) => {
+              const active = apply === forfeited;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={active}
+                  disabled={forfeitToggle!.pending || active}
+                  onClick={() => forfeitToggle!.onChange(apply)}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-[0.6875rem] font-semibold transition-smooth disabled:cursor-default",
+                    active
+                      ? apply ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50",
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );

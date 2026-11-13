@@ -29,6 +29,10 @@ import DepositsPage from "@/pages/deposits/DepositsPage";
 import BillingPage from "@/pages/billing/BillingPage";
 import PlansPage from "@/pages/plans/PlansPage";
 import ReconciliationPage from "@/pages/reconciliation/ReconciliationPage";
+import TaxInvoicesPage from "@/pages/gst/TaxInvoicesPage";
+import PurchasesPage from "@/pages/purchases/PurchasesPage";
+import GstReturnsPage from "@/pages/gst/GstReturnsPage";
+import BooksPage from "@/pages/books/BooksPage";
 import RevenuePage from "@/pages/revenue/RevenuePage";
 import NotificationsPage from "@/pages/notifications/NotificationsPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
@@ -107,6 +111,10 @@ export function AppRoutes() {
         <Route path="/billing" element={<BillingPage />} />
         <Route path="/plans" element={<PlansPage />} />
         <Route path="/reconciliation" element={<ReconciliationPage />} />
+        <Route path="/tax-invoices" element={<TaxInvoicesPage />} />
+        <Route path="/purchases" element={<PurchasesPage />} />
+        <Route path="/gst-returns" element={<GstReturnsPage />} />
+        <Route path="/books" element={<BooksPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/staff-access/:userId/permissions" element={<PermissionMatrixPage />} />

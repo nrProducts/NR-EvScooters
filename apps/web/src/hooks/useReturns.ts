@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@/lib/useQuery";
 import * as api from "@/services/api/returns";
 
 export function useReturnDetail(rentalId: string | undefined) {
@@ -50,6 +51,18 @@ export function usePaymentReview(rentalId: string | undefined, enabled: boolean)
     queryKey: ["return-payment", rentalId],
     queryFn: () => api.fetchPaymentReview(rentalId!),
     enabled: !!rentalId && enabled,
+  });
+}
+
+export function useSetShortRentalForfeit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rentalId, apply }: { rentalId: string; apply: boolean }) => api.setShortRentalForfeit(rentalId, apply),
+    onSuccess: (_data, { rentalId }) => {
+      qc.invalidateQueries({ queryKey: ["return-detail", rentalId] });
+      qc.invalidateQueries({ queryKey: ["return-payment", rentalId] });
+      qc.invalidateQueries({ queryKey: ["deposits"] });
+    },
   });
 }
 

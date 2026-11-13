@@ -22,7 +22,9 @@ import {
 import type { UploadedFile } from "../kyc/kyc.storage";
 import { businessToday } from "../../common/dates";
 import { previewOverdueLateFee } from "../rentals/overdueLateFee";
+import { paidPeriodIds } from "../payments/renewalPeriod";
 import { scrubAuthIdentity } from "../privacy/privacy.erasure";
+import { commentSummaryByUser } from "./users.comments";
 
 /**
  * A user is five tables now.
@@ -162,11 +164,12 @@ function businessDatePlus(n: number): string {
  */
 async function riderStateUserIds(
     filters: ListUsersFilters,
-): Promise<{ ids: string[]; dueOn: Map<string, string> } | null> {
+): Promise<{ ids: string[]; dueOn: Map<string, string>; lateFees: Map<string, number> | null } | null> {
     const due = filters.due ?? [];
-    if (!filters.activeRental && due.length === 0) return null;
+    if (!filters.activeRental && !filters.amountPending && due.length === 0) return null;
 
     const dueOn = new Map<string, string>();
+    let lateFees: Map<string, number> | null = null;
     let ids: Set<string> | null = null;
     const narrow = (next: Iterable<string>) => {
         const n = new Set(next);
@@ -177,6 +180,12 @@ async function riderStateUserIds(
         const { data, error } = await supabaseAdmin.from("rentals").select("user_id").eq("status", "active");
         if (error) throw error;
         narrow((data ?? []).map((r) => r.user_id as string));
+    }
+
+    if (filters.amountPending) {
+        const pending = await usersWithAmountPending();
+        lateFees = pending.lateFees;
+        narrow(pending.ids);
     }
 
     if (due.length > 0) {
@@ -193,12 +202,30 @@ async function riderStateUserIds(
         const subIds = (periods ?? []).map((p) => p.subscription_id).filter((x): x is string => !!x);
         if (subIds.length === 0) narrow([]);
         else {
-            const { data: live, error: liveError } = await supabaseAdmin
+            const { data: liveRows, error: liveError } = await supabaseAdmin
                 .from("subscriptions")
                 .select("id, user_id")
                 .in("id", subIds)
                 .in("status", ["active", "paused", "past_due"]);
             if (liveError) throw liveError;
+
+            // A rider who has already paid for the NEXT period is not due: the
+            // paid-ahead period sits as `scheduled` until the cutover promotes it,
+            // so without this they stayed in "Upcoming dues" until that time passed.
+            // Only a PAID scheduled row counts — an abandoned renewal preview
+            // creates the row too (see paidPeriodIds).
+            const { data: scheduled, error: scheduledError } = await supabaseAdmin
+                .from("subscription_periods")
+                .select("id, subscription_id")
+                .in("subscription_id", (liveRows ?? []).map((s) => s.id as string))
+                .eq("status", "scheduled");
+            if (scheduledError) throw scheduledError;
+            const paid = await paidPeriodIds((scheduled ?? []).map((p) => p.id as string));
+            const paidAhead = new Set(
+                (scheduled ?? []).filter((p) => paid.has(p.id as string)).map((p) => p.subscription_id as string),
+            );
+            const live = (liveRows ?? []).filter((s) => !paidAhead.has(s.id as string));
+
             const liveIds = new Set((live ?? []).map((s) => s.id as string));
             for (const p of periods ?? []) {
                 if (p.subscription_id && p.due_on && liveIds.has(p.subscription_id)) {
@@ -209,7 +236,7 @@ async function riderStateUserIds(
             narrow((live ?? []).map((s) => s.user_id as string));
         }
     }
-    return { ids: [...(ids ?? [])], dueOn };
+    return { ids: [...(ids ?? [])], dueOn, lateFees };
 }
 
 export async function listUsers(
@@ -326,13 +353,17 @@ export async function listUsers(
     }
 
     const userIds = rows.map((r) => r.id);
-    const [vehicles, plans, outstanding, openReturns] = await Promise.all([
+    const [vehicles, plans, outstanding, openReturns, comments] = await Promise.all([
         activeVehicleByUser(userIds),
         currentPlanByUser(userIds),
         outstandingByUser(userIds),
         openReturnByUser(userIds),
+        commentSummaryByUser(userIds),
     ]);
-    const pendingLateFees = await pendingLateFeeByUser(userIds.filter((id) => !outstanding.get(id)));
+    // With "Amount pending" on, the filter has already previewed every late fee
+    // that can be on this page — reuse it rather than previewing again.
+    const pendingLateFees = restrictTo?.lateFees
+        ?? await pendingLateFeeByUser(userIds.filter((id) => !outstanding.get(id)));
 
     const items: UserListItem[] = rows.map((row) => {
         const planInfo = plans.get(row.id);
@@ -348,6 +379,7 @@ export async function listUsers(
             cycle_time: planInfo?.cycle_time ?? null,
             picked_up: planInfo?.picked_up ?? false,
             outstanding_amount: outstanding.get(row.id) ?? pendingLateFees.get(row.id) ?? 0,
+            comments: comments.get(row.id) ?? { count: 0, latest: null },
             open_return: openReturns.get(row.id) ?? null,
         };
     });
@@ -1734,6 +1766,43 @@ async function outstandingByUser(userIds: string[]): Promise<Map<string, number>
 }
 
 /**
+ * Every rider who owes money right now — the "Amount pending" filter. Same
+ * two sources as the grid's `outstanding_amount`: an unpaid, non-void invoice
+ * balance, or (with no invoice yet) a past-due plan whose late fee is already
+ * running. So the filter and the red row marker always agree.
+ *
+ * Also returns the late fees it previewed, so listUsers can reuse them for the
+ * page's rows instead of previewing the same subscriptions a second time.
+ */
+async function usersWithAmountPending(): Promise<{ ids: string[]; lateFees: Map<string, number> }> {
+    const [balances, pastDue] = await Promise.all([
+        supabaseAdmin
+            .from("v_invoice_balances")
+            .select("user_id, status")
+            .eq("is_paid", false)
+            .gt("balance_amount", 0),
+        supabaseAdmin
+            .from("subscriptions")
+            .select("user_id")
+            .eq("status", "past_due"),
+    ]);
+    if (balances.error) throw balances.error;
+    if (pastDue.error) throw pastDue.error;
+
+    const ids = new Set(
+        (balances.data ?? [])
+            .filter((r) => r.user_id && r.status !== "void")
+            .map((r) => r.user_id as string),
+    );
+    // Only riders with no unpaid invoice need the (slower) live late-fee preview.
+    const candidates = [...new Set((pastDue.data ?? []).map((s) => s.user_id as string))].filter((id) => !ids.has(id));
+    const lateFees = await pendingLateFeeByUser(candidates);
+    for (const id of lateFees.keys()) ids.add(id);
+
+    return { ids: [...ids], lateFees };
+}
+
+/**
  * The overdue late fee is minted into a real invoice lazily — only when the
  * rider opens Return, or staff process one (ensureOverdueLateFeeInvoice) —
  * so a subscription can sit `past_due` for days with genuine money owed and
@@ -1757,11 +1826,19 @@ async function pendingLateFeeByUser(userIds: string[]): Promise<Map<string, numb
     if (error) throw error;
     if (!data || data.length === 0) return map;
 
-    for (const row of data) {
-        const preview = await previewOverdueLateFee(row.id);
-        if (preview.isLate && preview.lateFee > 0) {
-            map.set(row.user_id, Math.round(((map.get(row.user_id) ?? 0) + preview.lateFee) * 100) / 100);
-        }
+    // Each preview is several sequential queries (~1 s from the server), so the
+    // subscriptions are previewed in parallel, a batch at a time. One after
+    // another, 30 past-due plans made the "Amount pending" filter take 30 s+.
+    const BATCH = 25;
+    for (let i = 0; i < data.length; i += BATCH) {
+        const batch = data.slice(i, i + BATCH);
+        const previews = await Promise.all(batch.map((row) => previewOverdueLateFee(row.id)));
+        batch.forEach((row, j) => {
+            const preview = previews[j];
+            if (preview.isLate && preview.lateFee > 0) {
+                map.set(row.user_id, Math.round(((map.get(row.user_id) ?? 0) + preview.lateFee) * 100) / 100);
+            }
+        });
     }
     return map;
 }

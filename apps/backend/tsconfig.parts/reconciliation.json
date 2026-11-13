@@ -1,0 +1,11 @@
+{
+    "extends": "./_shared.json",
+    "include": [
+        "../src/modules/reconciliation",
+        "../src/modules/payments",
+        "../src/common",
+        "../src/config",
+        "../src/middleware",
+        "../src/types"
+    ]
+}

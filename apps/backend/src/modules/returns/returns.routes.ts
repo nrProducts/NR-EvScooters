@@ -84,6 +84,15 @@ router.post(
 
 // Settles the deposit against late fees and damages, then refunds or invoices
 // the difference. `returns.approve`, never `returns.view`.
+// Apply / Remove the short-rental deposit forfeit (returned before the plan's
+// minimum rental days). Applied by default; staff can remove it until approval.
+router.post(
+    "/:id/deposit-forfeit",
+    requireAction("returns", "approve"),
+    validate({ params: v.rentalIdParam, body: v.shortRentalForfeitBody }),
+    asyncHandler(c.shortRentalForfeitHandler),
+);
+
 router.post(
     "/:id/approve",
     requireAction("returns", "approve"),

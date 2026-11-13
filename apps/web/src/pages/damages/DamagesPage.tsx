@@ -18,6 +18,7 @@ import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { useDamages, useDamage, useResolveDamageDispute } from "@/hooks/useDamages";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
+import { usePageSize } from "@/hooks/usePageSize";
 import { ApiError } from "@/services/api/httpClient";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -30,11 +31,12 @@ export default function DamagesPage() {
   const bookingId = searchParams.get("bookingId") ?? undefined;
   const [status, setStatus] = useState<DamageStatus | "all">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useDamages({
-    status, bookingId, page, pageSize: 8, sortBy: sort.by as "created_at" | "amount", sortDir: sort.dir,
+    status, bookingId, page, pageSize, sortBy: sort.by as "created_at" | "amount", sortDir: sort.dir,
   });
 
   const columns: DataTableColumn<Damage>[] = [
@@ -113,7 +115,7 @@ export default function DamagesPage() {
           onSortChange={onSortChange}
         />
 
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
 
       <DamageDetailDialog id={detailId} onOpenChange={(o) => !o && setDetailId(null)} />

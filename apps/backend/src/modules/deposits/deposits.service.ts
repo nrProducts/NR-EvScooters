@@ -27,7 +27,7 @@ import { businessToday } from "../../common/dates";
 const DEPOSIT_COLUMNS = `
     id, subscription_id, amount, status, held_at, refund_eligible_on,
     released_at, forfeited_at, forfeit_reason, min_rental_days_required, is_refundable,
-    created_at,
+    short_rental_forfeit_waived, created_at,
     subscriptions!inner(
         user_id,
         users(id, full_name, phone),
@@ -47,6 +47,7 @@ interface RawDepositRow {
     forfeit_reason: string | null;
     min_rental_days_required: number | string | null;
     is_refundable: boolean | null;
+    short_rental_forfeit_waived: boolean | null;
     created_at: string;
     /** Joined so eligibility can be measured without a second round trip. */
     subscriptions: RawSubscriptionSlice | RawSubscriptionSlice[] | null;
@@ -116,11 +117,12 @@ export function deriveEligibility(
     minRentalDays: number,
     rentalDaysCompleted: number,
     isRefundable: boolean = true,
+    shortRentalForfeitWaived: boolean = false,
 ): DepositRefundEligibility {
     if (status === "released") return "refund_processed";
     if (status !== "held") return "not_eligible";
     if (!isRefundable) return "not_eligible";
-    if (minRentalDays > 0 && rentalDaysCompleted < minRentalDays) return "not_eligible";
+    if (!shortRentalForfeitWaived && minRentalDays > 0 && rentalDaysCompleted < minRentalDays) return "not_eligible";
     if (!refundEligibleOn || refundEligibleOn > businessToday()) return "not_eligible";
     return "eligible";
 }
@@ -163,8 +165,10 @@ async function toDepositRow(row: RawDepositRow): Promise<DepositRow> {
         min_rental_days_required: minRentalDays,
         is_refundable: isRefundable,
         rental_days_completed: rentalDaysCompleted,
+        short_rental_forfeit_waived: row.short_rental_forfeit_waived ?? false,
         refund_eligibility: deriveEligibility(
             row.status, row.refund_eligible_on, minRentalDays, rentalDaysCompleted, isRefundable,
+            row.short_rental_forfeit_waived ?? false,
         ),
         created_at: row.created_at,
     };
@@ -274,7 +278,7 @@ export async function settleDepositOnReturn(
 ): Promise<void> {
     const { data: deposit, error } = await supabaseAdmin
         .from("deposits")
-        .select("id, amount, min_rental_days_required, is_refundable, refund_eligible_on, subscriptions!inner(user_id)")
+        .select("id, amount, min_rental_days_required, is_refundable, short_rental_forfeit_waived, refund_eligible_on, subscriptions!inner(user_id)")
         .eq("subscription_id", subscriptionId)
         .eq("status", "held")
         .maybeSingle();
@@ -297,7 +301,9 @@ export async function settleDepositOnReturn(
 
     const minRentalDays = Number(deposit.min_rental_days_required ?? 0);
 
-    if (minRentalDays > 0 && subscription) {
+    // Staff removed the short-rental forfeit on the Return Review — settle it
+    // like any other deposit (refund clock below).
+    if (minRentalDays > 0 && subscription && !deposit.short_rental_forfeit_waived) {
         const daysCompleted = await cumulativeRentalDaysForUser(subscription.user_id, returnedAt);
         if (daysCompleted < minRentalDays) {
             await forfeitForShortRental(

@@ -695,6 +695,7 @@ export async function requestReturn(
             const deposit = await getDepositForSubscriptionOrNull(subscription.id);
             if (
                 deposit && deposit.status === "held"
+                && !deposit.short_rental_forfeit_waived
                 && deposit.min_rental_days_required > 0
                 && deposit.rental_days_completed < deposit.min_rental_days_required
             ) {
@@ -1246,11 +1247,14 @@ export function settlementDepositAmount(
     deposit: {
         status: string; amount: number; min_rental_days_required: number; rental_days_completed: number;
         is_refundable?: boolean;
+        /** Staff removed the short-rental forfeit on the Return Review. */
+        short_rental_forfeit_waived?: boolean;
     } | null,
 ): number {
     const nonRefundableByPlan = !!deposit && deposit.status === "held" && deposit.is_refundable === false;
     const forfeitedForShortRental = !!deposit
         && deposit.status === "held"
+        && !deposit.short_rental_forfeit_waived
         && deposit.min_rental_days_required > 0
         && deposit.rental_days_completed < deposit.min_rental_days_required;
     return nonRefundableByPlan || forfeitedForShortRental ? 0 : (deposit?.amount ?? 0);
@@ -1283,7 +1287,10 @@ export function returnCompletedBody(deposit: SettlementDeposit | null): string {
     if (deposit.is_refundable === false) {
         return `${thanks} Your plan's security deposit is non-refundable, so it will not be refunded.`;
     }
-    if (deposit.min_rental_days_required > 0 && deposit.rental_days_completed < deposit.min_rental_days_required) {
+    if (
+        !deposit.short_rental_forfeit_waived
+        && deposit.min_rental_days_required > 0 && deposit.rental_days_completed < deposit.min_rental_days_required
+    ) {
         return `${thanks} You completed ${deposit.rental_days_completed} of the `
             + `${deposit.min_rental_days_required} rental days your plan requires, so your `
             + "security deposit is not eligible for a refund.";

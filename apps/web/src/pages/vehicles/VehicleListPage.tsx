@@ -28,14 +28,17 @@ import { VehicleHistoryDialog } from "@/components/vehicles/VehicleHistoryDialog
 import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
 import { useFleetTelemetry } from "@/hooks/useTelematics";
 import { isLowBattery } from "@/services/api/telematics";
-import { useVehicles, useCreateVehicle, useUnassignVehicle } from "@/hooks/useVehicles";
+import {
+  useVehicles, useVehicleStatusCounts, useCreateVehicle, useUnassignVehicle,
+} from "@/hooks/useVehicles";
 import { ChangeVehicleStatusDialog } from "@/components/vehicles/ChangeVehicleStatusDialog";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
+import { usePageSize } from "@/hooks/usePageSize";
 import { ApiError } from "@/services/api/httpClient";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { CopyButton } from "@/components/common/CopyButton";
-import { formatDate, timeAgo } from "@/lib/utils";
+import { cn, formatDate, timeAgo } from "@/lib/utils";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
 import type { Vehicle, VehicleStatus } from "@/types";
@@ -48,6 +51,7 @@ export default function VehicleListPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<VehicleStatus | "all">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [historyTarget, setHistoryTarget] = useState<string | null>(null);
@@ -80,9 +84,10 @@ export default function VehicleListPage() {
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useVehicles({
-    search, status, page, pageSize: 8,
+    search, status, page, pageSize,
     sortBy: sort.by as "created_at" | "display_name" | "registration_number", sortDir: sort.dir,
   });
+  const { data: counts } = useVehicleStatusCounts();
   const createVehicle = useCreateVehicle();
   const unassignVehicle = useUnassignVehicle();
 
@@ -297,24 +302,37 @@ export default function VehicleListPage() {
             placeholder="Search name, reg. or VIN…"
             className="sm:max-w-xs"
           />
-          <Select
-            value={status}
-            onValueChange={(v) => {
-              setStatus(v as VehicleStatus | "all");
-              setPage(1);
-            }}
-          >
-            <SelectTrigger className="sm:w-52">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((s) => (
-                <SelectItem key={s} value={s} className="capitalize">
-                  {s === "all" ? "All statuses" : s.replace(/_/g, " ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Status filter as count chips: All 20 · Available 12 · Maintenance 1 … */}
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by status">
+            {STATUS_OPTIONS.map((s) => {
+              const count = s === "all" ? counts?.total : counts?.by_status[s];
+              const active = status === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => { setStatus(s); setPage(1); }}
+                  className={cn(
+                    "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-medium capitalize transition-smooth",
+                    active
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground",
+                  )}
+                >
+                  {s === "all" ? "All" : s.replace(/_/g, " ")}
+                  <span
+                    className={cn(
+                      "min-w-5 rounded-full px-1.5 py-0.5 text-center text-[0.6875rem] font-semibold tabular-nums",
+                      active ? "bg-primary-foreground/20" : "bg-muted text-foreground",
+                    )}
+                  >
+                    {count ?? "–"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <DataTable fill
@@ -352,7 +370,7 @@ export default function VehicleListPage() {
           )}
         />
 
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
       )}
 

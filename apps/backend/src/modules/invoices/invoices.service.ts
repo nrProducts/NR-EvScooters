@@ -5,7 +5,8 @@ import { writeAudit } from "../../common/audit";
 import { businessToday } from "../../common/dates";
 import { notifyUser } from "../notifications/notifications.service";
 import { activeInvoiceSeriesCode } from "../rentals/overdueLateFee";
-import { recordOfflinePayment } from "../payments/payments.service";
+import { recordOfflinePayment, setInvoiceTotal, supersedeOpenOrders } from "../payments/payments.service";
+import { OVERDUE_LATE_FEE_LINE_PREFIX } from "../payments/renewalFee";
 import { AuthContext, Paginated } from "../../types";
 import {
     InvoiceDetail, InvoicePaymentState, InvoiceRow, ListInvoicesFilters,
@@ -354,6 +355,186 @@ export async function addAdhocCharge(
     });
 
     return getInvoiceById(invoice.id);
+}
+
+/**
+ * The checks shared by changing an invoice's amount and deleting it: both are
+ * "before paid" corrections only. Anything money has touched — an allocation,
+ * or a gateway transaction (even a FAILED one: a late UPI success can still
+ * land on it, see payments.lateSuccess) — goes through Refunds instead.
+ */
+async function loadUnpaidInvoiceForEdit(invoiceId: string) {
+    const { data: invoice, error } = await supabaseAdmin
+        .from("invoices")
+        .select("id, user_id, invoice_number, purpose, status, total_amount, invoice_items(id, line_number, item_type, subscription_adjustment_id, description, amount)")
+        .eq("id", invoiceId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!invoice) throw notFound("Invoice not found.");
+    if (invoice.status === "void") throw businessRule("This invoice is void.");
+
+    const items = invoice.invoice_items ?? [];
+
+    // The overdue late fee re-prices itself every day (syncOverdueLateFeeInvoiceForUser),
+    // so an edit would be silently overwritten and a delete re-created the next
+    // time the rider opens Billing. Late fees are managed from Returns / plan settings.
+    if (invoice.purpose === "adhoc"
+        && items.some((i) => i.line_number === 1 && i.description.startsWith(OVERDUE_LATE_FEE_LINE_PREFIX))) {
+        throw businessRule("The overdue late fee is calculated automatically and can't be edited or deleted here.");
+    }
+
+    const { count: allocations, error: allocError } = await supabaseAdmin
+        .from("payment_allocations")
+        .select("id", { count: "exact", head: true })
+        .eq("invoice_id", invoiceId);
+    if (allocError) throw allocError;
+    if ((allocations ?? 0) > 0) {
+        throw businessRule("A payment has already been recorded against this invoice. Use Refund instead.");
+    }
+
+    const { data: orders, error: orderError } = await supabaseAdmin
+        .from("payment_orders")
+        .select("id, payment_transactions(id)")
+        .eq("invoice_id", invoiceId);
+    if (orderError) throw orderError;
+    if ((orders ?? []).some((o) => (o.payment_transactions ?? []).length > 0)) {
+        throw businessRule(
+            "The rider has attempted an online payment on this invoice, so it can't be changed. Check Payment Recovery first.",
+        );
+    }
+
+    const { count: redemptions, error: redemptionError } = await supabaseAdmin
+        .from("referral_card_redemptions")
+        .select("id", { count: "exact", head: true })
+        .eq("invoice_id", invoiceId);
+    if (redemptionError) throw redemptionError;
+
+    return { invoice, items, orderIds: (orders ?? []).map((o) => o.id), hasReferralCard: (redemptions ?? 0) > 0 };
+}
+
+/**
+ * Changes what an unpaid invoice asks for.
+ *
+ * A one-off charge (a single line not tied to a pricing rule) has that line
+ * re-priced in place, so the rider reads "Fine ₹500", not "Fine ₹1,000 /
+ * Admin adjustment −₹500". Anything else — a plan fee with its rule-driven
+ * adjustments and deposit — gets one "Admin adjustment" line for the
+ * difference (setInvoiceTotal), so every line the system generated stays
+ * truthful and the lines still sum to the total.
+ *
+ * Open Razorpay orders at the old amount are expired so a checkout sheet the
+ * rider already has open can't collect the old price.
+ */
+export async function changeInvoiceAmount(
+    invoiceId: string,
+    newAmount: number,
+    reason: string | undefined,
+    actor: AuthContext,
+): Promise<InvoiceDetail> {
+    const amount = Math.round(newAmount * 100) / 100;
+    if (!(amount > 0)) throw businessRule("Enter an amount greater than zero. To remove the invoice, delete it instead.");
+
+    const { invoice, items } = await loadUnpaidInvoiceForEdit(invoiceId);
+    const oldAmount = Number(invoice.total_amount);
+    if (Math.abs(oldAmount - amount) < 0.01) return getInvoiceById(invoiceId);
+
+    const single = items.length === 1 ? items[0] : null;
+    if (single && single.item_type === "adjustment" && !single.subscription_adjustment_id) {
+        const { error: itemError } = await supabaseAdmin
+            .from("invoice_items")
+            .update({ unit_amount: amount, amount, quantity: 1 })
+            .eq("id", single.id);
+        if (itemError) throw itemError;
+
+        const { error: totalError } = await supabaseAdmin
+            .from("invoices")
+            .update({ subtotal_amount: amount, total_amount: amount, updated_at: new Date().toISOString() })
+            .eq("id", invoiceId);
+        if (totalError) throw totalError;
+    } else {
+        await setInvoiceTotal(invoiceId, amount, actor);
+    }
+
+    await supersedeOpenOrders(invoiceId, amount);
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: invoice.user_id,
+        action: "invoice.amount_changed",
+        entityType: "invoice",
+        entityId: invoiceId,
+        before: { total_amount: oldAmount },
+        after: { total_amount: amount, reason: reason ?? null },
+    });
+
+    return getInvoiceById(invoiceId);
+}
+
+/**
+ * Permanently deletes an unpaid invoice (the operator's explicit choice over
+ * voiding — see the Payments screen). This leaves a gap in the invoice
+ * series; the audit row is the only record of the number and why it went.
+ *
+ *  - unpaid gateway orders are removed first (payment_orders is ON DELETE RESTRICT);
+ *  - a return settlement pointing at it is unlinked;
+ *  - pricing-rule adjustments billed on it are voided, so they don't resurface;
+ *  - its invoice_items go with it (ON DELETE CASCADE).
+ *
+ * A deleted plan-renewal or first-payment invoice is raised again by the
+ * normal billing flow the next time that period is billed.
+ */
+export async function deleteInvoice(
+    invoiceId: string,
+    reason: string | undefined,
+    actor: AuthContext,
+): Promise<void> {
+    const { invoice, items, orderIds, hasReferralCard } = await loadUnpaidInvoiceForEdit(invoiceId);
+    if (hasReferralCard) {
+        throw businessRule("A referral reward card is applied to this invoice. Release the card before deleting it.");
+    }
+
+    if (orderIds.length > 0) {
+        const { error } = await supabaseAdmin.from("payment_orders").delete().in("id", orderIds);
+        if (error) throw error;
+    }
+
+    const { error: returnError } = await supabaseAdmin
+        .from("rental_returns")
+        .update({ additional_due_invoice_id: null })
+        .eq("additional_due_invoice_id", invoiceId);
+    if (returnError) throw returnError;
+
+    const adjustmentIds = items.flatMap((i) => (i.subscription_adjustment_id ? [i.subscription_adjustment_id] : []));
+    if (adjustmentIds.length > 0) {
+        const { error } = await supabaseAdmin
+            .from("subscription_adjustments")
+            .update({
+                status: "voided",
+                voided_at: new Date().toISOString(),
+                voided_by_user_id: actor.id,
+                void_reason: `Invoice ${invoice.invoice_number} deleted by admin.`,
+            })
+            .in("id", adjustmentIds);
+        if (error) throw error;
+    }
+
+    const { error: deleteError } = await supabaseAdmin.from("invoices").delete().eq("id", invoiceId);
+    if (deleteError) throw deleteError;
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: invoice.user_id,
+        action: "invoice.deleted",
+        entityType: "invoice",
+        entityId: invoiceId,
+        before: {
+            invoice_number: invoice.invoice_number,
+            purpose: invoice.purpose,
+            total_amount: Number(invoice.total_amount),
+            items: items.map((i) => ({ description: i.description, amount: Number(i.amount) })),
+        },
+        after: { reason: reason ?? null },
+    });
 }
 
 export async function getInvoiceById(id: string): Promise<InvoiceDetail> {

@@ -23,6 +23,7 @@ import { CycleTime } from '../../components/ui/CycleTime';
 import { SettlementCard } from '../../components/SettlementCard';
 import { DepositStatusCard } from '../../components/DepositStatusCard';
 import { RefundStatusCard } from '../../components/RefundStatusCard';
+import { TaxInvoicesCard } from '../../components/TaxInvoicesCard';
 import { shouldShowRefundInBilling } from '../../lib/settlementDisplay';
 import { TAB_BAR_FOOTPRINT } from '../../lib/tabBar';
 import { ApiError } from '../../lib/ApiError';
@@ -1482,6 +1483,7 @@ export default function BillingScreen() {
             </>
           ) : null}
           {paymentHistoryItems.length > 0 ? renderPaymentHistory() : null}
+          <TaxInvoicesCard />
         </PageScroll>
       ) : !bookingId ? (
         <EmptyState
@@ -1553,7 +1555,9 @@ export default function BillingScreen() {
               })()}
             </View>
             <Text style={{ color: COLORS.textPrimary }} className="text-4xl font-bold mb-4">
-              ₹{(plan?.price ?? 0).toFixed(2)}{' '}
+              {/* Once riding, the live price: renewals bill at it. Before that the
+                  booking's own snapshot is what is (or was) charged. */}
+              ₹{((booking?.status === 'fulfilled' ? plan?.current_price : undefined) ?? plan?.price ?? 0).toFixed(2)}{' '}
               {plan ? (
                 <Text style={{ color: COLORS.textSecondary }} className="text-sm font-medium">
                   / {t(BILLING_CYCLE_LABEL_KEY[plan.billing_cycle])}
@@ -1761,6 +1765,7 @@ export default function BillingScreen() {
           {renderDepositCard()}
 
           {renderPaymentHistory()}
+          <TaxInvoicesCard />
         </PageScroll>
       )}
     </AppShell>

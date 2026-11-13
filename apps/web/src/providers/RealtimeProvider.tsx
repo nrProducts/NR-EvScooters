@@ -203,9 +203,24 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         if (payload.eventType !== "INSERT") return;
 
         const row = payload.new as {
+          user_id?: string;
           notification_type_code?: string; title?: string; body?: string;
           notification_event_id?: string;
         };
+
+        // RLS (p_notif_messages_read) grants staff read access to any row of
+        // a 'staff'/'both'-audience TYPE, not just rows addressed to them —
+        // so a rider's own copy of e.g. "rental_return_requested" (inserted
+        // by notifyUser(), same type code, `user_id` = the rider) still
+        // reaches every staff session over realtime. That row's event has
+        // subject_type "user" (not "rental"), so the return-flow deep-link
+        // lookup below falls through to the RIDER's `payload.screen` —
+        // a rider-app-only route like "my-scooter" — and Review navigated
+        // staff straight to a 404. Only react to the message actually
+        // addressed to this viewer; notify()'s staff fan-out always inserts
+        // a separate row per staff recipient with their own `user_id`.
+        if (row.user_id !== user?.id) return;
+
         const type = notificationTypes?.find(
           (t) => t.notification_type === row.notification_type_code,
         );

@@ -29,6 +29,8 @@ router.post(
 // Active hubs for the add/edit form's picker. Declared before "/:id" so
 // "hub-options" is never parsed as a vehicle id.
 router.get("/hub-options", requireAction("vehicles", "view"), asyncHandler(c.hubOptionsHandler));
+// Declared before "/:id" so "status-counts" is never parsed as a vehicle id.
+router.get("/status-counts", requireAction("vehicles", "view"), asyncHandler(c.statusCountsHandler));
 
 // --- bulk import (template → preview → commit) ---------------------------
 // Declared before "/:id" so "import" is never parsed as a vehicle id. Same
@@ -139,6 +141,32 @@ router.get(
     requireAction("vehicles", "view"),
     validate({ params: v.documentIdParam }),
     asyncHandler(c.vehicleDocumentUrlHandler),
+);
+
+// --- known damage (condition notes) -------------------------------------
+// Damage the scooter already has, noted so the next rider isn't charged for
+// it. Deleting a note = the damage is repaired. Same "edit" grant as the
+// vehicle record.
+
+router.get(
+    "/:id/damage-notes",
+    requireAction("vehicles", "view"),
+    validate({ params: v.uuidParam }),
+    asyncHandler(c.listDamageNotesHandler),
+);
+
+router.post(
+    "/:id/damage-notes",
+    requireAction("vehicles", "edit"),
+    validate({ params: v.uuidParam, body: v.createDamageNoteBody }),
+    asyncHandler(c.addDamageNoteHandler),
+);
+
+router.delete(
+    "/damage-notes/:noteId",
+    requireAction("vehicles", "edit"),
+    validate({ params: v.damageNoteIdParam }),
+    asyncHandler(c.deleteDamageNoteHandler),
 );
 
 export default router;

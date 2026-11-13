@@ -6,7 +6,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { Image as ExpoImage } from 'expo-image';
 import { useProfilePhoto } from '../hooks/useProfilePhoto';
 import { useNotificationBadgeStore } from '../store/useNotificationBadgeStore';
-import { COLORS, isDarkScheme } from '../constants/theme';
+import { COLORS } from '../constants/theme';
 import { userRepository, rentalRepository } from '../services';
 import { rentalDayNumber } from '../lib/rentalTiming';
 import { ProfileContent } from './ProfileContent';
@@ -116,13 +116,10 @@ export const AppShell: React.FC<AppShellProps> = ({ title, children }) => {
               <ChevronLeft size={20} color={COLORS.textPrimary} />
             </TouchableOpacity>
           ) : null}
-          {/* Brand mark, left-aligned. */}
+          {/* Brand mark, left-aligned. The normal logo in both themes — only
+              the Home hero card uses the dark-mode logo. */}
           <Image
-            source={
-              isDarkScheme()
-                ? require('../../assets/images/logo-wordmark-dark.png')
-                : require('../../assets/images/logo-wordmark.png')
-            }
+            source={require('../../assets/images/logo-wordmark.png')}
             accessibilityLabel="Swapngo"
             style={{ height: 16, width: 76 }}
             resizeMode="contain"

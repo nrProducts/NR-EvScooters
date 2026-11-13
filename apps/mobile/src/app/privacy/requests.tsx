@@ -16,6 +16,7 @@ import { useT } from '../../i18n';
 import type { CopyKey } from '../../i18n';
 import { usePrivacyRequests } from '../../hooks/usePrivacyRequests';
 import { COLORS } from '../../constants/theme';
+import { GradientFill } from '../../components/ui/GradientFill';
 import { formatDate } from '../../constants/status';
 import type { CorrectableField, DpRequestType } from '../../types/api';
 
@@ -361,9 +362,11 @@ const PrimaryButton: React.FC<{
         style={{
             backgroundColor: destructive ? COLORS.danger : COLORS.primary,
             opacity: busy || disabled ? 0.5 : 1,
+            overflow: 'hidden',
         }}
         className="w-full py-3.5 rounded-2xl flex-row justify-center items-center"
     >
+        {!destructive ? <GradientFill /> : null}
         {busy ? (
             <Spinner size={18} color="#FFF" />
         ) : (

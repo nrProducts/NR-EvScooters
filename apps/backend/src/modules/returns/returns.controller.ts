@@ -57,6 +57,11 @@ export async function verifyReturnPaymentHandler(req: AuthedRequest, res: Respon
     res.json(await service.verifyReturnPayment(req.params.id as string, req.user!));
 }
 
+export async function shortRentalForfeitHandler(req: AuthedRequest, res: Response) {
+    const { apply } = req.body as { apply: boolean };
+    res.json(await service.setShortRentalForfeit(req.params.id as string, apply, req.user!));
+}
+
 export async function approveReturnSettlementHandler(req: AuthedRequest, res: Response) {
     const body = req.body as ApproveReturnSettlementBody;
     res.json(await service.approveReturnSettlement(req.params.id as string, body, req.user!));

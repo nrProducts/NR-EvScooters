@@ -73,6 +73,16 @@ export interface AdhocChargeInput {
   payment?: { method: "upi" | "card" | "netbanking" | "wallet" | "cash"; status: "paid" | "pending" };
 }
 
+/** POST /invoices/:id/amount — changes the amount of an invoice nothing has been paid against. */
+export async function changeInvoiceAmount(id: string, amount: number, reason?: string): Promise<Invoice> {
+  return apiClient.post<Invoice>(`/invoices/${id}/amount`, { amount, reason });
+}
+
+/** POST /invoices/:id/delete — permanently deletes an invoice nothing has been paid against. */
+export async function deleteInvoice(id: string, reason?: string): Promise<void> {
+  await apiClient.post<void>(`/invoices/${id}/delete`, { reason });
+}
+
 /** POST /invoices/adhoc — raises a one-off charge against a rider (lost key, cleaning fee, fine, …). */
 export async function addAdhocCharge(input: AdhocChargeInput): Promise<Invoice> {
   return apiClient.post<Invoice>("/invoices/adhoc", input);

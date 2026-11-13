@@ -865,6 +865,11 @@ export async function processRefund(
             .update({
                 status: "succeeded",
                 gateway_refund_id: `manual_refund_${randomUUID()}`,
+                // Money that came in offline goes back offline. Cash at the
+                // hub until a bank statement shows it left as a transfer —
+                // the bank import (reconciliation bank.service) then marks it
+                // bank_transfer when it matches the debit.
+                paid_by: "cash",
                 completed_at: nowIso,
                 last_attempted_at: nowIso,
                 attempt_count: refund.attempt_count + 1,

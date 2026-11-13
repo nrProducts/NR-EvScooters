@@ -113,3 +113,23 @@ describe("returnCompletedBody — the rider's Ride Completed message", () => {
         })).not.toContain("₹");
     });
 });
+
+describe("short-rental forfeit removed on the Return Review", () => {
+    const short = { status: "held", amount: 1500, min_rental_days_required: 45, rental_days_completed: 20 };
+
+    it("counts the full deposit when staff removed the forfeit", () => {
+        expect(settlementDepositAmount({ ...short, short_rental_forfeit_waived: true })).toBe(1500);
+    });
+
+    it("still forfeits by default (not waived)", () => {
+        expect(settlementDepositAmount({ ...short, short_rental_forfeit_waived: false })).toBe(0);
+    });
+
+    it("does not override a non-refundable plan", () => {
+        expect(settlementDepositAmount({ ...short, is_refundable: false, short_rental_forfeit_waived: true })).toBe(0);
+    });
+
+    it("does not tell the rider the deposit is forfeited once removed", () => {
+        expect(returnCompletedBody({ ...short, short_rental_forfeit_waived: true })).toBe("Thanks for returning your scooter.");
+    });
+});

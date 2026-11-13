@@ -15,6 +15,7 @@ import { RiderImpactModal } from "@/components/support/RiderImpactModal";
 import { useSupportQueue, useUpdateSupportTicket } from "@/hooks/useSupport";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
+import { usePageSize } from "@/hooks/usePageSize";
 import { ApiError } from "@/services/api/httpClient";
 import { formatDateTime } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
@@ -38,11 +39,12 @@ export default function SupportTicketsPage() {
   const canReply = hasAction(user, "support", "reply");
   const [tab, setTab] = useState<SupportStatus | "all">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [selected, setSelected] = useState<SupportTicket | null>(null);
 
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useSupportQueue({
-    status: tab, page, pageSize: 8, sortBy: "created_at", sortDir: sort.dir,
+    status: tab, page, pageSize, sortBy: "created_at", sortDir: sort.dir,
   });
   const updateTicket = useUpdateSupportTicket();
   const [actionError, setActionError] = useState<string | null>(null);
@@ -165,7 +167,7 @@ export default function SupportTicketsPage() {
             onSortChange={onSortChange}
           />
         </CardContent>
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
 
       <SideDrawer open={!!selected} onOpenChange={(o) => !o && setSelected(null)} title="Ticket detail">

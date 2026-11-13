@@ -22,6 +22,7 @@ import {
 } from "@/hooks/useRefunds";
 import { useTableSort } from "@/hooks/useTableSort";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
+import { usePageSize } from "@/hooks/usePageSize";
 import { formatCurrency, formatFullDateTime } from "@/lib/utils";
 import { ApiError } from "@/services/api/httpClient";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
@@ -47,6 +48,7 @@ export default function RefundsPage() {
   const [status, setStatus] = useState<RefundStatus | "all">("all");
   const [refundType, setRefundType] = useState<RefundType | "all">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [reviewTarget, setReviewTarget] = useState<Refund | null>(null);
   const [approveTarget, setApproveTarget] = useState<Refund | null>(null);
   const [rejectTarget, setRejectTarget] = useState<Refund | null>(null);
@@ -54,7 +56,7 @@ export default function RefundsPage() {
   const journey = useRefundJourney(journeyRefundId ?? undefined);
   const { sort, onSortChange } = useTableSort("created_at", "desc");
   const { data, isLoading, isError, refetch } = useRefunds({
-    status, refundType, page, pageSize: 8, sortBy: sort.by as "created_at" | "amount", sortDir: sort.dir,
+    status, refundType, page, pageSize, sortBy: sort.by as "created_at" | "amount", sortDir: sort.dir,
   });
   const retry = useRetryRefund();
 
@@ -308,7 +310,7 @@ export default function RefundsPage() {
           onSortChange={onSortChange}
         />
 
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
       )}
 
@@ -335,8 +337,9 @@ const DEPOSIT_STATUS_OPTIONS: (DepositStatus | "all")[] = ["all", "pending", "he
 function JourneysTab() {
   const [status, setStatus] = useState<DepositStatus | "all">("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [selected, setSelected] = useState<DepositJourney | null>(null);
-  const { data, isLoading, isError, refetch } = useDepositJourneys({ status, page, pageSize: 8 });
+  const { data, isLoading, isError, refetch } = useDepositJourneys({ status, page, pageSize });
 
   const columns: DataTableColumn<DepositJourney>[] = [
     {
@@ -447,7 +450,7 @@ function JourneysTab() {
           onRowClick={setSelected}
           emptyTitle="No deposits match your filter"
         />
-        {data && <Pagination page={page} pageSize={8} total={data.total} onPageChange={setPage} />}
+        {data && <Pagination page={page} pageSize={pageSize} onPageSizeChange={setPageSize} total={data.total} onPageChange={setPage} />}
       </Card>
       <DepositJourneyDialog
         open={!!selected}

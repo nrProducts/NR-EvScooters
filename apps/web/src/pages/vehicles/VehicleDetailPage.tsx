@@ -17,6 +17,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { VehicleLiveCard } from "@/components/vehicles/VehicleLiveCard";
 import { VehicleActivityCard } from "@/components/vehicles/VehicleActivityCard";
+import { VehicleDamageNotesCard } from "@/components/vehicles/VehicleDamageNotesCard";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistorySplitView } from "@/components/vehicles/VehicleHistorySplitView";
 import {
@@ -240,6 +241,8 @@ export default function VehicleDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          <VehicleDamageNotesCard vehicleId={vehicle.id} canEdit={canEdit} />
         </div>
       </div>
 

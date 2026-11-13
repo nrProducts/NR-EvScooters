@@ -53,7 +53,9 @@ export function DashboardLayout() {
         {/* Only the page body scrolls; the footer below stays pinned to the bottom of the shell */}
         <main className="min-h-0 flex-1 overflow-y-auto scrollbar-thin pb-4">
           {/* h-full lets a page opt in to filling the viewport (grid scrolls inside, pagination pinned) */}
-          <div className="mx-auto h-full max-w-[1600px]">
+          {/* No max-width cap: a capped, centred body left a gutter on wide monitors, so the
+              cards no longer lined up with the full-width header and footer above and below. */}
+          <div className="h-full">
             <PageFade key={location.pathname}>
               <Outlet />
             </PageFade>

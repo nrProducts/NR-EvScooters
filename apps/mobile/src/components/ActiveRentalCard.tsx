@@ -7,6 +7,7 @@ import { Badge } from './ui/Badge';
 import { SCOOTER_HERO } from '../lib/scooterImage';
 import { useVehicleCatalogStore } from '../store/useVehicleCatalogStore';
 import { COLORS } from '../constants/theme';
+import { GradientFill } from './ui/GradientFill';
 import { getRenewalEligibility } from '../lib/returnPolicy';
 import { isReturnLocked } from '../lib/returnLock';
 import { describeExpiry } from '../lib/rentalTiming';
@@ -161,8 +162,9 @@ export const ActiveRentalCard: React.FC<ActiveRentalCardProps> = ({ rental, onRe
             accessibilityRole="button"
             activeOpacity={0.85}
             className="flex-row items-center justify-center rounded-2xl py-3.5"
-            style={{ backgroundColor: renewal.isLate ? COLORS.overdue : COLORS.primary }}
+            style={{ backgroundColor: renewal.isLate ? COLORS.overdue : COLORS.primary, overflow: 'hidden' }}
           >
+            {!renewal.isLate ? <GradientFill /> : null}
             <RefreshCw size={16} color={COLORS.white} />
             <Text className="text-white text-sm font-bold ml-2">
               {renewal.isLate ? t('rental.renewPlanNow') : t('scooter.renewPlan')}

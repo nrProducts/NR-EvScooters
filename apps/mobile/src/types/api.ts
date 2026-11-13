@@ -398,6 +398,8 @@ export interface ApiBooking {
     station: { id: string; name: string; code: string; lat: number; lng: number } | null;
     plan: {
         id: string; name: string; billing_cycle: BillingCycle; price: number;
+        /** Live plan price — what the next renewal bills. Optional: older backends omit it. */
+        current_price?: number;
         duration_days: number; deposit_amount: number;
         /** Non-refundable, snapshotted at booking. 0 for bookings taken before the split. */
         onboarding_charge_amount: number;
@@ -636,6 +638,26 @@ export interface ApiInvoiceItem {
     /** Negative for a discount — there is no separate discount line type. */
     amount: number;
     created_at: string;
+}
+
+/**
+ * A GST tax invoice or credit note — GET /gst/me/documents. Issued by the
+ * backend when a bill is paid (or a deposit is kept, or a refund is paid out);
+ * distinct from ApiInvoice, which is the bill itself.
+ */
+export interface ApiTaxDocument {
+    id: string;
+    docType: 'tax_invoice' | 'credit_note';
+    docNumber: string;
+    /** IST calendar date the document was issued. */
+    issuedOn: string;
+    supplyDate: string;
+    billNumber: string | null;
+    originalDocNumber: string | null;
+    taxableAmount: number;
+    cgstAmount: number;
+    sgstAmount: number;
+    totalAmount: number;
 }
 
 export interface ApiInvoice {

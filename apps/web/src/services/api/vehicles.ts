@@ -11,6 +11,11 @@ export interface VehicleFilters {
   sortDir?: "asc" | "desc";
 }
 
+/** GET /vehicles/status-counts — how many vehicles are in each status, plus the total. */
+export async function fetchVehicleStatusCounts(): Promise<{ total: number; by_status: Record<VehicleStatus, number> }> {
+  return apiClient.get("/vehicles/status-counts");
+}
+
 /** GET /vehicles — requireStaff. See apps/backend/src/modules/vehicles/vehicles.routes.ts */
 export async function fetchVehicles(filters: VehicleFilters = {}): Promise<PaginatedResult<Vehicle>> {
   const { search, status, page = 1, pageSize = 8, sortBy, sortDir } = filters;
@@ -301,4 +306,33 @@ export async function commitVehicleImport(rows: VehicleImportRow[]): Promise<Veh
       purchase_date: r.purchase_date, batch_number: r.batch_number,
     })),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Known damage — condition notes on a scooter, so the next rider isn't
+// charged for damage it already has. Deleting a note = the damage is repaired.
+// See apps/backend/src/modules/vehicles/vehicles.damageNotes.ts
+// ---------------------------------------------------------------------------
+
+export interface VehicleDamageNote {
+  id: string;
+  vehicle_id: string;
+  description: string;
+  noted_by: { id: string; full_name: string } | null;
+  created_at: string;
+}
+
+/** GET /vehicles/:id/damage-notes — newest first. */
+export async function fetchVehicleDamageNotes(vehicleId: string): Promise<VehicleDamageNote[]> {
+  return apiClient.get<VehicleDamageNote[]>(`/vehicles/${vehicleId}/damage-notes`);
+}
+
+/** POST /vehicles/:id/damage-notes */
+export async function addVehicleDamageNote(vehicleId: string, description: string): Promise<VehicleDamageNote> {
+  return apiClient.post<VehicleDamageNote>(`/vehicles/${vehicleId}/damage-notes`, { description });
+}
+
+/** DELETE /vehicles/damage-notes/:noteId — the damage is repaired. */
+export async function deleteVehicleDamageNote(noteId: string): Promise<void> {
+  await apiClient.delete(`/vehicles/damage-notes/${noteId}`);
 }

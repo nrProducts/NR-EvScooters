@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@/lib/useQuery";
 import { AnimatePresence, motion } from "framer-motion";
 import { Search, CheckCircle2, Bike } from "lucide-react";
 import { Spinner } from "@/components/common/Spinner";

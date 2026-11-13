@@ -46,6 +46,24 @@ router.post(
     asyncHandler(c.recordInvoicePaymentHandler),
 );
 
+// Correct an invoice before it is paid — change what it asks for, or remove it
+// outright. Both refuse once any money (or a gateway attempt) touches it.
+// POST rather than DELETE for the delete: the reason travels in the body, and
+// some proxies strip DELETE bodies.
+router.post(
+    "/:id/amount",
+    requireAction("payments", "refund"),
+    validate({ params: v.uuidParam, body: v.changeAmountBody }),
+    asyncHandler(c.changeInvoiceAmountHandler),
+);
+
+router.post(
+    "/:id/delete",
+    requireAction("payments", "refund"),
+    validate({ params: v.uuidParam, body: v.deleteInvoiceBody }),
+    asyncHandler(c.deleteInvoiceHandler),
+);
+
 // One-off admin charge against a rider (lost key, cleaning fee, fine, …).
 router.post(
     "/adhoc",

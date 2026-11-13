@@ -28,6 +28,9 @@ import refundsRoutes, { riderRouter as riderRefundsRouter } from "../modules/ref
 import billingRoutes from "../modules/billing/billing.routes";
 import reconciliationRoutes from "../modules/reconciliation/reconciliation.routes";
 import revenueRoutes from "../modules/revenue/revenue.routes";
+import purchasesRoutes from "../modules/purchases/purchases.routes";
+import gstRoutes, { publicRouter as publicGstRouter, riderRouter as riderGstRouter } from "../modules/gst/gst.routes";
+import booksRoutes from "../modules/books/books.routes";
 import { consentRouter, riderConsentRouter } from "../modules/consent/consent.routes";
 import { legalRouter, riderLegalRouter } from "../modules/legal/legal.routes";
 import geocodeRoutes from "../modules/geocode/geocode.routes";
@@ -118,6 +121,14 @@ router.use("/invoices/me", riderInvoicesRouter);
 router.use("/invoices", invoicesRoutes);
 router.use("/reports", reportsRoutes);
 router.use("/revenue", revenueRoutes);
+// GST tax documents. /gst/public (signed PDF links, no bearer token) and
+// /gst/me (the rider's own) are mounted before the admin router, same
+// reasoning as /invoices/me before /invoices.
+router.use("/gst/public", publicGstRouter);
+router.use("/gst/me", riderGstRouter);
+router.use("/gst", gstRoutes);
+router.use("/purchases", purchasesRoutes);
+router.use("/books", booksRoutes);
 router.use("/audit-logs", auditRoutes);
 router.use("/pii-access", piiAccessRouter);
 router.use("/error-logs", errorLogsRoutes);

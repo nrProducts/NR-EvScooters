@@ -12,6 +12,7 @@ import {
 import { AppShell } from '../components/AppShell';
 import { Badge } from '../components/ui/Badge';
 import { ErrorState } from '../components/ui/ErrorState';
+import { GradientFill } from '../components/ui/GradientFill';
 import { pullToRefresh } from '../components/ui/PullToRefresh';
 import { PageScroll } from '../components/ui/PageScroll';
 import { Spinner } from '../components/Spinner';
@@ -642,8 +643,9 @@ const ProfilePhotoStep: React.FC<{
           disabled={uploading}
           accessibilityRole="button"
           className="w-full py-3.5 rounded-2xl flex-row justify-center items-center mb-3"
-          style={{ backgroundColor: uploading ? COLORS.gray[300] : COLORS.primary }}
+          style={{ backgroundColor: uploading ? COLORS.gray[300] : COLORS.primary, overflow: 'hidden' }}
         >
+          {!uploading ? <GradientFill /> : null}
           {uploading ? (
             <Spinner size={16} color="#FFF" />
           ) : (
@@ -771,8 +773,9 @@ const EmergencyContactStep: React.FC<{
           disabled={saving}
           accessibilityRole="button"
           className="flex-1 py-3 rounded-2xl flex-row justify-center items-center"
-          style={{ backgroundColor: saving ? COLORS.gray[300] : COLORS.primary }}
+          style={{ backgroundColor: saving ? COLORS.gray[300] : COLORS.primary, overflow: 'hidden' }}
         >
+          {!saving ? <GradientFill /> : null}
           {saving ? (
             <Spinner size={16} color="#FFF" />
           ) : (
@@ -894,8 +897,9 @@ const DocumentStep: React.FC<DocumentStepProps> = ({
             disabled={uploading}
             accessibilityRole="button"
             className="w-full py-3.5 rounded-2xl flex-row justify-center items-center mt-2"
-            style={{ backgroundColor: uploading ? COLORS.gray[300] : COLORS.primary }}
+            style={{ backgroundColor: uploading ? COLORS.gray[300] : COLORS.primary, overflow: 'hidden' }}
           >
+            {!uploading ? <GradientFill /> : null}
             {uploading ? (
               <Spinner size={16} color="#FFF" />
             ) : (
@@ -1147,8 +1151,12 @@ const ReviewStep: React.FC<{
         accessibilityRole="button"
         accessibilityState={{ disabled: submitting || !kyc.can_submit || !declared }}
         className="flex-1 py-3.5 rounded-2xl flex-row justify-center items-center"
-        style={{ backgroundColor: submitting || !kyc.can_submit || !declared ? COLORS.gray[300] : COLORS.primary }}
+        style={{
+          backgroundColor: submitting || !kyc.can_submit || !declared ? COLORS.gray[300] : COLORS.primary,
+          overflow: 'hidden',
+        }}
       >
+        {!(submitting || !kyc.can_submit || !declared) ? <GradientFill /> : null}
         {submitting ? (
           <Spinner size={16} color="#FFF" />
         ) : (

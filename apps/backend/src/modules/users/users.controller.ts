@@ -7,6 +7,7 @@ import { UserRole, UserStatus } from "../../types";
 import { ListUsersFilters } from "./users.types";
 import * as service from "./users.service";
 import * as permissionsService from "./staff-permissions.service";
+import * as comments from "./users.comments";
 import { hasActiveBookingForUser } from "../bookings/bookings.service";
 import { getConsentState } from "../consent/consent.service";
 import { getAcceptanceState as getTermsAcceptanceState } from "../legal/legal.service";
@@ -245,5 +246,21 @@ export async function getUserPhotoUrlHandler(req: AuthedRequest, res: Response) 
 export async function registerPushTokenHandler(req: AuthedRequest, res: Response) {
     const { token, platform } = req.body as { token: string; platform?: "ios" | "android" };
     await service.registerPushToken(req.user!.id, token, platform);
+    res.status(204).send();
+}
+
+// --- staff comments on a user (internal; riders never see them) --------
+
+export async function listCommentsHandler(req: AuthedRequest, res: Response) {
+    res.json(await comments.listUserComments(req.params.id as string));
+}
+
+export async function addCommentHandler(req: AuthedRequest, res: Response) {
+    const { body } = req.body as { body: string };
+    res.status(201).json(await comments.addUserComment(req.params.id as string, body, req.user!));
+}
+
+export async function deleteCommentHandler(req: AuthedRequest, res: Response) {
+    await comments.deleteUserComment(req.params.commentId as string, req.user!);
     res.status(204).send();
 }

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@/lib/useQuery";
 import * as usersApi from "@/services/api/users";
 import * as vehiclesApi from "@/services/api/vehicles";
 

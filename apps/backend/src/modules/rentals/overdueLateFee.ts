@@ -185,12 +185,17 @@ async function findAdhocInvoice(
  * at a glance). Hardcoding a literal here would work only until the series
  * rolls over to a new fiscal year and then fail outright, so this looks up
  * whichever series is actually active instead.
+ *
+ * `document_type = 'bill'`: the same table also numbers GST tax invoices
+ * (SNGT/…) and credit notes (SNGC/…), which a bill must never take.
  */
 export async function activeInvoiceSeriesCode(): Promise<string> {
     const { data, error } = await supabaseAdmin
         .from("invoice_series")
         .select("code")
         .eq("is_active", true)
+        .eq("document_type", "bill")
+        .order("created_at")
         .limit(1)
         .maybeSingle();
     if (error) throw error;

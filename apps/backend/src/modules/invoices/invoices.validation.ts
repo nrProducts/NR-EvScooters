@@ -39,6 +39,15 @@ export const adhocChargeBody = z.object({
 
 export type AdhocChargeBody = z.infer<typeof adhocChargeBody>;
 
+export const changeAmountBody = z.object({
+    amount: z.number().positive("Enter an amount greater than zero.").max(10_000_000),
+    reason: z.string().trim().min(3, "Give a reason for the change.").max(500).optional(),
+});
+
+export const deleteInvoiceBody = z.object({
+    reason: z.string().trim().min(3, "Give a reason for deleting the invoice.").max(500).optional(),
+});
+
 export const myInvoicesQuery = z.object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
