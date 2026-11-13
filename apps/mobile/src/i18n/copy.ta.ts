@@ -1090,6 +1090,7 @@ export const ta: Copy = {
     'vehicleDocs.error.openFailed.title': 'ஆவணத்தைத் திறக்க முடியவில்லை',
 
     // --- app shell (header + profile sheet) ---------------------------------
+'update.readyTitle': 'புதுப்பிப்பு தயார்',    'update.readyMessage': 'Swapngo-வின் புதிய பதிப்பு பதிவிறக்கப்பட்டது. பயன்படுத்தத் தொடங்க மறுதொடக்கம் செய்யவும்.',    'update.restart': 'இப்போது மறுதொடக்கம்',    'update.later': 'பிறகு',
     'appShell.goBack': 'பின்செல்',
     'appShell.dayN': 'நாள் {day}',
     'appShell.notificationsUnread': 'அறிவிப்புகள், {count} படிக்காதவை',

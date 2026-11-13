@@ -852,6 +852,7 @@ export const en = {
     'vehicleDocs.error.openFailed.title': "Couldn't open document",
 
     // --- app shell (header + profile sheet) ---------------------------------
+'update.readyTitle': 'Update ready',    'update.readyMessage': 'A new version of Swapngo has been downloaded. Restart to start using it.',    'update.restart': 'Restart now',    'update.later': 'Later',
     'appShell.goBack': 'Go back',
     'appShell.dayN': 'Day {day}',
     'appShell.notificationsUnread': 'Notifications, {count} unread',

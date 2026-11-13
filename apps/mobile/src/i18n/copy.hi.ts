@@ -1085,6 +1085,7 @@ export const hi: Copy = {
     'vehicleDocs.error.openFailed.title': 'दस्तावेज़ नहीं खोला जा सका',
 
     // --- app shell (header + profile sheet) ---------------------------------
+'update.readyTitle': 'अपडेट तैयार है',    'update.readyMessage': 'Swapngo का नया संस्करण डाउनलोड हो गया है। इस्तेमाल शुरू करने के लिए रीस्टार्ट करें।',    'update.restart': 'अभी रीस्टार्ट करें',    'update.later': 'बाद में',
     'appShell.goBack': 'वापस जाएं',
     'appShell.dayN': 'दिन {day}',
     'appShell.notificationsUnread': 'सूचनाएं, {count} अपठित',
