@@ -70,17 +70,18 @@ function HubHero() {
       <Blob tone="sage" className="-right-40 -top-40 h-[42rem] w-[42rem]" />
       <Blob tone="mist" className="-bottom-48 -left-32 h-[34rem] w-[34rem]" delay="-3s" />
 
-      <Container className="relative grid items-center gap-8 py-5 sm:py-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10 lg:py-10">
-        <Reveal>
-          <h1 className="text-balance text-[clamp(1.9rem,1rem+2.6vw,3.1rem)] font-semibold leading-[1.06] tracking-tight text-foreground">
+      <Container className="relative grid items-center gap-8 py-6 sm:py-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10 lg:py-10">
+        {/* Phones: this block is as tall as the screen below the header (svh = with the browser bars showing). */}
+        <Reveal className="max-sm:flex max-sm:min-h-[calc(100svh-7.25rem)] max-sm:flex-col max-sm:justify-center">
+          <h1 className="text-balance text-[clamp(1.9rem,1rem+2.6vw,3.1rem)] font-semibold leading-[1.06] tracking-tight text-foreground max-sm:text-[2.05rem] max-[380px]:text-[1.8rem]">
             Powering Smarter <Script>Mobility</Script> &amp; Fleet Management
           </h1>
-          <p className="mt-3 max-w-[34rem] text-[15px] leading-relaxed text-muted-foreground sm:mt-4 sm:text-base">
+          <p className="mt-4 max-w-[34rem] text-base leading-relaxed text-muted-foreground max-[380px]:mt-3 max-[380px]:text-[15px]">
             From renting electric scooters to providing powerful fleet management technology, SwapNgo helps
             businesses and individuals move smarter.
           </p>
 
-          <div className="mt-5 space-y-4 sm:mt-6 sm:space-y-5">
+          <div className="mt-6 space-y-5 max-[380px]:mt-4 max-[380px]:space-y-4">
             <PathActions
               icon={Bike}
               to="/ev-scooter-rental"
@@ -91,7 +92,7 @@ function HubHero() {
               }
               text="Weekly plans, unlimited kilometres and battery swapping."
             >
-              <ButtonLink to={bookHref} size="sm" className="h-9 px-4 text-[13px]" onClick={bookingCta.onClick}>
+              <ButtonLink to={bookHref} size="sm" className="h-9 px-4 text-[13px] max-sm:h-10 max-sm:px-4 max-sm:text-sm" onClick={bookingCta.onClick}>
                 {PRE_BOOKING_MODE ? "Pre-Book Now" : "Book a scooter"}
                 <ArrowRight className="h-3.5 w-3.5" aria-hidden />
               </ButtonLink>
@@ -101,7 +102,7 @@ function HubHero() {
                   setAvailabilityOpen(true);
                   trackEvent("check_availability", { placement: "home_hero" });
                 }}
-                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-4 text-[13px]")}
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-4 text-[13px] max-sm:h-10 max-sm:px-4 max-sm:text-sm")}
               >
                 <Bike className="h-3.5 w-3.5 text-primary" aria-hidden />
                 Check availability
@@ -110,7 +111,7 @@ function HubHero() {
               <Link
                 to="/ev-scooter-rental#pricing"
                 onClick={() => trackEvent("click_view_rental_plans", { placement: "home_hero" })}
-                className="inline-flex h-9 items-center gap-1 px-2 text-[13px] font-medium text-foreground/70 hover:text-primary"
+                className="inline-flex h-9 items-center gap-1 px-2 text-[13px] font-medium text-foreground/70 hover:text-primary max-sm:h-10 max-sm:text-sm"
               >
                 View rental plans
                 <ArrowRight className="h-3.5 w-3.5" aria-hidden />
@@ -127,13 +128,13 @@ function HubHero() {
                 </>
               }
               text="Rent out your own scooters and run the business on SwapNgo Fleet."
-              className="border-t border-border pt-4 sm:pt-5"
+              className="border-t border-border pt-5"
             >
               <ButtonLink
                 to="/fleet-management/request-demo"
                 variant="dark"
                 size="sm"
-                className="h-9 px-4 text-[13px]"
+                className="h-9 px-4 text-[13px] max-sm:h-10 max-sm:px-4 max-sm:text-sm"
                 onClick={() => trackEvent("click_request_demo", { placement: "home_hero" })}
               >
                 Request a Demo
@@ -143,7 +144,7 @@ function HubHero() {
                 to="/fleet-management"
                 variant="outline"
                 size="sm"
-                className="h-9 px-4 text-[13px]"
+                className="h-9 px-4 text-[13px] max-sm:h-10 max-sm:px-4 max-sm:text-sm"
                 onClick={() => trackEvent("click_explore_fleet", { placement: "home_hero" })}
               >
                 Explore Fleet Software
@@ -152,8 +153,7 @@ function HubHero() {
           </div>
         </Reveal>
 
-        {/* Phones: the text above already fills the first screen, and this picture would be cut off and too small to read there. The next section shows both products at a readable size. */}
-        <Reveal className="relative hidden sm:block" delay={150}>
+        <Reveal className="relative" delay={150}>
           {/* Both products in one picture: the admin dashboard behind, the scooter in front. Width-capped so the hero fits one screen. */}
           <div className="relative mx-auto w-full max-w-[26rem] pb-16 sm:max-w-[30rem] sm:pb-20 lg:ml-auto lg:mr-0 xl:max-w-[34rem]">
             <div className="ml-auto w-[92%]">
@@ -220,12 +220,12 @@ function PathActions({
           <Icon className="h-[18px] w-[18px] text-primary" aria-hidden />
         </span>
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold leading-tight text-foreground sm:text-xl">
+          <h2 className="text-lg font-semibold leading-tight text-foreground max-sm:text-xl sm:text-xl">
             <Link to={to} className="underline-offset-4 hover:underline">
               {title}
             </Link>
           </h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">{text}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground max-sm:text-[0.9375rem]">{text}</p>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 sm:pl-12">{children}</div>
