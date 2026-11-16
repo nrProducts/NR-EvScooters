@@ -12,7 +12,7 @@ import { PRE_BOOKING_MODE } from "@/content/launchMode";
 import { useBookingCta } from "@/lib/bookingCta";
 import { Link, useLocation } from "@/lib/router";
 import { findPage } from "@/seo/Seo";
-import { FLEET_MENU, RENTAL_MENU, type MenuLink } from "@/components/navMenus";
+import { RENTAL_MENU, type MenuLink } from "@/components/navMenus";
 
 /** The five top-level destinations. Order is the spec's. */
 const NAV_ITEMS: {
@@ -29,7 +29,6 @@ const NAV_ITEMS: {
     label: "Fleet Management Software",
     to: "/fleet-management",
     match: (p) => p === "/fleet-management" || p.startsWith("/fleet-management/"),
-    menu: FLEET_MENU,
   },
   { key: "about", label: "About Us", to: "/about", match: (p) => p === "/about" },
   { key: "contact", label: "Contact Us", to: "/contact", match: (p) => p === "/contact" },
@@ -139,7 +138,7 @@ export function Header() {
   // The one primary action in the header depends on which business you are in.
   const cta =
     section === "fleet"
-      ? { label: "Request a Demo", to: "/fleet-management/request-demo", onClick: () => trackEvent("click_request_demo", { placement: "header" }) }
+      ? { label: "Request a Demo", to: "/fleet-management#demo", onClick: () => trackEvent("click_request_demo", { placement: "header" }) }
       : section === "rental"
         ? null
         : { label: "Get in touch", to: "/contact", onClick: () => trackEvent("click_contact", { placement: "header" }) };
@@ -229,7 +228,7 @@ export function Header() {
                       aria-expanded={expanded}
                       aria-controls={`nav-menu-${item.key}`}
                       onClick={() => setMenuKey(expanded ? null : item.key)}
-                      className="inline-flex h-6 w-5 items-center justify-center rounded-full hover:bg-sage/70 min-[1400px]:hidden"
+                      className="inline-flex h-6 w-5 items-center justify-center rounded-full hover:bg-sage/70"
                     >
                       <ChevronDown
                         className={cn("h-3.5 w-3.5 transition-transform duration-200", expanded && "rotate-180")}
@@ -246,8 +245,7 @@ export function Header() {
                   <div
                     id={`nav-menu-${item.key}`}
                     className={cn(
-                      // From 1400px up the left rail (SectionRail) carries these pages instead.
-                      "absolute left-1/2 top-full z-50 w-[21.5rem] -translate-x-1/2 pt-2 transition duration-150 min-[1400px]:hidden",
+                      "absolute left-1/2 top-full z-50 w-[21.5rem] -translate-x-1/2 pt-2 transition duration-150",
                       expanded ? "visible translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0",
                     )}
                   >

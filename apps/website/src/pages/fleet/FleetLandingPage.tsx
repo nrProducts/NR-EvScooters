@@ -1,4 +1,4 @@
-import { ArrowRight, Check, LayoutDashboard, Server, Smartphone } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, LayoutDashboard, Mail, Phone, Server, Smartphone } from "lucide-react";
 import { Container } from "@/components/ui/Container";
 import { Badge } from "@/components/ui/Badge";
 import { Blob } from "@/components/ui/Blob";
@@ -10,13 +10,16 @@ import { trackEvent } from "@/lib/analytics";
 import {
   ADMIN_HIGHLIGHTS,
   BENEFITS,
-  FEATURE_CATEGORIES,
+  ADMIN_FEATURES,
+  RIDER_FEATURES,
   SEGMENTS,
 } from "@/content/fleet";
-import { ADMIN_SHOTS, RIDER_SHOTS, SHOTS } from "@/content/fleetShots";
+import { ADMIN_SHOTS, RIDER_SHOTS } from "@/content/fleetShots";
 import { ProductShot } from "@/components/fleet/ProductShot";
-import { DemoButton, FleetFinalCta, PricingModelCards } from "@/components/fleet/FleetBlocks";
+import { DemoButton, PricingModelCards } from "@/components/fleet/FleetBlocks";
 import { FleetFaq } from "@/components/fleet/FleetFaq";
+import { DemoForm } from "@/components/fleet/DemoForm";
+import { CONTACT_EMAIL, CONTACT_PHONES } from "@/content/contact";
 
 export function FleetLandingPage() {
   return (
@@ -24,13 +27,12 @@ export function FleetLandingPage() {
       <Hero />
       <ThreeParts />
       <Highlights />
-      <Gallery />
       <FeatureOverview />
       <Benefits />
       <Audience />
       <PricingTeaser />
       <FleetFaq />
-      <FleetFinalCta />
+      <RequestDemo />
     </>
   );
 }
@@ -63,7 +65,7 @@ function Hero() {
           <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <DemoButton placement="fleet_hero" />
             <ButtonLink
-              to="/fleet-management/pricing"
+              to="/fleet-management#pricing"
               variant="light"
               size="lg"
               className="w-full border border-border sm:w-auto"
@@ -72,7 +74,7 @@ function Hero() {
               View Pricing
             </ButtonLink>
             <ButtonLink
-              to="/fleet-management/features"
+              to="/fleet-management#features"
               variant="ghost"
               size="lg"
               className="w-full sm:w-auto"
@@ -83,7 +85,7 @@ function Hero() {
           </div>
 
           <ul className="mt-10 grid grid-cols-1 gap-x-6 gap-y-3 sm:flex sm:flex-wrap sm:gap-x-8">
-            {["Admin web app", "Rider mobile app", "Monthly or one-time purchase"].map((point) => (
+            {["Admin web app", "Rider mobile app", "Simple monthly subscription"].map((point) => (
               <li key={point} className="flex items-center gap-2">
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sage">
                   <Check className="h-3 w-3 text-primary" aria-hidden />
@@ -143,21 +145,21 @@ function ThreeParts() {
       icon: Smartphone,
       title: "Rider Mobile Application",
       text: "Your riders onboard, complete KYC, book a plan, pay, download tax invoices, request a return and get support, all from their phone.",
-      to: "/fleet-management/rider-app",
-      cta: "Explore the rider app",
+      to: "/fleet-management#features",
+      cta: "See rider app features",
     },
     {
       icon: LayoutDashboard,
       title: "Admin Web Application",
       text: "Your team manages vehicles, riders, bookings, payments, GST and staff access from one console, with permissions for each person.",
-      to: "/fleet-management/admin-app",
-      cta: "Explore the admin app",
+      to: "/fleet-management#features",
+      cta: "See admin app features",
     },
     {
       icon: Server,
       title: "Integrated Fleet Management System",
       text: "One back end connects both apps, so a payment, a KYC approval or a return is the same fact for riders and staff, immediately.",
-      to: "/fleet-management/features",
+      to: "/fleet-management#features",
       cta: "See every feature",
     },
   ];
@@ -213,74 +215,80 @@ function Highlights() {
   );
 }
 
-function Gallery() {
-  const shots = [SHOTS.liveMap, SHOTS.revenue];
-  if (shots.length === 0) return null;
+function FeatureOverview() {
+  const groups = [
+    {
+      id: "admin",
+      icon: LayoutDashboard,
+      title: "Admin web application",
+      text: "For your team: run vehicles, riders, bookings, money and staff access.",
+      features: ADMIN_FEATURES,
+    },
+    {
+      id: "rider",
+      icon: Smartphone,
+      title: "Rider mobile application",
+      text: "For your riders: onboard, book, pay, renew, return and get support.",
+      features: RIDER_FEATURES,
+    },
+  ];
+  const total = ADMIN_FEATURES.length + RIDER_FEATURES.length;
+
   return (
-    <section className="py-12 sm:py-16">
+    <section id="features" className="scroll-mt-24 bg-mist/40 py-12 sm:py-16">
       <Container>
         <Reveal>
           <SectionHeading
-            eyebrow="See it working"
-            title={"Real screens from\nthe real product."}
-            description="Screenshots of the admin console, shown with demonstration data."
+            eyebrow="Features"
+            title={"Everything your team\nand your riders need."}
+            description={`${total} feature areas across the admin app and the rider app, all working today. Tap a feature to see what is inside.`}
           />
         </Reveal>
-        <div className="mt-12 grid gap-8 md:grid-cols-2">
-          {shots.map((shot, i) => (
-            <Reveal key={shot.src} delay={i * 90}>
-              <ProductShot shot={shot} device="browser" />
+        <div className="mx-auto mt-12 max-w-3xl space-y-10">
+          {groups.map((group) => (
+            <Reveal key={group.id}>
+              <div className="mb-4 flex items-center gap-3 px-1">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.9rem] bg-primary">
+                  <group.icon className="h-5 w-5 text-primary-foreground" aria-hidden />
+                </span>
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">{group.title}</h3>
+                  <p className="text-sm text-muted-foreground">{group.text}</p>
+                </div>
+              </div>
+              <div className="divide-y divide-border overflow-hidden rounded-3xl border border-border bg-card">
+                {group.features.map((category, i) => {
+                  const Icon = category.icon;
+                  return (
+                    <details key={category.id} id={category.id} open={i === 0} className="group scroll-mt-24">
+                      <summary className="flex min-h-[72px] cursor-pointer list-none items-center gap-4 px-5 py-4 text-left hover:bg-sage/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:px-6 [&::-webkit-details-marker]:hidden">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1rem] bg-sage">
+                          <Icon className="h-5 w-5 text-primary" aria-hidden />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-base font-semibold text-foreground">{category.title}</span>
+                          <span className="mt-0.5 block text-sm leading-snug text-muted-foreground">{category.summary}</span>
+                        </span>
+                        <ChevronDown
+                          className="h-5 w-5 shrink-0 text-foreground/40 transition-transform group-open:rotate-180"
+                          aria-hidden
+                        />
+                      </summary>
+                      <ul className="grid gap-x-6 gap-y-2.5 px-5 pb-6 pt-1 sm:grid-cols-2 sm:px-6 sm:pl-[5.25rem]">
+                        {category.items.map((item) => (
+                          <li key={item} className="flex items-start gap-2.5 text-sm leading-snug text-foreground/80">
+                            <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  );
+                })}
+              </div>
             </Reveal>
           ))}
         </div>
-        <Reveal className="mt-10 text-center">
-          <Link to="/fleet-management/admin-app" className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-primary-hover">
-            More admin screens
-            <ArrowRight className="h-4 w-4" aria-hidden />
-          </Link>
-        </Reveal>
-      </Container>
-    </section>
-  );
-}
-
-function FeatureOverview() {
-  return (
-    <section className="bg-mist/40 py-12 sm:py-16">
-      <Container>
-        <Reveal>
-          <SectionHeading
-            eyebrow="Feature categories"
-            title={"Everything a rental fleet\nneeds to run."}
-            description={`${FEATURE_CATEGORIES.length} feature areas, all working today.`}
-          />
-        </Reveal>
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURE_CATEGORIES.map((cat, i) => {
-            const Icon = cat.icon;
-            return (
-              <Reveal key={cat.id} delay={(i % 3) * 70} className="rounded-2xl border border-border bg-card p-5 hover:border-primary/30">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.9rem] bg-sage">
-                    <Icon className="h-5 w-5 text-primary" aria-hidden />
-                  </span>
-                  <h3 className="text-base font-semibold text-foreground">{cat.title}</h3>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{cat.summary}</p>
-              </Reveal>
-            );
-          })}
-        </div>
-        <Reveal className="mt-10 text-center">
-          <ButtonLink
-            to="/fleet-management/features"
-            variant="dark"
-            onClick={() => trackEvent("click_explore_features", { placement: "fleet_feature_overview" })}
-          >
-            Explore all features
-            <ArrowRight className="h-4 w-4" aria-hidden />
-          </ButtonLink>
-        </Reveal>
       </Container>
     </section>
   );
@@ -331,26 +339,91 @@ function Audience() {
   );
 }
 
+const DEMO_STEPS = [
+  { title: "You send the form", text: "Tell us about your fleet and what you want to see." },
+  { title: "We walk you through it", text: "A live tour of the admin console and rider app against your use case." },
+  { title: "You get price details", text: "For the monthly subscription, based on your fleet size and the modules you need." },
+];
+
+function RequestDemo() {
+  return (
+    <section id="demo" className="scroll-mt-24 border-t border-border bg-sage/40 py-12 sm:py-16">
+      <Container>
+        <Reveal>
+          <SectionHeading
+            eyebrow="Request a demo"
+            title={"See SwapNgo Fleet running\non your use case."}
+            description="Tell us about your fleet and ask for price details. There is no obligation to buy."
+          />
+        </Reveal>
+        <div className="mt-12 grid items-start gap-10 lg:grid-cols-[1.4fr_1fr] lg:gap-14">
+          <Reveal>
+            <DemoForm />
+          </Reveal>
+
+          <Reveal delay={120} className="space-y-6">
+            <div className="rounded-3xl border border-border bg-card p-6">
+              <h3 className="text-lg font-semibold text-foreground">What happens next</h3>
+              <ol className="mt-5 space-y-5">
+                {DEMO_STEPS.map((s, i) => (
+                  <li key={s.title} className="flex gap-3.5">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                      {i + 1}
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold text-foreground">{s.title}</span>
+                      <span className="mt-0.5 block text-sm leading-relaxed text-muted-foreground">{s.text}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            <div className="rounded-3xl border border-border bg-card p-6">
+              <h3 className="text-lg font-semibold text-foreground">Prefer to talk first?</h3>
+              <div className="mt-4 space-y-2.5">
+                <a
+                  href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("SwapNgo Fleet enquiry")}`}
+                  onClick={() => trackEvent("click_email", { placement: "fleet_demo_section" })}
+                  className="flex min-h-[44px] items-center gap-3 text-[15px] font-medium text-foreground hover:text-primary"
+                >
+                  <Mail className="h-4 w-4 text-primary" aria-hidden />
+                  {CONTACT_EMAIL}
+                </a>
+                {CONTACT_PHONES.map((p) => (
+                  <a
+                    key={p.href}
+                    href={p.href}
+                    onClick={() => trackEvent("click_phone", { placement: "fleet_demo_section" })}
+                    className="flex min-h-[44px] items-center gap-3 text-[15px] font-medium text-foreground hover:text-primary"
+                  >
+                    <Phone className="h-4 w-4 text-primary" aria-hidden />
+                    {p.display}
+                  </a>
+                ))}
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </Container>
+    </section>
+  );
+}
+
 function PricingTeaser() {
   return (
-    <section className="py-12 sm:py-16">
+    <section id="pricing" className="scroll-mt-24 py-12 sm:py-16">
       <Container>
         <Reveal>
           <SectionHeading
             eyebrow="Pricing"
-            title={"Two ways to buy.\nPick what suits your business."}
-            description="Take SwapNgo Fleet as a monthly subscription, or buy the software once."
+            title={"One simple plan.\nPriced for your fleet."}
+            description="SwapNgo Fleet is a monthly subscription. Price depends on your fleet size and the modules you need."
           />
         </Reveal>
         <div className="mt-12">
           <PricingModelCards compact placement="fleet_landing" />
         </div>
-        <Reveal className="mt-8 text-center">
-          <Link to="/fleet-management/pricing" className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-primary-hover">
-            Compare both models in detail
-            <ArrowRight className="h-4 w-4" aria-hidden />
-          </Link>
-        </Reveal>
       </Container>
     </section>
   );

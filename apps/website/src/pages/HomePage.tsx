@@ -131,7 +131,7 @@ function HubHero() {
               className="border-t border-border pt-5"
             >
               <ButtonLink
-                to="/fleet-management/request-demo"
+                to="/fleet-management#demo"
                 variant="dark"
                 size="sm"
                 className="h-9 px-4 text-[13px] max-sm:h-10 max-sm:px-4 max-sm:text-sm"
@@ -309,7 +309,7 @@ function Solutions() {
             actions={
               <>
                 <ButtonLink
-                  to="/fleet-management/request-demo"
+                  to="/fleet-management#demo"
                   variant="dark"
                   size="lg"
                   className="w-full sm:w-auto"
@@ -337,7 +337,7 @@ function Solutions() {
                 </Link>
               </>
             }
-            visual={<ProductShot shot={SHOTS.liveMap} device="browser" />}
+            visual={<ProductShot shot={SHOTS.dashboard} device="browser" />}
           />
         </div>
       </Container>

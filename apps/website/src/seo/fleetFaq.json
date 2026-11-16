@@ -12,8 +12,8 @@
     "answer": "Businesses that rent, lease or subscribe vehicles to riders or drivers on recurring plans: EV scooter and bike rental, car rental, vehicle leasing, delivery fleets, logistics and other commercial fleets. It fits best where you onboard individual riders and collect recurring payments. If your workflow needs something it does not do, we will say so in the demo."
   },
   {
-    "question": "Can I buy it monthly or pay once?",
-    "answer": "Both. You can take SwapNgo Fleet as a monthly subscription or as a one-time software purchase. Price depends on your fleet size and the modules you need, so we share it on request: contact us for price details. The pricing page compares the two models."
+    "question": "How is SwapNgo Fleet priced?",
+    "answer": "SwapNgo Fleet is a monthly subscription. Price depends on your fleet size and the modules you need, so we share it on request: contact us for price details."
   },
   {
     "question": "Does it include a rider mobile app?",
@@ -32,7 +32,11 @@
     "answer": "Yes, for vehicles fitted with a supported GPS tracker. The admin console shows every vehicle on a live map with its battery level, running hours and kilometres per bike. Tell us which tracker you use in the demo and we will confirm what is supported."
   },
   {
+    "question": "Is the demo free?",
+    "answer": "Yes. Requesting a demo does not commit you to buying."
+  },
+  {
     "question": "How do I get started?",
-    "answer": "Request a demo. We walk you through the admin console and rider app against your own use case, then share price details for the monthly subscription or one-time purchase model, whichever suits you."
+    "answer": "Request a demo. We walk you through the admin console and rider app against your own use case, then share price details for the monthly subscription."
   }
 ]

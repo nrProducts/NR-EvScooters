@@ -14,11 +14,6 @@ const RENTAL_LINKS = [
 
 const FLEET_LINKS = [
   { label: "Fleet Management Software", to: "/fleet-management" },
-  { label: "Features", to: "/fleet-management/features" },
-  { label: "Admin app", to: "/fleet-management/admin-app" },
-  { label: "Rider app", to: "/fleet-management/rider-app" },
-  { label: "Pricing", to: "/fleet-management/pricing" },
-  { label: "Request a demo", to: "/fleet-management/request-demo" },
 ];
 
 const COMPANY_LINKS = [

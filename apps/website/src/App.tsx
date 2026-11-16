@@ -1,7 +1,6 @@
 import { Suspense, lazy, type ComponentType } from "react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
-import { SectionRail } from "@/components/SectionRail";
 import { SiteDataProvider } from "@/lib/siteData";
 import { PreBookModalProvider } from "@/lib/preBookModal";
 import { Router, ScrollManager, useLocation, normalizePath } from "@/lib/router";
@@ -24,11 +23,6 @@ const AboutPage = page(() => import("@/pages/AboutPage"), "AboutPage");
 const ContactPage = page(() => import("@/pages/ContactPage"), "ContactPage");
 const NotFoundPage = page(() => import("@/pages/NotFoundPage"), "NotFoundPage");
 const FleetLandingPage = page(() => import("@/pages/fleet/FleetLandingPage"), "FleetLandingPage");
-const FleetFeaturesPage = page(() => import("@/pages/fleet/FleetFeaturesPage"), "FleetFeaturesPage");
-const FleetAdminPage = page(() => import("@/pages/fleet/FleetAdminPage"), "FleetAdminPage");
-const FleetRiderPage = page(() => import("@/pages/fleet/FleetRiderPage"), "FleetRiderPage");
-const FleetPricingPage = page(() => import("@/pages/fleet/FleetPricingPage"), "FleetPricingPage");
-const FleetDemoPage = page(() => import("@/pages/fleet/FleetDemoPage"), "FleetDemoPage");
 
 const ROUTES: Record<string, ComponentType> = {
   "/": HomePage,
@@ -36,11 +30,6 @@ const ROUTES: Record<string, ComponentType> = {
   "/about": AboutPage,
   "/contact": ContactPage,
   "/fleet-management": FleetLandingPage,
-  "/fleet-management/features": FleetFeaturesPage,
-  "/fleet-management/admin-app": FleetAdminPage,
-  "/fleet-management/rider-app": FleetRiderPage,
-  "/fleet-management/pricing": FleetPricingPage,
-  "/fleet-management/request-demo": FleetDemoPage,
 };
 
 function Routes() {
@@ -68,7 +57,6 @@ export default function App({ url }: { url?: string } = {}) {
             <GrainOverlay />
             <ScrollManager />
             <Header />
-            <SectionRail />
             <main>
               <Routes />
             </main>

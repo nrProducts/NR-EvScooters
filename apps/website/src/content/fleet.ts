@@ -21,6 +21,10 @@ import {
   Gauge,
   Clock,
   Bell,
+  UserCheck,
+  Smartphone,
+  FileText,
+  Undo2,
 } from "lucide-react";
 
 /**
@@ -44,7 +48,8 @@ export interface FeatureCategory {
   items: string[];
 }
 
-export const FEATURE_CATEGORIES: FeatureCategory[] = [
+/** What your team uses: the admin web application. */
+export const ADMIN_FEATURES: FeatureCategory[] = [
   {
     id: "fleet",
     icon: Bike,
@@ -204,6 +209,89 @@ export const FEATURE_CATEGORIES: FeatureCategory[] = [
   },
 ];
 
+/** What your riders use: the rider mobile application (Android, and in a web browser). */
+export const RIDER_FEATURES: FeatureCategory[] = [
+  {
+    id: "rider-signup",
+    icon: UserCheck,
+    title: "Sign-up & KYC",
+    summary: "Riders get verified from their phone, and your team reviews it in the admin console.",
+    items: [
+      "Sign in with a phone number (or Google) and complete a short profile",
+      "Submit a photo, an emergency contact, Aadhaar number and driving licence",
+      "See the KYC review status in the app",
+      "Terms & Conditions accepted at sign-up, with the acceptance recorded",
+    ],
+  },
+  {
+    id: "rider-booking",
+    icon: Bike,
+    title: "Choose a vehicle & pay",
+    summary: "Browse what you list, pick a plan and pay without visiting an office.",
+    items: [
+      "Browse the vehicle models you list",
+      "Pick one of the plans you have configured",
+      "Pay online through Razorpay: payment, deposit and any onboarding charge",
+      "Booking history and referral rewards inside the app",
+    ],
+  },
+  {
+    id: "rider-ride",
+    icon: MapPin,
+    title: "My vehicle & stations",
+    summary: "Riders always know what they have and where to go next.",
+    items: [
+      "See the assigned vehicle and active plan",
+      "For EV fleets using swap stations: find the nearest station with directions",
+    ],
+  },
+  {
+    id: "rider-billing",
+    icon: FileText,
+    title: "Billing & invoices",
+    summary: "Riders see what they owe and why, and pay it in the app.",
+    items: [
+      "A billing tab with the amount due and payment history",
+      "GST tax invoices and credit notes they can open any time",
+      "Ad-hoc charges such as a lost key or a fine, shown and payable in the app",
+      "Referral rewards that can be applied to an invoice",
+    ],
+  },
+  {
+    id: "rider-return",
+    icon: Undo2,
+    title: "Renew, return & refund",
+    summary: "The whole end of a rental, handled in the app.",
+    items: [
+      "Renew a plan from the app",
+      "Request a return, then see the settlement and deposit refund once your team has inspected the vehicle",
+      "Return lock: once a return is open, renewals and new bookings are paused so nothing is billed by mistake",
+    ],
+  },
+  {
+    id: "rider-help",
+    icon: LifeBuoy,
+    title: "Support & notifications",
+    summary: "Help and updates reach riders where they already are.",
+    items: [
+      "Raise and track support tickets",
+      "In-app notifications, plus browser push in the web version",
+      "Broadcasts from your team arrive as notifications",
+    ],
+  },
+  {
+    id: "rider-app",
+    icon: Smartphone,
+    title: "The app itself",
+    summary: "Built for Android, and available in a web browser too.",
+    items: [
+      "Follows the phone's light or dark theme",
+      "Privacy centre: view and raise data-rights requests, and name a nominee",
+      "Syncs with your admin console, so staff and riders always see the same thing",
+    ],
+  },
+];
+
 export interface Segment {
   icon: LucideIcon;
   title: string;
@@ -231,7 +319,7 @@ export const BENEFITS = [
 ];
 
 export interface PricingModel {
-  id: "monthly" | "one-time";
+  id: "monthly";
   name: string;
   tagline: string;
   cta: string;
@@ -254,36 +342,9 @@ export const PRICING_MODELS: PricingModel[] = [
       "Scale up or down as your fleet changes",
     ],
   },
-  {
-    id: "one-time",
-    name: "One-Time Software Purchase",
-    tagline: "Pay once for the software and own your licence.",
-    cta: "Purchase Once",
-    ctaEvent: "click_purchase_once",
-    suits: "Established fleets planning to run the platform for years and wanting no recurring software fee.",
-    points: [
-      "A single payment based on your scope (contact us for details)",
-      "No recurring licence fee",
-      "Setup and deployment scoped with you",
-      "Optional support and update plans, discussed separately",
-    ],
-  },
 ];
 
-export const WHAT_BOTH_INCLUDE = [
-  "Admin web application",
-  "Rider mobile application",
-  "The integrated back end behind both",
-  "Every module listed on the features page",
-  "A walkthrough of your own use case before you commit",
-];
 
-export const QUOTE_FACTORS = [
-  "Number of vehicles in your fleet",
-  "Which modules you need (for example, GST accounting or battery-swap stations)",
-  "How you want it set up and deployed",
-  "Level of ongoing support",
-];
 
 export const BUSINESS_TYPE_OPTIONS = [
   { value: "ev_scooter_rental", label: "EV scooter rental company" },
@@ -305,7 +366,6 @@ export const FLEET_SIZE_OPTIONS = [
 
 export const PRICING_INTEREST_OPTIONS = [
   { value: "monthly", label: "Monthly subscription" },
-  { value: "one_time", label: "One-time purchase" },
   { value: "not_sure", label: "Not sure yet" },
 ] as const;
 

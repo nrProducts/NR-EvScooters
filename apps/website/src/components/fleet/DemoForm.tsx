@@ -3,11 +3,9 @@ import { CheckCircle2, AlertCircle, Loader2, Send } from "lucide-react";
 import { Field, inputClass } from "@/components/ContactForm";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
-import { useLocation } from "@/lib/router";
 import {
   BUSINESS_TYPE_OPTIONS,
   FLEET_SIZE_OPTIONS,
-  PRICING_INTEREST_OPTIONS,
 } from "@/content/fleet";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -22,7 +20,6 @@ interface Values {
   business_name: string;
   business_type: string;
   fleet_size: string;
-  pricing_interest: string;
   message: string;
   /** Honeypot — always empty for a real visitor. */
   company: string;
@@ -37,7 +34,6 @@ const EMPTY: Values = {
   business_name: "",
   business_type: "",
   fleet_size: "",
-  pricing_interest: "not_sure",
   message: "",
   company: "",
 };
@@ -62,12 +58,8 @@ type Status = "idle" | "submitting" | "success" | "error";
 
 export function DemoForm() {
   const formId = useId();
-  const { search } = useLocation();
-  // /request-demo?plan=monthly | one-time — set by the pricing CTAs.
-  const plan = new URLSearchParams(search).get("plan");
-  const initialInterest = plan === "monthly" ? "monthly" : plan === "one-time" ? "one_time" : "not_sure";
 
-  const [values, setValues] = useState<Values>({ ...EMPTY, pricing_interest: initialInterest });
+  const [values, setValues] = useState<Values>(EMPTY);
   const [errors, setErrors] = useState<Errors>({});
   const [status, setStatus] = useState<Status>("idle");
   const [formError, setFormError] = useState("");
@@ -118,7 +110,6 @@ export function DemoForm() {
           business_name: values.business_name,
           business_type: values.business_type,
           fleet_size: values.fleet_size,
-          pricing_interest: values.pricing_interest,
           company: values.company,
         }),
       });
@@ -149,9 +140,8 @@ export function DemoForm() {
       trackEvent("demo_request_submit", {
         business_type: values.business_type,
         fleet_size: values.fleet_size,
-        pricing_interest: values.pricing_interest,
       });
-      setValues({ ...EMPTY, pricing_interest: initialInterest });
+      setValues(EMPTY);
       setStatus("success");
     } catch {
       console.error("Demo request submission failed");
@@ -247,15 +237,6 @@ export function DemoForm() {
             ))}
           </select>
         </Field>
-        <div className="sm:col-span-2">
-          <Field label="Pricing Model You Are Considering" htmlFor={`${formId}-pricing_interest`}>
-            <select {...field("pricing_interest")} className={inputClass(false)}>
-              {PRICING_INTEREST_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </Field>
-        </div>
         <div className="sm:col-span-2">
           <Field label="What would you like to see?" required error={errors.message} htmlFor={`${formId}-message`}>
             <textarea
