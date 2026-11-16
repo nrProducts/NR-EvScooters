@@ -119,8 +119,14 @@ export default function VehicleDetailPage() {
         )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      {/*
+        Two independent columns (not one stretched row), so a short card never
+        sits in a tall empty box. Left: details + documents. Right: plan +
+        known damage. Each column is only as tall as its content.
+      */}
+      <div className="grid items-start gap-4 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+        <Card>
           <CardHeader>
             <CardTitle>Vehicle details</CardTitle>
           </CardHeader>
@@ -165,28 +171,6 @@ export default function VehicleDetailPage() {
             <Detail label="Purchase date" value={vehicle.purchase_date ? formatDate(vehicle.purchase_date) : "Not recorded"} />
           </CardContent>
         </Card>
-
-        {/* Right: plan and documents. */}
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Current plan</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-4">
-              {vehicle.plan_name ? (
-                <>
-                  <div className="flex items-center justify-between">
-                    <Detail label="Plan" value={vehicle.plan_name} />
-                    {vehicle.plan_status && <StatusBadge status={vehicle.plan_status} />}
-                  </div>
-                  <Detail label="Start date" value={vehicle.plan_start_date ? formatDate(vehicle.plan_start_date) : "Not recorded"} />
-                  <Detail label="End date" value={vehicle.plan_end_date ? formatDate(vehicle.plan_end_date) : "Not recorded"} />
-                </>
-              ) : (
-                <p className="text-xs text-muted-foreground">No active plan — this vehicle is unassigned.</p>
-              )}
-            </CardContent>
-          </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -238,6 +222,29 @@ export default function VehicleDetailPage() {
                     </div>
                   </div>
                 ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right: plan and known damage. */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Current plan</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-4">
+              {vehicle.plan_name ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <Detail label="Plan" value={vehicle.plan_name} />
+                    {vehicle.plan_status && <StatusBadge status={vehicle.plan_status} />}
+                  </div>
+                  <Detail label="Start date" value={vehicle.plan_start_date ? formatDate(vehicle.plan_start_date) : "Not recorded"} />
+                  <Detail label="End date" value={vehicle.plan_end_date ? formatDate(vehicle.plan_end_date) : "Not recorded"} />
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">No active plan — this vehicle is unassigned.</p>
               )}
             </CardContent>
           </Card>
