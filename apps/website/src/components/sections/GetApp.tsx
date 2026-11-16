@@ -52,6 +52,7 @@ export function GetApp() {
             label={PRE_BOOKING_MODE ? "Coming Soon" : PLAY_STORE_URL ? "Get the app" : "Coming soon"}
             href={PLAY_STORE_URL}
             disabled={PRE_BOOKING_MODE || !PLAY_STORE_URL}
+            external
             onClick={() => trackEvent("click_get_app", { platform: "android" })}
           />
           <PlatformButton

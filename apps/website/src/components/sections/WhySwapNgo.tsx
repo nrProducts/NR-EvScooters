@@ -77,7 +77,9 @@ function ReasonCard({ icon: Icon, title, description, size, index }: Reason & { 
       delay={index * 80}
       className={cn(
         "group relative overflow-hidden rounded-3xl border border-border bg-card p-7 hover:border-primary/30 hover:shadow-card",
-        large ? "lg:col-span-6 lg:min-h-[15rem]" : "lg:col-span-3 lg:min-h-[15rem]",
+        // Only the large cards keep a minimum height (they carry the accent + dot row);
+        // forcing it on the small ones left ~90px of empty card under two lines of text.
+        large ? "lg:col-span-6 lg:min-h-[14rem]" : "lg:col-span-3",
       )}
     >
       {large && (

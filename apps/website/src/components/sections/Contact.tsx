@@ -46,7 +46,7 @@ export function Contact() {
   );
 }
 
-function ContactRow({
+export function ContactRow({
   icon: Icon,
   label,
   value,

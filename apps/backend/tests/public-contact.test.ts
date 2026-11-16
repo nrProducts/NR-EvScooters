@@ -185,3 +185,60 @@ describe("clientIp", () => {
         ).toBe("203.0.113.5");
     });
 });
+
+describe("contactQueryBody — fleet-software demo requests", () => {
+    const DEMO = {
+        query_type: "fleet_demo",
+        business_name: "  Acme   Mobility  ",
+        business_type: "ev_scooter_rental",
+        fleet_size: "11_50",
+        pricing_interest: "monthly",
+    };
+
+    it("accepts a demo request with the business fields", () => {
+        const result = parse(DEMO);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.business_name).toBe("Acme Mobility");
+            expect(result.data.fleet_size).toBe("11_50");
+            expect(result.data.pricing_interest).toBe("monthly");
+        }
+    });
+
+    it("accepts the general fleet-software enquiry type", () => {
+        expect(parse({ query_type: "fleet_software" }).success).toBe(true);
+    });
+
+    it("leaves every business field optional, so ordinary queries are unchanged", () => {
+        const result = parse();
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.business_name).toBeUndefined();
+            expect(result.data.business_type).toBeUndefined();
+            expect(result.data.fleet_size).toBeUndefined();
+            expect(result.data.pricing_interest).toBeUndefined();
+        }
+    });
+
+    it("collapses an empty business name to undefined", () => {
+        const result = parse({ ...DEMO, business_name: "   " });
+        expect(result.success).toBe(true);
+        if (result.success) expect(result.data.business_name).toBeUndefined();
+    });
+
+    it("rejects values outside the fixed lists", () => {
+        expect(parse({ ...DEMO, business_type: "pirate" }).success).toBe(false);
+        expect(parse({ ...DEMO, fleet_size: "a lot" }).success).toBe(false);
+        expect(parse({ ...DEMO, pricing_interest: "free" }).success).toBe(false);
+    });
+
+    it("strips control characters from the business name (it lands in an email)", () => {
+        const result = parse({ ...DEMO, business_name: "Acme\r\nBcc: victim@evil.com" });
+        expect(result.success).toBe(true);
+        if (result.success) expect(result.data.business_name).not.toMatch(/[\r\n]/);
+    });
+
+    it("rejects a business name over 150 characters", () => {
+        expect(parse({ ...DEMO, business_name: "a".repeat(151) }).success).toBe(false);
+    });
+});

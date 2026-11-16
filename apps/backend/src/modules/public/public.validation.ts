@@ -18,6 +18,11 @@ export const QUERY_TYPES = [
     "technical",
     "feedback",
     "other",
+    // The Swapngo Fleet software product (see apps/website /fleet-management).
+    // Kept as their own values rather than folded into "partnership" so the
+    // inbox subject says exactly which business the enquiry is for.
+    "fleet_software",
+    "fleet_demo",
 ] as const;
 
 export const CONTACT_METHODS = ["email", "phone", "whatsapp"] as const;
@@ -34,6 +39,48 @@ export const QUERY_TYPE_LABELS: Record<(typeof QUERY_TYPES)[number], string> = {
     technical: "Technical Support",
     feedback: "Feedback",
     other: "Other",
+    fleet_software: "Fleet Software Enquiry",
+    fleet_demo: "Fleet Software Demo Request",
+};
+
+/** Fleet-software demo request: what kind of business is asking. */
+export const BUSINESS_TYPES = [
+    "ev_scooter_rental",
+    "bike_rental",
+    "car_rental",
+    "vehicle_leasing",
+    "delivery_fleet",
+    "logistics",
+    "commercial_fleet",
+    "other",
+] as const;
+
+export const BUSINESS_TYPE_LABELS: Record<(typeof BUSINESS_TYPES)[number], string> = {
+    ev_scooter_rental: "EV scooter rental company",
+    bike_rental: "Bike rental business",
+    car_rental: "Car rental company",
+    vehicle_leasing: "Vehicle leasing company",
+    delivery_fleet: "Delivery fleet operator",
+    logistics: "Logistics company",
+    commercial_fleet: "Commercial fleet operator",
+    other: "Other",
+};
+
+export const FLEET_SIZES = ["up_to_10", "11_50", "51_200", "over_200"] as const;
+
+export const FLEET_SIZE_LABELS: Record<(typeof FLEET_SIZES)[number], string> = {
+    up_to_10: "Up to 10 vehicles",
+    "11_50": "11 to 50 vehicles",
+    "51_200": "51 to 200 vehicles",
+    over_200: "More than 200 vehicles",
+};
+
+export const PRICING_INTERESTS = ["monthly", "one_time", "not_sure"] as const;
+
+export const PRICING_INTEREST_LABELS: Record<(typeof PRICING_INTERESTS)[number], string> = {
+    monthly: "Monthly subscription",
+    one_time: "One-time purchase",
+    not_sure: "Not sure yet",
 };
 
 export const CONTACT_METHOD_LABELS: Record<(typeof CONTACT_METHODS)[number], string> = {
@@ -107,6 +154,15 @@ const indianPhone = z
     // can itself start with 91 (9100236548) and must be kept whole.
     .transform((digits) => (digits.length > 10 ? digits.replace(/^(?:91|0)/, "") : digits));
 
+/** Like singleLine, but the field itself is optional — empty/absent collapses to undefined rather than "". */
+const optionalSingleLine = (max: number) =>
+    z
+        .string()
+        .optional()
+        .transform((v) => stripControlChars(v ?? "", false).replace(/\s+/g, " ").trim())
+        .pipe(z.string().max(max))
+        .transform((v) => (v === "" ? undefined : v));
+
 export const contactQueryBody = z.object({
     full_name: singleLine(100).pipe(z.string().min(2, "Enter your full name.")),
 
@@ -130,6 +186,16 @@ export const contactQueryBody = z.object({
 
     /** Optional — the form leaves it unset unless the visitor picks one. */
     preferred_contact: z.enum(CONTACT_METHODS).optional(),
+
+    /**
+     * Fleet-software demo request only — all optional, so the existing rental
+     * and general forms are unaffected. Free text goes through the same
+     * control-character stripping as every other value that reaches an email.
+     */
+    business_name: optionalSingleLine(150),
+    business_type: z.enum(BUSINESS_TYPES).optional(),
+    fleet_size: z.enum(FLEET_SIZES).optional(),
+    pricing_interest: z.enum(PRICING_INTERESTS).optional(),
 
     /**
      * Honeypot. A real visitor never sees this field (it is hidden from both
@@ -158,15 +224,6 @@ export const RENTAL_PLAN_PREFERENCE_LABELS: Record<(typeof RENTAL_PLAN_PREFERENC
 };
 
 export const PRE_BOOKING_MESSAGE_MAX = 1000;
-
-/** Like singleLine, but the field itself is optional — empty/absent collapses to undefined rather than "". */
-const optionalSingleLine = (max: number) =>
-    z
-        .string()
-        .optional()
-        .transform((v) => stripControlChars(v ?? "", false).replace(/\s+/g, " ").trim())
-        .pipe(z.string().max(max))
-        .transform((v) => (v === "" ? undefined : v));
 
 export const preBookingBody = z.object({
     full_name: singleLine(100).pipe(z.string().min(2, "Enter your full name.")),

@@ -12,7 +12,7 @@ const SWAP_STEPS = [
 /** Swapngo's core differentiator from a traditional plug-in-and-wait EV rental. */
 export function BatterySwap() {
   return (
-    <section className="relative overflow-hidden bg-dark py-16 text-white sm:py-24">
+    <section id="battery-swap" className="relative overflow-hidden bg-dark py-16 text-white sm:py-24">
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-grid-pattern opacity-[0.06]" />
       <div aria-hidden className="pointer-events-none absolute -left-32 top-1/2 h-[28rem] w-[28rem] -translate-y-1/2 rounded-full bg-primary/25 blur-[120px]" />
 

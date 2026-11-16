@@ -1,0 +1,38 @@
+[
+  {
+    "question": "What is SwapNgo Fleet?",
+    "answer": "SwapNgo Fleet is fleet management software made of three parts that work as one system: an admin web application for your team, a rider mobile application for your customers, and the integrated back end that connects them — vehicles, riders, bookings, plans, payments, billing and reporting."
+  },
+  {
+    "question": "Is this software already used to run a real fleet?",
+    "answer": "Yes. It is the platform behind Swapngo's own EV scooter rental operation in Chennai, so the features described on this site are ones a live rental business depends on, not a roadmap."
+  },
+  {
+    "question": "What types of businesses is it built for?",
+    "answer": "Businesses that rent, lease or subscribe vehicles to riders or drivers on recurring plans: EV scooter and bike rental, car rental, vehicle leasing, delivery fleets, logistics and other commercial fleets. It fits best where you onboard individual riders and collect recurring payments. If your workflow needs something it does not do, we will say so in the demo."
+  },
+  {
+    "question": "Can I buy it monthly or pay once?",
+    "answer": "Both. You can take SwapNgo Fleet as a monthly subscription or as a one-time software purchase. Price depends on your fleet size and the modules you need, so we share it on request: contact us for price details. The pricing page compares the two models."
+  },
+  {
+    "question": "Does it include a rider mobile app?",
+    "answer": "Yes. The rider app covers onboarding, KYC, booking and renewing a plan, paying online, tax invoices, return requests and support. It is built for Android and also runs in a web browser."
+  },
+  {
+    "question": "Does it handle GST invoicing and accounting?",
+    "answer": "The admin console issues GST tax invoices and credit notes as payments and refunds happen, records vendor purchases and input tax credit, prepares GSTR-1 and GSTR-3B worksheets, and provides books such as trial balance and profit and loss with a Tally export. Your accountant should still review filings before they are submitted."
+  },
+  {
+    "question": "Can my staff have different levels of access?",
+    "answer": "Yes. An admin can grant each staff member access module by module and action by action, and sensitive actions are written to an audit log."
+  },
+  {
+    "question": "Does it include GPS tracking and a live map?",
+    "answer": "Yes, for vehicles fitted with a supported GPS tracker. The admin console shows every vehicle on a live map with its battery level, running hours and kilometres per bike. Tell us which tracker you use in the demo and we will confirm what is supported."
+  },
+  {
+    "question": "How do I get started?",
+    "answer": "Request a demo. We walk you through the admin console and rider app against your own use case, then share price details for the monthly subscription or one-time purchase model, whichever suits you."
+  }
+]

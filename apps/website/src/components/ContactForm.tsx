@@ -1,11 +1,17 @@
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { CheckCircle2, AlertCircle, Loader2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
-const QUERY_TYPES = [
+export interface QueryTopic {
+  value: string;
+  label: string;
+}
+
+/** The rental page's own topic list — unchanged from before the site had two businesses. */
+const QUERY_TYPES: readonly QueryTopic[] = [
   { value: "general", label: "General Enquiry" },
   { value: "rental", label: "Scooter Rental" },
   { value: "pricing", label: "Pricing & Plans" },
@@ -16,7 +22,18 @@ const QUERY_TYPES = [
   { value: "technical", label: "Technical Support" },
   { value: "feedback", label: "Feedback" },
   { value: "other", label: "Other" },
-] as const;
+];
+
+/**
+ * The site-level Contact page: the things a visitor to swapngo.in might be
+ * here for — scooter rentals, the fleet software, partnerships — plus a catch-all.
+ */
+export const CONTACT_PAGE_TOPICS: readonly QueryTopic[] = [
+  { value: "rental", label: "Scooter Rentals" },
+  { value: "fleet_software", label: "Fleet Management Software" },
+  { value: "partnership", label: "Business Partnerships" },
+  { value: "general", label: "General Enquiry" },
+];
 
 const CONTACT_METHODS = [
   { value: "email", label: "Email" },
@@ -55,7 +72,7 @@ type FieldErrors = Partial<Record<keyof FormValues, string>>;
  * sees the problem before a round trip. The server re-checks every rule — this
  * copy is UX, never the control.
  */
-function validate(values: FormValues): FieldErrors {
+function validate(values: FormValues, topics: readonly QueryTopic[]): FieldErrors {
   const errors: FieldErrors = {};
 
   if (values.full_name.trim().length < 2) errors.full_name = "Enter your full name.";
@@ -69,7 +86,7 @@ function validate(values: FormValues): FieldErrors {
     errors.phone = "Enter a valid 10-digit Indian mobile number.";
   }
 
-  if (!QUERY_TYPES.some((t) => t.value === values.query_type)) {
+  if (!topics.some((t) => t.value === values.query_type)) {
     errors.query_type = "Choose a query type.";
   }
 
@@ -85,9 +102,24 @@ function validate(values: FormValues): FieldErrors {
 
 type Status = "idle" | "submitting" | "success" | "error";
 
-export function ContactForm() {
+export function ContactForm({
+  topics = QUERY_TYPES,
+  defaultTopic = "general",
+  placement = "rental_page",
+}: {
+  topics?: readonly QueryTopic[];
+  defaultTopic?: string;
+  /** Which page's form this is — sent to analytics only, never to the API. */
+  placement?: string;
+} = {}) {
   const formId = useId();
-  const [values, setValues] = useState<FormValues>(EMPTY);
+  const [values, setValues] = useState<FormValues>({ ...EMPTY, query_type: defaultTopic });
+
+  // The Contact page lets the visitor pick a topic card above the form; keep the
+  // form's own topic select in step without discarding what they have typed.
+  useEffect(() => {
+    setValues((v) => (v.query_type === defaultTopic ? v : { ...v, query_type: defaultTopic }));
+  }, [defaultTopic]);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [status, setStatus] = useState<Status>("idle");
   const [formError, setFormError] = useState("");
@@ -118,7 +150,7 @@ export function ContactForm() {
     e.preventDefault();
     if (inFlight.current) return;
 
-    const found = validate(values);
+    const found = validate(values, topics);
     if (Object.keys(found).length > 0) {
       setErrors(found);
       setStatus("error");
@@ -151,9 +183,16 @@ export function ContactForm() {
       });
 
       if (!res.ok) {
-        const payload = (await res.json().catch(() => null)) as
-          | { message?: string; fields?: Record<string, string> }
+        // The API nests validation detail under `error` (see the route tests);
+        // the top-level shape is kept as a fallback.
+        const raw = (await res.json().catch(() => null)) as
+          | {
+              message?: string;
+              fields?: Record<string, string>;
+              error?: { message?: string; fields?: Record<string, string> };
+            }
           | null;
+        const payload = raw ? { message: raw.error?.message ?? raw.message, fields: raw.error?.fields ?? raw.fields } : null;
 
         // 400s carry per-field messages the visitor can act on; everything
         // else gets one neutral line. Their input is left in place either way.
@@ -176,8 +215,8 @@ export function ContactForm() {
       }
 
       // query_type is a fixed enum value, not free text — safe to send.
-      trackEvent("contact_form_submit", { query_type: values.query_type });
-      setValues(EMPTY);
+      trackEvent("contact_form_submit", { query_type: values.query_type, placement });
+      setValues({ ...EMPTY, query_type: defaultTopic });
       setStatus("success");
     } catch {
       console.error("Contact form submission failed");
@@ -293,7 +332,7 @@ export function ContactForm() {
 
         <Field label="Query Type" required error={errors.query_type} htmlFor={`${formId}-query_type`}>
           <select {...field("query_type")} className={inputClass(!!errors.query_type)}>
-            {QUERY_TYPES.map((t) => (
+            {topics.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
               </option>
@@ -383,7 +422,7 @@ export function ContactForm() {
   );
 }
 
-function inputClass(invalid: boolean): string {
+export function inputClass(invalid: boolean): string {
   return cn(
     // 16px on phones is deliberate: iOS Safari zooms the viewport when a
     // focused input is under 16px, and the page never recovers the zoom.
@@ -394,7 +433,7 @@ function inputClass(invalid: boolean): string {
   );
 }
 
-function Field({
+export function Field({
   label,
   required,
   error,
