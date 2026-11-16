@@ -1,5 +1,11 @@
-import { prerender } from "react-dom/static";
+import * as ReactDOMStatic from "react-dom/static";
 import App from "./App";
+
+// react-dom/static is a CommonJS module. Depending on the Node version, Node's ESM loader may not
+// detect its named exports (Node 22.16 on Render does not), so a plain `import { prerender }`
+// fails at build time. The namespace always carries the module's `default`, so fall back to that.
+const staticModule = ReactDOMStatic as typeof ReactDOMStatic & { default?: typeof ReactDOMStatic };
+const prerender = staticModule.prerender ?? staticModule.default!.prerender;
 
 /**
  * Build-time render. scripts/prerender.mjs calls this once per route and writes
