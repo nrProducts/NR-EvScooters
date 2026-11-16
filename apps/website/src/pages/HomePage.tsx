@@ -70,17 +70,17 @@ function HubHero() {
       <Blob tone="sage" className="-right-40 -top-40 h-[42rem] w-[42rem]" />
       <Blob tone="mist" className="-bottom-48 -left-32 h-[34rem] w-[34rem]" delay="-3s" />
 
-      <Container className="relative grid items-center gap-8 py-6 sm:py-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10 lg:py-10">
+      <Container className="relative grid items-center gap-8 py-5 sm:py-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10 lg:py-10">
         <Reveal>
           <h1 className="text-balance text-[clamp(1.9rem,1rem+2.6vw,3.1rem)] font-semibold leading-[1.06] tracking-tight text-foreground">
             Powering Smarter <Script>Mobility</Script> &amp; Fleet Management
           </h1>
-          <p className="mt-4 max-w-[34rem] text-base leading-relaxed text-muted-foreground">
+          <p className="mt-3 max-w-[34rem] text-[15px] leading-relaxed text-muted-foreground sm:mt-4 sm:text-base">
             From renting electric scooters to providing powerful fleet management technology, SwapNgo helps
             businesses and individuals move smarter.
           </p>
 
-          <div className="mt-6 space-y-5">
+          <div className="mt-5 space-y-4 sm:mt-6 sm:space-y-5">
             <PathActions
               icon={Bike}
               to="/ev-scooter-rental"
@@ -127,7 +127,7 @@ function HubHero() {
                 </>
               }
               text="Rent out your own scooters and run the business on SwapNgo Fleet."
-              className="border-t border-border pt-5"
+              className="border-t border-border pt-4 sm:pt-5"
             >
               <ButtonLink
                 to="/fleet-management/request-demo"
@@ -152,7 +152,8 @@ function HubHero() {
           </div>
         </Reveal>
 
-        <Reveal className="relative" delay={150}>
+        {/* Phones: the text above already fills the first screen, and this picture would be cut off and too small to read there. The next section shows both products at a readable size. */}
+        <Reveal className="relative hidden sm:block" delay={150}>
           {/* Both products in one picture: the admin dashboard behind, the scooter in front. Width-capped so the hero fits one screen. */}
           <div className="relative mx-auto w-full max-w-[26rem] pb-16 sm:max-w-[30rem] sm:pb-20 lg:ml-auto lg:mr-0 xl:max-w-[34rem]">
             <div className="ml-auto w-[92%]">
