@@ -389,7 +389,7 @@ export const hi: Copy = {
     'maintenance.beingRepaired': 'आपका स्कूटर ठीक किया जा रहा है',
     'maintenance.expectedReady': '{time} तक तैयार होने की उम्मीद है।',
     'maintenance.inMaintenance': 'आपका स्कूटर रखरखाव में है',
-    'maintenance.useTempVehicle': 'तैयार होने तक इस अस्थायी वाहन का इस्तेमाल करें।',
+    'maintenance.useTempVehicle': 'आपको दूसरा स्कूटर दिया गया है। यह आपके प्लान के बाकी समय तक आपका रहेगा।',
 
     // --- Home hero card ---------------------------------------------------
     'hero.kycRequired.heading': 'आपकी पहली सवारी के लिए बस एक कदम',
@@ -1085,6 +1085,7 @@ export const hi: Copy = {
     'vehicleDocs.error.openFailed.title': 'दस्तावेज़ नहीं खोला जा सका',
 
     // --- app shell (header + profile sheet) ---------------------------------
+'update.readyTitle': 'अपडेट तैयार है',    'update.readyMessage': 'Swapngo का नया संस्करण डाउनलोड हो गया है। इस्तेमाल शुरू करने के लिए रीस्टार्ट करें।',    'update.restart': 'अभी रीस्टार्ट करें',    'update.later': 'बाद में',
     'appShell.goBack': 'वापस जाएं',
     'appShell.dayN': 'दिन {day}',
     'appShell.notificationsUnread': 'सूचनाएं, {count} अपठित',

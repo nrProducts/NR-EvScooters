@@ -119,12 +119,18 @@ export default function VehicleDetailPage() {
         )}
       </div>
 
+      {/*
+        Two rows of equal-height cards, so nothing ends ragged:
+          row 1  Vehicle details (2/3) + Current plan (1/3) — both two rows of fields
+          row 2  Documents + Known damage — side by side
+        Cards in a row stretch to the tallest one (h-full), never sit short.
+      */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="h-full lg:col-span-2">
           <CardHeader>
             <CardTitle>Vehicle details</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <CardContent className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-3">
             {/*
               Battery number and charge level are gone: a battery is swapped at
               a station, so it was never a property of a scooter. Service dates
@@ -163,87 +169,87 @@ export default function VehicleDetailPage() {
             <Detail label="Color" value={vehicle.color ?? "Not recorded"} />
             <Detail label="Batch number" value={vehicle.batch_number ?? "Not recorded"} />
             <Detail label="Purchase date" value={vehicle.purchase_date ? formatDate(vehicle.purchase_date) : "Not recorded"} />
+            <Detail label="Model" value={vehicle.model || "Not recorded"} />
           </CardContent>
         </Card>
 
-        {/* Right: plan and documents. */}
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Current plan</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-4">
-              {vehicle.plan_name ? (
-                <>
-                  <div className="flex items-center justify-between">
-                    <Detail label="Plan" value={vehicle.plan_name} />
-                    {vehicle.plan_status && <StatusBadge status={vehicle.plan_status} />}
-                  </div>
-                  <Detail label="Start date" value={vehicle.plan_start_date ? formatDate(vehicle.plan_start_date) : "Not recorded"} />
-                  <Detail label="End date" value={vehicle.plan_end_date ? formatDate(vehicle.plan_end_date) : "Not recorded"} />
-                </>
-              ) : (
-                <p className="text-xs text-muted-foreground">No active plan — this vehicle is unassigned.</p>
-              )}
-            </CardContent>
-          </Card>
+        <Card className="h-full">
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <CardTitle>Current plan</CardTitle>
+            {vehicle.plan_name && vehicle.plan_status && <StatusBadge status={vehicle.plan_status} />}
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-x-6 gap-y-5">
+            {vehicle.plan_name ? (
+              <>
+                <div className="col-span-2">
+                  <Detail label="Plan" value={vehicle.plan_name} />
+                </div>
+                <Detail label="Start date" value={vehicle.plan_start_date ? formatDate(vehicle.plan_start_date) : "Not recorded"} />
+                <Detail label="End date" value={vehicle.plan_end_date ? formatDate(vehicle.plan_end_date) : "Not recorded"} />
+              </>
+            ) : (
+              <p className="col-span-2 text-xs text-muted-foreground">No active plan — this vehicle is unassigned.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2">
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-4 w-4" /> Documents
-              </CardTitle>
-              {canEdit && (
-                <Button variant="outline" size="sm" onClick={() => setAddDocOpen(true)}>
-                  <Plus className="h-4 w-4" /> Add
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {vehicle.documents.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No registration, insurance, PUC, fitness or permit documents on file.
-                </p>
-              ) : (
-                vehicle.documents.map((doc) => (
-                  <div key={doc.id} className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="font-medium capitalize">{doc.doc_type}</p>
-                      <p className="text-xs text-muted-foreground">
-                        #{doc.doc_number} · expires {formatDate(doc.expires_on)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {doc.has_file && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={openingDocId === doc.id}
-                          onClick={() => void openDocument(doc)}
-                          title="View file"
-                        >
-                          {openingDocId === doc.id ? <Spinner className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
-                        </Button>
-                      )}
-                      {canEdit && (
-                        <Button variant="ghost" size="icon" onClick={() => setEditDoc(doc)} title="Edit">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {canEdit && (
-                        <Button variant="ghost" size="icon" onClick={() => setDeleteDoc(doc)} title="Delete">
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
-                    </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="h-full">
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4" /> Documents
+            </CardTitle>
+            {canEdit && (
+              <Button variant="outline" size="sm" onClick={() => setAddDocOpen(true)}>
+                <Plus className="h-4 w-4" /> Add
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {vehicle.documents.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No registration, insurance, PUC, fitness or permit documents on file.
+              </p>
+            ) : (
+              vehicle.documents.map((doc) => (
+                <div key={doc.id} className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium capitalize">{doc.doc_type}</p>
+                    <p className="text-xs text-muted-foreground">
+                      #{doc.doc_number} · expires {formatDate(doc.expires_on)}
+                    </p>
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+                  <div className="flex items-center gap-1">
+                    {doc.has_file && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={openingDocId === doc.id}
+                        onClick={() => void openDocument(doc)}
+                        title="View file"
+                      >
+                        {openingDocId === doc.id ? <Spinner className="h-4 w-4" /> : <ExternalLink className="h-4 w-4" />}
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button variant="ghost" size="icon" onClick={() => setEditDoc(doc)} title="Edit">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteDoc(doc)} title="Delete">
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
 
-          <VehicleDamageNotesCard vehicleId={vehicle.id} canEdit={canEdit} />
-        </div>
+        <VehicleDamageNotesCard vehicleId={vehicle.id} canEdit={canEdit} className="h-full" />
       </div>
 
       {/* Live tracking gets the full width — it is the busiest part of this page. */}

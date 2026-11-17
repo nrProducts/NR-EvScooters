@@ -567,6 +567,77 @@ export async function initiateRefund(depositId: string, actor: AuthContext | nul
 }
 
 /**
+ * Queues the deposit refund for a plan STAFF ended early (adminEndPlanNow in
+ * rentals.service.ts: a scooter set to Available, or sent to maintenance with
+ * "end plan"). Returns the refund's id, or null when there is no held,
+ * refundable deposit to give back.
+ *
+ * Unlike initiateRefund it does not enforce the post-return holding period or
+ * the minimum-rental-days threshold: the rider didn't choose to leave, staff
+ * took the scooter back. That is safe because nothing here pays out. The row
+ * is `pending` with no `reviewed_at`, and processRefund refuses an unreviewed
+ * refund, so it waits on the Refunds page where an admin reviews it, can
+ * deduct for damage or a short rental, or rejects it.
+ */
+export async function initiateStaffEndedDepositRefund(
+    subscriptionId: string,
+    actor: AuthContext,
+): Promise<string | null> {
+    const { data: deposit, error } = await supabaseAdmin
+        .from("deposits")
+        .select("id, amount, status, is_refundable")
+        .eq("subscription_id", subscriptionId)
+        .maybeSingle();
+    if (error) throw error;
+    if (!deposit || deposit.status !== "held" || deposit.is_refundable === false) return null;
+
+    const existing = await existingRefund(subscriptionId, "deposit_release");
+    if (existing) return existing.id;
+
+    const amount = await refundableAmountForSubscription(subscriptionId, Number(deposit.amount));
+    if (amount <= 0) return null;
+
+    const payment = await paymentForRefund(subscriptionId, amount);
+    if (!payment) return null;
+
+    const { data, error: insertError } = await supabaseAdmin
+        .from("refunds")
+        .insert({
+            user_id: payment.userId,
+            payment_transaction_id: payment.id,
+            amount,
+            gross_amount: amount,
+            reason: "deposit_release",
+            status: "pending",
+        })
+        .select(REFUND_COLUMNS)
+        .single();
+    if (insertError) throw insertError;
+    const refund = toRefundRow(data as unknown as RawRefundRow, deposit.id);
+
+    await writeAudit({
+        actorId: actor.id, targetUserId: refund.user_id, action: "refund.initiated",
+        entityType: "refund", entityId: refund.id,
+        after: { deposit_id: deposit.id, amount, initiated_by: "staff_plan_end" },
+    });
+
+    await notify({
+        notificationType: "refund_needs_approval",
+        referenceType: "refund",
+        referenceId: refund.id,
+        title: "Refund Needs Approval",
+        bodyFallback: `A ₹${amount} deposit refund for {rider} ({vehicle}) is awaiting review — their plan was ended by staff.`,
+        screen: "/refunds",
+        bookingId: refund.booking_id ?? undefined,
+        riderId: refund.user_id,
+        riderNameOverride: refund.booking?.rider_name ?? undefined,
+        vehicleNameOverride: refund.booking?.vehicle_model_name ?? undefined,
+    });
+
+    return refund.id;
+}
+
+/**
  * Creates (or reuses) a pending refund for a cancelled booking (plan fee and
  * deposit together — they were one payment).
  *

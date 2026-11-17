@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchUserReferrals, type ReferralStatus, type UserReferralRow } from "@/services/api/referrals";
-import { cn, formatDate, formatPhoneLocal } from "@/lib/utils";
+import { fetchUserReferrals, type ReferralStatus, type RewardCardStatus, type UserReferralRow } from "@/services/api/referrals";
+import { cn, formatCurrency, formatDate, formatPhoneLocal } from "@/lib/utils";
 
 const STATUS_STYLE: Record<ReferralStatus, string> = {
   qualified: "border-success/40 bg-success/10 text-success",
@@ -13,7 +13,20 @@ const STATUS_STYLE: Record<ReferralStatus, string> = {
   revoked: "border-destructive/40 bg-destructive/10 text-destructive",
 };
 
+/**
+ * Once a referral has earned a reward card, the card's state is what staff
+ * need: "Qualified" alone looked the same before and after the rider spent it.
+ */
+const REWARD_BADGE: Record<RewardCardStatus, { label: string; style: string }> = {
+  available: { label: "Reward available", style: "border-success/40 bg-success/10 text-success" },
+  reserved: { label: "Reward in use", style: "border-warning/40 bg-warning/10 text-warning" },
+  redeemed: { label: "Reward used", style: "border-border bg-muted text-muted-foreground" },
+  expired: { label: "Reward expired", style: "border-border bg-muted text-muted-foreground" },
+  revoked: { label: "Reward revoked", style: "border-destructive/40 bg-destructive/10 text-destructive" },
+};
+
 function ReferralPerson({ row }: { row: UserReferralRow }) {
+  const reward = row.reward ? REWARD_BADGE[row.reward.status] : null;
   return (
     <li className="flex items-center justify-between gap-2 py-1.5" title={`Code ${row.code_used}`}>
       <div className="flex min-w-0 items-baseline gap-2">
@@ -22,9 +35,18 @@ function ReferralPerson({ row }: { row: UserReferralRow }) {
         </Link>
         <span className="shrink-0 text-xs text-muted-foreground">{formatPhoneLocal(row.person.phone) ?? "No phone"} · {formatDate(row.created_at)}</span>
       </div>
-      <span className={cn("shrink-0 rounded-full border px-2 py-px text-[0.6875rem] font-medium capitalize", STATUS_STYLE[row.status])}>
-        {row.status}
-      </span>
+      {reward && row.reward ? (
+        <span
+          className={cn("shrink-0 rounded-full border px-2 py-px text-[0.6875rem] font-medium", reward.style)}
+          title={`Qualified · ${formatCurrency(row.reward.amount)} reward card`}
+        >
+          {reward.label}
+        </span>
+      ) : (
+        <span className={cn("shrink-0 rounded-full border px-2 py-px text-[0.6875rem] font-medium capitalize", STATUS_STYLE[row.status])}>
+          {row.status}
+        </span>
+      )}
     </li>
   );
 }
@@ -49,6 +71,7 @@ export function UserReferralsCard({ userId }: { userId: string }) {
         {data ? (
           <span className="text-xs text-muted-foreground">
             Referred {data.referred_count} · {data.qualified_count} qualified
+            {data.rewards_used_count ? ` · ${data.rewards_used_count} used` : ""}
           </span>
         ) : null}
       </CardHeader>

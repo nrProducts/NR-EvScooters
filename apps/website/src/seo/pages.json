@@ -1,0 +1,158 @@
+{
+  "origin": "https://swapngo.in",
+  "siteName": "Swapngo",
+  "defaultImage": "/og-cover.png",
+  "organization": {
+    "@type": "Organization",
+    "@id": "https://swapngo.in/#organization",
+    "name": "Swapngo",
+    "url": "https://swapngo.in/",
+    "logo": "https://swapngo.in/apple-touch-icon.png",
+    "email": "contact@swapngo.in",
+    "telephone": "+91-96009-99046",
+    "sameAs": ["https://www.instagram.com/swapngo.in/", "https://maps.app.goo.gl/GYBuuz5znXQpFr1j6"],
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "No. 5/61, Pillaiyar Kovil Street, Medavakkam",
+      "addressLocality": "Chennai",
+      "addressRegion": "Tamil Nadu",
+      "postalCode": "600100",
+      "addressCountry": "IN"
+    },
+    "contactPoint": [
+      { "@type": "ContactPoint", "contactType": "customer support", "email": "support@swapngo.in", "telephone": "+91-96009-99046", "areaServed": "IN" },
+      { "@type": "ContactPoint", "contactType": "customer support", "email": "support@swapngo.in", "telephone": "+91-96009-99047", "areaServed": "IN" },
+      { "@type": "ContactPoint", "contactType": "sales", "email": "contact@swapngo.in", "telephone": "+91-96009-99046", "areaServed": "IN", "availableLanguage": ["English"] }
+    ]
+  },
+  "pages": [
+    {
+      "path": "/",
+      "section": "home",
+      "title": "EV Scooter Rental in Chennai & Fleet Management Software | Swapngo",
+      "description": "EV scooter rental in Chennai with unlimited kilometres and battery swapping, plus SwapNgo Fleet: fleet management software with an admin app and rider mobile app.",
+      "keywords": "EV scooter rental Chennai, electric scooter rental Chennai, fleet management software, Swapngo, SwapNgo Fleet, vehicle rental management software",
+      "ogTitle": "Swapngo: EV Scooter Rental & Fleet Management Software",
+      "ogImage": "/og-cover.png",
+      "priority": "1.0",
+      "changefreq": "weekly",
+      "type": "WebPage",
+      "name": "Swapngo: EV scooter rental and fleet management software"
+    },
+    {
+      "path": "/ev-scooter-rental",
+      "section": "rental",
+      "title": "EV Scooter Rental & Battery Swap in Chennai | Swapngo",
+      "description": "Rent an EV scooter in Chennai with Swapngo — weekly plans, unlimited kilometres, and swap your battery in under 2 minutes at any Swapngo battery-swap station. No waiting to charge.",
+      "keywords": "EV scooter rental Chennai, electric scooter rental Chennai, bike rental Chennai, EV bike rental Chennai, weekly scooter rental Chennai, electric scooter for delivery partners Chennai, affordable EV scooter rental, electric vehicle rental Chennai, monthly scooter rental Chennai, long term scooter rental Chennai, swap battery Chennai, battery swap Chennai, battery swapping scooter Chennai, battery swap station Chennai, scooter rental Chennai, Swapngo",
+      "ogTitle": "EV Scooter Rental & Battery Swap in Chennai | Swapngo",
+      "ogImage": "/og-cover.png",
+      "priority": "1.0",
+      "changefreq": "weekly",
+      "type": "WebPage",
+      "name": "EV scooter rental in Chennai",
+      "breadcrumb": [{ "name": "Home", "path": "/" }, { "name": "EV Scooter Rental", "path": "/ev-scooter-rental" }],
+      "localBusiness": true
+    },
+    {
+      "path": "/fleet-management",
+      "section": "fleet",
+      "title": "Fleet Management Software with Mobile App | SwapNgo Fleet",
+      "description": "Complete fleet management software: an admin web dashboard, a rider mobile app and one integrated system for vehicles, riders, bookings and payments. Request a demo.",
+      "keywords": "fleet management software, fleet management system, vehicle fleet management software, fleet management application, vehicle rental management software, bike rental management software, EV fleet management software, fleet management software with mobile app, fleet management software with admin dashboard, fleet management SaaS, fleet management software monthly subscription",
+      "ogTitle": "SwapNgo Fleet: Complete Fleet Management Software",
+      "ogImage": "/og-fleet.png",
+      "priority": "0.9",
+      "changefreq": "weekly",
+      "type": "WebPage",
+      "name": "SwapNgo Fleet: complete fleet management software",
+      "breadcrumb": [{ "name": "Home", "path": "/" }, { "name": "Fleet Management Software", "path": "/fleet-management" }],
+      "software": true,
+      "faq": true
+    },
+    {
+      "path": "/about",
+      "section": "home",
+      "title": "About Swapngo | EV Scooter Rental & Fleet Management Software",
+      "description": "Swapngo runs an EV scooter rental service in Chennai on a battery-swap network, and packages the technology behind it as SwapNgo Fleet management software.",
+      "keywords": "about Swapngo, EV scooter rental company Chennai, fleet management software company",
+      "ogTitle": "About Swapngo",
+      "ogImage": "/og-cover.png",
+      "priority": "0.6",
+      "changefreq": "monthly",
+      "type": "AboutPage",
+      "name": "About Swapngo",
+      "breadcrumb": [{ "name": "Home", "path": "/" }, { "name": "About Us", "path": "/about" }]
+    },
+    {
+      "path": "/contact",
+      "section": "home",
+      "title": "Contact Swapngo | Scooter Rentals, Fleet Software & Partnerships",
+      "description": "Contact Swapngo about EV scooter rentals in Chennai, SwapNgo Fleet management software demos, or business partnerships. Call, email or send an enquiry.",
+      "keywords": "contact Swapngo, EV scooter rental enquiry Chennai, fleet management software enquiry",
+      "ogTitle": "Contact Swapngo",
+      "ogImage": "/og-cover.png",
+      "priority": "0.6",
+      "changefreq": "monthly",
+      "type": "ContactPage",
+      "name": "Contact Swapngo",
+      "breadcrumb": [{ "name": "Home", "path": "/" }, { "name": "Contact Us", "path": "/contact" }]
+    }
+  ],
+  "legalPages": [
+    { "path": "/privacy.html", "priority": "0.3", "changefreq": "monthly" },
+    { "path": "/terms.html", "priority": "0.3", "changefreq": "monthly" }
+  ],
+  "rentalBusiness": {
+    "@type": "LocalBusiness",
+    "@id": "https://swapngo.in/#business",
+    "name": "Swapngo",
+    "url": "https://swapngo.in/ev-scooter-rental/",
+    "logo": "https://swapngo.in/og-cover.png",
+    "image": "https://swapngo.in/og-cover.png",
+    "description": "Swapngo offers affordable electric scooter rentals in Chennai with weekly rental plans that renew automatically — ride for a week, a month, or longer with no fixed lock-in — unlimited kilometres, and a battery-swap network where you swap your battery in under 2 minutes instead of waiting to charge.",
+    "email": "contact@swapngo.in",
+    "telephone": "+91-96009-99046",
+    "parentOrganization": { "@id": "https://swapngo.in/#organization" },
+    "sameAs": ["https://www.instagram.com/swapngo.in/", "https://maps.app.goo.gl/GYBuuz5znXQpFr1j6"],
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "No. 5/61, Pillaiyar Kovil Street, Medavakkam",
+      "addressLocality": "Chennai",
+      "addressRegion": "Tamil Nadu",
+      "postalCode": "600100",
+      "addressCountry": "IN"
+    },
+    "areaServed": { "@type": "City", "name": "Chennai" },
+    "serviceType": ["Electric Scooter Rental", "EV Scooter Rental", "Weekly Scooter Rental", "Monthly Scooter Rental", "Long Term Scooter Rental", "Battery Swapping", "Battery Swap Station"]
+  },
+  "software": {
+    "@type": "SoftwareApplication",
+    "@id": "https://swapngo.in/fleet-management#software",
+    "name": "SwapNgo Fleet",
+    "alternateName": "SwapNgo Fleet Management Software",
+    "url": "https://swapngo.in/fleet-management/",
+    "applicationCategory": "BusinessApplication",
+    "applicationSubCategory": "Fleet management software",
+    "operatingSystem": "Web, Android",
+    "description": "Fleet management software for rental, leasing and subscription vehicle businesses: an admin web application, a rider mobile application and an integrated back end covering vehicles, riders and KYC, bookings, plans, payments, GST accounting, maintenance and staff access control.",
+    "featureList": [
+      "Vehicle and fleet management",
+      "Rider onboarding and KYC verification",
+      "Rental bookings, renewals and returns",
+      "Configurable plans, deposits and charges",
+      "Online payments with refunds and reconciliation",
+      "GST tax invoices, purchases and returns worksheets",
+      "Maintenance and damage tracking",
+      "Live vehicle map, running hours and kilometre tracking",
+      "Staff attendance and leave",
+      "Push notification broadcasts to riders",
+      "Battery-swap station management",
+      "Role-based staff permissions and audit log",
+      "Rider mobile application"
+    ],
+    "provider": { "@id": "https://swapngo.in/#organization" },
+    "publisher": { "@id": "https://swapngo.in/#organization" },
+    "audience": { "@type": "BusinessAudience", "audienceType": "Vehicle rental, leasing, delivery and logistics fleet operators" }
+  }
+}

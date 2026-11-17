@@ -455,6 +455,8 @@ describe("getUserReferralsForAdmin — a user's place in the referral graph", ()
             ],
             error: null,
         });
+        // Bala's referral earned a card the user has since spent; Chitra's is still pending, so none.
+        queue("referral_reward_cards", { data: [{ referral_id: "b1", status: "redeemed", amount: "1.00" }], error: null });
 
         const out = await getUserReferralsForAdmin("me");
 
@@ -462,6 +464,9 @@ describe("getUserReferralsForAdmin — a user's place in the referral graph", ()
         expect(out.referred.map((r) => r.person.full_name)).toEqual(["Bala", "Chitra"]);
         expect(out.referred_count).toBe(2);
         expect(out.qualified_count).toBe(1);
+        // A qualified referral whose reward was spent must not read as unused.
+        expect(out.referred.map((r) => r.reward)).toEqual([{ status: "redeemed", amount: 1 }, null]);
+        expect(out.rewards_used_count).toBe(1);
     });
 
     it("has no referrer and an empty list for a user outside the referral graph, and skips the users lookup", async () => {
@@ -470,7 +475,8 @@ describe("getUserReferralsForAdmin — a user's place in the referral graph", ()
 
         const out = await getUserReferralsForAdmin("me");
 
-        expect(out).toEqual({ referred_by: null, referred: [], referred_count: 0, qualified_count: 0 });
+        expect(out).toEqual({ referred_by: null, referred: [], referred_count: 0, qualified_count: 0, rewards_used_count: 0 });
         expect(calls).not.toContain("users");
+        expect(calls).not.toContain("referral_reward_cards");
     });
 });

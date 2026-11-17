@@ -106,6 +106,34 @@ deploy in this order and paste the URL forward:
 | Publish Directory | `apps/website/dist` |
 | Redirect/Rewrite | `/*` → `/index.html` (Rewrite) |
 
+The website has several real routes (`/`, `/ev-scooter-rental`, `/fleet-management/*`,
+`/about`, `/contact`). `pnpm --filter website build` is: type-check, `vite build`,
+a server bundle (`vite build --ssr`, into `.ssr-build/`, deleted afterwards), then
+`scripts/prerender.mjs`. That script renders every route with the app itself and
+writes `dist/<route>/index.html` containing the page's own title, canonical, Open
+Graph, JSON-LD **and its real content** (headings, copy, links), so search engines
+and link-preview bots get the full page without running JavaScript. The browser
+then hydrates that HTML. It also regenerates `dist/sitemap.xml` from
+`src/seo/pages.json` and fails the build on duplicate titles/canonicals, a bad
+robots.txt, or a page that does not render exactly one `<h1>`.
+
+**URL form.** Every page is published as a directory with a trailing slash
+(`/about/`): canonical tags, the sitemap and all internal links use that form,
+because `/about/` resolves to `about/index.html` on any static host, whereas how a
+host treats the bare `/about` varies (Render's docs do not say). If a host serves
+the home file for `/about`, the page still works: a small guard in `<head>` hides
+the wrong content and the app renders the right page, and nothing is indexed under
+that form because the canonical says `/about/`.
+
+**After the first deploy, check once:** open `https://<site>/ev-scooter-rental/` and
+choose *View page source*. You should see the headings and paragraphs in the HTML
+(not just an empty `<div id="root">`). Then in Google Search Console, submit
+`/sitemap.xml` and use *URL inspection → Request indexing* on `/`,
+`/ev-scooter-rental/` and `/fleet-management/`.
+
+**To add a page:** add it to `pages.json`, register the route in `src/App.tsx`, and
+add a nav link if it needs one.
+
 ## Environment variables
 
 ### backend — required (server will not boot without these)

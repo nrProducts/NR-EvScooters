@@ -5,3 +5,4 @@
 # whenever those markdown files change. terms.html is built from
 # docs/legal/terms-operative.md, which must stay identical to the Terms the
 # rider app serves (the script checks this).
+.ssr-build

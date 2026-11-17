@@ -16,5 +16,10 @@
  */
 export const RIDER_WEB_URL = import.meta.env.VITE_RIDER_WEB_URL || "https://rider.swapngo.in";
 
-/** Empty until the Android rider app is published — the CTA falls back to "coming soon". */
-export const PLAY_STORE_URL = import.meta.env.VITE_PLAY_STORE_URL || "";
+/**
+ * The rider app's Google Play listing. The id is the Android package in
+ * apps/mobile/app.config.js (in.swapngo.rider). Set VITE_PLAY_STORE_URL to
+ * point a preview build at a different listing.
+ */
+export const PLAY_STORE_URL =
+  import.meta.env.VITE_PLAY_STORE_URL || "https://play.google.com/store/apps/details?id=in.swapngo.rider";

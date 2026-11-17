@@ -670,7 +670,9 @@ export async function assignTempVehicle(
     await notifyUser(rider.id, {
         template: "maintenance_temp_vehicle",
         title: "Temporary Vehicle Assigned",
-        body: "Your scooter is being repaired — use this temporary vehicle until it's ready.",
+        // The rider keeps this scooter: resolving the ticket no longer swaps
+        // them back (see updateMaintenanceTicket).
+        body: "Your scooter needs repair, so we've moved you to another scooter. It's yours for the rest of your plan.",
         screen: "home",
     });
 
@@ -692,13 +694,12 @@ export async function assignTempVehicle(
  * updateSupportRequest) reaches here, though any other caller wanting the
  * same outcome can too.
  *
- * Deliberately a distinct outcome from assignTempVehicle's 'temp_vehicle':
- * resolving THIS ticket later must not swap the rider back onto the original
- * vehicle the way a temp swap does — see updateMaintenanceTicket's resolve
- * branch, which only auto-hands-back a 'temp_vehicle' outcome. The original
- * vehicle just becomes available again for someone else, same as
- * reassignAfterScrap's 'not_repairable' case; if the rider is ever meant to
- * go back to it, that is a separate, explicit action later.
+ * A distinct outcome from assignTempVehicle's 'temp_vehicle' for the record,
+ * though resolving either now behaves the same: the rider keeps the vehicle
+ * they were moved to and the original becomes available for someone else
+ * (see updateMaintenanceTicket's resolve branch), same as
+ * reassignAfterScrap's 'not_repairable' case. If the rider is ever meant to go
+ * back to it, that is a separate, explicit action later.
  */
 export async function assignReplacementVehicle(
     id: string,
@@ -904,14 +905,8 @@ export async function updateMaintenanceTicket(
     // used to write `status: 'available'` directly, guarding against other
     // open tickets by hand — is now one RPC with the same guard inside it.
     //
-    // This MUST run before any handback swap below. swapRentalVehicle refuses
-    // to hand over a vehicle that isn't 'available' yet, and this ticket
-    // being open is exactly what was keeping it at 'maintenance' — running
-    // the swap first found the vehicle still showing 'maintenance', threw,
-    // and left the rider's temp/replacement assignment released with nothing
-    // put back in its place. The vehicle recomputing here, before the swap
-    // reads its status, is what makes the swap's own guard correct instead of
-    // a false positive.
+    // Recomputed straight away so the scooter leaves 'maintenance' the moment
+    // its last open ticket closes.
     const { error: recomputeError } = await supabaseAdmin.rpc("recompute_vehicle_status", {
         p_vehicle_id: before.vehicle_id,
     });
@@ -921,35 +916,28 @@ export async function updateMaintenanceTicket(
         const rider = before.derived.displaced_rider;
         const rentalId = before.derived.rental_id;
 
-        // Only a 'temp_vehicle' outcome implies the rider is owed their
-        // original vehicle back. 'replacement' means staff deliberately gave
-        // them a different vehicle for good (see assignReplacementVehicle) —
-        // resolving that ticket just frees the original for someone else,
-        // exactly like 'not_repairable' already does; it must NOT silently
-        // move the rider again. 'quick_fix' never displaced them in the first
-        // place (no assignment was ever swapped), so there is nothing to hand
-        // back either.
+        // Nobody is moved on resolve any more. A rider given a temp vehicle
+        // KEEPS it: by the time the repair is done staff have usually given
+        // the repaired scooter's slot away, and the old automatic hand-back
+        // swapped riders back onto scooters staff had already re-planned (and
+        // could leave a scooter stuck 'assigned'). So resolving a temp-vehicle
+        // ticket frees the repaired scooter, exactly like 'replacement' and
+        // 'not_repairable' always did. A paused plan simply resumes on the
+        // scooter the rider never left; 'quick_fix' never displaced anyone.
         if (before.outcome === "temp_vehicle" && rider && rentalId) {
-            // `initial` rather than a fourth reason: from the rental's point
-            // of view this is its own vehicle coming back, which is what the
-            // history should read as.
-            await swapRentalVehicle(rentalId, before.vehicle_id, "initial", id);
-
             if (before.derived.subscription_id) {
-                await resumeSubscription(
-                    before.derived.subscription_id, id, "original_handback", actor,
-                );
+                await resumeSubscription(before.derived.subscription_id, id, "maintenance_resolved", actor);
             }
 
             await notifyUser(rider.id, {
                 template: "maintenance_vehicle_returned",
-                title: "Your Scooter Is Ready",
-                body: "Your original scooter is back and ready. The temporary vehicle has been released.",
+                title: "Keep riding your current scooter",
+                body: "The repair is done. The scooter you're riding now stays yours for the rest of your plan.",
                 screen: "home",
             });
         } else if (before.derived.subscription_id) {
-            // No hand-back needed (replacement / quick_fix / no outcome at
-            // all) but billing may still be frozen — a ticket that only ever
+            // Not a temp swap (replacement / quick_fix / no outcome at all),
+            // but billing may still be frozen — a ticket that only ever
             // paused the rider's plan (triagePausePlan) never resumed it.
             // resumeSubscription is a safe no-op if nothing is actually
             // paused, so this also covers a ticket that never displaced

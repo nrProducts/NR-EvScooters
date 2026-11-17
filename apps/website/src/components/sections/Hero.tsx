@@ -7,6 +7,7 @@ import { ScooterIllustration } from "@/components/ui/ScooterIllustration";
 import { Blob } from "@/components/ui/Blob";
 import { Reveal } from "@/components/ui/Reveal";
 import { AvailabilityModal } from "@/components/AvailabilityModal";
+import { cn } from "@/lib/utils";
 import { useBookingCta } from "@/lib/bookingCta";
 import { trackEvent } from "@/lib/analytics";
 import { PRE_BOOKING_MODE } from "@/content/launchMode";
@@ -57,9 +58,16 @@ export function Hero() {
             <button
               type="button"
               onClick={handleCheckAvailability}
-              className={buttonVariants({ variant: "outline", size: "lg", className: "w-full sm:w-auto" })}
+              // The plain outline variant (faint grey hairline, transparent fill)
+              // vanishes on the pale hero. A brand-green border and tinted fill
+              // keep it clearly a button without competing with the solid
+              // "Book a scooter" CTA; text stays dark for contrast.
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "w-full border-2 border-primary bg-sage text-foreground shadow-soft hover:border-primary-hover hover:bg-sage sm:w-auto",
+              )}
             >
-              <Bike className="h-4 w-4" aria-hidden />
+              <Bike className="h-4 w-4 text-primary" aria-hidden />
               Check availability
             </button>
           </div>

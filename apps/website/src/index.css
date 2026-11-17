@@ -61,15 +61,13 @@
     scroll-behavior: smooth;
     /* Must match the STICKY header's real height, or a nav click lands the
        target section partly behind it. Below `lg` (Header.tsx's TopBar is
-       `hidden ... lg:block`): wrapper pt-3 (0.75rem) + pill h-16 (4rem) =
-       4.75rem. */
+       `hidden ... lg:block`): the h-16 bar (4rem) + a little air = 4.75rem. */
     scroll-padding-top: 4.75rem;
   }
 
   /* At `lg` and up, TopBar (h-10, 2.5rem) joins the sticky header on top of
-     the pill — 2.5rem + 0.75rem + 4rem = 7.25rem. Tailwind's own `lg`
-     breakpoint (1024px), so this switches at exactly the same point TopBar
-     does. */
+     the bar — 2.5rem + 4rem + air = 7.25rem. Tailwind's own `lg` breakpoint
+     (1024px), so this switches at exactly the same point TopBar does. */
   @media (min-width: 1024px) {
     html {
       scroll-padding-top: 7.25rem;
@@ -217,4 +215,13 @@
 a.bg-primary:hover,
 button.bg-primary:hover {
   background-image: linear-gradient(135deg, #34b867 0%, #137d3f 100%);
+}
+
+/*
+ * A prerendered page was served for a URL it does not belong to (see the
+ * data-ssr-guard script that scripts/prerender.mjs adds). Keep its content out
+ * of sight until the app has rendered the right page.
+ */
+html[data-ssr-mismatch] #root {
+  visibility: hidden;
 }

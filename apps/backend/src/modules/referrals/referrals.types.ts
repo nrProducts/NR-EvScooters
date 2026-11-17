@@ -143,6 +143,13 @@ export interface UserReferralAdminRow {
     qualified_at: string | null;
     /** The OTHER person: the referrer on "referred by", the referee on each "referred" row. */
     person: ReferralPartyAdminView;
+    /**
+     * The reward card this referral earned the referrer, on "referred" rows
+     * only; null when none was issued (pending, rejected, or over the cap).
+     * "qualified" says a reward was earned; this says whether it has since
+     * been spent.
+     */
+    reward?: { status: RewardCardStatus; amount: number } | null;
 }
 
 /** A user's place in the referral graph: at most one referrer above them, any number of referees below. */
@@ -151,4 +158,6 @@ export interface UserReferralsAdminView {
     referred: UserReferralAdminRow[];
     referred_count: number;
     qualified_count: number;
+    /** How many of the rewards those referrals earned have been spent. */
+    rewards_used_count: number;
 }

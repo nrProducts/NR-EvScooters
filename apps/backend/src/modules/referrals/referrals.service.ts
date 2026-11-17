@@ -11,7 +11,7 @@ import { phoneIdentityHash } from "./referralIdentity";
 import {
     MyAttributionView, QualifyReferralResult, RedemptionView, ReferralProgramAdminView, RedeemReferralResult,
     ReferralSummary, ReferralView, RewardCardView, UpdateReferralProgramInput,
-    ReferralPartyAdminView, UserReferralAdminRow, UserReferralsAdminView,
+    ReferralPartyAdminView, UserReferralAdminRow, UserReferralsAdminView, RewardCardStatus,
 } from "./referrals.types";
 
 /**
@@ -937,11 +937,23 @@ export async function getUserReferralsForAdmin(userId: string): Promise<UserRefe
         person: personFor(otherId),
     });
 
-    const referred = (below ?? []).map((r) => toRow(r, r.referee_user_id));
+    // The card each of this user's referrals earned them, so staff can see a
+    // reward was spent rather than every qualified referral looking unused.
+    const rewards = new Map<string, { status: RewardCardStatus; amount: number }>();
+    const referralIds = (below ?? []).map((r) => r.id);
+    if (referralIds.length > 0) {
+        const { data: cards, error: cardsErr } = await supabaseAdmin
+            .from("referral_reward_cards").select("referral_id, status, amount").in("referral_id", referralIds);
+        if (cardsErr) throw cardsErr;
+        for (const c of cards ?? []) rewards.set(c.referral_id, { status: c.status, amount: Number(c.amount) });
+    }
+
+    const referred = (below ?? []).map((r) => ({ ...toRow(r, r.referee_user_id), reward: rewards.get(r.id) ?? null }));
     return {
         referred_by: above && above.length > 0 ? toRow(above[0], above[0].referrer_user_id) : null,
         referred,
         referred_count: referred.length,
         qualified_count: referred.filter((r) => r.status === "qualified").length,
+        rewards_used_count: referred.filter((r) => r.reward?.status === "redeemed").length,
     };
 }

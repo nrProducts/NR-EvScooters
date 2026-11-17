@@ -3,8 +3,11 @@ import { getResend, isEmailConfigured } from "../../config/resend";
 import { serviceUnavailable } from "../../common/AppError";
 import { renderNotificationEmail } from "../notifications/email-template";
 import {
+    BUSINESS_TYPE_LABELS,
     CONTACT_METHOD_LABELS,
     ContactQueryBody,
+    FLEET_SIZE_LABELS,
+    PRICING_INTEREST_LABELS,
     QUERY_TYPE_LABELS,
 } from "./public.validation";
 
@@ -34,6 +37,21 @@ function formatSubmittedAt(now: Date): string {
         timeZone: "Asia/Kolkata",
         hour12: true,
     }).format(now);
+}
+
+/**
+ * The fleet-software demo-request extras, as label/value pairs — empty for an
+ * ordinary query, so rental and general enquiries email exactly as before.
+ */
+function fleetFields(input: ContactQueryBody): { label: string; value: string }[] {
+    const fields: { label: string; value: string }[] = [];
+    if (input.business_name) fields.push({ label: "Business", value: input.business_name });
+    if (input.business_type) fields.push({ label: "Business Type", value: BUSINESS_TYPE_LABELS[input.business_type] });
+    if (input.fleet_size) fields.push({ label: "Fleet Size", value: FLEET_SIZE_LABELS[input.fleet_size] });
+    if (input.pricing_interest) {
+        fields.push({ label: "Pricing Model", value: PRICING_INTEREST_LABELS[input.pricing_interest] });
+    }
+    return fields;
 }
 
 export interface ContactQueryResult {
@@ -68,6 +86,7 @@ export async function submitContactQuery(input: ContactQueryBody): Promise<Conta
             { label: "Email", value: input.email },
             { label: "Phone", value: formatPhone(input.phone) },
             { label: "Query Type", value: queryTypeLabel },
+            ...fleetFields(input),
             {
                 label: "Preferred Contact",
                 value: input.preferred_contact
@@ -118,6 +137,7 @@ function buildPlainText(
         `Email: ${input.email}`,
         `Phone: ${formatPhone(input.phone)}`,
         `Query Type: ${queryTypeLabel}`,
+        ...fleetFields(input).map((f) => `${f.label}: ${f.value}`),
         `Preferred Contact: ${
             input.preferred_contact ? CONTACT_METHOD_LABELS[input.preferred_contact] : "Not specified"
         }`,

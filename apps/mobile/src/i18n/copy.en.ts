@@ -409,7 +409,7 @@ export const en = {
     'maintenance.beingRepaired': 'Your Scooter Is Being Repaired',
     'maintenance.expectedReady': 'Expected ready by {time}.',
     'maintenance.inMaintenance': 'Your Scooter Is In Maintenance',
-    'maintenance.useTempVehicle': "Use this temporary vehicle until it's ready.",
+    'maintenance.useTempVehicle': "You've been moved to another scooter. It's yours for the rest of your plan.",
 
     // --- Home hero card ---------------------------------------------------
     'hero.kycRequired.heading': 'One step to your first ride',
@@ -852,6 +852,7 @@ export const en = {
     'vehicleDocs.error.openFailed.title': "Couldn't open document",
 
     // --- app shell (header + profile sheet) ---------------------------------
+'update.readyTitle': 'Update ready',    'update.readyMessage': 'A new version of Swapngo has been downloaded. Restart to start using it.',    'update.restart': 'Restart now',    'update.later': 'Later',
     'appShell.goBack': 'Go back',
     'appShell.dayN': 'Day {day}',
     'appShell.notificationsUnread': 'Notifications, {count} unread',

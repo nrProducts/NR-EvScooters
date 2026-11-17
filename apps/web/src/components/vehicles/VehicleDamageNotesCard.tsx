@@ -17,7 +17,7 @@ import { formatDate } from "@/lib/utils";
  * charged for it. Once repaired, staff mark it resolved, which deletes the note.
  * Not the rider damage charges (those are incidents billed to a rider).
  */
-export function VehicleDamageNotesCard({ vehicleId, canEdit }: { vehicleId: string; canEdit: boolean }) {
+export function VehicleDamageNotesCard({ vehicleId, canEdit, className }: { vehicleId: string; canEdit: boolean; className?: string }) {
   const { data: notes, isLoading, isError, refetch } = useVehicleDamageNotes(vehicleId);
   const addNote = useAddVehicleDamageNote();
   const deleteNote = useDeleteVehicleDamageNote();
@@ -43,7 +43,7 @@ export function VehicleDamageNotesCard({ vehicleId, canEdit }: { vehicleId: stri
   const count = notes?.length ?? 0;
 
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle className="flex items-center gap-2">
           <AlertTriangle className={count > 0 ? "h-4 w-4 text-amber-500" : "h-4 w-4"} />

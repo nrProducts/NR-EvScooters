@@ -22,6 +22,7 @@ import { registerForPushNotificationsAsync } from "../lib/pushNotifications";
 import { onServiceWorkerMessage, syncWebPush } from "../lib/webPush";
 import { resolveNotificationRoute } from "../lib/notificationRoute";
 import { resolveRootRedirect } from "../lib/rootRedirect";
+import { checkForAppUpdate } from "../lib/inAppUpdate";
 import { missingEnvVars } from "../constants/env";
 import { COLORS, applyColorScheme } from "../constants/theme";
 import { SplashAnimation } from "../components/SplashAnimation";
@@ -165,6 +166,23 @@ function RootLayout() {
   useEffect(() => {
     void hydrateOnboarding();
   }, [hydrateOnboarding]);
+
+  // Once per launch, offer a newer Play Store build (Android; see lib/inAppUpdate.ts).
+  // Waits for the session check so Google's sheet never lands on top of the
+  // splash screen, and never blocks anything: it is a nudge, not a gate.
+  const updateCopy = {
+    readyTitle: t("update.readyTitle"),
+    readyMessage: t("update.readyMessage"),
+    restart: t("update.restart"),
+    later: t("update.later"),
+  };
+  const checkedForUpdate = useRef(false);
+  useEffect(() => {
+    if (initialising || missing.length > 0 || checkedForUpdate.current) return;
+    checkedForUpdate.current = true;
+    void checkForAppUpdate(updateCopy);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialising, missing.length]);
 
   // Same boot step as onboarding: read the stored language before anything
   // renders. Deliberately not awaited alongside the session — it touches no

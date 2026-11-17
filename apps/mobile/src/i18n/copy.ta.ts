@@ -393,7 +393,7 @@ export const ta: Copy = {
     'maintenance.beingRepaired': 'உங்கள் ஸ்கூட்டர் பழுதுபார்க்கப்படுகிறது',
     'maintenance.expectedReady': '{time} அளவில் தயாராகும்.',
     'maintenance.inMaintenance': 'உங்கள் ஸ்கூட்டர் பராமரிப்பில் உள்ளது',
-    'maintenance.useTempVehicle': 'தயாராகும் வரை இந்த தற்காலிக வாகனத்தைப் பயன்படுத்தவும்.',
+    'maintenance.useTempVehicle': 'உங்களுக்கு வேறு ஸ்கூட்டர் வழங்கப்பட்டுள்ளது. உங்கள் திட்டம் முடியும் வரை இது உங்களுடையது.',
 
     // --- Home hero card ---------------------------------------------------
     'hero.kycRequired.heading': 'உங்கள் முதல் சவாரிக்கு ஒரு படி',
@@ -1090,6 +1090,7 @@ export const ta: Copy = {
     'vehicleDocs.error.openFailed.title': 'ஆவணத்தைத் திறக்க முடியவில்லை',
 
     // --- app shell (header + profile sheet) ---------------------------------
+'update.readyTitle': 'புதுப்பிப்பு தயார்',    'update.readyMessage': 'Swapngo-வின் புதிய பதிப்பு பதிவிறக்கப்பட்டது. பயன்படுத்தத் தொடங்க மறுதொடக்கம் செய்யவும்.',    'update.restart': 'இப்போது மறுதொடக்கம்',    'update.later': 'பிறகு',
     'appShell.goBack': 'பின்செல்',
     'appShell.dayN': 'நாள் {day}',
     'appShell.notificationsUnread': 'அறிவிப்புகள், {count} படிக்காதவை',
