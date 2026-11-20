@@ -94,6 +94,10 @@ export type AuditAction =
     | "plan.activated" | "plan.paused" | "plan.resumed" | "plan.due" | "plan.updated" | "plan.renewed"
     | "plan_renewal_settings.updated"
     | "return_recovery_settings.updated"
+    | "billing_cycle_settings.updated"
+    // Written by public.change_billing_cycle itself (same transaction as the
+    // re-dating), listed here so the audit console types know the code.
+    | "plan.billing_cycle_changed"
     | "cancellation_tiers.updated"
     | "settlement.created" | "settlement.refund_issued" | "settlement.due_created" | "settlement.completed"
     | "battery_station.created" | "battery_station.updated" | "battery_station.shown"
@@ -143,7 +147,7 @@ export interface AuditEntry {
         | "payment_webhook_event" | "deposit" | "refund" | "plan" | "pricing_rule"
         | "incident" | "damage" | "damage_dispute" | "support_ticket"
         | "notification_broadcast" | "notification_setting" | "notification_message" | "fleet_km_settings"
-        | "return_recovery_setting" | "cancellation_tier"
+        | "return_recovery_setting" | "billing_cycle_setting" | "cancellation_tier"
         | "consent_record" | "consent_notice" | "privacy_request" | "retention_run"
         | "legal_document" | "legal_acceptance"
         | "referral" | "referral_program"

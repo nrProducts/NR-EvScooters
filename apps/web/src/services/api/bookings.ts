@@ -58,8 +58,14 @@ export async function fetchAvailableVehicles(bookingId: string): Promise<Availab
  * POST /bookings/:id/pickup — confirms handover. Omit vehicleId to use the already-allocated vehicle.
  * `originals` is REQUIRED: which original documents were taken, or that none were.
  */
-export async function confirmPickup(bookingId: string, vehicleId: string | undefined, originals: OriginalsInput) {
-  return apiClient.post(`/bookings/${bookingId}/pickup`, { vehicle_id: vehicleId, originals });
+export async function confirmPickup(
+  bookingId: string,
+  vehicleId: string | undefined,
+  originals: OriginalsInput,
+  /** `HH:MM` IST; omit to bill at the confirmation moment. */
+  billingTime?: string,
+) {
+  return apiClient.post(`/bookings/${bookingId}/pickup`, { vehicle_id: vehicleId, originals, billing_time: billingTime });
 }
 
 /**

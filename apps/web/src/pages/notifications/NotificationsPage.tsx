@@ -56,6 +56,7 @@ const RIDER_NOTIFICATION_TYPE_LABEL: Record<string, string> = {
   payment_failed: "Payment Failed",
   payment_success: "Payment Successful",
   maintenance_plan_paused: "Plan Paused",
+  plan_cycle_changed: "Payment Time Changed",
   vehicle_available_again: "Vehicle Available Again",
   refund_initiated: "Refund Initiated",
   refund_completed: "Refund Completed",

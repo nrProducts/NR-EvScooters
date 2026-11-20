@@ -25,6 +25,8 @@ import { useCancellationTiers, useReplaceCancellationTiers } from "@/hooks/useCa
 import { useReferralProgram, useUpdateReferralProgram } from "@/hooks/useReferralProgram";
 import type { ReferralQualifyingEvent } from "@/services/api/referrals";
 import { useReturnRecoverySettings, useUpdateReturnRecoverySettings } from "@/hooks/useReturnRecoverySettings";
+import { useBillingCycleSettings, useUpdateBillingCycleSettings } from "@/hooks/useBillingCycle";
+import { useAuthStore } from "@/store/authStore";
 import { useVehicles } from "@/hooks/useVehicles";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { usePageSize } from "@/hooks/usePageSize";
@@ -122,6 +124,62 @@ function VehicleRecoveryNote() {
         {update.isPending ? "Saving…" : "Save"}
       </Button>
       {invalid && <span className="text-xs text-destructive">Enter a whole number ≥ 1.</span>}
+    </div>
+  );
+}
+
+/**
+ * Policy for the admin "Change billing cycle" action on Rental Operations:
+ * whether an overdue rider may be re-dated, and the most free days one change
+ * may add. Admin-only, like the recovery cap above.
+ */
+function BillingCycleChangeNote() {
+  const isAdmin = useAuthStore((s) => s.user?.role === "admin");
+  const { data } = useBillingCycleSettings({ enabled: isAdmin });
+  const update = useUpdateBillingCycleSettings();
+  const [days, setDays] = useState("");
+
+  useEffect(() => { if (data) setDays(String(data.max_extra_days)); }, [data]);
+  if (!isAdmin || !data) return null;
+
+  const n = Number(days);
+  const invalid = !Number.isInteger(n) || n < 0 || n > 60;
+  const save = (input: { allow_overdue_change: boolean; max_extra_days: number }, done: string) =>
+    update.mutate(input, {
+      onSuccess: () => toastSuccess(done),
+      onError: (err) => toastError(err, "Could not save"),
+    });
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm">
+      <span className="font-medium">Change billing cycle</span>
+      <label className="flex items-center gap-2">
+        <Switch
+          checked={data.allow_overdue_change}
+          disabled={update.isPending}
+          onCheckedChange={(on) => save(
+            { allow_overdue_change: on, max_extra_days: data.max_extra_days },
+            on ? "Overdue riders can now be re-dated" : "Overdue riders can no longer be re-dated",
+          )}
+        />
+        <span className="text-muted-foreground">Allow for overdue riders</span>
+      </label>
+      <span className="flex flex-wrap items-center gap-2">
+        <span className="text-muted-foreground">Up to</span>
+        <Input
+          type="number" min={0} max={60} value={days} onChange={(e) => setDays(e.target.value)}
+          className="h-8 w-20"
+        />
+        <span className="text-muted-foreground">free extra days per change</span>
+        <Button
+          size="sm" variant="outline"
+          disabled={invalid || n === data.max_extra_days || update.isPending}
+          onClick={() => save({ allow_overdue_change: data.allow_overdue_change, max_extra_days: n }, "Extra-day limit saved")}
+        >
+          {update.isPending ? "Saving…" : "Save"}
+        </Button>
+        {invalid && <span className="text-xs text-destructive">Enter a whole number from 0 to 60.</span>}
+      </span>
     </div>
   );
 }
@@ -355,6 +413,7 @@ function ChargeRulesTab() {
   return (
     <div className="space-y-4">
       <VehicleRecoveryNote />
+      <BillingCycleChangeNote />
       <Card>
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

@@ -158,6 +158,30 @@ export type Database = {
           },
         ]
       }
+      billing_cycle_settings: {
+        Row: {
+          allow_overdue_change: boolean
+          created_at: string
+          id: string
+          max_extra_days: number
+          updated_at: string | null
+        }
+        Insert: {
+          allow_overdue_change?: boolean
+          created_at?: string
+          id?: string
+          max_extra_days?: number
+          updated_at?: string | null
+        }
+        Update: {
+          allow_overdue_change?: boolean
+          created_at?: string
+          id?: string
+          max_extra_days?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       bookings: {
         Row: {
           created_at: string
@@ -4524,6 +4548,17 @@ export type Database = {
         }
       }
       business_today: { Args: never; Returns: string }
+      change_billing_cycle: {
+        Args: {
+          p_actor_id: string | null
+          p_apply?: boolean
+          p_new_cycle_time: string
+          p_new_due_on: string
+          p_reason: string | null
+          p_subscription_id: string
+        }
+        Returns: Json
+      }
       compute_kyc_status: {
         Args: { p_user_id: string }
         Returns: Database["public"]["Enums"]["kyc_status"]

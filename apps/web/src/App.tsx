@@ -19,6 +19,11 @@ export default function App() {
     } else {
       root.classList.remove("dark");
     }
+    // The installed app's title bar uses this; keep it the same as the page canvas
+    // (--background in index.css) so the logo and name stay readable in both themes.
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", theme === "dark" ? "#101312" : "#E9ECE9");
   }, [theme]);
 
   // Zustand persists `user` in localStorage for a fast reload, but the

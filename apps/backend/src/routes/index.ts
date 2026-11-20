@@ -38,6 +38,7 @@ import { adminPrivacyRouter, riderPrivacyRouter } from "../modules/privacy/priva
 import notificationSettingsRoutes from "../modules/notification-settings/notification-settings.routes";
 import planRenewalSettingsRoutes from "../modules/plan-renewal-settings/plan-renewal-settings.routes";
 import returnRecoverySettingsRoutes from "../modules/return-recovery-settings/return-recovery-settings.routes";
+import billingCycleRoutes from "../modules/billing-cycle/billing-cycle.routes";
 import cancellationTiersRoutes from "../modules/cancellation-tiers/cancellation-tiers.routes";
 import returnsRoutes from "../modules/returns/returns.routes";
 import permissionsRoutes from "../modules/permissions/permissions.routes";
@@ -145,6 +146,7 @@ router.use("/refunds", refundsRoutes);
 router.use("/notification-settings", notificationSettingsRoutes);
 router.use("/plan-renewal-settings", planRenewalSettingsRoutes);
 router.use("/return-recovery-settings", returnRecoverySettingsRoutes);
+router.use("/billing-cycle", billingCycleRoutes);
 router.use("/cancellation-tiers", cancellationTiersRoutes);
 router.use("/returns", returnsRoutes);
 router.use("/billing", billingRoutes);

@@ -34,8 +34,9 @@ export function useAdminCreateBooking() {
 export function useConfirmPickup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ bookingId, vehicleId, originals }: { bookingId: string; vehicleId?: string; originals: OriginalsInput }) =>
-      api.confirmPickup(bookingId, vehicleId, originals),
+    mutationFn: ({ bookingId, vehicleId, originals, billingTime }: {
+      bookingId: string; vehicleId?: string; originals: OriginalsInput; billingTime?: string;
+    }) => api.confirmPickup(bookingId, vehicleId, originals, billingTime),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pickup-queue"] });
       // the rider's "originals held" card must show what was just taken

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { PackageCheck, XCircle } from "lucide-react";
+import { CalendarClock, PackageCheck, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -16,6 +16,10 @@ import {
 } from "@/components/ui/dialog";
 import { RentalOperationsSummaryCards } from "@/components/bookings/RentalOperationsSummaryCards";
 import { AdminCreateBookingDialog } from "@/components/bookings/AdminCreateBookingDialog";
+import { ChangeBillingCycleDialog } from "@/components/bookings/ChangeBillingCycleDialog";
+import { PickupBillingTimePicker } from "@/components/bookings/PickupBillingTimePicker";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useBillingCycleSettings } from "@/hooks/useBillingCycle";
 import { usePickupQueue, useAvailableVehicles, useConfirmPickup, useAdminCancelBooking } from "@/hooks/useBookings";
 import {
   OriginalDocumentsPicker, EMPTY_ORIGINALS, draftToInput, type OriginalsDraft,
@@ -217,6 +221,19 @@ export default function BookingListPage() {
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize(page, setPage);
   const [pickupTarget, setPickupTarget] = useState<PickupBooking | null>(null);
+  // Admin-only "Change billing cycle". The server enforces every rule; the
+  // reason shown here only saves the admin a click on a row it would refuse.
+  const isAdmin = user?.role === "admin";
+  const [cycleTarget, setCycleTarget] = useState<PickupBooking | null>(null);
+  const { data: cycleSettings } = useBillingCycleSettings({ enabled: isAdmin });
+  const cycleBlockedReason = (b: PickupBooking): string | null => {
+    if (b.plan_status === "paused") return "Plan is paused for maintenance — its dates move when it resumes.";
+    if (b.plan_status === "past_due" && !cycleSettings?.allow_overdue_change) {
+      return "Rider is overdue. Allow this in Billing → Charge Rules.";
+    }
+    if (!b.plan_status) return "No running plan.";
+    return null;
+  };
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   // True once staff choose to swap the already-reserved scooter for a
   // different one. Picker is hidden by default when a vehicle is already
@@ -254,6 +271,8 @@ export default function BookingListPage() {
       v.registration_number.toLowerCase().replace(/\s+/g, "").includes(normalizedVehicleSearch),
   );
   const confirmPickup = useConfirmPickup();
+  // Optional billing time chosen at pickup ("HH:MM"); null = the confirmation moment.
+  const [pickupBillingTime, setPickupBillingTime] = useState<string | null>(null);
   const adminCancelBooking = useAdminCancelBooking();
 
   const baseColumns: DataTableColumn<PickupBooking>[] = [
@@ -418,6 +437,24 @@ export default function BookingListPage() {
             </Button>
           );
         }
+        if (b.status === "fulfilled" && isAdmin) {
+          const blocked = cycleBlockedReason(b);
+          const button = (
+            <Button size="sm" variant="outline" disabled={!!blocked} onClick={() => setCycleTarget(b)}>
+              <CalendarClock className="h-3.5 w-3.5" /> Change billing cycle
+            </Button>
+          );
+          if (!blocked) return button;
+          // A disabled button swallows hover, so the tooltip hangs off a wrapper.
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-block cursor-not-allowed" tabIndex={0}>{button}</span>
+              </TooltipTrigger>
+              <TooltipContent>{blocked}</TooltipContent>
+            </Tooltip>
+          );
+        }
         const canCancel = (b.status === "confirmed" || b.status === "pending_payment")
           && hasAction(user, "bookings", "cancel");
         if (b.status === "confirmed" && hasAction(user, "bookings", "edit")) {
@@ -431,6 +468,7 @@ export default function BookingListPage() {
                   setVehicleSearch("");
                   setOverrideVehicle(false);
                   setOriginalsDraft(EMPTY_ORIGINALS); // never carry one rider's answer to the next
+                  setPickupBillingTime(null);
                 }}
               >
                 <PackageCheck className="h-3.5 w-3.5" /> Confirm pickup
@@ -792,6 +830,12 @@ export default function BookingListPage() {
 
           <OriginalDocumentsPicker value={originalsDraft} onChange={setOriginalsDraft} />
 
+          <PickupBillingTimePicker
+            value={pickupBillingTime}
+            onChange={setPickupBillingTime}
+            durationDays={pickupTarget?.plan?.duration_days ?? null}
+          />
+
           {confirmPickup.isError && (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {confirmPickup.error instanceof ApiError ? confirmPickup.error.message : "Something went wrong."}
@@ -818,7 +862,7 @@ export default function BookingListPage() {
                     ? undefined
                     : selectedVehicleId!;
                   confirmPickup.mutate(
-                    { bookingId: pickupTarget.id, vehicleId, originals },
+                    { bookingId: pickupTarget.id, vehicleId, originals, billingTime: pickupBillingTime ?? undefined },
                     {
                       onSuccess: () => {
                         toastSuccess("Handover confirmed");
@@ -837,6 +881,10 @@ export default function BookingListPage() {
       </Dialog>
 
       <AdminCreateBookingDialog open={createOpen} onOpenChange={setCreateOpen} />
+
+      {isAdmin && (
+        <ChangeBillingCycleDialog booking={cycleTarget} onOpenChange={(o) => !o && setCycleTarget(null)} />
+      )}
 
       <ConfirmDialog
         open={!!cancelTarget}

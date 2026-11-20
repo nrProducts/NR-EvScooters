@@ -31,8 +31,20 @@ export interface CycleAnchor {
  *
  * Call it before inserting the new rental — the "no rental yet" check reads
  * the rentals table.
+ *
+ * `billingTime` (`HH:MM:SS`, IST) lets staff choose a different billing time
+ * at pickup — a rider who can't pay at the hour they happen to collect the
+ * scooter. Only the billing clock changes: the rental still starts NOW
+ * (`startAt` is the real handover instant), period #1 still begins on the
+ * pickup day, and it ends on its usual day at the chosen time — earlier or
+ * later than the pickup time, as chosen. It only applies to a first pickup;
+ * a swap or re-issue never moves a running clock, so it is refused there.
  */
-export async function anchorCycleAtPickup(subscriptionId: string, now: Date = new Date()): Promise<CycleAnchor> {
+export async function anchorCycleAtPickup(
+    subscriptionId: string,
+    now: Date = new Date(),
+    billingTime?: string | null,
+): Promise<CycleAnchor> {
     const [subRes, periodRes, rentalsRes] = await Promise.all([
         supabaseAdmin.from("subscriptions").select("cycle_time").eq("id", subscriptionId).single(),
         supabaseAdmin
@@ -55,6 +67,11 @@ export async function anchorCycleAtPickup(subscriptionId: string, now: Date = ne
 
     const firstPickup = period.sequence_number === 1 && (rentalsRes.count ?? 0) === 0;
     if (!firstPickup) {
+        if (billingTime) {
+            throw businessRule(
+                "A billing time can only be chosen on the rider's first pickup. Use \"Change billing cycle\" instead.",
+            );
+        }
         const cycleTime = normalizeCycleTime(subRes.data.cycle_time);
         return {
             startAt: now.toISOString(),
@@ -64,7 +81,7 @@ export async function anchorCycleAtPickup(subscriptionId: string, now: Date = ne
         };
     }
 
-    const cycleTime = istClockTime(now);
+    const cycleTime = billingTime ? normalizeCycleTime(billingTime) : istClockTime(now);
     const lengthDays = Math.round(
         (Date.parse(`${period.ends_on}T00:00:00Z`) - Date.parse(`${period.starts_on}T00:00:00Z`)) / 86_400_000,
     );
@@ -83,5 +100,9 @@ export async function anchorCycleAtPickup(subscriptionId: string, now: Date = ne
         .eq("status", "current");
     if (periodError) throw periodError;
 
-    return { startAt: next.startAt, endAt: next.endAt, endDate: next.endDate, cycleTime };
+    // With no chosen time, next.startAt IS the pickup minute. With one, it
+    // would be the pickup DAY at the chosen time — possibly hours away from
+    // (even after) the real handover, so the rental starts at `now` instead.
+    const startAt = billingTime ? now.toISOString() : next.startAt;
+    return { startAt, endAt: next.endAt, endDate: next.endDate, cycleTime };
 }
