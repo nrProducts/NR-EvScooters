@@ -18,12 +18,17 @@ export function useCreateMaintenanceTicket() {
 export function useUpdateMaintenanceTicket() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status, description }: { id: string; status?: MaintenanceStatus; description?: string }) =>
-      api.updateMaintenanceTicket(id, { status, description }),
+    mutationFn: ({ id, status, description, damage }: {
+      id: string; status?: MaintenanceStatus; description?: string; damage?: api.ResolveDamageInput;
+    }) => api.updateMaintenanceTicket(id, { status, description, damage }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["maintenance"] });
       qc.invalidateQueries({ queryKey: ["vehicles"] });
       qc.invalidateQueries({ queryKey: ["vehicle"] });
+      // A billed damage charge is an invoice and moves the rider's balance.
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["user"] });
     },
   });
 }

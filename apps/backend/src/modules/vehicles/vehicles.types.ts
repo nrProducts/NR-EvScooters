@@ -1,3 +1,5 @@
+import type { MaintenanceDamageCharge, MaintenanceDamageItem } from "../maintenance/maintenance.types";
+
 /**
  * Matches `public.vehicle_status`.
  *
@@ -118,6 +120,10 @@ export interface VehicleMaintenanceRow {
      * ticket can produce more than one handover (temp, then replacement).
      */
     temp_vehicle: { id: string; name: string; registration_number: string } | null;
+    /** Parts recorded as damaged when this ticket was resolved (price before GST). */
+    damage_items: MaintenanceDamageItem[];
+    /** What the rider was billed for them, with the bill's live payment state. Null if not billed. */
+    damage_charge: MaintenanceDamageCharge | null;
 }
 
 export interface VehicleRentalRow {

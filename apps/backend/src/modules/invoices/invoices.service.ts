@@ -254,6 +254,83 @@ export async function listInvoices(filters: ListInvoicesFilters): Promise<Pagina
     return paginate(((data ?? []) as unknown as RawInvoiceRow[]).map(toInvoiceRow), count ?? 0, filters);
 }
 
+/**
+ * Mints one `adhoc` invoice for a rider with one `adjustment` line per entry.
+ * Shared by addAdhocCharge (a single line) and a maintenance ticket's damage
+ * charge (a line per damaged part). It writes the bill only — auditing,
+ * notifying and recording payment stay with the caller, who knows the context.
+ *
+ * `invoices.subscription_id` is NOT NULL, so the rider must have had at least
+ * one subscription; the most recent one is used as the anchor.
+ */
+export async function issueAdhocInvoice(
+    userId: string,
+    lines: Array<{ description: string; amount: number }>,
+): Promise<{ id: string }> {
+    if (lines.length === 0) throw businessRule("A charge needs at least one line.");
+    const total = Math.round(lines.reduce((sum, l) => sum + l.amount, 0) * 100) / 100;
+    if (!(total > 0)) throw businessRule("Enter a charge amount greater than zero.");
+
+    const { data: rider, error: riderError } = await supabaseAdmin
+        .from("users")
+        .select("id, role, deleted_at")
+        .eq("id", userId)
+        .maybeSingle();
+    if (riderError) throw riderError;
+    if (!rider || rider.deleted_at) throw notFound("Rider not found.");
+    if (rider.role !== "rider") throw businessRule("Charges can only be added to rider accounts.");
+
+    const { data: sub, error: subError } = await supabaseAdmin
+        .from("subscriptions")
+        .select("id")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (subError) throw subError;
+    if (!sub) throw businessRule("This rider has never had a plan, so a charge can't be attached yet.");
+
+    const today = businessToday();
+    const seriesCode = await activeInvoiceSeriesCode();
+
+    const { data: invoice, error: invoiceError } = await supabaseAdmin
+        .from("invoices")
+        .insert({
+            user_id: userId,
+            subscription_id: sub.id,
+            purpose: "adhoc",
+            status: "issued",
+            subtotal_amount: total,
+            total_amount: total,
+            issued_on: today,
+            due_on: today,
+            invoice_series_code: seriesCode,
+            invoice_number: "",
+        })
+        .select("id")
+        .single();
+    if (invoiceError) throw invoiceError;
+
+    const { error: itemError } = await supabaseAdmin.from("invoice_items").insert(
+        lines.map((l, index) => ({
+            invoice_id: invoice.id,
+            item_type: "adjustment" as const,
+            description: l.description,
+            line_number: index + 1,
+            quantity: 1,
+            unit_amount: l.amount,
+            amount: l.amount,
+        })),
+    );
+    if (itemError) {
+        // Don't leave a bill with no lines behind for the rider to see.
+        await supabaseAdmin.from("invoices").delete().eq("id", invoice.id);
+        throw itemError;
+    }
+
+    return invoice;
+}
+
 export interface AddAdhocChargeInput {
     userId: string;
     description: string;
@@ -281,56 +358,7 @@ export async function addAdhocCharge(
     const description = input.description.trim();
     if (description.length < 2) throw businessRule("Describe what the charge is for.");
 
-    const { data: rider, error: riderError } = await supabaseAdmin
-        .from("users")
-        .select("id, role, deleted_at")
-        .eq("id", input.userId)
-        .maybeSingle();
-    if (riderError) throw riderError;
-    if (!rider || rider.deleted_at) throw notFound("Rider not found.");
-    if (rider.role !== "rider") throw businessRule("Charges can only be added to rider accounts.");
-
-    const { data: sub, error: subError } = await supabaseAdmin
-        .from("subscriptions")
-        .select("id")
-        .eq("user_id", input.userId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    if (subError) throw subError;
-    if (!sub) throw businessRule("This rider has never had a plan, so a charge can't be attached yet.");
-
-    const today = businessToday();
-    const seriesCode = await activeInvoiceSeriesCode();
-
-    const { data: invoice, error: invoiceError } = await supabaseAdmin
-        .from("invoices")
-        .insert({
-            user_id: input.userId,
-            subscription_id: sub.id,
-            purpose: "adhoc",
-            status: "issued",
-            subtotal_amount: amount,
-            total_amount: amount,
-            issued_on: today,
-            due_on: today,
-            invoice_series_code: seriesCode,
-            invoice_number: "",
-        })
-        .select("id")
-        .single();
-    if (invoiceError) throw invoiceError;
-
-    const { error: itemError } = await supabaseAdmin.from("invoice_items").insert({
-        invoice_id: invoice.id,
-        item_type: "adjustment",
-        description,
-        line_number: 1,
-        quantity: 1,
-        unit_amount: amount,
-        amount,
-    });
-    if (itemError) throw itemError;
+    const invoice = await issueAdhocInvoice(input.userId, [{ description, amount }]);
 
     await writeAudit({
         actorId: actor.id,

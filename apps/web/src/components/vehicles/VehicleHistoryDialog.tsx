@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ErrorState } from "@/components/common/ErrorState";
 import { AssignRiderPalette } from "@/components/vehicles/AssignRiderPalette";
+import { MaintenanceDamageSummary } from "@/components/vehicles/MaintenanceDamageSummary";
 import { useVehicle, useUnassignVehicle } from "@/hooks/useVehicles";
 import { ApiError } from "@/services/api/httpClient";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
@@ -199,6 +200,12 @@ export function VehicleHistoryDialog({
                               </div>
                               <StatusBadge status={node.ticket.status} />
                             </div>
+
+                            <MaintenanceDamageSummary
+                              className="mt-2"
+                              items={node.ticket.damage_items}
+                              charge={node.ticket.damage_charge}
+                            />
 
                             {/* Branch: temp vehicle issued during this ticket */}
                             {(node.ticket.outcome === "temp_vehicle"

@@ -35,10 +35,20 @@ export async function createMaintenanceTicket(input: CreateMaintenanceInput): Pr
   return apiClient.post<MaintenanceTicket>("/maintenance", input);
 }
 
+/** Damage recorded together with "Mark resolved". Amounts are before GST. */
+export interface ResolveDamageInput {
+  items: Array<{ part: string; notes?: string | null; amount: number }>;
+  gst_rate: number;
+  /** Raise a bill the rider pays from their app. */
+  bill_rider: boolean;
+  /** The rider already paid — settle the bill straight away. Needs bill_rider. */
+  paid_via?: "upi" | "cash";
+}
+
 /** PATCH /maintenance/:id — requireStaff. resolved_at is derived server-side from the status change. */
 export async function updateMaintenanceTicket(
   id: string,
-  patch: { status?: MaintenanceStatus; description?: string },
+  patch: { status?: MaintenanceStatus; description?: string; damage?: ResolveDamageInput },
 ): Promise<MaintenanceTicket> {
   return apiClient.patch<MaintenanceTicket>(`/maintenance/${id}`, patch);
 }

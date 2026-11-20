@@ -1259,8 +1259,16 @@ export type Database = {
       }
       maintenance_tickets: {
         Row: {
+          charge_billed: boolean
+          charge_gst_amount: number | null
+          charge_gst_rate: number | null
+          charge_invoice_id: string | null
+          charge_paid_via: string | null
+          charge_subtotal: number | null
+          charge_total: number | null
           cost_amount: number | null
           created_at: string
+          damage_items: Json
           description: string
           expected_ready_at: string | null
           id: string
@@ -1276,8 +1284,16 @@ export type Database = {
           vehicle_id: string
         }
         Insert: {
+          charge_billed?: boolean
+          charge_gst_amount?: number | null
+          charge_gst_rate?: number | null
+          charge_invoice_id?: string | null
+          charge_paid_via?: string | null
+          charge_subtotal?: number | null
+          charge_total?: number | null
           cost_amount?: number | null
           created_at?: string
+          damage_items?: Json
           description: string
           expected_ready_at?: string | null
           id?: string
@@ -1293,8 +1309,16 @@ export type Database = {
           vehicle_id: string
         }
         Update: {
+          charge_billed?: boolean
+          charge_gst_amount?: number | null
+          charge_gst_rate?: number | null
+          charge_invoice_id?: string | null
+          charge_paid_via?: string | null
+          charge_subtotal?: number | null
+          charge_total?: number | null
           cost_amount?: number | null
           created_at?: string
+          damage_items?: Json
           description?: string
           expected_ready_at?: string | null
           id?: string
@@ -1310,6 +1334,13 @@ export type Database = {
           vehicle_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "maintenance_tickets_charge_invoice_id_fkey"
+            columns: ["charge_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "maintenance_tickets_reported_by_user_id_fkey"
             columns: ["reported_by_user_id"]

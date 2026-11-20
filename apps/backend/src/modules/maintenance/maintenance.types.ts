@@ -35,6 +35,54 @@ interface MaintenanceUserRef {
     full_name: string;
 }
 
+/** A damaged part recorded when the ticket was resolved. `amount` is before GST. */
+export interface MaintenanceDamageItem {
+    part: string;
+    notes: string | null;
+    amount: number;
+}
+
+/**
+ * What the rider was billed for the damage on this ticket. The `invoice` block
+ * is derived from the invoice's allocations — never stored — so it reflects a
+ * payment made later in the rider's app as well as one staff recorded.
+ */
+export interface MaintenanceDamageCharge {
+    /** True when this went to a rider as an invoice; false when it was only recorded on the ticket. */
+    billed_to_rider: boolean;
+    /** How an UNBILLED amount was collected on the spot (upi / cash …); null = not collected. */
+    paid_via: string | null;
+    gst_rate: number;
+    subtotal: number;
+    gst_amount: number;
+    total: number;
+    invoice: {
+        id: string;
+        invoice_number: string;
+        payment_state: "paid" | "partial" | "unpaid";
+        /** How the money arrived (upi / cash / …) once something has been paid. */
+        payment_method: string | null;
+    } | null;
+}
+
+/** Offline ways staff can say "the rider already paid this". */
+export type DamagePaidVia = "upi" | "cash" | "card" | "netbanking" | "wallet";
+
+/**
+ * Damage recorded together with "Mark resolved".
+ *
+ * `bill_rider` turns the parts into a bill the rider pays from their app;
+ * `paid_via` says the money was already handed over — it settles that bill, or,
+ * when there is no rider to bill (an unassigned scooter), is simply recorded on
+ * the ticket. Without either, the parts are only written to the vehicle's history.
+ */
+export interface ResolveDamageInput {
+    items: Array<{ part: string; notes?: string | null; amount: number }>;
+    gst_rate: number;
+    bill_rider: boolean;
+    paid_via?: DamagePaidVia;
+}
+
 export interface MaintenanceView {
     id: string;
     status: MaintenanceStatus;
@@ -54,6 +102,10 @@ export interface MaintenanceView {
 export interface AdminMaintenanceRow extends MaintenanceView {
     reported_by: MaintenanceUserRef | null;
     triaged_by: MaintenanceUserRef | null;
+    /** Empty when nothing was recorded at resolve. */
+    damage_items: MaintenanceDamageItem[];
+    /** Null when the rider wasn't billed for damage. */
+    damage_charge: MaintenanceDamageCharge | null;
 }
 
 export interface ListMaintenanceFilters {
@@ -81,6 +133,8 @@ export interface CreateMaintenanceInput {
 export interface UpdateMaintenanceInput {
     status?: MaintenanceStatus;
     description?: string;
+    /** Only accepted together with `status: "resolved"`. */
+    damage?: ResolveDamageInput;
 }
 
 export interface QuickFixInput {

@@ -10,6 +10,7 @@ import { completeRide } from "../rentals/rentals.service";
 import { Paginated, AuthContext } from "../../types";
 import { businessToday } from "../../common/dates";
 import { anchorCycleAtPickup } from "../subscriptions/cycleAnchor";
+import { damageViewsForTickets } from "../maintenance/maintenance.chargeView";
 import {
     CreateVehicleDocumentInput, CreateVehicleInput, ListVehiclesFilters, RiderVehicleDocumentRow, ScrapRecordRow,
     ScrapVehicleInput, UpdateVehicleDocumentInput, UpdateVehicleInput, VehicleBookingRow, VehicleDetail,
@@ -608,7 +609,7 @@ export async function getVehicleDocumentUrlForRider(userId: string, documentId: 
 async function maintenanceForVehicle(vehicleId: string): Promise<VehicleMaintenanceRow[]> {
     const { data, error } = await supabaseAdmin
         .from("maintenance_tickets")
-        .select("id, status, description, resolved_at, created_at, outcome, expected_ready_at")
+        .select("id, status, description, resolved_at, created_at, outcome, expected_ready_at, damage_items, charge_gst_rate, charge_subtotal, charge_gst_amount, charge_total, charge_invoice_id, charge_billed, charge_paid_via")
         .eq("vehicle_id", vehicleId)
         .order("created_at", { ascending: false });
     if (error) throw error;
@@ -638,6 +639,8 @@ async function maintenanceForVehicle(vehicleId: string): Promise<VehicleMaintena
         });
     }
 
+    const damage = await damageViewsForTickets(tickets);
+
     return tickets.map((row) => ({
         id: row.id,
         status: row.status,
@@ -647,6 +650,8 @@ async function maintenanceForVehicle(vehicleId: string): Promise<VehicleMaintena
         outcome: row.outcome,
         expected_ready_at: row.expected_ready_at,
         temp_vehicle: byTicket.get(row.id) ?? null,
+        damage_items: damage.get(row.id)?.damage_items ?? [],
+        damage_charge: damage.get(row.id)?.damage_charge ?? null,
     }));
 }
 

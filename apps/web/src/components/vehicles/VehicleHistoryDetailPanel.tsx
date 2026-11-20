@@ -1,5 +1,6 @@
 import { Info } from "lucide-react";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { MaintenanceDamageSummary } from "./MaintenanceDamageSummary";
 import { formatDate } from "@/lib/utils";
 import { durationStatsForStatus, formatDuration, type VehicleEvent } from "@/lib/vehicleTimeline";
 import type { VehicleDetail, VehicleStatus } from "@/types";
@@ -109,11 +110,15 @@ function EventDetail({ event }: { event: VehicleEvent }) {
         <h3 className="text-sm font-semibold">{event.label}</h3>
         <StatusBadge status={event.badgeStatus} />
       </div>
-      {event.subLabel && <p className="text-sm text-muted-foreground">{event.subLabel}</p>}
+      {/* A maintenance event's sub-label is just the damage digest, which the summary below spells out. */}
+      {event.subLabel && !event.ticket && <p className="text-sm text-muted-foreground">{event.subLabel}</p>}
       <div className="grid grid-cols-2 gap-3 text-sm">
         <Stat label="Started" value={formatDate(event.at)} />
         <Stat label="Ended" value={event.endAt ? formatDate(event.endAt) : "Ongoing / not recorded"} />
       </div>
+      {event.ticket && (
+        <MaintenanceDamageSummary items={event.ticket.damage_items} charge={event.ticket.damage_charge} />
+      )}
     </div>
   );
 }
