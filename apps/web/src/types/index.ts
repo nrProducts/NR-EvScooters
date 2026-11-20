@@ -570,6 +570,32 @@ export interface VehicleDocument {
   has_file: boolean;
 }
 
+/** A damaged part recorded when a ticket was resolved. `amount` is before GST. */
+export interface MaintenanceDamageItem {
+  part: string;
+  notes: string | null;
+  amount: number;
+}
+
+/** What the rider was billed for the damage, with the bill's live payment state. */
+export interface MaintenanceDamageCharge {
+  /** True when this went to a rider as an invoice; false when only recorded on the ticket. */
+  billed_to_rider: boolean;
+  /** How an UNBILLED amount was collected on the spot (upi / cash); null = not collected. */
+  paid_via: string | null;
+  gst_rate: number;
+  subtotal: number;
+  gst_amount: number;
+  total: number;
+  /** Null when the bill was deleted afterwards. */
+  invoice: {
+    id: string;
+    invoice_number: string;
+    payment_state: "paid" | "partial" | "unpaid";
+    payment_method: string | null;
+  } | null;
+}
+
 export interface VehicleMaintenanceRecord {
   id: string;
   /** `maintenance_status` gained a `triaged` state. */
@@ -588,6 +614,10 @@ export interface VehicleMaintenanceRecord {
    * with dates rather than a pointer that the next swap overwrites.
    */
   temp_vehicle: { id: string; name: string; registration_number: string } | null;
+  /** Parts recorded as damaged when this ticket was resolved. */
+  damage_items: MaintenanceDamageItem[];
+  /** The bill raised for them, if staff billed the rider. */
+  damage_charge: MaintenanceDamageCharge | null;
 }
 
 export interface VehicleRentalRecord {
@@ -661,6 +691,8 @@ export interface MaintenanceTicket {
   displaced_rider: { id: string; full_name: string } | null;
   temp_vehicle: { id: string; name: string; registration_number: string; battery_percentage: number } | null;
   replacement_vehicle: { id: string; name: string; registration_number: string } | null;
+  damage_items: MaintenanceDamageItem[];
+  damage_charge: MaintenanceDamageCharge | null;
 }
 
 // ---------------------------------------------------------------------------

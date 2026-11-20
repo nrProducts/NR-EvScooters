@@ -6,12 +6,18 @@ import { notifyUser } from "../notifications/notifications.service";
 import { notify } from "../notifications/notify.service";
 import { scrapVehicle } from "../vehicles/vehicles.service";
 import { pauseSubscription, resumeSubscription } from "../subscriptions/subscriptions.service";
+import { deleteInvoice, issueAdhocInvoice } from "../invoices/invoices.service";
+import { recordOfflinePayment } from "../payments/payments.service";
 import { AuthContext, Paginated } from "../../types";
+import { computeDamageCharge } from "./maintenance.damageCharge";
+import {
+    damageViewsForTickets, NO_DAMAGE, type DamageView, type RawChargeColumns,
+} from "./maintenance.chargeView";
 import {
     AdminMaintenanceRow, AssignTempVehicleInput, CreateMaintenanceInput, ListMaintenanceFilters,
     MaintenanceNoticeStage, MaintenanceNoticeView, MaintenanceOutcome, MaintenanceStatus, MaintenanceView,
     MyMaintenanceHistoryFilters, NotRepairableInput, QuickFixInput, ReassignAfterScrapInput,
-    UpdateMaintenanceInput,
+    ResolveDamageInput, UpdateMaintenanceInput,
 } from "./maintenance.types";
 
 /**
@@ -50,7 +56,9 @@ const MAINTENANCE_COLUMNS = `
 const ADMIN_MAINTENANCE_COLUMNS = `
     ${MAINTENANCE_COLUMNS},
     reported_by:users!reported_by_user_id(id, full_name),
-    triaged_by_user:users!triaged_by_user_id(id, full_name)
+    triaged_by_user:users!triaged_by_user_id(id, full_name),
+    damage_items, charge_gst_rate, charge_subtotal, charge_gst_amount, charge_total, charge_invoice_id,
+    charge_billed, charge_paid_via
 `;
 
 function unwrap<T>(raw: unknown): T | null {
@@ -89,7 +97,7 @@ interface RawMaintenanceRow {
     vehicle: unknown;
 }
 
-interface RawAdminMaintenanceRow extends RawMaintenanceRow {
+interface RawAdminMaintenanceRow extends RawMaintenanceRow, Omit<RawChargeColumns, "id"> {
     reported_by: unknown;
     triaged_by_user: unknown;
 }
@@ -116,7 +124,11 @@ const EMPTY_DERIVED: TicketDerived = {
 };
 
 async function deriveForTickets(
-    tickets: Array<{ id: string; vehicle_id: string }>,
+    // `status` lets a CLOSED ticket skip the "whoever holds the vehicle now"
+    // fallback: once resolved, the current holder may be a later rider who has
+    // nothing to do with the ticket, and must never be mistaken for the one it
+    // displaced. Open tickets (and callers that omit it) keep the fallback.
+    tickets: Array<{ id: string; vehicle_id: string; status?: MaintenanceStatus }>,
 ): Promise<Map<string, TicketDerived>> {
     const result = new Map<string, TicketDerived>();
     if (tickets.length === 0) return result;
@@ -176,7 +188,8 @@ async function deriveForTickets(
         const fromCaused = caused[0]
             ? unwrap<{ id: string; subscription_id: string; users: unknown }>(caused[0].rentals)
             : null;
-        const fromHold = riderOfCurrentHold.get(ticket.vehicle_id);
+        const closed = ticket.status === "resolved" || ticket.status === "cancelled";
+        const fromHold = closed ? undefined : riderOfCurrentHold.get(ticket.vehicle_id);
 
         result.set(ticket.id, {
             displaced_rider:
@@ -213,11 +226,14 @@ function toMaintenanceView(row: RawMaintenanceRow, derived: TicketDerived): Main
 function toAdminMaintenanceRow(
     row: RawAdminMaintenanceRow,
     derived: TicketDerived,
+    damage: DamageView = NO_DAMAGE,
 ): AdminMaintenanceRow {
     return {
         ...toMaintenanceView(row, derived),
         reported_by: unwrap(row.reported_by),
         triaged_by: unwrap(row.triaged_by_user),
+        damage_items: damage.damage_items,
+        damage_charge: damage.damage_charge,
     };
 }
 
@@ -232,8 +248,11 @@ async function readAdminRow(id: string): Promise<AdminMaintenanceRow> {
     if (!data) throw notFound("Maintenance ticket not found.");
 
     const row = data as unknown as RawAdminMaintenanceRow & { vehicle_id: string };
-    const derived = await deriveForTickets([{ id: row.id, vehicle_id: row.vehicle_id }]);
-    return toAdminMaintenanceRow(row, derived.get(row.id) ?? EMPTY_DERIVED);
+    const [derived, damage] = await Promise.all([
+        deriveForTickets([{ id: row.id, vehicle_id: row.vehicle_id, status: row.status }]),
+        damageViewsForTickets([row]),
+    ]);
+    return toAdminMaintenanceRow(row, derived.get(row.id) ?? EMPTY_DERIVED, damage.get(row.id));
 }
 
 export interface RiderRental {
@@ -360,7 +379,9 @@ export async function getMyMaintenanceHistory(
     if (error) throw error;
 
     const rows = (data ?? []) as unknown as Array<RawMaintenanceRow & { vehicle_id: string }>;
-    const derived = await deriveForTickets(rows.map((r) => ({ id: r.id, vehicle_id: r.vehicle_id })));
+    const derived = await deriveForTickets(
+        rows.map((r) => ({ id: r.id, vehicle_id: r.vehicle_id, status: r.status })),
+    );
     const items = rows.map((r) => toMaintenanceView(r, derived.get(r.id) ?? EMPTY_DERIVED));
     return paginate(items, count ?? 0, filters);
 }
@@ -436,10 +457,13 @@ export async function listMaintenance(
     if (error) throw error;
 
     const rows = (data ?? []) as unknown as Array<RawAdminMaintenanceRow & { vehicle_id: string }>;
-    const derived = await deriveForTickets(rows.map((r) => ({ id: r.id, vehicle_id: r.vehicle_id })));
+    const [derived, damage] = await Promise.all([
+        deriveForTickets(rows.map((r) => ({ id: r.id, vehicle_id: r.vehicle_id, status: r.status }))),
+        damageViewsForTickets(rows),
+    ]);
 
     return paginate(
-        rows.map((r) => toAdminMaintenanceRow(r, derived.get(r.id) ?? EMPTY_DERIVED)),
+        rows.map((r) => toAdminMaintenanceRow(r, derived.get(r.id) ?? EMPTY_DERIVED, damage.get(r.id))),
         count ?? 0,
         filters,
     );
@@ -502,6 +526,8 @@ interface TicketState {
     vehicle_id: string;
     status: MaintenanceStatus;
     outcome: MaintenanceOutcome | null;
+    /** Damaged parts were already recorded on this ticket. */
+    hasDamage: boolean;
     derived: TicketDerived;
 }
 
@@ -509,14 +535,15 @@ interface TicketState {
 async function requireTicketState(id: string): Promise<TicketState> {
     const { data, error } = await supabaseAdmin
         .from("maintenance_tickets")
-        .select("id, vehicle_id, status, outcome")
+        .select("id, vehicle_id, status, outcome, damage_items")
         .eq("id", id)
         .maybeSingle();
     if (error) throw error;
     if (!data) throw notFound("Maintenance ticket not found.");
 
-    const derived = await deriveForTickets([{ id: data.id, vehicle_id: data.vehicle_id }]);
-    return { ...data, derived: derived.get(data.id) ?? EMPTY_DERIVED };
+    const derived = await deriveForTickets([{ id: data.id, vehicle_id: data.vehicle_id, status: data.status }]);
+    const hasDamage = Array.isArray(data.damage_items) && data.damage_items.length > 0;
+    return { ...data, hasDamage, derived: derived.get(data.id) ?? EMPTY_DERIVED };
 }
 
 function assertOpenAndUntriaged(ticket: TicketState): void {
@@ -886,9 +913,71 @@ export async function updateMaintenanceTicket(
     const resolving = patch.status === "resolved"
         && before.status !== "resolved" && before.status !== "cancelled";
 
-    const next: Record<string, unknown> = { ...patch };
+    // `damage` is an instruction for this function, not a column — it must
+    // never reach the UPDATE below as-is.
+    const { damage, ...fields } = patch;
+    const next: Record<string, unknown> = { ...fields };
     // resolved_at is server-derived from the status transition, never client-supplied.
     if (patch.status) next.resolved_at = patch.status === "resolved" ? new Date().toISOString() : null;
+
+    // Damaged parts recorded with "Mark resolved", and — if staff chose to — the
+    // bill for them. The bill is raised BEFORE the ticket is closed so that a
+    // rider with no plan to attach it to fails the whole action up front,
+    // rather than leaving a closed ticket and an unexplained missing charge.
+    const breakdown = damage ? computeDamageCharge(damage.items, damage.gst_rate) : null;
+    let billedInvoiceId: string | null = null;
+    if (damage && breakdown) {
+        // Either alongside "Mark resolved", or added later to a ticket that was
+        // resolved without recording any (no status in the patch).
+        const addingToResolved = patch.status === undefined && before.status === "resolved";
+        if (!resolving && !addingToResolved) {
+            throw businessRule("Damage can only be recorded while resolving a ticket, or added to one that is already resolved.");
+        }
+        if (addingToResolved && before.hasDamage) {
+            throw businessRule("Damage has already been recorded for this ticket.");
+        }
+        next.damage_items = breakdown.items;
+
+        const rider = before.derived.displaced_rider;
+        if (damage.bill_rider) {
+            if (!rider) {
+                throw businessRule("No rider is linked to this ticket, so there is nobody to bill for the damage.");
+            }
+            const invoice = await issueAdhocInvoice(rider.id, breakdown.lines);
+            billedInvoiceId = invoice.id;
+            next.charge_invoice_id = invoice.id;
+            next.charge_billed = true;
+        } else if (damage.paid_via && rider) {
+            // A rider IS linked but staff chose not to bill them — "paid" has
+            // nothing to attach to, so refuse rather than record money that
+            // looks collected from nobody.
+            throw businessRule("Choose to bill the rider if you want to record a payment for this damage.");
+        } else if (damage.paid_via) {
+            // No rider, so no invoice: the collection is recorded on the ticket.
+            next.charge_paid_via = damage.paid_via;
+        }
+
+        // Whenever there's an amount, keep the figures on the ticket so the
+        // vehicle history can show what the damage cost — billed or not.
+        if (breakdown.subtotal > 0) {
+            next.charge_gst_rate = breakdown.gst_rate;
+            next.charge_subtotal = breakdown.subtotal;
+            next.charge_gst_amount = breakdown.gst_amount;
+            next.charge_total = breakdown.total;
+        }
+    }
+
+    // If closing the ticket fails, take the bill back: it was never paid (a
+    // payment is recorded only after this succeeds), so deleting is safe and
+    // the rider never sees a charge for a repair that didn't get recorded.
+    const abandonBill = async () => {
+        if (!billedInvoiceId) return;
+        try {
+            await deleteInvoice(billedInvoiceId, "Maintenance ticket could not be resolved.", actor);
+        } catch (cleanupError) {
+            console.error("Could not remove the damage invoice after a failed resolve:", cleanupError);
+        }
+    };
 
     const { data, error } = await supabaseAdmin
         .from("maintenance_tickets")
@@ -897,8 +986,14 @@ export async function updateMaintenanceTicket(
         .select("id")
         .maybeSingle();
 
-    if (error) throw error;
-    if (!data) throw notFound("Maintenance ticket not found.");
+    if (error) {
+        await abandonBill();
+        throw error;
+    }
+    if (!data) {
+        await abandonBill();
+        throw notFound("Maintenance ticket not found.");
+    }
 
     // Closing the ticket is what frees the vehicle: recompute_vehicle_status()
     // reads the open-ticket count, so `releaseVehicleIfNoOpenTickets` — which
@@ -946,17 +1041,79 @@ export async function updateMaintenanceTicket(
         }
     }
 
-    const ticket = await readAdminRow(id);
-
     await writeAudit({
         actorId: actor.id,
         targetUserId: null,
         action: "maintenance.updated",
         entityType: "maintenance_ticket",
-        entityId: ticket.id,
+        entityId: id,
         before: null,
         after: next,
     });
 
-    return ticket;
+    if (damage && breakdown && billedInvoiceId) {
+        await settleDamageBill({
+            ticketId: id,
+            invoiceId: billedInvoiceId,
+            riderId: before.derived.displaced_rider!.id,
+            breakdown,
+            paidVia: damage.paid_via,
+            actor,
+        });
+    }
+
+    return readAdminRow(id);
+}
+
+/**
+ * The part of resolving-with-damage that happens once the ticket is closed:
+ * record the rider's offline payment if staff said they already paid, then
+ * tell the rider. The bill itself already exists, so a failure to record the
+ * payment leaves a real, payable charge — the error says so, rather than
+ * pretending nothing was billed.
+ */
+async function settleDamageBill(args: {
+    ticketId: string;
+    invoiceId: string;
+    riderId: string;
+    breakdown: ReturnType<typeof computeDamageCharge>;
+    paidVia: ResolveDamageInput["paid_via"];
+    actor: AuthContext;
+}): Promise<void> {
+    const { ticketId, invoiceId, riderId, breakdown, paidVia, actor } = args;
+    const parts = breakdown.items.map((i) => i.part).join(", ");
+
+    await writeAudit({
+        actorId: actor.id,
+        targetUserId: riderId,
+        action: "invoice.charge_added",
+        entityType: "invoice",
+        entityId: invoiceId,
+        after: {
+            source: "maintenance_ticket", maintenance_ticket_id: ticketId, parts,
+            subtotal: breakdown.subtotal, gst_rate: breakdown.gst_rate, total: breakdown.total,
+            paid: !!paidVia,
+        },
+    });
+
+    if (paidVia) {
+        try {
+            await recordOfflinePayment(invoiceId, paidVia, actor);
+        } catch (err) {
+            throw businessRule(
+                `The ticket is resolved and the rider has been billed ₹${breakdown.total}, but recording the `
+                + `${paidVia.toUpperCase()} payment failed. Record it from Payments → Record payment. `
+                + `(${err instanceof Error ? err.message : "Unknown error"})`,
+            );
+        }
+    }
+
+    await notifyUser(riderId, {
+        template: "adhoc_charge_added",
+        title: "Damage Charge Added",
+        body: paidVia
+            ? `A damage charge of ₹${breakdown.total} (${parts}) was added and recorded as paid.`
+            : `A damage charge of ₹${breakdown.total} (${parts}) was added to your account. You can pay it from Billing.`,
+        screen: "billing",
+    });
 }

@@ -1,4 +1,5 @@
-import type { VehicleDetail, VehicleStatus } from "@/types";
+import { formatCurrency } from "@/lib/utils";
+import type { VehicleDetail, VehicleMaintenanceRecord, VehicleStatus } from "@/types";
 
 export type VehicleEventKind = "created" | "booking" | "assignment" | "maintenance" | "scrap";
 
@@ -13,6 +14,15 @@ export interface VehicleEvent {
   endAt: string | null;
   /** The specific status string to badge (e.g. a booking's own status, not just "booked"). */
   badgeStatus: string;
+  /** Set on maintenance events, so the detail panel can show the damaged parts and what was billed. */
+  ticket?: VehicleMaintenanceRecord;
+}
+
+/** "Damage: Brake lever, Mirror · ₹944" — null when the ticket recorded no damage. */
+function damageSubLabel(m: VehicleMaintenanceRecord): string | null {
+  if (m.damage_items.length === 0) return null;
+  const parts = m.damage_items.map((i) => i.part).join(", ");
+  return m.damage_charge ? `Damage: ${parts} · ${formatCurrency(m.damage_charge.total)}` : `Damage: ${parts}`;
 }
 
 /** One unified, newest-first timeline built from the vehicle's existing history arrays — no new data source. */
@@ -53,10 +63,11 @@ export function buildVehicleTimeline(vehicle: VehicleDetail): VehicleEvent[] {
       kind: "maintenance" as const,
       status: "maintenance" as VehicleStatus,
       label: m.description,
-      subLabel: null,
+      subLabel: damageSubLabel(m),
       at: m.created_at,
       endAt: m.resolved_at,
       badgeStatus: m.status,
+      ticket: m,
     })),
   ];
 

@@ -28,13 +28,38 @@ export const createMaintenanceBody = z.object({
     status: statusEnum.optional(),
 });
 
+const damageItemSchema = z.object({
+    part: z.string().trim().min(2, "Name the damaged part.").max(80),
+    notes: z.string().trim().max(300).nullish(),
+    // Before GST. Zero is allowed for a part that is only being recorded.
+    amount: z.number().min(0, "The amount can't be negative.").max(10_000_000),
+});
+
+/** The damage recorded together with "Mark resolved" — see ResolveDamageInput. */
+const resolveDamageSchema = z.object({
+    items: z.array(damageItemSchema).min(1, "Add at least one damaged part.").max(20),
+    gst_rate: z.number().min(0, "GST can't be negative.").max(100, "GST can't be more than 100%.").default(0),
+    bill_rider: z.boolean().default(false),
+    paid_via: z.enum(["upi", "cash", "card", "netbanking", "wallet"]).optional(),
+}).refine((d) => (!d.bill_rider && !d.paid_via) || d.items.reduce((s, i) => s + i.amount, 0) > 0, {
+    message: "Enter an amount greater than zero to bill the rider or record a payment.",
+    path: ["items"],
+});
+
 export const updateMaintenanceBody = z
     .object({
         status: statusEnum.optional(),
         description: z.string().trim().min(3).max(1000).optional(),
+        damage: resolveDamageSchema.optional(),
     })
     .strict()
-    .refine((v) => Object.keys(v).length > 0, "Provide at least one field to update.");
+    .refine((v) => Object.keys(v).length > 0, "Provide at least one field to update.")
+    // Alongside "resolved", or on its own for a ticket that is already
+    // resolved — the service checks which, since it knows the ticket's state.
+    .refine((v) => !v.damage || v.status === undefined || v.status === "resolved", {
+        message: "Damage can only be recorded while resolving a ticket, or added to one already resolved.",
+        path: ["damage"],
+    });
 
 const dateSchema = z
     .string()

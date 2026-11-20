@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, CheckCircle2, PlayCircle, XCircle, ClipboardCheck } from "lucide-react";
+import { Plus, CheckCircle2, PlayCircle, XCircle, ClipboardCheck, Hammer } from "lucide-react";
 import { Spinner } from "@/components/common/Spinner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,13 +17,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { RowActionsButton } from "@/components/ui/row-actions-button";
 import { TriageDialog } from "@/components/maintenance/TriageDialog";
+import { ResolveTicketDialog } from "@/components/maintenance/ResolveTicketDialog";
+import { damageChargeStatus } from "@/components/vehicles/MaintenanceDamageSummary";
 import { useMaintenanceTickets, useCreateMaintenanceTicket, useUpdateMaintenanceTicket } from "@/hooks/useMaintenance";
 import { useTableSort } from "@/hooks/useTableSort";
 import { useVehicles } from "@/hooks/useVehicles";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { usePageSize } from "@/hooks/usePageSize";
 import { ApiError } from "@/services/api/httpClient";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
 import { hasAction } from "@/lib/permissions";
 import { useAuthStore } from "@/store/authStore";
@@ -45,6 +47,8 @@ export default function MaintenancePage() {
   const updateTicket = useUpdateMaintenanceTicket();
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [triageTarget, setTriageTarget] = useState<MaintenanceTicket | null>(null);
+  const [resolveTarget, setResolveTarget] = useState<MaintenanceTicket | null>(null);
+  const [damageTarget, setDamageTarget] = useState<MaintenanceTicket | null>(null);
 
   const handleUpdate = (id: string, ticketStatus: MaintenanceStatus) => {
     setUpdateError(null);
@@ -74,7 +78,22 @@ export default function MaintenancePage() {
     {
       header: "Issue",
       key: "description",
-      render: (t) => <p className="max-w-xs truncate">{t.description}</p>,
+      render: (t) => (
+        <div className="max-w-xs">
+          <p className="truncate">{t.description}</p>
+          {t.damage_items.length > 0 && (
+            <p className="truncate text-xs text-muted-foreground">
+              Damage: {t.damage_items.map((i) => i.part).join(", ")}
+              {t.damage_charge && (
+                <>
+                  {" · "}{formatCurrency(t.damage_charge.total)}{" · "}
+                  {damageChargeStatus(t.damage_charge).label}
+                </>
+              )}
+            </p>
+          )}
+        </div>
+      ),
     },
     { header: "Status", key: "status", render: (t) => <StatusBadge status={t.status} /> },
     {
@@ -111,15 +130,18 @@ export default function MaintenancePage() {
         const canTriage = canEdit || hasAction(user, "maintenance", "complete");
         const showTriage = t.status !== "cancelled" && !t.outcome && canTriage;
         const showStartWork = t.status !== "in_progress" && t.status !== "cancelled" && canEdit;
-        const showResolved = canEdit;
-        const showCancel = t.status !== "cancelled" && canEdit;
+        const showResolved = canEdit && t.status !== "resolved";
+        const showCancel = t.status !== "cancelled" && t.status !== "resolved" && canEdit;
+        // A ticket resolved without recording damage can still have it added —
+        // once: a second round would double-bill.
+        const showAddDamage = canEdit && t.status === "resolved" && t.damage_items.length === 0;
         // Every item below is gated on status !== "resolved" and the current
         // user's permissions, so a resolved ticket — or a ticket where the
         // user has none of the relevant actions — has nothing to show;
         // render a dash instead of an empty dropdown (an empty
         // DropdownMenuContent has no content to size itself against, so it
         // opens mispositioned/invisible).
-        if (t.status === "resolved" || !(showTriage || showStartWork || showResolved || showCancel)) {
+        if (!(showTriage || showStartWork || showResolved || showCancel || showAddDamage)) {
           return <span className="text-xs text-muted-foreground">—</span>;
         }
         return (
@@ -137,8 +159,13 @@ export default function MaintenancePage() {
                 </DropdownMenuItem>
               )}
               {showResolved && (
-                <DropdownMenuItem onClick={() => handleUpdate(t.id, "resolved")}>
+                <DropdownMenuItem onClick={() => setResolveTarget(t)}>
                   <CheckCircle2 className="mr-2 h-4 w-4" /> Mark resolved
+                </DropdownMenuItem>
+              )}
+              {showAddDamage && (
+                <DropdownMenuItem onClick={() => setDamageTarget(t)}>
+                  <Hammer className="mr-2 h-4 w-4" /> Add damage
                 </DropdownMenuItem>
               )}
               {showCancel && (
@@ -211,6 +238,10 @@ export default function MaintenancePage() {
 
       <CreateTicketDialog open={createOpen} onOpenChange={setCreateOpen} />
       <TriageDialog ticket={triageTarget} onOpenChange={(o) => !o && setTriageTarget(null)} />
+      <ResolveTicketDialog ticket={resolveTarget} onOpenChange={(o) => !o && setResolveTarget(null)} />
+      <ResolveTicketDialog
+        mode="damage" ticket={damageTarget} onOpenChange={(o) => !o && setDamageTarget(null)}
+      />
     </div>
   );
 }

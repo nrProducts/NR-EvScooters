@@ -127,6 +127,9 @@ export function VehicleHistorySplitView({ vehicle }: { vehicle: VehicleDetail })
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium">{event.label}</p>
                         <p className="text-xs text-muted-foreground">{formatDate(event.at)}</p>
+                        {event.ticket && event.subLabel && (
+                          <p className="truncate text-xs text-muted-foreground">{event.subLabel}</p>
+                        )}
                       </div>
                       <StatusBadge status={event.badgeStatus} />
                     </button>
