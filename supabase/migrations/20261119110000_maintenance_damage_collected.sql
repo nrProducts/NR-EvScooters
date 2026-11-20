@@ -16,12 +16,18 @@
 -- =========================================================================
 
 alter table public.maintenance_tickets
-    add column charge_billed   boolean not null default false,
-    add column charge_paid_via text;
+    add column if not exists charge_billed   boolean not null default false,
+    add column if not exists charge_paid_via text;
 
-alter table public.maintenance_tickets
-    add constraint chk_maintenance_charge_paid_via
-        check (charge_paid_via is null or charge_paid_via in ('upi', 'cash', 'card', 'netbanking', 'wallet'));
+-- Re-runnable: UAT had this applied by hand before the migration history knew it.
+do $
+begin
+    if not exists (select 1 from pg_constraint where conname = 'chk_maintenance_charge_paid_via') then
+        alter table public.maintenance_tickets
+            add constraint chk_maintenance_charge_paid_via
+                check (charge_paid_via is null or charge_paid_via in ('upi', 'cash', 'card', 'netbanking', 'wallet'));
+    end if;
+end $;
 
 -- Tickets billed before this migration: they have an invoice, so mark them.
 update public.maintenance_tickets
