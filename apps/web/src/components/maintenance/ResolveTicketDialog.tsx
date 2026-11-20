@@ -9,6 +9,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useUpdateMaintenanceTicket } from "@/hooks/useMaintenance";
+import { useUsers } from "@/hooks/useUsers";
 import { ApiError } from "@/services/api/httpClient";
 import { cn, formatCurrency } from "@/lib/utils";
 import { toastSuccess, toastError } from "@/lib/toastHelpers";
@@ -29,6 +30,53 @@ interface DraftItem {
 type PaidVia = "upi" | "cash";
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+interface PickedRider { id: string; full_name: string }
+
+/**
+ * For a ticket with no rider linked: search for the rider who should pay and
+ * pick them. Its own component so the user search only runs when it is shown.
+ */
+function RiderPicker({ picked, onPick }: { picked: PickedRider | null; onPick: (r: PickedRider | null) => void }) {
+  const [search, setSearch] = useState("");
+  const { data } = useUsers({ search: search.trim().length >= 2 ? search.trim() : undefined, role: "rider", page: 1, pageSize: 6 });
+  const results = search.trim().length >= 2 ? data?.data ?? [] : [];
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">Bill a rider for this damage</Label>
+      {picked ? (
+        <div className="flex items-center justify-between rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-xs">
+          <span className="font-medium">{picked.full_name}</span>
+          <button type="button" className="text-muted-foreground underline" onClick={() => { onPick(null); setSearch(""); }}>
+            Change
+          </button>
+        </div>
+      ) : (
+        <>
+          <Input placeholder="Search rider by name, phone or email…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          {search.trim().length >= 2 && (
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-border">
+              {results.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-muted-foreground">No rider found.</p>
+              ) : (
+                results.map((r) => (
+                  <button
+                    key={r.id} type="button" className="block w-full px-3 py-2 text-left hover:bg-card-hover"
+                    onClick={() => onPick({ id: r.id, full_name: r.full_name })}
+                  >
+                    <span className="font-medium">{r.full_name}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">{r.phone ?? r.email ?? ""}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 /**
  * "Mark resolved" for a maintenance ticket.
@@ -58,7 +106,11 @@ export function ResolveTicketDialog({
   mode?: "resolve" | "damage";
 }) {
   const update = useUpdateMaintenanceTicket();
-  const rider = ticket?.displaced_rider ?? null;
+  const linkedRider = ticket?.displaced_rider ?? null;
+  // No rider on the ticket (the scooter was never reassigned, or the ticket is old):
+  // staff pick who should pay.
+  const [pickedRider, setPickedRider] = useState<PickedRider | null>(null);
+  const rider = linkedRider ?? pickedRider;
 
   const [damageTicked, setDamageTicked] = useState(false);
   const damageOnly = mode === "damage";
@@ -82,6 +134,7 @@ export function ResolveTicketDialog({
     setBillRider(true);
     setAlreadyPaid(false);
     setPaidVia("upi");
+    setPickedRider(null);
     setError(null);
     update.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,6 +192,7 @@ export function ResolveTicketDialog({
               items: items.map((i) => ({ part: i.part.trim(), amount: Number(i.amount) })),
               gst_rate: rate,
               bill_rider: billing,
+              bill_user_id: billing && !linkedRider ? pickedRider?.id : undefined,
               paid_via: recordsPayment ? paidVia : undefined,
             }
           : undefined,
@@ -284,6 +338,7 @@ export function ResolveTicketDialog({
               </div>
 
               {/* Billing */}
+              {!linkedRider && <RiderPicker picked={pickedRider} onPick={(r) => { setPickedRider(r); setBillRider(true); setAlreadyPaid(false); }} />}
               {rider ? (
                 <div className="space-y-2.5 rounded-lg border border-border p-3">
                   <label className="flex items-start gap-2 text-xs">
@@ -336,8 +391,8 @@ export function ResolveTicketDialog({
               ) : (
                 <div className="space-y-2.5 rounded-lg border border-border p-3">
                   <p className="text-xs text-muted-foreground">
-                    No rider is linked to this scooter, so there is nobody to bill in the app. The damaged parts and
-                    amount are saved to the vehicle&rsquo;s history.
+                    No rider is linked to this ticket. Search a rider above to bill them in the app — or leave it and
+                    just record the damage (and any payment) against the vehicle&rsquo;s history.
                   </p>
                   <div className="space-y-2 border-t border-border pt-2.5">
                     <Label className="text-xs">Was the damage amount already paid?</Label>

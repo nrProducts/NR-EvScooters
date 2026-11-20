@@ -27,14 +27,28 @@ export const recordPaymentBody = z.object({
     method: z.enum(["upi", "card", "netbanking", "wallet", "cash"]),
 });
 
+const adhocLine = z.object({
+    description: z.string().trim().min(2, "Describe what each charge is for.").max(200),
+    amount: z.number().positive("Enter an amount greater than zero.").max(10_000_000),
+});
+
+/**
+ * One or more charge lines, with an optional GST rate on top. The single
+ * `description` + `amount` form is still accepted (it is one line, no GST).
+ */
 export const adhocChargeBody = z.object({
     user_id: z.string().uuid("Select a rider."),
-    description: z.string().trim().min(2, "Describe what the charge is for.").max(200),
-    amount: z.number().positive("Enter an amount greater than zero.").max(10_000_000),
+    items: z.array(adhocLine).min(1).max(20).optional(),
+    gst_rate: z.number().min(0).max(100).default(0),
+    description: adhocLine.shape.description.optional(),
+    amount: adhocLine.shape.amount.optional(),
     payment: z.object({
         method: z.enum(["upi", "card", "netbanking", "wallet", "cash"]),
         status: z.enum(["paid", "pending"]),
     }).optional(),
+}).refine((b) => !!b.items || (b.description !== undefined && b.amount !== undefined), {
+    message: "Add at least one charge line.",
+    path: ["items"],
 });
 
 export type AdhocChargeBody = z.infer<typeof adhocChargeBody>;

@@ -80,6 +80,8 @@ export interface ResolveDamageInput {
     items: Array<{ part: string; notes?: string | null; amount: number }>;
     gst_rate: number;
     bill_rider: boolean;
+    /** The rider to bill when the ticket has none linked; ignored if one is. */
+    bill_user_id?: string;
     paid_via?: DamagePaidVia;
 }
 

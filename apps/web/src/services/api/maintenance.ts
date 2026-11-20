@@ -41,6 +41,8 @@ export interface ResolveDamageInput {
   gst_rate: number;
   /** Raise a bill the rider pays from their app. */
   bill_rider: boolean;
+  /** Who to bill when the ticket has no linked rider (staff pick one). */
+  bill_user_id?: string;
   /** The rider already paid — settle the bill straight away. Needs bill_rider. */
   paid_via?: "upi" | "cash";
 }
