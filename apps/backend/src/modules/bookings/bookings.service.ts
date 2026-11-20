@@ -1909,7 +1909,11 @@ export async function confirmPickup(
 
     let anchor: CycleAnchor;
     try {
-        anchor = await anchorCycleAtPickup(context.subscriptionId, new Date());
+        anchor = await anchorCycleAtPickup(
+            context.subscriptionId,
+            new Date(),
+            input.billing_time ? `${input.billing_time}:00` : null,
+        );
     } catch (err) {
         await supabaseAdmin
             .from("bookings")
@@ -1997,6 +2001,9 @@ export async function confirmPickup(
         entityId: bookingId,
         after: {
             vehicle_id: vehicleId, status: "fulfilled", rental_id: rental.id, due_back_at: dueBackAt,
+            picked_up_at: pickedUpAt,
+            cycle_time: anchor.cycleTime,
+            billing_time_chosen: !!input.billing_time,
             originals_taken: originalsRecorded.taken,
             original_documents: originalsRecorded.documents,
         },

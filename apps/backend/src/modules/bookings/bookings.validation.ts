@@ -98,6 +98,11 @@ export const confirmPickupBody = z.object({
         ],
         { error: "Record whether original documents were taken (or that none were)." },
     ),
+    /**
+     * Optional billing time (IST, 24-hour `HH:MM`) when the rider can't pay at
+     * the hour they collect the scooter. Omitted = the confirmation moment.
+     */
+    billing_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour).").optional(),
 });
 
 export const rejectBookingBody = z.object({

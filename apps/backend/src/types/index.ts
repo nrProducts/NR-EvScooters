@@ -206,6 +206,7 @@ export type EmittedNotificationCode =
     | "plan_renewed"
     | "plan_renewal_paid"
     | "plan_resumed"
+    | "plan_cycle_changed"
     // Pickup, rental, return.
     | "pickup_confirmed"
     | "vehicle_assigned"
@@ -248,7 +249,7 @@ export type EmittedNotificationCode =
 export const EMITTED_NOTIFICATION_CODES: readonly EmittedNotificationCode[] = [
     "booking_created", "booking_cancelled", "booking_expired",
     "payment_success", "payment_failed", "payment_overdue",
-    "plan_renewed", "plan_renewal_paid", "plan_resumed",
+    "plan_renewed", "plan_renewal_paid", "plan_resumed", "plan_cycle_changed",
     "pickup_confirmed", "vehicle_assigned", "vehicle_available_again",
     "rental_completed", "rental_return_requested", "rental_return_rejected", "return_payment_required",
     "vehicle_recovery_required",

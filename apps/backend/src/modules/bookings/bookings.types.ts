@@ -234,6 +234,11 @@ export interface ConfirmPickupInput {
     vehicle_id?: string;
     /** Required for every pickup: which original documents were taken, or that none were. */
     originals: OriginalsInput;
+    /**
+     * Optional billing time, `HH:MM` IST. Omit to bill at the confirmation
+     * moment (the default). The recorded pickup time is always the real one.
+     */
+    billing_time?: string;
 }
 
 export interface AvailableVehicleView {
