@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Menu, Sun, Moon, LogOut, RotateCw, Settings as SettingsIcon } from "lucide-react";
+import { Menu, Sun, Moon, LogOut, RotateCw, Download, Settings as SettingsIcon } from "lucide-react";
+import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { GlobalSearch } from "@/components/common/GlobalSearch";
 import { Breadcrumbs } from "@/components/common/Breadcrumbs";
 import { useNavTrail } from "@/hooks/useNavTrail";
@@ -48,6 +49,7 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   // On a detail page the title slot shows how the admin got there instead.
   const trail = useNavTrail();
 
+  const { canInstall, install } = usePwaInstall();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   // Refetch every query the current screen has mounted — the page's own hooks
@@ -119,6 +121,18 @@ export function Header({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
             <span className="text-xs font-semibold capitalize text-foreground">{user.role}</span>
             <span className="text-xs text-muted-foreground">· {formatDate(new Date())}</span>
           </div>
+        )}
+
+        {canInstall && (
+          <IconButton
+            variant="ghost"
+            onClick={install}
+            label="Install SwapNgo Fleet Hub as an app"
+            tooltipSide="bottom"
+            className={cn(HEADER_ROUND_BUTTON, "text-primary hover:text-primary")}
+          >
+            <Download className={HEADER_ICON} />
+          </IconButton>
         )}
 
         <IconButton

@@ -1,15 +1,16 @@
 {
-  "name": "SwapNgo Rider",
-  "short_name": "SwapNgo",
-  "description": "Book, ride and manage your SwapNgo scooter rental.",
-  "start_url": "/rider",
-  "scope": "/rider",
+  "name": "SwapNgo Fleet Hub",
+  "short_name": "Fleet Hub",
+  "description": "SwapNgo fleet admin console — vehicles, riders, bookings, billing and revenue.",
+  "id": "/",
+  "start_url": "/dashboard",
+  "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#ffffff",
-  "theme_color": "#21C45D",
+  "background_color": "#E9ECE9",
+  "theme_color": "#E9ECE9",
   "icons": [
-    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
-    { "src": "/favicon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
