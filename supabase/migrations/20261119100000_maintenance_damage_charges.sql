@@ -21,7 +21,7 @@ alter table public.maintenance_tickets
     add column if not exists charge_invoice_id  uuid references public.invoices (id) on delete set null;
 
 -- Re-runnable: UAT had this applied by hand before the migration history knew it.
-do $
+do $$
 begin
     if not exists (select 1 from pg_constraint where conname = 'chk_maintenance_damage_items_array') then
         alter table public.maintenance_tickets
@@ -33,7 +33,7 @@ begin
             add constraint chk_maintenance_charge_gst_rate
                 check (charge_gst_rate is null or (charge_gst_rate >= 0 and charge_gst_rate <= 100));
     end if;
-end $;
+end $$;
 
 comment on column public.maintenance_tickets.damage_items is
     'Damaged parts recorded at resolve: [{part, notes, amount}] with amount the pre-GST figure. Empty when nothing was recorded.';
