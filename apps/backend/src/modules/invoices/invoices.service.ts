@@ -5,6 +5,7 @@ import { writeAudit } from "../../common/audit";
 import { businessToday } from "../../common/dates";
 import { notifyUser } from "../notifications/notifications.service";
 import { activeInvoiceSeriesCode } from "../rentals/overdueLateFee";
+import { computeDamageCharge } from "../maintenance/maintenance.damageCharge";
 import { recordOfflinePayment, setInvoiceTotal, supersedeOpenOrders } from "../payments/payments.service";
 import { OVERDUE_LATE_FEE_LINE_PREFIX } from "../payments/renewalFee";
 import { AuthContext, Paginated } from "../../types";
@@ -333,8 +334,10 @@ export async function issueAdhocInvoice(
 
 export interface AddAdhocChargeInput {
     userId: string;
-    description: string;
-    amount: number;
+    /** One invoice line each; amounts are before GST. */
+    items: Array<{ description: string; amount: number }>;
+    /** Added on top, folded into each line (see computeDamageCharge). 0 / omitted = no GST. */
+    gstRate?: number;
     /** Record the payment straight away — `paid` settles the charge, otherwise it's left owing. */
     payment?: { method: "upi" | "card" | "netbanking" | "wallet" | "cash"; status: "paid" | "pending" };
 }
@@ -353,12 +356,19 @@ export async function addAdhocCharge(
     input: AddAdhocChargeInput,
     actor: AuthContext,
 ): Promise<InvoiceDetail> {
-    const amount = Math.round(input.amount * 100) / 100;
-    if (!(amount > 0)) throw businessRule("Enter a charge amount greater than zero.");
-    const description = input.description.trim();
-    if (description.length < 2) throw businessRule("Describe what the charge is for.");
+    const parts = input.items.map((i) => ({ part: i.description.trim(), amount: i.amount }));
+    if (parts.length === 0 || parts.some((p) => p.part.length < 2)) {
+        throw businessRule("Describe what each charge is for.");
+    }
+    if (parts.some((p) => !(p.amount > 0))) throw businessRule("Enter a charge amount greater than zero.");
 
-    const invoice = await issueAdhocInvoice(input.userId, [{ description, amount }]);
+    // GST is folded into each line, never added as its own line: the tax
+    // engine treats every non-deposit line as GST-inclusive.
+    const breakdown = computeDamageCharge(parts, input.gstRate ?? 0, "");
+    const amount = breakdown.total;
+    const description = parts.map((p) => p.part).join(", ");
+
+    const invoice = await issueAdhocInvoice(input.userId, breakdown.lines);
 
     await writeAudit({
         actorId: actor.id,
@@ -366,7 +376,10 @@ export async function addAdhocCharge(
         action: "invoice.charge_added",
         entityType: "invoice",
         entityId: invoice.id,
-        after: { description, amount, paid: input.payment?.status === "paid" },
+        after: {
+            description, subtotal: breakdown.subtotal, gst_rate: breakdown.gst_rate,
+            amount, paid: input.payment?.status === "paid",
+        },
     });
 
     if (input.payment?.status === "paid") {

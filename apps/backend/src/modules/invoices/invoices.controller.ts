@@ -113,7 +113,12 @@ export async function deleteInvoiceHandler(req: AuthedRequest, res: Response) {
 export async function adhocChargeHandler(req: AuthedRequest, res: Response) {
     const body = req.body as AdhocChargeBody;
     const invoice = await service.addAdhocCharge(
-        { userId: body.user_id, description: body.description, amount: body.amount, payment: body.payment },
+        {
+            userId: body.user_id,
+            items: body.items ?? [{ description: body.description!, amount: body.amount! }],
+            gstRate: body.gst_rate,
+            payment: body.payment,
+        },
         req.user!,
     );
     res.status(201).json(invoice);

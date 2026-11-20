@@ -49,7 +49,15 @@ export interface DamageChargeBreakdown {
 
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
 
-export function computeDamageCharge(items: DamageItemInput[], gstRate: number): DamageChargeBreakdown {
+/**
+ * `labelPrefix` starts each invoice line's description. Damage charges use the
+ * default; a rider's free-form Add Charge passes "" so the line reads as typed.
+ */
+export function computeDamageCharge(
+    items: DamageItemInput[],
+    gstRate: number,
+    labelPrefix = "Damage: ",
+): DamageChargeBreakdown {
     const rate = round2(Math.max(0, gstRate));
     const stored: StoredDamageItem[] = items.map((i) => ({
         part: i.part.trim(),
@@ -66,7 +74,7 @@ export function computeDamageCharge(items: DamageItemInput[], gstRate: number): 
         const last = index === stored.length - 1;
         const gross = last ? round2(total - allocated) : round2(item.amount * (1 + rate / 100));
         allocated = round2(allocated + gross);
-        const label = `Damage: ${item.part}`;
+        const label = `${labelPrefix}${item.part}`;
         return { description: rate > 0 ? `${label} (incl. ${rate}% GST)` : label, amount: gross };
     });
 

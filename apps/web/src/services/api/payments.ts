@@ -68,8 +68,10 @@ export async function recordInvoicePayment(
 
 export interface AdhocChargeInput {
   user_id: string;
-  description: string;
-  amount: number;
+  /** One line each; amounts are before GST. */
+  items: Array<{ description: string; amount: number }>;
+  /** Added on top (0 = none). */
+  gst_rate?: number;
   payment?: { method: "upi" | "card" | "netbanking" | "wallet" | "cash"; status: "paid" | "pending" };
 }
 

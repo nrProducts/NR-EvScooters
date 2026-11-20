@@ -926,6 +926,7 @@ export async function updateMaintenanceTicket(
     // rather than leaving a closed ticket and an unexplained missing charge.
     const breakdown = damage ? computeDamageCharge(damage.items, damage.gst_rate) : null;
     let billedInvoiceId: string | null = null;
+    let billedRiderId: string | null = null;
     if (damage && breakdown) {
         // Either alongside "Mark resolved", or added later to a ticket that was
         // resolved without recording any (no status in the patch).
@@ -938,13 +939,16 @@ export async function updateMaintenanceTicket(
         }
         next.damage_items = breakdown.items;
 
-        const rider = before.derived.displaced_rider;
+        // The rider the ticket is linked to; failing that, one staff picked.
+        const riderId = before.derived.displaced_rider?.id ?? damage.bill_user_id ?? null;
+        const rider = riderId ? { id: riderId } : null;
         if (damage.bill_rider) {
             if (!rider) {
                 throw businessRule("No rider is linked to this ticket, so there is nobody to bill for the damage.");
             }
             const invoice = await issueAdhocInvoice(rider.id, breakdown.lines);
             billedInvoiceId = invoice.id;
+            billedRiderId = rider.id;
             next.charge_invoice_id = invoice.id;
             next.charge_billed = true;
         } else if (damage.paid_via && rider) {
@@ -1055,7 +1059,7 @@ export async function updateMaintenanceTicket(
         await settleDamageBill({
             ticketId: id,
             invoiceId: billedInvoiceId,
-            riderId: before.derived.displaced_rider!.id,
+            riderId: billedRiderId!,
             breakdown,
             paidVia: damage.paid_via,
             actor,

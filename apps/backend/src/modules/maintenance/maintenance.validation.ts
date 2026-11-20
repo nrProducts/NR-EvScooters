@@ -40,6 +40,8 @@ const resolveDamageSchema = z.object({
     items: z.array(damageItemSchema).min(1, "Add at least one damaged part.").max(20),
     gst_rate: z.number().min(0, "GST can't be negative.").max(100, "GST can't be more than 100%.").default(0),
     bill_rider: z.boolean().default(false),
+    // Who to bill when the ticket has no linked rider (staff pick one).
+    bill_user_id: z.string().uuid().optional(),
     paid_via: z.enum(["upi", "cash", "card", "netbanking", "wallet"]).optional(),
 }).refine((d) => (!d.bill_rider && !d.paid_via) || d.items.reduce((s, i) => s + i.amount, 0) > 0, {
     message: "Enter an amount greater than zero to bill the rider or record a payment.",
