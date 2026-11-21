@@ -50,6 +50,16 @@ router.get(
     }),
 );
 
+// One bike's kilometres: today, each of the last 7 days, 7- and 30-day totals (Vehicle detail page).
+router.get(
+    "/vehicles/:vehicleId/distance",
+    requireAction("vehicles", "view"),
+    validate({ params: vehicleIdParam }),
+    asyncHandler(async (req, res) => {
+        res.json(await service.getVehicleKms(req.params.vehicleId as string, businessToday()));
+    }),
+);
+
 // ---------------------------------------------------------------------------
 // Refresh status ("last updated", what refreshes how often) and manual refresh.
 // ---------------------------------------------------------------------------

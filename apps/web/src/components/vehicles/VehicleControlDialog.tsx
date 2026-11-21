@@ -5,13 +5,30 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/common/Spinner";
 import { useControlVehicle } from "@/hooks/useTelematics";
 import { ApiError } from "@/services/api/httpClient";
 import { toastError, toastSuccess } from "@/lib/toastHelpers";
-import type { ControlAction } from "@/services/api/telematics";
+import type { ControlAction, ControlMode } from "@/services/api/telematics";
 
 const MOVING_KMPH = 5;
+
+/**
+ * The modes Intellicar's immobilize / mobilize call accepts. Its docs list the names but not what
+ * each one physically does, so these hints are our reading of the names — test on a parked scooter.
+ */
+export const CONTROL_MODES: { value: ControlMode; label: string; hint: string }[] = [
+  { value: "ignition", label: "Ignition", hint: "Cuts the ignition. The default." },
+  { value: "discharge", label: "Discharge", hint: "Switches off the battery's discharge. Likely what the Intellicar portal's Lock does." },
+  { value: "can", label: "CAN", hint: "Sends the command over the scooter's CAN bus." },
+  { value: "crank", label: "Crank", hint: "Blocks starting." },
+  { value: "movement", label: "Movement", hint: "Stops the scooter moving." },
+  { value: "charge", label: "Charge", hint: "Switches off battery charging." },
+  { value: "chargendischarge", label: "Charge and discharge", hint: "Switches off both charging and discharging." },
+];
+
+export const isControlMode = (v: unknown): v is ControlMode => CONTROL_MODES.some((m) => m.value === v);
 
 const norm = (s: string) => s.replace(/[\s-]/g, "").toUpperCase();
 
@@ -65,7 +82,7 @@ const COPY: Record<ControlAction, {
  * click, and a rider cannot be stopped at speed by accident.
  */
 export function VehicleControlDialog({
-  open, onOpenChange, vehicleId, registrationNumber, action, speedKmph,
+  open, onOpenChange, vehicleId, registrationNumber, action, speedKmph, defaultMode,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -74,14 +91,19 @@ export function VehicleControlDialog({
   action: ControlAction;
   /** Latest speed when the reading is live, else null. */
   speedKmph: number | null;
+  /** Pre-selected mode (e.g. the one the scooter was last immobilised with). Falls back to ignition. */
+  defaultMode?: ControlMode;
 }) {
   const [reason, setReason] = useState("");
   const [typed, setTyped] = useState("");
   const [ackMoving, setAckMoving] = useState(false);
+  const [mode, setMode] = useState<ControlMode>(defaultMode ?? "ignition");
   const control = useControlVehicle();
+  // Lock and unlock take no mode.
+  const hasMode = action === "immobilise" || action === "mobilise";
 
   useEffect(() => {
-    if (open) { setReason(""); setTyped(""); setAckMoving(false); control.reset(); }
+    if (open) { setReason(""); setTyped(""); setAckMoving(false); setMode(defaultMode ?? "ignition"); control.reset(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -94,7 +116,10 @@ export function VehicleControlDialog({
     control.mutate(
       {
         vehicleId, action,
-        input: { reason: reason.trim(), confirmRegistration: typed.trim(), acknowledgeMoving: moving && ackMoving },
+        input: {
+          reason: reason.trim(), confirmRegistration: typed.trim(), acknowledgeMoving: moving && ackMoving,
+          ...(hasMode ? { mode } : {}),
+        },
       },
       {
         onSuccess: () => {
@@ -138,6 +163,27 @@ export function VehicleControlDialog({
                 />
                 I understand the risk and still want to send this now.
               </label>
+            </div>
+          ) : null}
+
+          {hasMode ? (
+            <div className="space-y-1.5">
+              <Label>Mode</Label>
+              <Select value={mode} onValueChange={(v) => setMode(v as ControlMode)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CONTROL_MODES.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{CONTROL_MODES.find((m) => m.value === mode)?.hint}</p>
+              <p className="text-xs text-muted-foreground">
+                The tracking platform doesn&apos;t say exactly what each mode does, and it depends on the scooter.
+                {action === "mobilise"
+                  ? " To undo an immobilise, use the same mode it was sent with."
+                  : " Try a new mode on a parked scooter first."}
+              </p>
             </div>
           ) : null}
 

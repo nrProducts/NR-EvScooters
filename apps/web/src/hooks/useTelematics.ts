@@ -76,6 +76,17 @@ export function useBikeKms() {
   });
 }
 
+/** One bike's kilometres (today + last 7 days). Stored server-side, refreshed every 2 hours. */
+export function useVehicleKms(vehicleId: string | undefined) {
+  return useQuery({
+    queryKey: ["vehicle-kms", vehicleId],
+    queryFn: () => api.fetchVehicleKms(vehicleId!),
+    enabled: !!vehicleId,
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+}
+
 /** Refresh schedule and "last updated" for the tracking feeds. Polls faster while a manual refresh is running. */
 export function useTrackingStatus(fast: boolean) {
   return useQuery({

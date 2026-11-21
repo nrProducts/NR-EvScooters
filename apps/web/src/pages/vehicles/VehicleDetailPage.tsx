@@ -16,7 +16,7 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { VehicleLiveCard } from "@/components/vehicles/VehicleLiveCard";
-import { VehicleActivityCard } from "@/components/vehicles/VehicleActivityCard";
+import { VehicleWeekCard } from "@/components/vehicles/VehicleWeekCard";
 import { VehicleDamageNotesCard } from "@/components/vehicles/VehicleDamageNotesCard";
 import { VehicleFormDialog } from "@/components/vehicles/VehicleFormDialog";
 import { VehicleHistorySplitView } from "@/components/vehicles/VehicleHistorySplitView";
@@ -255,8 +255,8 @@ export default function VehicleDetailPage() {
       {/* Live tracking gets the full width — it is the busiest part of this page. */}
       <VehicleLiveCard vehicleId={vehicle.id} registrationNumber={vehicle.registration_number} />
 
-      {/* Running hours for the last 7 days — Vehicle detail only. */}
-      <VehicleActivityCard vehicleId={vehicle.id} />
+      {/* Kilometres and running hours for the last 7 days, in one card — Vehicle detail only. */}
+      <VehicleWeekCard vehicleId={vehicle.id} />
 
       {vehicle.scrap_record && (
         <Card>

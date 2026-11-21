@@ -18,6 +18,9 @@ export interface VehicleTelemetry {
   battery_current_a: number | null;
   /** The tracker's own odometer — the bike's total kilometres as of `gps_at`. */
   odometer_km: number | null;
+  /** When the ignition was last switched on / off (Intellicar `lastignon` / `lastignoff`). */
+  last_ignition_on_at?: string | null;
+  last_ignition_off_at?: string | null;
   gps_at: string | null;
   can_at: string | null;
   synced_at: string;
@@ -86,11 +89,15 @@ export async function fetchRentalDistance(rentalId: string): Promise<RentalDista
 
 export type ControlAction = "immobilise" | "mobilise" | "lock" | "unlock";
 
+/** How Intellicar is told to cut (or restore) power — the `type` of its immobilize / mobilize call. */
+export type ControlMode = "ignition" | "crank" | "movement" | "can" | "charge" | "discharge" | "chargendischarge";
+
 export interface ControlInput {
   reason: string;
   confirmRegistration: string;
   acknowledgeMoving: boolean;
-  mode?: "ignition" | "crank" | "movement" | "can" | "charge" | "discharge" | "chargendischarge";
+  /** Immobilise / mobilise only; lock and unlock have no mode. Defaults to `ignition` on the server. */
+  mode?: ControlMode;
 }
 
 /** POST /telematics/vehicles/:id/(immobilise|mobilise|lock|unlock) — ADMIN ONLY. `sent` = accepted by the platform, not yet confirmed by the scooter. */
@@ -147,6 +154,22 @@ export interface BikeKms {
 
 export async function fetchBikeKms(): Promise<BikeKms[]> {
   return apiClient.get<BikeKms[]>("/telematics/distance");
+}
+
+/** One bike's kilometres, from GET /telematics/vehicles/:id/distance. */
+export interface VehicleKms {
+  today: string;
+  km_today: number;
+  /** Today and the 6 days before it. */
+  km_7d: number;
+  km_30d: number;
+  /** Newest first: today, yesterday, … six days ago. */
+  days: { day: string; km: number; has_data: boolean }[];
+  updated_at: string | null;
+}
+
+export async function fetchVehicleKms(vehicleId: string): Promise<VehicleKms> {
+  return apiClient.get<VehicleKms>(`/telematics/vehicles/${vehicleId}/distance`);
 }
 
 export interface TrackingFeedStatus {
