@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeSupabase, written, type QueryRecord } from "./helpers/fakeSupabase";
 
 /**
- * Notes on bank lines (supabase/migrations/20261119100000_bank_line_notes.sql):
+ * Notes on bank lines (supabase/migrations/20261124100000_bank_line_notes.sql):
  * the "why" behind a line, e.g. what an "Other expense" was for. Editable,
  * never touches the category or the match, and every change is audited.
  */
