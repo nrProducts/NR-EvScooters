@@ -60,6 +60,10 @@ export interface StatementLineRow {
     billNumber: string | null;
     resolvedAt: string | null;
     resolvedNote: string | null;
+    /** Staff note on why this line happened (bank lines). */
+    note: string | null;
+    noteAt: string | null;
+    noteBy: string | null;
 }
 
 export interface StatementDetail extends StatementRow {

@@ -104,6 +104,75 @@ function plusDays(day: string, days: number): string {
     return d.toISOString().slice(0, 10);
 }
 
+export interface VehicleKmsDay {
+    day: string;
+    km: number;
+    /** False when the sync has no figure for that day (shown as "—", not as 0 km). */
+    has_data: boolean;
+}
+
+export interface VehicleKms {
+    today: string;
+    km_today: number;
+    /** Today and the 6 days before it. */
+    km_7d: number;
+    km_30d: number;
+    /** Newest first: today, yesterday, … six days ago. Always 7 entries. */
+    days: VehicleKmsDay[];
+    /** When the stored figures were last refreshed; null if never. */
+    updated_at: string | null;
+}
+
+/**
+ * One scooter's kilometres for the Vehicle detail page: today, each of the last
+ * 7 days, and the 7- and 30-day totals. Same source and same definitions as
+ * listBikeKms (vehicle_distance_daily), so this page and the Bike KMs list agree.
+ */
+export async function getVehicleKms(vehicleId: string, today: string): Promise<VehicleKms> {
+    const { data: vehicle, error: vehicleError } = await supabaseAdmin
+        .from("vehicles").select("id").eq("id", vehicleId).maybeSingle();
+    if (vehicleError) throw vehicleError;
+    if (!vehicle) throw notFound("Vehicle not found.");
+
+    const from30 = plusDays(today, -29);
+    const { data, error } = await db
+        .from("vehicle_distance_daily")
+        .select("day, distance_km, updated_at")
+        .eq("vehicle_id", vehicleId)
+        .gte("day", from30)
+        .lte("day", today);
+    // Table not migrated yet / brief DB error: show "no data" rather than failing the page.
+    if (error) console.warn("[telematics] vehicle_distance_daily unreadable", error.message);
+
+    const byDay = new Map<string, number>();
+    let updatedAt: string | null = null;
+    let km30 = 0;
+    for (const r of ((error ? [] : data) ?? []) as { day: string; distance_km: number | string; updated_at: string }[]) {
+        const km = Number(r.distance_km);
+        byDay.set(r.day, km);
+        km30 += km;
+        if (!updatedAt || r.updated_at > updatedAt) updatedAt = r.updated_at;
+    }
+
+    const days: VehicleKmsDay[] = [];
+    let km7 = 0;
+    for (let i = 0; i < 7; i++) {
+        const day = plusDays(today, -i);
+        const km = byDay.get(day);
+        days.push({ day, km: round1(km ?? 0), has_data: km !== undefined });
+        km7 += km ?? 0;
+    }
+
+    return {
+        today,
+        km_today: round1(byDay.get(today) ?? 0),
+        km_7d: round1(km7),
+        km_30d: round1(km30),
+        days,
+        updated_at: updatedAt,
+    };
+}
+
 /**
  * Every live (non-retired) scooter with its kilometres today, over the last 7
  * days and over the last 30 — including scooters with no data, shown as 0, so

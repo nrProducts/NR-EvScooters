@@ -101,6 +101,10 @@ export interface StatementLineRow {
   billNumber: string | null;
   resolvedAt: string | null;
   resolvedNote: string | null;
+  /** Staff note on why this line happened (bank lines). */
+  note: string | null;
+  noteAt: string | null;
+  noteBy: string | null;
 }
 
 export interface StatementDetail extends StatementRow {
@@ -215,6 +219,10 @@ export async function fetchBankLines(f: {
 
 export const categoriseBankLine = (id: string, category: string, applyToCounterparty: boolean) =>
   apiClient.post<{ updated: number }>(`/reconciliation/bank/lines/${id}/category`, { category, applyToCounterparty });
+
+/** An empty note clears it. */
+export const saveBankLineNote = (id: string, note: string) =>
+  apiClient.put<StatementLineRow>(`/reconciliation/bank/lines/${id}/note`, { note });
 
 export function previewBankStatement(file: File): Promise<BankImportPreview> {
   const form = new FormData();

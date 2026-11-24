@@ -6,7 +6,7 @@ import * as statements from "./statements.service";
 import * as bank from "./bank.service";
 import { badRequest } from "../../common/AppError";
 import type {
-    BankLinesQuery, CategoriseBody, ListExceptionsQuery, ListStatementsQuery, MonthQuery, ReconciliationQuery,
+    BankLinesQuery, CategoriseBody, LineNoteBody, ListExceptionsQuery, ListStatementsQuery, MonthQuery, ReconciliationQuery,
     ResolveExceptionBody, SyncBody,
 } from "./reconciliation.validation";
 
@@ -81,6 +81,10 @@ export async function listBankLinesHandler(req: AuthedRequest, res: Response) {
 
 export async function categoriseLineHandler(req: AuthedRequest, res: Response) {
     res.json(await bank.categoriseLine(req.params.id as string, req.body as CategoriseBody, req.user!));
+}
+
+export async function lineNoteHandler(req: AuthedRequest, res: Response) {
+    res.json(await bank.setLineNote(req.params.id as string, req.body as LineNoteBody, req.user!));
 }
 
 export async function rematchBankHandler(_req: AuthedRequest, res: Response) {

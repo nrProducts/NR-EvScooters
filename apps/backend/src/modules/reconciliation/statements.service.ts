@@ -64,7 +64,8 @@ function toStatementRow(r: RawStatement, openExceptions: number, bankMatched: bo
 export const LINE_COLUMNS = `id, statement_id, source, line_no, external_id, kind, occurred_at, value_date, amount,
     net_amount, fee, tax, method, gateway_order_id, description, running_balance, counterparty_key, category,
     category_source, match_status, exception_code, payment_transaction_id, refund_id, matched_statement_id,
-    resolved_at, resolved_note,
+    resolved_at, resolved_note, note, note_at,
+    note_author:users!external_statement_lines_note_by_user_id_fkey(full_name),
     payment_transactions(payment_orders(user_id, users(full_name), invoices(invoice_number))),
     refunds(user_id, users!refunds_user_id_fkey(full_name))`;
 
@@ -77,6 +78,7 @@ export interface RawLine {
     category_source: StatementLineRow["categorySource"]; match_status: StatementLineRow["matchStatus"];
     exception_code: string | null; payment_transaction_id: string | null; refund_id: string | null;
     matched_statement_id: string | null; resolved_at: string | null; resolved_note: string | null;
+    note?: string | null; note_at?: string | null; note_author?: unknown;
     payment_transactions: unknown; refunds: unknown;
 }
 
@@ -99,6 +101,8 @@ export function toLineRow(r: RawLine): StatementLineRow {
         riderName: rider?.full_name ?? null,
         billNumber: one(order?.invoices as { invoice_number: string } | null)?.invoice_number ?? null,
         resolvedAt: r.resolved_at, resolvedNote: r.resolved_note,
+        note: r.note ?? null, noteAt: r.note_at ?? null,
+        noteBy: one(r.note_author as { full_name: string } | null)?.full_name ?? null,
     };
 }
 

@@ -59,6 +59,12 @@ export const categoriseBody = z.object({
 });
 export type CategoriseBody = z.infer<typeof categoriseBody>;
 
+/** An empty note clears it. */
+export const lineNoteBody = z.object({
+    note: z.string().trim().max(500, "Keep the note under 500 characters."),
+});
+export type LineNoteBody = z.infer<typeof lineNoteBody>;
+
 export const syncBody = z
     .object({ from: isoDate, to: isoDate })
     .refine((b) => b.from <= b.to, { message: "`from` must be on or before `to`.", path: ["from"] });

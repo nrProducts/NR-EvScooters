@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/common/Spinner";
-import { VehicleControlDialog } from "@/components/vehicles/VehicleControlDialog";
+import { VehicleControlDialog, isControlMode } from "@/components/vehicles/VehicleControlDialog";
 import { useControlCommands, useLockState, useVehicleTelemetry } from "@/hooks/useTelematics";
 import { isMapConfigured, mapStyleForTheme, tuneDarkMapLabels } from "@/lib/mapConfig";
 import { useAuthStore } from "@/store/authStore";
@@ -185,6 +185,8 @@ export function VehicleLiveCard({ vehicleId, registrationNumber }: { vehicleId: 
   const commands = useControlCommands(vehicleId, isAdmin);
   const history = commands.data ?? [];
   const lock = useLockState(vehicleId, isAdmin).data;
+  // Mobilise should undo the immobilise with the SAME mode, so pre-select the last one that was sent.
+  const lastImmobiliseMode = history.find((c) => c.action === "immobilise" && c.status === "sent")?.mode;
 
   return (
     <Card className="overflow-hidden">
@@ -251,6 +253,19 @@ export function VehicleLiveCard({ vehicleId, registrationNumber }: { vehicleId: 
                     <div className="mt-2">
                       {t.ignition_on === null ? null : (
                         <Chip tone={t.ignition_on ? "good" : "muted"}>Ignition {t.ignition_on ? "on" : "off"}</Chip>
+                      )}
+                    </div>
+                    {/* When it was last switched on — from Intellicar's distance feed, refreshed every 2 h. */}
+                    <div className="mt-2 text-xs text-muted-foreground" title={t.last_ignition_on_at ? formatFullDateTime(t.last_ignition_on_at) : undefined}>
+                      {t.ignition_on === true ? (
+                        <p>Running now</p>
+                      ) : t.last_ignition_on_at ? (
+                        <>
+                          <p>Last on {timeAgo(t.last_ignition_on_at)}</p>
+                          <p>{formatFullDateTime(t.last_ignition_on_at)}</p>
+                        </>
+                      ) : (
+                        <p>Last on: not recorded yet</p>
                       )}
                     </div>
                   </div>
@@ -358,7 +373,10 @@ export function VehicleLiveCard({ vehicleId, registrationNumber }: { vehicleId: 
                         <li key={c.id} className="rounded-md border border-border bg-card px-3 py-2 text-xs">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="font-medium capitalize">
-                              {c.action} · {c.status === "failed" ? <span className="text-destructive">failed</span> : "sent"}
+                              {c.action}
+                              {c.mode && c.mode !== "n/a" ? <span className="font-normal text-muted-foreground"> ({c.mode})</span> : null}
+                              {" · "}
+                              {c.status === "failed" ? <span className="text-destructive">failed</span> : "sent"}
                             </span>
                             <span className="text-muted-foreground">{formatFullDateTime(c.created_at)}</span>
                           </div>
@@ -380,6 +398,7 @@ export function VehicleLiveCard({ vehicleId, registrationNumber }: { vehicleId: 
                     registrationNumber={registrationNumber}
                     action={controlAction}
                     speedKmph={t.freshness === "live" ? t.speed_kmph : null}
+                    defaultMode={controlAction === "mobilise" && isControlMode(lastImmobiliseMode) ? lastImmobiliseMode : undefined}
                   />
                 ) : null}
               </div>

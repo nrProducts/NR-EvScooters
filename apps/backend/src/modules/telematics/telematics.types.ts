@@ -16,6 +16,12 @@ export interface VehicleTelemetry {
     battery_current_a: number | null;
     /** The tracker's own odometer — the bike's total kilometres as of `gps_at`. */
     odometer_km: number | null;
+    /**
+     * Intellicar's `lastignon` / `lastignoff`, stored by telematics-distance-sync.
+     * Null until a sync has found one (or before the migration is applied).
+     */
+    last_ignition_on_at?: string | null;
+    last_ignition_off_at?: string | null;
     gps_at: string | null;
     can_at: string | null;
     synced_at: string;

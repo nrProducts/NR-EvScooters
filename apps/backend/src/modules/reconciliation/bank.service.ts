@@ -476,6 +476,41 @@ export async function categoriseLine(
     return { updated: touched.length };
 }
 
+/**
+ * Sets (or clears, with an empty note) the staff note on one bank line — the
+ * "why" behind it, e.g. what an "Other expense" was for. Never touches the
+ * category or the match; the old and new text go to the audit log.
+ */
+export async function setLineNote(
+    lineId: string, input: { note: string }, actor: AuthContext,
+): Promise<StatementLineRow> {
+    const { data: line, error } = await db
+        .from("external_statement_lines").select("id, source, note").eq("id", lineId).maybeSingle();
+    if (error) throw error;
+    const l = line as { source: string; note: string | null } | null;
+    if (!l || l.source !== "hdfc") throw notFound("Bank line not found.");
+
+    const note = input.note.trim() || null;
+    if (note !== l.note) {
+        const { error: updateError } = await db
+            .from("external_statement_lines")
+            .update({ note, note_by_user_id: note ? actor.id : null, note_at: note ? new Date().toISOString() : null })
+            .eq("id", lineId);
+        if (updateError) throw updateError;
+
+        await writeAudit({
+            actorId: actor.id, targetUserId: null, action: "settlement.bank_line_note_updated",
+            entityType: "external_statement_line", entityId: lineId,
+            before: { note: l.note }, after: { note },
+        });
+    }
+
+    const { data: fresh, error: freshError } = await db
+        .from("external_statement_lines").select(LINE_COLUMNS).eq("id", lineId).single();
+    if (freshError) throw freshError;
+    return toLineRow(fresh as unknown as RawLine);
+}
+
 export async function listBankLines(f: {
     from: string; to: string; filter: "all" | "uncategorised" | "exceptions"; category?: string;
     search?: string; page: number; pageSize: number;
@@ -487,7 +522,7 @@ export async function listBankLines(f: {
     if (f.category) q = q.eq("category", f.category);
     if (f.search) {
         const s = f.search.replace(/[,()*%\\]/g, " ").trim();
-        if (s) q = q.or(`description.ilike.%${s}%,external_id.ilike.%${s}%,counterparty_key.ilike.%${s}%`);
+        if (s) q = q.or(`description.ilike.%${s}%,external_id.ilike.%${s}%,counterparty_key.ilike.%${s}%,note.ilike.%${s}%`);
     }
     const [from, to] = toRange(f);
     const { data, error, count } = await q.order("value_date", { ascending: false }).order("line_no", { ascending: false }).range(from, to);

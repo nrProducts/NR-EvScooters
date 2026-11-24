@@ -56,6 +56,31 @@ const num = (v: unknown): number | null => {
     return typeof n === "number" && Number.isFinite(n) ? n : null;
 };
 
+/**
+ * Intellicar's `lastignon` / `lastignoff` → ISO time. The docs say only
+ * "epoch-utc", so seconds and milliseconds are both accepted (anything under
+ * 1e11 is read as seconds). 0 / missing / a time in the future → null.
+ */
+const epochToIso = (v: unknown): string | null => {
+    const n = num(v);
+    if (n === null || n <= 0) return null;
+    const ms = n < 1e11 ? n * 1000 : n;
+    if (ms > Date.now() + 86_400_000) return null;
+    return new Date(ms).toISOString();
+};
+
+/** The later of two ISO times (either may be null). */
+const laterOf = (a: string | null, b: string | null): string | null =>
+    a && b ? (a > b ? a : b) : (a ?? b);
+
+/**
+ * Only bikes with no ignition time on file look back this far — and at most
+ * once per LOOKBACK_EVERY_MS — so it stays well inside Intellicar's 24 history
+ * calls per bike per day (the schedule itself uses ≤14).
+ */
+const LOOKBACK_DAYS = 30;
+const LOOKBACK_EVERY_MS = 6 * 3_600_000;
+
 /** Epoch ms of 00:00 IST on a YYYY-MM-DD business day. */
 const dayStartMs = (day: string) => new Date(`${day}T00:00:00+05:30`).getTime();
 
@@ -115,21 +140,51 @@ Deno.serve(async (_req) => {
     );
     const days = istHour < 4 ? [addDays(today, -1), today] : [today];
 
+    // What is already on file for "last ignition", so a run only ever moves it forward
+    // and knows which bikes still need a look-back. If the columns are not migrated
+    // yet this stays off and the distance job runs exactly as before.
+    const ignState = new Map<string, { on: string | null; off: string | null; checked: string | null }>();
+    let ignitionEnabled = true;
+    {
+        const { data, error: ignError } = await admin
+            .from("vehicle_telemetry")
+            .select("vehicle_id, last_ignition_on_at, last_ignition_off_at, ignition_checked_at");
+        if (ignError) {
+            ignitionEnabled = false;
+            console.warn(`[${SOURCE}] last-ignition columns unavailable — skipping`, ignError.message);
+        } else {
+            for (const r of (data ?? []) as {
+                vehicle_id: string; last_ignition_on_at: string | null; last_ignition_off_at: string | null; ignition_checked_at: string | null;
+            }[]) {
+                ignState.set(r.vehicle_id, { on: r.last_ignition_on_at, off: r.last_ignition_off_at, checked: r.ignition_checked_at });
+            }
+        }
+    }
+    let ignitionUpdates = 0;
+
     let rows = 0;
     let skipped = 0;
     for (const v of (vehicles ?? []) as { id: string; registration_number: string; vin: string | null }[]) {
         const vehicleNo = known.get(normKey(v.vin)) ?? known.get(normKey(v.registration_number));
         if (!vehicleNo) { skipped++; continue; } // not on the account — telematics-sync reports it
 
+        // Ignition times seen in this bike's distance responses (latest wins).
+        let ignOn: string | null = null;
+        let ignOff: string | null = null;
+
         for (const day of days) {
             const start = dayStartMs(day);
             // Today runs to "now"; a past day to the end of that day.
             const end = day === today ? Date.now() : dayStartMs(addDays(day, 1)) - 1;
             try {
-                const res = await post<{ distance?: unknown }>("getdistancetravelled", {
+                const res = await post<{ distance?: unknown; lastignon?: unknown; lastignoff?: unknown }>("getdistancetravelled", {
                     token, vehicleno: vehicleNo, starttime: start, endtime: end,
                 });
                 await sleep(GAP_MS);
+                if (res.status === "SUCCESS") {
+                    ignOn = laterOf(ignOn, epochToIso(res.data?.lastignon));
+                    ignOff = laterOf(ignOff, epochToIso(res.data?.lastignoff));
+                }
                 const km = res.status === "SUCCESS" ? num(res.data?.distance) : null;
                 if (km === null || km < 0) {
                     console.error(`[${SOURCE}] no distance for ${vehicleNo} on ${day}`, res.msg ?? res.err);
@@ -145,6 +200,41 @@ Deno.serve(async (_req) => {
                 else rows++;
             } catch (err) {
                 console.error(`[${SOURCE}] ${vehicleNo} ${day} failed`, err);
+            }
+        }
+
+        // ---- Last ignition on / off ---------------------------------------------------
+        const prev = ignState.get(v.id);
+        // No telemetry row yet (tracking not synced for this bike) → nothing to update.
+        if (ignitionEnabled && prev) {
+            let lookedBack = false;
+            // Nothing in today's window and nothing on file: look back once, at most every 6 h.
+            if (!ignOn && !prev.on && (!prev.checked || Date.now() - Date.parse(prev.checked) > LOOKBACK_EVERY_MS)) {
+                lookedBack = true;
+                try {
+                    const res = await post<{ lastignon?: unknown; lastignoff?: unknown }>("getdistancetravelled", {
+                        token, vehicleno: vehicleNo, starttime: Date.now() - LOOKBACK_DAYS * 86_400_000, endtime: Date.now(),
+                    });
+                    await sleep(GAP_MS);
+                    if (res.status === "SUCCESS") {
+                        ignOn = epochToIso(res.data?.lastignon);
+                        ignOff = laterOf(ignOff, epochToIso(res.data?.lastignoff));
+                        // Keep a sample of the raw answer in the logs: the docs do not state the unit.
+                        console.log(`[${SOURCE}] ignition look-back ${vehicleNo}: lastignon=${String(res.data?.lastignon)} lastignoff=${String(res.data?.lastignoff)}`);
+                    }
+                } catch (err) {
+                    console.error(`[${SOURCE}] ignition look-back for ${vehicleNo} failed`, err);
+                }
+            }
+
+            const patch: Record<string, string> = {};
+            if (ignOn && (!prev.on || ignOn > prev.on)) patch.last_ignition_on_at = ignOn;
+            if (ignOff && (!prev.off || ignOff > prev.off)) patch.last_ignition_off_at = ignOff;
+            if (lookedBack) patch.ignition_checked_at = new Date().toISOString();
+            if (Object.keys(patch).length > 0) {
+                const { error: patchError } = await admin.from("vehicle_telemetry").update(patch).eq("vehicle_id", v.id);
+                if (patchError) console.error(`[${SOURCE}] could not save last ignition for ${vehicleNo}`, patchError);
+                else if (patch.last_ignition_on_at || patch.last_ignition_off_at) ignitionUpdates++;
             }
         }
     }
@@ -199,5 +289,5 @@ Deno.serve(async (_req) => {
         console.error(`[${SOURCE}] allowance baselines skipped`, err);
     }
 
-    return json({ configured: true, vehicles: (vehicles ?? []).length, notOnAccount: skipped, days, rows, baselines }, 200);
+    return json({ configured: true, vehicles: (vehicles ?? []).length, notOnAccount: skipped, days, rows, ignitionUpdates, baselines }, 200);
 });
