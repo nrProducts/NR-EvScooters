@@ -37,6 +37,8 @@ router.post("/bank/preview", requireAction("reconciliation", "resolve"), bankSta
 router.post("/bank/import", requireAction("reconciliation", "resolve"), bankStatementUpload, asyncHandler(c.importBankHandler));
 router.get("/bank/lines", requireAction("reconciliation", "view"), validate({ query: v.bankLinesQuery }), asyncHandler(c.listBankLinesHandler));
 router.post("/bank/lines/:id/category", requireAction("reconciliation", "resolve"), validate({ params: v.idParam, body: v.categoriseBody }), asyncHandler(c.categoriseLineHandler));
+// A note is only an explanation — anyone who can view Reconciliation may write one.
+router.put("/bank/lines/:id/note", requireAction("reconciliation", "view"), validate({ params: v.idParam, body: v.lineNoteBody }), asyncHandler(c.lineNoteHandler));
 router.post("/bank/rematch", requireAction("reconciliation", "resolve"), asyncHandler(c.rematchBankHandler));
 router.get("/cash-book", requireAction("reconciliation", "view"), validate({ query: v.monthQuery }), asyncHandler(c.cashBookHandler));
 router.get("/tie-out", requireAction("reconciliation", "view"), validate({ query: v.monthQuery }), asyncHandler(c.tieOutHandler));

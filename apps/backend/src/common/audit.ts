@@ -70,7 +70,7 @@ export type AuditAction =
     // GST Stages 2–3: outside statements. Matching the financial pattern on
     // "settlement", so they keep the financial retention period too.
     | "settlement.sync_run" | "settlement.exception_resolved"
-    | "settlement.bank_statement_imported" | "settlement.bank_line_categorised"
+    | "settlement.bank_statement_imported" | "settlement.bank_line_categorised" | "settlement.bank_line_note_updated"
     | "refund.recorded_offline"
     // GST Stage 4: purchases. All match "purchase" in is_financial_audit_action().
     | "purchase.vendor_saved" | "purchase.bill_created" | "purchase.bill_updated" | "purchase.bill_confirmed"

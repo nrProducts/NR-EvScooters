@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowDownLeft, ArrowUpRight, CheckCircle2, CreditCard, Download, FileWarning, Landmark,
-  RefreshCw, Upload, Wallet, XCircle,
+  RefreshCw, StickyNote, Upload, Wallet, XCircle,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,8 +24,8 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { Spinner } from "@/components/common/Spinner";
 import {
   useBankLines, useCashBook, useCategoriseBankLine, useExceptions, useImportBankStatement, useReconciliation,
-  useRecoverPayment, useResolveException, useSettlementSummary, useStatement, useStatements, useSyncSettlements,
-  useTieOut,
+  useRecoverPayment, useResolveException, useSaveBankLineNote, useSettlementSummary, useStatement, useStatements,
+  useSyncSettlements, useTieOut,
 } from "@/hooks/useReconciliation";
 import { usePageSubtitle } from "@/hooks/usePageSubtitle";
 import { useAuthStore } from "@/store/authStore";
@@ -310,6 +310,7 @@ function BankTab({ month, canResolve }: { month: string; canResolve: boolean }) 
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<StatementLineRow | null>(null);
+  const [noting, setNoting] = useState<StatementLineRow | null>(null);
 
   useEffect(() => { setPage(1); }, [month]);
 
@@ -325,6 +326,7 @@ function BankTab({ month, canResolve }: { month: string; canResolve: boolean }) 
         <div className="min-w-0 max-w-[22rem]">
           <p className="truncate text-xs" title={l.description ?? ""}>{l.description}</p>
           <p className="truncate font-mono text-xs text-muted-foreground">{l.counterpartyKey}</p>
+          <LineNote line={l} />
         </div>
       ),
     },
@@ -349,9 +351,19 @@ function BankTab({ month, canResolve }: { month: string; canResolve: boolean }) 
     { header: "Match", key: "match", hideOnMobile: true, render: (l) => <MatchBadge line={l} /> },
     {
       header: "", key: "edit", className: "text-right",
-      render: (l) => canResolve && l.matchStatus !== "resolved" && l.matchStatus !== "ignored" ? (
-        <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(l); }}>Categorise</Button>
-      ) : null,
+      render: (l) => (
+        <div className="flex justify-end gap-1">
+          <Button
+            size="sm" variant="ghost" aria-label={l.note ? "Edit note" : "Add note"} title={l.note ? "Edit note" : "Add note"}
+            onClick={(e) => { e.stopPropagation(); setNoting(l); }}
+          >
+            <StickyNote className="h-3.5 w-3.5" /> <span className="hidden xl:inline">Note</span>
+          </Button>
+          {canResolve && l.matchStatus !== "resolved" && l.matchStatus !== "ignored" && (
+            <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(l); }}>Categorise</Button>
+          )}
+        </div>
+      ),
     },
   ];
 
@@ -405,7 +417,78 @@ function BankTab({ month, canResolve }: { month: string; canResolve: boolean }) 
 
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
       <CategoriseDialog line={editing} onClose={() => setEditing(null)} />
+      <NoteDialog line={noting} onClose={() => setNoting(null)} />
     </>
+  );
+}
+
+/** The staff note under a bank line's narration; falls back to the exception's resolution note. */
+function LineNote({ line }: { line: StatementLineRow }) {
+  if (line.note) {
+    const by = [line.noteBy, line.noteAt && formatDate(line.noteAt)].filter(Boolean).join(" · ");
+    return (
+      <p className="mt-1 flex items-start gap-1 text-xs text-foreground" title={by ? `${line.note}\n— ${by}` : line.note}>
+        <StickyNote className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
+        <span className="line-clamp-2 whitespace-pre-line break-words">{line.note}</span>
+      </p>
+    );
+  }
+  if (line.resolvedNote) {
+    return (
+      <p className="mt-1 truncate text-xs italic text-muted-foreground" title={line.resolvedNote}>
+        Resolved: {line.resolvedNote}
+      </p>
+    );
+  }
+  return null;
+}
+
+const NOTE_MAX = 500;
+
+function NoteDialog({ line, onClose }: { line: StatementLineRow | null; onClose: () => void }) {
+  const save = useSaveBankLineNote();
+  const [note, setNote] = useState("");
+
+  useEffect(() => { setNote(line?.note ?? ""); }, [line]);
+  if (!line) return null;
+  const unchanged = note.trim() === (line.note ?? "");
+
+  return (
+    <Dialog open={!!line} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>{line.note ? "Edit note" : "Add note"}</DialogTitle></DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div className="rounded-md bg-muted/40 px-3 py-2 text-xs">
+            <p className="break-words">{line.description}</p>
+            <p className="mt-1 font-medium">
+              {line.kind === "bank_credit" ? "Money in" : "Money out"} · {formatCurrency(Math.abs(line.amount))} · {line.valueDate && formatDate(line.valueDate)}
+              {line.category && <> · {CATEGORY_LABEL[line.category] ?? line.category}</>}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="bank-line-note">Note</Label>
+            <Textarea
+              id="bank-line-note" rows={4} maxLength={NOTE_MAX} value={note} autoFocus
+              placeholder="What was this for? e.g. Tea and snacks for hub staff"
+              onChange={(e) => setNote(e.target.value)}
+            />
+            <p className="flex justify-between text-xs text-muted-foreground">
+              <span>{line.noteBy ? `Last written by ${line.noteBy}${line.noteAt ? ` on ${formatDate(line.noteAt)}` : ""}` : "Leave empty to remove the note."}</span>
+              <span>{note.length}/{NOTE_MAX}</span>
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={unchanged || save.isPending}
+            onClick={() => save.mutate({ id: line.id, note }, { onSuccess: onClose })}
+          >
+            {save.isPending && <Spinner className="h-4 w-4" />} {note.trim() || !line.note ? "Save" : "Remove note"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -605,12 +688,26 @@ function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
 
 function CategoriseDialog({ line, onClose }: { line: StatementLineRow | null; onClose: () => void }) {
   const save = useCategoriseBankLine();
+  const saveNote = useSaveBankLineNote();
   const [category, setCategory] = useState("");
   const [applyAll, setApplyAll] = useState(true);
+  const [note, setNote] = useState("");
 
-  useEffect(() => { setCategory(line?.category ?? ""); setApplyAll(true); }, [line]);
+  useEffect(() => { setCategory(line?.category ?? ""); setApplyAll(true); setNote(line?.note ?? ""); }, [line]);
   if (!line) return null;
   const isCredit = line.kind === "bank_credit";
+  const noteChanged = note.trim() !== (line.note ?? "");
+  const busy = save.isPending || saveNote.isPending;
+
+  // The note is saved first (silently), so a failed category save never loses it.
+  const submit = async () => {
+    try {
+      if (noteChanged) await saveNote.mutateAsync({ id: line.id, note, silent: true });
+    } catch {
+      return; // the hook already showed the error
+    }
+    save.mutate({ id: line.id, category, applyToCounterparty: applyAll }, { onSuccess: onClose });
+  };
 
   return (
     <Dialog open={!!line} onOpenChange={(o) => !o && onClose()}>
@@ -637,14 +734,19 @@ function CategoriseDialog({ line, onClose }: { line: StatementLineRow | null; on
               <Switch checked={applyAll} onCheckedChange={setApplyAll} aria-label="Apply to counterparty" />
             </div>
           )}
+          <div className="space-y-1.5">
+            <Label htmlFor="categorise-note">Note <span className="font-normal text-muted-foreground">(optional, this line only)</span></Label>
+            <Textarea
+              id="categorise-note" rows={2} maxLength={NOTE_MAX} value={note}
+              placeholder="What was this for? e.g. Tea and snacks for hub staff"
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button
-            disabled={!category || save.isPending}
-            onClick={() => save.mutate({ id: line.id, category, applyToCounterparty: applyAll }, { onSuccess: onClose })}
-          >
-            {save.isPending && <Spinner className="h-4 w-4" />} Save
+          <Button disabled={!category || busy} onClick={() => void submit()}>
+            {busy && <Spinner className="h-4 w-4" />} Save
           </Button>
         </DialogFooter>
       </DialogContent>

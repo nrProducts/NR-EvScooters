@@ -112,6 +112,20 @@ export function useCategoriseBankLine() {
   });
 }
 
+export function useSaveBankLineNote() {
+  const qc = useQueryClient();
+  const push = useToastStore((s) => s.push);
+  return useMutation({
+    // `silent` when saved alongside a category — that save shows its own toast.
+    mutationFn: ({ id, note }: { id: string; note: string; silent?: boolean }) => api.saveBankLineNote(id, note),
+    onSuccess: (r, v) => {
+      qc.invalidateQueries({ queryKey: KEY });
+      if (!v.silent) push({ tone: "success", title: r.note ? "Note saved" : "Note removed", message: "Recorded in the audit log." });
+    },
+    onError: (error) => push({ tone: "error", title: "Could not save the note", message: errorMessage(error) }),
+  });
+}
+
 export function useImportBankStatement() {
   const qc = useQueryClient();
   const push = useToastStore((s) => s.push);
