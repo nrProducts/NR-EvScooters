@@ -161,6 +161,8 @@ export type Database = {
       billing_cycle_settings: {
         Row: {
           allow_overdue_change: boolean
+          change_fee: number
+          charge_enabled: boolean
           created_at: string
           id: string
           max_extra_days: number
@@ -168,6 +170,8 @@ export type Database = {
         }
         Insert: {
           allow_overdue_change?: boolean
+          change_fee?: number
+          charge_enabled?: boolean
           created_at?: string
           id?: string
           max_extra_days?: number
@@ -175,6 +179,8 @@ export type Database = {
         }
         Update: {
           allow_overdue_change?: boolean
+          change_fee?: number
+          charge_enabled?: boolean
           created_at?: string
           id?: string
           max_extra_days?: number
@@ -4556,6 +4562,8 @@ export type Database = {
           p_new_due_on: string
           p_reason: string | null
           p_subscription_id: string
+          p_waive_charge?: boolean
+          p_waive_reason?: string | null
         }
         Returns: Json
       }

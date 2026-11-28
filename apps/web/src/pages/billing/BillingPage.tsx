@@ -130,56 +130,102 @@ function VehicleRecoveryNote() {
 
 /**
  * Policy for the admin "Change billing cycle" action on Rental Operations:
- * whether an overdue rider may be re-dated, and the most free days one change
- * may add. Admin-only, like the recovery cap above.
+ * whether an overdue rider may be re-dated, the most extra days one change
+ * may add, and whether the extra time is charged (the rider's own plan rate
+ * per started hour) plus an optional flat fee. Admin-only, like the recovery
+ * cap above.
  */
 function BillingCycleChangeNote() {
   const isAdmin = useAuthStore((s) => s.user?.role === "admin");
   const { data } = useBillingCycleSettings({ enabled: isAdmin });
   const update = useUpdateBillingCycleSettings();
   const [days, setDays] = useState("");
+  const [fee, setFee] = useState("");
 
-  useEffect(() => { if (data) setDays(String(data.max_extra_days)); }, [data]);
+  useEffect(() => {
+    if (data) { setDays(String(data.max_extra_days)); setFee(String(data.change_fee)); }
+  }, [data]);
   if (!isAdmin || !data) return null;
 
   const n = Number(days);
-  const invalid = !Number.isInteger(n) || n < 0 || n > 60;
-  const save = (input: { allow_overdue_change: boolean; max_extra_days: number }, done: string) =>
-    update.mutate(input, {
+  const daysInvalid = !Number.isInteger(n) || n < 0 || n > 60;
+  const f = Number(fee);
+  const feeInvalid = fee.trim() === "" || !Number.isFinite(f) || f < 0 || f > 100000;
+  const current = {
+    allow_overdue_change: data.allow_overdue_change,
+    max_extra_days: data.max_extra_days,
+    charge_enabled: data.charge_enabled,
+    change_fee: data.change_fee,
+  };
+  const save = (patch: Partial<typeof current>, done: string) =>
+    update.mutate({ ...current, ...patch }, {
       onSuccess: () => toastSuccess(done),
       onError: (err) => toastError(err, "Could not save"),
     });
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm">
-      <span className="font-medium">Change billing cycle</span>
-      <label className="flex items-center gap-2">
-        <Switch
-          checked={data.allow_overdue_change}
-          disabled={update.isPending}
-          onCheckedChange={(on) => save(
-            { allow_overdue_change: on, max_extra_days: data.max_extra_days },
-            on ? "Overdue riders can now be re-dated" : "Overdue riders can no longer be re-dated",
-          )}
-        />
-        <span className="text-muted-foreground">Allow for overdue riders</span>
-      </label>
-      <span className="flex flex-wrap items-center gap-2">
-        <span className="text-muted-foreground">Up to</span>
-        <Input
-          type="number" min={0} max={60} value={days} onChange={(e) => setDays(e.target.value)}
-          className="h-8 w-20"
-        />
-        <span className="text-muted-foreground">free extra days per change</span>
-        <Button
-          size="sm" variant="outline"
-          disabled={invalid || n === data.max_extra_days || update.isPending}
-          onClick={() => save({ allow_overdue_change: data.allow_overdue_change, max_extra_days: n }, "Extra-day limit saved")}
-        >
-          {update.isPending ? "Saving…" : "Save"}
-        </Button>
-        {invalid && <span className="text-xs text-destructive">Enter a whole number from 0 to 60.</span>}
-      </span>
+    <div className="space-y-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="font-medium">Change billing cycle</span>
+        <label className="flex items-center gap-2">
+          <Switch
+            checked={data.allow_overdue_change}
+            disabled={update.isPending}
+            onCheckedChange={(on) => save(
+              { allow_overdue_change: on },
+              on ? "Overdue riders can now be re-dated" : "Overdue riders can no longer be re-dated",
+            )}
+          />
+          <span className="text-muted-foreground">Allow for overdue riders</span>
+        </label>
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground">Up to</span>
+          <Input
+            type="number" min={0} max={60} value={days} onChange={(e) => setDays(e.target.value)}
+            className="h-8 w-20"
+          />
+          <span className="text-muted-foreground">extra days per change</span>
+          <Button
+            size="sm" variant="outline"
+            disabled={daysInvalid || n === data.max_extra_days || update.isPending}
+            onClick={() => save({ max_extra_days: n }, "Extra-day limit saved")}
+          >
+            {update.isPending ? "Saving…" : "Save"}
+          </Button>
+          {daysInvalid && <span className="text-xs text-destructive">Enter a whole number from 0 to 60.</span>}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <label className="flex items-center gap-2">
+          <Switch
+            checked={data.charge_enabled}
+            disabled={update.isPending}
+            onCheckedChange={(on) => save(
+              { charge_enabled: on },
+              on ? "Billing-cycle changes are now charged" : "Billing-cycle changes are now free",
+            )}
+          />
+          <span className="text-muted-foreground">
+            Charge for extra time <span className="text-xs">(rider&apos;s plan rate: per day the date moves later + per started hour the time moves later, GST included)</span>
+          </span>
+        </label>
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground">Change fee ₹</span>
+          <Input
+            type="number" min={0} step="1" value={fee} onChange={(e) => setFee(e.target.value)}
+            className="h-8 w-24" disabled={!data.charge_enabled}
+          />
+          <Button
+            size="sm" variant="outline"
+            disabled={!data.charge_enabled || feeInvalid || f === data.change_fee || update.isPending}
+            onClick={() => save({ change_fee: f }, "Change fee saved")}
+          >
+            {update.isPending ? "Saving…" : "Save"}
+          </Button>
+          <span className="text-xs text-muted-foreground">per change, even an earlier time. 0 = none.</span>
+          {feeInvalid && <span className="text-xs text-destructive">Enter an amount from 0 to 1,00,000.</span>}
+        </span>
+      </div>
     </div>
   );
 }

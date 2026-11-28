@@ -5,14 +5,56 @@ export interface BillingCycleSettings {
   id: string;
   /** May an overdue (past_due) rider's billing cycle be changed? */
   allow_overdue_change: boolean;
-  /** The most free days one change may add to the due date. */
+  /** The most extra days one change may add to the due date. */
   max_extra_days: number;
+  /** Bill extra time at the rider's plan rate, per started hour. */
+  charge_enabled: boolean;
+  /** Flat fee on every change while charging is on. 0 = none. */
+  change_fee: number;
   updated_at: string | null;
 }
 
 export interface UpdateBillingCycleSettingsInput {
   allow_overdue_change: boolean;
   max_extra_days: number;
+  charge_enabled: boolean;
+  change_fee: number;
+}
+
+export type CollectedMethod = "cash" | "upi" | "card" | "netbanking" | "wallet";
+
+export interface BillingCycleApplyInput {
+  new_due_on: string;
+  new_due_time: string;
+  reason: string;
+  waive_charge?: boolean;
+  waive_reason?: string;
+  collected_method?: CollectedMethod;
+}
+
+/** The charge for a change — computed server-side, identical in preview and apply. */
+export interface BillingCycleCharge {
+  enabled: boolean;
+  period_price: number;
+  plan_days: number;
+  daily_rate: number;
+  hourly_rate: number;
+  /** The real extra time on the scooter — display only. */
+  extra_minutes: number;
+  extra_text: string | null;
+  /** Days the due date moves later × daily rate. */
+  billable_days: number;
+  day_charge: number;
+  /** Started hours the clock time moves later (0 if earlier) × hourly rate. */
+  billable_hours: number;
+  hour_charge: number;
+  /** day_charge + hour_charge, rounded up to the rupee. */
+  time_charge: number;
+  change_fee: number;
+  total: number;
+  waived: boolean;
+  invoice_id: string | null;
+  collected?: boolean;
 }
 
 export interface BillingCycleChangeInput {
@@ -51,6 +93,7 @@ export interface BillingCycleChangeResult {
   new_due_back_at: string;
   clears_recovery_flag: boolean;
   invoices_moved: number;
+  charge: BillingCycleCharge;
 }
 
 /** GET /billing-cycle/settings — requireAdmin. */
@@ -71,7 +114,7 @@ export async function previewBillingCycleChange(bookingId: string, input: Billin
 /** POST /billing-cycle/bookings/:id — requireAdmin. Applies the change and notifies the rider. */
 export async function applyBillingCycleChange(
   bookingId: string,
-  input: BillingCycleChangeInput & { reason: string },
+  input: BillingCycleApplyInput,
 ): Promise<BillingCycleChangeResult> {
   return apiClient.post<BillingCycleChangeResult>(`/billing-cycle/bookings/${bookingId}`, input);
 }

@@ -41,6 +41,8 @@ vi.mock("../src/config/supabase", () => ({
     },
 }));
 vi.mock("../src/modules/notifications/notifications.service", () => ({ notifyUser }));
+const recordOfflinePayment = vi.fn();
+vi.mock("../src/modules/payments/payments.service", () => ({ recordOfflinePayment }));
 vi.mock("../src/common/audit", () => ({ writeAudit: vi.fn() }));
 
 const service = await import("../src/modules/billing-cycle/billing-cycle.service");
@@ -72,13 +74,24 @@ const RESULT = {
     new_due_back_at: "2026-11-15T14:30:00+00:00",
     clears_recovery_flag: false,
     invoices_moved: 0,
+    // Weekly ₹2,100 → ₹300/day. 13 Nov 9:53 PM → 15 Nov 8:00 PM: date +2 days
+    // = ₹600; the time moves EARLIER, so no hour charge and no reduction.
+    charge: {
+        enabled: true, period_price: 2100, plan_days: 7, daily_rate: 300, hourly_rate: 12.5,
+        extra_minutes: 2767, extra_text: "1 d 22 h 7 m",
+        billable_days: 2, day_charge: 600, billable_hours: 0, hour_charge: 0,
+        time_charge: 600, change_fee: 0, total: 600, waived: false, invoice_id: null as string | null,
+    },
 };
+const INVOICE_ID = "77777777-7777-4777-8777-777777777777";
+const withInvoice = () => ({ ...RESULT, charge: { ...RESULT.charge, invoice_id: INVOICE_ID } });
 
 beforeEach(() => {
     queues = { subscriptions: [{ data: { id: SUBSCRIPTION_ID }, error: null }] };
     rpcCalls = [];
     rpcResult = { data: RESULT, error: null };
     notifyUser.mockReset();
+    recordOfflinePayment.mockReset();
 });
 
 describe("request validation", () => {
@@ -101,9 +114,9 @@ describe("request validation", () => {
     });
 
     it("caps the settings' max extra days at 60 and rejects fractions", () => {
-        expect(updateBillingCycleSettingsBody.safeParse({ allow_overdue_change: true, max_extra_days: 7 }).success).toBe(true);
-        expect(updateBillingCycleSettingsBody.safeParse({ allow_overdue_change: true, max_extra_days: 61 }).success).toBe(false);
-        expect(updateBillingCycleSettingsBody.safeParse({ allow_overdue_change: true, max_extra_days: 1.5 }).success).toBe(false);
+        expect(updateBillingCycleSettingsBody.safeParse({ allow_overdue_change: true, max_extra_days: 7, charge_enabled: true, change_fee: 0 }).success).toBe(true);
+        expect(updateBillingCycleSettingsBody.safeParse({ allow_overdue_change: true, max_extra_days: 61, charge_enabled: true, change_fee: 0 }).success).toBe(false);
+        expect(updateBillingCycleSettingsBody.safeParse({ allow_overdue_change: true, max_extra_days: 1.5, charge_enabled: true, change_fee: 0 }).success).toBe(false);
     });
 });
 
@@ -117,6 +130,8 @@ describe("previewChange", () => {
             p_reason: null,
             p_actor_id: null,
             p_apply: false,
+            p_waive_charge: false,
+            p_waive_reason: null,
         }]]);
     });
 
@@ -181,5 +196,50 @@ describe("ruleErrorMessage", () => {
     it("is null for anything else", () => {
         expect(service.ruleErrorMessage({ message: "duplicate key" })).toBeNull();
         expect(service.ruleErrorMessage(null)).toBeNull();
+    });
+});
+
+describe("the charge for extra time", () => {
+    const base = { new_due_on: "2026-11-15", new_due_time: "20:00", reason: "Salary on 15th" };
+
+    it("a waive needs its own reason, and can't also be collected", () => {
+        expect(applyBillingCycleBody.safeParse({ ...base, waive_charge: true }).success).toBe(false);
+        expect(applyBillingCycleBody.safeParse({ ...base, waive_charge: true, waive_reason: "Our scheduling" }).success).toBe(true);
+        expect(applyBillingCycleBody.safeParse({ ...base, waive_charge: true, waive_reason: "Our scheduling", collected_method: "cash" }).success).toBe(false);
+        expect(applyBillingCycleBody.safeParse({ ...base, collected_method: "cheque" }).success).toBe(false);
+    });
+
+    it("passes the waive choice to the database function", async () => {
+        await service.applyChange(BOOKING_ID, { ...base, waive_charge: true, waive_reason: "Our scheduling" }, ADMIN);
+        expect(rpcCalls[0][1]).toMatchObject({ p_waive_charge: true, p_waive_reason: "Our scheduling" });
+    });
+
+    it("records a counter collection against the bill the function raised", async () => {
+        rpcResult = { data: withInvoice(), error: null };
+        const r = await service.applyChange(BOOKING_ID, { ...base, collected_method: "cash" }, ADMIN);
+        expect(recordOfflinePayment).toHaveBeenCalledWith(INVOICE_ID, "cash", ADMIN);
+        expect(r.charge.collected).toBe(true);
+        expect(notifyUser.mock.calls[0][1].body).toContain("A charge of ₹600 for the change was collected.");
+    });
+
+    it("leaves the bill owing (not the change failed) when recording the collection fails", async () => {
+        rpcResult = { data: withInvoice(), error: null };
+        recordOfflinePayment.mockRejectedValueOnce(new Error("gateway down"));
+        const r = await service.applyChange(BOOKING_ID, { ...base, collected_method: "upi" }, ADMIN);
+        expect(r.charge.collected).toBe(false);
+        expect(notifyUser.mock.calls[0][1].body).toContain("has been added to your bill");
+    });
+
+    it("tells the rider the charge was added when they will pay in the app", async () => {
+        rpcResult = { data: withInvoice(), error: null };
+        await service.applyChange(BOOKING_ID, base, ADMIN);
+        expect(recordOfflinePayment).not.toHaveBeenCalled();
+        expect(notifyUser.mock.calls[0][1].body).toContain("A charge of ₹600 for the change has been added to your bill.");
+    });
+
+    it("says nothing about a charge when none was billed (free, waived, or earlier time)", async () => {
+        await service.applyChange(BOOKING_ID, { ...base, collected_method: "cash" }, ADMIN);
+        expect(recordOfflinePayment).not.toHaveBeenCalled();
+        expect(notifyUser.mock.calls[0][1].body).not.toContain("charge");
     });
 });

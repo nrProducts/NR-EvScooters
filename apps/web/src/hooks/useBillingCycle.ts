@@ -28,11 +28,13 @@ export function usePreviewBillingCycleChange() {
 export function useApplyBillingCycleChange() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ bookingId, input }: { bookingId: string; input: api.BillingCycleChangeInput & { reason: string } }) =>
+    mutationFn: ({ bookingId, input }: { bookingId: string; input: api.BillingCycleApplyInput }) =>
       api.applyBillingCycleChange(bookingId, input),
     onSuccess: () => {
-      // Every grid that shows a due date / plan status for this rider.
+      // Every grid that shows a due date / plan status / amount owed for this rider.
       qc.invalidateQueries({ queryKey: ["pickup-queue"] });
+      qc.invalidateQueries({ queryKey: ["payments"] });
+      qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["users"] });
       qc.invalidateQueries({ queryKey: ["user"] });
       qc.invalidateQueries({ queryKey: ["vehicles"] });

@@ -5,6 +5,7 @@ import { writeAudit } from "../../common/audit";
 import { formatTimeOfDayForCopy } from "../../common/dates";
 import { AuthContext } from "../../types";
 import { notifyUser } from "../notifications/notifications.service";
+import { recordOfflinePayment } from "../payments/payments.service";
 import type {
     BillingCycleChangeResult, BillingCycleSettingsRow, ChangeBillingCycleInput, UpdateBillingCycleSettingsInput,
 } from "./billing-cycle.types";
@@ -27,7 +28,10 @@ import type {
  * 422, and sends the rider their notification after a successful apply.
  */
 
-const SETTINGS_COLUMNS = "id, allow_overdue_change, max_extra_days, updated_at";
+const SETTINGS_COLUMNS = "id, allow_overdue_change, max_extra_days, charge_enabled, change_fee, updated_at";
+
+type RawSettings = Omit<BillingCycleSettingsRow, "change_fee"> & { change_fee: number | string };
+const toSettings = (raw: RawSettings): BillingCycleSettingsRow => ({ ...raw, change_fee: Number(raw.change_fee) });
 
 /** Rule violations raised by the function carry this prefix. */
 const RULE_PREFIX = "BILLING_CYCLE: ";
@@ -39,7 +43,7 @@ export async function getSettings(): Promise<BillingCycleSettingsRow> {
         .maybeSingle();
     if (error) throw error;
     if (!data) throw notFound("Billing cycle settings not configured.");
-    return data;
+    return toSettings(data);
 }
 
 export async function updateSettings(
@@ -50,25 +54,33 @@ export async function updateSettings(
     const existing = await getSettings();
     const { data, error } = await supabaseAdmin
         .from("billing_cycle_settings")
-        .update({ allow_overdue_change: input.allow_overdue_change, max_extra_days: input.max_extra_days })
+        .update({
+            allow_overdue_change: input.allow_overdue_change,
+            max_extra_days: input.max_extra_days,
+            charge_enabled: input.charge_enabled,
+            change_fee: input.change_fee,
+        })
         .eq("id", existing.id)
         .select(SETTINGS_COLUMNS)
         .maybeSingle();
     if (error) throw error;
     if (!data) throw notFound("Billing cycle settings not configured.");
+    const saved = toSettings(data);
 
+    const { id: _id, updated_at: _u, ...before } = existing;
+    const { id: _id2, updated_at: _u2, ...after } = saved;
     await writeAudit({
         actorId: actor.id,
         targetUserId: null,
         action: "billing_cycle_settings.updated",
         entityType: "billing_cycle_setting",
-        entityId: data.id,
-        before: { allow_overdue_change: existing.allow_overdue_change, max_extra_days: existing.max_extra_days },
-        after: { allow_overdue_change: data.allow_overdue_change, max_extra_days: data.max_extra_days },
+        entityId: saved.id,
+        before,
+        after,
         req,
     });
 
-    return data;
+    return saved;
 }
 
 async function subscriptionIdForBooking(bookingId: string): Promise<string> {
@@ -103,6 +115,8 @@ async function runChange(
         p_reason: input.reason ?? null,
         p_actor_id: actorId,
         p_apply: apply,
+        p_waive_charge: input.waive_charge ?? false,
+        p_waive_reason: input.waive_reason ?? null,
     });
     if (error) {
         const rule = ruleErrorMessage(error);
@@ -131,6 +145,22 @@ export async function applyChange(
     actor: AuthContext,
 ): Promise<BillingCycleChangeResult> {
     const result = await runChange(bookingId, input, actor.id, true);
+    const invoiceId = result.charge.invoice_id;
+
+    // Collected at the counter: settle the bill the function just raised. The
+    // re-dating and the bill are already committed together, so a failure here
+    // only leaves the charge owing — the rider can still pay it in the app or
+    // staff can record it from Payments — and must not report the change as
+    // failed.
+    let collected = false;
+    if (invoiceId && input.collected_method) {
+        try {
+            await recordOfflinePayment(invoiceId, input.collected_method, actor);
+            collected = true;
+        } catch (err) {
+            console.error("[billing-cycle] recording the collected charge failed", { invoiceId, err });
+        }
+    }
 
     // notifyUser never throws — a failed notification must not report the
     // (already committed) change as failed.
@@ -138,12 +168,22 @@ export async function applyChange(
         template: "plan_cycle_changed",
         title: "Payment time updated",
         body: `Your plan payment is now due on ${describeDueForRider(result.new_due_at)}. `
-            + "Your scooter's return-by time moves with it.",
+            + "Your scooter's return-by time moves with it."
+            + chargeCopy(result, collected),
         screen: "billing",
         reference_type: "subscription",
         reference_id: result.subscription_id,
         booking_id: bookingId,
     });
 
-    return result;
+    return { ...result, charge: { ...result.charge, collected } };
+}
+
+/** The charge sentence appended to the rider's notification, or "" when nothing was billed. */
+export function chargeCopy(result: BillingCycleChangeResult, collected: boolean): string {
+    if (!result.charge.invoice_id) return "";
+    const amount = `₹${Number(result.charge.total).toLocaleString("en-IN")}`;
+    return collected
+        ? ` A charge of ${amount} for the change was collected.`
+        : ` A charge of ${amount} for the change has been added to your bill.`;
 }
